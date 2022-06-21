@@ -27,7 +27,7 @@ from ray.tune.execution.ray_trial_executor import (
     _ExecutorEventType,
     _ExecutorEvent,
 )
-from ray.tune.result import (
+from ray.tune.constants import (
     DEBUG_METRICS,
     DEFAULT_METRIC,
     DONE,

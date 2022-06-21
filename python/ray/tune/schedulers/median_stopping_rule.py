@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from ray.tune.execution import trial_runner
-from ray.tune.result import DEFAULT_METRIC
+from ray.tune.constants import DEFAULT_METRIC
 from ray.tune.experiment.trial import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.util.annotations import PublicAPI
@@ -26,7 +26,7 @@ class MedianStoppingRule(FIFOScheduler):
             is that the attribute should increase monotonically.
         metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
-            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
+            the `ray.tune.constants.DEFAULT_METRIC` will be used per default.
         mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         grace_period: Only stop trials at least this old in time.

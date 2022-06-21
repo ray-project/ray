@@ -240,7 +240,7 @@ class Searcher:
         # lazy imports to avoid circular dependencies
         from ray.tune.experiment.trial import Trial
         from ray.tune.analysis import ExperimentAnalysis
-        from ray.tune.result import DONE
+        from ray.tune.constants import DONE
 
         if isinstance(trials_or_analysis, Trial):
             trials_or_analysis = [trials_or_analysis]

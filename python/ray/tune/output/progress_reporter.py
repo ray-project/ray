@@ -15,7 +15,7 @@ from ray.util.queue import Queue
 
 from ray.tune.callback import Callback
 from ray.tune.output.logger import pretty_print, logger
-from ray.tune.result import (
+from ray.tune.constants import (
     DEFAULT_METRIC,
     EPISODE_REWARD_MEAN,
     MEAN_ACCURACY,

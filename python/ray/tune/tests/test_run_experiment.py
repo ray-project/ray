@@ -4,7 +4,7 @@ import unittest
 import ray
 from ray.rllib import _register_all
 
-from ray.tune.result import TIMESTEPS_TOTAL
+from ray.tune.constants import TIMESTEPS_TOTAL
 from ray.tune import Trainable, TuneError
 from ray.tune import register_trainable, run_experiments
 from ray.tune.output.logger import LegacyLoggerCallback, Logger

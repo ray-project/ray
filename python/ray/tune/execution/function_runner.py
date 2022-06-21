@@ -14,7 +14,7 @@ from six.moves import queue
 
 from ray.air.checkpoint import Checkpoint
 from ray.tune import TuneError, session
-from ray.tune.result import (
+from ray.tune.constants import (
     DEFAULT_METRIC,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,

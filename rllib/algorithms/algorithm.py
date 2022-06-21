@@ -97,7 +97,7 @@ from ray.rllib.utils.typing import (
 from ray.tune.output.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.constants import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.execution.placement_groups import PlacementGroupFactory

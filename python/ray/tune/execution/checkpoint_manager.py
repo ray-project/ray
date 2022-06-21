@@ -2,7 +2,7 @@
 import logging
 from typing import Callable, Optional
 
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.constants import TRAINING_ITERATION
 from ray.util.ml_utils.checkpoint_manager import (
     CheckpointStrategy,
     MIN,

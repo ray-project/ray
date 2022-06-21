@@ -10,7 +10,7 @@ from datetime import datetime
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
-from ray.tune.result import (
+from ray.tune.constants import (
     DEFAULT_EXPERIMENT_INFO_KEYS,
     DEFAULT_RESULT_KEYS,
     CONFIG_PREFIX,

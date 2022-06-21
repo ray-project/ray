@@ -31,7 +31,7 @@ from ray.tune.execution.function_runner import wrap_function
 from ray.tune.output.logger import Logger, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
-from ray.tune.result import (
+from ray.tune.constants import (
     TIMESTEPS_TOTAL,
     DONE,
     HOSTNAME,

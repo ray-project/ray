@@ -4,7 +4,7 @@ import logging
 import ray
 from ray.tune.trainable import Trainable
 from ray.tune.output.logger import LoggerCallback
-from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
+from ray.tune.constants import TRAINING_ITERATION, TIMESTEPS_TOTAL
 from ray.tune.experiment.trial import Trial
 from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 

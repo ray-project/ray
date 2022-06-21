@@ -2,7 +2,7 @@ import copy
 import pickle
 from typing import Dict, List, Optional, Union
 
-from ray.tune.result import DEFAULT_METRIC
+from ray.tune.constants import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, Quantized, Uniform
 from ray.tune.suggest.suggestion import (
     UNRESOLVED_SEARCH_SPACE,
@@ -58,7 +58,7 @@ class AxSearch(Searcher):
             experiment. This metric must be present in `raw_data` argument
             to `log_data`. This metric must also be present in the dict
             reported/returned by the Trainable. If None but a mode was passed,
-            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
+            the `ray.tune.constants.DEFAULT_METRIC` will be used per default.
         mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute. Defaults to "max".
         points_to_evaluate: Initial parameter suggestions to be run

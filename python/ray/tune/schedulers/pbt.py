@@ -9,7 +9,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.constants import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.suggest import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
@@ -159,7 +159,7 @@ class PopulationBasedTraining(FIFOScheduler):
             is that the attribute should increase monotonically.
         metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
-            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
+            the `ray.tune.constants.DEFAULT_METRIC` will be used per default.
         mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         perturbation_interval: Models will be considered for

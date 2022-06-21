@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 
-from ray.tune.result import DEFAULT_METRIC
+from ray.tune.constants import DEFAULT_METRIC
 from ray.tune.sample import (
     Categorical,
     Domain,

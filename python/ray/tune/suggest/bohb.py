@@ -9,7 +9,7 @@ import math
 from ray import cloudpickle
 from typing import Dict, List, Optional, Union
 
-from ray.tune.result import DEFAULT_METRIC
+from ray.tune.constants import DEFAULT_METRIC
 from ray.tune.sample import (
     Categorical,
     Domain,

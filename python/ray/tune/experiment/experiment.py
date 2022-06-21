@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional, Sequence, Union, Callable, Type, List
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.constants import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig

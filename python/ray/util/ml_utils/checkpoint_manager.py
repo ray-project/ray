@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.air import Checkpoint
-from ray.tune.result import NODE_IP
+from ray.tune.constants import NODE_IP
 from ray.tune.utils.trainable import TrainableUtil
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI

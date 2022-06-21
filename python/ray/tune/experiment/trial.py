@@ -22,7 +22,7 @@ from ray.tune.execution.checkpoint_manager import _CheckpointManager
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
-from ray.tune.result import (
+from ray.tune.constants import (
     DEFAULT_RESULTS_DIR,
     DONE,
     NODE_IP,

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.constants import TRAINING_ITERATION
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.util.ml_utils.checkpoint_manager import (
     _TrackedCheckpoint,

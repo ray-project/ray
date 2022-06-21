@@ -16,7 +16,7 @@ from ray.tune.execution.ray_trial_executor import (
     RayTrialExecutor,
 )
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_trainable
-from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
+from ray.tune.constants import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.experiment.trial import Trial
 from ray.tune.resources import Resources

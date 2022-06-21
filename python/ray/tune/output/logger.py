@@ -12,7 +12,7 @@ import ray.cloudpickle as cloudpickle
 from ray.tune.callback import Callback
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
-from ray.tune.result import (
+from ray.tune.constants import (
     TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,

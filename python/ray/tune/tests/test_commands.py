@@ -14,7 +14,7 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune.cli import commands
-from ray.tune.result import CONFIG_PREFIX
+from ray.tune.constants import CONFIG_PREFIX
 
 
 class Capturing:

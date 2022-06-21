@@ -11,7 +11,7 @@ from ray.tune.automl.board.common.utils import (
     timestamp2date,
 )
 from ray.tune.automl.board.models.models import JobRecord, TrialRecord, ResultRecord
-from ray.tune.result import (
+from ray.tune.constants import (
     DEFAULT_RESULTS_DIR,
     JOB_META_FILE,
     EXPR_PARAM_FILE,

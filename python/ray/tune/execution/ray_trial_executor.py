@@ -29,7 +29,7 @@ from ray.tune.error import (
     _TuneNoNextExecutorEventError,
 )
 from ray.tune.output.logger import NoopLogger
-from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
+from ray.tune.constants import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.execution.placement_groups import (
     _PlacementGroupManager,
     get_tune_pg_prefix,

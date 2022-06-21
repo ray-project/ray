@@ -18,7 +18,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.output.logger import Logger
 from ray.tune.resources import Resources
-from ray.tune.result import (
+from ray.tune.constants import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
     DONE,
@@ -226,7 +226,7 @@ class Trainable:
 
         If ``debug_metrics_only`` is True, only metrics that don't
         require at least one iteration will be returned
-        (``ray.tune.result.DEBUG_METRICS``).
+        (``ray.tune.constants.DEBUG_METRICS``).
         """
         if now is None:
             now = datetime.today()

@@ -24,7 +24,7 @@ from ray.air._internal.remote_storage import (
 )
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.result import NODE_IP
+from ray.tune.constants import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint

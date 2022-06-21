@@ -18,7 +18,7 @@ from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.tune import Callback, TuneError
 from ray.tune.cloud import TrialCheckpoint
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.constants import DEFAULT_RESULTS_DIR
 from ray.tune.air.tune_config import TuneConfig
 from ray.tune.air.tuner import Tuner
 

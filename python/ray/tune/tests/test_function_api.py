@@ -17,7 +17,7 @@ from ray.tune.execution.function_runner import (
     wrap_function,
     FuncCheckpointUtil,
 )
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.constants import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.schedulers import ResourceChangingScheduler
 
 

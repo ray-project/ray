@@ -16,7 +16,7 @@ from ray.tune.execution.ray_trial_executor import (
     _ExecutorEventType,
     RayTrialExecutor,
 )
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.constants import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
 
 from ray.tune.callback import warnings

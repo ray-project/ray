@@ -6,7 +6,7 @@ import logging
 from functools import partial
 import pickle
 
-from ray.tune.result import DEFAULT_METRIC
+from ray.tune.constants import DEFAULT_METRIC
 from ray.tune.sample import (
     Categorical,
     Domain,

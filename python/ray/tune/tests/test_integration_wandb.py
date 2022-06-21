@@ -16,7 +16,7 @@ from ray.tune.integration.wandb import (
     wandb_mixin,
     _QueueItem,
 )
-from ray.tune.result import TRIAL_INFO
+from ray.tune.constants import TRIAL_INFO
 from ray.tune.experiment.trial import _TrialInfo
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 

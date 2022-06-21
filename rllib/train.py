@@ -7,7 +7,7 @@ import yaml
 
 import ray
 from ray.tune.experiment._config_parser import make_parser
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.constants import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler

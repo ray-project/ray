@@ -17,7 +17,7 @@ from ray.tune.output.logger import (
     TBXLoggerCallback,
     TBXLogger,
 )
-from ray.tune.result import (
+from ray.tune.constants import (
     EXPR_PARAM_FILE,
     EXPR_PARAM_PICKLE_FILE,
     EXPR_PROGRESS_FILE,

@@ -9,7 +9,7 @@ from freezegun import freeze_time
 
 import ray.util
 from ray.tune import TuneError
-from ray.tune.result import NODE_IP
+from ray.tune.constants import NODE_IP
 from ray.tune.syncer import (
     DEFAULT_SYNC_PERIOD,
     SyncConfig,
