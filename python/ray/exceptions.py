@@ -341,7 +341,7 @@ class ObjectStoreFullError(RayError):
         )
 
 
-<<<<<<< HEAD
+@PublicAPI
 class OutOfDiskError(RayError):
     """Indicates that the local disk is full.
 
@@ -361,9 +361,7 @@ class OutOfDiskError(RayError):
         )
 
 
-=======
 @PublicAPI
->>>>>>> upstream/master
 class ObjectLostError(RayError):
     """Indicates that the object is lost from distributed memory, due to
     node failure or system error.
