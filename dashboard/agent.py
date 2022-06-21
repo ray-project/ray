@@ -15,9 +15,13 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
 from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
+from ray.experimental.internal_kv import (
+    _initialize_internal_kv,
+    _internal_kv_initialized,
+)
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -125,7 +129,12 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
+        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
+        # gcs_aio_client and not gcs_client.
         self.gcs_client = GcsClient(address=self.gcs_address)
+        _initialize_internal_kv(self.gcs_client)
+        assert _internal_kv_initialized()
+        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
         self.publisher = GcsAioPublisher(address=self.gcs_address)
 
     async def _configure_http_server(self, modules):
