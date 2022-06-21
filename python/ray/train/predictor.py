@@ -26,7 +26,6 @@ TYPE_TO_ENUM: Dict[Type[DataBatchType], DataType] = {
     pa_table: DataType.ARROW,
 }
 
->>>>>>> 5c58d43df27f171418a69612430ad0c7b120c345:python/ray/train/predictor.py
 
 @PublicAPI(stability="alpha")
 class PredictorNotSerializableException(RuntimeError):
@@ -105,13 +104,9 @@ class Predictor(abc.ABC):
             data_df = self.preprocessor.transform_batch(data_df)
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
-<<<<<<< HEAD:python/ray/air/predictor.py
-        return convert_pandas_to_batch_type(predictions_df, type=type(data))
-=======
         return convert_pandas_to_batch_type(
             predictions_df, type=TYPE_TO_ENUM[type(data)]
         )
->>>>>>> 5c58d43df27f171418a69612430ad0c7b120c345:python/ray/train/predictor.py
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

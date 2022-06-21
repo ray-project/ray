@@ -1,5 +1,6 @@
 import pandas as pd
 import pytest
+import time
 from unittest import mock
 
 import ray
@@ -7,7 +8,6 @@ from ray.air.checkpoint import Checkpoint
 from ray.train.predictor import Predictor, PredictorNotSerializableException
 from ray.data import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.predictor import Predictor
 
 
 class DummyPreprocessor(Preprocessor):
@@ -29,7 +29,6 @@ class DummyPredictor(Predictor):
         return data * self.factor
 
 
-<<<<<<< HEAD:python/ray/air/tests/test_predictor.py
 def test_serialization():
     """Tests that Predictor instances are not serializable."""
 
@@ -80,7 +79,8 @@ def test_kwargs(predict_pandas_mock):
     # Second element in call_args is the kwargs.
     assert "extra_arg" in predict_pandas_mock.call_args[1]
     assert predict_pandas_mock.call_args[1]["extra_arg"] == 1
-=======
+
+
 class DummyPredictorFS(DummyPredictor):
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "DummyPredictor":
@@ -138,7 +138,6 @@ def test_batch_prediction_fs():
         ]
         * 32
     )
->>>>>>> 5c58d43df27f171418a69612430ad0c7b120c345:python/ray/train/tests/test_batch_predictor.py
 
 
 if __name__ == "__main__":
