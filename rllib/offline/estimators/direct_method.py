@@ -91,7 +91,7 @@ class DirectMethod(OffPolicyEstimator):
             gamma: Discount factor of the environment.
             q_model_type: Either "fqe" for Fitted Q-Evaluation
                 or "qreg" for Q-Regression, or a custom model that implements:
-                - `estimate_q(states,actions)`
+                - `estimate_q(states, actions)`
                 - `estimate_v(states, action_probs)`
             train_test_split_val: Split the batch into a training batch with
             `train_test_split_val * n_episodes` episodes and an evaluation batch
@@ -136,6 +136,10 @@ class DirectMethod(OffPolicyEstimator):
         )
         self.train_test_split_val = train_test_split_val
         self.k = k
+        assert train_test_split_val != 0.0 or k != 0, (
+            f"Both train_test_split_val: {train_test_split_val} and k: {k} "
+            f"cannot be 0 for the {self.__class__.__name__} estimator!"
+        )
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
