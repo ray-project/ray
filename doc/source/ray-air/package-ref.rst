@@ -83,10 +83,10 @@ Trainers and Predictors
 Tuner
 ~~~~~
 
-.. autoclass:: ray.tune.tuner.Tuner
+.. autoclass:: ray.tune.air.tuner.Tuner
     :members:
 
-.. automodule:: ray.tune.result_grid
+.. automodule:: ray.tune.air.result_grid
     :members:
 
 .. _air-serve-integration:

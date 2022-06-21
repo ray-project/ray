@@ -4,8 +4,8 @@ import numpy as np
 import torchvision
 from ray.air import RunConfig
 from ray.train.horovod import HorovodTrainer
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
+from ray.tune.air.tune_config import TuneConfig
+from ray.tune.air.tuner import Tuner
 from torch.utils.data import DataLoader
 
 import torchvision.transforms as transforms

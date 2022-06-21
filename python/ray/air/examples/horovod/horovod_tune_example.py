@@ -6,8 +6,8 @@ import ray
 from ray import train
 from ray import tune
 from ray.train.horovod import HorovodTrainer
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
+from ray.tune.air.tune_config import TuneConfig
+from ray.tune.air.tuner import Tuner
 
 
 def sq(x):

@@ -5,8 +5,8 @@ from ray import tune
 from ray.air.train.integrations.tensorflow import TensorflowTrainer
 
 from ray.air.examples.tf.tensorflow_mnist_example import train_func
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
+from ray.tune.air.tune_config import TuneConfig
+from ray.tune.air.tuner import Tuner
 
 
 def tune_tensorflow_mnist(

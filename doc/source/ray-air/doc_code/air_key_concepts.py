@@ -56,7 +56,7 @@ print(result.checkpoint)
 
 # __air_tuner_start__
 from ray import tune
-from ray.tune.tuner import Tuner, TuneConfig
+from ray.tune.air.tuner import Tuner, TuneConfig
 
 tuner = Tuner(
     trainer,
@@ -93,7 +93,6 @@ for batch in pipeline.iter_batches():
 from ray import serve
 from fastapi import Request
 from ray.serve.model_wrappers import ModelWrapperDeployment
-from ray.serve.http_adapters import json_request
 
 
 async def adapter(request: Request):

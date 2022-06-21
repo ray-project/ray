@@ -7,8 +7,8 @@ from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.constants import PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
+from ray.tune.air.tune_config import TuneConfig
+from ray.tune.air.tuner import Tuner
 
 
 @pytest.fixture

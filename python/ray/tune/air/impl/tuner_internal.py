@@ -6,10 +6,10 @@ import ray.cloudpickle as pickle
 from ray.air.config import RunConfig
 from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.result_grid import ResultGrid
+from ray.tune.air.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
-from ray.tune.tune_config import TuneConfig
+from ray.tune.air.tune_config import TuneConfig
 
 
 _TRAINABLE_PKL = "trainable.pkl"
@@ -40,7 +40,7 @@ class TunerInternal:
         param_space: Search space of the tuning job.
             One thing to note is that both preprocessor and dataset can be tuned here.
         tune_config: Tuning algorithm specific configs.
-            Refer to ray.tune.tune_config.TuneConfig for more info.
+            Refer to ray.tune.air.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
             if applicable. Refer to ray.air.config.RunConfig for more info.

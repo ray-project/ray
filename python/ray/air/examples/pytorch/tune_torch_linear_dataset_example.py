@@ -3,8 +3,8 @@ import argparse
 import ray
 from ray import tune
 from ray.train.torch import TorchTrainer
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
+from ray.tune.air.tune_config import TuneConfig
+from ray.tune.air.tuner import Tuner
 
 from torch_linear_dataset_example import train_func, get_datasets
 
