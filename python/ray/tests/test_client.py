@@ -742,7 +742,7 @@ def test_wrapped_actor_creation(call_ray_start):
 def test_init_requires_no_resources(call_ray_start, use_client):
     import ray
 
-    if use_client:
+    if not use_client:
         address = call_ray_start
         ray.init(address)
     else:

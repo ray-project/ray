@@ -37,6 +37,9 @@ RAY_PKG_PREFIX = "_ray_pkg_"
 RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR = (
     "RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING"
 )
+RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR = (
+    "RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING"
+)
 
 
 def _mib_string(num_bytes: float) -> str:
@@ -580,6 +583,9 @@ def download_and_unpack_package(
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
     """
+    if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
+        raise RuntimeError("Simulating failure to download package for testing.")
+
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     with FileLock(str(pkg_file) + ".lock"):
         if logger is None:
