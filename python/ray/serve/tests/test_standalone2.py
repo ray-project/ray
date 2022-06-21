@@ -51,40 +51,6 @@ def start_and_shutdown_ray_cli_class():
         yield
 
 
-@pytest.fixture()
-def lower_slow_startup_threshold_and_reset():
-    ray.init(num_cpus=2)
-    client = serve.start(detached=True)
-
-    original_slow_startup_warning_period_s = ray.get(
-        client._controller._get_slow_startup_warning_period_s.remote()
-    )
-    original_slow_startup_warning_s = ray.get(
-        client._controller._get_slow_startup_warning_s.remote()
-    )
-    # Lower slow startup warning threshold to 1 second to reduce test duration
-    ray.get(client._controller._set_slow_startup_warning_period_s.remote(1))
-    ray.get(client._controller._set_slow_startup_warning_s.remote(1))
-
-    yield client
-
-    # Reset slow startup warning threshold to prevent state sharing across unit
-    # tests
-    ray.get(
-        client._controller._set_slow_startup_warning_period_s.remote(
-            original_slow_startup_warning_period_s
-        )
-    )
-    ray.get(
-        client._controller._set_slow_startup_warning_s.remote(
-            original_slow_startup_warning_s
-        )
-    )
-
-    serve.shutdown()
-    ray.shutdown()
-
-
 def test_standalone_actor_outside_serve():
     # https://github.com/ray-project/ray/issues/20066
 
@@ -170,64 +136,6 @@ def test_update_num_replicas(shutdown_ray, detached):
         assert len(updated_actors) == len(actors) - 1
 
         serve.shutdown()
-
-
-def test_updating_status_message(shutdown_ray, lower_slow_startup_threshold_and_reset):
-    """Check if status message says if a serve deployment has taken a long time"""
-
-    client = lower_slow_startup_threshold_and_reset
-
-    @serve.deployment(
-        num_replicas=5,
-        ray_actor_options={"num_cpus": 1},
-    )
-    def f(*args):
-        pass
-
-    f.deploy(_blocking=False)
-
-    def updating_message():
-        deployment_status = client.get_serve_status().deployment_statuses[0]
-        message_substring = "more than 1s to be scheduled."
-        return (deployment_status.status == "UPDATING") and (
-            message_substring in deployment_status.message
-        )
-
-    wait_for_condition(updating_message, timeout=2)
-
-
-def test_unhealthy_override_updating_status(
-    shutdown_ray, lower_slow_startup_threshold_and_reset
-):
-    """
-    Check that if status is UNHEALTHY and there is a resource availability
-    issue, the status should not change. The issue that caused the deployment to
-    be unhealthy should be prioritized over this resource availability issue.
-    """
-
-    client = lower_slow_startup_threshold_and_reset
-
-    @serve.deployment
-    class f:
-        def __init__(self):
-            self.num = 5 / 0
-
-        def __call__(self, request):
-            pass
-
-    f.deploy(_blocking=False)
-
-    wait_for_condition(
-        lambda: client.get_serve_status().deployment_statuses[0].status == "UNHEALTHY",
-        timeout=5,
-    )
-
-    with pytest.raises(RuntimeError):
-        wait_for_condition(
-            lambda: client.get_serve_status().deployment_statuses[0].status
-            == "UPDATING",
-            timeout=5,
-        )
 
 
 @pytest.mark.parametrize("detached", [True, False])
