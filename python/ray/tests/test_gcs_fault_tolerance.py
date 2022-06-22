@@ -474,7 +474,9 @@ assert ray.get(a.r.remote(10)) == 10
     [
         {
             **generate_system_config_map(
-                num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=3600
+                num_heartbeats_timeout=20,
+                gcs_rpc_server_reconnect_timeout_s=3600,
+                gcs_server_request_timeout_seconds=3,
             ),
             "namespace": "actor",
         }
@@ -500,12 +502,13 @@ def test_named_actor_workloads(ray_start_regular_with_external_redis):
     ray.worker._global_node.kill_gcs_server()
 
     print("Start to create a new actor")
-    cc = Counter.options(name="cc", lifetime="detached").remote()
     with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(cc.r.remote(10), timeout=5)
+        cc = Counter.options(name="cc", lifetime="detached").remote()
 
     assert ray.get(c.r.remote(10)) == 10
     ray.worker._global_node.start_gcs_server()
+    cc = Counter.options(name="cc", lifetime="detached").remote()
+    assert ray.get(cc.r.remote(10)) == 10
 
 
 @pytest.mark.parametrize(

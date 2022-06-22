@@ -19,6 +19,8 @@
 #include <chrono>
 #include <thread>
 
+#include "absl/container/btree_map.h"
+
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -32,12 +34,14 @@ class GcsRpcClient;
 /// Executor saves operation and support retries.
 class Executor {
  public:
-  explicit Executor(GcsRpcClient *gcs_rpc_client) : gcs_rpc_client_(gcs_rpc_client) {}
+  explicit Executor(GcsRpcClient *gcs_rpc_client,
+                    std::function<void(ray::Status)> abort_callback)
+      : gcs_rpc_client_(gcs_rpc_client), abort_callback_(std::move(abort_callback)) {}
 
   /// This function is used to execute the given operation.
   ///
   /// \param operation The operation to be executed.
-  void Execute(const std::function<void(GcsRpcClient *gcs_rpc_client)> &operation) {
+  void Execute(std::function<void(GcsRpcClient *gcs_rpc_client)> operation) {
     operation_ = operation;
     operation(gcs_rpc_client_);
   }
@@ -45,8 +49,11 @@ class Executor {
   /// This function is used to retry the given operation.
   void Retry() { operation_(gcs_rpc_client_); }
 
+  void Abort(ray::Status status) { abort_callback_(status); }
+
  private:
   GcsRpcClient *gcs_rpc_client_;
+  std::function<void(ray::Status)> abort_callback_;
   std::function<void(GcsRpcClient *gcs_rpc_client)> operation_;
 };
 
@@ -88,8 +95,9 @@ class Executor {
   void METHOD(const METHOD##Request &request,                                           \
               const ClientCallback<METHOD##Reply> &callback,                            \
               const int64_t timeout_ms = method_timeout_ms) SPECS {                     \
-    auto executor = new Executor(this);                                                 \
-    auto operation_callback = [this, request, callback, executor](                      \
+    auto executor = new Executor(                                                       \
+        this, [callback](ray::Status status) { callback(status, METHOD##Reply()); });   \
+    auto operation_callback = [this, request, callback, executor, timeout_ms](          \
                                   const ray::Status &status,                            \
                                   const METHOD##Reply &reply) {                         \
       if (status.IsTimedOut()) {                                                        \
@@ -125,7 +133,10 @@ class Executor {
           }                                                                             \
         } else {                                                                        \
           pending_requests_bytes_ += request_bytes;                                     \
-          pending_requests_.emplace_back(executor);                                     \
+          auto timeout = timeout_ms == -1                                               \
+                             ? absl::InfinitePast()                                     \
+                             : absl::Now() + absl::Milliseconds(timeout_ms);            \
+          pending_requests_.emplace(timeout, std::make_pair(executor, request_bytes));  \
         }                                                                               \
       }                                                                                 \
     };                                                                                  \
@@ -144,13 +155,12 @@ class Executor {
                            METHOD##Reply *reply_in,                                     \
                            const int64_t timeout_ms = method_timeout_ms) {              \
     std::promise<Status> promise;                                                       \
-    METHOD(                                                                             \
-        request,                                                                        \
-        [&promise, reply_in](const Status &status, const METHOD##Reply &reply) {        \
-          reply_in->CopyFrom(reply);                                                    \
-          promise.set_value(status);                                                    \
-        },                                                                              \
-        timeout_ms);                                                                    \
+    METHOD(request,                                                                     \
+           [&promise, reply_in](const Status &status, const METHOD##Reply &reply) {     \
+             reply_in->CopyFrom(reply);                                                 \
+             promise.set_value(status);                                                 \
+           },                                                                           \
+           timeout_ms);                                                                 \
     return promise.get_future().get();                                                  \
   }
 
@@ -496,10 +506,27 @@ class GcsRpcClient {
     if (shutdown_) {
       return;
     }
+
     auto status = channel_->GetState(false);
     // https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
     // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
     RAY_LOG(DEBUG) << "GCS channel status: " << status;
+
+    // We need to cleanup all the pending requets which are timeout.
+    auto now = absl::Now();
+    while (!pending_requests_.empty()) {
+      auto iter = pending_requests_.begin();
+      if (iter->first > now) {
+        break;
+      }
+      auto [executor, request_bytes] = iter->second;
+      executor->Abort(
+          ray::Status::TimedOut("Time out due to GCS is down. Abort this operation"));
+      pending_requests_bytes_ -= request_bytes;
+      delete executor;
+      pending_requests_.erase(iter);
+    }
+
     switch (status) {
     case GRPC_CHANNEL_TRANSIENT_FAILURE:
     case GRPC_CHANNEL_CONNECTING:
@@ -521,8 +548,8 @@ class GcsRpcClient {
       gcs_is_down_ = false;
       // Retry the one queued.
       while (!pending_requests_.empty()) {
-        pending_requests_.back()->Retry();
-        pending_requests_.pop_back();
+        pending_requests_.begin()->second.first->Retry();
+        pending_requests_.erase(pending_requests_.begin());
       }
       pending_requests_bytes_ = 0;
       break;
@@ -560,7 +587,7 @@ class GcsRpcClient {
   absl::Time gcs_last_alive_time_ = absl::Now();
 
   std::atomic<bool> shutdown_ = false;
-  std::vector<Executor *> pending_requests_;
+  absl::btree_multimap<absl::Time, std::pair<Executor *, size_t>> pending_requests_;
   size_t pending_requests_bytes_ = 0;
 
   friend class GcsClientReconnectionTest;
