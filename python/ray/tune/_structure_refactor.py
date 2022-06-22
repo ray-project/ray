@@ -11,11 +11,13 @@ def warn_structure_refactor(old_module: str, new_module: str, direct: bool = Tru
             f"location will be deprecated soon. Please adjust your imports to point "
             f"to the new location."
         )
+
         if direct:
             warning += (
                 f"Example: Do a global search and "
                 f"replace `{old_module}` with `{new_module}`."
             )
+
         else:
             warning += (
                 f"ATTENTION: This module may have been split or refactored. Please "
