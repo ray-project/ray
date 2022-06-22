@@ -62,11 +62,11 @@ import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
 
-if sys.platform == "win32":
-    from filelock import WindowsFileLock as FileLock
-else:
-    # Alias to UnixFileLock.
-    from filelock import FileLock as FileLock
+# if sys.platform == "win32":
+#     from filelock import WindowsFileLock as FileLock
+# else:
+#     # Alias to UnixFileLock.
+#     from filelock import FileLock as FileLock
 
 logger = logging.getLogger(__name__)
 
@@ -183,15 +183,16 @@ class LibUsageRecorder:
 
     def put_lib_usage(self, lib_name: str):
         """Put the library usage to the ray tmp folder."""
-        if sys.platform == "win32":
-            # In Linux, exclusive file open is supported.
-            # However, it is not clear if it is supported on Windows,
-            # so we just use a file lock.
-            lib_usage_file = self._lib_usage_dir / self._lib_usage_filename(lib_name)
-            with FileLock(str(lib_usage_file), timeout=2):
-                self._put_lib_usage(lib_name)
-        else:
-            self._put_lib_usage(lib_name)
+        # if sys.platform == "win32":
+        #     # In Linux, exclusive file open is supported.
+        #     # However, it is not clear if it is supported on Windows,
+        #     # so we just use a file lock.
+        #     lib_usage_file = self._lib_usage_dir / self._lib_usage_filename(lib_name)
+        #     # with FileLock(str(lib_usage_file), timeout=2):
+        #     self._put_lib_usage(lib_name)
+        # else:
+        #     self._put_lib_usage(lib_name)
+        self._put_lib_usage(lib_name)
 
     def read_lib_usages(self) -> List[str]:
         """Read a list of library usages from the ray tmp folder."""
@@ -210,7 +211,7 @@ class LibUsageRecorder:
         file_paths = glob.glob(f"{self._lib_usage_dir}/{self._lib_usage_prefix}*")
         for file_path in file_paths:
             file_path = Path(file_path)
-            file_path.unlink(missing_ok=True)
+            file_path.unlink()
 
     def _put_lib_usage(self, lib_name: str):
         lib_usage_file = self._lib_usage_dir / self._lib_usage_filename(lib_name)
@@ -242,7 +243,8 @@ def _put_library_usage(library_usage: str):
             lib_usage_recorder = LibUsageRecorder(ray._private.utils.get_ray_temp_dir())
             lib_usage_recorder.put_lib_usage(library_usage)
         except Exception as e:
-            logger.debug(f"Failed to write a library usage to the home folder, {e}")
+            # SANG-TODO
+            logger.error(f"Failed to write a library usage to the home folder, {e}")
 
 
 def record_library_usage(library_usage: str):
