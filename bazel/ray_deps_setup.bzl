@@ -274,6 +274,12 @@ def ray_deps_setup():
         ],
     )
 
+    auto_http_archive(
+        name = "msgpack_4",
+        build_file = True,
+        url = "https://github.com/msgpack/msgpack-c/archive/cpp-4.1.1.tar.gz",
+    )
+
     http_archive(
         name = "io_opencensus_proto",
         strip_prefix = "opencensus-proto-0.3.0/src",

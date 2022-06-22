@@ -1,0 +1,10 @@
+cc_library(
+    name = "msgpack_4",
+    hdrs = glob([
+        "include/**/*.h",
+        "include/**/*.hpp",
+    ]),
+    copts = [
+    ],
+    visibility = ["//visibility:public"],
+)

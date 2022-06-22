@@ -167,6 +167,21 @@ cc_test(
 )
 
 cc_test(
+    name = "msgpack_test.cc",
+    srcs = glob([
+        "src/ray/test/*.cc",
+    ]),
+    copts = COPTS,
+    linkstatic = True,
+    tags = ["team:core"],
+    deps = [
+        "ray_api",
+        "@boost//:filesystem",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "cluster_mode_test",
     srcs = glob(
         [
