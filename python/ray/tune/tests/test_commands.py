@@ -13,7 +13,7 @@ except ImportError:
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune import commands
+from ray.tune.cli import commands
 from ray.tune.result import CONFIG_PREFIX
 
 

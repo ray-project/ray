@@ -1,5 +1,5 @@
 import click
-import ray.tune.commands as commands
+import ray.tune.cli.commands as commands
 
 
 @click.group()
