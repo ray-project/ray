@@ -48,6 +48,9 @@ class RayConfig {
 
   // Prevents external clients without the password from connecting to Redis if provided.
   boost::optional<std::string> redis_password_;
+
+  // A specific flag for internal `default_worker`. Please don't use it in user code.
+  bool is_worker_ = false;
 };
 
 }  // namespace ray

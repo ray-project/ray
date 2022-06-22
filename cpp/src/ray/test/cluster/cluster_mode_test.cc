@@ -78,6 +78,8 @@ TEST(RayClusterModeTest, FullTest) {
                                         .SetMaxRestarts(1)
                                         .SetName("named_actor")
                                         .Remote();
+  auto initialized_obj = actor.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj.Get());
   auto named_actor_obj = actor.Task(&Counter::Plus1)
                              .SetName("named_actor_task")
                              .SetResources({{"CPU", 1.0}})
