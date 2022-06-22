@@ -158,7 +158,9 @@ class TunerInternal:
             sync_config=self._run_config.sync_config,
             stop=self._run_config.stop,
             max_failures=(
-                self._run_config.failure.max_failures if self._run_config.failure else 0
+                self._run_config.failure_config.max_failures
+                if self._run_config.failure_config
+                else 0
             ),
             keep_checkpoints_num=(
                 self._run_config.checkpoint_config.keep_checkpoints_num

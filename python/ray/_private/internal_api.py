@@ -1,10 +1,10 @@
 import ray
-import ray._private.services as services
-import ray.worker
 import ray._private.profiling as profiling
+import ray._private.services as services
 import ray._private.utils as utils
-from ray import ray_constants
-from ray.state import GlobalState
+import ray._private.worker
+from ray._private import ray_constants
+from ray._private.state import GlobalState
 from ray._raylet import GcsClientOptions
 
 __all__ = ["free", "global_gc"]
@@ -14,7 +14,7 @@ MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
 def global_gc():
     """Trigger gc.collect() on all workers in the cluster."""
 
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.core_worker.global_gc()
 
 
@@ -45,8 +45,7 @@ def memory_summary(
 def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     """Returns a formatted string describing memory usage in the cluster."""
 
-    from ray.core.generated import node_manager_pb2
-    from ray.core.generated import node_manager_pb2_grpc
+    from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info, that Raylet internally
     # asks all nodes in the cluster for memory stats.
@@ -85,8 +84,7 @@ def node_stats(
 ):
     """Returns NodeStats object describing memory usage in the cluster."""
 
-    from ray.core.generated import node_manager_pb2
-    from ray.core.generated import node_manager_pb2_grpc
+    from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info.
     assert node_manager_address is not None and node_manager_port is not None
@@ -192,7 +190,7 @@ def free(object_refs: list, local_only: bool = False):
         local_only: Whether only deleting the list of objects in local
             object store or all object stores.
     """
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
 
     if isinstance(object_refs, ray.ObjectRef):
         object_refs = [object_refs]
