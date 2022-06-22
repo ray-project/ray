@@ -47,7 +47,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
         self.cluster.shutdown()
 
     # no autoscaler case, resource is not sufficient. Log warning for now.
-    @patch.object(ray.tune.insufficient_resources_manager.logger, "warning")
+    @patch.object(ray.tune.execution.insufficient_resources_manager.logger, "warning")
     def testRaiseErrorNoAutoscaler(self, mocked_warn):
         class FailureInjectorCallback(Callback):
             """Adds random failure injection to the TrialExecutor."""
