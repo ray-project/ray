@@ -35,11 +35,6 @@ def model():
 
 
 @pytest.fixture
-def model_multi_output():
-    return DummyModelMultiOutput()
-
-
-@pytest.fixture
 def preprocessor():
     return DummyPreprocessor()
 
