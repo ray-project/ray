@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Optional, Type
 
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
@@ -14,6 +15,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
+from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -33,8 +35,11 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
-from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
-from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
+from ray.rllib.utils.typing import (
+    ResultDict,
+    AlgorithmConfigDict,
+    PartialAlgorithmConfigDict,
+)
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -76,6 +81,9 @@ class CQLConfig(SACConfig):
         self.min_train_timesteps_per_iteration = 100
         # fmt: on
         # __sphinx_doc_end__
+        self.rollout_fragment_length = None
+        self.replay_buffer_config = None
+        self._disable_buffer_config_validation = True
 
         self.timesteps_per_iteration = DEPRECATED_VALUE
 
@@ -168,6 +176,36 @@ class CQL(SAC):
             try_import_tfp(error=True)
 
     @override(SAC)
+    def setup(self, config: PartialAlgorithmConfigDict):
+        if config.get("rollout_fragment_length"):
+            raise ValueError(
+                "rollout_fragment_length should not be user specified in CQL."
+            )
+        if config.get("replay_buffer_config"):
+            raise ValueError(
+                "replay_buffer_config should not be user specified " "in CQL."
+            )
+        default_config = self.get_default_config()
+        num_workers = config.get("num_workers") or default_config.get("num_workers")
+        train_batch_size = config.get("train_batch_size") or default_config.get(
+            "train_batch_size"
+        )
+        if num_workers:
+            config["rollout_fragment_length"] = int(
+                math.ceil(train_batch_size / num_workers)
+            )
+        else:
+            self.config["rollout_fragment_length"] = train_batch_size
+        config["replay_buffer_config"] = {
+            "type": MultiAgentReplayBuffer,
+            "capacity": train_batch_size,
+        }
+        super().setup(config)
+        self.local_replay_buffer = MultiAgentReplayBuffer(
+            self.config["train_batch_size"]
+        )
+
+    @override(SAC)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
@@ -206,14 +244,6 @@ class CQL(SAC):
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
-
-        # Update replay buffer priorities.
-        update_priorities_in_replay_buffer(
-            self.local_replay_buffer,
-            self.config,
-            train_batch,
-            train_results,
-        )
 
         # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[

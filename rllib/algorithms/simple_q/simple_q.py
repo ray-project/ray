@@ -285,8 +285,8 @@ class SimpleQ(Algorithm):
                     "ParameterNoise Exploration and `noisy` network cannot be"
                     " used at the same time!"
                 )
-
-        validate_buffer_config(config)
+        if not config.get("_disable_buffer_config_validation", False):
+            validate_buffer_config(config)
 
         # Multi-agent mode and multi-GPU optimizer.
         if config["multiagent"]["policies"] and not config["simple_optimizer"]:
