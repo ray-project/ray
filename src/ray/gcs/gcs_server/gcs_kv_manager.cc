@@ -27,6 +27,7 @@ constexpr std::string_view kNamespacePrefix = "@namespace_";
 constexpr std::string_view kNamespaceSep = ":";
 constexpr std::string_view kClusterSeparator = "@";
 
+}  // namespace
 std::string RedisInternalKV::MakeKey(const std::string &ns,
                                      const std::string &key) const {
   if (ns.empty()) {
@@ -55,7 +56,6 @@ std::string RedisInternalKV::ExtractKey(const std::string &key) const {
   }
   return key;
 }
-}  // namespace
 
 RedisInternalKV::RedisInternalKV(const RedisClientOptions &redis_options)
     : redis_options_(redis_options),
