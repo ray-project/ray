@@ -59,9 +59,9 @@ class RemoteFunction:
         _max_retries: The number of times this task may be retried
             on worker failure.
         _retry_exceptions: Whether application-level errors should be retried.
-            This can be a boolean, an exception or list of exceptions that should be
-            retried, or a predicate function that takes an exception and returns whether
-            that particular exception should be retried.
+            This can be a boolean, a list of exceptions that should be retried, or a
+            predicate function that takes an exception and returns whether that
+            particular exception should be retried.
         _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
@@ -255,10 +255,8 @@ class RemoteFunction:
         num_returns = task_options["num_returns"]
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
-        if isinstance(retry_exceptions, Exception):
-            retry_exceptions = [retry_exceptions]
         if isinstance(retry_exceptions, list):
-            # Convert implicit allowlist of exceptions to an exception predicate.
+            # Convert allowlist of exceptions to an exception predicate.
             retry_exceptions_ = retry_exceptions
             retry_exceptions = lambda e: isinstance(  # noqa: E731
                 e, tuple(retry_exceptions_)

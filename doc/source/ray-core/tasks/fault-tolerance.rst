@@ -94,11 +94,10 @@ returns ``True`` when an exception should be retried:
         except RandomError:
             print('FAILURE')
 
-    # Use an exception predicate to only retry RandomError exceptions.
-    # Provide which exception we want to retry. This can be a single exception, a list
-    # of exceptions, or a function that takes an exception and returns whether we should
-    # retry on that exception.
-    retry_on_exception = potentially_fail.options(retry_exceptions=RandomError)
+    # Provide the exceptions that we want to retry. This can be a list of exceptions
+    # or a function that takes an exception and returns whether we should retry on
+    # that exception.
+    retry_on_exception = potentially_fail.options(retry_exceptions=[RandomError])
     try:
         # This will fail since we're passing in -1 for the failure_probability,
         # which will raise a ValueError in the task and does not match the RandomError
@@ -126,9 +125,6 @@ The semantics for each of the potential ``retry_exceptions`` values are as follo
 * ``retry_exceptions=False`` (default): Application-level errors are not retried.
 
 * ``retry_exceptions=True``: All application-level errors are retried.
-
-* ``retry_exceptions=SomeException``: Application-level errors that are instances of
-  ``SomeException`` are retried.
 
 * ``retry_exceptions=[Exc1, Exc2]``: Application-level errors that are instances of
   either ``Exc1`` or ``Exc2`` are retried.

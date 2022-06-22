@@ -132,16 +132,14 @@ _task_only_options = {
     "retry_exceptions": Option(
         lambda x: (
             isinstance(x, bool)
-            or issubclass_safe(x, Exception)
             or (isinstance(x, list) and all(issubclass_safe(x_, Exception) for x_ in x))
             or inspect.isfunction(x)
         ),
         lambda x: (
             not inspect.isfunction(x) or len(inspect.signature(x).parameters) == 1
         ),
-        "retry_exceptions must be either a boolean, an exception, a list of "
-        "exceptions, or a predicate function that takes an exception and returns a "
-        "boolean.",
+        "retry_exceptions must be either a boolean, a list of exceptions, or a "
+        "predicate function that takes an exception and returns a boolean.",
         default_value=False,
     ),
 }

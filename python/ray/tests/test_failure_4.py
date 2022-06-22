@@ -112,7 +112,7 @@ class CountError(Exception):
 
 @pytest.mark.parametrize(
     "retry_exceptions",
-    [CountError, [CountError], lambda e: isinstance(e, CountError)],
+    [[CountError], lambda e: isinstance(e, CountError)],
 )
 def test_retry_application_level_error_exception_filter(
     ray_start_regular,
