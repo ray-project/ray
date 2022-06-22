@@ -220,7 +220,7 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
-    # (WangTaoTheTonic)For java x-lang tests. See //java:all_tests
+    # NOTE(WangTaoTheTonic): For java x-lang tests. See //java:all_tests
     # and `CrossLanguageInvocationTest.java`.
     visibility = ["//java:__subpackages__"],
     deps = [
