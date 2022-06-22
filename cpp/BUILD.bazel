@@ -80,6 +80,8 @@ cc_binary(
     linkstatic = True,
     deps = select({
         "@bazel_tools//src/conditions:windows": [
+            # TODO(SongGuyang): Change to use dynamic library
+            # "ray_cpp_lib" when we make it work on Windows.
             "ray_api",
         ],
         "//conditions:default": [
