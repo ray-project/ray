@@ -139,9 +139,9 @@ class ServeController:
 
         self._recover_config_from_checkpoint()
 
-    def check_alive(self) -> bool:
-        """Can be used to check if this controller is alive."""
-        return True
+    def check_alive(self) -> None:
+        """No-op to check if this controller is alive."""
+        return
 
     def get_pid(self) -> int:
         return os.getpid()
