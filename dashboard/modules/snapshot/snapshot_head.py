@@ -105,12 +105,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         resp = {"driver": dataclasses.asdict(driver_activity_info)}
         return dashboard_optional_utils.rest_response(
-            success=True, 
-            message="", 
-            convert_google_style=False, 
-            ray_activity_response=resp
+            success=True,
+            message="",
+            convert_google_style=False,
+            ray_activity_response=resp,
         )
-
 
     async def _get_job_activity_info(self) -> RayActivityResponse:
         # Returns if there is Ray activity from drivers (job).
@@ -128,11 +127,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             )
             if not is_dead and not in_internal_namespace:
                 num_active_drivers += 1
-        
+
         return RayActivityResponse(
-            is_active = num_active_drivers > 0, 
-            reason = f"{num_active_drivers}", 
-            timestamp=datetime.now().timestamp()
+            is_active=num_active_drivers > 0,
+            reason=f"{num_active_drivers}",
+            timestamp=datetime.now().timestamp(),
         )
 
     def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:

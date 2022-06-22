@@ -24,9 +24,7 @@ from ray.dashboard.tests.conftest import *  # noqa
 
 def test_inactive_component_activities(call_ray_start):
     # Verify no activity in response if no active drivers
-    response = requests.get(
-        f"http://127.0.0.1:8265/api/component_activities"
-    )
+    response = requests.get("http://127.0.0.1:8265/api/component_activities")
     response.raise_for_status()
     data = response.json()["data"]["ray_activity_response"]
     driver_ray_activity_response = RayActivityResponse(**data["driver"])
@@ -44,7 +42,9 @@ ray.init(address="auto", namespace="{namespace}")
     """
     run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
     run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
-    run_string_as_driver_nonblocking(driver_template.format(namespace="_ray_internal_dashboard"))
+    run_string_as_driver_nonblocking(
+        driver_template.format(namespace="_ray_internal_dashboard")
+    )
 
     # Wait 1 sec for drivers to start
     time.sleep(1)
@@ -62,6 +62,7 @@ ray.init(address="auto", namespace="{namespace}")
     # run with namespace "my_namespace" and the one started
     # from ray_start_with_dashboard
     assert driver_ray_activity_response.reason == "3"
+
 
 def test_snapshot(ray_start_with_dashboard):
     driver_template = """
