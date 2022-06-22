@@ -1378,21 +1378,8 @@ def get_runtime_env_info(
 
     proto_runtime_env_info.uris[:] = runtime_env.get_uris()
 
-    # Normally, `RuntimeEnv` should guarantee the accuracy of field eager_install,
-    # but so far, the internal code has not completely prohibited direct
-    # modification of fields in RuntimeEnv, so we should check it for insurance.
     # TODO(Catch-Bull): overload `__setitem__` for `RuntimeEnv`, change the
     # runtime_env of all internal code from dict to RuntimeEnv.
-
-    eager_install = runtime_env.get("eager_install")
-    if is_job_runtime_env or eager_install is not None:
-        if eager_install is None:
-            eager_install = True
-        elif not isinstance(eager_install, bool):
-            raise TypeError(
-                f"eager_install must be a boolean. got {type(eager_install)}"
-            )
-        proto_runtime_env_info.runtime_env_eager_install = eager_install
 
     runtime_env_config = runtime_env.get("config")
     if runtime_env_config is None:
@@ -1405,6 +1392,23 @@ def get_runtime_env_info(
     proto_runtime_env_info.runtime_env_config.CopyFrom(
         runtime_env_config.build_proto_runtime_env_config()
     )
+
+    # Normally, `RuntimeEnv` should guarantee the accuracy of field eager_install,
+    # but so far, the internal code has not completely prohibited direct
+    # modification of fields in RuntimeEnv, so we should check it for insurance.
+    eager_install = (
+        runtime_env_config.get("eager_install")
+        if runtime_env_config is not None
+        else None
+    )
+    if is_job_runtime_env or eager_install is not None:
+        if eager_install is None:
+            eager_install = True
+        elif not isinstance(eager_install, bool):
+            raise TypeError(
+                f"eager_install must be a boolean. got {type(eager_install)}"
+            )
+        proto_runtime_env_info.runtime_env_config.eager_install = eager_install
 
     proto_runtime_env_info.serialized_runtime_env = runtime_env.serialize()
 
