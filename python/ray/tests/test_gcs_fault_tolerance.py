@@ -476,7 +476,7 @@ assert ray.get(a.r.remote(10)) == 10
             **generate_system_config_map(
                 num_heartbeats_timeout=20,
                 gcs_rpc_server_reconnect_timeout_s=3600,
-                gcs_server_request_timeout_seconds=3,
+                gcs_server_request_timeout_seconds=10,
             ),
             "namespace": "actor",
         }
