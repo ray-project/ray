@@ -33,22 +33,22 @@ class GcsRpcClient;
 /// Executor saves operation and support retries.
 class Executor {
  public:
-  explicit Executor(GcsRpcClient *gcs_rpc_client,
-                    std::function<void(ray::Status)> abort_callback)
+  Executor(GcsRpcClient *gcs_rpc_client,
+           std::function<void(const ray::Status &)> abort_callback)
       : gcs_rpc_client_(gcs_rpc_client), abort_callback_(std::move(abort_callback)) {}
 
   /// This function is used to execute the given operation.
   ///
   /// \param operation The operation to be executed.
   void Execute(std::function<void(GcsRpcClient *gcs_rpc_client)> operation) {
-    operation_ = operation;
+    operation_ = std::move(operation);
     operation(gcs_rpc_client_);
   }
 
   /// This function is used to retry the given operation.
   void Retry() { operation_(gcs_rpc_client_); }
 
-  void Abort(ray::Status status) { abort_callback_(status); }
+  void Abort(const ray::Status &status) { abort_callback_(status); }
 
  private:
   GcsRpcClient *gcs_rpc_client_;
@@ -94,8 +94,9 @@ class Executor {
   void METHOD(const METHOD##Request &request,                                           \
               const ClientCallback<METHOD##Reply> &callback,                            \
               const int64_t timeout_ms = method_timeout_ms) SPECS {                     \
-    auto executor = new Executor(                                                       \
-        this, [callback](ray::Status status) { callback(status, METHOD##Reply()); });   \
+    auto executor = new Executor(this, [callback](const ray::Status &status) {          \
+      callback(status, METHOD##Reply());                                                \
+    });                                                                                 \
     auto operation_callback = [this, request, callback, executor, timeout_ms](          \
                                   const ray::Status &status,                            \
                                   const METHOD##Reply &reply) {                         \
@@ -521,7 +522,7 @@ class GcsRpcClient {
       }
       auto [executor, request_bytes] = iter->second;
       executor->Abort(
-          ray::Status::TimedOut("Time out due to GCS is down. Abort this operation"));
+          ray::Status::TimedOut("Timed out while waiting for GCS to become available."));
       pending_requests_bytes_ -= request_bytes;
       delete executor;
       pending_requests_.erase(iter);
