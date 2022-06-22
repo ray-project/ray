@@ -14,11 +14,10 @@
 
 #include "ray/gcs/store_client/redis_store_client.h"
 
-#include <absl/strings/str_cat.h>
-
 #include <functional>
 #include <regex>
 
+#include "absl/strings/str_cat.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
 

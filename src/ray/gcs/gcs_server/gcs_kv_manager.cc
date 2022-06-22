@@ -25,15 +25,17 @@ namespace {
 
 constexpr std::string_view kNamespacePrefix = "@namespace_";
 constexpr std::string_view kNamespaceSep = ":";
-constexpr std::string_view kClusterSeparator = "@" std::string RedisInternalKV::MakeKey(
-    const std::string &ns, const std::string &key) {
+constexpr std::string_view kClusterSeparator = "@";
+
+std::string RedisInternalKV::MakeKey(const std::string &ns,
+                                     const std::string &key) const {
   if (ns.empty()) {
     return absl::StrCat(cluster_id_, kClusterSeparator, key);
   }
   return absl::StrCat(cluster_id_, kClusterSeparator, kNamespacePrefix, ns, ":", key);
 }
 
-Status RedisInternalKV::ValidateKey(const std::string &key) {
+Status RedisInternalKV::ValidateKey(const std::string &key) const {
   if (absl::StartsWith(key,
                        absl::StrCat(cluster_id_, kClusterSeparator, kNamespacePrefix))) {
     return Status::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
@@ -41,7 +43,7 @@ Status RedisInternalKV::ValidateKey(const std::string &key) {
   return Status::OK();
 }
 
-std::string RedisInternalKV::ExtractKey(const std::string &key) {
+std::string RedisInternalKV::ExtractKey(const std::string &key) const {
   auto view = std::string_view(
       key.begin() + cluster_id_.size() + kClusterSeparator.size(), key.end());
   if (absl::StartsWith(view, kNamespacePrefix)) {
@@ -162,7 +164,7 @@ void RedisInternalKV::Keys(const std::string &ns,
   auto true_prefix = MakeKey(ns, prefix);
   std::vector<std::string> cmd = {"KEYS", true_prefix + "*"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-      cmd, [callback = std::move(callback)](auto redis_reply) {
+      cmd, [this, callback = std::move(callback)](auto redis_reply) {
         if (callback) {
           const auto &reply = redis_reply->ReadAsStringArray();
           std::vector<std::string> results;
@@ -268,6 +270,13 @@ void GcsInternalKVManager::HandleInternalKVKeys(
     };
     kv_instance_->Keys(request.namespace_(), request.prefix(), std::move(callback));
   }
+}
+
+Status GcsInternalKVManager::ValidateKey(const std::string &key) const {
+  if (absl::StartsWith(key, kNamespacePrefix)) {
+    return Status::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
+  }
+  return Status::OK();
 }
 
 }  // namespace gcs

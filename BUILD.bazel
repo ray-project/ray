@@ -2287,7 +2287,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         "redis_client",
-        "@com_google_absl//absl/strings:str_cat",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
