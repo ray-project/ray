@@ -91,8 +91,7 @@ and leave us feedback through [Github Issues](https://github.com/ray-project/ray
         "min_replicas": 1,
         "max_replicas": 5,
         "target_num_ongoing_requests_per_replica": 10,
-    },
-    version="v1")
+    })
 def func(_):
     time.sleep(1)
     return ""
@@ -110,10 +109,6 @@ and the latency constraint is `100ms`, you can have at most `10` requests ongoin
 the last requests can finish within the latency constraint. We recommend you benchmark your application
 code and set this number based on end to end latency objective.
 
-:::{note}
-The `version` field is required for autoscaling. We are actively working on removing
-this limitation.
-:::
 
 :::{note}
 The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the [Ray Autoscaler](cluster-index).
