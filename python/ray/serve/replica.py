@@ -95,18 +95,15 @@ def create_replica_wrapper(name: str):
                 # TODO: Doesn't handle nested args.
                 if isinstance(arg, SharedObjectNode):
                     arg = ray.get(shared_object_refs[arg.uuid])
-                else:
-                    new_args.append(arg)
+                new_args.append(arg)
             init_args = new_args
 
             new_kwargs = dict()
             for k, arg in init_kwargs.items():
                 # TODO: Doesn't handle nested kwargs.
                 if isinstance(arg, SharedObjectNode):
-                    new_arg = ray.get(shared_object_refs[arg.uuid])
-                else:
-                    new_arg = arg
-                new_kwargs[k] = new_arg
+                    arg = ray.get(shared_object_refs[arg.uuid])
+                new_kwargs[k] = arg
             init_kwargs = new_kwargs
 
             deployment_config = DeploymentConfig.from_proto_bytes(

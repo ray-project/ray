@@ -1,19 +1,21 @@
 import ray
 from ray import serve
 
+import numpy as np
+
 
 @ray.remote
-def download(uri):
-    return uri
+def download(n):
+    return np.arange(n)
 
 
-@serve.deployment
+@serve.deployment(num_replicas=10)
 class MyModel:
-    def __init__(self, arg):
-        self._arg = arg
-    
+    def __init__(self, arr):
+        self._arr = arr
+
     def __call__(self, *args):
-        return self._arg
+        return len(self._arr)
 
 
-m = MyModel.bind([download.bind("Hello world")])
+m = MyModel.bind(download.bind(1000000000))

@@ -343,7 +343,7 @@ class ServeController:
         _shared_object_refs = {}
         for uuid, obj in _shared_objects.items():
             if uuid not in self._shm_object_refs:
-                self._shm_object_refs[uuid] = shm_objects[uuid].remote()
+                self._shm_object_refs[uuid] = _shared_objects[uuid].execute()
             _shared_object_refs[uuid] = self._shm_object_refs[uuid]
 
         deployment_info = DeploymentInfo(
@@ -354,7 +354,7 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             start_time_ms=int(time.time() * 1000),
             autoscaling_policy=autoscaling_policy,
-            shm_objects_refs=_shared_object_refs
+            shm_object_refs=_shared_object_refs
         )
 
         # TODO(architkulkarni): When a deployment is redeployed, even if

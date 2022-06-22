@@ -290,6 +290,7 @@ class ActorReplicaWrapper:
             version,
             self._controller_name,
             self._detached,
+            deployment_info.shm_object_refs,
         )
         # TODO(simon): unify the constructor arguments across language
         if (

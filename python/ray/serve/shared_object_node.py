@@ -15,6 +15,10 @@ class SharedObjectNode:
         self._serialized_args = cloudpickle.dumps(args)
         self._serialized_kwargs = cloudpickle.dumps(kwargs)
 
+    @property
+    def uuid(self) -> str:
+        return self._uuid
+
     def execute(self) -> ray.ObjectRef:
         @ray.remote
         def wrapper():
