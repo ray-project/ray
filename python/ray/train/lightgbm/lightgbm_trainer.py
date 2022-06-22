@@ -1,11 +1,9 @@
 from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
-import os
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
-from ray.train.constants import MODEL_KEY
+from ray.train.lightgbm.utils import load_checkpoint
 
 import lightgbm
 import lightgbm_ray
@@ -85,25 +83,3 @@ class LightGBMTrainer(GBDTTrainer):
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
         return load_checkpoint(checkpoint)
-
-
-def load_checkpoint(
-    checkpoint: Checkpoint,
-) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``LightGBMTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the model and
-            preprocessor from. It is expected to be from the result of a
-            ``LightGBMTrainer`` run.
-
-    Returns:
-        The model and AIR preprocessor contained within.
-    """
-    with checkpoint.as_directory() as checkpoint_path:
-        lgbm_model = lightgbm.Booster(
-            model_file=os.path.join(checkpoint_path, MODEL_KEY)
-        )
-        preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
-    return lgbm_model, preprocessor
