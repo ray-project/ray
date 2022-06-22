@@ -11,12 +11,16 @@ def _make_workflow_step_function(node: FunctionNode):
 
     bound_options = node._bound_options.copy()
     workflow_options = bound_options.pop("_metadata", {}).get(WORKFLOW_OPTIONS, {})
+    if workflow_options.get("step_is_event", False):
+        user_step_type=StepType.EVENT
+    else:
+        user_step_type=StepType.FUNCTION
     # "_resolve_like_object_ref_in_args" indicates we should resolve the
     # workflow like an ObjectRef, when included in the arguments of
     # another workflow.
     bound_options["_resolve_like_object_ref_in_args"] = True
     step_options = WorkflowStepRuntimeOptions.make(
-        step_type=StepType.FUNCTION,
+        step_type=user_step_type,
         catch_exceptions=workflow_options.get("catch_exceptions", None),
         max_retries=workflow_options.get("max_retries", None),
         allow_inplace=workflow_options.get("allow_inplace", False),

@@ -9,6 +9,7 @@ from ray.workflow.api import (
     list_all,
     resume_all,
     wait_for_event,
+    wait_for_event_revised,
     sleep,
     delete,
     wait,
@@ -32,6 +33,7 @@ __all__ = [
     "list_all",
     "init",
     "wait_for_event",
+    "wait_for_event_revised"
     "sleep",
     "EventListener",
     "delete",
