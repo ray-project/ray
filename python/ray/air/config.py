@@ -298,7 +298,7 @@ class RunConfig:
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
-        failure: The failure mode configuration.
+        failure_config: The failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
@@ -310,6 +310,6 @@ class RunConfig:
     local_dir: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
-    failure: Optional[FailureConfig] = None
+    failure_config: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
