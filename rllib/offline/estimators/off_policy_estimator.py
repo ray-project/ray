@@ -1,7 +1,7 @@
 import logging
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
 from typing import List, Dict
@@ -9,11 +9,11 @@ from typing import List, Dict
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def __init__(self, name: str, policy: Policy, gamma: float):
         """Initializes an OffPolicyEstimator instance.
 
@@ -27,7 +27,7 @@ class OffPolicyEstimator:
         self.gamma = gamma
         self.new_estimates = {}
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
         """Returns off policy estimates for the given batch of episodes.
 
@@ -41,7 +41,7 @@ class OffPolicyEstimator:
         """
         raise NotImplementedError
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
         """Returns log likelihood for actions in given batch for policy.
 
@@ -73,7 +73,7 @@ class OffPolicyEstimator:
         log_likelihoods = convert_to_numpy(log_likelihoods)
         return log_likelihoods
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def check_can_estimate_for(self, batch: SampleBatchType) -> None:
         """Checks if we support off policy estimation (OPE) on given batch.
 
