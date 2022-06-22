@@ -103,6 +103,64 @@ class FQETorchModel:
         """Resets/Reinintializes the model weights."""
         self.q_model.apply(self.initializer)
 
+    def step(self):
+        minibatch_losses = []
+        self.batch.shuffle()
+        for idx in range(0, self.batch.count, self.batch_size):
+            minibatch = self.batch[idx : idx + self.batch_size]
+            obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
+            actions = torch.tensor(
+                minibatch[SampleBatch.ACTIONS], device=self.device
+            )
+            rewards = torch.tensor(
+                minibatch[SampleBatch.REWARDS], device=self.device
+            )
+            next_obs = torch.tensor(
+                minibatch[SampleBatch.NEXT_OBS], device=self.device
+            )
+            dones = torch.tensor(minibatch[SampleBatch.DONES], device=self.device)
+
+            # Neccessary if policy uses recurrent/attention model
+            num_state_inputs = 0
+            for k in self.batch.keys():
+                if k.startswith("state_in_"):
+                    num_state_inputs += 1
+            state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
+
+            # Compute action_probs for next_obs as in FQE
+            all_actions = torch.zeros([minibatch.count, self.policy.action_space.n])
+            all_actions[:] = torch.arange(self.policy.action_space.n)
+            next_action_prob = self.policy.compute_log_likelihoods(
+                actions=all_actions.T,
+                obs_batch=next_obs,
+                state_batches=[minibatch[k] for k in state_keys],
+                prev_action_batch=minibatch[SampleBatch.ACTIONS],
+                prev_reward_batch=minibatch[SampleBatch.REWARDS],
+                actions_normalized=False,
+            )
+            next_action_prob = (
+                torch.exp(next_action_prob.T).to(self.device).detach()
+            )
+
+            q_values, _ = self.q_model({"obs": obs}, [], None)
+            q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
+            with torch.no_grad():
+                next_q_values, _ = self.target_q_model({"obs": next_obs}, [], None)
+            next_v = torch.sum(next_q_values * next_action_prob, axis=-1)
+            targets = rewards + ~dones * self.gamma * next_v
+            loss = (targets - q_acts) ** 2
+            loss = torch.mean(loss)
+            self.optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad.clip_grad_norm_(
+                self.q_model.variables(), self.clip_grad_norm
+            )
+            self.optimizer.step()
+            minibatch_losses.append(loss.item())
+        iter_loss = sum(minibatch_losses) / len(minibatch_losses)
+        self.update_target()
+        return iter_loss
+
     def train_q(self, batch: SampleBatch) -> TensorType:
         """Trains self.q_model using FQE loss on given batch.
 
@@ -113,65 +171,12 @@ class FQETorchModel:
             A list of losses for each training iteration
         """
         losses = []
+        self.batch = batch
         for _ in range(self.n_iters):
-            minibatch_losses = []
-            batch.shuffle()
-            for idx in range(0, batch.count, self.batch_size):
-                minibatch = batch[idx : idx + self.batch_size]
-                obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
-                actions = torch.tensor(
-                    minibatch[SampleBatch.ACTIONS], device=self.device
-                )
-                rewards = torch.tensor(
-                    minibatch[SampleBatch.REWARDS], device=self.device
-                )
-                next_obs = torch.tensor(
-                    minibatch[SampleBatch.NEXT_OBS], device=self.device
-                )
-                dones = torch.tensor(minibatch[SampleBatch.DONES], device=self.device)
-
-                # Neccessary if policy uses recurrent/attention model
-                num_state_inputs = 0
-                for k in batch.keys():
-                    if k.startswith("state_in_"):
-                        num_state_inputs += 1
-                state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
-
-                # Compute action_probs for next_obs as in FQE
-                all_actions = torch.zeros([minibatch.count, self.policy.action_space.n])
-                all_actions[:] = torch.arange(self.policy.action_space.n)
-                next_action_prob = self.policy.compute_log_likelihoods(
-                    actions=all_actions.T,
-                    obs_batch=next_obs,
-                    state_batches=[minibatch[k] for k in state_keys],
-                    prev_action_batch=minibatch[SampleBatch.ACTIONS],
-                    prev_reward_batch=minibatch[SampleBatch.REWARDS],
-                    actions_normalized=False,
-                )
-                next_action_prob = (
-                    torch.exp(next_action_prob.T).to(self.device).detach()
-                )
-
-                q_values, _ = self.q_model({"obs": obs}, [], None)
-                q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
-                with torch.no_grad():
-                    next_q_values, _ = self.target_q_model({"obs": next_obs}, [], None)
-                next_v = torch.sum(next_q_values * next_action_prob, axis=-1)
-                targets = rewards + ~dones * self.gamma * next_v
-                loss = (targets - q_acts) ** 2
-                loss = torch.mean(loss)
-                self.optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad.clip_grad_norm_(
-                    self.q_model.variables(), self.clip_grad_norm
-                )
-                self.optimizer.step()
-                minibatch_losses.append(loss.item())
-            iter_loss = sum(minibatch_losses) / len(minibatch_losses)
+            iter_loss = self.step()
             losses.append(iter_loss)
             if iter_loss < self.delta:
                 break
-            self.update_target()
         return losses
 
     def estimate_q(
