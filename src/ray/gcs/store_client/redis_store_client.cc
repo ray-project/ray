@@ -14,10 +14,11 @@
 
 #include "ray/gcs/store_client/redis_store_client.h"
 
+#include <absl/strings/str_cat.h>
+
 #include <functional>
 #include <regex>
 
-#include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
 
@@ -26,6 +27,7 @@ namespace ray {
 namespace gcs {
 
 std::string RedisStoreClient::table_separator_ = ":";
+std::string RedisStoreClient::cluster_separator_ = "@";
 std::string RedisStoreClient::index_table_separator_ = "&";
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
@@ -200,18 +202,20 @@ RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_
 
 std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
                                           const std::string &key) {
-  std::stringstream ss;
-  ss << table_name << table_separator_ << key;
-  return ss.str();
+  return absl::StrCat(cluster_id_, cluster_separator_, table_name, table_separator_, key);
 }
 
 std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
                                           const std::string &key,
                                           const std::string &index_key) {
+  return absl::StrCat(cluster_id_,
+                      cluster_separator_,
+                      table_name,
+                      index_table_separator_,
+                      index_key,
+                      index_table_separator_,
+                      key);
   std::stringstream ss;
-  ss << table_name << index_table_separator_ << index_key << index_table_separator_
-     << key;
-  return ss.str();
 }
 
 namespace {
@@ -226,37 +230,46 @@ std::string EscapeMatchPattern(const std::string &s) {
 };  // namespace
 
 std::string RedisStoreClient::GenKeyRedisMatchPattern(const std::string &table_name) {
-  std::stringstream ss;
-  ss << EscapeMatchPattern(table_name) << table_separator_ << "*";
-  return ss.str();
+  return absl::StrCat(cluster_id_,
+                      cluster_separator_,
+                      EscapeMatchPattern(table_name),
+                      table_separator_,
+                      "*");
 }
 
 std::string RedisStoreClient::GenKeyRedisMatchPattern(const std::string &table_name,
                                                       const std::string &key) {
-  std::stringstream ss;
-  ss << EscapeMatchPattern(table_name) << table_separator_ << EscapeMatchPattern(key)
-     << "*";
-  return ss.str();
+  return absl::StrCat(cluster_id_,
+                      cluster_separator_,
+                      EscapeMatchPattern(table_name),
+                      table_separator_,
+                      EscapeMatchPattern(key),
+                      "*");
 }
 
 std::string RedisStoreClient::GenIndexRedisMatchPattern(const std::string &table_name,
                                                         const std::string &index_key) {
-  std::stringstream ss;
-  ss << table_name << index_table_separator_ << index_key << index_table_separator_
-     << "*";
-  return ss.str();
+  return absl::StrCat(cluster_id_,
+                      cluster_separator_,
+                      table_name,
+                      index_table_separator_,
+                      index_key,
+                      index_table_separator_,
+                      "*");
 }
 
 std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
                                                  const std::string &table_name) {
-  auto pos = table_name.size() + table_separator_.size();
+  auto pos = cluster_id_.size() + cluster_separator_.size() + table_name.size() +
+             table_separator_.size();
   return redis_key.substr(pos, redis_key.size() - pos);
 }
 
 std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
                                                  const std::string &table_name,
                                                  const std::string &index_key) {
-  auto pos = table_name.size() + index_table_separator_.size() * 2 + index_key.size();
+  auto pos = cluster_id_.size() + cluster_separator_.size() + table_name.size() +
+             index_table_separator_.size() * 2 + index_key.size();
   return redis_key.substr(pos, redis_key.size() - pos);
 }
 

@@ -122,7 +122,12 @@ class RedisInternalKV : public InternalKVInterface {
             std::function<void(std::vector<std::string>)> callback) override;
 
  private:
+  std::string MakeKey(const std::string &ns, const std::string &key) const;
+  Status ValidateKey(const std::string &key) const;
+  std::string ExtractKey(const std::string &key) const;
+
   RedisClientOptions redis_options_;
+  std::string cluster_id_;
   std::unique_ptr<RedisClient> redis_client_;
   // The io service used by internal kv.
   instrumented_io_context io_service_;

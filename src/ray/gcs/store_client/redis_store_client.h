@@ -15,6 +15,7 @@
 #pragma once
 
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/ray_config.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -27,7 +28,8 @@ namespace gcs {
 class RedisStoreClient : public StoreClient {
  public:
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
-      : redis_client_(std::move(redis_client)) {}
+      : cluster_id_(::RayConfig::instance().cluster_id()),
+        redis_client_(std::move(redis_client)) {}
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
@@ -125,34 +127,36 @@ class RedisStoreClient : public StoreClient {
 
   /// The separator is used when building redis key.
   static std::string table_separator_;
+  static std::string cluster_separator_;
   static std::string index_table_separator_;
 
-  static std::string GenRedisKey(const std::string &table_name, const std::string &key);
+  std::string GenRedisKey(const std::string &table_name, const std::string &key) const;
 
-  static std::string GenRedisKey(const std::string &table_name,
-                                 const std::string &key,
-                                 const std::string &index_key);
+  std::string GenRedisKey(const std::string &table_name,
+                          const std::string &key,
+                          const std::string &index_key) const;
 
-  static std::string GenKeyRedisMatchPattern(const std::string &table_name);
+  std::string GenKeyRedisMatchPattern(const std::string &table_name) const;
 
-  static std::string GenKeyRedisMatchPattern(const std::string &table_name,
-                                             const std::string &key);
+  std::string GenKeyRedisMatchPattern(const std::string &table_name,
+                                      const std::string &key) const;
 
-  static std::string GenIndexRedisMatchPattern(const std::string &table_name,
-                                               const std::string &index_key);
+  std::string GenIndexRedisMatchPattern(const std::string &table_name,
+                                        const std::string &index_key) const;
 
-  static std::string GetKeyFromRedisKey(const std::string &redis_key,
-                                        const std::string &table_name);
+  std::string GetKeyFromRedisKey(const std::string &redis_key,
+                                 const std::string &table_name) const;
 
-  static std::string GetKeyFromRedisKey(const std::string &redis_key,
-                                        const std::string &table_name,
-                                        const std::string &index_key);
+  std::string GetKeyFromRedisKey(const std::string &redis_key,
+                                 const std::string &table_name,
+                                 const std::string &index_key) const;
 
-  static Status MGetValues(std::shared_ptr<RedisClient> redis_client,
-                           const std::string &table_name,
-                           const std::vector<std::string> &keys,
-                           const MapCallback<std::string, std::string> &callback);
+  Status MGetValues(std::shared_ptr<RedisClient> redis_client,
+                    const std::string &table_name,
+                    const std::vector<std::string> &keys,
+                    const MapCallback<std::string, std::string> &callback);
 
+  std::string cluster_id_;
   std::shared_ptr<RedisClient> redis_client_;
 };
 

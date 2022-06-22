@@ -22,25 +22,29 @@
 namespace ray {
 namespace gcs {
 namespace {
+
 constexpr std::string_view kNamespacePrefix = "@namespace_";
 constexpr std::string_view kNamespaceSep = ":";
-
-std::string MakeKey(const std::string &ns, const std::string &key) {
+constexpr std::string_view kClusterSeparator = "@" std::string RedisInternalKV::MakeKey(
+    const std::string &ns, const std::string &key) {
   if (ns.empty()) {
-    return key;
+    return absl::StrCat(cluster_id_, kClusterSeparator, key);
   }
-  return absl::StrCat(kNamespacePrefix, ns, ":", key);
+  return absl::StrCat(cluster_id_, kClusterSeparator, kNamespacePrefix, ns, ":", key);
 }
 
-Status ValidateKey(const std::string &key) {
-  if (absl::StartsWith(key, kNamespacePrefix)) {
+Status RedisInternalKV::ValidateKey(const std::string &key) {
+  if (absl::StartsWith(key,
+                       absl::StrCat(cluster_id_, kClusterSeparator, kNamespacePrefix))) {
     return Status::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
   }
   return Status::OK();
 }
 
-std::string ExtractKey(const std::string &key) {
-  if (absl::StartsWith(key, kNamespacePrefix)) {
+std::string RedisInternalKV::ExtractKey(const std::string &key) {
+  auto view = std::string_view(
+      key.begin() + cluster_id_.size() + kClusterSeparator.size(), key.end());
+  if (absl::StartsWith(view, kNamespacePrefix)) {
     std::vector<std::string> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
     RAY_CHECK(parts.size() == 2) << "Invalid key: " << key;
@@ -52,7 +56,9 @@ std::string ExtractKey(const std::string &key) {
 }  // namespace
 
 RedisInternalKV::RedisInternalKV(const RedisClientOptions &redis_options)
-    : redis_options_(redis_options), work_(io_service_) {
+    : redis_options_(redis_options),
+      cluster_id_(::RayConfig::instance().cluster_id()),
+      work_(io_service_) {
   io_thread_ = std::make_unique<std::thread>([this] {
     SetThreadName("InternalKV");
     io_service_.run();
