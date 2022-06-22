@@ -19,9 +19,14 @@ class DummyModelSingleTensor(torch.nn.Module):
         return input * 2
 
 
-class DummyModelMultiModal(torch.nn.Module):
+class DummyModelMultiInput(torch.nn.Module):
     def forward(self, input_dict):
         return sum(input_dict.values())
+
+
+class DummyModelMultiOutput(torch.nn.Module):
+    def forward(self, input_tensor):
+        return [input_tensor, input_tensor]
 
 
 @pytest.fixture
@@ -30,8 +35,8 @@ def model():
 
 
 @pytest.fixture
-def model_multi_modal():
-    return DummyModelMultiModal()
+def model_multi_output():
+    return DummyModelMultiOutput()
 
 
 @pytest.fixture
@@ -80,14 +85,28 @@ def test_predict_array_with_preprocessor(model, preprocessor):
     assert predictions.flatten().tolist() == [4, 8, 12]
 
 
-def test_predict_dataframe(model_multi_modal):
-    predictor = TorchPredictor(model=model_multi_modal)
+def test_predict_dataframe():
+    predictor = TorchPredictor(model=DummyModelMultiInput())
 
     data_batch = pd.DataFrame({"X0": [0.0, 0.0, 0.0], "X1": [1.0, 2.0, 3.0]})
     predictions = predictor.predict(data_batch, dtype=torch.float)
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
+
+
+def test_predict_multi_output():
+    predictor = TorchPredictor(model=DummyModelMultiOutput())
+
+    data_batch = np.array([[1], [2], [3]])
+    predictions = predictor.predict(data_batch)
+
+    # Model outputs two tensors
+    assert len(predictions) == 2
+    for k, v in predictions.items():
+        # Each tensor is of size 3
+        assert len(v) == 3
+        assert v.flatten().tolist() == [1, 2, 3]
 
 
 @pytest.mark.parametrize(

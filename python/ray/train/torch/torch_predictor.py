@@ -7,7 +7,7 @@ import torch
 from ray.train.predictor import DataBatchType, Predictor
 from ray.air.checkpoint import Checkpoint
 from ray.train.torch.torch_trainer import load_checkpoint
-from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
+from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type, DataType
 from ray.air.util.tensor_extensions.pandas import TensorArray
 
 if TYPE_CHECKING:
@@ -64,28 +64,42 @@ class TorchPredictor(Predictor):
 
             return torch_tensor
 
-        if len(data.columns) == 1:
+        tensors = convert_pandas_to_batch_type(data, DataType.NUMPY)
+
+        # Single numpy array.
+        if isinstance(tensors, np.ndarray):
             column_name = data.columns[0]
             if isinstance(dtype, dict):
                 dtype = dtype[column_name]
-            model_input = tensorize(
-                convert_pandas_to_batch_type(data, np.ndarray), dtype
-            )
-        else:
-            array_dict = convert_pandas_to_batch_type(data, type=dict)
+            model_input = tensorize(tensors, dtype)
 
+        else:
             model_input = {
                 k: tensorize(v, dtype=dtype[k] if isinstance(dtype, dict) else dtype)
-                for k, v in array_dict.items()
+                for k, v in tensors.items()
             }
 
         with torch.no_grad():
             self.model.eval()
-            output = self.model(model_input).cpu().detach().numpy()
+            output = self.model(model_input)
 
-        return pd.DataFrame(
-            {"predictions": TensorArray(output)}, columns=["predictions"]
-        )
+        def untensorize(torch_tensor):
+            numpy_array = torch_tensor.cpu().detach().numpy()
+            return TensorArray(numpy_array)
+
+        # Handle model multi-output. For example if model outputs 2 images.
+        if isinstance(output, dict):
+            return pd.DataFrame({k: untensorize(v) for k, v in output})
+        elif isinstance(output, list) or isinstance(output, tuple):
+            tensor_name = "output_"
+            output_dict = {}
+            for i in range(len(output)):
+                output_dict[tensor_name + str(i + 1)] = untensorize(output[i])
+            return pd.DataFrame(output_dict)
+        else:
+            return pd.DataFrame(
+                {"predictions": untensorize(output)}, columns=["predictions"]
+            )
 
     def predict(
         self,
