@@ -41,7 +41,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
-# from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
@@ -795,7 +795,8 @@ class Impala(Algorithm):
 
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
-        learner_info = copy.deepcopy(self._learner_thread.learner_info)
+        final_learner_info = {}
+        learner_infos = []
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
 
@@ -809,16 +810,23 @@ class Impala(Algorithm):
                 num_env_steps_trained += env_steps
                 num_agent_steps_trained += agent_steps
                 if learner_results:
-                    learner_info.update(learner_results)
+                    learner_infos.append(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
+        if not learner_infos:
+            final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
+        else:
+            builder = LearnerInfoBuilder()
+            for info in learner_infos:
+                builder.add_learn_on_batch_results_multi_agent(info)
+            final_learner_info = builder.finalize()
 
         # Update the steps trained counters.
         self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
         self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
         self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
 
-        return learner_info
+        return final_learner_info
 
     def process_experiences_directly(
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
@@ -865,7 +873,7 @@ class Impala(Algorithm):
 
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
         self._counters["steps_since_broadcast"] += 1
         if (
             self.workers.remote_workers()
