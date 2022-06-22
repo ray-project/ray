@@ -3,24 +3,19 @@ import gym
 from typing import Dict, Tuple, Union, List, Optional, Any, Type
 
 import ray
-from ray.rllib.algorithms.ddpg.ddpg_tf_policy import (
-    get_distribution_inputs_and_class,
-    validate_spaces,
-)
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     postprocess_nstep_and_prio,
     PRIO_WEIGHTS,
 )
 from ray.rllib.evaluation import Episode
-from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, TorchDirichlet, TorchDistributionWrapper
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
@@ -32,7 +27,7 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
     ModelGradients, TensorType,
 )
-from ray.rllib.algorithms.ddpg.utils import make_ddpg_models
+from ray.rllib.algorithms.ddpg.utils import make_ddpg_models, validate_spaces
 
 torch, nn = try_import_torch()
 
@@ -119,6 +114,9 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         self._actor_optimizer: torch.optim.Optimizer = None
         self._critic_optimizer: torch.optim.Optimizer = None
 
+        # Validate action space for DDPG
+        validate_spaces(self, observation_space, action_space)
+
         TorchPolicyV2.__init__(
             self,
             observation_space,
@@ -175,9 +173,10 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         *,
         obs_batch: TensorType,
         state_batches: TensorType,
+        is_training: bool = False,
         **kwargs
     ) -> Tuple[TensorType, type, List[TensorType]]:
-        model_out, _ = model(obs_batch)  # TODO(charlesjsun): Uncertain if need surround with SampleBatch
+        model_out, _ = model(SampleBatch(obs=obs_batch[SampleBatch.CUR_OBS], _is_training=is_training))  # TODO(charlesjsun): Uncertain if need surround with SampleBatch
         dist_inputs = model.get_policy_output(model_out)
 
         if isinstance(self.action_space, Simplex):
@@ -353,4 +352,21 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
     ) -> Dict[str, TensorType]:
         # Clip grads if configured.
         return apply_grad_clipping(self, optimizer, loss)
+
+    @override(TorchPolicyV2)
+    def extra_compute_grad_fetches(self) -> Dict[str, Any]:
+        fetches = convert_to_numpy(concat_multi_gpu_td_errors(self))
+        return dict({LEARNER_STATS_KEY: {}}, **fetches)
+
+    @override(TorchPolicyV2)
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+        q_t = torch.stack(self.get_tower_stats("q_t"))
+        stats = {
+            "actor_loss": torch.mean(torch.stack(self.get_tower_stats("actor_loss"))),
+            "critic_loss": torch.mean(torch.stack(self.get_tower_stats("critic_loss"))),
+            "mean_q": torch.mean(q_t),
+            "max_q": torch.max(q_t),
+            "min_q": torch.min(q_t),
+        }
+        return convert_to_numpy(stats)
 

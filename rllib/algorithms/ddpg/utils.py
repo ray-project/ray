@@ -7,6 +7,7 @@ from ray.rllib.algorithms.ddpg.ddpg_torch_model import DDPGTorchModel
 from ray.rllib.algorithms.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.models import ModelV2
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils.error import UnsupportedSpaceException
 
 
 def make_ddpg_models(policy: Policy) -> ModelV2:
@@ -61,4 +62,23 @@ def make_ddpg_models(policy: Policy) -> ModelV2:
     )
 
     return model
+
+
+def validate_spaces(
+    policy: Policy,
+    observation_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+) -> None:
+    if not isinstance(action_space, gym.spaces.Box):
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} is not supported for "
+            "DDPG.".format(action_space, policy)
+        )
+    elif len(action_space.shape) > 1:
+        raise UnsupportedSpaceException(
+            "Action space ({}) of {} has multiple dimensions "
+            "{}. ".format(action_space, policy, action_space.shape)
+            + "Consider reshaping this into a single dimension, "
+            "using a Tuple action space, or the multi-agent API."
+        )
 
