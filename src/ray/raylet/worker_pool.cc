@@ -1421,7 +1421,7 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
   return state->second;
 }
 
-inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
+inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) const {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
          worker_type == rpc::WorkerType::RESTORE_WORKER;
 }
@@ -1442,12 +1442,16 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasks
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
-    bool filter_dead_workers) const {
+    bool filter_dead_workers, bool filter_io_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
       if (!worker->IsRegistered()) {
+        continue;
+      }
+
+      if (filter_io_workers && (IsIOWorkerType(worker->GetWorkerType()))) {
         continue;
       }
 
