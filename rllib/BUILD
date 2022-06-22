@@ -3285,6 +3285,7 @@ py_test_module_list(
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
     "execution/tests/test_mixin_multi_agent_replay_buffer.py",
+    "utils/exploration/tests/test_noveld.py",
     "utils/tests/test_check_env.py",
     "utils/tests/test_check_multi_agent.py",
     "utils/tests/test_errors.py",
