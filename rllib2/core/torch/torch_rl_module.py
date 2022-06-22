@@ -52,7 +52,7 @@ class RLModuleOutput(NNOutput):
 
 class TorchRLModule(nn.Module, ModelIO):
 
-    def __init__(self, configs):
+    def __init__(self, configs=None):
         super().__init__()
         self.configs = configs
 

@@ -92,6 +92,11 @@ config = dict(
                 'class': DynamicsModel,
                 'config': dynamic_config,
                 'shared_between': {'ppo_policy': 'dynamics_mdl', 'dqn_policy': 'dynamics'}
+            },
+            'mixer': {
+                'Mixer': QMixerModel,
+                'config': ...,
+                'shared_between': {'__all__': 'mixer'}
             }
     }
 )
@@ -191,3 +196,51 @@ def seutp():
 The centralized value function will use the observation of the current agent +
 other agents's states at the same time-step (which will be provided by the custom
 view_requirement) to compute vf values used in PPO.
+
+
+### Downsides with this design
+This design has some flexibility issues when it comes down to doing some funky 
+multi-agent thing at one level above RLModules (inside the unit_trainer). It will 
+basically fall onto algorithm which should remain framework agnostic.
+
+To get around this issue there should be a wrapper buffer between the algorithm and the 
+unit_trainers that keeps track of the dictionary of unit_trainers and can optionally 
+provide flexibility to algorithms that require more control over their loss computation 
+at multi-agent level. Examples would be QMix or MADDPG where you have a centralized training.
+
+
+```python
+config = dict(
+    algorithm='PPO',
+    base_trainer='PPOUnitTrainer', # by default this is already part of the algorithm
+    ...
+    multi_agent={
+        'marltrainer': 'DefaultMARLTrainer',
+        
+        'policy_mapping_fn': lambda agent_id: 'ppo_policy' if agent_id==0 else 'dqn_policy',
+        'policies': {
+            'ppo_policy': (PPORLModule, ppo_config),
+            'dqn_policy': (DQMRLModule, dqn_config),
+        },
+        'policies_to_train': {'ppo_policy'}
+        'shared_modules': {
+            'encoder': {
+                'class': Encoder,
+                'config': encoder_config,
+                'shared_between': {'ppo_policy': 'encoder', 'dqn_policy': 'embedder'} # the renaming that needs to happen inside the RLModules
+            },
+            'dynamics': {
+                'class': DynamicsModel,
+                'config': dynamic_config,
+                'shared_between': {'ppo_policy': 'dynamics_mdl', 'dqn_policy': 'dynamics'}
+            },
+            'mixer': {
+                'Mixer': QMixerModel,
+                'config': ...,
+                'shared_between': {'__all__': 'mixer'}
+            }
+    }
+)
+```
+
+
