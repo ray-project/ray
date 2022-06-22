@@ -1,43 +1,44 @@
 import atexit
-from concurrent import futures
-from dataclasses import dataclass
-import grpc
-import logging
-from itertools import chain
 import json
+import logging
 import socket
 import sys
-from threading import Event, Lock, Thread, RLock
 import time
 import traceback
+from concurrent import futures
+from dataclasses import dataclass
+from itertools import chain
+from threading import Event, Lock, RLock, Thread
 from typing import Callable, Dict, List, Optional, Tuple
 
+import grpc
+
+# Import psutil after ray so the packaged version is used.
+import psutil
+
 import ray
-from ray.cloudpickle.compat import pickle
-from ray.job_config import JobConfig
 import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 import ray.core.generated.runtime_env_agent_pb2_grpc as runtime_env_agent_pb2_grpc  # noqa: E501
-from ray.util.client.common import (
-    _get_client_id_from_context,
-    ClientServerHandle,
-    CLIENT_SERVER_MAX_THREADS,
-    GRPC_OPTIONS,
-    _propagate_error_in_context,
-)
-from ray.util.client.server.dataservicer import _get_reconnecting_from_context
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.gcs_utils import GcsClient
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.gcs_utils import GcsClient
 from ray._private.utils import detect_fate_sharing_support
-
-# Import psutil after ray so the packaged version is used.
-import psutil
+from ray.cloudpickle.compat import pickle
+from ray.job_config import JobConfig
+from ray.util.client.common import (
+    CLIENT_SERVER_MAX_THREADS,
+    GRPC_OPTIONS,
+    ClientServerHandle,
+    _get_client_id_from_context,
+    _propagate_error_in_context,
+)
+from ray.util.client.server.dataservicer import _get_reconnecting_from_context
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +140,7 @@ class ProxyManager:
         self._check_thread.start()
 
         self.fate_share = bool(detect_fate_sharing_support())
-        self._node: Optional[ray.node.Node] = None
+        self._node: Optional[ray._private.node.Node] = None
         atexit.register(self._cleanup)
 
     def _get_unused_port(self) -> int:
@@ -175,7 +176,7 @@ class ProxyManager:
         return self._address
 
     @property
-    def node(self) -> ray.node.Node:
+    def node(self) -> ray._private.node.Node:
         """Gets a 'ray.Node' object for this node (the head node).
         If it does not already exist, one is created using the bootstrap
         address.
@@ -184,7 +185,7 @@ class ProxyManager:
             return self._node
         ray_params = RayParams(gcs_address=self.address)
 
-        self._node = ray.node.Node(
+        self._node = ray._private.node.Node(
             ray_params,
             head=False,
             shutdown_at_exit=False,

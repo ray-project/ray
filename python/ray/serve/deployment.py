@@ -19,7 +19,7 @@ from ray.serve.config import (
 )
 from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import DEFAULT, get_deployment_import_path
+from ray.serve.utils import DEFAULT
 from ray.util.annotations import PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
@@ -457,11 +457,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     return DeploymentSchema(
         name=d.name,
-        import_path=get_deployment_import_path(
-            d, enforce_importable=True, replace_main=True
-        ),
-        init_args=(),
-        init_kwargs={},
         # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
         # because internally we use these two field for autoscale and deploy.
         # We can improve the code after we separate the user faced deployment config and
@@ -480,6 +475,14 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    """Creates a deployment with parameters specified in schema.
+
+    The returned deployment CANNOT be deployed immediately. It's func_or_class
+    value is an empty string (""), which is not a valid import path. The
+    func_or_class value must be overwritten with a valid function or class
+    before the deployment can be deployed.
+    """
+
     if s.ray_actor_options is None:
         ray_actor_options = None
     else:
@@ -498,7 +501,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     )
 
     return Deployment(
-        func_or_class=s.import_path,
+        func_or_class="",
         name=s.name,
         config=config,
         init_args=(),

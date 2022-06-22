@@ -23,7 +23,7 @@ NESTED_HANDLE_KEY = "nested_handle"
 
 def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNode]:
     if use_build:
-        return Application.from_dict(build_app(node).to_dict())
+        return build_app(node)
     else:
         return node
 

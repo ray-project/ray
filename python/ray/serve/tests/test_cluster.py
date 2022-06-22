@@ -1,16 +1,15 @@
-from collections import defaultdict
 import os
 import sys
 import time
+from collections import defaultdict
 
 import pytest
 import requests
 
 import ray
-from ray.cluster_utils import Cluster
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.cluster_utils import Cluster
 from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.deployment_state import ReplicaStartupStatus, ReplicaState
 
@@ -179,7 +178,7 @@ def test_intelligent_scale_down(ray_cluster):
         pass
 
     def get_actor_distributions():
-        actors = ray.state.actors()
+        actors = ray._private.state.actors()
         node_to_actors = defaultdict(list)
         for actor in actors.values():
             if "RayServeWrappedReplica" not in actor["ActorClassName"]:
