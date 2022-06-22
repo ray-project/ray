@@ -26,7 +26,6 @@ class Option:
         """Validate the option."""
         if self.type_constraint is not None:
             if inspect.isfunction(self.type_constraint):
-                print(value)
                 satisfies_type_constraint = self.type_constraint(value)
             else:
                 satisfies_type_constraint = isinstance(value, self.type_constraint)
@@ -112,7 +111,6 @@ def issubclass_safe(obj: Any, cls_: type) -> bool:
     try:
         return issubclass(obj, cls_)
     except TypeError:
-        print(obj, cls_)
         return False
 
 
