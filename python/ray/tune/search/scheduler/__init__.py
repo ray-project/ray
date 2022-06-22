@@ -1,10 +1,13 @@
 import inspect
 
 from ray._private.utils import get_function_args
-from ray.tune.search.scheduler.trial_scheduler import FIFOScheduler
+from ray.tune.search.scheduler.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.search.scheduler.hyperband import HyperBandScheduler
 from ray.tune.search.scheduler.hb_bohb import HyperBandForBOHB
-from ray.tune.search.scheduler.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.search.scheduler.async_hyperband import (
+    AsyncHyperBandScheduler,
+    ASHAScheduler,
+)
 from ray.tune.search.scheduler.median_stopping_rule import MedianStoppingRule
 from ray.tune.search.scheduler.pbt import (
     PopulationBasedTraining,
@@ -13,6 +16,7 @@ from ray.tune.search.scheduler.pbt import (
 from ray.tune.search.scheduler.resource_changing_scheduler import (
     ResourceChangingScheduler,
 )
+from ray.tune.search.scheduler.util import set_search_properties_backwards_compatible
 
 
 def _pb2_importer():
@@ -93,4 +97,6 @@ __all__ = [
     "PopulationBasedTrainingReplay",
     "HyperBandForBOHB",
     "ResourceChangingScheduler",
+    "set_search_properties_backwards_compatible",
+    "create_scheduler",
 ]

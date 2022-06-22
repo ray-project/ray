@@ -257,10 +257,6 @@ def _get_algorithm_class(alg: str, return_config=False) -> type:
         class_, config = ALGORITHMS[alg]()
     elif alg in CONTRIBUTED_ALGORITHMS:
         class_, config = CONTRIBUTED_ALGORITHMS[alg]()
-    elif alg == "script":
-        from ray.tune import script_runner
-
-        class_, config = script_runner.ScriptRunner, {}
     elif alg == "__fake":
         from ray.rllib.algorithms.mock import _MockTrainer
 

@@ -1,7 +1,9 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, TYPE_CHECKING
 
-from ray.tune.experiment import Experiment
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.tune.experiment import Experiment
 
 
 @DeveloperAPI
@@ -57,7 +59,7 @@ class SearchAlgorithm:
         return 0
 
     def add_configurations(
-        self, experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]
+        self, experiments: Union["Experiment", List["Experiment"], Dict[str, Dict]]
     ):
         """Tracks given experiment specifications.
 

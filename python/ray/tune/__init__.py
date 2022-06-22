@@ -7,7 +7,7 @@ from ray.tune.search.stopper.stopper import Stopper
 from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
 from ray.tune.callback import Callback
-from ray.tune.search import grid_search
+from ray.tune.search.algorithm import grid_search
 from ray.tune.session import (
     report,
     get_trial_dir,
@@ -36,7 +36,7 @@ from ray.tune.search.sample import (
     loguniform,
     qloguniform,
 )
-from ray.tune.search import create_searcher
+from ray.tune.search.shim import create_searcher
 from ray.tune.search.scheduler import create_scheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import with_parameters
@@ -47,8 +47,6 @@ usage_lib.record_library_usage("tune")
 
 __all__ = [
     "Trainable",
-    "DurableTrainable",
-    "durable",
     "Callback",
     "TuneError",
     "grid_search",
@@ -59,9 +57,7 @@ __all__ = [
     "with_parameters",
     "Stopper",
     "Experiment",
-    "function",
     "sample_from",
-    "track",
     "uniform",
     "quniform",
     "choice",

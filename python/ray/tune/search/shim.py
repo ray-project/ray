@@ -1,5 +1,4 @@
 from ray._private.utils import get_function_args
-from ray.tune.search.algorithm.basic_variant import BasicVariantGenerator
 
 from ray.tune._structure_refactor import warn_structure_refactor
 
@@ -7,6 +6,8 @@ warn_structure_refactor(__name__, "ray.tune.search.searcher", direct=False)
 
 
 def _import_variant_generator():
+    from ray.tune.search.algorithm.basic_variant import BasicVariantGenerator
+
     return BasicVariantGenerator
 
 

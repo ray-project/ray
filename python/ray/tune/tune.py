@@ -32,8 +32,12 @@ from ray.tune.search.scheduler import (
     ResourceChangingScheduler,
 )
 from ray.tune.search.stopper.stopper import Stopper
-from ray.tune.search import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
-from ray.tune.search.searcher.suggestion import Searcher
+from ray.tune.search.algorithm import (
+    BasicVariantGenerator,
+    SearchAlgorithm,
+    SearchGenerator,
+)
+from ray.tune.search.searcher.searcher import Searcher
 from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter
 
 # Turn off black here, as it will format the lines to be longer than 88 chars
@@ -536,7 +540,7 @@ def run(
 
     if isinstance(search_alg, str):
         # importing at top level causes a recursive dependency
-        from ray.tune.search import create_searcher
+        from ray.tune.search.shim import create_searcher
 
         search_alg = create_searcher(search_alg)
 

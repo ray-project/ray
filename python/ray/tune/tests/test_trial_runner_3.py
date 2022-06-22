@@ -21,7 +21,7 @@ from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.search.searcher.repeater import Repeater
 from ray.tune.search.searcher._mock import _MockSuggestionAlgorithm
-from ray.tune.search.searcher.suggestion import Searcher
+from ray.tune.search.searcher.searcher import Searcher
 from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter
 from ray.tune.search.algorithm.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer

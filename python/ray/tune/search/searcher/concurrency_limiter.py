@@ -1,7 +1,7 @@
 import copy
 from typing import Optional, Dict, List
 
-from ray.tune.search.searcher.suggestion import Searcher, logger
+from ray.tune.search.searcher.searcher import Searcher, logger
 from ray.tune.search.searcher.util import set_search_properties_backwards_compatible
 from ray.util import PublicAPI
 

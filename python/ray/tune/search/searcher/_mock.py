@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 
-from ray.tune.search.searcher.suggestion import Searcher
+from ray.tune.search.searcher.searcher import Searcher
 from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter
 from ray.tune.search.algorithm.search_generator import SearchGenerator
 from ray.tune.experiment.trial import Trial

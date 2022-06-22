@@ -76,7 +76,7 @@ class ExperimentAnalysis:
     def __init__(
         self,
         experiment_checkpoint_path: str,
-        trials: Optional[List[Trial]] = None,
+        trials: Optional[List["Trial"]] = None,
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
@@ -197,7 +197,7 @@ class ExperimentAnalysis:
         return latest_checkpoint
 
     @property
-    def best_trial(self) -> Trial:
+    def best_trial(self) -> "Trial":
         """Get the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
@@ -409,7 +409,7 @@ class ExperimentAnalysis:
         return pd.DataFrame(list(rows.values()))
 
     def get_trial_checkpoints_paths(
-        self, trial: Trial, metric: Optional[str] = None
+        self, trial: "Trial", metric: Optional[str] = None
     ) -> List[Tuple[str, Number]]:
         """Gets paths and metrics of all persistent checkpoints of a trial.
 
@@ -435,7 +435,7 @@ class ExperimentAnalysis:
                 trial_df, on="training_iteration", how="inner"
             )
             return path_metric_df[["chkpt_path", metric]].values.tolist()
-        elif isinstance(trial, Trial):
+        elif isinstance(trial, "Trial"):
             checkpoints = trial.checkpoint_manager.best_checkpoints()
             # Support metrics given as paths, e.g.
             # "info/learner/default_policy/policy_loss".
@@ -447,7 +447,7 @@ class ExperimentAnalysis:
             raise ValueError("trial should be a string or a Trial instance.")
 
     def get_best_checkpoint(
-        self, trial: Trial, metric: Optional[str] = None, mode: Optional[str] = None
+        self, trial: "Trial", metric: Optional[str] = None, mode: Optional[str] = None
     ) -> Optional[Checkpoint]:
         """Gets best persistent checkpoint path of provided trial.
 
@@ -535,7 +535,7 @@ class ExperimentAnalysis:
         mode: Optional[str] = None,
         scope: str = "last",
         filter_nan_and_inf: bool = True,
-    ) -> Optional[Trial]:
+    ) -> Optional["Trial"]:
         """Retrieve the best trial object.
 
         Compares all trials' scores on ``metric``.
@@ -860,7 +860,7 @@ class ExperimentAnalysis:
         """
         state = self.__dict__.copy()
 
-        def make_stub_if_needed(trial: Trial) -> Trial:
+        def make_stub_if_needed(trial: "Trial") -> "Trial":
             if trial.stub:
                 return trial
             trial_copy = Trial(trial.trainable_name, stub=True)

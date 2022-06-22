@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ray.tune.search.searcher.suggestion import Searcher
+from ray.tune.search.searcher.searcher import Searcher
 from ray.tune.search.searcher.util import set_search_properties_backwards_compatible
 from ray.util import PublicAPI
 

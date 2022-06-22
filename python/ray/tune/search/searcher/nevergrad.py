@@ -12,7 +12,7 @@ from ray.tune.search.sample import (
     LogUniform,
     Quantized,
 )
-from ray.tune.search.searcher.suggestion import (
+from ray.tune.search.searcher.searcher import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,

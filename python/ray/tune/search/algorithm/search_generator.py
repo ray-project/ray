@@ -6,7 +6,7 @@ from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.experiment._config_parser import make_parser, create_trial_from_spec
 from ray.tune.search.algorithm.search_algorithm import SearchAlgorithm
-from ray.tune.search.searcher.suggestion import Searcher
+from ray.tune.search.searcher.searcher import Searcher
 from ray.tune.search.searcher.util import set_search_properties_backwards_compatible
 from ray.tune.search.algorithm._variant_generator import (
     format_vars,
@@ -72,7 +72,7 @@ class SearchGenerator(SearchAlgorithm):
         return self._total_samples
 
     def add_configurations(
-        self, experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]
+        self, experiments: Union["Experiment", List["Experiment"], Dict[str, Dict]]
     ):
         """Registers experiment specifications.
 
