@@ -1,21 +1,22 @@
 import ray
 from ray import serve
 
-import numpy as np
+import torch
 
 
 @ray.remote
-def download(n):
-    return np.arange(n)
+def torch_tensor(size: int):
+    return torch.rand(size)
 
 
-@serve.deployment(num_replicas=10)
+@serve.deployment(num_replicas=2)
 class MyModel:
-    def __init__(self, arr):
-        self._arr = arr
+    def __init__(self, model):
+        self._model = model
 
     def __call__(self, *args):
-        return len(self._arr)
+        encoded_input = self._tokenizer("hello friend", return_tensors="pt")
+        return self._model(**encoded_input)
 
 
-m = MyModel.bind(download.bind(1000000000))
+m = MyModel.bind(torch_tensor.bind(1024 ** 3))
