@@ -20,7 +20,6 @@
 #include <thread>
 
 #include "absl/container/btree_map.h"
-
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -155,12 +154,13 @@ class Executor {
                            METHOD##Reply *reply_in,                                     \
                            const int64_t timeout_ms = method_timeout_ms) {              \
     std::promise<Status> promise;                                                       \
-    METHOD(request,                                                                     \
-           [&promise, reply_in](const Status &status, const METHOD##Reply &reply) {     \
-             reply_in->CopyFrom(reply);                                                 \
-             promise.set_value(status);                                                 \
-           },                                                                           \
-           timeout_ms);                                                                 \
+    METHOD(                                                                             \
+        request,                                                                        \
+        [&promise, reply_in](const Status &status, const METHOD##Reply &reply) {        \
+          reply_in->CopyFrom(reply);                                                    \
+          promise.set_value(status);                                                    \
+        },                                                                              \
+        timeout_ms);                                                                    \
     return promise.get_future().get();                                                  \
   }
 
