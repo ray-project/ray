@@ -1,7 +1,7 @@
 import inspect
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
-from ray.dag import DAGNode
+from ray.dag import DAGNode, FunctionNode
 from ray.serve.deployment_executor_node import DeploymentExecutorNode
 from ray.serve.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
@@ -10,6 +10,7 @@ from ray.serve.deployment_method_executor_node import (
     DeploymentMethodExecutorNode,
 )
 from ray.serve.handle import RayServeLazySyncHandle
+from ray.serve.shared_object_node import SharedObjectNode
 
 from ray.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.dag.format_utils import get_dag_node_str
@@ -48,6 +49,8 @@ class DeploymentNode(DAGNode):
         # However in ray serve we send init args via .remote() that requires
         # pickling, and all DAGNode types are not picklable by design.
 
+        shared_objects: Dict[str, SharedObjectNode] = dict()
+
         # Thus we need convert all DeploymentNode used in init args into
         # deployment handles (executable and picklable) in ray serve DAG to make
         # serve DAG end to end executable.
@@ -58,6 +61,10 @@ class DeploymentNode(DAGNode):
                 return RayServeLazySyncHandle(node._deployment.name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
+            elif isinstance(node, FunctionNode):
+                shared_obj_node = SharedObjectNode.from_function_node(node)
+                shared_objects[node.get_stable_uuid()] = shared_obj_node
+                return shared_obj_node
 
         (
             replaced_deployment_init_args,
@@ -76,6 +83,7 @@ class DeploymentNode(DAGNode):
                     DeploymentExecutorNode,
                     DeploymentFunctionExecutorNode,
                     DeploymentMethodExecutorNode,
+                    FunctionNode,
                 ),
             ),
             apply_fn=replace_with_handle,
@@ -122,6 +130,7 @@ class DeploymentNode(DAGNode):
                 ray_actor_options=ray_actor_options,
                 _internal=True,
             )
+        self._deployment = self._deployment.options(_shared_objects=shared_objects)
         self._deployment_handle = RayServeLazySyncHandle(self._deployment.name)
 
     def _copy_impl(

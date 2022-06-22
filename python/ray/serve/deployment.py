@@ -43,6 +43,7 @@ class Deployment:
         init_kwargs: Optional[Tuple[Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
+        _shared_objects: Optional[Dict] = None,
         _internal=False,
     ) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
@@ -97,6 +98,7 @@ class Deployment:
         self._init_kwargs = init_kwargs
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
+        self._shared_objects = _shared_objects
 
     @property
     def name(self) -> str:
@@ -284,6 +286,7 @@ class Deployment:
         _graceful_shutdown_timeout_s: Optional[float] = None,
         _health_check_period_s: Optional[float] = None,
         _health_check_timeout_s: Optional[float] = None,
+        _shared_objects: Optional[Dict] = None,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -348,6 +351,9 @@ class Deployment:
         if _health_check_timeout_s is not None:
             new_config.health_check_timeout_s = _health_check_timeout_s
 
+        if _shared_objects is None:
+            _shared_objects = self._shared_objects
+
         return Deployment(
             func_or_class,
             name,
@@ -358,6 +364,7 @@ class Deployment:
             init_kwargs=init_kwargs,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
+            _shared_objects=_shared_objects,
             _internal=True,
         )
 

@@ -1,5 +1,5 @@
 import json
-from typing import List
+from typing import Dict, List
 from collections import OrderedDict
 
 from ray.serve.deployment import Deployment
@@ -11,6 +11,7 @@ from ray.serve.deployment_executor_node import DeploymentExecutorNode
 from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
 from ray.serve.json_serde import DAGNodeEncoder
+from ray.serve.shared_object_node import SharedObjectNode
 
 
 from ray.dag import (
@@ -249,6 +250,8 @@ def generate_executor_dag_driver_deployment(
             with executor serve dag as init args.
     """
 
+    shared_objects: Dict[str, SharedObjectNode] = dict()
+
     def replace_with_handle(node):
         if isinstance(node, DeploymentExecutorNode):
             return node._deployment_handle
@@ -261,6 +264,10 @@ def generate_executor_dag_driver_deployment(
         ):
             serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
             return RayServeDAGHandle(serve_dag_root_json)
+        elif isinstance(node, FunctionNode):
+            shared_obj_node = SharedObjectNode.from_function_node(node)
+            shared_objects[node.get_stable_uuid()] = shared_obj_node
+            return shared_obj_node
 
     (
         replaced_deployment_init_args,
@@ -276,6 +283,7 @@ def generate_executor_dag_driver_deployment(
                 DeploymentExecutorNode,
                 DeploymentFunctionExecutorNode,
                 DeploymentMethodExecutorNode,
+                FunctionNode,
             ),
         ),
         apply_fn=replace_with_handle,
@@ -284,6 +292,7 @@ def generate_executor_dag_driver_deployment(
     return original_driver_deployment.options(
         init_args=replaced_deployment_init_args,
         init_kwargs=replaced_deployment_init_kwargs,
+        _shared_objects=shared_objects,
     )
 
 

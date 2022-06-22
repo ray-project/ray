@@ -35,10 +35,13 @@ from ray.serve.http_state import HTTPState
 from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
 from ray.serve.schema import ServeApplicationSchema
+from ray.serve.shared_object_node import SharedObjectNode
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.utils import override_runtime_envs_except_env_vars
 from ray.types import ObjectRef
+
+from ray.dag.function_node import FunctionNode
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -130,6 +133,8 @@ class ServeController:
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
+
+        self._shm_object_refs: Dict[str, ObjectRef] = {}
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -295,6 +300,7 @@ class ServeController:
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: "ray._raylet.JobID",
+        _shared_objects: Dict[str, SharedObjectNode] = {}
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
@@ -333,6 +339,13 @@ class ServeController:
         else:
             autoscaling_policy = None
 
+        # collecting shm object ref
+        _shared_object_refs = {}
+        for uuid, obj in _shared_objects.items():
+            if uuid not in self._shm_object_refs:
+                self._shm_object_refs[uuid] = shm_objects[uuid].remote()
+            _shared_object_refs[uuid] = self._shm_object_refs[uuid]
+
         deployment_info = DeploymentInfo(
             actor_name=name,
             version=version,
@@ -341,7 +354,9 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             start_time_ms=int(time.time() * 1000),
             autoscaling_policy=autoscaling_policy,
+            shm_objects_refs=_shared_object_refs
         )
+
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?

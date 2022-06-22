@@ -264,6 +264,7 @@ class ServeControllerClient:
                     version=deployment["version"],
                     prev_version=deployment["prev_version"],
                     route_prefix=deployment["route_prefix"],
+                    _shared_objects=deployment["_shared_objects"],
                 )
             )
 
@@ -446,6 +447,7 @@ class ServeControllerClient:
         version: Optional[str] = None,
         prev_version: Optional[str] = None,
         route_prefix: Optional[str] = None,
+        _shared_objects: Optional[Dict] = None,
     ) -> Dict:
         """
         Takes a deployment's configuration, and returns the arguments needed
@@ -501,6 +503,7 @@ class ServeControllerClient:
             "replica_config_proto_bytes": replica_config.to_proto_bytes(),
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().job_id,
+            "_shared_objects": _shared_objects,
         }
 
         return controller_deploy_args

@@ -604,6 +604,7 @@ def run(
             "prev_version": deployment._prev_version,
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
+            "_shared_objects": deployment._shared_objects,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(

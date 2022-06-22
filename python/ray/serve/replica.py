@@ -32,6 +32,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.logging_utils import access_log_msg, configure_component_logger
 from ray.serve.router import Query, RequestMetadata
+from ray.serve.shared_object_node import SharedObjectNode
 from ray.serve.utils import parse_import_path, parse_request_item, wrap_to_ray_error
 from ray.serve.version import DeploymentVersion
 
@@ -58,6 +59,7 @@ def create_replica_wrapper(name: str):
             version: DeploymentVersion,
             controller_name: str,
             detached: bool,
+            shared_object_refs: Dict[str, ray.ObjectRef],
         ):
             configure_component_logger(
                 component_type="deployment",
@@ -87,6 +89,25 @@ def create_replica_wrapper(name: str):
 
             init_args = cloudpickle.loads(serialized_init_args)
             init_kwargs = cloudpickle.loads(serialized_init_kwargs)
+
+            new_args = []
+            for arg in init_args:
+                # TODO: Doesn't handle nested args.
+                if isinstance(arg, SharedObjectNode):
+                    arg = ray.get(shared_object_refs[arg.uuid])
+                else:
+                    new_args.append(arg)
+            init_args = new_args
+
+            new_kwargs = dict()
+            for k, arg in init_kwargs.items():
+                # TODO: Doesn't handle nested kwargs.
+                if isinstance(arg, SharedObjectNode):
+                    new_arg = ray.get(shared_object_refs[arg.uuid])
+                else:
+                    new_arg = arg
+                new_kwargs[k] = new_arg
+            init_kwargs = new_kwargs
 
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes
