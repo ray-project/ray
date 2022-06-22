@@ -34,6 +34,13 @@ class StateResource(Enum):
     RUNTIME_ENVS = "runtime_envs"
 
 
+@unique
+class SummaryResource(Enum):
+    ACTORS = "actors"
+    TASKS = "tasks"
+    OBJECTS = "objects"
+
+
 SupportedFilterType = Union[str, bool, int, float]
 
 

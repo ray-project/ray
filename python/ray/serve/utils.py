@@ -1,6 +1,5 @@
 import copy
 import importlib
-from itertools import groupby
 import inspect
 import os
 import pickle
@@ -10,15 +9,17 @@ import time
 import traceback
 from enum import Enum
 from functools import wraps
+from itertools import groupby
 from typing import Dict, Iterable, List, Tuple
 
 import fastapi.encoders
 import numpy as np
 import pydantic
 import pydantic.json
-import ray
-import ray.serialization_addons
 import requests
+
+import ray
+import ray.util.serialization_addons
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
@@ -158,7 +159,7 @@ def get_all_node_ids():
     # We need to use the node_id and index here because we could
     # have multiple virtual nodes on the same host. In that case
     # they will have the same IP and therefore node_id.
-    for _, node_id_group in groupby(sorted(ray.state.node_ids())):
+    for _, node_id_group in groupby(sorted(ray._private.state.node_ids())):
         for index, node_id in enumerate(node_id_group):
             node_ids.append(("{}-{}".format(node_id, index), node_id))
 
@@ -179,7 +180,9 @@ def node_id_to_ip_addr(node_id: str):
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
-    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
+    return ray._private.state.actors()[actor_handle._actor_id.hex()]["Address"][
+        "NodeID"
+    ]
 
 
 def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
@@ -239,7 +242,7 @@ def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
-    ray.serialization_addons.apply(ctx)
+    ray.util.serialization_addons.apply(ctx)
 
 
 def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
@@ -254,7 +257,7 @@ def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
 
 
 def msgpack_serialize(obj):
-    ctx = ray.worker.global_worker.get_serialization_context()
+    ctx = ray._private.worker.global_worker.get_serialization_context()
     buffer = ctx.serialize(obj)
     serialized = buffer.to_bytes()
     return serialized

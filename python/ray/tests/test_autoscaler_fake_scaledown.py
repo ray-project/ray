@@ -1,7 +1,8 @@
-import pytest
 import platform
-import numpy as np
 import re
+
+import numpy as np
+import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -70,7 +71,7 @@ def test_scaledown_shared_objects(shutdown_only):
 
 def check_memory(local_objs, num_spilled_objects=None, num_plasma_objects=None):
     def ok():
-        s = ray.internal.internal_api.memory_summary()
+        s = ray._private.internal_api.memory_summary()
         print(f"\n\nMemory Summary:\n{s}\n")
 
         actual_objs = re.findall(r"LOCAL_REFERENCE[\s|\|]+([0-9a-f]+)", s)

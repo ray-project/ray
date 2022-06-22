@@ -5,8 +5,10 @@ import ray
 from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.dag.constants import DAGNODE_TYPE_KEY
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class FunctionNode(DAGNode):
     """Represents a bound task node in a Ray task DAG."""
 

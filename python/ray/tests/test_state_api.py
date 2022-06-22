@@ -10,7 +10,7 @@ from click.testing import CliRunner
 
 import ray
 import ray.dashboard.consts as dashboard_consts
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
 from ray.core.generated.common_pb2 import (
@@ -793,7 +793,7 @@ async def test_state_data_source_client(ray_start_cluster):
     Test job
     """
     job_client = JobSubmissionClient(
-        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
     job_id = job_client.submit_job(  # noqa
         # Entrypoint shell command to execute
@@ -930,7 +930,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     runner = CliRunner()
 
     client = JobSubmissionClient(
-        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
 
     @ray.remote
@@ -1044,7 +1044,7 @@ def test_list_nodes(shutdown_only):
 def test_list_jobs(shutdown_only):
     ray.init()
     client = JobSubmissionClient(
-        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
     job_id = client.submit_job(  # noqa
         # Entrypoint shell command to execute
@@ -1298,7 +1298,7 @@ def test_network_failure(shutdown_only):
     wait_for_condition(lambda: len(list_tasks()) == 4)
 
     # Kill raylet so that list_tasks will have network error on querying raylets.
-    ray.worker._global_node.kill_raylet()
+    ray._private.worker._global_node.kill_raylet()
 
     with pytest.raises(RayStateApiException):
         list_tasks(_explain=True)

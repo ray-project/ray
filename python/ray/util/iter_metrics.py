@@ -1,9 +1,11 @@
 import collections
 from typing import List
 
+from ray.util.annotations import Deprecated
 from ray.util.timer import _Timer
 
 
+@Deprecated
 class MetricsContext:
     """Metrics context object for a local iterator.
 
@@ -43,6 +45,7 @@ class MetricsContext:
         self.info = values["info"]
 
 
+@Deprecated
 class SharedMetrics:
     """Holds an indirect reference to a (shared) metrics context.
 

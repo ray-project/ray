@@ -1,14 +1,12 @@
 import base64
-
+import logging
 from collections import defaultdict
 from enum import Enum
 from typing import List
 
 import ray
-
-from ray._raylet import TaskID, ActorID, JobID
-from ray.internal.internal_api import node_stats
-import logging
+from ray._private.internal_api import node_stats
+from ray._raylet import ActorID, JobID, TaskID
 
 logger = logging.getLogger(__name__)
 
@@ -380,10 +378,10 @@ def memory_summary(
     unit="B",
     num_entries=None,
 ) -> str:
-    from ray.dashboard.modules.node.node_head import node_stats_to_dict
-
     # Get terminal size
     import shutil
+
+    from ray.dashboard.modules.node.node_head import node_stats_to_dict
 
     size = shutil.get_terminal_size((80, 20)).columns
     line_wrap_threshold = 137

@@ -1,13 +1,13 @@
-import click
-import logging
 import json
+import logging
+from enum import Enum, unique
+from typing import List, Tuple, Union
+
+import click
 import yaml
 
-from enum import Enum, unique
-from typing import Union, List, Tuple
-
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 
 from ray.experimental.state.api import (
@@ -16,13 +16,13 @@ from ray.experimental.state.api import (
     summarize_actors,
     summarize_objects,
 )
+from ray._private.gcs_utils import GcsClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ListApiOptions,
     StateResource,
 )
-from ray._private.gcs_utils import GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -92,25 +92,19 @@ def get_state_api_output_to_print(
         )
 
 
-def _get_api_server_url():
-    address = services.canonicalize_bootstrap_address(None)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    api_server_url = ray._private.utils.internal_kv_get_with_retry(
-        gcs_client,
-        ray_constants.DASHBOARD_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        num_retries=20,
-    )
-    if api_server_url is None:
-        raise ValueError(
-            (
-                "Couldn't obtain the API server address from GCS. It is likely that "
-                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
-                "still alive."
-            )
-        )
-    return api_server_url
+timeout_option = click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=f"Timeout in seconds for the API requests. Default is {DEFAULT_RPC_TIMEOUT}",
+)
+address_option = click.option(
+    "--address",
+    default="",
+    help=(
+        "The address of Ray API server. If not provided, it will be configured "
+        "automatically from querying the GCS server."
+    ),
+)
 
 
 """
@@ -144,19 +138,8 @@ def _should_explain(format: AvailableFormat):
     type=click.Tuple([str, str]),
     multiple=True,
 )
-@click.option(
-    "--timeout",
-    default=DEFAULT_RPC_TIMEOUT,
-    help=f"Timeout in seconds for the API requests. Default is {DEFAULT_RPC_TIMEOUT}",
-)
-@click.option(
-    "--address",
-    default="",
-    help=(
-        "The address of Ray API server. If not provided, it will be configured "
-        "automatically from querying the GCS server."
-    ),
-)
+@timeout_option
+@address_option
 def list(
     resource: str,
     format: str,
@@ -205,19 +188,21 @@ def list(
 @click.group("summary")
 @click.pass_context
 def summary_state_cli_group(ctx):
-    api_server_url = _get_api_server_url()
     ctx.ensure_object(dict)
-    ctx.obj["api_server_url"] = f"http://{api_server_url.decode()}"
+    ctx.obj["api_server_url"] = get_api_server_url()
 
 
 @summary_state_cli_group.command(name="tasks")
+@timeout_option
+@address_option
 @click.pass_context
-def task_summary(ctx):
-    url = ctx.obj["api_server_url"]
+def task_summary(ctx, timeout: float, address: str):
+    address = address or ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
             summarize_tasks(
-                api_server_url=url,
+                address=address,
+                timeout=timeout,
                 _explain=True,
             ),
             format=AvailableFormat.YAML,
@@ -226,13 +211,16 @@ def task_summary(ctx):
 
 
 @summary_state_cli_group.command(name="actors")
+@timeout_option
+@address_option
 @click.pass_context
-def actor_summary(ctx):
-    url = ctx.obj["api_server_url"]
+def actor_summary(ctx, timeout: float, address: str):
+    address = address or ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
             summarize_actors(
-                api_server_url=url,
+                address=address,
+                timeout=timeout,
                 _explain=True,
             ),
             format=AvailableFormat.YAML,
@@ -241,13 +229,16 @@ def actor_summary(ctx):
 
 
 @summary_state_cli_group.command(name="objects")
+@timeout_option
+@address_option
 @click.pass_context
-def object_summary(ctx):
-    url = ctx.obj["api_server_url"]
+def object_summary(ctx, timeout: float, address: str):
+    address = address or ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
             summarize_objects(
-                api_server_url=url,
+                address=address,
+                timeout=timeout,
                 _explain=True,
             ),
             format=AvailableFormat.YAML,
