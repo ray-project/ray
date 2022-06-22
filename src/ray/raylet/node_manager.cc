@@ -770,7 +770,8 @@ void NodeManager::QueryAllWorkerStates(
     rpc::SendReplyCallback &send_reply_callback,
     bool include_memory_info,
     bool include_task_info) {
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                          /*filter_io_workers*/ true);
   for (auto driver :
        worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);

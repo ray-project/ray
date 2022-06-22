@@ -47,6 +47,7 @@ from ray.experimental.state.common import DEFAULT_LIMIT
 from ray.experimental.state.state_cli import (
     get_api_server_url,
     get_state_api_output_to_print,
+    summary_state_cli_group,
 )
 from ray.experimental.state.state_cli import list as cli_list
 from ray.util.annotations import PublicAPI
@@ -2478,8 +2479,9 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-add_command_alias(job_cli_group, name="job", hidden=True)
 cli.add_command(cli_list)
+add_command_alias(job_cli_group, name="job", hidden=True)
+add_command_alias(summary_state_cli_group, name="summary", hidden=True)
 
 try:
     from ray.serve.scripts import serve_cli
