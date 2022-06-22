@@ -1,16 +1,13 @@
-import numpy as np
 import os
 import time
 
+import numpy as np
 import pytest
-import ray
-from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.internal.internal_api import memory_summary
-from ray._private.test_utils import (
-    wait_for_condition,
-    Semaphore,
-)
 
+import ray
+from ray._private.internal_api import memory_summary
+from ray._private.test_utils import Semaphore, wait_for_condition
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 # RayConfig to enable recording call sites during ObjectRej creations.
 ray_config = {"record_ref_creation_sites": True}
@@ -105,7 +102,7 @@ def test_worker_task_refs(ray_start_regular):
 
     @ray.remote
     def f(y):
-        from ray.internal.internal_api import memory_summary
+        from ray._private.internal_api import memory_summary
 
         x_id = ray.put("HI")
         info = memory_summary(address)
@@ -152,7 +149,7 @@ def test_actor_task_refs(ray_start_regular):
             self.refs = []
 
         def f(self, x):
-            from ray.internal.internal_api import memory_summary
+            from ray._private.internal_api import memory_summary
 
             self.refs.append(x)
             return memory_summary(address)
