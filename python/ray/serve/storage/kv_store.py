@@ -3,18 +3,18 @@ import os
 import sqlite3
 from typing import Optional
 
+import ray
+from ray._private import ray_constants
+from ray._private.gcs_utils import GcsClient
+from ray.serve.constants import RAY_SERVE_KV_TIMEOUT_S, SERVE_LOGGER_NAME
+from ray.serve.storage.kv_store_base import KVStoreBase
+
 try:
     import boto3
     from botocore.exceptions import ClientError
 except ImportError:
     boto3 = None
 
-import ray
-from ray import ray_constants
-from ray._private.gcs_utils import GcsClient
-
-from ray.serve.constants import SERVE_LOGGER_NAME, RAY_SERVE_KV_TIMEOUT_S
-from ray.serve.storage.kv_store_base import KVStoreBase
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -22,6 +22,10 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 def get_storage_key(namespace: str, storage_key: str) -> str:
     """In case we need to access kvstore"""
     return "{ns}-{key}".format(ns=namespace, key=storage_key)
+
+
+class KVStoreError(Exception):
+    pass
 
 
 class RayInternalKVStore(KVStoreBase):
@@ -38,7 +42,6 @@ class RayInternalKVStore(KVStoreBase):
             raise TypeError("namespace must a string, got: {}.".format(type(namespace)))
 
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-
         self.timeout = RAY_SERVE_KV_TIMEOUT_S
         self.namespace = namespace or ""
 
@@ -57,13 +60,16 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(val, bytes):
             raise TypeError("val must be bytes, got: {}.".format(type(val)))
 
-        return self.gcs_client.internal_kv_put(
-            self.get_storage_key(key).encode(),
-            val,
-            overwrite=True,
-            namespace=ray_constants.KV_NAMESPACE_SERVE,
-            timeout=self.timeout,
-        )
+        try:
+            return self.gcs_client.internal_kv_put(
+                self.get_storage_key(key).encode(),
+                val,
+                overwrite=True,
+                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                timeout=self.timeout,
+            )
+        except Exception as e:
+            raise KVStoreError(e.code())
 
     def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
@@ -77,11 +83,14 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        return self.gcs_client.internal_kv_get(
-            self.get_storage_key(key).encode(),
-            namespace=ray_constants.KV_NAMESPACE_SERVE,
-            timeout=self.timeout,
-        )
+        try:
+            return self.gcs_client.internal_kv_get(
+                self.get_storage_key(key).encode(),
+                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                timeout=self.timeout,
+            )
+        except Exception as e:
+            raise KVStoreError(e.code())
 
     def delete(self, key: str):
         """Delete the value associated with the given key from the store.
@@ -93,12 +102,15 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        return self.gcs_client.internal_kv_del(
-            self.get_storage_key(key).encode(),
-            False,
-            namespace=ray_constants.KV_NAMESPACE_SERVE,
-            timeout=self.timeout,
-        )
+        try:
+            return self.gcs_client.internal_kv_del(
+                self.get_storage_key(key).encode(),
+                False,
+                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                timeout=self.timeout,
+            )
+        except Exception as e:
+            raise KVStoreError(e.code())
 
 
 class RayLocalKVStore(KVStoreBase):
