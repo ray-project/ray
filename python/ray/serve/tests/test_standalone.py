@@ -675,7 +675,7 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
 def test_recovering_controller_no_redeploy():
     """Ensure controller doesn't redeploy running deployments when recovering."""
     ray.init(namespace="x")
-    client = serve.start()
+    client = serve.start(detached=True)
 
     @serve.deployment
     def f():
