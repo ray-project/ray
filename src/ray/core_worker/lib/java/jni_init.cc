@@ -367,7 +367,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
 
   java_actor_lifetime_class = LoadClass(env, "io/ray/api/options/ActorLifetime");
-  java_actor_lifetime_ordinal = env->GetMethodID(java_actor_lifetime_class, "ordinal", "()I");
+  java_actor_lifetime_ordinal =
+      env->GetMethodID(java_actor_lifetime_class, "ordinal", "()I");
   jfieldID java_actor_lifetime_detached_field = env->GetStaticFieldID(
       java_actor_lifetime_class, "DETACHED", "Lio/ray/api/options/ActorLifetime;");
   STATUS_DETACHED = env->GetStaticObjectField(java_actor_lifetime_class,
