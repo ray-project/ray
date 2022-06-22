@@ -2944,7 +2944,7 @@ class Dataset(Generic[T]):
             def __iter__(self):
                 return Iterator(self._blocks)
 
-        pipe = DatasetPipeline(Iterable(blocks), length=times or float("inf"))
+        pipe = DatasetPipeline(Iterable(blocks), False, length=times or float("inf"))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
@@ -3086,7 +3086,7 @@ class Dataset(Generic[T]):
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        pipe = DatasetPipeline(it, length=len(it._splits))
+        pipe = DatasetPipeline(it, False, length=len(it._splits))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(

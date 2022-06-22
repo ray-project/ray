@@ -43,6 +43,7 @@ def test_iter_batches_no_spilling_upon_rewindow(shutdown_only):
         ctx, ds.window(blocks_per_window=20).repeat().rewindow(blocks_per_window=10), 5
     )
 
+
 def test_iter_batches_no_spilling_upon_prior_transformation(shutdown_only):
     # The object store is about 500MB.
     ctx = ray.init(num_cpus=1, object_store_memory=500e6)
