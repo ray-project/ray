@@ -40,28 +40,24 @@ def test_run_config():
 
 
 def test_checkpointing_config():
-    # cannot set checkpoint_score_mode if checkpoint_score_metric is unset
-    with pytest.raises(ValueError):
-        CheckpointStrategy(checkpoint_score_mode="min")
-
     with pytest.raises(ValueError):
         CheckpointStrategy(
-            checkpoint_score_metric="metric", checkpoint_score_mode="invalid"
+            checkpoint_score_attribute="metric", checkpoint_score_order="invalid"
         )
 
     checkpointing = CheckpointStrategy()
     assert checkpointing.checkpoint_score_attr is None
 
-    checkpointing = CheckpointStrategy(checkpoint_score_metric="metric")
+    checkpointing = CheckpointStrategy(checkpoint_score_attribute="metric")
     assert checkpointing.checkpoint_score_attr == "metric"
 
     checkpointing = CheckpointStrategy(
-        checkpoint_score_metric="metric", checkpoint_score_mode="max"
+        checkpoint_score_attribute="metric", checkpoint_score_order="max"
     )
     assert checkpointing.checkpoint_score_attr == "metric"
 
     checkpointing = CheckpointStrategy(
-        checkpoint_score_metric="metric", checkpoint_score_mode="min"
+        checkpoint_score_attribute="metric", checkpoint_score_order="min"
     )
     assert checkpointing.checkpoint_score_attr == "min-metric"
 

@@ -163,7 +163,7 @@ class TunerInternal:
                 else 0
             ),
             keep_checkpoints_num=(
-                self._run_config.checkpoint_config.keep_checkpoints_num
+                self._run_config.checkpoint_config.num_to_keep
                 if self._run_config.checkpoint_config
                 else None
             ),
