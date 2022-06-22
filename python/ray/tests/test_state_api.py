@@ -55,6 +55,7 @@ from ray.experimental.state.api import (
     list_runtime_envs,
     list_tasks,
     list_workers,
+    StateApiClient,
 )
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
@@ -248,6 +249,23 @@ def test_id_to_ip_map():
     m.pop(node_id_1)
     assert m.get_ip(node_id_1) is None
     assert m.get_node_id(node_id_1) is None
+
+
+def test_state_api_client_periodic_warning(shutdown_only, capsys):
+    ray.init()
+    timeout = 10
+    StateApiClient()._request("/api/v0/delay/5", timeout, {}, True, 0.1)
+    captured = capsys.readouterr()
+    lines = captured.out.strip().split("\n")
+    # Have some buffers. There must be around 50 lines
+    # since we print warning every 0.1 second.
+    assert len(lines) >= 45 and len(lines) <= 55
+    for line in lines:
+        expected = (
+            "10 seconds) Waiting for the response from the API "
+            "server address http://127.0.0.1:8265/api/v0/delay/5."
+        )
+        assert expected in line
 
 
 @pytest.mark.asyncio

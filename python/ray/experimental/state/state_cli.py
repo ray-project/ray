@@ -72,7 +72,7 @@ def get_api_server_url() -> str:
 
 def get_state_api_output_to_print(
     state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
-):
+) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
 
@@ -99,7 +99,7 @@ timeout_option = click.option(
 )
 address_option = click.option(
     "--address",
-    default="",
+    default=None,
     help=(
         "The address of Ray API server. If not provided, it will be configured "
         "automatically from querying the GCS server."
@@ -138,12 +138,19 @@ def _should_explain(format: AvailableFormat):
     type=click.Tuple([str, str]),
     multiple=True,
 )
+@click.option(
+    "--limit",
+    default=DEFAULT_LIMIT,
+    type=int,
+    help=("Maximum number of entries to return. 100 by default."),
+)
 @timeout_option
 @address_option
 def list(
     resource: str,
     format: str,
     filter: List[Tuple[str, str]],
+    limit: int,
     timeout: float,
     address: str,
 ):
@@ -158,17 +165,13 @@ def list(
     resource = StateResource(resource.replace("-", "_"))
     format = AvailableFormat(format)
 
-    # Get the state API server address from ray if not provided by user
-    api_server_address = address if address else get_api_server_url()
-
     # Create the State API server and put it into context
-    logger.debug(f"Create StateApiClient at {api_server_address}...")
     client = StateApiClient(
-        api_server_address=api_server_address,
+        address=address if address else get_api_server_url(),
     )
 
     options = ListApiOptions(
-        limit=DEFAULT_LIMIT,  # TODO(rickyyx): parameters discussion to be finalized
+        limit=limit,
         timeout=timeout,
         filters=filter,
     )
@@ -188,8 +191,7 @@ def list(
 @click.group("summary")
 @click.pass_context
 def summary_state_cli_group(ctx):
-    ctx.ensure_object(dict)
-    ctx.obj["api_server_url"] = get_api_server_url()
+    pass
 
 
 @summary_state_cli_group.command(name="tasks")
@@ -197,7 +199,6 @@ def summary_state_cli_group(ctx):
 @address_option
 @click.pass_context
 def task_summary(ctx, timeout: float, address: str):
-    address = address or ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
             summarize_tasks(
@@ -215,7 +216,6 @@ def task_summary(ctx, timeout: float, address: str):
 @address_option
 @click.pass_context
 def actor_summary(ctx, timeout: float, address: str):
-    address = address or ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
             summarize_actors(
@@ -233,7 +233,6 @@ def actor_summary(ctx, timeout: float, address: str):
 @address_option
 @click.pass_context
 def object_summary(ctx, timeout: float, address: str):
-    address = address or ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
             summarize_objects(
