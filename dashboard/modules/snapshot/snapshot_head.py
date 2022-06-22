@@ -1,5 +1,7 @@
 import asyncio
 import concurrent.futures
+import dataclasses
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 import hashlib
 
@@ -26,6 +28,13 @@ import json
 import aiohttp.web
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
+
+
+@dataclasses.dataclass
+class RayActivityResponse:
+    is_active: bool
+    reason: str
+    timestamp: Optional[str]
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
@@ -92,6 +101,40 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         }
         return dashboard_optional_utils.rest_response(
             success=True, message="hello", snapshot=snapshot
+        )
+
+    @routes.get("/api/component_activities")
+    async def get_component_activities(self, req) -> aiohttp.web.Response:
+        # Get activity information for driver
+        driver_activity_info = await self._get_job_activity_info()
+
+        resp = {"driver": dataclasses.asdict(driver_activity_info)}
+        return dashboard_optional_utils.rest_response(
+            success=True, 
+            message="", 
+            convert_google_style=False, 
+            ray_activity_response=resp
+        )
+
+
+    async def _get_job_activity_info(self) -> RayActivityResponse:
+        # Returns if there is Ray activity from drivers (job).
+        # Drivers in namespaces that start with _ray_internal are not considered activity.
+        request = gcs_service_pb2.GetAllJobInfoRequest()
+        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
+
+        ray_internal_job_prefix = "_ray_internal"
+        num_active_drivers = 0
+        for job_table_entry in reply.job_info_list:
+            is_dead = bool(job_table_entry.is_dead)
+            in_internal_namespace = job_table_entry.config.ray_namespace.startswith(ray_internal_job_prefix)
+            if not is_dead and not in_internal_namespace:
+                num_active_drivers += 1
+        
+        return RayActivityResponse(
+            is_active = num_active_drivers > 0, 
+            reason = f"{num_active_drivers}", 
+            timestamp=datetime.now().timestamp()
         )
 
     def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:

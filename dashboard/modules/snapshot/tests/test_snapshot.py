@@ -3,6 +3,7 @@ import sys
 import json
 import jsonschema
 import hashlib
+import time
 
 import pprint
 import pytest
@@ -14,10 +15,50 @@ from ray.serve.constants import SERVE_NAMESPACE
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
+    run_string_as_driver_nonblocking,
 )
 from ray.dashboard import dashboard
+from ray.dashboard.modules.snapshot.snapshot_head import RayActivityResponse
 from ray.dashboard.tests.conftest import *  # noqa
 
+
+def test_inactive_component_activities(call_ray_start):
+    # Verify no activity in response if no active drivers
+    response = requests.get(f"http://127.0.0.1:8265/api/component_activities")
+    response.raise_for_status()
+    data = response.json()["data"]["ray_activity_response"]
+    driver_ray_activity_response = RayActivityResponse(**data["driver"])
+    assert not driver_ray_activity_response.is_active
+    assert driver_ray_activity_response.reason == "0"
+
+
+def test_active_component_activities(ray_start_with_dashboard):
+    # Verify drivers which don't have namespace starting with _ray_internal
+    # are considered active.
+    driver_template = """
+import ray
+
+ray.init(address="auto", namespace="{namespace}")
+    """
+    run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
+    run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
+    run_string_as_driver_nonblocking(driver_template.format(namespace="_ray_internal_dashboard"))
+
+    # Wait 1 sec for drivers to start
+    time.sleep(1)
+
+    # Verify drivers are considered active after running script
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/api/component_activities")
+    response.raise_for_status()
+    data = response.json()["data"]["ray_activity_response"]
+    driver_ray_activity_response = RayActivityResponse(**data["driver"])
+    assert driver_ray_activity_response.is_active
+    # Drivers with namespace starting with "_ray_internal" are not considered active drivers.
+    # Three active drivers are the two run with namespace "my_namespace" and the one started
+    # from ray_start_with_dashboard
+    assert driver_ray_activity_response.reason == "3"
 
 def test_snapshot(ray_start_with_dashboard):
     driver_template = """
