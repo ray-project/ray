@@ -200,13 +200,13 @@ RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_
 }
 
 std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
-                                          const std::string &key) {
+                                          const std::string &key) const {
   return absl::StrCat(cluster_id_, cluster_separator_, table_name, table_separator_, key);
 }
 
 std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
                                           const std::string &key,
-                                          const std::string &index_key) {
+                                          const std::string &index_key) const {
   return absl::StrCat(cluster_id_,
                       cluster_separator_,
                       table_name,
@@ -228,7 +228,8 @@ std::string EscapeMatchPattern(const std::string &s) {
 }
 };  // namespace
 
-std::string RedisStoreClient::GenKeyRedisMatchPattern(const std::string &table_name) {
+std::string RedisStoreClient::GenKeyRedisMatchPattern(
+    const std::string &table_name) const {
   return absl::StrCat(cluster_id_,
                       cluster_separator_,
                       EscapeMatchPattern(table_name),
@@ -237,7 +238,7 @@ std::string RedisStoreClient::GenKeyRedisMatchPattern(const std::string &table_n
 }
 
 std::string RedisStoreClient::GenKeyRedisMatchPattern(const std::string &table_name,
-                                                      const std::string &key) {
+                                                      const std::string &key) const {
   return absl::StrCat(cluster_id_,
                       cluster_separator_,
                       EscapeMatchPattern(table_name),
@@ -246,8 +247,8 @@ std::string RedisStoreClient::GenKeyRedisMatchPattern(const std::string &table_n
                       "*");
 }
 
-std::string RedisStoreClient::GenIndexRedisMatchPattern(const std::string &table_name,
-                                                        const std::string &index_key) {
+std::string RedisStoreClient::GenIndexRedisMatchPattern(
+    const std::string &table_name, const std::string &index_key) const {
   return absl::StrCat(cluster_id_,
                       cluster_separator_,
                       table_name,
@@ -258,7 +259,7 @@ std::string RedisStoreClient::GenIndexRedisMatchPattern(const std::string &table
 }
 
 std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
-                                                 const std::string &table_name) {
+                                                 const std::string &table_name) const {
   auto pos = cluster_id_.size() + cluster_separator_.size() + table_name.size() +
              table_separator_.size();
   return redis_key.substr(pos, redis_key.size() - pos);
@@ -266,7 +267,7 @@ std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
 
 std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
                                                  const std::string &table_name,
-                                                 const std::string &index_key) {
+                                                 const std::string &index_key) const {
   auto pos = cluster_id_.size() + cluster_separator_.size() + table_name.size() +
              index_table_separator_.size() * 2 + index_key.size();
   return redis_key.substr(pos, redis_key.size() - pos);
@@ -276,7 +277,7 @@ Status RedisStoreClient::MGetValues(
     std::shared_ptr<RedisClient> redis_client,
     const std::string &table_name,
     const std::vector<std::string> &keys,
-    const MapCallback<std::string, std::string> &callback) {
+    const MapCallback<std::string, std::string> &callback) const {
   // The `MGET` command for each shard.
   int total_count = 0;
   auto mget_commands_by_shards =
