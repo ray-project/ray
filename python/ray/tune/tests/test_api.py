@@ -29,7 +29,7 @@ from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
 from ray.tune.function_runner import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
-from ray.tune.ray_trial_executor import noop_logger_creator
+from ray.tune.execution.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (
     TIMESTEPS_TOTAL,
@@ -63,9 +63,9 @@ from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.syncer import Syncer
 from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils import flatten_dict
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
