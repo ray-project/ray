@@ -8,6 +8,8 @@ import io.ray.runtime.object.newserialization.RaySerializer;
 
 public class ByteArraySerializer implements RaySerializer<byte[]> {
 
+    public static final ByteBuffer TYPE_ID = ByteBuffer.wrap("ray_serde_bytes".getBytes());
+
     @Override
     public RaySerializationResult serialize(byte[] obj) {
         RaySerializationResult res = new RaySerializationResult();
