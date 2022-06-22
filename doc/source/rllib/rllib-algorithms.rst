@@ -1055,7 +1055,7 @@ parameter that could be considered is the embedding size ``embed_dim`` of the st
 as this depends on the environment itself. For this reason reward clipping can be advantageous, together with the ``normalize=True`` option. 
 
 **Metrics Callbacks**
-For monitoring exploration with the NovelD module we provide the `NovelDMetricsCallbacks <https://github.com/ray-project/ray/blob/master/rllib/exploration/callbacks.py#L13>`__ that can be easily plugged in by configuring the Trainer's ``callbacks`` parameter. We report next to the intrinsic reward, the novelty, and the next states novelty also the average 
+For monitoring exploration with the NovelD module we provide the `NovelDMetricsCallbacks <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/callbacks.py#L13>`__ that can be easily plugged in by configuring the Trainer's ``callbacks`` parameter. We report next to the intrinsic reward, the novelty, and the next states novelty also the average
 total state count and the average mean state count to monitor stat visits over the course of the experiment. High total state count and low average state count indicate a good state exploration whereas low total count and high avrage count might indicate either insufficient exporation or are due to specialties of the environment (like for example states 
 that have to be crosed in each episode). Metrics can be monitored in TensorBoard (as shown in :ref:`Getting Started`) and can be found via their prefix ``noveld/``.
 
