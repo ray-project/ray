@@ -12,6 +12,8 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.generated.Common.ErrorType;
+import io.ray.runtime.object.newserialization.NewObjectSerializer;
+import io.ray.runtime.object.newserialization.RaySerializationResult;
 import io.ray.runtime.serializer.RayExceptionSerializer;
 import io.ray.runtime.serializer.Serializer;
 import io.ray.runtime.util.IdUtil;
@@ -21,6 +23,9 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
+import javax.management.RuntimeErrorException;
+
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
@@ -49,6 +54,7 @@ public class ObjectSerializer {
   private static final byte[] TASK_EXECUTION_EXCEPTION_META =
       String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
+  public static final byte[] OBJECT_METADATA_TYPE_NEW_PROTOCOL = "NEW_PROTOCOL".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
@@ -79,6 +85,16 @@ public class ObjectSerializer {
     byte[] data = nativeRayObject.data;
 
     if (meta != null && meta.length > 0) {
+      // Hock for new serialization infrastructure, will move the original code
+      // to here step by step.
+      if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_NEW_PROTOCOL) == 0) {
+        try {
+          RaySerializationResult result = RaySerializationResult.fromBytes(data);
+          return NewObjectSerializer.deserialize(result);
+        } catch (Throwable th) {
+          throw new RuntimeException(th);
+        }
+      }
       // If meta is not null, deserialize the object from meta.
       if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0) {
         if (objectType == ByteBuffer.class) {
@@ -130,6 +146,16 @@ public class ObjectSerializer {
    * @return The serialized object.
    */
   public static NativeRayObject serialize(Object object) {
+    // New serialization infrastructure hock
+    if (NewObjectSerializer.hasSerializer(object.getClass())) {
+      try {
+        byte[] res = NewObjectSerializer.serialize(object).toBytes();
+        return new NativeRayObject(res, OBJECT_METADATA_TYPE_NEW_PROTOCOL);
+      } catch (Throwable th) {
+        throw new RuntimeException(th);
+      }
+    }
+
     if (object instanceof NativeRayObject) {
       return (NativeRayObject) object;
     } else if (object instanceof byte[]) {
