@@ -177,8 +177,11 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     auto java_actor_lifetime = (jobject)env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_lifetime);
     if (java_actor_lifetime != nullptr) {
-      is_detached = std::make_optional<bool>(
-          env->IsSameObject(java_actor_lifetime, STATUS_DETACHED));
+      // is_detached = std::make_optional<bool>(
+      //     env->IsSameObject(java_actor_lifetime, STATUS_DETACHED));
+      int java_actor_lifetime_ordinal_value = env->CallIntMethod(java_actor_lifetime, java_actor_lifetime_ordinal);
+      int lifetime_detached_ordinal_value = env->CallIntMethod(STATUS_DETACHED, java_actor_lifetime_ordinal);
+      is_detached = java_actor_lifetime_ordinal_value == lifetime_detached_ordinal_value;
     }
 
     max_restarts =
