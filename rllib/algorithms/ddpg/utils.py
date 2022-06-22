@@ -16,7 +16,9 @@ def make_ddpg_models(policy: Policy) -> ModelV2:
         num_outputs = 256  # arbitrary
         policy.config["model"]["no_final_linear"] = True
     else:
-        default_model = TorchNoopModel if policy.config["framework"] == "torch" else NoopModel
+        default_model = (
+            TorchNoopModel if policy.config["framework"] == "torch" else NoopModel
+        )
         num_outputs = int(np.product(policy.observation_space.shape))
 
     model = ModelCatalog.get_model_v2(
@@ -81,4 +83,3 @@ def validate_spaces(
             + "Consider reshaping this into a single dimension, "
             "using a Tuple action space, or the multi-agent API."
         )
-

@@ -9,7 +9,11 @@ from ray.rllib.algorithms.dqn.dqn_tf_policy import (
 )
 from ray.rllib.evaluation import Episode
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, TorchDirichlet, TorchDistributionWrapper
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchDeterministic,
+    TorchDirichlet,
+    TorchDistributionWrapper,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
@@ -25,7 +29,8 @@ from ray.rllib.utils.torch_utils import (
 )
 from ray.rllib.utils.typing import (
     TrainerConfigDict,
-    ModelGradients, TensorType,
+    ModelGradients,
+    TensorType,
 )
 from ray.rllib.algorithms.ddpg.utils import make_ddpg_models, validate_spaces
 
@@ -176,7 +181,9 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         is_training: bool = False,
         **kwargs
     ) -> Tuple[TensorType, type, List[TensorType]]:
-        model_out, _ = model(SampleBatch(obs=obs_batch[SampleBatch.CUR_OBS], _is_training=is_training))  # TODO(charlesjsun): Uncertain if need surround with SampleBatch
+        model_out, _ = model(
+            SampleBatch(obs=obs_batch[SampleBatch.CUR_OBS], _is_training=is_training)
+        )  # TODO(charlesjsun): Uncertain if need surround with SampleBatch
         dist_inputs = model.get_policy_output(model_out)
 
         if isinstance(self.action_space, Simplex):
@@ -212,7 +219,9 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         huber_threshold = self.config["huber_threshold"]
         l2_reg = self.config["l2_reg"]
 
-        input_dict = SampleBatch(obs=train_batch[SampleBatch.CUR_OBS], _is_training=True)
+        input_dict = SampleBatch(
+            obs=train_batch[SampleBatch.CUR_OBS], _is_training=True
+        )
         input_dict_next = SampleBatch(
             obs=train_batch[SampleBatch.NEXT_OBS], _is_training=True
         )
@@ -250,7 +259,9 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
                     ),
                 ),
                 torch.tensor(
-                    self.action_space.high, dtype=torch.float32, device=policy_tp1.device
+                    self.action_space.high,
+                    dtype=torch.float32,
+                    device=policy_tp1.device,
                 ),
             )
         else:
@@ -304,7 +315,9 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
                     twin_td_error, huber_threshold
                 )
             else:
-                errors = 0.5 * (torch.pow(td_error, 2.0) + torch.pow(twin_td_error, 2.0))
+                errors = 0.5 * (
+                    torch.pow(td_error, 2.0) + torch.pow(twin_td_error, 2.0)
+                )
         else:
             td_error = q_t_selected - q_t_selected_target
             if use_huber:
@@ -369,4 +382,3 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
             "min_q": torch.min(q_t),
         }
         return convert_to_numpy(stats)
-
