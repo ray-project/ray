@@ -672,5 +672,29 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
     ray.shutdown()
 
 
+def test_recovering_controller_no_redeploy():
+    """Ensure controller doesn't redeploy running deployments when recovering."""
+    ray.init()
+    client = serve.start()
+
+    @serve.deployment
+    def f():
+        pass
+
+    f.deploy()
+
+    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
+    pid = ray.get(client._controller.get_pid.remote())
+
+    ray.kill(client._controller, no_restart=False)
+
+    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+
+    assert num_actors == len(ray.util.list_named_actors(all_namespaces=True))
+
+    serve.shutdown()
+    ray.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
