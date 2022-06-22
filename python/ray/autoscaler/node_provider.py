@@ -4,10 +4,12 @@ from typing import Any, Dict, List, Optional
 
 from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class NodeProvider:
     """Interface for getting and returning nodes from a Cloud.
 

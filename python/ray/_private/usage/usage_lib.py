@@ -58,10 +58,14 @@ import requests
 import yaml
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
-import ray.ray_constants as ray_constants
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
-from ray.util.ml_utils.filelock import TempFileLock
+if sys.platform == "win32":
+    from filelock import WindowsFileLock as FileLock
+else:
+    # Alias to UnixFileLock.
+    from filelock import FileLock as FileLock
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +187,7 @@ class LibUsageRecorder:
             # However, it is not clear if it is supported on Windows,
             # so we just use a file lock.
             lib_usage_file = self._lib_usage_dir / self._lib_usage_filename(lib_name)
-            with TempFileLock(str(lib_usage_file), timeout=2):
+            with FileLock(str(lib_usage_file), timeout=2):
                 self._put_lib_usage(lib_name)
         else:
             self._put_lib_usage(lib_name)
@@ -258,8 +262,8 @@ def record_library_usage(library_usage: str):
     # it can be reported if the library is imported from
     # e.g., API server.
     if (
-        ray.worker.global_worker.mode == ray.SCRIPT_MODE
-        or ray.worker.global_worker.mode == ray.WORKER_MODE
+        ray._private.worker.global_worker.mode == ray.SCRIPT_MODE
+        or ray._private.worker.global_worker.mode == ray.WORKER_MODE
     ):
         _put_library_usage(library_usage)
 
@@ -269,13 +273,13 @@ def _put_pre_init_library_usages():
     # NOTE: When the lib is imported from a worker, ray should
     # always be initialized, so there's no need to register the
     # pre init hook.
-    if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
+    if ray._private.worker.global_worker.mode != ray.SCRIPT_MODE:
         return
     for library_usage in _recorded_library_usages:
         _put_library_usage(library_usage)
 
 
-ray.worker._post_init_hooks.append(_put_pre_init_library_usages)
+ray._private.worker._post_init_hooks.append(_put_pre_init_library_usages)
 
 
 def _usage_stats_report_url():
@@ -504,7 +508,7 @@ def get_cluster_status_to_report(gcs_client, num_retries: int) -> ClusterStatusT
     try:
         cluster_status = ray._private.utils.internal_kv_get_with_retry(
             gcs_client,
-            ray.ray_constants.DEBUG_AUTOSCALING_STATUS,
+            ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS,
             namespace=None,
             num_retries=num_retries,
         )
