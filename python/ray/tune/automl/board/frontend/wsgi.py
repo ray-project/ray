@@ -11,5 +11,5 @@ from django.core.wsgi import get_wsgi_application
 
 import os
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ray.tune.automlboard.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ray.tune.board.settings")
 application = get_wsgi_application()
