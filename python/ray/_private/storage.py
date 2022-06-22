@@ -1,9 +1,9 @@
-from typing import List, Optional, TYPE_CHECKING
-from pathlib import Path
-import os
-import urllib
 import importlib
+import os
 import re
+import urllib
+from pathlib import Path
+from typing import TYPE_CHECKING, List, Optional
 
 from ray._private.client_mode_hook import client_mode_hook
 
@@ -260,7 +260,7 @@ class KVClient:
             FileNotFoundError if the given path is not found.
             NotADirectoryError if the given path isn't a valid directory.
         """
-        from pyarrow.fs import FileSelector, LocalFileSystem, FileType
+        from pyarrow.fs import FileSelector, FileType, LocalFileSystem
 
         full_path = self._resolve_path(path)
         selector = FileSelector(full_path, recursive=False)

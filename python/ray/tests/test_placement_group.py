@@ -1,11 +1,10 @@
-import pytest
 import sys
+
+import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import (
-    placement_group_assert_no_leak,
-)
+from ray._private.test_utils import placement_group_assert_no_leak
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
 
@@ -167,7 +166,7 @@ def test_placement_group_pack(
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -223,7 +222,7 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -283,7 +282,7 @@ def test_placement_group_spread(
         [ray.get(actor.value.remote()) for actor in actors]
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
@@ -339,7 +338,7 @@ def test_placement_group_strict_spread(
         [ray.get(actor.value.remote()) for actor in actors]
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
@@ -371,7 +370,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client
     @ray.remote(num_cpus=1)
     class F:
         def f(self):
-            return ray.worker.get_resource_ids()
+            return ray._private.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -392,7 +391,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client
 def test_placement_group_task_resource_ids(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.worker.get_resource_ids()
+        return ray._private.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -424,7 +423,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster, connect_to_client)
 def test_placement_group_hang(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.worker.get_resource_ids()
+        return ray._private.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1

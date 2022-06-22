@@ -24,7 +24,7 @@ def test_basic_dag_with_names_plot():
         ray.dag.plot(dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(dag)
+    graph = ray.dag.vis_utils._dag_to_dot(dag)
     to_string = graph.to_string()
     assert "tmp1 -> tmp3" in to_string
     assert "tmp2 -> tmp3" in to_string
@@ -52,7 +52,7 @@ def test_basic_dag_without_names_plot():
         ray.dag.plot(dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(dag)
+    graph = ray.dag.vis_utils._dag_to_dot(dag)
     to_string = graph.to_string()
     assert "a_5 -> a_4" in to_string
     assert "a_2 -> a_1" in to_string
