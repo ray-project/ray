@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 import botocore
 from boto3.resources.base import ServiceResource
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
     CLOUDWATCH_AGENT_INSTALLED_TAG,

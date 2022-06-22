@@ -165,6 +165,7 @@ parts:
               - file: serve/deploying-serve
               - file: serve/monitoring
               - file: serve/performance
+              - file: serve/autoscaling
               - file: serve/deployment-graph
                 sections:
                   - file: serve/deployment-graph/deployment-graph-e2e-tutorial
