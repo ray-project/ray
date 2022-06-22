@@ -1182,8 +1182,7 @@ on the ``evaluation_duration_unit`` setting, which can be either "episodes" (def
 
 
 Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration`` setting is NOT dividable
-by the number of evaluation workers (configurable via ``evaluation_num_workers``), RLlib will run a slightly different number of
-timesteps during each evaluation step.
+by the number of evaluation workers (configurable via ``evaluation_num_workers``), RLlib will round up the number of timesteps specified to the nearest whole number of timesteps that is divisible by the number of evaluation workers.
 
 Before each evaluation step, weights from the main model are synchronized to all evaluation workers.
 
@@ -1247,7 +1246,7 @@ and returning a metrics dict. See `algorithm.py <https://github.com/ray-project/
 for further documentation.
 
 There is also an end-to-end example of how to set up a custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__.
-Note that if you only want to evaluate your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training
+Note that if you only want to evaluate your policy at the end of training, you can set ``evaluation_interval: [int]``, where ``[int]`` should be the number of training
 iterations before stopping.
 
 Below are some examples of how the custom evaluation metrics are reported nested under the ``evaluation`` key of normal training results:
