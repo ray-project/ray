@@ -133,7 +133,7 @@ class Executor {
         } else {                                                                        \
           pending_requests_bytes_ += request_bytes;                                     \
           auto timeout = timeout_ms == -1                                               \
-                             ? absl::InfinitePast()                                     \
+                             ? absl::InfiniteFuture()                                   \
                              : absl::Now() + absl::Milliseconds(timeout_ms);            \
           pending_requests_.emplace(timeout, std::make_pair(executor, request_bytes));  \
         }                                                                               \
