@@ -230,6 +230,16 @@ class CheckpointStrategy:
                 f"checkpoint_score_order must be either " f'"{MAX}" or "{MIN}".'
             )
 
+    @property
+    def checkpoint_score_attr(self) -> Optional[str]:
+        """Same as ``checkpoint_score_attr`` in ``tune.run``."""
+        if self.checkpoint_score_attribute is None:
+            return self.checkpoint_score_attribute
+        prefix = ""
+        if self.checkpoint_score_order == MIN:
+            prefix = "min-"
+        return f"{prefix}{self.checkpoint_score_attribute}"
+
 
 class _CheckpointManager:
     """Common checkpoint management and bookkeeping class for Ray Train and Tune.
