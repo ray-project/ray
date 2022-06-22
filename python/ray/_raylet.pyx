@@ -120,6 +120,7 @@ from ray.exceptions import (
     RaySystemError,
     RayTaskError,
     ObjectStoreFullError,
+    OutOfDiskError,
     GetTimeoutError,
     TaskCancelledError,
     AsyncioActorExit,
@@ -166,6 +167,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
+    elif status.IsOutOfDisk():
+        raise OutOfDiskError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():

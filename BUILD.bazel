@@ -1431,6 +1431,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_common",
         ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],

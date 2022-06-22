@@ -108,6 +108,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnknownError()
         c_bool IsNotImplemented()
         c_bool IsObjectStoreFull()
+        c_bool IsOutOfDisk()
         c_bool IsRedisError()
         c_bool IsTimedOut()
         c_bool IsInterrupted()

@@ -27,6 +27,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/file_system_monitor.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
@@ -55,6 +56,7 @@ class PlasmaStore {
  public:
   PlasmaStore(instrumented_io_context &main_service,
               IAllocator &allocator,
+              ray::FileSystemMonitor &fs_monitor,
               const std::string &socket_name,
               uint32_t delay_on_oom_ms,
               float object_spilling_threshold,
@@ -248,6 +250,9 @@ class PlasmaStore {
 
   /// The allocator that allocates mmaped memory.
   IAllocator &allocator_ GUARDED_BY(mutex_);
+
+  /// Monitor the disk utilization.
+  ray::FileSystemMonitor &fs_monitor_;
 
   /// A callback to asynchronously notify that an object is sealed.
   /// NOTE: This function should guarantee the thread-safety because the callback is

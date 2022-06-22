@@ -38,7 +38,9 @@ class PullManagerTestWithCapacity {
               num_send_pull_request_calls_++;
             },
             [this](const ObjectID &object_id) { num_abort_calls_[object_id]++; },
-            [this](const ObjectID &object_id) { timed_out_objects_.insert(object_id); },
+            [this](const ObjectID &object_id, rpc::ErrorType) {
+              timed_out_objects_.insert(object_id);
+            },
             [this](const ObjectID &,
                    int64_t size,
                    const std::string &,
