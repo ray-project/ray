@@ -1,7 +1,7 @@
 from typing import Any, List, Dict
 from urllib import response
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray_secret import RaySecret
+from ray.ray_secret_proxy.ray_secret import RaySecret
 
 import boto3
 from google.oauth2 import service_account
