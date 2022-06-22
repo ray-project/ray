@@ -679,7 +679,9 @@ class Algorithm(Trainable):
             )
             self._sync_filters_if_needed(
                 self.evaluation_workers,
-                timeout_seconds=self.config["sync_filters_on_rollout_workers_timeout_s"],
+                timeout_seconds=self.config[
+                    "sync_filters_on_rollout_workers_timeout_s"
+                ],
             )
 
         if self.config["custom_eval_function"]:
