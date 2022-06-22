@@ -42,7 +42,7 @@ class Executor {
   /// \param operation The operation to be executed.
   void Execute(std::function<void(GcsRpcClient *gcs_rpc_client)> operation) {
     operation_ = std::move(operation);
-    operation(gcs_rpc_client_);
+    operation_(gcs_rpc_client_);
   }
 
   /// This function is used to retry the given operation.
@@ -149,7 +149,7 @@ class Executor {
                                      gcs_rpc_client->grpc_client,                       \
                                      timeout_ms));                                      \
         };                                                                              \
-    executor->Execute(operation);                                                       \
+    executor->Execute(std::move(operation));                                            \
   }                                                                                     \
   ray::Status Sync##METHOD(const METHOD##Request &request,                              \
                            METHOD##Reply *reply_in,                                     \
