@@ -33,7 +33,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "ray.tune.automlboard.models",
+    "ray.tune.board.models",
 ]
 
 MIDDLEWARE = [
@@ -46,7 +46,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "ray.tune.automlboard.frontend.urls"
+ROOT_URLCONF = "ray.tune.board.frontend.urls"
 
 TEMPLATES = [
     {
@@ -64,7 +64,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "ray.tune.automlboard.frontend.wsgi.application"
+WSGI_APPLICATION = "ray.tune.board.frontend.wsgi.application"
 
 DB_ENGINE_NAME_MAP = {
     "mysql": "django.db.backends.mysql",
@@ -137,7 +137,7 @@ USE_TZ = False
 STATIC_URL = "/static/"
 STATICFILES_DIRS = (os.path.join(BASE_DIR, "static").replace("\\", "/"),)
 
-# automlboard settings
+# board settings
 AUTOMLBOARD_LOG_DIR = os.environ.get("AUTOMLBOARD_LOGDIR", None)
 AUTOMLBOARD_RELOAD_INTERVAL = os.environ.get("AUTOMLBOARD_RELOAD_INTERVAL", None)
 AUTOMLBOARD_LOG_LEVEL = os.environ.get("AUTOMLBOARD_LOGLEVEL", None)

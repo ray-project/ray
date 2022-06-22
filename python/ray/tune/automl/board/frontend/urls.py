@@ -21,8 +21,8 @@ Including another URLconf
 from django.conf.urls import url
 from django.contrib import admin
 
-import ray.tune.automlboard.frontend.view as view
-import ray.tune.automlboard.frontend.query as query
+import ray.tune.automl.board.frontend.view as view
+import ray.tune.automl.board.frontend.query as query
 
 urlpatterns = [
     url(r"^admin/", admin.site.urls),
