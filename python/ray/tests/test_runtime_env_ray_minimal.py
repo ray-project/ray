@@ -42,11 +42,11 @@ def _test_task_and_actor(capsys):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25553 --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_ray_client_task_actor(call_ray_start, capsys):
-    ray.init("ray://localhost:25553")
+    ray.init(call_ray_start)
     _test_task_and_actor(capsys)
 
 
@@ -88,11 +88,11 @@ def test_ray_init(shutdown_only, capsys):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25552 --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_ray_client_init(call_ray_start):
-    ray.init("ray://localhost:25552", runtime_env={"pip": ["requests"]})
+    ray.init(call_ray_start, runtime_env={"pip": ["requests"]})
 
 
 if __name__ == "__main__":

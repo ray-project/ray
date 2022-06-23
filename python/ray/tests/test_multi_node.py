@@ -22,7 +22,7 @@ from ray._private.test_utils import (
     "call_ray_start",
     [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "--max-worker-port=0",
     ],
     indirect=True,
 )
@@ -77,13 +77,18 @@ print("success")
         raise Exception("Objects were not all removed from object table.")
 
     def all_workers_exited():
+        gcs_port = address.split(":")[1]
         result = True
+        import re
+        gcs_pattern = re.compile(f".* --gcs-address=.*:{gcs_port} .*")
         print("list of idle workers:")
         for proc in psutil.process_iter():
             if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
-                print(f"{proc}")
-                result = False
-        return result
+                for flag in proc.parent().cmdline():
+                    if gcs_pattern.match(flag):
+                        print(proc)
+                        return False
+        return True
 
     # Check that workers are eventually cleaned up.
     wait_for_condition(all_workers_exited, timeout=15, retry_interval_ms=1000)

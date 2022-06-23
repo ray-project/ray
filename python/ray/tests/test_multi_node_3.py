@@ -22,7 +22,7 @@ from ray._private.test_utils import (
 )
 from ray._private.utils import detect_fate_sharing_support
 
-
+@pytest.mark.exclusive
 def test_calling_start_ray_head(call_ray_stop_only):
 
     # Test that we can call ray start with various command line
@@ -199,6 +199,7 @@ for i in range(0, 5):
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
 
+@pytest.mark.exclusive
 def test_ray_start_non_head(call_ray_stop_only, monkeypatch):
 
     # Test that we can call ray start to connect to an existing cluster.
@@ -243,7 +244,7 @@ print("success")
     indirect=True,
 )
 def test_using_hostnames(call_ray_start):
-    ray.init(_node_ip_address="localhost", address="localhost:6379")
+    ray.init(_node_ip_address="localhost", address=call_ray_start)
 
     @ray.remote
     def f():
@@ -538,12 +539,13 @@ def redis_proc():
         "(There cannot be external Redis in Windows)"
     ),
 )
+@pytest.mark.exclusive
 def test_ray_stop_should_not_kill_external_redis(redis_proc):
     check_call_ray(["start", "--head"])
     subprocess.check_call(["ray", "stop"])
     assert redis_proc.poll() is None
 
-
+@pytest.mark.exclusive
 def test_ray_stop_kill_workers():
     check_call_ray(["start", "--head"])
 
@@ -575,6 +577,10 @@ if __name__ == "__main__":
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
     if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        ret1 = pytest.main(["--boxed", "-m", "exclusive", "-vs", __file__])
+        ret2 = pytest.main(
+            ["-n", "auto", "--boxed", "-m", "not exclusive", "-vs", __file__]
+        )
+        sys.exit(0 if ret1 + ret2 == 0 else 1)
     else:
         sys.exit(pytest.main(["-sv", __file__]))

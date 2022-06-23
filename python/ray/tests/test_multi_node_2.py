@@ -262,15 +262,15 @@ def test_wait_for_nodes(ray_start_cluster_head):
 @pytest.mark.parametrize(
     "call_ray_start",
     [
-        "ray start --head --ray-client-server-port 20000 "
-        + "--min-worker-port=0 --max-worker-port=0 --port 0"
+        "ray start --head --ray-client-server-port 0 "
+        + "--min-worker-port=0 --max-worker-port=0"
     ],
     indirect=True,
 )
 def test_ray_client(call_ray_start):
     from ray.util.client import ray as ray_client
 
-    ray.client("localhost:20000").connect()
+    ray.client(call_ray_start).connect()
 
     @ray.remote
     def f():

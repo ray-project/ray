@@ -184,10 +184,11 @@ def test_no_scaledown_with_spilled_objects(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
     import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    # TODO make it parallel
+    # import os
+    # if os.environ.get("PARALLEL_CI"):
+    #     sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    # else:
+    #     sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

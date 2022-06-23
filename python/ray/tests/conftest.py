@@ -294,7 +294,7 @@ def call_ray_start(request):
     parameter = getattr(
         request,
         "param",
-        "ray start --head --num-cpus=1 --min-worker-port=0 " "--max-worker-port=0",
+        "ray start --head --num-cpus=1 --min-worker-port=0 --max-worker-port=0",
     )
     command_args = parameter.split(" ")
     port = str(find_free_port())
