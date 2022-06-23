@@ -341,10 +341,11 @@ class ServeController:
 
         # collecting shm object ref
         _shared_object_refs = {}
-        for uuid, obj in _shared_objects.items():
-            if uuid not in self._shm_object_refs:
-                self._shm_object_refs[uuid] = _shared_objects[uuid].execute()
-            _shared_object_refs[uuid] = self._shm_object_refs[uuid]
+        if _shared_objects is not None:
+            for uuid, obj in _shared_objects.items():
+                if uuid not in self._shm_object_refs:
+                    self._shm_object_refs[uuid] = _shared_objects[uuid].execute()
+                _shared_object_refs[uuid] = self._shm_object_refs[uuid]
 
         deployment_info = DeploymentInfo(
             actor_name=name,
