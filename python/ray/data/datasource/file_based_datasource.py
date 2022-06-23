@@ -32,7 +32,7 @@ from ray.data.datasource.file_meta_provider import (
 )
 from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -128,6 +128,48 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         return posixpath.join(base_path, suffix)
 
 
+@PublicAPI(stability="beta")
+class FileExtensionFilter(PathPartitionFilter):
+    """A file-extension-based path filter that filters files that don't end
+    with the provided extension(s).
+
+    Attributes:
+        file_extensions: File extension(s) of files to be included in reading.
+        allow_if_no_extension: If this is True, files without any extensions
+            will be included in reading.
+
+    """
+
+    def __init__(
+        self,
+        file_extensions: Union[str, List[str]],
+        allow_if_no_extension: bool = False,
+    ):
+        if isinstance(file_extensions, str):
+            file_extensions = [file_extensions]
+
+        self.extensions = [f".{ext.lower()}" for ext in file_extensions]
+        self.allow_if_no_extension = allow_if_no_extension
+
+    def _file_has_extension(self, path: str):
+        suffixes = [suffix.lower() for suffix in pathlib.Path(path).suffixes]
+        if not suffixes:
+            return self.allow_if_no_extension
+        return any(ext in suffixes for ext in self.extensions)
+
+    def __call__(self, paths: List[str]) -> List[str]:
+        return [path for path in paths if self._file_has_extension(path)]
+
+    def __str__(self):
+        return (
+            f"{type(self).__name__}(extensions={self.extensions}, "
+            f"allow_if_no_extensions={self.allow_if_no_extension})"
+        )
+
+    def __repr__(self):
+        return str(self)
+
+
 @DeveloperAPI
 class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """File-based datasource, for reading and writing files.
@@ -136,12 +178,132 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     and tailored to particular file formats. Classes deriving from this class
     must implement _read_file().
 
+    If the _FILE_EXTENSION is defined, per default only files with this extension
+    will be read. If None, no default filter is used.
+
     Current subclasses:
         JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
+    _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
+
     def create_reader(self, **kwargs):
         return _FileBasedDatasourceReader(self, **kwargs)
+
+    def prepare_read(
+        self,
+        parallelism: int,
+        paths: Union[str, List[str]],
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+        partition_filter: PathPartitionFilter = None,
+        # TODO(ekl) deprecate this once read fusion is available.
+        _block_udf: Optional[Callable[[Block], Block]] = None,
+        **reader_args,
+    ) -> List[ReadTask]:
+        """Creates and returns read tasks for a file-based datasource."""
+        _check_pyarrow_version()
+        import numpy as np
+
+        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        paths, file_sizes = meta_provider.expand_paths(paths, filesystem)
+        if partition_filter is not None:
+            filtered_paths = partition_filter(paths)
+            if not filtered_paths:
+                raise ValueError(
+                    "All provided and expanded paths have been filtered out by "
+                    "the path filter; please change the provided paths or the "
+                    f"path filter.\nPaths: {paths}\nFilter: {partition_filter}"
+                )
+            paths = filtered_paths
+
+        read_stream = self._read_stream
+
+        filesystem = _wrap_s3_serialization_workaround(filesystem)
+        read_options = reader_args.get("read_options")
+        if read_options is not None:
+            import pyarrow.json as pajson
+
+            if isinstance(read_options, pajson.ReadOptions):
+                _register_arrow_json_readoptions_serializer()
+
+        if open_stream_args is None:
+            open_stream_args = {}
+
+        def read_files(
+            read_paths: List[str],
+            fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
+        ) -> Iterable[Block]:
+            logger.debug(f"Reading {len(read_paths)} files.")
+            if isinstance(fs, _S3FileSystemWrapper):
+                fs = fs.unwrap()
+            ctx = DatasetContext.get_current()
+            output_buffer = BlockOutputBuffer(
+                block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
+            )
+            for read_path in read_paths:
+                compression = open_stream_args.pop("compression", None)
+                if compression is None:
+                    import pyarrow as pa
+
+                    try:
+                        # If no compression manually given, try to detect
+                        # compression codec from path.
+                        compression = pa.Codec.detect(read_path).name
+                    except (ValueError, TypeError):
+                        # Arrow's compression inference on the file path
+                        # doesn't work for Snappy, so we double-check ourselves.
+                        import pathlib
+
+                        suffix = pathlib.Path(read_path).suffix
+                        if suffix and suffix[1:] == "snappy":
+                            compression = "snappy"
+                        else:
+                            compression = None
+                if compression == "snappy":
+                    # Pass Snappy compression as a reader arg, so datasource subclasses
+                    # can manually handle streaming decompression in
+                    # self._read_stream().
+                    reader_args["compression"] = compression
+                    reader_args["filesystem"] = fs
+                elif compression is not None:
+                    # Non-Snappy compression, pass as open_input_stream() arg so Arrow
+                    # can take care of streaming decompression for us.
+                    open_stream_args["compression"] = compression
+                with self._open_input_source(fs, read_path, **open_stream_args) as f:
+                    for data in read_stream(f, read_path, **reader_args):
+                        output_buffer.add_block(data)
+                        if output_buffer.has_next():
+                            yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
+
+        # fix https://github.com/ray-project/ray/issues/24296
+        parallelism = min(parallelism, len(paths))
+
+        read_tasks = []
+        for read_paths, file_sizes in zip(
+            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
+        ):
+            if len(read_paths) <= 0:
+                continue
+
+            meta = meta_provider(
+                read_paths,
+                schema,
+                rows_per_file=self._rows_per_file(),
+                file_sizes=file_sizes,
+            )
+            read_task = ReadTask(
+                lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
+            )
+            read_tasks.append(read_task)
+
+        return read_tasks
+>>>>>>> 59a967a3a088fce8b454ca24e9136306f253b60b
 
     def _rows_per_file(self):
         """Returns the number of rows per file, or None if unknown."""
@@ -228,7 +390,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         write_block = cached_remote_fn(write_block).options(**ray_remote_args)
 
-        file_format = self._file_format()
+        file_format = self._FILE_EXTENSION
+        if isinstance(file_format, list):
+            file_format = file_format[0]
+
         write_tasks = []
         if not block_path_provider:
             block_path_provider = DefaultBlockWritePathProvider()
@@ -261,15 +426,11 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             "Subclasses of FileBasedDatasource must implement _write_files()."
         )
 
-    def _file_format(self):
-        """Returns the file format string, to be used as the file extension
-        when writing files.
-
-        This method should be implemented by subclasses.
-        """
-        raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _file_format()."
-        )
+    @classmethod
+    def file_extension_filter(cls) -> Optional[PathPartitionFilter]:
+        if cls._FILE_EXTENSION is None:
+            return None
+        return FileExtensionFilter(cls._FILE_EXTENSION)
 
 
 class _FileBasedDatasourceReader(Reader):
