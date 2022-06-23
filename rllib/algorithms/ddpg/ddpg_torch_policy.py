@@ -30,7 +30,7 @@ from ray.rllib.utils.torch_utils import (
 from ray.rllib.utils.typing import (
     TrainerConfigDict,
     ModelGradients,
-    TensorType,
+    TensorType, AlgorithmConfigDict,
 )
 from ray.rllib.algorithms.ddpg.utils import make_ddpg_models, validate_spaces
 
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class ComputeTDErrorMixin:
-    def __init__(self):
+    def __init__(self: TorchPolicyV2):
         def compute_td_error(
             obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
         ):
@@ -78,7 +78,7 @@ class TargetNetworkMixin:
         # Hard initial update from Q-net(s) to target Q-net(s).
         self.update_target(tau=1.0)
 
-    def update_target(self, tau=None):
+    def update_target(self: TorchPolicyV2, tau=None):
         # Update_target_fn will be called periodically to copy Q network to
         # target Q network, using (soft) tau-synching.
         tau = tau or self.config.get("tau")
@@ -95,7 +95,7 @@ class TargetNetworkMixin:
             target.load_state_dict(model_state_dict)
 
     @override(TorchPolicyV2)
-    def set_weights(self, weights):
+    def set_weights(self: TorchPolicyV2, weights):
         # Makes sure that whenever we restore weights for this policy's
         # model, we sync the target network (from the main model)
         # at the same time.
@@ -108,16 +108,12 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         config = dict(ray.rllib.algorithms.ddpg.ddpg.DDPGConfig().to_dict(), **config)
 
         # Create global step for counting the number of update operations.
         self.global_step = 0
-
-        # Variables created not in __init__ that will be explicitly used
-        self._actor_optimizer: torch.optim.Optimizer = None
-        self._critic_optimizer: torch.optim.Optimizer = None
 
         # Validate action space for DDPG
         validate_spaces(self, observation_space, action_space)
@@ -144,7 +140,7 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
     @override(TorchPolicyV2)
     def optimizer(
         self,
-    ) -> Union[List[torch.optim.Optimizer], torch.optim.Optimizer]:
+    ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
         """Create separate optimizers for actor & critic losses."""
 
         # Set epsilons to match tf.keras.optimizers.Adam's epsilon default.
@@ -181,9 +177,7 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         is_training: bool = False,
         **kwargs
     ) -> Tuple[TensorType, type, List[TensorType]]:
-        model_out, _ = model(
-            SampleBatch(obs=obs_batch[SampleBatch.CUR_OBS], _is_training=is_training)
-        )  # TODO(charlesjsun): Uncertain if need surround with SampleBatch
+        model_out, _ = model(SampleBatch(obs=obs_batch[SampleBatch.CUR_OBS], _is_training=is_training))
         dist_inputs = model.get_policy_output(model_out)
 
         if isinstance(self.action_space, Simplex):
