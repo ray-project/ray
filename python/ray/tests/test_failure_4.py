@@ -465,9 +465,9 @@ def test_worker_start_timeout(monkeypatch, ray_start_cluster):
         m.setenv("RAY_worker_register_timeout_seconds", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4, object_store_memory=1e9)
-        script = f"""
+        script = """
 import ray
-ray.init(address='{cluster.address}')
+ray.init(address='auto')
 
 @ray.remote
 def task():

@@ -46,7 +46,7 @@ def _test_task_and_actor(capsys):
     indirect=True,
 )
 def test_ray_client_task_actor(call_ray_start, capsys):
-    ray.init(f"ray://{call_ray_start}")
+    ray.init(call_ray_start)
     _test_task_and_actor(capsys)
 
 
@@ -92,7 +92,7 @@ def test_ray_init(shutdown_only, capsys):
     indirect=True,
 )
 def test_ray_client_init(call_ray_start):
-    ray.init(f"ray://{call_ray_start}", runtime_env={"pip": ["requests"]})
+    ray.init(call_ray_start, runtime_env={"pip": ["requests"]})
 
 
 if __name__ == "__main__":

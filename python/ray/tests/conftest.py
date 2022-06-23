@@ -38,7 +38,6 @@ from ray._private.test_utils import (
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
 
-
 class TestingCluster(Cluster):
     def add_node(self, wait: bool = True, **node_args):
         if self.head_node is None:
@@ -50,7 +49,7 @@ class TestingCluster(Cluster):
             return node
         else:
             return super().add_node(wait, **node_args)
-            
+
     def remove_node(self, node, allow_graceful=True):
         if self.head_node == node:
             if self._prev_ray_address is not None:
@@ -59,6 +58,7 @@ class TestingCluster(Cluster):
             else:
                 del os.environ["RAY_ADDRESS"]
         return super().remove_node(node, allow_graceful)
+
 
 def get_default_fixure_system_config():
     system_config = {
@@ -133,9 +133,15 @@ def external_redis(request):
 
 @pytest.fixture
 def shutdown_only(maybe_external_redis):
+    # Avoid dashboard port conflict
+    (old, ray_constants.DEFAULT_DASHBOARD_PORT) = (
+        ray_constants.DEFAULT_DASHBOARD_PORT,
+        0,
+    )
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    ray_constants.DEFAULT_DASHBOARD_PORT = old
 
 
 @contextmanager
@@ -144,10 +150,15 @@ def _ray_start(**kwargs):
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init(**init_kwargs)
-
+    prev_ray_address = os.environ.get("RAY_ADDRESS", None)
+    os.environ["RAY_ADDRESS"] = address_info["address"]
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    if prev_ray_address is not None:
+        os.environ["RAY_ADDRESS"] = prev_ray_address
+    else:
+        del os.environ["RAY_ADDRESS"]
 
 
 @pytest.fixture
@@ -313,7 +324,7 @@ def ray_start_object_store_memory(request, maybe_external_redis):
 
 
 @pytest.fixture
-def call_ray_start(request):
+def call_ray_start(monkeypatch, request):
     parameter = getattr(
         request,
         "param",
@@ -329,8 +340,9 @@ def call_ray_start(request):
         if command_args[client_server_port_idx] == "0":
             command_args[client_server_port_idx] = str(find_free_port())
         port = command_args[client_server_port_idx]
-
-    address = f"localhost:{port}"
+        address = f"ray://localhost:{port}"
+    else:
+        address = f"localhost:{port}"
     with subprocess.Popen(
         command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     ) as proc:
@@ -344,7 +356,7 @@ def call_ray_start(request):
         else:
             proc.kill()
             raise Exception("Failed to start ray cluster")
-
+        monkeypatch.setenv("RAY_ADDRESS", address)
         yield address
         # Disconnect from the Ray cluster.
         ray.shutdown()
@@ -458,9 +470,7 @@ def two_node_cluster():
     }
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
-    cluster = TestingCluster(
-        head_node_args={"_system_config": system_config}
-    )
+    cluster = TestingCluster(head_node_args={"_system_config": system_config})
     for _ in range(2):
         remote_node = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)

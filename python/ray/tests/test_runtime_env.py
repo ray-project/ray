@@ -160,7 +160,7 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
 
     # Causes agent to sleep for 15 seconds to simulate creating a runtime env.
     os.environ["RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S"] = "15"
-    ray.init(num_cpus=1, dashboard_port=0)
+    ray.init(num_cpus=1)
 
     @ray.remote
     class Counter(object):

@@ -607,6 +607,7 @@ def test_head_node_without_cpu(ray_start_cluster):
     check_count = 0
     demand_1cpu = " {'CPU': 1.0}:"
     import os
+
     print(">>>>", os.environ.get("RAY_ADDRESS"))
     while True:
         status = subprocess.check_output(["ray", "status"]).decode()
