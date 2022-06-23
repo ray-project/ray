@@ -1,6 +1,6 @@
 from django.shortcuts import HttpResponse
 
-from ray.tune.automlboard.models.models import JobRecord, TrialRecord
+from ray.tune.automl.board.models.models import JobRecord, TrialRecord
 from ray.tune.trial import Trial
 
 import json
