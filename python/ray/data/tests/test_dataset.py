@@ -1290,7 +1290,7 @@ def test_schema_lazy(ray_start_regular_shared):
     # We kick off the read task for the first block by default.
     assert ds._plan._in_blocks._num_computed() == 1
     schema = ds.schema()
-    assert schema == int
+    assert str(schema) == "__item__: int64"
     # Fetching the schema should not trigger execution of extra read tasks.
     assert ds._plan.execute()._num_computed() == 1
 
@@ -1373,7 +1373,6 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     ds4 = ds.repartition(40, shuffle=False)
     assert ds4.num_blocks() == 40
     blocks = ray.get(ds4.get_internal_block_refs())
-    assert all(isinstance(block, list) for block in blocks), blocks
     assert ds4.sum() == 190
     assert ds4._block_num_rows() == ([1] * 20) + ([0] * 20)
 
@@ -1712,7 +1711,7 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
 
 def test_add_column(ray_start_regular_shared):
     ds = ray.data.range(5).add_column("foo", lambda x: 1)
-    assert ds.take(1) == [{"value": 0, "foo": 1}]
+    assert ds.take(1) == [{"__item__": 0, "foo": 1}]
 
     ds = ray.data.range_table(5).add_column("foo", lambda x: x["value"] + 1)
     assert ds.take(1) == [{"value": 0, "foo": 1}]
@@ -1721,7 +1720,7 @@ def test_add_column(ray_start_regular_shared):
     assert ds.take(2) == [{"value": 1}, {"value": 2}]
 
     with pytest.raises(ValueError):
-        ds = ray.data.range(5).add_column("value", 0)
+        ds = ray.data.range(5).add_column("__item__", 0)
 
 
 def test_map_batch(ray_start_regular_shared, tmp_path):
@@ -1763,14 +1762,14 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
         # The pandas column is "value", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
         row = ds_list[i]
-        assert row["value"] == i + 1
+        assert row == i + 1
     assert ds.count() == 300
 
     # Test the lambda returns different types than the batch_format
     # pandas => list block
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: [1], batch_size=1)
-    assert ds2._dataset_format() == "simple"
+    assert ds2._dataset_format() == "arrow"
     ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
@@ -1778,7 +1777,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     # pyarrow => list block
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: [1], batch_size=1, batch_format="pyarrow")
-    assert ds2._dataset_format() == "simple"
+    assert ds2._dataset_format() == "arrow"
     ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3

@@ -111,10 +111,12 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _unwrap_single_column_row(row: PandasRow) -> np.ndarray:
-        # TODO(ekl) handle the non-numpy case (DO NOT MERGE)
-        # Getting an item in a Pandas tensor column returns a TensorArrayElement, which
-        # we have to convert to an ndarray.
-        return row[VALUE_COL_NAME].iloc[0].to_numpy()
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+        value = row[VALUE_COL_NAME].iloc[0]
+        if isinstance(value, TensorArrayElement):
+            return value.to_numpy()
+        else:
+            return value
 
     def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
         view = self._table[start:end]
