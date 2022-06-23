@@ -7,7 +7,7 @@ import random
 import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from ray.tune import trial_runner
+from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.suggest import SearchGenerator

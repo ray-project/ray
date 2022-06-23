@@ -42,7 +42,7 @@ from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     ResultDict,
 )
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.timer import _Timer
 
 

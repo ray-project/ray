@@ -10,7 +10,7 @@ from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.resources import json_to_resources
 from ray.tune.syncer import SyncConfig, Syncer
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.util import SafeFallbackEncoder
 
 

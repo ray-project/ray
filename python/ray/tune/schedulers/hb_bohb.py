@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Optional
 
-from ray.tune import trial_runner
+from ray.tune.execution import trial_runner
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.trial import Trial

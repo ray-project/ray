@@ -16,7 +16,7 @@ from ray.tune.error import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.syncer import SyncerCallback
 from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.execution.trial_runner import TrialRunner
 
 
 def _check_trial_running(trial):

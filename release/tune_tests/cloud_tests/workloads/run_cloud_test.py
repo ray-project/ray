@@ -45,7 +45,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
-from ray.tune.trial_runner import find_newest_experiment_checkpoint
+from ray.tune.execution.trial_runner import find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
 TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")

@@ -16,7 +16,7 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import _CheckpointManager
+from ray.tune.execution.checkpoint_manager import _CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -33,7 +33,7 @@ from ray.tune.result import (
 )
 from ray.tune.resources import Resources
 from ray.tune.syncer import Syncer
-from ray.tune.utils.placement_groups import (
+from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import ray
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
