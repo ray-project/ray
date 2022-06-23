@@ -6,7 +6,6 @@ from ray.tests.conftest import *  # noqa
 import pytest
 import ray
 from ray import workflow
-from ray.workflow import workflow_access
 
 
 def test_basic_workflows(workflow_start_regular_shared):
@@ -108,6 +107,7 @@ def test_async_execution(workflow_start_regular_shared):
     assert ray.get(output) == 314
 
 
+@pytest.mark.skip(reason="Ray DAG does not support partial")
 def test_partial(workflow_start_regular_shared):
     ys = [1, 2, 3]
 
@@ -135,33 +135,6 @@ def test_partial(workflow_start_regular_shared):
         return wf_step
 
     assert workflow.create(chain_func.bind(1)).run() == 7
-
-
-def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef):
-    while isinstance(output, ray.ObjectRef):
-        output = ray.get(output)
-    return output
-
-
-def test_workflow_output_resolving(workflow_start_regular_shared):
-    @ray.remote
-    def deep_nested(x):
-        if x >= 42:
-            return x
-        return deep_nested.remote(x + 1)
-
-    # deep nested workflow
-    nested_ref = deep_nested.remote(30)
-    original_func = workflow_access._resolve_workflow_output
-    # replace the original function with a new function that does not
-    # involving named actor
-    workflow_access._resolve_workflow_output = _resolve_workflow_output
-    try:
-        ref = workflow_access.flatten_workflow_output("fake_workflow_id", nested_ref)
-    finally:
-        # restore the function
-        workflow_access._resolve_workflow_output = original_func
-    assert ray.get(ref) == 42
 
 
 def test_run_or_resume_during_running(workflow_start_regular_shared):
@@ -284,7 +257,7 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
     assert (tmp_path / "test").read_text() == "4"
 
 
-def test_nested_catch_exception(workflow_start_regular_shared, tmp_path):
+def test_nested_catch_exception(workflow_start_regular_shared):
     @ray.remote
     def f2():
         return 10
@@ -298,7 +271,7 @@ def test_nested_catch_exception(workflow_start_regular_shared, tmp_path):
     ).run()
 
 
-def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
+def test_nested_catch_exception_2(workflow_start_regular_shared):
     @ray.remote
     def f1(n):
         if n == 0:
@@ -311,6 +284,40 @@ def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
     ).run()
     assert ret is None
     assert isinstance(err, ValueError)
+
+
+def test_nested_catch_exception_3(workflow_start_regular_shared, tmp_path):
+    """Test the case where the exception is not raised by the output task of
+    a nested DAG."""
+
+    @ray.remote
+    def f3():
+        return 10
+
+    @ray.remote
+    def f3_exc():
+        raise ValueError()
+
+    @ray.remote
+    def f2(x):
+        return x
+
+    @ray.remote
+    def f1(exc):
+        if exc:
+            return workflow.continuation(f2.bind(f3_exc.bind()))
+        else:
+            return workflow.continuation(f2.bind(f3.bind()))
+
+    ret, err = workflow.create(
+        f1.options(**workflow.options(catch_exceptions=True)).bind(True)
+    ).run()
+    assert ret is None
+    assert isinstance(err, ValueError)
+
+    assert (10, None) == workflow.create(
+        f1.options(**workflow.options(catch_exceptions=True)).bind(False)
+    ).run()
 
 
 def test_dynamic_output(workflow_start_regular_shared):
