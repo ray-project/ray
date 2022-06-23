@@ -34,7 +34,7 @@ interest-evolution-recsim-env-slateq:
 
         lr: 0.001
 
-        min_buffer_size_for_sampling: 10000
+        num_ts_added_before_sampling_starts: 10000
         target_network_update_freq: 3200
 
         metrics_num_episodes_for_smoothing: 200

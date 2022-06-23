@@ -85,7 +85,7 @@ class MADDPGConfig(AlgorithmConfig):
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": int(1e6),
             # How many steps of the model to sample before learning starts.
-            "min_buffer_size_for_sampling": 1024 * 25,
+            "num_ts_added_before_sampling_starts": 1024 * 25,
             # Force lockstep replay mode for MADDPG.
             "replay_mode": "lockstep",
         }
@@ -157,7 +157,7 @@ class MADDPGConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_buffer_size_for_sampling": 1000,
+                "num_ts_added_before_sampling_starts": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }

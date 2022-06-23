@@ -45,7 +45,7 @@ class CRRConfig(AlgorithmConfig):
             "type": MultiAgentReplayBuffer,
             "capacity": 50000,
             # How many steps of the model to sample before learning starts.
-            "min_buffer_size_for_sampling": 1000,
+            "num_ts_added_before_sampling_starts": 1000,
             "replay_batch_size": 32,
             # The number of contiguous environment steps to replay at once. This
             # may be set to greater than 1 to support recurrent models.

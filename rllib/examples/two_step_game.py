@@ -115,7 +115,7 @@ if __name__ == "__main__":
             "env_config": {
                 "actions_are_logits": True,
             },
-            "replay_buffer_config": {"min_buffer_size_for_sampling": 100},
+            "replay_buffer_config": {"num_ts_added_before_sampling_starts": 100},
             "multiagent": {
                 "policies": {
                     "pol1": PolicySpec(

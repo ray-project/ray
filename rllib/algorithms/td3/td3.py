@@ -71,7 +71,7 @@ class TD3Config(DDPGConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": 1000000,
-            "min_buffer_size_for_sampling": 10000,
+            "num_ts_added_before_sampling_starts": 10000,
             "worker_side_prioritization": False,
         }
 

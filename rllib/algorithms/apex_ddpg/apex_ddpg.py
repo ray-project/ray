@@ -83,7 +83,7 @@ class ApexDDPGConfig(DDPGConfig):
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
             # How many steps of the model to sample before learning starts.
-            "min_buffer_size_for_sampling": 50000,
+            "num_ts_added_before_sampling_starts": 50000,
             # Whether all shards of the replay buffer must be co-located
             # with the learner process (running the execution plan).
             # This is preferred b/c the learner process should have quick

@@ -91,7 +91,7 @@ class SlateQConfig(AlgorithmConfig):
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
             # How many steps of the model to sample before learning starts.
-            "min_buffer_size_for_sampling": 20000,
+            "num_ts_added_before_sampling_starts": 20000,
         }
 
         # Override some of AlgorithmConfig's default values with SlateQ-specific values.
@@ -121,7 +121,7 @@ class SlateQConfig(AlgorithmConfig):
         # fmt: on
 
         # Deprecated config keys.
-        self.min_buffer_size_for_sampling = DEPRECATED_VALUE
+        self.num_ts_added_before_sampling_starts = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
     def training(

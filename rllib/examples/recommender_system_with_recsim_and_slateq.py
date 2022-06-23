@@ -127,7 +127,7 @@ def main():
         "num_workers": args.num_workers,
         "env_config": env_config,
         "replay_buffer_config": {
-            "min_buffer_size_for_sampling": args.min_buffer_size_for_sampling,
+            "num_ts_added_before_sampling_starts": args.num_ts_added_before_sampling_starts,
         },
     }
 

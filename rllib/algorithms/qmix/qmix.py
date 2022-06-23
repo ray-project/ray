@@ -85,7 +85,7 @@ class QMixConfig(SimpleQConfig):
             "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
-            "min_buffer_size_for_sampling": 1000,
+            "num_ts_added_before_sampling_starts": 1000,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }

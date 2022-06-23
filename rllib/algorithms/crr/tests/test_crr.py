@@ -43,7 +43,7 @@ class TestCRR(unittest.TestCase):
                 train_batch_size=256,
                 replay_buffer_config={
                     "type": MultiAgentReplayBuffer,
-                    "min_buffer_size_for_sampling": 0,
+                    "num_ts_added_before_sampling_starts": 0,
                     "capacity": 100000,
                 },
                 weight_type="bin",

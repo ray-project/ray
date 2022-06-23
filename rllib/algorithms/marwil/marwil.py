@@ -84,7 +84,7 @@ class MARWILConfig(AlgorithmConfig):
             # prioritization
             "prioritized_replay": DEPRECATED_VALUE,
             # Number of steps to read before learning starts.
-            "min_buffer_size_for_sampling": 0,
+            "num_ts_added_before_sampling_starts": 0,
             "replay_sequence_length": 1
         }
         self.use_gae = True
@@ -143,7 +143,7 @@ class MARWILConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_buffer_size_for_sampling": 1000,
+                "num_ts_added_before_sampling_starts": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }

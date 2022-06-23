@@ -65,7 +65,7 @@ class SACConfig(AlgorithmConfig):
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": int(1e6),
             # How many steps of the model to sample before learning starts.
-            "min_buffer_size_for_sampling": 1500,
+            "num_ts_added_before_sampling_starts": 1500,
             # If True prioritized replay buffer will be used.
             "prioritized_replay": False,
             "prioritized_replay_alpha": 0.6,
@@ -166,7 +166,7 @@ class SACConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_buffer_size_for_sampling": 1000,
+                "num_ts_added_before_sampling_starts": 1000,
                 "capacity": 50000,
                 "replay_batch_size": 32,
                 "replay_sequence_length": 1,

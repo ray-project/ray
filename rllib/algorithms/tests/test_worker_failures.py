@@ -157,7 +157,7 @@ class TestWorkerFailure(unittest.TestCase):
                 "min_sample_timesteps_per_iteration": 1000,
                 "min_time_s_per_iteration": 1,
                 "explore": False,
-                "min_buffer_size_for_sampling": 1000,
+                "num_ts_added_before_sampling_starts": 1000,
                 "target_network_update_freq": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,

@@ -35,7 +35,7 @@ ddpg-halfcheetahbulletenv-v0:
         use_huber: true
         huber_threshold: 1.0
         l2_reg: 0.000001
-        min_buffer_size_for_sampling: 500
+        num_ts_added_before_sampling_starts: 500
         rollout_fragment_length: 1
         train_batch_size: 48
         num_workers: 0

@@ -105,13 +105,13 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.sgd_minibatch_size = 128
         self.shuffle_sequences = True
         self.num_sgd_iter = 30
-        self.min_buffer_size_for_sampling = 1000
+        self.num_ts_added_before_sampling_starts = 1000
         self.replay_buffer_config = {
             "type": "SimpleReplayBuffer",
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
             # When to start returning samples (in batches, not timesteps!).
-            "min_buffer_size_for_sampling": 500,
+            "num_ts_added_before_sampling_starts": 500,
         }
         self.lr_schedule = None
         self.vf_share_layers = False
@@ -180,7 +180,7 @@ class AlphaZeroConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_buffer_size_for_sampling": 1000,
+                "num_ts_added_before_sampling_starts": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
@@ -400,7 +400,11 @@ class AlphaZero(Algorithm):
 
             replay_op = (
                 Replay(local_buffer=replay_buffer)
-                .filter(WaitUntilTimestepsElapsed(config["min_buffer_size_for_sampling"]))
+                .filter(
+                    WaitUntilTimestepsElapsed(
+                        config["num_ts_added_before_sampling_starts"]
+                    )
+                )
                 .combine(
                     ConcatBatches(
                         min_batch_size=config["train_batch_size"],

@@ -82,7 +82,7 @@ class SimpleQConfig(AlgorithmConfig):
         >>>     })
         >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
         >>>                         .exploration(exploration_config=explore_config)\
-        >>>                         .training(min_buffer_size_for_sampling=200)
+        >>>                         .training(num_ts_added_before_sampling_starts=200)
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
@@ -107,7 +107,7 @@ class SimpleQConfig(AlgorithmConfig):
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
             # How many steps of the model to sample before learning starts.
-            "min_buffer_size_for_sampling": 1000,
+            "num_ts_added_before_sampling_starts": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
             # The number of contiguous environment steps to replay at once. This
@@ -148,7 +148,7 @@ class SimpleQConfig(AlgorithmConfig):
         # Deprecated.
         self.buffer_size = DEPRECATED_VALUE
         self.prioritized_replay = DEPRECATED_VALUE
-        self.min_buffer_size_for_sampling = DEPRECATED_VALUE
+        self.num_ts_added_before_sampling_starts = DEPRECATED_VALUE
         self.replay_batch_size = DEPRECATED_VALUE
         # Can not use DEPRECATED_VALUE here because -1 is a common config value
         self.replay_sequence_length = None
@@ -180,7 +180,7 @@ class SimpleQConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_buffer_size_for_sampling": 1000,
+                "num_ts_added_before_sampling_starts": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }

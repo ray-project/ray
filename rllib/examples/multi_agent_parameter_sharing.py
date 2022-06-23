@@ -23,7 +23,7 @@ if __name__ == "__main__":
             "num_workers": 2,
             "num_envs_per_worker": 8,
             "replay_buffer_config": {
-                "min_buffer_size_for_sampling": 1000,
+                "num_ts_added_before_sampling_starts": 1000,
                 "capacity": int(1e5),
                 "prioritized_replay_alpha": 0.5,
             },

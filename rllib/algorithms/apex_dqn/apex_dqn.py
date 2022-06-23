@@ -166,7 +166,7 @@ class ApexDQNConfig(DQNConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            "min_buffer_size_for_sampling": 50000,
+            "num_ts_added_before_sampling_starts": 50000,
             # Whether all shards of the replay buffer must be co-located
             # with the learner process (running the execution plan).
             # This is preferred b/c the learner process should have quick
@@ -246,7 +246,7 @@ class ApexDQNConfig(DQNConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_buffer_size_for_sampling": 1000,
+                "num_ts_added_before_sampling_starts": 1000,
                 "capacity": 50000,
                 "replay_batch_size": 32,
                 "replay_sequence_length": 1,

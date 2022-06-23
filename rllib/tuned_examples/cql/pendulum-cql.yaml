@@ -23,7 +23,7 @@ pendulum-cql:
         train_batch_size: 2000
         replay_buffer_config:
           type: MultiAgentReplayBuffer
-          min_buffer_size_for_sampling: 0
+          num_ts_added_before_sampling_starts: 0
         bc_iters: 100
 
         metrics_smoothing_episodes: 5
