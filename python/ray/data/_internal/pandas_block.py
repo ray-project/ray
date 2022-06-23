@@ -112,6 +112,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     @staticmethod
     def _unwrap_single_column_row(row: PandasRow) -> np.ndarray:
         from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
         value = row[VALUE_COL_NAME].iloc[0]
         if isinstance(value, TensorArrayElement):
             return value.to_numpy()

@@ -56,7 +56,7 @@ class SlowCSVDatasource(CSVDatasource):
 # Tests that we don't block on exponential rampup when doing bulk reads.
 # https://github.com/ray-project/ray/issues/20625
 @pytest.mark.parametrize("block_split", [False, True])
-def  test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
+def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DatasetContext.get_current()
 
@@ -1372,7 +1372,6 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     # Test num_partitions > num_rows
     ds4 = ds.repartition(40, shuffle=False)
     assert ds4.num_blocks() == 40
-    blocks = ray.get(ds4.get_internal_block_refs())
     assert ds4.sum() == 190
     assert ds4._block_num_rows() == ([1] * 20) + ([0] * 20)
 
