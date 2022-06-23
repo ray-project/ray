@@ -185,6 +185,7 @@ def test_no_scaledown_with_spilled_objects(shutdown_only):
 
 if __name__ == "__main__":
     import sys
+
     # TODO make it parallel
     # import os
     # if os.environ.get("PARALLEL_CI"):

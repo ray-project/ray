@@ -21,8 +21,7 @@ from ray._private.test_utils import (
 @pytest.mark.parametrize(
     "call_ray_start",
     [
-        "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0",
+        "ray start --head --num-cpus=1 --min-worker-port=0 " "--max-worker-port=0",
     ],
     indirect=True,
 )
@@ -80,6 +79,7 @@ print("success")
         gcs_port = address.split(":")[1]
         result = True
         import re
+
         gcs_pattern = re.compile(f".* --gcs-address=.*:{gcs_port} .*")
         print("list of idle workers:")
         for proc in psutil.process_iter():

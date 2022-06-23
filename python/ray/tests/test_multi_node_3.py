@@ -22,6 +22,7 @@ from ray._private.test_utils import (
 )
 from ray._private.utils import detect_fate_sharing_support
 
+
 @pytest.mark.exclusive
 def test_calling_start_ray_head(call_ray_stop_only):
 
@@ -544,6 +545,7 @@ def test_ray_stop_should_not_kill_external_redis(redis_proc):
     check_call_ray(["start", "--head"])
     subprocess.check_call(["ray", "stop"])
     assert redis_proc.poll() is None
+
 
 @pytest.mark.exclusive
 def test_ray_stop_kill_workers():
