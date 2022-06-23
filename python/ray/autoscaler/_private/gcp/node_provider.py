@@ -2,7 +2,7 @@ import logging
 import time
 from functools import wraps
 from threading import RLock
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import googleapiclient
 
@@ -10,6 +10,8 @@ from ray.autoscaler._private.gcp.config import (
     bootstrap_gcp,
     construct_clients_from_provider_config,
     get_node_type,
+    num_tpus_from_accelerator_type,
+    num_tpus_from_node_config,
 )
 
 # The logic has been abstracted away here to allow for different GCP resources
@@ -25,6 +27,8 @@ from ray.autoscaler._private.gcp.node import (
 from ray.autoscaler.node_provider import NodeProvider
 
 logger = logging.getLogger(__name__)
+
+TPUCHIP = "TPUCHIP"
 
 
 def _retry(method, max_tries=5, backoff_s=1):
@@ -110,55 +114,103 @@ class GCPNodeProvider(NodeProvider):
 
             # Note: All the operations use "name" as the unique instance id
             self.cached_nodes = {i["name"]: i for i in instances}
+            node_names = []
+            for i in instances:
+                instance_name = i["name"]
+                num_tpus = self._num_tpus_from_instance(i)
+                if num_tpus > 1:
+                    for tpu_index in range(num_tpus):
+                        tpu_node_name = self._add_tpu_chip_suffix(instance_name, tpu_index)
+                        node_names.append(tpu_node_name)
+                else:
+                    node_names.append(instance_name)
+
             return [i["name"] for i in instances]
+
+    def _add_tpu_chip_suffix(self, name, tpu_index) -> str:
+        return f"{name}-{TPUCHIP}-{tpu_index}"
+
+    def _name_and_tpu_index(self, suffixed_name) -> Tuple[str, int]:
+        components = suffixed_name.strip("-")
+        assert components[1] == TPUCHIP
+        assert components[2].isnumeric()
+        return components[0], int(components[2])
+
+    def _is_tpu_chip(self, node_name):
+        return TPUCHIP in node_name
+
+    def _num_tpus_from_instance(self, instance) -> int:
+        accelerators = instance.get("guestAccelerators", [])
+        if accelerators:
+            accelerator_type = accelerators[0].get("acceleratorType", "")
+            return num_tpus_from_accelerator_type(accelerator_type)
+        else:
+            return 0
 
     def is_running(self, node_id: str):
         with self.lock:
+            if self._is_tpu_chip(node_id):
+                node_id, _ = self._name_and_tpu_index(node_id)
             node = self._get_cached_node(node_id)
             return node.is_running()
 
     def is_terminated(self, node_id: str):
         with self.lock:
+            if self._is_tpu_chip(node_id):
+                node_id, _ = self._name_and_tpu_index(node_id)
             node = self._get_cached_node(node_id)
             return node.is_terminated()
 
     def node_tags(self, node_id: str):
         with self.lock:
-            node = self._get_cached_node(node_id)
-            return node.get_labels()
+            if self._is_tpu_chip(node_id):
+                node_id, tpu_index = self._name_and_tpu_index(node_id)
+                node = self._get_cached_node(node_id)
+                labels = node.get_labels()
+                return self._get_tags_for_tpu_chip(labels, tpu_index)
+            else:
+                node = self._get_cached_node(node_id)
+                return node.get_labels()
+
+    def _get_tags_for_tpu_chip(self, labels: Dict[str, str], tpu_index) -> Dict[str, str]:
+        tags: Dict[str, str] = {}
+        for key in labels:
+            tag_key, index = self._name_and_tpu_index(key)
+            if index == tpu_index:
+                tags[tag_key] = labels[key]
+        return tags
 
     @_retry
     def set_node_tags(self, node_id: str, tags: dict):
         with self.lock:
-            labels = tags
+            if self._is_tpu_chip(node_id):
+                node_id, tpu_index = self._name_and_tpu_index(node_id)
+                labels = {f"{self._add_tpu_chip_suffix(key, tpu_index)}": value for key, value in tags.items()}
+            else:
+                labels = tags
+
             node = self._get_node(node_id)
-
             resource = self._get_resource_depending_on_node_name(node_id)
-
             result = resource.set_labels(node=node, labels=labels)
 
             return result
 
-    def external_ip(self, node_id: str):
+    def external_ip(self, node_id: str) -> Optional[str]:
+        # (Not necessary to add TPU host logic here.)
         with self.lock:
             node = self._get_cached_node(node_id)
 
             ip = node.get_external_ip()
-            if ip is None:
-                node = self._get_node(node_id)
-                ip = node.get_external_ip()
 
             return ip
 
-    def internal_ip(self, node_id: str):
+    def internal_ip(self, node_id: str) -> Optional[str]:
         with self.lock:
+            ip_index = 0
+            if self._is_tpu_chip(node_id):
+                node_id, ip_index = self._name_and_tpu_index(node_id)
             node = self._get_cached_node(node_id)
-
-            ip = node.get_internal_ip()
-            if ip is None:
-                node = self._get_node(node_id)
-                ip = node.get_internal_ip()
-
+            ip = node.get_internal_ip(ip_index)
             return ip
 
     @_retry
@@ -170,6 +222,11 @@ class GCPNodeProvider(NodeProvider):
         """
         with self.lock:
             labels = tags  # gcp uses "labels" instead of aws "tags"
+            num_tpus = num_tpus_from_node_config(base_config)
+            if num_tpus > 1:
+                labels = self._format_tpu_chip_labels(tags, num_tpus)
+            else:
+                labels = tags
 
             node_type = get_node_type(base_config)
             resource = self.resources[node_type]
@@ -178,6 +235,14 @@ class GCPNodeProvider(NodeProvider):
                 base_config, labels, count
             )  # type: List[Tuple[dict, str]]
             return {instance_id: result for result, instance_id in results}
+
+    def _format_tpu_chip_labels(self, tags, num_tpus):
+        """Represent each label key for tpu node in a pod as the usual
+        tag key dash a numeric suffix.
+        """
+        return {
+            f"{self._add_tpu_chip_suffix(key, tpu_index)}": value for key, value in tags.items() for tpu_index in range(num_tpus)
+        }
 
     @_retry
     def terminate_node(self, node_id: str):

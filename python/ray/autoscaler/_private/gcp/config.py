@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from typing import Any, Dict, Tuple
 from functools import partial
 
 from cryptography.hazmat.backends import default_backend
@@ -68,13 +69,6 @@ def get_node_type(node: dict) -> GCPNodeType:
         )
 
     if "machineType" not in node and "acceleratorType" in node:
-        # remove after TPU pod support is added!
-        if node["acceleratorType"] not in ("v2-8", "v3-8"):
-            raise ValueError(
-                "For now, only v2-8' and 'v3-8' accelerator types are "
-                "supported. Support for TPU pods will be added in the future."
-            )
-
         return GCPNodeType.TPU
     return GCPNodeType.COMPUTE
 
@@ -288,8 +282,8 @@ def bootstrap_gcp(config):
         config["provider"][HAS_TPU_PROVIDER_FIELD] = True
 
         # We can't run autoscaling through a serviceAccount on TPUs (atm)
-        if _is_head_node_a_tpu(config):
-            raise RuntimeError("TPUs are not supported as head nodes.")
+        # if _is_head_node_a_tpu(config):
+        #     raise RuntimeError("TPUs are not supported as head nodes.")
 
     crm, iam, compute, tpu = construct_clients_from_provider_config(config["provider"])
 
@@ -297,6 +291,7 @@ def bootstrap_gcp(config):
     config = _configure_iam_role(config, crm, iam)
     config = _configure_key_pair(config, compute)
     config = _configure_subnet(config, compute)
+    config = _hack_in_tpu_chip_type(config)
 
     return config
 
@@ -545,6 +540,65 @@ def _configure_subnet(config, compute):
             node_config["networkConfig"].pop("accessConfigs")
 
     return config
+
+
+def _hack_in_tpu_chip_type(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Add "virtual" instance types for TPU chips.
+    Also update TPU resources for the real instance type.
+    """
+    config = copy.deepcopy(config)
+    available_node_types = config["available_node_types"]
+    for node_type_name, node_type in copy.deepcopy(available_node_types).items():
+        num_tpus = num_tpus_from_node_config(node_type.get("node_config"))
+        if num_tpus > 1:
+            tpu_chip_type_name, tpu_chip_type = _get_tpu_chip_type(
+                node_type_name, node_type
+            )
+            available_node_types[tpu_chip_type_name] = tpu_chip_type
+    return config
+
+
+def num_tpus_from_node_config(node_type: Dict[str, Any]) -> int:
+    """Get number of tpus for a tpu instance type.
+
+    Return 0 if it's not a TPU type or parsing the number of TPUs failed.
+    """
+    node_config = node_type.get("node_config", {})
+    accelerator_type = node_config.get("acceleratorType", "")
+    return num_tpus_from_accelerator_type(accelerator_type)
+
+
+def num_tpus_from_accelerator_type(accelerator_type: str) -> int:
+    type_components = accelerator_type.split("-")
+    if not len(type_components) == 2:
+        return 0
+    version, suffix = accelerator_type.split("-")
+    if version.startswith("v") and suffix.isnumeric():
+        num_tpu, remainder = divmod(int(suffix), 8)
+        if remainder:
+            # Not divisible by 8, hmmmmm.
+            return 0
+        else:
+            return num_tpu
+    else:
+        return 0
+
+
+def _get_tpu_chip_type(
+    tpu_instance_type_name, tpu_node_type
+) -> Tuple[str, Dict[str, Any]]:
+    """Get a virtual type node type, used for autoscaler book-keeping."""
+    tpu_chip_type_name = f"{tpu_instance_type_name}-chip"
+    tpu_node_type = {
+        # Prevent the autoscaler from trying to directly launch this node type.
+        "min_workers": 0,
+        # Prevent the autoscaler from attempting to directly terminate this node type.
+        "max_workers": 100000000000000,
+        "resources": {"TPU": 1},
+        # Not relevant, since we're using this node type for book-keeping, not node launching.
+        "node_config": {},
+    }
+    return tpu_chip_type_name, tpu_node_type
 
 
 def _list_subnets(config, compute):
