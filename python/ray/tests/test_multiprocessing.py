@@ -56,7 +56,7 @@ def pool_4_processes_python_multiprocessing_lib():
 @pytest.fixture
 def ray_start_1_cpu():
     address_info = ray.init(num_cpus=1)
-    yield address_info
+    yield address_info.address_info["address"]
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
@@ -139,6 +139,7 @@ def test_connect_to_ray(ray_start_cluster):
     init_cpus = 2
 
     # Check that starting a pool still starts ray if RAY_ADDRESS not set.
+    del os.environ["RAY_ADDRESS"]
     pool = Pool(processes=init_cpus)
     assert ray.is_initialized()
     assert int(ray.cluster_resources()["CPU"]) == init_cpus
@@ -604,11 +605,11 @@ def test_maxtasksperchild(shutdown_only):
 
 def test_deadlock_avoidance_in_recursive_tasks(ray_start_1_cpu):
     def poolit_a(_):
-        with Pool(ray_address="auto") as pool:
+        with Pool(ray_address=ray_start_1_cpu) as pool:
             return list(pool.map(math.sqrt, range(0, 2, 1)))
 
     def poolit_b():
-        with Pool(ray_address="auto") as pool:
+        with Pool(ray_address=ray_start_1_cpu) as pool:
             return list(pool.map(poolit_a, range(2, 4, 1)))
 
     result = poolit_b()
@@ -650,6 +651,8 @@ if __name__ == "__main__":
     import pytest
 
     if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        file_path = os.path.abspath(__file__)
+        os.chdir(os.path.abspath(os.path.dirname(__file__)))
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", file_path]))
     else:
         sys.exit(pytest.main(["-sv", __file__]))
