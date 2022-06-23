@@ -31,7 +31,8 @@
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
-      --test_env=CI
+      --test_env=PARALLEL_CI=1
+       --test_env=CI
       --test_env=RAY_CI_POST_WHEEL_TESTS=True
       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
 

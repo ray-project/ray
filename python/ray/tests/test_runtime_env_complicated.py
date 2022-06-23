@@ -133,7 +133,7 @@ class VersionActor:
 
 check_remote_client_conda = """
 import ray
-context = (ray.client({address})
+context = (ray.client('{address}')
               .env({{"conda" : "package-{package_version}"}})
               .connect())
 @ray.remote
