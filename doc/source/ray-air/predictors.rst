@@ -16,7 +16,7 @@ Predictors Basics
 Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition. 
 Checkpoints can be generated from a variety of different ways -- 
 see the Checkpoints user guide for more details.
-.. TODO: link to Checkpoint user guide
+.. TODO - link to Checkpoint user guide
 
 The checkpoint then is used to create a framework specific Predictor (in our example, a `TensorflowPredictor`), which then can be used for inference:
 
@@ -41,14 +41,18 @@ Batch Prediction
 
 Ray AIR provides a ``BatchPredictor`` utility for large-scale batch inference.
 
-The BatchPredictor takes in a checkpoint and a predictor class and executes large-scale batch prediction on a given dataset in a parallel/distributed fashion when calling ``predict()``.
+The BatchPredictor takes in a checkpoint and a predictor class and executes 
+large-scale batch prediction on a given dataset in a parallel/distributed fashion when calling ``predict()``.
+
+``predict()`` will load the entire given dataset into memory, which may be a problem if your dataset
+size is larger than your available cluster memory. See the :ref:`pipelined-prediction` section for more details.
 
 .. literalinclude:: doc_code/use_pretrained_model.py
     :language: python
     :start-after: __batch_prediction_start__
     :end-before: __batch_prediction_end__
 
-There are different things you need in order to do batch prediction on different data types.
+Below, we provide examples of using common frameworks to do batch inference for different data types:
 
 **Tabular**
 
@@ -59,7 +63,8 @@ There are different things you need in order to do batch prediction on different
         :start-after: __air_xgb_batchpred_start__
         :end-before: __air_xgb_batchpred_end__
 
-    .. TODO: include py files as orphans so that we can do a versioned link?
+
+    .. todo - include py files as orphans so that we can do a versioned link?
     .. See the full script here: `Code <doc_code/xgboost_starter.py>`_.
 
 .. tabbed:: Pytorch
@@ -97,20 +102,19 @@ There are different things you need in order to do batch prediction on different
 
 Coming soon!
 
-
-Configuring Batch Prediction
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Resources (enabling GPU Prediction)**:
-
-**Batch Size**:
-
-**Worker Pool**: 
-
+.. _pipelined-prediction:
 
 Lazy/Pipelined Prediction
 ~~~~~~~~~~~~~~~~~~~~~~~~~
-Show ``.predict_pipelined()`` method.
+If you have a large dataset but not a lot of available memory, you can use the 
+:method:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
+
+Unlike :py:method:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a 
+:class:`DatasetPipeline`` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
+
+The lazy loading of the data will allow you to operate on datasets much greater than your available memory.
+Execution can be triggered by pulling from the pipeline, as shown in the example below.
+
 
 .. literalinclude:: doc_code/use_pretrained_model.py
     :language: python
@@ -118,20 +122,18 @@ Show ``.predict_pipelined()`` method.
     :end-before: __pipelined_prediction_end__
 
 
-Examples
---------
+Online inference
+----------------
 
-TODO Coming soon!
+Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.
+
 
 Developer Guide: Implementing your own Predictor
 ------------------------------------------------
 To implement a new Predictor for your particular framework, you should subclass the base ``Predictor`` and implement the following two methods:
 
-    1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
-        pandas.DataFrame containing predictions.
-    2. ``from_checkpoint``: Logic for creating a Predictor from an
-       :ref:`AIR Checkpoint <air-checkpoint-ref>`.
-    3. Optionally ``_predict_arrow`` for better performance when working with
-       tensor data to avoid extra copies from Pandas conversions.
+1. ``_predict_pandas``: Given a pandas.DataFrame input, return a pandas.DataFrame containing predictions.
+2. ``from_checkpoint``: Logic for creating a Predictor from an :ref:`AIR Checkpoint <air-checkpoint-ref>`.
+3. Optionally ``_predict_arrow`` for better performance when working with tensor data to avoid extra copies from Pandas conversions.
 
 
