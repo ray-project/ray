@@ -928,6 +928,34 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_lib_usage):
         wait_for_condition(verify)
 
 
+def test_usages_stats_available_when_dashboard_not_included(
+    monkeypatch, ray_start_cluster, reset_lib_usage
+):
+    """
+    Test library usage is correctly reported when they are imported from
+    workers.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1, include_dashboard=False)
+        ray.init(address=cluster.address)
+
+        """
+        Verify the usage_stats.json contains the lib usage.
+        """
+        global_node = ray.worker._global_node
+        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify():
+            return read_file(temp_dir, "usage_stats")["seq_number"] > 2
+
+        wait_for_condition(verify)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

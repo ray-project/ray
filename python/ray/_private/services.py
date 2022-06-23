@@ -1307,8 +1307,9 @@ def start_log_monitor(
     return process_info
 
 
-def start_dashboard(
-    require_dashboard: bool,
+def start_api_server(
+    include_dashboard: bool,
+    raise_on_failure: bool,
     host: str,
     gcs_address: str,
     temp_dir: str,
@@ -1323,9 +1324,12 @@ def start_dashboard(
     """Start a dashboard process.
 
     Args:
-        require_dashboard: If true, this will raise an exception if we
-            fail to start the dashboard. Otherwise it will print a warning if
-            we fail to start the dashboard.
+        include_dashboard: If true, this will load all modules of the
+            api server to start dashboard. Otherwise, it will only
+            start the modules that are not relevant to the dashboard.
+        raise_on_failure: If true, this will raise an exception
+            if we fail to start the dashboard. Otherwise it will print
+            a warning if we fail to start the dashboard.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
         temp_dir: The temporary directory used for log files and
@@ -1415,6 +1419,11 @@ def start_dashboard(
         if minimal:
             command.append("--minimal")
 
+        if not include_dashboard:
+            # If dashboard is not included, load modules
+            # that are irrelevant to the dashboard.
+            command.append("--modules-to-load=UsageStatsHead,JobHead,StateHead")
+
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1488,7 +1497,7 @@ def start_dashboard(
             dashboard_url = ""
         return dashboard_url, process_info
     except Exception as e:
-        if require_dashboard:
+        if raise_on_failure:
             raise e from e
         else:
             logger.error(f"Failed to start the dashboard: {e}")
