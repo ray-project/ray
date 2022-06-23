@@ -2319,15 +2319,6 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback(result)
     cpython.Py_DECREF(py_callback)
 
-def actor_has_async_methods(actor_class):
-   return len(
-            inspect.getmembers(
-                # The actor class had modified in caller side when submitting,
-                # so there is no need to modify it any more.
-                actor_class, predicate=inspect.iscoroutinefunction
-            )
-        ) > 0
-
 cdef c_bool is_async_actor_func(const CRayFunction &ray_function) with gil:
     cdef:
         CoreWorker core_worker = ray.worker.global_worker.core_worker

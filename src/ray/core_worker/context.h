@@ -99,7 +99,6 @@ class WorkerContext {
   const JobID current_job_id_;
   ActorID current_actor_id_ GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ GUARDED_BY(mutex_) = 1;
-  // bool current_actor_is_asyncio_ GUARDED_BY(mutex_) = false;
   bool is_detached_actor_ GUARDED_BY(mutex_) = false;
   // The placement group id that the current actor belongs to.
   PlacementGroupID current_actor_placement_group_id_ GUARDED_BY(mutex_);

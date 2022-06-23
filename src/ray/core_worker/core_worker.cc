@@ -548,7 +548,7 @@ void CoreWorker::Shutdown() {
     auto task_spec_ptr = worker_context_.GetCurrentTask();
     if (task_spec_ptr != nullptr) {
       RayFunction func{task_spec_ptr->GetLanguage(), task_spec_ptr->FunctionDescriptor()};
-      if (options_.is_async_actor_func(std::move(func)) {
+      if(options_.is_async_actor_func(std::move(func))) {
         options_.terminate_asyncio_thread();
       }
     }
