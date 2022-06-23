@@ -5,6 +5,7 @@ import torch
 import transformers
 
 import ray
+from ray import serve
 
 
 def extract_tensors(m: torch.nn.Module) -> Tuple[torch.nn.Module, List[Dict]]:
@@ -54,7 +55,7 @@ def replace_tensors(m: torch.nn.Module, tensors: List[Dict]):
         for name, array in tensor_dict["buffers"].items():
             module.register_buffer(name, torch.as_tensor(array))
 
-
+"""
 bert = transformers.BertModel.from_pretrained("bert-base-uncased")
 
 ray.init()
@@ -74,3 +75,41 @@ print("Original model's output:")
 print(bert(**test_tokens).last_hidden_state)
 print("\nModel output after zero-copy model loading:")
 print(bert_skeleton(**test_tokens).last_hidden_state)
+"""
+
+@ray.remote
+def generate_model():
+    bert = transformers.BertModel.from_pretrained("bert-base-uncased")
+    bert_skeleton, bert_weights = extract_tensors(bert)
+    return bert_skeleton, bert_weights
+
+@serve.deployment(num_replicas=3)
+class MyModel:
+    def __init__(self, model):
+        self.model_skeleton, self.model_weights = model
+        self.tokenizer = transformers.BertTokenizerFast.from_pretrained("bert-base-uncased")
+        replace_tensors(self.model_skeleton, self.model_weights)
+
+    def __call__(self, *args):
+        test_text = "All work and no play makes Jack a dull boy."
+        test_tokens = self.tokenizer(test_text, return_tensors="pt")
+        res = self.model_skeleton(**test_tokens).last_hidden_state
+        print("123", res)
+        return res.detach().numpy()
+
+
+@serve.deployment(num_replicas=10)
+class MyModel2:
+    def __init__(self):
+        self.model_skeleton = transformers.BertModel.from_pretrained("bert-base-uncased")
+        self.tokenizer = transformers.BertTokenizerFast.from_pretrained("bert-base-uncased")
+
+    def __call__(self, *args):
+        test_text = "All work and no play makes Jack a dull boy."
+        test_tokens = self.tokenizer(test_text, return_tensors="pt")
+        res = self.model_skeleton(**test_tokens).last_hidden_state
+        return res.detach().numpy()
+
+#m = MyModel.bind(generate_model.bind())
+
+m2 = MyModel2.bind()
