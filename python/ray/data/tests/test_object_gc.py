@@ -3,7 +3,7 @@ import time
 import pytest
 
 import ray
-from ray.internal.internal_api import memory_summary
+from ray._private.internal_api import memory_summary
 from ray.tests.conftest import *  # noqa
 
 
