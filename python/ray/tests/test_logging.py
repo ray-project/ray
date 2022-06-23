@@ -232,7 +232,7 @@ def test_log_pid_with_hex_job_id(ray_start_cluster):
         submit_job()
 
 
-def test_ignore_windows_access_violation(ray_start_regular_shared):
+def test_ignore_windows_access_violation(ray_start_regular):
     @ray.remote
     def print_msg():
         print("Windows fatal exception: access violation\n")

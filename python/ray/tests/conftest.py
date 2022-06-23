@@ -323,14 +323,8 @@ def ray_start_object_store_memory(request, maybe_external_redis):
     ray.shutdown()
 
 
-@pytest.fixture
-def call_ray_start(monkeypatch, request):
-    parameter = getattr(
-        request,
-        "param",
-        "ray start --head --num-cpus=1 --min-worker-port=0 --max-worker-port=0",
-    )
-    command_args = parameter.split(" ")
+@contextmanager
+def _call_ray_start(command_args):
     port = str(find_free_port())
     gcs_port = port
 
@@ -356,11 +350,23 @@ def call_ray_start(monkeypatch, request):
         else:
             proc.kill()
             raise Exception("Failed to start ray cluster")
-        monkeypatch.setenv("RAY_ADDRESS", address)
         yield address
         # Disconnect from the Ray cluster.
         ray.shutdown()
         proc.kill()
+
+
+@pytest.fixture
+def call_ray_start(monkeypatch, request):
+    parameter = getattr(
+        request,
+        "param",
+        "ray start --head --num-cpus=1 --min-worker-port=0 --max-worker-port=0",
+    )
+    command_args = parameter.split(" ")
+    with _call_ray_start(command_args) as address:
+        monkeypatch.setenv("RAY_ADDRESS", address)
+        yield address
 
 
 @pytest.fixture

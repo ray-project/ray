@@ -214,7 +214,7 @@ def test_atomic_creation(ray_start_cluster, connect_to_client):
         # Confirm that the placement group actor is created. It will
         # raise an exception if actor was scheduled before placement
         # group was created thus it checks atomicity.
-        ray.get(pg_actor.ping.remote(), timeout=3.0)
+        ray.get(pg_actor.ping.remote(), timeout=10)
         ray.kill(pg_actor)
 
         # Make sure atomic creation failure didn't impact resources.
@@ -531,7 +531,7 @@ def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
     # Create an infeasible pg.
     pg = ray.util.placement_group([{"CPU": 2}] * 2, strategy="STRICT_PACK")
     with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(pg.ready(), timeout=0.5)
+        ray.get(pg.ready(), timeout=3)
 
     errors = get_error_message(
         p, 1, ray._private.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1
@@ -739,7 +739,7 @@ def test_create_placement_group_after_gcs_server_restart(
     # Status is `PENDING` because the cluster resource is insufficient.
     placement_group3 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
     with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(placement_group3.ready(), timeout=2)
+        ray.get(placement_group3.ready(), timeout=5)
     table = ray.util.placement_group_table(placement_group3)
     assert table["state"] == "PENDING"
 

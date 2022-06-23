@@ -1,5 +1,4 @@
 import os
-import subprocess
 import urllib
 from pathlib import Path
 
@@ -9,7 +8,7 @@ import pytest
 import ray
 import ray._private.storage as storage
 from ray._private.test_utils import simulate_storage
-from ray.tests.conftest import *  # noqa
+from ray.tests.conftest import _call_ray_start
 
 
 def _custom_fs(uri):
@@ -154,16 +153,14 @@ def test_get_info_basic(shutdown_only, storage_type):
 
 @pytest.mark.parametrize("storage_type", ["s3", "fs"])
 def test_connecting_to_cluster(shutdown_only, storage_type):
-    with simulate_storage(storage_type) as storage_uri:
-        try:
-            subprocess.check_call(["ray", "start", "--head", "--storage", storage_uri])
-            ray.init(address="auto")
-            from ray._private.storage import _storage_uri
+    with simulate_storage(storage_type) as storage_uri, _call_ray_start(
+        ["ray", "start", "--head", "--storage", storage_uri]
+    ) as address:
+        ray.init(address=address)
+        from ray._private.storage import _storage_uri
 
-            # make sure driver is using the same storage when connecting to a cluster
-            assert _storage_uri == storage_uri
-        finally:
-            subprocess.check_call(["ray", "stop"])
+        # make sure driver is using the same storage when connecting to a cluster
+        assert _storage_uri == storage_uri
 
 
 if __name__ == "__main__":

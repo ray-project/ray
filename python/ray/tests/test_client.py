@@ -628,6 +628,7 @@ def test_dataclient_server_drop(ray_start_regular):
     def stop_server(server):
         time.sleep(2)
         server.stop(0)
+
     port = find_free_port()
     server = ray_client_server.serve(f"localhost:{port}")
     ray_client.connect(f"localhost:{port}")

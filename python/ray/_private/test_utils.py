@@ -1324,7 +1324,7 @@ def simulate_storage(storage_type, root=None):
         @contextmanager
         def moto_s3_server():
             host = "localhost"
-            port = 5002
+            port = find_free_port()
             url = f"http://{host}:{port}"
             process = start_service("s3", host, port)
             yield url
