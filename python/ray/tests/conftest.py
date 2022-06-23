@@ -294,29 +294,32 @@ def call_ray_start(request):
     parameter = getattr(
         request,
         "param",
-        "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "ray start --head --num-cpus=1 --min-worker-port=0 " "--max-worker-port=0",
     )
     command_args = parameter.split(" ")
-    try:
-        out = ray._private.utils.decode(
-            subprocess.check_output(command_args, stderr=subprocess.STDOUT)
-        )
-    except Exception as e:
-        print(type(e), e)
-        raise
-    # Get the redis address from the output.
-    redis_substring_prefix = "--address='"
-    address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
-    address = out[address_location:]
-    address = address.split("'")[0]
+    port = str(find_free_port())
 
-    yield address
+    command_args += ["--port", port, "--block"]
+    if "--ray-client-server-port" in command_args:
+        port = command_args[command_args.index("--ray-client-server-port") + 1]
 
-    # Disconnect from the Ray cluster.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
+    address = f"localhost:{port}"
+    with subprocess.Popen(
+        command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    ) as proc:
+        for _ in range(10):
+            status_check = subprocess.run(["ray", "status", "--address", address])
+            if status_check.returncode == 0:
+                break
+            time.sleep(1)
+        else:
+            proc.kill()
+            raise Exception("Failed to start ray cluster")
+
+        yield address
+        # Disconnect from the Ray cluster.
+        ray.shutdown()
+        proc.kill()
 
 
 @pytest.fixture
