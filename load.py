@@ -2,6 +2,7 @@ import aiohttp
 import os
 
 import ray
+from ray.serve.utils import get_current_node_resource_key
 
 PARALLELISM = int(os.environ.get("PARALLELISM", "8"))
 
@@ -23,5 +24,6 @@ class LoadTester:
                         print(f"Got responses from {new_num_seen} replicas.")
 
 
-lt = LoadTester.remote()
+ray.init()
+lt = LoadTester.options(resources={get_current_node_resource_key(): 0.01}).remote()
 ray.get([lt.run.remote() for _ in range(PARALLELISM)])
