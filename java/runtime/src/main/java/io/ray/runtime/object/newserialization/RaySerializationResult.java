@@ -1,15 +1,13 @@
 package io.ray.runtime.object.newserialization;
 
+import com.google.common.base.Preconditions;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-
 import org.msgpack.core.MessageBufferPacker;
 import org.msgpack.core.MessagePack;
 import org.msgpack.core.MessageUnpacker;
-
-import com.google.common.base.Preconditions;
 
 public class RaySerializationResult {
 
@@ -28,14 +26,10 @@ public class RaySerializationResult {
     if (outOfBandBuffers != null) {
       packer.packMapHeader(outOfBandBuffers.size());
       for (Map.Entry<ByteBuffer, Map<ByteBuffer, ByteBuffer>> entry : outOfBandBuffers.entrySet()) {
-        packer
-            .packBinaryHeader(entry.getKey().capacity())
-            .addPayload(entry.getKey().array());
+        packer.packBinaryHeader(entry.getKey().capacity()).addPayload(entry.getKey().array());
         packer.packMapHeader(entry.getValue().size());
         for (Map.Entry<ByteBuffer, ByteBuffer> entry2 : entry.getValue().entrySet()) {
-          packer
-              .packBinaryHeader(entry2.getKey().capacity())
-              .addPayload(entry2.getKey().array());
+          packer.packBinaryHeader(entry2.getKey().capacity()).addPayload(entry2.getKey().array());
           packer
               .packBinaryHeader(entry2.getValue().capacity())
               .addPayload(entry2.getValue().array());
@@ -49,7 +43,8 @@ public class RaySerializationResult {
     MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(data);
     RaySerializationResult res = new RaySerializationResult();
     int tuple_size = unpacker.unpackArrayHeader(); // should be 3
-    Preconditions.checkArgument(tuple_size == 3, String.format("Error size should be 3! %d got!", tuple_size));
+    Preconditions.checkArgument(
+        tuple_size == 3, String.format("Error size should be 3! %d got!", tuple_size));
     // byteId
     int bytes_size = unpacker.unpackBinaryHeader();
     res.typeId = ByteBuffer.allocate(bytes_size);
@@ -86,5 +81,4 @@ public class RaySerializationResult {
     }
     return res;
   }
-
 }

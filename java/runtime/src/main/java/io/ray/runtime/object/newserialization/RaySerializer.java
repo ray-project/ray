@@ -5,7 +5,8 @@ import java.util.Map;
 
 public interface RaySerializer<T> {
 
-    RaySerializationResult serialize(T obj);
+  RaySerializationResult serialize(T obj);
 
-    T deserialize(ByteBuffer inBandBuffer, Map<ByteBuffer, Map<ByteBuffer, ByteBuffer>> outOfBandBuffers);
+  T deserialize(
+      ByteBuffer inBandBuffer, Map<ByteBuffer, Map<ByteBuffer, ByteBuffer>> outOfBandBuffers);
 }

@@ -1,10 +1,9 @@
 package io.ray.runtime.object.newserialization;
 
+import io.ray.runtime.object.newserialization.serializers.ByteArraySerializer;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-
-import io.ray.runtime.object.newserialization.serializers.ByteArraySerializer;
 
 public class NewObjectSerializer {
 
@@ -22,7 +21,9 @@ public class NewObjectSerializer {
 
   public static Object deserialize(RaySerializationResult result) {
     String className = TYPE_ID_TO_CLS_MAP.get(result.typeId);
-    return CLS_TO_SERIALIZER_MAP.get(className).deserialize(result.inBandBuffer, result.outOfBandBuffers);
+    return CLS_TO_SERIALIZER_MAP
+        .get(className)
+        .deserialize(result.inBandBuffer, result.outOfBandBuffers);
   }
 
   public static boolean hasSerializer(Class<?> cls) {
@@ -32,5 +33,4 @@ public class NewObjectSerializer {
   public static RaySerializationResult serialize(Object object) {
     return CLS_TO_SERIALIZER_MAP.get(object.getClass().getCanonicalName()).serialize(object);
   }
-
 }
