@@ -12,7 +12,7 @@ from ray.rllib.algorithms import Algorithm
 from ray.rllib.policy import Policy
 from ray.train.rl import RLTrainer
 from ray.train.rl.rl_predictor import RLPredictor
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.trainable.util import TrainableUtil
 
 
 class _DummyAlgo(Algorithm):

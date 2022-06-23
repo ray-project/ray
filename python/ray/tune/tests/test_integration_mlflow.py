@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from mlflow.tracking import MlflowClient
 
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
 from ray.tune.integration.mlflow import (
     MLflowLoggerCallback,
     MLflowTrainableMixin,

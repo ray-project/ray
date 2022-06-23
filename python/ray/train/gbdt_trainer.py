@@ -7,7 +7,7 @@ from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:

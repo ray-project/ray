@@ -47,7 +47,7 @@ from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 if TUNE_INSTALLED:
     from ray import tune
     from ray.tune import PlacementGroupFactory, Trainable
-    from ray.tune.function_runner import wrap_function
+    from ray.tune.trainable import wrap_function
 else:
     tune = PlacementGroupFactory = Trainable = object
 

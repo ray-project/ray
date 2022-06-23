@@ -11,7 +11,7 @@ from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
 from ray.tune.error import TuneError
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.dict import merge_dicts

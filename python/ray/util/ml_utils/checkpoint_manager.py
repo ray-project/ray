@@ -14,7 +14,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import ray
 from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
-from ray.tune.utils.trainable import TrainableUtil
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.util import is_nan
@@ -120,6 +119,8 @@ class _TrackedCheckpoint:
             logger.warning(f"Checkpoint deletion failed: {e}")
 
     def to_air_checkpoint(self) -> Optional[Checkpoint]:
+        from ray.tune.trainable.util import TrainableUtil
+
         checkpoint_data = self.dir_or_data
 
         if not checkpoint_data:
