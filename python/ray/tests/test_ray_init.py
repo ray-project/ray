@@ -260,23 +260,22 @@ def test_auto_init_non_client(call_ray_start):
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25036 --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 @pytest.mark.parametrize(
     "function", [lambda: ray.put(300), lambda: ray.remote(ray.nodes).remote()]
 )
 def test_auto_init_client(call_ray_start, function):
-    address = call_ray_start.split(":")[0]
     with unittest.mock.patch.dict(
-        os.environ, {"RAY_ADDRESS": f"ray://{address}:25036"}
+        os.environ, {"RAY_ADDRESS": f"ray://{call_ray_start}"}
     ):
         res = function()
         # Ensure this is a client connection.
         assert isinstance(res, ClientObjectRef)
         ray.shutdown()
 
-    with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": "ray://localhost:25036"}):
+    with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": f"ray://{call_ray_start}"}):
         res = function()
         # Ensure this is a client connection.
         assert isinstance(res, ClientObjectRef)
