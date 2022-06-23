@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     wait_until_server_available,
+    find_free_port,
 )
 from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -287,7 +288,8 @@ def test_usage_lib_cluster_metadata_generation(
 ):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        port = find_free_port()
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", f"http://127.0.0.1:{port}")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=0)
         ray.init(address=cluster.address)
@@ -354,7 +356,8 @@ def test_library_usages(shutdown_only, reset_lib_usage):
     ray.data.range(10)
     from ray import serve
 
-    serve.start()
+    port = find_free_port()
+    serve.start(http_options={"port": port})
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
     )
@@ -383,7 +386,7 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(
 
 
 def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_lib_usage):
-    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2 ** 30)
+    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2 ** 30, dashboard_port=0)
     # Wait for monitor.py to update cluster status
     wait_for_condition(
         lambda: ray_usage_lib.get_cluster_status_to_report(
@@ -518,7 +521,8 @@ def test_usage_lib_report_data(
 ):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        port = find_free_port()
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", f"http://127.0.0.1:{port}")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=0)
         # Runtime env is required to run this test in minimal installation test.
@@ -568,7 +572,7 @@ provider:
                 # to the right place.
                 from ray import serve
 
-                serve.start()
+                serve.start(http_options={"port": port})
 
                 @serve.deployment(ray_actor_options={"num_cpus": 0})
                 async def usage(request):
@@ -589,7 +593,7 @@ provider:
         ray.get(s.ready.remote())
 
         # Query our endpoint over HTTP.
-        r = client.report_usage_data("http://127.0.0.1:8000/usage", d)
+        r = client.report_usage_data(f"http://127.0.0.1:{port}/usage", d)
         r.raise_for_status()
         assert json.loads(r.text) is True
 
@@ -616,7 +620,8 @@ provider:
     with monkeypatch.context() as m:
         m.setenv("HOME", str(tmp_path))
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        port = find_free_port()
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", f"http://127.0.0.1:{port}/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
@@ -654,7 +659,7 @@ provider:
                 # so it won't be tracked as library usage.
                 from ray import serve
 
-                serve.start()
+                serve.start(http_options={"port": port})
 
                 # Usage report should be sent to the URL every 1 second.
                 @serve.deployment(ray_actor_options={"num_cpus": 0})
@@ -733,7 +738,8 @@ provider:
 def test_first_usage_report_delayed(monkeypatch, ray_start_cluster, reset_lib_usage):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        port = find_free_port()
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", f"http://127.0.0.1:{port}")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "10")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=0)
@@ -756,8 +762,9 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_lib_usage):
     the invalid report url is given as an env var).
     """
     with monkeypatch.context() as m:
+        port = find_free_port()
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", f"http://127.0.0.1:{port}")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=0)
@@ -796,8 +803,9 @@ def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_lib_usag
     error message when the report is failed.
     """
     with monkeypatch.context() as m:
+        port = find_free_port()
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", f"http://127.0.0.1:{port}")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=0)
@@ -816,7 +824,7 @@ def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_lib_usag
         report_success = read_file(temp_dir, "success")
         # Test if the timestampe has been updated.
         assert (
-            "HTTPConnectionPool(host='127.0.0.1', port=8000): "
+            f"HTTPConnectionPool(host='127.0.0.1', port={port}): "
             "Max retries exceeded with url:"
         ) in error_message
         assert not report_success
@@ -837,8 +845,9 @@ def test_lib_used_from_driver(monkeypatch, ray_start_cluster, reset_lib_usage):
     a driver.
     """
     with monkeypatch.context() as m:
+        port = find_free_port()
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", f"http://127.0.0.1:{port}/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
@@ -889,8 +898,9 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_lib_usage):
     workers.
     """
     with monkeypatch.context() as m:
+        port = find_free_port()
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", f"http://127.0.0.1:{port}/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
