@@ -81,6 +81,7 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import get_template
+from ray.widgets import Template
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -969,7 +970,7 @@ class RayContext(BaseContext, Mapping):
         ray.shutdown()
 
     def _repr_html_(self):
-        return get_template("context.html.j2").render(
+        return Template("context.html.j2").render(
             python_version=self.python_version,
             ray_version=self.ray_version,
             dashboard_url=self.dashboard_url,

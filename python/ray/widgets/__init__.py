@@ -1,3 +1,3 @@
-from .render import get_template, list_templates
+from .render import Template
 
-__all__ = ["get_template", "list_templates"]
+__all__ = ["Template"]

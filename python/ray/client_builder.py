@@ -18,7 +18,7 @@ from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
 from ray.util.annotations import Deprecated, PublicAPI
-from ray.widgets import get_template
+from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class ClientContext(BaseContext):
             ray.shutdown()
 
     def _repr_html_(self):
-        return get_template("context.html.j2").render(
+        return Template("context.html.j2").render(
             python_version=self.python_version,
             ray_version=self.ray_version,
             dashboard_url=self.dashboard_url,

@@ -214,7 +214,6 @@ if setup_spec.type == SetupType.RAY:
             "opencensus",
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
-            "Jinja2 >= 3.0.3",
         ],
         "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
