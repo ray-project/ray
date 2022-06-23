@@ -423,7 +423,9 @@ class Worker:
         self.node = None
         self.mode = None
         self.cached_functions_to_run: list = []
+        # this actors could be refined to self.actor
         self.actors = {}
+        self.is_async_actor = None
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()

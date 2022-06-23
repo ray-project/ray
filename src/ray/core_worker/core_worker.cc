@@ -105,7 +105,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->TaskDone();
-        });
+        }, options.is_async_actor_callback);
   }
 
   // Initialize raylet client.
@@ -545,9 +545,9 @@ void CoreWorker::Shutdown() {
     // running in a different thread. This can cause segfault because coroutines try to
     // access CoreWorker methods that are already garbage collected. We should complete
     // all coroutines before shutting down in order to prevent this.
-    if (worker_context_.CurrentActorIsAsync()) {
-      options_.terminate_asyncio_thread();
-    }
+    // if (worker_context_.CurrentActorIsAsync()) {
+    //   options_.terminate_asyncio_thread();
+    // }
     direct_task_receiver_->Stop();
     task_execution_service_.stop();
   }
@@ -3283,7 +3283,7 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
-  RAY_CHECK(worker_context_.CurrentActorIsAsync());
+  // RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
   event.Wait();
 }

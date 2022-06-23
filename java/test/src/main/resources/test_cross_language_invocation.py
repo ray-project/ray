@@ -123,7 +123,7 @@ class Counter(object):
     def __init__(self, value):
         self.value = int(value)
 
-    def increase(self, delta):
+    async def increase(self, delta):
         self.value += int(delta)
         return str(self.value).encode("utf-8")
 

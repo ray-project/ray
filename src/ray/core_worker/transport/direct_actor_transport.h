@@ -58,14 +58,18 @@ class CoreWorkerDirectTaskReceiver {
 
   using OnTaskDone = std::function<Status()>;
 
+  using IsAsyncActorFunc = std::function<bool(const RayFunction &ray_function)>;
+ 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                instrumented_io_context &main_io_service,
                                const TaskHandler &task_handler,
-                               const OnTaskDone &task_done)
+                               const OnTaskDone &task_done, 
+                               IsAsyncActorFunc is_async_actor_func)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
         task_done_(task_done),
+        is_async_actor_func_(std::move(is_async_actor_func)),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()) {}
 
   /// Initialize this receiver. This must be called prior to use.
@@ -109,6 +113,8 @@ class CoreWorkerDirectTaskReceiver {
   instrumented_io_context &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
   OnTaskDone task_done_;
+  ///
+  IsAsyncActorFunc is_async_actor_func_;
   /// Shared pool for producing new core worker clients.
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   /// Address of our RPC server.

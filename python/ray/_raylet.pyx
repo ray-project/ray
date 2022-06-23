@@ -547,6 +547,15 @@ cdef execute_task(
             print(actor_magic_token, file=sys.stderr, end="")
 
         # Initial eventloops for asyncio for this actor.
+        actor_has_async_methods = (
+            len(
+                inspect.getmembers(
+                    actor_class, predicate=inspect.iscoroutinefunction
+                )
+            )
+            > 0
+        )
+        worker.is_async_actor = actor_has_async_methods 
         if core_worker.current_actor_is_asyncio():
             core_worker.initialize_eventloops_for_actor_concurrency_group(
                 c_defined_concurrency_groups)
@@ -1125,6 +1134,7 @@ cdef class CoreWorker:
         options.stdout_file = stdout_file
         options.stderr_file = stderr_file
         options.task_execution_callback = task_execution_handler
+        options.is_async_actor_callback = is_async_actor_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
@@ -2187,8 +2197,7 @@ cdef class CoreWorker:
             thread.join()
 
     def current_actor_is_asyncio(self):
-        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
-                .CurrentActorIsAsync())
+        return ray.worker.global_worker.is_async_actor
 
     def get_current_runtime_env(self) -> str:
         # This should never change, so we can safely cache it to avoid ser/de
@@ -2307,3 +2316,24 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback = <object>user_callback
     py_callback(result)
     cpython.Py_DECREF(py_callback)
+
+cdef c_bool is_async_actor_callback(const CRayFunction &ray_function) with gil:
+    cdef:
+        CoreWorker core_worker = ray.worker.global_worker.core_worker
+        JobID job_id = core_worker.get_current_job_id()
+
+    function_descriptor = CFunctionDescriptorToPython(
+        ray_function.GetFunctionDescriptor())
+    manager = ray.worker.global_worker.function_actor_manager
+    actor_class = manager.load_actor_class(job_id, function_descriptor)
+    actor_has_async_methods = (
+        len(
+            inspect.getmembers(
+                # The actor class had modified in caller side when submitting,
+                # so there is no need to modify it any more.
+                actor_class, predicate=inspect.iscoroutinefunction
+            )
+        )
+        > 0
+    )
+    return actor_has_async_methods

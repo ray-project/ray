@@ -58,9 +58,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
   if (task_spec.IsActorCreationTask()) {
     worker_context_.SetCurrentActorId(task_spec.ActorCreationId());
-    SetupActor(task_spec.IsAsyncioActor(),
-               task_spec.MaxActorConcurrency(),
-               task_spec.ExecuteOutOfOrder());
   }
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
@@ -135,8 +132,12 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       if (task_spec.IsActorCreationTask()) {
         /// The default max concurrency for creating PoolManager should
         /// be 0 if this is an asyncio actor.
+        RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
         const int default_max_concurrency =
-            task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
+            is_async_actor_func_(func) ? 0 : task_spec.MaxActorConcurrency();
+        SetupActor(is_async_actor_func_(func),
+               task_spec.MaxActorConcurrency(),
+               task_spec.ExecuteOutOfOrder());
         pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
             task_spec.ConcurrencyGroups(), default_max_concurrency);
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =

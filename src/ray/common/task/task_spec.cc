@@ -398,10 +398,10 @@ bool TaskSpecification::ExecuteOutOfOrder() const {
          message_->actor_creation_task_spec().execute_out_of_order();
 }
 
-bool TaskSpecification::IsAsyncioActor() const {
-  RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().is_asyncio();
-}
+// bool TaskSpecification::IsAsyncioActor() const {
+//   RAY_CHECK(IsActorCreationTask());
+//   return message_->actor_creation_task_spec().is_asyncio();
+// }
 
 bool TaskSpecification::IsDetachedActor() const {
   return IsActorCreationTask() && message_->actor_creation_task_spec().is_detached();
@@ -436,7 +436,7 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
            << ", max_restarts=" << MaxActorRestarts()
            << ", max_concurrency=" << MaxActorConcurrency()
-           << ", is_asyncio_actor=" << IsAsyncioActor()
+          //  << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
   } else if (IsActorTask()) {
     // Print actor task spec.
