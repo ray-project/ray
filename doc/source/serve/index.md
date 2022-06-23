@@ -170,6 +170,18 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         :type: ref
         :text: Start Using Ray Serve
         :classes: btn-outline-info btn-block
+    ---
+
+    **Examples**
+    ^^^
+
+    Follow the tutorials to learn how to integrate Ray Serve with :ref:`Keras and TensorFlow<serve-tensorflow-tutorial>`, :ref:`Scikit-Learn<serve-sklearn-tutorial>`, :ref:`RLlib<serve-rllib-tutorial>`. Learn how Ray Serve also integrates with :ref:`existing web applications<serve-web-server-integration-tutorial>`
+
+    +++
+    .. link-button:: serve-examples
+        :type: ref
+        :text: Serve Examples
+        :classes: btn-outline-info btn-block
 ```
 
 For more, see the following blog posts about Ray Serve:
