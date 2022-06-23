@@ -45,7 +45,8 @@ parser.add_argument(
     choices=["interest-evolution", "interest-exploration", "long-term-satisfaction"],
     help=("Select the RecSim env to use."),
 )
-parser.add_argument("--learning-starts", type=int, default=20000)
+parser.add_argument("--num-ts-added-before-sampling-starts", type=int, default=20000)
+
 parser.add_argument(
     "--random-test-episodes",
     type=int,
