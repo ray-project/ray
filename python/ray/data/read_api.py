@@ -1077,7 +1077,7 @@ def _prepare_read(
 
 
 def _autodetect_parallelism(
-    parallelism: int, cur_pg: Optional[PlacementGroup], reader=None
+    parallelism: int, cur_pg: Optional[PlacementGroup], reader: Optional[Reader] = None
 ) -> int:
     # Autodetect parallelism requested. The heuristic here are that we should try
     # to create as many blocks needed to saturate available resources, and also keep

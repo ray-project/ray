@@ -275,7 +275,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 class _FileBasedDatasourceReader(Reader):
     def __init__(
         self,
-        delegate,
+        delegate: FileBasedDatasource,
         paths: Union[str, List[str]],
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,

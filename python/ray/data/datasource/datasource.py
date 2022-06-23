@@ -131,7 +131,7 @@ class Reader(Generic[T]):
 
 
 @DeveloperAPI
-class _LegacyDatasourceReader(Generic[T]):
+class _LegacyDatasourceReader(Reader):
     def __init__(self, datasource: Datasource, **read_args):
         self._datasource = datasource
         self._read_args = read_args
