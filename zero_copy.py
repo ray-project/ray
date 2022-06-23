@@ -55,37 +55,16 @@ def replace_tensors(m: torch.nn.Module, tensors: List[Dict]):
         for name, array in tensor_dict["buffers"].items():
             module.register_buffer(name, torch.as_tensor(array))
 
-"""
-bert = transformers.BertModel.from_pretrained("bert-base-uncased")
-
-ray.init()
-bert_skeleton, bert_weights = extract_tensors(bert)
-
-# Load tensors into the model's graph of Python objects
-replace_tensors(bert_skeleton, bert_weights)
-
-# Preprocess an example input string for BERT.
-test_text = "All work and no play makes Jack a dull boy."
-tokenizer = transformers.BertTokenizerFast.from_pretrained(
-    "bert-base-uncased")
-test_tokens = tokenizer(test_text, return_tensors="pt")
-
-# Run the original model and the copy that we just loaded
-print("Original model's output:")
-print(bert(**test_tokens).last_hidden_state)
-print("\nModel output after zero-copy model loading:")
-print(bert_skeleton(**test_tokens).last_hidden_state)
-"""
 
 @ray.remote
-def generate_model():
+def download_model():
     bert = transformers.BertModel.from_pretrained("bert-base-uncased", force_download=True)
     bert_skeleton, bert_weights = extract_tensors(bert)
     return bert_skeleton, bert_weights
 
-# @serve.deployment(num_replicas=10)
-@serve.deployment(_autoscaling_config={"min_replicas": 0, "max_replicas": 10})
-class MyModel:
+
+@serve.deployment(_autoscaling_config={"min_replicas": 0, "max_replicas": 8, "upscale_delay_s": 0.1})
+class ZeroCopyModel:
     def __init__(self, model):
         self.model_skeleton, self.model_weights = model
         self.tokenizer = transformers.BertTokenizerFast.from_pretrained("bert-base-uncased")
@@ -99,9 +78,8 @@ class MyModel:
         return res.detach().numpy()
 
 
-# @serve.deployment(num_replicas=10)
-@serve.deployment(_autoscaling_config={"min_replicas": 0, "max_replicas": 10})
-class MyModel2:
+@serve.deployment(_autoscaling_config={"min_replicas": 0, "max_replicas": 8, "upscale_delay_s": 0.1})
+class NoZeroCopyModel:
     def __init__(self):
         self.model_skeleton = transformers.BertModel.from_pretrained("bert-base-uncased", force_download=True)
         self.tokenizer = transformers.BertTokenizerFast.from_pretrained("bert-base-uncased")
@@ -113,5 +91,5 @@ class MyModel2:
         return res.detach().numpy()
 
 
-m = MyModel.bind(generate_model.bind())
-m2 = MyModel2.bind()
+zero = ZeroCopyModel.bind(download_model.bind())
+no_zero = NoZeroCopyModel.bind()
