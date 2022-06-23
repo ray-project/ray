@@ -56,7 +56,7 @@ Gets latest config that Serve has received. This config represents the current g
 
 **Example Request**:
 
-```http
+```
 GET /api/serve/deployments/ HTTP 1.1
 Host: http://localhost:8265/
 Accept: application/json
