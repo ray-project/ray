@@ -252,7 +252,7 @@ class ModelWrapper(SimpleSchemaIngress):
     async def reconfigure(
         self,
         checkpoint: Union[Checkpoint, str],
-        predictor_cls: Union[str, Type["Predictor"]]
+        predictor_cls: Union[str, Type["Predictor"]],
     ) -> Type["Predictor"]:
 
         """Returns a new Predictor from Checkpoint"""
