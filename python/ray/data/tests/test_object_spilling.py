@@ -30,9 +30,8 @@ def create_dataset():
         assert args.data_type == 1
         # Parquet data
         files = [
-            f"s3://shuffling-data-loader-benchmarks/data/r10_000_000_000-f1000"
-            f"/input_data_{i}.parquet.snappy"
-            for i in range(args.num_files)
+            f"s3://ursa-labs-taxi-data/{year}/{month}/data.parquet"
+            for year in range(2009, 2018) for month in range(1, 12)
         ]
         ds = ray.data.read_parquet(files)
     return ds
@@ -45,7 +44,8 @@ num_batches, num_bytes = 0, 0
 batch_delays = []
 
 ds = create_dataset()
-for batch in ds.iter_batches(batch_size=args.batch_size):
+print("ds:", ds)
+for batch in ds.iter_batches():
     num_batches += 1
     batch_delay = time.perf_counter() - batch_start
     batch_delays.append(batch_delay)
