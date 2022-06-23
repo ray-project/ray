@@ -27,7 +27,7 @@ from ray.tune import (
 )
 from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
@@ -879,8 +879,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Re-run the same trials but with added delay. This is to catch some
         # inconsistent timestep counting that was present in the multi-threaded
-        # FunctionRunner. This part of the test can be removed once the
-        # multi-threaded FunctionRunner is removed from ray/tune.
+        # FunctionTrainable. This part of the test can be removed once the
+        # multi-threaded FunctionTrainable is removed from ray/tune.
         # TODO: remove once the multi-threaded function runner is gone.
         logs2, _ = self.checkAndReturnConsistentLogs(results2, 0.5)
 

@@ -29,7 +29,7 @@ from ray.tune.execution.placement_groups import (
     get_tune_pg_prefix,
 )
 from ray.tune.utils.resource_updater import _ResourceUpdater
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.trainable.util import TrainableUtil
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
