@@ -13,7 +13,7 @@ from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.tune.trial_runner import TrialRunner
+    from ray.tune.execution.trial_runner import TrialRunner
 
 logger = logging.getLogger(__name__)
 

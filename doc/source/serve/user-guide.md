@@ -14,3 +14,4 @@ you will learn
 - [Deploying Ray Serve](deploying-serve)
 - [Debugging/Monitoring](monitoring)
 - [Performance Tuning](performance)
+- [Autoscaling](autoscaling)

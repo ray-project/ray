@@ -490,16 +490,6 @@ class RuntimeEnv(dict):
             # set py_modules uris
             proto_runtime_env.uris.py_modules_uris.extend(py_modules_uris)
 
-        # set conda uri
-        conda_uri = self.conda_uri()
-        if conda_uri is not None:
-            proto_runtime_env.uris.conda_uri = conda_uri
-
-        # set pip uri
-        pip_uri = self.pip_uri()
-        if pip_uri is not None:
-            proto_runtime_env.uris.pip_uri = pip_uri
-
         # set env_vars
         env_vars = self.env_vars()
         proto_runtime_env.env_vars.update(env_vars.items())

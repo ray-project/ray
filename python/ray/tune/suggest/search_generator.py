@@ -4,12 +4,12 @@ from typing import Dict, List, Optional, Union
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
-from ray.tune.config_parser import make_parser, create_trial_from_spec
+from ray.tune.experiment.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.suggestion import Searcher
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.utils.util import (
     flatten_dict,
     merge_dicts,
