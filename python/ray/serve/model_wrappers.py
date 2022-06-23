@@ -249,9 +249,14 @@ class ModelWrapper(SimpleSchemaIngress):
         """Perform inference directly without HTTP."""
         return await self.predict_impl(inp)
 
-    async def reconfigure(self, checkpoint: Union[Checkpoint, str]) -> "BatchPredictor":
-        """Returns a new Batch Predictor from Checkpoint"""
-        return await BatchPredictor.from_checkpoint(checkpoint, BatchPredictor)
+    async def reconfigure(
+        self,
+        checkpoint: Union[Checkpoint, str],
+        predictor_cls: Union[str, Type["Predictor"]]
+    ) -> Type["Predictor"]:
+
+        """Returns a new Predictor from Checkpoint"""
+        return await predictor_cls.from_checkpoint(checkpoint, predictor_cls)
 
 
 @serve.deployment
