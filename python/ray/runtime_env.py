@@ -1,26 +1,23 @@
-import os
-import logging
-from typing import Dict, List, Optional, Tuple, Any, Set, Union
 import json
-from google.protobuf import json_format
+import logging
+import os
 from copy import deepcopy
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
+from google.protobuf import json_format
 
 import ray
-from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnv as ProtoRuntimeEnv,
-    RuntimeEnvConfig as ProtoRuntimeEnvConfig,
-)
+from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+from ray._private.runtime_env.conda import get_uri as get_conda_uri
+from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.utils import import_attr
-from ray._private.runtime_env.conda import (
-    get_uri as get_conda_uri,
+from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvConfig as ProtoRuntimeEnvConfig,
 )
-
-from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray.util.annotations import PublicAPI
-from ray.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
-
 
 logger = logging.getLogger(__name__)
 
@@ -107,16 +104,22 @@ class RuntimeEnvConfig(dict):
             timeout logic, except `-1`, `setup_timeout_seconds` cannot be
             less than or equal to 0. The default value of `setup_timeout_seconds`
             is 600 seconds.
+        eager_install(bool): Indicates whether to install the runtime environment
+            on the cluster at `ray.init()` time, before the workers are leased.
+            This flag is set to `True` by default.
     """
 
-    known_fields: Set[str] = {"setup_timeout_seconds"}
+    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install"}
 
     _default_config: Dict = {
         "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+        "eager_install": True,
     }
 
     def __init__(
-        self, setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+        self,
+        setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+        eager_install: bool = True,
     ):
         super().__init__()
         if not isinstance(setup_timeout_seconds, int):
@@ -130,6 +133,12 @@ class RuntimeEnvConfig(dict):
                 f"or equals to -1, got: {setup_timeout_seconds}"
             )
         self["setup_timeout_seconds"] = setup_timeout_seconds
+
+        if not isinstance(eager_install, bool):
+            raise TypeError(
+                f"eager_install must be a boolean. got {type(eager_install)}"
+            )
+        self["eager_install"] = eager_install
 
     @staticmethod
     def parse_and_validate_runtime_env_config(
@@ -162,6 +171,7 @@ class RuntimeEnvConfig(dict):
     def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
         runtime_env_config = ProtoRuntimeEnvConfig()
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
+        runtime_env_config.eager_install = self["eager_install"]
         return runtime_env_config
 
     @classmethod
@@ -174,7 +184,10 @@ class RuntimeEnvConfig(dict):
         # assign the default value to setup_timeout_seconds.
         if setup_timeout_seconds == 0:
             setup_timeout_seconds = cls._default_config["setup_timeout_seconds"]
-        return cls(setup_timeout_seconds=setup_timeout_seconds)
+        return cls(
+            setup_timeout_seconds=setup_timeout_seconds,
+            eager_install=runtime_env_config.eager_install,
+        )
 
 
 # Due to circular reference, field config can only be assigned a value here
@@ -246,7 +259,7 @@ class RuntimeEnv(dict):
         # Example for using container
         RuntimeEnv(
             container={"image": "anyscale/ray-ml:nightly-py38-cpu",
-            "worker_path": "/root/python/ray/workers/default_worker.py",
+            "worker_path": "/root/python/ray/_private/workers/default_worker.py",
             "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
 
         # Example for set env_vars
@@ -307,7 +320,6 @@ class RuntimeEnv(dict):
         "_ray_commit",
         "_inject_current_ray",
         "plugins",
-        "eager_install",
         "config",
     }
 
@@ -492,16 +504,6 @@ class RuntimeEnv(dict):
             proto_runtime_env.python_runtime_env.py_modules.extend(py_modules_uris)
             # set py_modules uris
             proto_runtime_env.uris.py_modules_uris.extend(py_modules_uris)
-
-        # set conda uri
-        conda_uri = self.conda_uri()
-        if conda_uri is not None:
-            proto_runtime_env.uris.conda_uri = conda_uri
-
-        # set pip uri
-        pip_uri = self.pip_uri()
-        if pip_uri is not None:
-            proto_runtime_env.uris.pip_uri = pip_uri
 
         # set env_vars
         env_vars = self.env_vars()

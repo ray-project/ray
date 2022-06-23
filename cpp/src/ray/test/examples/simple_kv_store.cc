@@ -246,7 +246,8 @@ class Client {
 
 int main(int argc, char **argv) {
   // Start ray cluster and ray runtime.
-  ray::Init();
+  ray::RayConfig config;
+  ray::Init(config, argc, argv);
 
   StartServer();
 

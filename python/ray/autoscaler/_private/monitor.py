@@ -13,8 +13,8 @@ from multiprocessing.synchronize import Event
 from typing import Any, Callable, Dict, Optional, Union
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray._private.utils
-import ray.ray_constants as ray_constants
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -155,7 +155,7 @@ class Monitor:
         if redis_password is not None:
             logger.warning("redis_password has been deprecated.")
         # Set the redis client and mode so _internal_kv works for autoscaler.
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         gcs_client = GcsClient(address=gcs_address)
 
         if monitor_ip:
@@ -319,7 +319,9 @@ class Monitor:
         """Fetches resource requests from the internal KV and updates load."""
         if not _internal_kv_initialized():
             return
-        data = _internal_kv_get(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
+        data = _internal_kv_get(
+            ray._private.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+        )
         if data:
             try:
                 resource_request = json.loads(data)

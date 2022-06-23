@@ -3,9 +3,8 @@ import time
 import pytest
 
 import ray
+from ray._private.internal_api import memory_summary
 from ray.tests.conftest import *  # noqa
-
-from ray.internal.internal_api import memory_summary
 
 
 def check_no_spill(ctx, pipe, prefetch_blocks: int = 0):
@@ -29,6 +28,20 @@ def test_iter_batches_no_spilling_upon_no_transformation(shutdown_only):
 
     check_no_spill(ctx, ds.window(blocks_per_window=20))
     check_no_spill(ctx, ds.window(blocks_per_window=20), 5)
+
+
+def test_iter_batches_no_spilling_upon_rewindow(shutdown_only):
+    # The object store is about 300MB.
+    ctx = ray.init(num_cpus=1, object_store_memory=300e6)
+    # The size of dataset is 500*(80*80*4)*8B, about 100MB.
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+
+    check_no_spill(
+        ctx, ds.window(blocks_per_window=20).repeat().rewindow(blocks_per_window=10)
+    )
+    check_no_spill(
+        ctx, ds.window(blocks_per_window=20).repeat().rewindow(blocks_per_window=10), 5
+    )
 
 
 def test_iter_batches_no_spilling_upon_prior_transformation(shutdown_only):
@@ -100,6 +113,32 @@ def test_iter_batches_no_spilling_upon_shuffle(shutdown_only):
 
     check_no_spill(ctx, ds.window(blocks_per_window=20).random_shuffle_each_window())
     check_no_spill(ctx, ds.window(blocks_per_window=20).random_shuffle_each_window(), 5)
+
+
+def test_pipeline_splitting_has_no_spilling(shutdown_only):
+    # The object store is about 800MiB.
+    ctx = ray.init(num_cpus=1, object_store_memory=800e6)
+    # The size of dataset is 50000*(80*80*4)*8B, about 10GiB, 50MiB/block.
+    ds = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=200)
+
+    # 2 blocks/window.
+    p = ds.window(bytes_per_window=100 * 1024 * 1024).repeat()
+    p1, p2 = p.split(2)
+
+    @ray.remote
+    def consume(p):
+        for batch in p.iter_batches():
+            pass
+
+    tasks = [consume.remote(p1), consume.remote(p2)]
+    try:
+        # Run it for 20 seconds.
+        ray.get(tasks, timeout=20)
+    except Exception:
+        for t in tasks:
+            ray.cancel(t, force=True)
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
 
 
 if __name__ == "__main__":

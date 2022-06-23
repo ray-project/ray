@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import ray
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
@@ -29,7 +29,7 @@ from ray.tune.schedulers import (
 from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.resources import Resources
 
 from ray.rllib import _register_all

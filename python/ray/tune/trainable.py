@@ -42,7 +42,7 @@ from ray.tune.result import (
 from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import (
     Tee,
@@ -252,7 +252,7 @@ class Trainable:
 
     def is_actor(self):
         try:
-            actor_id = ray.worker.global_worker.actor_id
+            actor_id = ray._private.worker.global_worker.actor_id
             return actor_id != actor_id.nil()
         except Exception:
             # If global_worker is not instantiated, we're not in an actor
