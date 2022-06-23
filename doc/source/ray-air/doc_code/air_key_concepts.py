@@ -92,7 +92,7 @@ for batch in pipeline.iter_batches():
 # __air_deploy_start__
 from ray import serve
 from fastapi import Request
-from ray.serve.air_integrations import PredictorDeployment
+from ray.serve import PredictorDeployment
 from ray.serve.http_adapters import json_request
 
 

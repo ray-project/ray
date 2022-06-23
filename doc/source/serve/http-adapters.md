@@ -49,7 +49,7 @@ With [model wrappers](air-serving-guide), you can specify it via the `http_adapt
 ```python
 from ray import serve
 from ray.serve.http_adapters import json_to_ndarray
-from ray.serve.air_integrations import PredictorDeployment
+from ray.serve import PredictorDeployment
 
 PredictorDeployment.options(name="my_model").deploy(
     my_ray_air_predictor,
