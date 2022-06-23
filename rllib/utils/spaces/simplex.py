@@ -1,5 +1,5 @@
-import numpy as np
 import gym
+import numpy as np
 
 from ray.rllib.utils.annotations import PublicAPI
 
@@ -29,9 +29,9 @@ class Simplex(gym.Space):
         self.dim = self.shape[-1]
 
         if concentration is not None:
-            assert concentration.shape == shape[:-1], (
-                f"{concentration.shape} vs {shape[:-1]}"
-            )
+            assert (
+                concentration.shape == shape[:-1]
+            ), f"{concentration.shape} vs {shape[:-1]}"
             self.concentration = concentration
         else:
             self.concentration = np.array([1] * self.dim)

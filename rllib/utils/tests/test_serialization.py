@@ -1,11 +1,9 @@
-import gym
-import numpy as np
 import unittest
 
-from ray.rllib.utils.serialization import (
-    gym_space_from_dict,
-    gym_space_to_dict,
-)
+import gym
+import numpy as np
+
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -107,7 +105,9 @@ class TestGymCheckEnv(unittest.TestCase):
         sp = gym_space_from_dict(d)
 
         _assert_array_equal(self.assertEqual, space.shape, sp.shape)
-        _assert_array_equal(self.assertAlmostEqual, space.concentration, sp.concentration)
+        _assert_array_equal(
+            self.assertAlmostEqual, space.concentration, sp.concentration
+        )
         self.assertEqual(space.dtype, sp.dtype)
 
     def test_repeated(self):
@@ -124,10 +124,9 @@ class TestGymCheckEnv(unittest.TestCase):
         space = FlexDict({})
         space["box"] = gym.spaces.Box(low=-1, high=1, shape=(1, 200))
         space["discrete"] = gym.spaces.Discrete(2)
-        space["tuple"] = gym.spaces.Tuple((
-            gym.spaces.Box(low=-1, high=1, shape=(1, 200)),
-            gym.spaces.Discrete(2)
-        ))
+        space["tuple"] = gym.spaces.Tuple(
+            (gym.spaces.Box(low=-1, high=1, shape=(1, 200)), gym.spaces.Discrete(2))
+        )
 
         d = gym_space_to_dict(space)
         sp = gym_space_from_dict(d)
@@ -138,7 +137,8 @@ class TestGymCheckEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

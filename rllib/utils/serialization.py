@@ -1,15 +1,15 @@
 import base64
-import gym
 import io
-import numpy as np
-from typing import Dict
 import zlib
+from typing import Dict
+
+import gym
+import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
-
 
 # TODO(jungong) : We need to handle RLlib custom space types,
 # FlexDict, Repeated, and Simplex.
@@ -94,7 +94,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
             "space": "dict",
             "spaces": {k: gym_space_to_dict(sp) for k, sp in sp.spaces.items()},
         }
-    
+
     def _simplex(sp: Simplex) -> Dict:
         return {
             "space": "simplex",
@@ -193,9 +193,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
 
     def _flex_dict(d: Dict) -> FlexDict:
         del d["space"]
-        spaces = {
-            k: gym_space_from_dict(s) for k, s in d.items()
-        }
+        spaces = {k: gym_space_from_dict(s) for k, s in d.items()}
         return FlexDict(spaces=spaces)
 
     space_map = {
