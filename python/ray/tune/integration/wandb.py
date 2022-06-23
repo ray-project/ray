@@ -7,6 +7,7 @@ from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import urllib
+import requests
 
 from ray import logger
 from ray.tune import Trainable
@@ -231,7 +232,12 @@ class _WandbLoggingProcess(Process):
         run = wandb.init(*self.args, **self.kwargs)
         
         group_url = f"https://wandb.ai/{wandb.run.entity}/{wandb.run.project}/groups/{wandb.run.group}"
-        # TODO send this to jobs endpoint
+        if os.environ.get("ANYSCALE_PRODUCTION_JOB_ID"):
+            ha_job_id = os.environ.get("ANYSCALE_PRODUCTION_JOB_ID")
+            requests.post(
+                f"https://ci-nikitavemuri.anyscale-dev.dev/api/v2/decorated_ha_jobs/{ha_job_id}/jobs_wandb_url?wandb_url={group_url}",
+                cookies={"cli_token": os.environ.get("ANYSCALE_CLI_TOKEN")}
+            )
 
         while True:
             item_type, item_content = self.queue.get()
