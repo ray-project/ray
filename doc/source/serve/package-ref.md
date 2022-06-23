@@ -69,22 +69,14 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-    "import_path": "dir.subdir.a.add_and_sub.serve_dag",
+    "import_path": "fruit.deployment_graph",
     "runtime_env": {
-        "working_dir": "https://github.com/ray-project/test_dag/archive/41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+        "working_dir": "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
     },
     "deployments": [
-        {
-            "name": "Subtract",
-            "num_replicas": 2,
-            "ray_actor_options": {
-                "runtime_env": {
-                    "py_modules": [
-                        "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
-                    ]
-                }
-            }
-        }
+        {"name": "MangoStand", "user_config": {"price": 1}},
+        {"name": "OrangeStand", "user_config": {"price": 2}},
+        {"name": "PearStand", "user_config": {"price": 3}}
     ]
 }
 ```
@@ -101,22 +93,14 @@ Host: http://localhost:8265/
 Accept: application/json
 
 {
-    "import_path": "dir.subdir.a.add_and_sub.serve_dag",
+    "import_path": "fruit.deployment_graph",
     "runtime_env": {
-        "working_dir": "https://github.com/ray-project/test_dag/archive/41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+        "working_dir": "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
     },
     "deployments": [
-        {
-            "name": "Subtract",
-            "num_replicas": 2,
-            "ray_actor_options": {
-                "runtime_env": {
-                    "py_modules": [
-                        "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
-                    ]
-                }
-            }
-        }
+        {"name": "MangoStand", "user_config": {"price": 1}},
+        {"name": "OrangeStand", "user_config": {"price": 2}},
+        {"name": "PearStand", "user_config": {"price": 3}}
     ]
 }
 ```
@@ -151,21 +135,26 @@ Content-Type: application/json
     "app_status": {
         "status": "RUNNING",
         "message": "",
-        "deployment_timestamp": 1655490105.9503832
+        "deployment_timestamp": 1855994527.146304
     },
     "deployment_statuses": [
         {
-            "name": "Add",
+            "name": "MangoStand",
             "status": "HEALTHY",
             "message": ""
         },
         {
-            "name": "Subtract",
+            "name": "OrangeStand",
             "status": "HEALTHY",
             "message": ""
         },
         {
-            "name": "Router",
+            "name": "PearStand",
+            "status": "HEALTHY",
+            "message": ""
+        },
+        {
+            "name": "FruitMarket",
             "status": "HEALTHY",
             "message": ""
         },
