@@ -387,10 +387,9 @@ class WandbLoggerCallback(LoggerCallback):
             # Customer AWS credentials don't need to be passed here because Anyscale cluster
             # instance already assumes ray_autoscaler_v1 role
             try:
-                operator = AWSRaySecretOperator()
-                ssm_proxy = RaySecretProxy.remote(ray_secret_operator=operator)
-                secret = ray.get(ssm_proxy.get_secret.remote(secret_name='WandBAPIKey-nikita'))
-                self.api_key = secret.value()
+                client = boto3.client("secretsmanager", region_name="us-west-2")
+                resp = client.get_secret_value(SecretId="WandBAPIKey-nikita")
+                self.api_key = resp["SecretString"]
             except Exception as e:
                 raise Exception([e, Exception(
                     "Unable to get wandb API key from AWS Secrets Manager. Please ensure "
