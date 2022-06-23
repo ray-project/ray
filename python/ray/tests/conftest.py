@@ -38,6 +38,28 @@ from ray._private.test_utils import (
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
 
+
+class TestingCluster(Cluster):
+    def add_node(self, wait: bool = True, **node_args):
+        if self.head_node is None:
+            if "dashboard_port" not in node_args:
+                node_args["dashboard_port"] = 0
+            self._prev_ray_address = os.environ.get("RAY_ADDRESS", None)
+            node = super().add_node(wait, **node_args)
+            os.environ["RAY_ADDRESS"] = self.address
+            return node
+        else:
+            return super().add_node(wait, **node_args)
+            
+    def remove_node(self, node, allow_graceful=True):
+        if self.head_node == node:
+            if self._prev_ray_address is not None:
+                os.environ["RAY_ADDRESS"] = self._prev_ray_address
+                self._prev_ray_address = None
+            else:
+                del os.environ["RAY_ADDRESS"]
+        return super().remove_node(node, allow_graceful)
+
 def get_default_fixure_system_config():
     system_config = {
         "object_timeout_milliseconds": 200,
@@ -147,9 +169,10 @@ def ray_start_no_cpu(request, maybe_external_redis):
 
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
-def ray_start_regular(request, maybe_external_redis):
+def ray_start_regular(monkeypatch, request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
+        monkeypatch.setenv("RAY_ADDRESS", res.address_info["address"])
         yield res
 
 
@@ -210,7 +233,7 @@ def _ray_start_cluster(**kwargs):
         do_init = True
     init_kwargs.update(kwargs)
     namespace = init_kwargs.pop("namespace")
-    cluster = Cluster()
+    cluster = TestingCluster()
     remote_nodes = []
     for i in range(num_nodes):
         if i > 0 and "_system_config" in init_kwargs:
@@ -435,7 +458,7 @@ def two_node_cluster():
     }
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
-    cluster = ray.cluster_utils.Cluster(
+    cluster = TestingCluster(
         head_node_args={"_system_config": system_config}
     )
     for _ in range(2):

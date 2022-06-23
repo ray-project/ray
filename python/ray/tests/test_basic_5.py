@@ -148,7 +148,7 @@ def init_func(worker_info):
         data_file.write_bytes(pickle.dumps(old))
 
 ray._private.worker.global_worker.run_function_on_all_workers(init_func)
-ray.init(address='{ray_start_regular["address"]}')
+ray.init(address='auto')
 
 @ray.remote
 def ready():
@@ -158,6 +158,7 @@ def ready():
 
 ray.get(ready.remote())
 """
+
     run_string_as_driver(driver_script)
     run_string_as_driver(driver_script)
     run_string_as_driver(driver_script)

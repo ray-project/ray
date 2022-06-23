@@ -18,27 +18,29 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
       randomized each time.
 """
 import glob
-import os
-import re
 import sys
 import tempfile
 import uuid
+import re
+import os
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+
+import pytest
 
 import moto
-import pytest
-from click.testing import CliRunner
 from moto import mock_ec2, mock_iam
+from unittest.mock import MagicMock, patch
+from click.testing import CliRunner
+
 from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
 import ray.autoscaler._private.aws.config as aws_config
+from ray.cluster_utils import cluster_not_supported
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
-from ray.cluster_utils import cluster_not_supported
 
 boto3_list = [
     {
