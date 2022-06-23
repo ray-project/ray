@@ -253,6 +253,7 @@ py_test_module_list(
   files = [
     "test_basic_3.py",
     "test_output.py",
+    "test_out_of_disk_space.py",
     "test_failure_4.py",
     "test_object_spilling.py",
     "test_object_spilling_no_asan.py",
