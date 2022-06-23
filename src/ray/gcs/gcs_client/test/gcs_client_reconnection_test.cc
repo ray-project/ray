@@ -326,6 +326,32 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   ASSERT_EQ(std::future_status::ready, f3.wait_for(5s));
 }
 
+TEST_F(GcsClientReconnectionTest, Timeout) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "gcs_rpc_server_reconnect_timeout_s": 60,
+  "gcs_storage": "redis",
+  "gcs_grpc_max_request_queued_max_bytes": 10,
+  "gcs_server_request_timeout_seconds": 3
+}
+  )");
+  StartGCS();
+  auto client = CreateGCSClient();
+  bool added = false;
+  ASSERT_TRUE(client->InternalKV().Put("", "A", "B", false, added).ok());
+  ASSERT_TRUE(added);
+
+  ShutdownGCS();
+
+  std::vector<std::string> values;
+  ASSERT_TRUE(client->InternalKV().Keys("", "A", values).IsTimedOut());
+  ASSERT_TRUE(values.empty());
+  StartGCS();
+  ASSERT_TRUE(client->InternalKV().Keys("", "A", values).ok());
+  ASSERT_EQ(std::vector<std::string>{"A"}, values);
+}
+
 int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
