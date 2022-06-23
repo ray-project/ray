@@ -119,7 +119,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port, no_config_ca
         ]
         click.echo(
             "Attempting to establish dashboard locally at"
-            " localhost:{} connected to"
+            " http://localhost:{}/ connected to"
             " remote port {}".format(port, remote_port)
         )
         # We want to probe with a no-op that returns quickly to avoid
