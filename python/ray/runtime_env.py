@@ -1,26 +1,23 @@
-import os
-import logging
-from typing import Dict, List, Optional, Tuple, Any, Set, Union
 import json
-from google.protobuf import json_format
+import logging
+import os
 from copy import deepcopy
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
+from google.protobuf import json_format
 
 import ray
-from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnv as ProtoRuntimeEnv,
-    RuntimeEnvConfig as ProtoRuntimeEnvConfig,
-)
+from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+from ray._private.runtime_env.conda import get_uri as get_conda_uri
+from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.utils import import_attr
-from ray._private.runtime_env.conda import (
-    get_uri as get_conda_uri,
+from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvConfig as ProtoRuntimeEnvConfig,
 )
-
-from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray.util.annotations import PublicAPI
-from ray.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
-
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +243,7 @@ class RuntimeEnv(dict):
         # Example for using container
         RuntimeEnv(
             container={"image": "anyscale/ray-ml:nightly-py38-cpu",
-            "worker_path": "/root/python/ray/workers/default_worker.py",
+            "worker_path": "/root/python/ray/_private/workers/default_worker.py",
             "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
 
         # Example for set env_vars
@@ -492,16 +489,6 @@ class RuntimeEnv(dict):
             proto_runtime_env.python_runtime_env.py_modules.extend(py_modules_uris)
             # set py_modules uris
             proto_runtime_env.uris.py_modules_uris.extend(py_modules_uris)
-
-        # set conda uri
-        conda_uri = self.conda_uri()
-        if conda_uri is not None:
-            proto_runtime_env.uris.conda_uri = conda_uri
-
-        # set pip uri
-        pip_uri = self.pip_uri()
-        if pip_uri is not None:
-            proto_runtime_env.uris.pip_uri = pip_uri
 
         # set env_vars
         env_vars = self.env_vars()

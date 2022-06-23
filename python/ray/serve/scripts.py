@@ -22,6 +22,7 @@ from ray.serve.constants import (
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
 )
+from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
 
@@ -382,14 +383,11 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         )
 
     app = build_app(node)
-    config = app.to_dict()
-    config["import_path"] = import_path
 
-    deprecated_config_properties = {"init_args", "init_kwargs", "import_path"}
-    for deployment in config["deployments"]:
-        for property in deprecated_config_properties:
-            if property in deployment:
-                del deployment[property]
+    config = ServeApplicationSchema(
+        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
+    ).dict()
+    config["import_path"] = import_path
 
     if output_path is not None:
         if not output_path.endswith(".yaml"):

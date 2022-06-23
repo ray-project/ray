@@ -4,10 +4,9 @@ import errno
 import io
 import json
 import logging
+import mmap
 import multiprocessing
 import os
-from pathlib import Path
-import mmap
 import random
 import shutil
 import signal
@@ -15,19 +14,20 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Optional, List
 import uuid
-
-# Ray modules
-import ray
-import ray.ray_constants as ray_constants
-from ray._raylet import GcsClientOptions
-from ray._private.gcs_utils import GcsClient
-from ray.core.generated.common_pb2 import Language
+from pathlib import Path
+from typing import List, Optional
 
 # Import psutil and colorama after ray so the packaged version is used.
 import colorama
 import psutil
+
+# Ray modules
+import ray
+import ray._private.ray_constants as ray_constants
+from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClientOptions
+from ray.core.generated.common_pb2 import Language
 
 resource = None
 if sys.platform != "win32":
@@ -382,7 +382,7 @@ def wait_for_node(
             the node appears in the client table.
     """
     gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
-    global_state = ray.state.GlobalState()
+    global_state = ray._private.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -401,7 +401,7 @@ def get_node_to_connect_for_driver(
     redis_address, gcs_address, node_ip_address, redis_password=None
 ):
     # Get node table from global state accessor.
-    global_state = ray.state.GlobalState()
+    global_state = ray._private.state.GlobalState()
     gcs_options = _get_gcs_client_options(redis_address, redis_password, gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
@@ -437,12 +437,12 @@ def remaining_processes_alive():
         Exception: An exception is raised if the processes were not started by
             ray.init().
     """
-    if ray.worker._global_node is None:
+    if ray._private.worker._global_node is None:
         raise RuntimeError(
             "This process is not in a position to determine "
             "whether all processes are alive or not."
         )
-    return ray.worker._global_node.remaining_processes_alive()
+    return ray._private.worker._global_node.remaining_processes_alive()
 
 
 def canonicalize_bootstrap_address(addr: str):
@@ -540,8 +540,8 @@ def node_ip_address_from_perspective(address: str):
 
 
 def get_node_ip_address(address="8.8.8.8:53"):
-    if ray.worker._global_node is not None:
-        return ray.worker._global_node.node_ip_address
+    if ray._private.worker._global_node is not None:
+        return ray._private.worker._global_node.node_ip_address
     if sys.platform == "darwin" or sys.platform == "win32":
         # Due to the mac osx/windows firewall,
         # we use loopback ip as the ip address
@@ -2185,7 +2185,7 @@ def start_ray_client_server(
     """
     root_ray_dir = Path(__file__).resolve().parents[1]
     setup_worker_path = os.path.join(
-        root_ray_dir, "workers", ray_constants.SETUP_WORKER_FILENAME
+        root_ray_dir, "_private", "workers", ray_constants.SETUP_WORKER_FILENAME
     )
 
     ray_client_server_host = (
