@@ -125,20 +125,17 @@ class DirectMethod(Trainable, OffPolicyEstimator):
             f"cannot be 0 for the {self.__class__.__name__} estimator!"
         )
         # TODO (Rohan138): Change this to {q_model {type: ..., **q_model_config}} for consistency
-        if not self.ope_num_workers:
-            q_model_config = config.get("q_model_config", {})
-            self.model = model_cls(
-                policy=self.policy,
-                gamma=self.gamma,
-                **q_model_config,
-            )
-        else:
-            raise NotImplementedError
+        q_model_config = config.get("q_model_config", {})
+        self.model = model_cls(
+            policy=self.policy,
+            gamma=self.gamma,
+            **q_model_config,
+        )
     
     @override(Trainable)
     def step(self):
         if not self.ope_num_workers:
-            self.model.step()
+            return self.model.step()
     
     @override(Trainable)
     def save_checkpoint(self, tmp_checkpoint_dir: str):
