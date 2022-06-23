@@ -8,9 +8,7 @@ import tree
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
-from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
@@ -154,10 +152,12 @@ class CRR(Algorithm):
         default_config = self.get_default_config()
         num_workers = config.get("num_workers") or default_config.get("num_workers")
         train_batch_size = config.get("train_batch_size") or default_config.get(
-            "train_batch_size")
+            "train_batch_size"
+        )
         if num_workers:
             config["rollout_fragment_length"] = int(
-                math.ceil(train_batch_size / num_workers))
+                math.ceil(train_batch_size / num_workers)
+            )
         else:
             config["rollout_fragment_length"] = train_batch_size
 
