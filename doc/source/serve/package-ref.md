@@ -88,7 +88,8 @@ Declaratively deploys the Serve application. Starts Serve on the Ray cluster if 
 **Example Request**:
 
 ```http
-PUT /api/serve/deployments/ HTTP 1.1
+HTTP 1.1
+PUT /api/serve/deployments/
 Host: http://localhost:8265/
 Accept: application/json
 
