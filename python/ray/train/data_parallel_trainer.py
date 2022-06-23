@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import ray
-from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
@@ -362,7 +361,7 @@ class DataParallelTrainer(BaseTrainer):
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_results = results[0]
 
-            tune.report(**first_worker_results)
+            session.report(**first_worker_results)
 
         # Shutdown workers.
         backend_executor.shutdown()

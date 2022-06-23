@@ -2,6 +2,7 @@ import inspect
 import logging
 import os
 import traceback
+import warnings
 from contextlib import contextmanager
 from typing import Dict, Optional, Set
 
@@ -23,6 +24,13 @@ logger = logging.getLogger(__name__)
 _session: Optional[_StatusReporter] = None
 # V2 Session API.
 _session_v2: Optional["_TuneSessionImpl"] = None
+
+_deprecation_msg = (
+    "`tune.report` and `tune.checkpoint_dir` APIs are deprecated in Ray "
+    "2.0, and is replaced by `ray.air.session`. This will provide an easy-"
+    "to-use API across Tune session and Data parallel worker sessions."
+    "The old APIs will be removed in the future. "
+)
 
 
 class _TuneSessionImpl(Session):
@@ -214,6 +222,10 @@ def report(_metric=None, **kwargs):
         **kwargs: Any key value pair to be logged by Tune. Any of these
             metrics can be used for early stopping or optimization.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         if _session._iter:
@@ -274,6 +286,11 @@ def checkpoint_dir(step: int):
 
     .. versionadded:: 0.8.7
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
+
     _session = get_session()
 
     if step is None:
@@ -301,6 +318,10 @@ def get_trial_dir():
 
     For function API use only.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         return _session.logdir
@@ -312,6 +333,10 @@ def get_trial_name():
 
     For function API use only.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         return _session.trial_name
@@ -323,6 +348,10 @@ def get_trial_id():
 
     For function API use only.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         return _session.trial_id
@@ -337,6 +366,10 @@ def get_trial_resources():
 
     For function API use only.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         return _session.trial_resources

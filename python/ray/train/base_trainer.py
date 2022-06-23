@@ -70,6 +70,7 @@ class BaseTrainer(abc.ABC):
 
         from ray.train.trainer import BaseTrainer
         from ray import tune
+        from ray.air import session
 
 
         class MyPytorchTrainer(BaseTrainer):
@@ -106,7 +107,7 @@ class BaseTrainer(abc.ABC):
 
                     # Use Tune functions to report intermediate
                     # results.
-                    tune.report(loss=loss, epoch=epoch_idx)
+                    session.report({"loss": loss, "epoch": epoch_idx})
 
     **How do I use an existing Trainer or one of my custom Trainers?**
 
@@ -283,7 +284,7 @@ class BaseTrainer(abc.ABC):
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
         You can use the :ref:`Tune Function API functions <tune-function-docstring>`
-        (``tune.report()`` and ``tune.save_checkpoint()``) inside
+        (``session.report()`` and ``session.get_checkpoint()``) inside
         this training loop.
 
         Example:
@@ -295,7 +296,7 @@ class BaseTrainer(abc.ABC):
                     def training_loop(self):
                         for epoch_idx in range(5):
                             ...
-                            tune.report(epoch=epoch_idx)
+                            session.report({"epoch": epoch_idx})
 
         """
         raise NotImplementedError
