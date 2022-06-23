@@ -79,11 +79,12 @@ print(bert_skeleton(**test_tokens).last_hidden_state)
 
 @ray.remote
 def generate_model():
-    bert = transformers.BertModel.from_pretrained("bert-base-uncased")
+    bert = transformers.BertModel.from_pretrained("bert-base-uncased", force_download=True)
     bert_skeleton, bert_weights = extract_tensors(bert)
     return bert_skeleton, bert_weights
 
-@serve.deployment(num_replicas=3)
+# @serve.deployment(num_replicas=10)
+@serve.deployment(_autoscaling_config={"min_replicas": 0, "max_replicas": 10})
 class MyModel:
     def __init__(self, model):
         self.model_skeleton, self.model_weights = model
@@ -98,10 +99,11 @@ class MyModel:
         return res.detach().numpy()
 
 
-@serve.deployment(num_replicas=10)
+# @serve.deployment(num_replicas=10)
+@serve.deployment(_autoscaling_config={"min_replicas": 0, "max_replicas": 10})
 class MyModel2:
     def __init__(self):
-        self.model_skeleton = transformers.BertModel.from_pretrained("bert-base-uncased")
+        self.model_skeleton = transformers.BertModel.from_pretrained("bert-base-uncased", force_download=True)
         self.tokenizer = transformers.BertTokenizerFast.from_pretrained("bert-base-uncased")
 
     def __call__(self, *args):
@@ -110,6 +112,6 @@ class MyModel2:
         res = self.model_skeleton(**test_tokens).last_hidden_state
         return res.detach().numpy()
 
-#m = MyModel.bind(generate_model.bind())
 
+m = MyModel.bind(generate_model.bind())
 m2 = MyModel2.bind()

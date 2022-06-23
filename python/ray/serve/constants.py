@@ -94,7 +94,7 @@ SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
 CLIENT_POLLING_INTERVAL_S: float = 1
 
 # Handle metric push interval. (This interval will affect the cold start time period)
-HANDLE_METRIC_PUSH_INTERVAL_S = 10
+HANDLE_METRIC_PUSH_INTERVAL_S = 0.1
 
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
