@@ -535,7 +535,7 @@ static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfo(
   for (auto &uri : uris) {
     runtime_env_info.mutable_uris()->Add(std::string(uri));
   }
-  runtime_env_info.set_runtime_env_eager_install(eager_install);
+  runtime_env_info.mutable_runtime_env_config()->set_eager_install(eager_install);
   return runtime_env_info;
 }
 

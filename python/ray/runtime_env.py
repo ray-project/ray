@@ -104,16 +104,22 @@ class RuntimeEnvConfig(dict):
             timeout logic, except `-1`, `setup_timeout_seconds` cannot be
             less than or equal to 0. The default value of `setup_timeout_seconds`
             is 600 seconds.
+        eager_install(bool): Indicates whether to install the runtime environment
+            on the cluster at `ray.init()` time, before the workers are leased.
+            This flag is set to `True` by default.
     """
 
-    known_fields: Set[str] = {"setup_timeout_seconds"}
+    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install"}
 
     _default_config: Dict = {
         "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+        "eager_install": True,
     }
 
     def __init__(
-        self, setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+        self,
+        setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+        eager_install: bool = True,
     ):
         super().__init__()
         if not isinstance(setup_timeout_seconds, int):
@@ -127,6 +133,12 @@ class RuntimeEnvConfig(dict):
                 f"or equals to -1, got: {setup_timeout_seconds}"
             )
         self["setup_timeout_seconds"] = setup_timeout_seconds
+
+        if not isinstance(eager_install, bool):
+            raise TypeError(
+                f"eager_install must be a boolean. got {type(eager_install)}"
+            )
+        self["eager_install"] = eager_install
 
     @staticmethod
     def parse_and_validate_runtime_env_config(
@@ -159,6 +171,7 @@ class RuntimeEnvConfig(dict):
     def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
         runtime_env_config = ProtoRuntimeEnvConfig()
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
+        runtime_env_config.eager_install = self["eager_install"]
         return runtime_env_config
 
     @classmethod
@@ -171,7 +184,10 @@ class RuntimeEnvConfig(dict):
         # assign the default value to setup_timeout_seconds.
         if setup_timeout_seconds == 0:
             setup_timeout_seconds = cls._default_config["setup_timeout_seconds"]
-        return cls(setup_timeout_seconds=setup_timeout_seconds)
+        return cls(
+            setup_timeout_seconds=setup_timeout_seconds,
+            eager_install=runtime_env_config.eager_install,
+        )
 
 
 # Due to circular reference, field config can only be assigned a value here
@@ -304,7 +320,6 @@ class RuntimeEnv(dict):
         "_ray_commit",
         "_inject_current_ray",
         "plugins",
-        "eager_install",
         "config",
     }
 
