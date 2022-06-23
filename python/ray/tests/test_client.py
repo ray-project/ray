@@ -16,7 +16,7 @@ from ray._private.client_mode_hook import (
     disable_client_hook,
     enable_client_mode,
 )
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, find_free_port
 from ray.tests.client_test_utils import (
     create_remote_signal_actor,
     run_wrapped_actor_creation,
@@ -30,7 +30,7 @@ from ray.util.client.ray_client_helpers import (
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_client_context_manager(ray_start_regular_shared, connect_to_client):
+def test_client_context_manager(ray_start_regular, connect_to_client):
     import ray
 
     with connect_to_client_or_not(connect_to_client):
@@ -44,7 +44,7 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
             assert not ray.util.client.ray.is_connected()
 
 
-def test_client_thread_safe(call_ray_stop_only):
+def test_client_thread_safe(shutdown_only):
     import ray
 
     ray.init(num_cpus=2)
@@ -79,7 +79,7 @@ def test_client_thread_safe(call_ray_stop_only):
 
 # @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 # @pytest.mark.skip()
-def test_client_mode_hook_thread_safe(ray_start_regular_shared):
+def test_client_mode_hook_thread_safe(ray_start_regular):
     with ray_start_client_server():
         with enable_client_mode():
             assert client_mode_should_convert(auto_init=True)
@@ -102,7 +102,7 @@ def test_client_mode_hook_thread_safe(ray_start_regular_shared):
             assert q.get() is True, "Threaded disable_client_hook failed to re-enable"
 
 
-def test_interrupt_ray_get(call_ray_stop_only):
+def test_interrupt_ray_get(shutdown_only):
     import ray
 
     ray.init(num_cpus=2)
@@ -134,7 +134,7 @@ def test_interrupt_ray_get(call_ray_stop_only):
         assert ray.get(fast.remote()) == "ok"
 
 
-def test_get_list(ray_start_regular_shared):
+def test_get_list(ray_start_regular):
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -163,7 +163,7 @@ def test_get_list(ray_start_regular_shared):
         assert get_count == 1
 
 
-def test_real_ray_fallback(ray_start_regular_shared):
+def test_real_ray_fallback(ray_start_regular):
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -184,7 +184,7 @@ def test_real_ray_fallback(ray_start_regular_shared):
         assert len(nodes) == 1, nodes
 
 
-def test_nested_function(ray_start_regular_shared):
+def test_nested_function(ray_start_regular):
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -198,7 +198,7 @@ def test_nested_function(ray_start_regular_shared):
         assert ray.get(g.remote()) == "OK"
 
 
-def test_put_get(ray_start_regular_shared):
+def test_put_get(ray_start_regular):
     with ray_start_client_server() as ray:
         objectref = ray.put("hello world")
         print(objectref)
@@ -216,7 +216,7 @@ def test_put_get(ray_start_regular_shared):
         assert ray.get(list_put) == [1, 2, 3]
 
 
-def test_put_failure_get(ray_start_regular_shared):
+def test_put_failure_get(ray_start_regular):
     with ray_start_client_server() as ray:
 
         class DeSerializationFailure:
@@ -234,7 +234,7 @@ def test_put_failure_get(ray_start_regular_shared):
         assert ray.get(ray.put(100)) == 100
 
 
-def test_wait(ray_start_regular_shared):
+def test_wait(ray_start_regular):
     with ray_start_client_server() as ray:
         objectref = ray.put("hello world")
         ready, remaining = ray.wait([objectref])
@@ -266,7 +266,7 @@ def test_wait(ray_start_regular_shared):
             ray.wait(["blabla"])
 
 
-def test_remote_functions(ray_start_regular_shared):
+def test_remote_functions(ray_start_regular):
     with ray_start_client_server() as ray:
         SignalActor = create_remote_signal_actor(ray)
         signaler = SignalActor.remote()
@@ -324,7 +324,7 @@ def test_remote_functions(ray_start_regular_shared):
         assert len(res[0]) == 1 and res[1] == []
 
 
-def test_function_calling_function(ray_start_regular_shared):
+def test_function_calling_function(ray_start_regular):
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -340,7 +340,7 @@ def test_function_calling_function(ray_start_regular_shared):
         assert ray.get(f.remote()) == "OK"
 
 
-def test_basic_actor(ray_start_regular_shared):
+def test_basic_actor(ray_start_regular):
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -372,7 +372,7 @@ def test_basic_actor(ray_start_regular_shared):
         assert ray.get(r2) == 3
 
 
-def test_pass_handles(ray_start_regular_shared):
+def test_pass_handles(ray_start_regular):
     """Test that passing client handles to actors and functions to remote actors
     in functions (on the server or raylet side) works transparently to the
     caller.
@@ -434,7 +434,7 @@ def test_pass_handles(ray_start_regular_shared):
         assert ray.get(sneaky_actor_exec.remote(test_actor_obj, 4)) == local_fact(4)
 
 
-def test_basic_log_stream(ray_start_regular_shared):
+def test_basic_log_stream(ray_start_regular):
     with ray_start_client_server() as ray:
         log_msgs = []
 
@@ -454,7 +454,7 @@ def test_basic_log_stream(ray_start_regular_shared):
         assert any((msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
 
 
-def test_stdout_log_stream(ray_start_regular_shared):
+def test_stdout_log_stream(ray_start_regular):
     with ray_start_client_server() as ray:
         log_msgs = []
 
@@ -478,13 +478,13 @@ def test_stdout_log_stream(ray_start_regular_shared):
         assert num_hello == 2, f"Invalid logs: {log_msgs}"
 
 
-def test_serializing_exceptions(ray_start_regular_shared):
+def test_serializing_exceptions(ray_start_regular):
     with ray_start_client_server() as ray:
         with pytest.raises(ValueError, match="Failed to look up actor with name 'abc'"):
             ray.get_actor("abc")
 
 
-def test_invalid_task(ray_start_regular_shared):
+def test_invalid_task(ray_start_regular):
     with ray_start_client_server() as ray:
 
         with pytest.raises(TypeError):
@@ -494,7 +494,7 @@ def test_invalid_task(ray_start_regular_shared):
                 return 1
 
 
-def test_create_remote_before_start(ray_start_regular_shared):
+def test_create_remote_before_start(ray_start_regular):
     """Creates remote objects (as though in a library) before
     starting the client.
     """
@@ -518,7 +518,7 @@ def test_create_remote_before_start(ray_start_regular_shared):
         assert ray.get(a.doit.remote()) == "foo"
 
 
-def test_basic_named_actor(ray_start_regular_shared):
+def test_basic_named_actor(ray_start_regular):
     """Test that ray.get_actor() can create and return a detached actor."""
     with ray_start_client_server() as ray:
 
@@ -565,7 +565,7 @@ def test_basic_named_actor(ray_start_regular_shared):
         assert h2 == 3
 
 
-def test_error_serialization(ray_start_regular_shared):
+def test_error_serialization(ray_start_regular):
     """Test that errors will be serialized properly."""
     fake_path = os.path.join(os.path.dirname(__file__), "not_a_real_file")
     with pytest.raises(FileNotFoundError):
@@ -580,7 +580,7 @@ def test_error_serialization(ray_start_regular_shared):
             ray.get(g.remote())
 
 
-def test_internal_kv(ray_start_regular_shared):
+def test_internal_kv(ray_start_regular):
     with ray_start_client_server() as ray:
         assert ray._internal_kv_initialized()
         assert not ray._internal_kv_put("apple", "b")
@@ -594,28 +594,28 @@ def test_internal_kv(ray_start_regular_shared):
         assert ray._internal_kv_get("apple") is None
 
 
-def test_startup_retry(ray_start_regular_shared):
+def test_startup_retry(ray_start_regular):
     from ray.util.client import ray as ray_client
 
     ray_client._inside_client_test = True
-
+    port = find_free_port()
     with pytest.raises(ConnectionError):
-        ray_client.connect("localhost:50051", connection_retries=1)
+        ray_client.connect(f"localhost:{port}", connection_retries=1)
 
     def run_client():
-        ray_client.connect("localhost:50051")
+        ray_client.connect(f"localhost:{port}")
         ray_client.disconnect()
 
     thread = threading.Thread(target=run_client, daemon=True)
     thread.start()
     time.sleep(3)
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve(f"localhost:{port}")
     thread.join()
     server.stop(0)
     ray_client._inside_client_test = False
 
 
-def test_dataclient_server_drop(ray_start_regular_shared):
+def test_dataclient_server_drop(ray_start_regular):
     from ray.util.client import ray as ray_client
 
     ray_client._inside_client_test = True
@@ -628,9 +628,9 @@ def test_dataclient_server_drop(ray_start_regular_shared):
     def stop_server(server):
         time.sleep(2)
         server.stop(0)
-
-    server = ray_client_server.serve("localhost:50051")
-    ray_client.connect("localhost:50051")
+    port = find_free_port()
+    server = ray_client_server.serve(f"localhost:{port}")
+    ray_client.connect(f"localhost:{port}")
     thread = threading.Thread(target=stop_server, args=(server,))
     thread.start()
     x = f.remote(2)
@@ -644,7 +644,7 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 
 
 @patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
-def test_client_gpu_ids(call_ray_stop_only):
+def test_client_gpu_ids(shutdown_only):
     import ray
 
     ray.init(num_cpus=2)
@@ -663,7 +663,7 @@ def test_client_gpu_ids(call_ray_stop_only):
             assert ray.get_gpu_ids() == []
 
 
-def test_client_serialize_addon(call_ray_stop_only):
+def test_client_serialize_addon(shutdown_only):
     import pydantic
 
     import ray
@@ -709,7 +709,7 @@ def test_object_ref_cleanup():
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25552 --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_wrapped_actor_creation(call_ray_start):
@@ -737,24 +737,20 @@ def test_wrapped_actor_creation(call_ray_start):
     """
     import ray
 
-    ray.init("ray://localhost:25552")
+    ray.init(call_ray_start)
     run_wrapped_actor_creation()
 
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25553 --num-cpus 0"],
+    ["ray start --head --ray-client-server-port 0 --num-cpus 0"],
     indirect=True,
 )
 @pytest.mark.parametrize("use_client", [True, False])
 def test_init_requires_no_resources(call_ray_start, use_client):
     import ray
 
-    if use_client:
-        address = call_ray_start
-        ray.init(address)
-    else:
-        ray.init("ray://localhost:25553")
+    ray.init(call_ray_start)
 
     @ray.remote(num_cpus=0)
     def f():
@@ -765,18 +761,18 @@ def test_init_requires_no_resources(call_ray_start, use_client):
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25553 --num-cpus 1"],
+    ["ray start --head --ray-client-server-port 0 --num-cpus 1"],
     indirect=True,
 )
 def test_object_ref_release(call_ray_start):
     import ray
 
-    ray.init("ray://localhost:25553")
+    ray.init(call_ray_start)
 
     a = ray.put("Hello")
 
     ray.shutdown()
-    ray.init("ray://localhost:25553")
+    ray.init(call_ray_start)
 
     del a
 
@@ -785,7 +781,7 @@ def test_object_ref_release(call_ray_start):
         assert all(v > 0 for v in ref_cnt.values())
 
 
-def test_empty_objects(ray_start_regular_shared):
+def test_empty_objects(ray_start_regular):
     """
     Tests that client works with "empty" objects. Sanity check, since put requests
     will fail if the serialized version of an object consists of zero bytes.
@@ -800,7 +796,7 @@ def test_empty_objects(ray_start_regular_shared):
                 assert ray.get(ref) == obj
 
 
-def test_large_remote_call(ray_start_regular_shared):
+def test_large_remote_call(ray_start_regular):
     """
     Test remote calls with large (multiple chunk) arguments
     """
@@ -845,4 +841,4 @@ if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        sys.exit(pytest.main(["-sv", "--boxed", __file__]))
