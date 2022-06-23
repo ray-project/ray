@@ -157,6 +157,16 @@ OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
 
+# A helper function to get whether the actor has any async method.
+def actor_has_async_methods(actor_class):
+   return len(
+            inspect.getmembers(
+                # The actor class had modified in caller side when submitting,
+                # so there is no need to modify it any more.
+                actor_class, predicate=inspect.iscoroutinefunction
+            )
+        ) > 0
+
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
         return 0
@@ -547,15 +557,7 @@ cdef execute_task(
             print(actor_magic_token, file=sys.stderr, end="")
 
         # Initial eventloops for asyncio for this actor.
-        actor_has_async_methods = (
-            len(
-                inspect.getmembers(
-                    actor_class, predicate=inspect.iscoroutinefunction
-                )
-            )
-            > 0
-        )
-        worker.is_async_actor = actor_has_async_methods 
+        worker.is_async_actor = actor_has_async_methods(actor_class) 
         if core_worker.current_actor_is_asyncio():
             core_worker.initialize_eventloops_for_actor_concurrency_group(
                 c_defined_concurrency_groups)
@@ -2317,6 +2319,15 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback(result)
     cpython.Py_DECREF(py_callback)
 
+def actor_has_async_methods(actor_class):
+   return len(
+            inspect.getmembers(
+                # The actor class had modified in caller side when submitting,
+                # so there is no need to modify it any more.
+                actor_class, predicate=inspect.iscoroutinefunction
+            )
+        ) > 0
+
 cdef c_bool is_async_actor_func(const CRayFunction &ray_function) with gil:
     cdef:
         CoreWorker core_worker = ray.worker.global_worker.core_worker
@@ -2326,14 +2337,4 @@ cdef c_bool is_async_actor_func(const CRayFunction &ray_function) with gil:
         ray_function.GetFunctionDescriptor())
     manager = ray.worker.global_worker.function_actor_manager
     actor_class = manager.load_actor_class(job_id, function_descriptor)
-    actor_has_async_methods = (
-        len(
-            inspect.getmembers(
-                # The actor class had modified in caller side when submitting,
-                # so there is no need to modify it any more.
-                actor_class, predicate=inspect.iscoroutinefunction
-            )
-        )
-        > 0
-    )
-    return actor_has_async_methods
+    return actor_has_async_methods(actor_class)

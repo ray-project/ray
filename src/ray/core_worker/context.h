@@ -77,8 +77,6 @@ class WorkerContext {
 
   int CurrentActorMaxConcurrency() const LOCKS_EXCLUDED(mutex_);
 
-  // bool CurrentActorIsAsync() const LOCKS_EXCLUDED(mutex_);
-
   bool CurrentActorDetached() const LOCKS_EXCLUDED(mutex_);
 
   uint64_t GetNextTaskIndex();

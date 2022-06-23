@@ -545,9 +545,13 @@ void CoreWorker::Shutdown() {
     // running in a different thread. This can cause segfault because coroutines try to
     // access CoreWorker methods that are already garbage collected. We should complete
     // all coroutines before shutting down in order to prevent this.
-    // if (worker_context_.CurrentActorIsAsync()) {
-    //   options_.terminate_asyncio_thread();
-    // }
+    auto task_spec_ptr = worker_context_.GetCurrentTask();
+    if (task_spec_ptr != nullptr) {
+      RayFunction func{task_spec_ptr->GetLanguage(), task_spec_ptr->FunctionDescriptor()};
+      if (options_.is_async_actor_func(std::move(func)) {
+        options_.terminate_asyncio_thread();
+      }
+    }
     direct_task_receiver_->Stop();
     task_execution_service_.stop();
   }
@@ -3283,7 +3287,6 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
-  // RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
   event.Wait();
 }
