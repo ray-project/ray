@@ -4,6 +4,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.RayFuncR;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -20,6 +21,8 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
   public ActorCreator(RayFuncR<A> func, Object[] args) {
     this.func = func;
     this.args = args;
+    /// Handle statically defined concurrency groups.
+    builder.setConcurrencyGroups(Ray.internal().extractConcurrencyGroups(this.func));
   }
 
   /**
@@ -50,6 +53,11 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
     ArrayList<ConcurrencyGroup> list = new ArrayList<>();
     Collections.addAll(list, groups);
     builder.setConcurrencyGroups(list);
+    return this;
+  }
+
+  public ActorCreator<A> setRuntimeEnv(RuntimeEnv runtimeEnv) {
+    builder.setRuntimeEnv(runtimeEnv);
     return this;
   }
 }

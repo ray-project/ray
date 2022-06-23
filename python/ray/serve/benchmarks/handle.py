@@ -1,5 +1,5 @@
-# A test that stresses the serve handles. We spin up a backend with a bunch
-# (0-2) of replicas that just forward requests to another backend.
+# A test that stresses the serve handles. We spin up a deployment with a bunch
+# (0-2) of replicas that just forward requests to another deployment.
 #
 # By comparing using the forward replicas with just calling the worker
 # replicas, we measure the (latency) overhead in the handle. This answers
@@ -82,7 +82,8 @@ async def run_test(num_replicas, num_forwarders, sync):
 
     print(
         f"Sync: {sync}, {num_forwarders} forwarders and {num_replicas} worker "
-        f"replicas: {int(qps)} requests/s")
+        f"replicas: {int(qps)} requests/s"
+    )
     serve.shutdown()
 
 

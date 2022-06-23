@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gtest/gtest.h"
+#include "ray/util/throttler.h"
 
 #include <cstdlib>
 #include <thread>
 
-#include "ray/util/throttler.h"
+#include "gtest/gtest.h"
 
 TEST(ThrottlerTest, BasicTest) {
   int64_t now = 100;

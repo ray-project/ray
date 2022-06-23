@@ -23,34 +23,47 @@ def import_pb2_dependencies():
 GPy, has_sklearn = import_pb2_dependencies()
 
 if GPy and has_sklearn:
-    from ray.tune.schedulers.pb2_utils import normalize, optimize_acq, \
-            select_length, UCB, standardize, TV_SquaredExp
+    from ray.tune.schedulers.pb2_utils import (
+        normalize,
+        optimize_acq,
+        select_length,
+        UCB,
+        standardize,
+        TV_SquaredExp,
+    )
 
 logger = logging.getLogger(__name__)
 
 
-def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
+def select_config(
+    Xraw: np.array,
+    yraw: np.array,
+    current: list,
+    newpoint: np.array,
+    bounds: dict,
+    num_f: int,
+):
     """Selects the next hyperparameter config to try.
 
     This function takes the formatted data, fits the GP model and optimizes the
     UCB acquisition function to select the next point.
 
     Args:
-        Xraw (np.array): The un-normalized array of hyperparams, Time and
+        Xraw: The un-normalized array of hyperparams, Time and
             Reward
-        yraw (np.array): The un-normalized vector of reward changes.
-        current (list): The hyperparams of trials currently running. This is
+        yraw: The un-normalized vector of reward changes.
+        current: The hyperparams of trials currently running. This is
             important so we do not select the same config twice. If there is
             data here then we fit a second GP including it
             (with fake y labels). The GP variance doesn't depend on the y
             labels so it is ok.
-        newpoint (np.array): The Reward and Time for the new point.
+        newpoint: The Reward and Time for the new point.
             We cannot change these as they are based on the *new weights*.
-        bounds (dict): Bounds for the hyperparameters. Used to normalize.
-        num_f (int): The number of fixed params. Almost always 2 (reward+time)
+        bounds: Bounds for the hyperparameters. Used to normalize.
+        num_f: The number of fixed params. Almost always 2 (reward+time)
 
     Return:
-        xt (np.array): A vector of new hyperparameters.
+        xt: A vector of new hyperparameters.
     """
     length = select_length(Xraw, yraw, bounds, num_f)
 
@@ -59,9 +72,9 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
 
     base_vals = np.array(list(bounds.values())).T
     oldpoints = Xraw[:, :num_f]
-    old_lims = np.concatenate((np.max(oldpoints, axis=0),
-                               np.min(oldpoints, axis=0))).reshape(
-                                   2, oldpoints.shape[1])
+    old_lims = np.concatenate(
+        (np.max(oldpoints, axis=0), np.min(oldpoints, axis=0))
+    ).reshape(2, oldpoints.shape[1])
     limits = np.concatenate((old_lims, base_vals), axis=1)
 
     X = normalize(Xraw, limits)
@@ -70,7 +83,8 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
     fixed = normalize(newpoint, oldpoints)
 
     kernel = TV_SquaredExp(
-        input_dim=X.shape[1], variance=1., lengthscale=1., epsilon=0.1)
+        input_dim=X.shape[1], variance=1.0, lengthscale=1.0, epsilon=0.1
+    )
 
     try:
         m = GPy.models.GPRegression(X, y, kernel)
@@ -105,7 +119,8 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
         # kernel = GPy.kern.RBF(input_dim=X.shape[1], variance=1.,
         # lengthscale=1.)
         kernel = TV_SquaredExp(
-            input_dim=X.shape[1], variance=1., lengthscale=1., epsilon=0.1)
+            input_dim=X.shape[1], variance=1.0, lengthscale=1.0, epsilon=0.1
+        )
         m1 = GPy.models.GPRegression(Xnew, ynew, kernel)
         m1.optimize()
 
@@ -113,10 +128,11 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
 
     # convert back...
     xt = xt * (np.max(base_vals, axis=0) - np.min(base_vals, axis=0)) + np.min(
-        base_vals, axis=0)
+        base_vals, axis=0
+    )
 
     xt = xt.astype(np.float32)
-    return (xt)
+    return xt
 
 
 def explore(data, bounds, current, base, old, config):
@@ -160,11 +176,8 @@ def explore(data, bounds, current, base, old, config):
         t_r = df[["Time", "R_before"]]
         hparams = df[bounds.keys()]
         X = pd.concat([t_r, hparams], axis=1).values
-        newpoint = df[df["Trial"] == str(base)].iloc[-1, :][[
-            "Time", "R_before"
-        ]].values
-        new = select_config(
-            X, y, current, newpoint, bounds, num_f=len(t_r.columns))
+        newpoint = df[df["Trial"] == str(base)].iloc[-1, :][["Time", "R_before"]].values
+        new = select_config(X, y, current, newpoint, bounds, num_f=len(t_r.columns))
 
         new_config = config.copy()
         values = []
@@ -218,32 +231,32 @@ class PB2(PopulationBasedTraining):
     on each perturbation step.
 
     Args:
-        time_attr (str): The training result attr to use for comparing time.
+        time_attr: The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        metric (str): The training result objective value attribute. Stopping
+        metric: The training result objective value attribute. Stopping
             procedures will use this attribute.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        perturbation_interval (float): Models will be considered for
+        perturbation_interval: Models will be considered for
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
-        hyperparam_bounds (dict): Hyperparameters to mutate. The format is
+        hyperparam_bounds: Hyperparameters to mutate. The format is
             as follows: for each key, enter a list of the form [min, max]
             representing the minimum and maximum possible hyperparam values.
-        quantile_fraction (float): Parameters are transferred from the top
+        quantile_fraction: Parameters are transferred from the top
             `quantile_fraction` fraction of trials to the bottom
             `quantile_fraction` fraction. Needs to be between 0 and 0.5.
             Setting it to 0 essentially implies doing no exploitation at all.
-        log_config (bool): Whether to log the ray config of each model to
+        log_config: Whether to log the ray config of each model to
             local_dir at each exploit. Allows config schedule to be
             reconstructed.
-        require_attrs (bool): Whether to require time_attr and metric to appear
+        require_attrs: Whether to require time_attr and metric to appear
             in result for every iteration. If True, error will be raised
             if these values are not present in trial result.
-        synch (bool): If False, will use asynchronous implementation of
+        synch: If False, will use asynchronous implementation of
             PBT. Trial perturbations occur every perturbation_interval for each
             trial independently. If True, will use synchronous implementation
             of PBT. Perturbations will occur only after all trials are
@@ -252,28 +265,34 @@ class PB2(PopulationBasedTraining):
             https://arxiv.org/pdf/1711.09846.pdf.
 
     Example:
-        >>> pb2 = PB2(
-        >>>     time_attr="timesteps_total",
-        >>>     metric="episode_reward_mean",
-        >>>     mode="max",
-        >>>     perturbation_interval=10000,
-        >>>     hyperparam_mutations={
-        >>>         # These must be continuous, currently a limitation.
-        >>>         "factor_1": lambda: random.uniform(0.0, 20.0),
-        >>>     })
-        >>> tune.run({...}, num_samples=8, scheduler=pb2)
+        >>> from ray import tune
+        >>> from ray.tune.schedulers.pb2 import PB2
+        >>> from ray.tune.examples.pbt_function import pbt_function
+        >>> # run "pip install gpy" to use PB2
+        >>> pb2 = PB2( # doctest: +SKIP
+        ...     metric="mean_accuracy",
+        ...     mode="max",
+        ...     perturbation_interval=20,
+        ...     hyperparam_bounds={
+        ...     "factor": [0.0, 20.0],
+        ... })
+        >>> tune.run( # doctest: +SKIP
+        ...     pbt_function, config={"lr": 0.0001}, num_samples=8, scheduler=pb2
+        ... )
     """
 
-    def __init__(self,
-                 time_attr: str = "time_total_s",
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 perturbation_interval: float = 60.0,
-                 hyperparam_bounds: Dict = None,
-                 quantile_fraction: float = 0.25,
-                 log_config: bool = True,
-                 require_attrs: bool = True,
-                 synch: bool = False):
+    def __init__(
+        self,
+        time_attr: str = "time_total_s",
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        perturbation_interval: float = 60.0,
+        hyperparam_bounds: Dict = None,
+        quantile_fraction: float = 0.25,
+        log_config: bool = True,
+        require_attrs: bool = True,
+        synch: bool = False,
+    ):
 
         gpy_available, sklearn_available = import_pb2_dependencies()
         if not gpy_available:
@@ -285,13 +304,16 @@ class PB2(PopulationBasedTraining):
         hyperparam_bounds = hyperparam_bounds or {}
         for value in hyperparam_bounds.values():
             if not isinstance(value, (list, tuple)) or len(value) != 2:
-                raise ValueError("`hyperparam_bounds` values must either be "
-                                 "a list or tuple of size 2, but got {} "
-                                 "instead".format(value))
+                raise ValueError(
+                    "`hyperparam_bounds` values must either be "
+                    "a list or tuple of size 2, but got {} "
+                    "instead".format(value)
+                )
 
         if not hyperparam_bounds:
-            raise TuneError("`hyperparam_bounds` must be specified to use "
-                            "PB2 scheduler.")
+            raise TuneError(
+                "`hyperparam_bounds` must be specified to use PB2 scheduler."
+            )
 
         super(PB2, self).__init__(
             time_attr=time_attr,
@@ -304,7 +326,8 @@ class PB2(PopulationBasedTraining):
             custom_explore_fn=explore,
             log_config=log_config,
             require_attrs=require_attrs,
-            synch=synch)
+            synch=synch,
+        )
 
         self.last_exploration_time = 0  # when we last explored
         self.data = pd.DataFrame()
@@ -344,9 +367,14 @@ class PB2(PopulationBasedTraining):
         if self.data["Time"].max() > self.last_exploration_time:
             self.current = None
 
-        new_config, data = explore(self.data, self._hyperparam_bounds,
-                                   self.current, trial_to_clone, trial,
-                                   trial_to_clone.config)
+        new_config, data = explore(
+            self.data,
+            self._hyperparam_bounds,
+            self.current,
+            trial_to_clone,
+            trial,
+            trial_to_clone.config,
+        )
 
         # Important to replace the old values, since we are copying across
         self.data = data.copy()
@@ -365,4 +393,4 @@ class PB2(PopulationBasedTraining):
             self.current = np.concatenate((self.current, new), axis=0)
             logger.debug(self.current)
 
-        return (new_config)
+        return new_config

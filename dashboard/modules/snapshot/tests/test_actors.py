@@ -1,15 +1,14 @@
+import logging
 import os
 import sys
-import logging
-import requests
 import time
-import ray
+
 import pytest
+import requests
+
+import ray
+from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.tests.conftest import *  # noqa
-from ray._private.test_utils import (
-    format_web_url,
-    wait_until_server_available,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +35,14 @@ def _actor_killed_loop(worker_pid: str, timeout_secs=3) -> bool:
     return dead
 
 
-def _kill_actor_using_dashboard_gcs(webui_url: str,
-                                    actor_id: str,
-                                    force_kill=False):
+def _kill_actor_using_dashboard_gcs(webui_url: str, actor_id: str, force_kill=False):
     resp = requests.get(
         webui_url + KILL_ACTOR_ENDPOINT,
         params={
             "actor_id": actor_id,
             "force_kill": force_kill,
-        })
+        },
+    )
     resp.raise_for_status()
     resp_json = resp.json()
     assert resp_json["result"] is True, "msg" in resp_json
@@ -60,7 +58,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard):
     @ray.remote
     class Actor:
         def f(self):
-            ray.worker.show_in_dashboard("test")
+            ray._private.worker.show_in_dashboard("test")
             return os.getpid()
 
         def loop(self):

@@ -24,6 +24,7 @@
 #include "gtest/gtest.h"
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/internal/stats_exporter_impl.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/stats.h"
 
@@ -165,8 +166,8 @@ TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
   for (int i = 0; i < 50; i++) {
     hist_vector.push_back((double)(i * 10.0));
   }
-  static stats::Histogram random_hist("ray.random.hist", "", "", hist_vector,
-                                      {tag1, tag2});
+  static stats::Histogram random_hist(
+      "ray.random.hist", "", "", hist_vector, {tag1, tag2});
   for (size_t i = 0; i < 500; ++i) {
     random_counter.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_gauge.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});

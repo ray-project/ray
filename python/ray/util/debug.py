@@ -1,11 +1,14 @@
 import time
 
+from ray.util.annotations import DeveloperAPI
+
 _logged = set()
 _disabled = False
 _periodic_log = False
 _last_logged = 0.0
 
 
+@DeveloperAPI
 def log_once(key):
     """Returns True if this is the "first" call for a given key.
 
@@ -32,6 +35,7 @@ def log_once(key):
         return False
 
 
+@DeveloperAPI
 def disable_log_once_globally():
     """Make log_once() return False in this process."""
 
@@ -39,8 +43,16 @@ def disable_log_once_globally():
     _disabled = True
 
 
+@DeveloperAPI
 def enable_periodic_logging():
     """Make log_once() periodically return True in this process."""
 
     global _periodic_log
     _periodic_log = True
+
+
+@DeveloperAPI
+def reset_log_once(key):
+    """Resets log_once for the provided key."""
+
+    _logged.discard(key)

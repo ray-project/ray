@@ -24,7 +24,7 @@
 
 namespace plasma {
 
-std::unordered_map<void *, MmapRecord> mmap_records;
+absl::flat_hash_map<void *, MmapRecord> mmap_records;
 
 namespace internal {
 static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
@@ -33,15 +33,17 @@ static ptrdiff_t pointer_distance(void const *pfrom, void const *pto) {
   return (unsigned char const *)pto - (unsigned char const *)pfrom;
 }
 
-bool GetMallocMapinfo(const void *const addr, MEMFD_TYPE *fd, int64_t *map_size,
+bool GetMallocMapinfo(const void *const addr,
+                      MEMFD_TYPE *fd,
+                      int64_t *map_size,
                       ptrdiff_t *offset) {
   // TODO(rshin): Implement a more efficient search through mmap_records.
-  for (const auto &entry : mmap_records) {
-    if (addr >= entry.first && addr < pointer_advance(entry.first, entry.second.size)) {
-      fd->first = entry.second.fd.first;
-      fd->second = entry.second.fd.second;
-      *map_size = entry.second.size;
-      *offset = pointer_distance(entry.first, addr);
+  for (const auto &[from_addr, record] : mmap_records) {
+    if (addr >= from_addr && addr < pointer_advance(from_addr, record.size)) {
+      fd->first = record.fd.first;
+      fd->second = record.fd.second;
+      *map_size = record.size;
+      *offset = pointer_distance(from_addr, addr);
       return true;
     }
   }

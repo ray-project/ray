@@ -56,7 +56,6 @@ enum PlacementGroupState {
 };
 
 struct PlacementGroupCreationOptions {
-  bool global;
   std::string name;
   std::vector<std::unordered_map<std::string, double>> bundles;
   PlacementStrategy strategy;
@@ -65,7 +64,8 @@ struct PlacementGroupCreationOptions {
 class PlacementGroup {
  public:
   PlacementGroup() = default;
-  PlacementGroup(std::string id, PlacementGroupCreationOptions options,
+  PlacementGroup(std::string id,
+                 PlacementGroupCreationOptions options,
                  PlacementGroupState state = PlacementGroupState::UNRECOGNIZED)
       : id_(std::move(id)), options_(std::move(options)), state_(state) {}
   std::string GetID() const { return id_; }
@@ -98,7 +98,6 @@ struct CallOptions {
 };
 
 struct ActorCreationOptions {
-  bool global;
   std::string name;
   std::unordered_map<std::string, double> resources;
   int max_restarts = 0;

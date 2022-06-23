@@ -14,25 +14,27 @@ torch, nn = try_import_torch()
 class MobileV2PlusRNNModel(RecurrentNetwork):
     """A conv. + recurrent keras net example using a pre-trained MobileNet."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name, cnn_shape):
+    def __init__(
+        self, obs_space, action_space, num_outputs, model_config, name, cnn_shape
+    ):
 
         super(MobileV2PlusRNNModel, self).__init__(
-            obs_space, action_space, num_outputs, model_config, name)
+            obs_space, action_space, num_outputs, model_config, name
+        )
 
         self.cell_size = 16
         visual_size = cnn_shape[0] * cnn_shape[1] * cnn_shape[2]
 
-        state_in_h = tf.keras.layers.Input(shape=(self.cell_size, ), name="h")
-        state_in_c = tf.keras.layers.Input(shape=(self.cell_size, ), name="c")
+        state_in_h = tf.keras.layers.Input(shape=(self.cell_size,), name="h")
+        state_in_c = tf.keras.layers.Input(shape=(self.cell_size,), name="c")
         seq_in = tf.keras.layers.Input(shape=(), name="seq_in", dtype=tf.int32)
 
-        inputs = tf.keras.layers.Input(
-            shape=(None, visual_size), name="visual_inputs")
+        inputs = tf.keras.layers.Input(shape=(None, visual_size), name="visual_inputs")
 
         input_visual = inputs
         input_visual = tf.reshape(
-            input_visual, [-1, cnn_shape[0], cnn_shape[1], cnn_shape[2]])
+            input_visual, [-1, cnn_shape[0], cnn_shape[1], cnn_shape[2]]
+        )
         cnn_input = tf.keras.layers.Input(shape=cnn_shape, name="cnn_input")
 
         cnn_model = tf.keras.applications.mobilenet_v2.MobileNetV2(
@@ -40,40 +42,37 @@ class MobileV2PlusRNNModel(RecurrentNetwork):
             include_top=True,
             weights=None,
             input_tensor=cnn_input,
-            pooling=None)
+            pooling=None,
+        )
         vision_out = cnn_model(input_visual)
         vision_out = tf.reshape(
-            vision_out,
-            [-1, tf.shape(inputs)[1],
-             vision_out.shape.as_list()[-1]])
+            vision_out, [-1, tf.shape(inputs)[1], vision_out.shape.as_list()[-1]]
+        )
 
         lstm_out, state_h, state_c = tf.keras.layers.LSTM(
-            self.cell_size,
-            return_sequences=True,
-            return_state=True,
-            name="lstm")(
-                inputs=vision_out,
-                mask=tf.sequence_mask(seq_in),
-                initial_state=[state_in_h, state_in_c])
+            self.cell_size, return_sequences=True, return_state=True, name="lstm"
+        )(
+            inputs=vision_out,
+            mask=tf.sequence_mask(seq_in),
+            initial_state=[state_in_h, state_in_c],
+        )
 
         # Postprocess LSTM output with another hidden layer and compute values.
         logits = tf.keras.layers.Dense(
-            self.num_outputs,
-            activation=tf.keras.activations.linear,
-            name="logits")(lstm_out)
-        values = tf.keras.layers.Dense(
-            1, activation=None, name="values")(lstm_out)
+            self.num_outputs, activation=tf.keras.activations.linear, name="logits"
+        )(lstm_out)
+        values = tf.keras.layers.Dense(1, activation=None, name="values")(lstm_out)
 
         # Create the RNN model
         self.rnn_model = tf.keras.Model(
             inputs=[inputs, seq_in, state_in_h, state_in_c],
-            outputs=[logits, values, state_h, state_c])
+            outputs=[logits, values, state_h, state_c],
+        )
         self.rnn_model.summary()
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
-        model_out, self._value_out, h, c = self.rnn_model([inputs, seq_lens] +
-                                                          state)
+        model_out, self._value_out, h, c = self.rnn_model([inputs, seq_lens] + state)
         return model_out, [h, c]
 
     @override(ModelV2)
@@ -91,11 +90,13 @@ class MobileV2PlusRNNModel(RecurrentNetwork):
 class TorchMobileV2PlusRNNModel(TorchRNN, nn.Module):
     """A conv. + recurrent torch net example using a pre-trained MobileNet."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name, cnn_shape):
+    def __init__(
+        self, obs_space, action_space, num_outputs, model_config, name, cnn_shape
+    ):
 
-        TorchRNN.__init__(self, obs_space, action_space, num_outputs,
-                          model_config, name)
+        TorchRNN.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
         nn.Module.__init__(self)
 
         self.lstm_state_size = 16
@@ -106,10 +107,12 @@ class TorchMobileV2PlusRNNModel(TorchRNN, nn.Module):
 
         # Load the MobileNetV2 from torch.hub.
         self.cnn_model = torch.hub.load(
-            "pytorch/vision:v0.6.0", "mobilenet_v2", pretrained=True)
+            "pytorch/vision:v0.6.0", "mobilenet_v2", pretrained=True
+        )
 
         self.lstm = nn.LSTM(
-            self.visual_size_out, self.lstm_state_size, batch_first=True)
+            self.visual_size_out, self.lstm_state_size, batch_first=True
+        )
 
         # Postprocess LSTM output with another hidden layer and compute values.
         self.logits = SlimFC(self.lstm_state_size, self.num_outputs)
@@ -124,8 +127,8 @@ class TorchMobileV2PlusRNNModel(TorchRNN, nn.Module):
         vision_out = self.cnn_model(vision_in)
         # Flatten.
         vision_out_time_ranked = torch.reshape(
-            vision_out,
-            [inputs.shape[0], inputs.shape[1], vision_out.shape[-1]])
+            vision_out, [inputs.shape[0], inputs.shape[1], vision_out.shape[-1]]
+        )
         if len(state[0].shape) == 2:
             state[0] = state[0].unsqueeze(0)
             state[1] = state[1].unsqueeze(0)
@@ -139,10 +142,14 @@ class TorchMobileV2PlusRNNModel(TorchRNN, nn.Module):
     def get_initial_state(self):
         # Place hidden states on same device as model.
         h = [
-            list(self.cnn_model.modules())[-1].weight.new(
-                1, self.lstm_state_size).zero_().squeeze(0),
-            list(self.cnn_model.modules())[-1].weight.new(
-                1, self.lstm_state_size).zero_().squeeze(0),
+            list(self.cnn_model.modules())[-1]
+            .weight.new(1, self.lstm_state_size)
+            .zero_()
+            .squeeze(0),
+            list(self.cnn_model.modules())[-1]
+            .weight.new(1, self.lstm_state_size)
+            .zero_()
+            .squeeze(0),
         ]
         return h
 

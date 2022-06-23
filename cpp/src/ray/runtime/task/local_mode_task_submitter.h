@@ -38,18 +38,17 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   ObjectID SubmitActorTask(InvocationSpec &invocation, const CallOptions &call_options);
 
-  ActorID GetActor(bool global, const std::string &actor_name) const;
+  ActorID GetActor(const std::string &actor_name) const;
 
   ray::PlacementGroup CreatePlacementGroup(
       const ray::PlacementGroupCreationOptions &create_options);
   void RemovePlacementGroup(const std::string &group_id);
   std::vector<PlacementGroup> GetAllPlacementGroups();
   PlacementGroup GetPlacementGroupById(const std::string &id);
-  PlacementGroup GetPlacementGroup(const std::string &name, bool global);
+  PlacementGroup GetPlacementGroup(const std::string &name);
 
  private:
   ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
-  JobID GetCurrentJobID() const;
 
   std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actor_contexts_;
 

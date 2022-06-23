@@ -1,14 +1,17 @@
+.. include:: we_are_hiring.rst
+
 .. _deployment-guide:
 
-Ray Deployment Guide
-====================
+Cluster Deployment Guide
+========================
 
 This page provides an overview of how to deploy a multi-node Ray cluster, including how to:
 
 * Launch the cluster.
 * Set up the autoscaler.
+* Deploy a Ray application.
 * Monitor a multi-node cluster.
-* Best practices for setting up a Ray cluster.
+* Best practices for setting up large Ray clusters.
 
 Launching a Ray cluster
 -----------------------
@@ -26,7 +29,7 @@ any cloud. It will:
 
 * provision a new instance/machine using the cloud provider's SDK.
 * execute shell commands to set up Ray with the provided options.
-* (optionally) run any custom, user defined setup commands.
+* (optionally) run any custom, user defined setup commands.  This can be useful for setting environment variables and installing packages.  (To dynamically set up environments after the cluster has been deployed, you can use :ref:`Runtime Environments<runtime-environments>`.)
 * Initialize the Ray cluster.
 * Deploy an autoscaler process.
 
@@ -40,6 +43,7 @@ To simplify Operator configuration, Ray provides a :ref:`a Helm chart <Ray-helm>
 Installing the Helm chart will create an Operator Deployment.
 The Operator manages autoscaling Ray clusters; each Ray node runs in its own K8s Pod.
 
+.. _deployment-guide-autoscaler:
 
 Autoscaling with Ray
 --------------------
@@ -68,15 +72,23 @@ How does it work?
 The Ray Cluster Launcher will automatically enable a load-based autoscaler. The
 autoscaler resource demand scheduler will look at the pending tasks, actors,
 and placement groups resource demands from the cluster, and try to add the
-minimum list of nodes that can fulfill these demands. When worker nodes are
-idle for more than :ref:`idle_timeout_minutes
-<cluster-configuration-idle-timeout-minutes>`, they will be removed (the head
-node is never removed unless the cluster is torn down).
-
-Autoscaler uses a simple binpacking algorithm to binpack the user demands into
+minimum list of nodes that can fulfill these demands. Autoscaler uses a simple 
+binpacking algorithm to binpack the user demands into
 the available cluster resources. The remaining unfulfilled demands are placed
 on the smallest list of nodes that satisfies the demand while maximizing
 utilization (starting from the smallest node).
+
+**Downscaling**: When worker nodes are
+idle (without active Tasks or Actors running on it) 
+for more than :ref:`idle_timeout_minutes
+<cluster-configuration-idle-timeout-minutes>`, they are subject to
+removal from the cluster. But there are two important additional conditions
+to note: 
+
+* The head node is never removed unless the cluster is torn down.
+* If the Ray Object Store is used, and a Worker node still holds objects (including spilled objects on disk), it won't be removed.
+
+
 
 **Here is "A Glimpse into the Ray Autoscaler" and how to debug/monitor your cluster:**
 
@@ -88,19 +100,26 @@ utilization (starting from the smallest node).
 Deploying an application
 ------------------------
 
-The recommended way of connecting to a Ray cluster is to use the
-``ray.init("ray://<host>:<port>")`` API and connect via the Ray Client.
+To submit an application to the Ray cluster, use the Ray :ref:`Job submission interface <jobs-overview>`.
 
-.. note::
+.. code:: bash
 
-  Using ``ray.init("ray://<host>:<port>")`` is generally a best practice because it allows
-  you to test your code locally, and deploy to a cluster with **no code
-  changes**.
+  export RAY_ADDRESS=<your_cluster_address>:8265
+  ray job submit ... -- "python script.py"
 
-To connect via Ray Client, set the ``RAY_ADDRESS`` environment variable to the
-address of the Ray client server.
+
+To interactively connect to a Ray cluster, connect via the :ref:`Ray Client<ray-client>`.
+
+.. code-block:: python
+
+  # outside python, set the ``RAY_ADDRESS`` environment variable to the address of the Ray client server
+  ray.init("ray://<host>:<port>")
+
 
 :ref:`Learn more about setting up the Ray client server here <Ray-client>`.
+
+You can dynamically specify local files, Python packages, and environment variables for your
+application using :ref:`Runtime Environments <runtime-environments>`.
 
 .. note::
 
@@ -220,7 +239,7 @@ architecture means that the head node will have extra stress due to GCS.
   at least as good as an r5dn.16xlarge on AWS EC2.
 * Set ``resources: {"CPU": 0}`` on the head node. (For Ray clusters deployed using Helm,
   set ``rayResources: {"CPU": 0}``.) Due to the heavy networking
-  load (and the GCS and redis processes), we recommend setting the number of
+  load (and the GCS and dashboard processes), we recommend setting the number of
   CPUs to 0 on the head node to avoid scheduling additional tasks on it.
 
 Configuring the autoscaler

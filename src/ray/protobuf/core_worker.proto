@@ -55,6 +55,18 @@ message ActorHandle {
 
   // How many times tasks may be retried on this actor if the actor fails.
   int64 max_task_retries = 9;
+
+  // The name of the actor.
+  string name = 10;
+
+  // The namespace that this actor belongs to.
+  string ray_namespace = 11;
+
+  // Whether the actor supports out of order execution.
+  bool execute_out_of_order = 12;
+
+  // The max number of pending actor calls.
+  int32 max_pending_calls = 13;
 }
 
 message ReturnObject {
@@ -71,16 +83,6 @@ message ReturnObject {
   repeated ObjectReference nested_inlined_refs = 5;
   // Size of this object.
   int64 size = 6;
-}
-
-message StealTasksRequest {
-  // The address of the thief that is requesting to steal tasks.
-  Address thief_addr = 1;
-}
-
-message StealTasksReply {
-  // The TaskIDs of the tasks that were stolen
-  repeated bytes stolen_tasks_ids = 2;
 }
 
 message PushTaskRequest {
@@ -106,8 +108,6 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
-  // Set to true if the task was stolen before its execution at the worker.
-  bool task_stolen = 2;
   // Set to true if the worker will be exiting.
   bool worker_exiting = 3;
   // The references that the worker borrowed during the task execution. A
@@ -186,23 +186,33 @@ message WaitForActorOutOfScopeReply {
 message UpdateObjectLocationBatchRequest {
   bytes intended_worker_id = 1;
   bytes node_id = 2;
-  repeated ObjectLocationStateUpdate object_location_states = 3;
+  repeated ObjectLocationUpdate object_location_updates = 3;
 }
 
 message UpdateObjectLocationBatchReply {
 }
 
-enum ObjectLocationState {
-  // The latest object state.
-  // Object is added.
+enum ObjectPlasmaLocationUpdate {
+  // Object is added to plasma store.
   ADDED = 0;
-  // Object is removed.
+  // Object is removed from plasma store.
   REMOVED = 1;
 }
 
-message ObjectLocationStateUpdate {
+message ObjectSpilledLocationUpdate {
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 3;
+  // Whether the object is spilled to local storage or cloud storage.
+  bool spilled_to_local_storage = 4;
+}
+
+message ObjectLocationUpdate {
   bytes object_id = 1;
-  ObjectLocationState state = 2;
+  // When it's set, it indicates whether the object is added or removed from plasma store.
+  optional ObjectPlasmaLocationUpdate plasma_location_update = 2;
+  // When it's set, it contains where the object is spilled to.
+  optional ObjectSpilledLocationUpdate spilled_location_update = 3;
 }
 
 message GetObjectLocationsOwnerRequest {
@@ -220,6 +230,8 @@ message KillActorRequest {
   bool force_kill = 2;
   // If set to true, the killed actor will not be restarted anymore.
   bool no_restart = 3;
+  // The precise reason why this actor receives a kill request.
+  ActorDeathCause death_cause = 4;
 }
 
 message KillActorReply {
@@ -236,7 +248,9 @@ message CancelTaskRequest {
 
 message CancelTaskReply {
   // Whether the requested task is the currently running task.
-  bool attempt_succeeded = 1;
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
 }
 
 message RemoteCancelTaskRequest {
@@ -257,14 +271,32 @@ message GetCoreWorkerStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
   bool include_memory_info = 2;
+  // Whether to include task information. This could be large since it
+  // includes metadata for all live tasks.
+  bool include_task_info = 3;
 }
 
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
+  /// Task information
+  /// Task information is scattered to 3 places.
+  /// Owner of tasks: knows the general state of task
+  ///   (e.g., waiting for deps or scheduling).
+  /// Worker that executes tasks: knows whether or not the task is actually running.
+  ///   This is necessary because the task can be queued on the execution side.
+  /// Raylet: Knows the exact scheduling state.
+  // A list of task information of the current worker.
+  repeated TaskInfoEntry owned_task_info_entries = 2;
+  // A list of task that's currently running.
+  // All tasks must be treated as TaskStatus::RUNNING
+  // from the caller side.
+  repeated bytes running_task_ids = 3;
 }
 
 message LocalGCRequest {
+  // Whether this is triggered by a global gc.
+  bool triggered_by_global_gc = 1;
 }
 
 message LocalGCReply {
@@ -306,22 +338,6 @@ message DeleteSpilledObjectsRequest {
 message DeleteSpilledObjectsReply {
 }
 
-message AddSpilledUrlRequest {
-  // Object that was spilled.
-  bytes object_id = 1;
-  // For objects that have been spilled to external storage, the URL from which
-  // they can be retrieved.
-  string spilled_url = 2;
-  // The ID of the node that spilled the object.
-  // This will be Nil if the object was spilled to distributed external storage.
-  bytes spilled_node_id = 3;
-  // The size of the object in bytes.
-  int64 size = 4;
-}
-
-message AddSpilledUrlReply {
-}
-
 message ExitRequest {
 }
 
@@ -343,14 +359,18 @@ message AssignObjectOwnerRequest {
   string call_site = 5;
 }
 
-message AssignObjectOwnerReply {
-}
+message AssignObjectOwnerReply {}
+
+message RayletNotifyGCSRestartRequest {}
+
+message RayletNotifyGCSRestartReply {}
 
 service CoreWorkerService {
+  // Notify core worker GCS has restarted.
+  rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
+      returns (RayletNotifyGCSRestartReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
-  // Steal tasks from a worker if it has a surplus of work
-  rpc StealTasks(StealTasksRequest) returns (StealTasksReply);
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
@@ -392,9 +412,6 @@ service CoreWorkerService {
   // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
       returns (DeleteSpilledObjectsReply);
-  // Add spilled URL, spilled node ID, and update object size for owned object.
-  // Caller: raylet; callee: owner worker.
-  rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
   // Request for a worker to exit.

@@ -11,30 +11,19 @@ public class JobConfigTest extends BaseTest {
 
   @BeforeClass
   public void setupJobConfig() {
-    System.setProperty("ray.job.num-java-workers-per-process", "3");
     System.setProperty("ray.raylet.startup-token", "0");
     System.setProperty("ray.job.jvm-options.0", "-DX=999");
     System.setProperty("ray.job.jvm-options.1", "-DY=998");
-    System.setProperty("ray.job.worker-env.foo1", "bar1");
-    System.setProperty("ray.job.worker-env.foo2", "bar2");
   }
 
   public static String getJvmOptions(String propertyName) {
     return System.getProperty(propertyName);
   }
 
-  public static String getEnvVariable(String key) {
-    return System.getenv(key);
-  }
-
   public static class MyActor {
 
     public String getJvmOptions(String propertyName) {
       return System.getProperty(propertyName);
-    }
-
-    public static String getEnvVariable(String key) {
-      return System.getenv(key);
     }
   }
 
@@ -43,24 +32,11 @@ public class JobConfigTest extends BaseTest {
     Assert.assertEquals("998", Ray.task(JobConfigTest::getJvmOptions, "Y").remote().get());
   }
 
-  public void testWorkerEnvVariable() {
-    Assert.assertEquals("bar1", Ray.task(JobConfigTest::getEnvVariable, "foo1").remote().get());
-    Assert.assertEquals("bar2", Ray.task(JobConfigTest::getEnvVariable, "foo2").remote().get());
-  }
-
-  public void testNumJavaWorkersPerProcess() {
-    Assert.assertEquals(TestUtils.getNumWorkersPerProcess(), 3);
-  }
-
   public void testInActor() {
     ActorHandle<MyActor> actor = Ray.actor(MyActor::new).remote();
 
     // test jvm options.
     Assert.assertEquals("999", actor.task(MyActor::getJvmOptions, "X").remote().get());
     Assert.assertEquals("998", actor.task(MyActor::getJvmOptions, "Y").remote().get());
-
-    // test worker env variables
-    Assert.assertEquals("bar1", Ray.task(MyActor::getEnvVariable, "foo1").remote().get());
-    Assert.assertEquals("bar2", Ray.task(MyActor::getEnvVariable, "foo2").remote().get());
   }
 }

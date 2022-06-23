@@ -208,14 +208,19 @@ const NodeInfo: React.FC<{}> = () => {
 
   // Show GPU features only if there is at least one GPU in cluster.
   const showGPUs =
-    nodes.map((n) => n.gpus).filter((gpus) => gpus.length !== 0).length !== 0;
+    nodes
+      .map((n) => n.gpus)
+      .filter((gpus) => gpus !== undefined && gpus.length !== 0).length !== 0;
 
   // Don't show disk on Kubernetes. K8s node disk usage should be monitored
   // elsewhere.
   // If a Ray node is running in a K8s pod, it marks available disk as 1 byte.
   // (See ReporterAgent._get_disk_usage() in reporter_agent.py)
   // Check if there are any nodes with realistic disk total:
-  const showDisk = nodes.filter((n) => n.disk["/"].total > 10).length !== 0;
+  const showDisk =
+    nodes.filter(
+      (n) => n !== undefined && n.disk !== undefined && n.disk["/"].total > 10,
+    ).length !== 0;
 
   const filterPredicate = (
     feature: NodeInfoFeature | HeaderInfo<nodeInfoColumnId>,

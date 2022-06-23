@@ -18,6 +18,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/pubsub.proto";
 
 message AddJobRequest {
   JobTableData data = 1;
@@ -96,6 +97,8 @@ message GetNamedActorInfoReply {
   GcsStatus status = 1;
   // Data of actor.
   ActorTableData actor_table_data = 2;
+  // The task specification of this actor's creation task.
+  TaskSpec task_spec = 3;
 }
 
 message ListNamedActorsRequest {
@@ -164,15 +167,6 @@ message RegisterNodeReply {
   GcsStatus status = 1;
 }
 
-message UnregisterNodeRequest {
-  // The ID of node.
-  bytes node_id = 1;
-}
-
-message UnregisterNodeReply {
-  GcsStatus status = 1;
-}
-
 message GetAllNodeInfoRequest {
 }
 
@@ -194,6 +188,7 @@ message CheckAliveRequest {
 
 message CheckAliveReply {
   GcsStatus status = 1;
+  string ray_version = 2;
 }
 
 message GetInternalConfigRequest {
@@ -204,18 +199,6 @@ message GetInternalConfigReply {
   string config = 2;
 }
 
-// Service for node info access.
-service NodeInfoGcsService {
-  // Register a node to GCS Service.
-  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
-  // Unregister a node from GCS Service.
-  rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
-  // Get information of all nodes from GCS Service.
-  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
-  // Get cluster internal config.
-  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
-}
-
 message GetResourcesRequest {
   bytes node_id = 1;
 }
@@ -223,20 +206,6 @@ message GetResourcesRequest {
 message GetResourcesReply {
   GcsStatus status = 1;
   map<string, ResourceTableData> resources = 2;
-}
-
-message UpdateResourcesRequest {
-  bytes node_id = 1;
-  map<string, ResourceTableData> resources = 2;
-}
-
-message UpdateResourcesReply {
-  GcsStatus status = 1;
-}
-
-message DeleteResourcesRequest {
-  bytes node_id = 1;
-  repeated string resource_name_list = 2;
 }
 
 message DeleteResourcesReply {
@@ -265,131 +234,6 @@ service HeartbeatInfoGcsService {
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
-}
-
-message GetObjectLocationsRequest {
-  // The ID of object to lookup in GCS Service.
-  bytes object_id = 1;
-}
-
-message GetObjectLocationsReply {
-  GcsStatus status = 1;
-  // Object location information.
-  ObjectLocationInfo location_info = 2;
-}
-
-message GetAllObjectLocationsRequest {
-}
-
-message GetAllObjectLocationsReply {
-  GcsStatus status = 1;
-  // Data of object location info.
-  repeated ObjectLocationInfo object_location_info_list = 2;
-}
-
-message AddObjectLocationRequest {
-  // The ID of object which location will be added to GCS Service.
-  bytes object_id = 1;
-  // The location that will be added to GCS Service.
-  bytes node_id = 2;
-  // The spilled URL that will be added to GCS Service. Either this or the node
-  // ID should be set.
-  string spilled_url = 3;
-  // The node id that spills the object to the disk.
-  // It will be Nil if it uses a distributed external storage.
-  bytes spilled_node_id = 4;
-  // The size of the object in bytes.
-  uint64 size = 5;
-}
-
-message AddObjectLocationReply {
-  GcsStatus status = 1;
-}
-
-message AddObjectSpilledUrlReply {
-  GcsStatus status = 1;
-}
-
-message RemoveObjectLocationRequest {
-  // The ID of object which location will be removed from GCS Service.
-  bytes object_id = 1;
-  // The location that will be removed from GCS Service.
-  bytes node_id = 2;
-}
-
-message RemoveObjectLocationReply {
-  GcsStatus status = 1;
-}
-
-// Service for object info access.
-service ObjectInfoGcsService {
-  // Get object's locations from GCS Service.
-  rpc GetObjectLocations(GetObjectLocationsRequest) returns (GetObjectLocationsReply);
-  // Get all object's locations from GCS Service.
-  rpc GetAllObjectLocations(GetAllObjectLocationsRequest)
-      returns (GetAllObjectLocationsReply);
-  // Add location of object to GCS Service.
-  rpc AddObjectLocation(AddObjectLocationRequest) returns (AddObjectLocationReply);
-  // Remove location of object from GCS Service.
-  rpc RemoveObjectLocation(RemoveObjectLocationRequest)
-      returns (RemoveObjectLocationReply);
-}
-
-message AddTaskRequest {
-  TaskTableData task_data = 1;
-}
-
-message AddTaskReply {
-  GcsStatus status = 1;
-}
-
-message GetTaskRequest {
-  bytes task_id = 1;
-}
-
-message GetTaskReply {
-  GcsStatus status = 1;
-  TaskTableData task_data = 2;
-}
-
-message AddTaskLeaseRequest {
-  TaskLeaseData task_lease_data = 1;
-}
-
-message AddTaskLeaseReply {
-  GcsStatus status = 1;
-}
-
-message GetTaskLeaseRequest {
-  bytes task_id = 1;
-}
-
-message GetTaskLeaseReply {
-  GcsStatus status = 1;
-  TaskLeaseData task_lease_data = 2;
-}
-
-message AttemptTaskReconstructionRequest {
-  TaskReconstructionData task_reconstruction = 1;
-}
-
-message AttemptTaskReconstructionReply {
-  GcsStatus status = 1;
-}
-
-// Service for task info access.
-service TaskInfoGcsService {
-  // Add a task to GCS Service.
-  rpc AddTask(AddTaskRequest) returns (AddTaskReply);
-  // Get task information from GCS Service.
-  rpc GetTask(GetTaskRequest) returns (GetTaskReply);
-  // Add a task lease to GCS Service.
-  rpc AddTaskLease(AddTaskLeaseRequest) returns (AddTaskLeaseReply);
-  // Get task lease information from GCS Service.
-  rpc GetTaskLease(GetTaskLeaseRequest) returns (GetTaskLeaseReply);
-  // Attempt task reconstruction to GCS Service.
-  rpc AttemptTaskReconstruction(AttemptTaskReconstructionRequest)
-      returns (AttemptTaskReconstructionReply);
 }
 
 message AddProfileDataRequest {
@@ -573,8 +417,31 @@ autoscaler in a separate pod, if the user upgrades the ray version on the head
 pod autoscaler can crash (if the newer version of ray modified the messages
 below). */
 
+message DrainNodeData {
+  // The id of the node to drain.
+  bytes node_id = 1;
+}
+
+message DrainNodeRequest {
+  // Batched information of nodes to drain.
+  repeated DrainNodeData drain_node_data = 1;
+}
+
+message DrainNodeStatus {
+  // The node id that is successfully drained from GCS.
+  bytes node_id = 1;
+}
+
+message DrainNodeReply {
+  // Whether or not the RPC succeeds.
+  GcsStatus status = 1;
+  // Batched status of nodes that are drained.
+  repeated DrainNodeStatus drain_node_status = 2;
+}
+
 message InternalKVGetRequest {
   bytes key = 1;
+  bytes namespace = 2;
 }
 
 message InternalKVGetReply {
@@ -586,6 +453,7 @@ message InternalKVPutRequest {
   bytes key = 1;
   bytes value = 2;
   bool overwrite = 3;
+  bytes namespace = 4;
 }
 
 message InternalKVPutReply {
@@ -595,6 +463,8 @@ message InternalKVPutReply {
 
 message InternalKVDelRequest {
   bytes key = 1;
+  bytes namespace = 2;
+  bool del_by_prefix = 3;
 }
 
 message InternalKVDelReply {
@@ -604,6 +474,7 @@ message InternalKVDelReply {
 
 message InternalKVExistsRequest {
   bytes key = 1;
+  bytes namespace = 2;
 }
 
 message InternalKVExistsReply {
@@ -613,6 +484,7 @@ message InternalKVExistsReply {
 
 message InternalKVKeysRequest {
   bytes prefix = 1;
+  bytes namespace = 2;
 }
 
 message InternalKVKeysReply {
@@ -629,6 +501,70 @@ service InternalKVGcsService {
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
 
+message PinRuntimeEnvURIRequest {
+  string uri = 1;
+  int32 expiration_s = 2;
+}
+
+message PinRuntimeEnvURIReply {
+  GcsStatus status = 1;
+}
+
+/// Handles pinning package URIs that are stored in the GCS.
+/// Future runtime_env-related RPCs should be added to this service.
+service RuntimeEnvGcsService {
+  rpc PinRuntimeEnvURI(PinRuntimeEnvURIRequest) returns (PinRuntimeEnvURIReply);
+}
+
+message GcsPublishRequest {
+  /// The messages that are published.
+  repeated PubMessage pub_messages = 1;
+}
+
+message GcsPublishReply {
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+message GcsSubscriberPollRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+}
+
+message GcsSubscriberPollReply {
+  /// The messages that are published.
+  repeated PubMessage pub_messages = 1;
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+message GcsSubscriberCommandBatchRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+  /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
+  repeated Command commands = 2;
+}
+
+message GcsSubscriberCommandBatchReply {
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+/// This supports subscribing updates from GCS with long poll, and registering /
+/// de-registering subscribers.
+service InternalPubSubGcsService {
+  /// The request to sent to GCS to publish messages.
+  /// Currently only supporting error info, logs and Python function messages.
+  rpc GcsPublish(GcsPublishRequest) returns (GcsPublishReply);
+  /// The long polling request sent to GCS for pubsub operations.
+  /// The long poll request will be replied once there are a batch of messages that
+  /// need to be published to the caller (subscriber).
+  rpc GcsSubscriberPoll(GcsSubscriberPollRequest) returns (GcsSubscriberPollReply);
+  /// A batch of subscribe / unsubscribe requests sent by the subscriber.
+  rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest)
+      returns (GcsSubscriberCommandBatchReply);
+}
+
 message GetAllResourceUsageRequest {
 }
 
@@ -641,10 +577,6 @@ message GetAllResourceUsageReply {
 service NodeResourceInfoGcsService {
   // Get node's resources from GCS Service.
   rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
-  // Update resources of a node in GCS Service.
-  rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
-  // Delete resources of a node in GCS Service.
-  rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
   // Get available resources of all nodes.
   rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
       returns (GetAllAvailableResourcesReply);
@@ -657,5 +589,21 @@ service NodeResourceInfoGcsService {
 message GcsStatus {
   int32 code = 1;
   string message = 2;
+}
+
+// Service for node info access.
+service NodeInfoGcsService {
+  // Register a node to GCS Service.
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
+  // Drain a node from GCS Service.
+  // When the RPC is replied,
+  // - It is guaranteed that the requested nodes are going to be drained eventually.
+  // - It is guaranteed that GCS has persisted the draining states.
+  // - It is **not** guarateed that nodes receive the drain requests from GCS.
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
+  // Get information of all nodes from GCS Service.
+  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+  // Get cluster internal config.
+  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 ///////////////////////////////////////////////////////////////////////////////

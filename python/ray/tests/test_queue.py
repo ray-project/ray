@@ -226,8 +226,7 @@ def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
             is_done = False
             while True:
                 if not pending:
-                    for item in self.queue.get_batch(
-                            self.batch_size, total_timeout=0):
+                    for item in self.queue.get_batch(self.batch_size, total_timeout=0):
                         if item is None:
                             is_done = True
                             break
@@ -265,7 +264,8 @@ def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
     for idx in range(0, len(data), batch_size):
         time.sleep(1)
         q.put_nowait_batch(
-            [dummy.remote(item) for item in data[idx:idx + batch_size]])
+            [dummy.remote(item) for item in data[idx : idx + batch_size]]
+        )
     q.put_nowait(None)
     consumed_data = ray.get(consumer.get_data.remote())
     assert len(consumed_data) == len(data)
@@ -273,5 +273,10 @@ def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
+    import os
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

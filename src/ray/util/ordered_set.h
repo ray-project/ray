@@ -15,8 +15,8 @@
 #pragma once
 
 #include <list>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 /// \class ordered_set
 ///
 /// This container has properties of both a deque and a set. It is like a deque
@@ -28,7 +28,7 @@ template <typename T>
 class ordered_set {
  private:
   using elements_type = std::list<T>;
-  using positions_type = std::unordered_map<T, typename elements_type::iterator>;
+  using positions_type = absl::flat_hash_map<T, typename elements_type::iterator>;
   using iterator = typename elements_type::iterator;
   using const_iterator = typename elements_type::const_iterator;
 

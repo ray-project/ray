@@ -1,7 +1,7 @@
 package io.ray.api.call;
 
-import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
+import io.ray.api.options.ActorLifetime;
 import io.ray.api.placementgroup.PlacementGroup;
 import java.util.Map;
 
@@ -14,9 +14,7 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   protected ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
 
   /**
-   * Set the actor name of a named actor. This named actor is only accessible from this job by this
-   * name via {@link Ray#getActor(java.lang.String)}. If you want create a named actor that is
-   * accessible from all jobs, use {@link BaseActorCreator#setGlobalName(java.lang.String)} instead.
+   * Set the actor name of a named actor.
    *
    * @param name The name of the named actor.
    * @return self
@@ -27,17 +25,8 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return self();
   }
 
-  /**
-   * Set the name of this actor. This actor will be accessible from all jobs by this name via {@link
-   * Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is only
-   * accessible from this job, use {@link BaseActorCreator#setName(java.lang.String)} instead.
-   *
-   * @param name The name of the named actor.
-   * @return self
-   * @see io.ray.api.options.ActorCreationOptions.Builder#setGlobalName(String)
-   */
-  public T setGlobalName(String name) {
-    builder.setGlobalName(name);
+  public T setLifetime(ActorLifetime lifetime) {
+    builder.setLifetime(lifetime);
     return self();
   }
 
@@ -87,15 +76,28 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   /**
    * Set the max number of concurrent calls to allow for this actor.
    *
-   * <p>The max concurrency defaults to 1 for threaded execution. Note that the execution order is
-   * not guaranteed when {@code max_concurrency > 1}.
+   * <p>The maximum concurrency defaults to 1 for threaded execution. Note that the execution order
+   * is not guaranteed when {@code max_concurrency > 1}.
    *
-   * @param maxConcurrency The max number of concurrent calls to allow for this actor.
+   * @param maxConcurrency The maximum number of concurrent calls to allow for this actor.
    * @return self
    * @see ActorCreationOptions.Builder#setMaxConcurrency(int)
    */
   public T setMaxConcurrency(int maxConcurrency) {
     builder.setMaxConcurrency(maxConcurrency);
+    return self();
+  }
+
+  /**
+   * Set the max number of pending calls allowed on the actor handle. When this value is exceeded,
+   * ray.exceptions.PendingCallsLimitExceededException will be thrown for further tasks. Note that
+   * this limit is counted per handle. -1 means that the number of pending calls is unlimited.
+   *
+   * @param maxPendingCalls The maximum number of pending calls for this actor.
+   * @return self
+   */
+  public T setMaxPendingCalls(int maxPendingCalls) {
+    builder.setMaxPendingCalls(maxPendingCalls);
     return self();
   }
 
@@ -110,6 +112,17 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   public T setPlacementGroup(PlacementGroup group, int bundleIndex) {
     builder.setPlacementGroup(group, bundleIndex);
     return self();
+  }
+
+  /**
+   * Set the placement group to place this actor in, which may use any available bundle.
+   *
+   * @param group The placement group of the actor.
+   * @return self
+   * @see ActorCreationOptions.Builder#setPlacementGroup(PlacementGroup, int)
+   */
+  public T setPlacementGroup(PlacementGroup group) {
+    return setPlacementGroup(group, -1);
   }
 
   @SuppressWarnings("unchecked")

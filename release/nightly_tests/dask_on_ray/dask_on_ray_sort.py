@@ -1,15 +1,14 @@
+import csv
+import json
+import os.path
+import time
+
+import boto3
 import dask
 import dask.dataframe as dd
-import json
-import pandas as pd
 import numpy as np
-import os.path
-import csv
-import boto3
-
+import pandas as pd
 from dask.distributed import Client
-
-import time
 
 
 def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
@@ -32,9 +31,10 @@ def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
             nrows = num_bytes_per_partition // 8
             dataset = pd.DataFrame(
                 np.random.randint(
-                    0, np.iinfo(np.int64).max, size=(nrows, 1),
-                    dtype=np.int64),
-                columns=["a"])
+                    0, np.iinfo(np.int64).max, size=(nrows, 1), dtype=np.int64
+                ),
+                columns=["a"],
+            )
             dataset.to_parquet(filename, compression="gzip")
         print("Writing partition to S3", filename)
         with open(filename, "rb") as f:
@@ -52,7 +52,20 @@ def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
         f"s3://{s3_bucket}/df-{num_bytes_per_partition}-{i}.parquet.gzip"
         for i in range(npartitions)
     ]
-    df = dd.read_parquet(filenames)
+
+    df = None
+    max_retry = 3
+    retry = 0
+    while retry < max_retry:
+        try:
+            df = dd.read_parquet(filenames)
+            break
+        except FileNotFoundError as e:
+            print(f"Failed to load a file. {e}")
+            # Wait a little bit before retrying.
+            time.sleep(30)
+            retry += 1
+
     return df
 
 
@@ -62,9 +75,9 @@ def load_dataset_files(client, data_dir, file_path, nbytes, npartitions):
 
     @dask.delayed
     def generate_file(i, data_dir, file_path):
-        key = "{}/df-{}-{}.parquet.gzip".format(file_path,
-                                                num_bytes_per_partition, i)
+        key = "{}/df-{}-{}.parquet.gzip".format(file_path, num_bytes_per_partition, i)
         from os import path
+
         if path.exists(key):
             print(f"The file {key} already exists. Do nothing")
             return
@@ -75,9 +88,10 @@ def load_dataset_files(client, data_dir, file_path, nbytes, npartitions):
             nrows = num_bytes_per_partition // 8
             dataset = pd.DataFrame(
                 np.random.randint(
-                    0, np.iinfo(np.int64).max, size=(nrows, 1),
-                    dtype=np.int64),
-                columns=["a"])
+                    0, np.iinfo(np.int64).max, size=(nrows, 1), dtype=np.int64
+                ),
+                columns=["a"],
+            )
             dataset.to_parquet(filename, compression="gzip")
         print("Writing partition to a file", filename)
 
@@ -97,18 +111,19 @@ def load_dataset_files(client, data_dir, file_path, nbytes, npartitions):
     return df
 
 
-def trial(client,
-          data_dir,
-          nbytes,
-          n_partitions,
-          generate_only,
-          s3_bucket=None,
-          file_path=None):
+def trial(
+    client,
+    data_dir,
+    nbytes,
+    n_partitions,
+    generate_only,
+    s3_bucket=None,
+    file_path=None,
+):
     if s3_bucket:
         df = load_dataset(client, data_dir, s3_bucket, nbytes, n_partitions)
     elif file_path:
-        df = load_dataset_files(client, data_dir, file_path, nbytes,
-                                n_partitions)
+        df = load_dataset_files(client, data_dir, file_path, nbytes, n_partitions)
 
     if generate_only:
         return []
@@ -127,7 +142,9 @@ def trial(client,
         #                          _ray_enable_progress_bar=True).head(10))
         print(
             df.set_index("a", shuffle="tasks", max_branch=float("inf")).head(
-                10, npartitions=-1))
+                10, npartitions=-1
+            )
+        )
 
         trial_end = time.time()
         duration = trial_end - trial_start
@@ -141,13 +158,15 @@ def trial(client,
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--nbytes", type=int, default=1_000_000)
     parser.add_argument("--npartitions", type=int, default=100, required=False)
     # Max partition size is 1GB.
     parser.add_argument(
-        "--max-partition-size", type=int, default=1000_000_000, required=False)
+        "--max-partition-size", type=int, default=1000_000_000, required=False
+    )
     parser.add_argument("--num-nodes", type=int, default=1)
     parser.add_argument("--dask-tasks", action="store_true")
     parser.add_argument("--generate-only", action="store_true")
@@ -160,14 +179,14 @@ if __name__ == "__main__":
     parser.add_argument("--dask-nthreads", type=int, default=0)
     parser.add_argument("--dask-memlimit", type=int, default=0)
     args = parser.parse_args()
-    assert not (args.s3_bucket
-                and args.file_path), "Provide S3 bucket or file path."
+    assert not (args.s3_bucket and args.file_path), "Provide S3 bucket or file path."
     if args.ray:
         import ray
+
         ray.init(address="auto")
-        from ray.util.dask import ray_dask_get, dataframe_optimize
-        dask.config.set(
-            scheduler=ray_dask_get, dataframe_optimize=dataframe_optimize)
+        from ray.util.dask import dataframe_optimize, ray_dask_get
+
+        dask.config.set(scheduler=ray_dask_get, dataframe_optimize=dataframe_optimize)
         client = None
     else:
         assert args.dask_nprocs != -0
@@ -190,7 +209,9 @@ if __name__ == "__main__":
             10,
             args.generate_only,
             s3_bucket=args.s3_bucket,
-            file_path=args.file_path))
+            file_path=args.file_path,
+        )
+    )
     print("WARMUP DONE")
 
     npartitions = args.npartitions
@@ -206,22 +227,33 @@ if __name__ == "__main__":
         npartitions,
         args.generate_only,
         s3_bucket=args.s3_bucket,
-        file_path=args.file_path)
-    print("mean over {} trials: {} +- {}".format(
-        len(output), np.mean(output), np.std(output)))
+        file_path=args.file_path,
+    )
+    print(
+        "mean over {} trials: {} +- {}".format(
+            len(output), np.mean(output), np.std(output)
+        )
+    )
 
-    print(ray.internal.internal_api.memory_summary(stats_only=True))
+    print(ray._private.internal_api.memory_summary(stats_only=True))
     duration = np.mean(output)
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(json.dumps({"duration": duration, "success": 1}))
 
-    write_header = not os.path.exists("output.csv") or os.path.getsize(
-        "output.csv") == 0
+    write_header = (
+        not os.path.exists("output.csv") or os.path.getsize("output.csv") == 0
+    )
     with open("output.csv", "a+") as csvfile:
         fieldnames = [
-            "num_nodes", "nbytes", "npartitions", "dask_tasks", "dask_nprocs",
-            "dask_nthreads", "dask_memlimit", "duration"
+            "num_nodes",
+            "nbytes",
+            "npartitions",
+            "dask_tasks",
+            "dask_nprocs",
+            "dask_nthreads",
+            "dask_memlimit",
+            "duration",
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         if write_header:

@@ -1,7 +1,10 @@
 from enum import Enum
 from typing import Union
 
+from ray.util import PublicAPI
 
+
+@PublicAPI
 class Verbosity(Enum):
     V0_MINIMAL = 0
     V1_EXPERIMENT = 1
@@ -38,6 +41,7 @@ def disable_ipython():
     """Disable output of IPython HTML objects."""
     try:
         from IPython.core.interactiveshell import InteractiveShell
+
         InteractiveShell.clear_instance()
     except Exception:
         pass

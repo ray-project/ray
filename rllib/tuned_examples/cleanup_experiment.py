@@ -37,32 +37,37 @@ parser.add_argument(
     type=str,
     help="Experiment dir in which all sub-runs (seeds) are "
     "located (as sub-dirs). Each sub0-run dir must contain the files: "
-    "params.json and progress.csv.")
+    "params.json and progress.csv.",
+)
 parser.add_argument(
     "--output-dir",
     type=str,
-    help="The output dir, in which the cleaned up output will be placed.")
+    help="The output dir, in which the cleaned up output will be placed.",
+)
 parser.add_argument(
     "--results-filter",
     type=str,
     help="comma-separated list of csv fields to exclude.",
     default="experiment_id,pid,hostname,node_ip,trial_id,hist_stats/episode_"
-    "reward,hist_stats/episode_lengths,experiment_tag")
+    "reward,hist_stats/episode_lengths,experiment_tag",
+)
 parser.add_argument(
     "--results-max-size",
     type=int,
     help="the max. size of the final results.csv file (in kb). Will erase "
     "every nth line in the original input to reach that goal. "
     "Use 0 for no limit (default=100).",
-    default=100)
+    default=100,
+)
 
 
 def process_single_run(in_dir, out_dir):
     exp_dir = os.listdir(in_dir)
 
     # Make sure trials dir is ok.
-    assert "params.json" in exp_dir and "progress.csv" in exp_dir, \
-        "params.json or progress.csv not found in {}!".format(in_dir)
+    assert (
+        "params.json" in exp_dir and "progress.csv" in exp_dir
+    ), "params.json or progress.csv not found in {}!".format(in_dir)
 
     os.makedirs(out_dir, exist_ok=True)
 
@@ -102,7 +107,8 @@ def process_single_run(in_dir, out_dir):
                         line = re.sub(
                             "(,{2,})",
                             lambda m: ",None" * (len(m.group()) - 1) + ",",
-                            line)
+                            line,
+                        )
                         cols = re.findall('".+?"|[^,]+', line)
                         if len(cols) != len(col_names_orig):
                             continue
@@ -119,13 +125,19 @@ def process_single_run(in_dir, out_dir):
                 # If ratio > 2.0, we'll have to keep only every nth line.
                 if ratio > 2.0:
                     nth = out_size // max_size
-                    os.system("awk 'NR==1||NR%{}==0' {} > {}.new".format(
-                        nth, absfile_out, absfile_out))
+                    os.system(
+                        "awk 'NR==1||NR%{}==0' {} > {}.new".format(
+                            nth, absfile_out, absfile_out
+                        )
+                    )
                 # If ratio < 2.0 (>1.0), we'll have to drop every nth line.
                 else:
                     nth = out_size // (out_size - max_size)
-                    os.system("awk 'NR==1||NR%{}!=0' {} > {}.new".format(
-                        nth, absfile_out, absfile_out))
+                    os.system(
+                        "awk 'NR==1||NR%{}!=0' {} > {}.new".format(
+                            nth, absfile_out, absfile_out
+                        )
+                    )
                 os.remove(absfile_out)
                 os.rename(absfile_out + ".new", absfile_out)
 
@@ -135,8 +147,9 @@ def process_single_run(in_dir, out_dir):
                 os.remove(zip_file)
             except FileNotFoundError:
                 pass
-            os.system("zip -j {} {}".format(
-                zip_file, os.path.join(out_dir, "progress.csv")))
+            os.system(
+                "zip -j {} {}".format(zip_file, os.path.join(out_dir, "progress.csv"))
+            )
             os.remove(os.path.join(out_dir, "progress.csv"))
 
         # TBX events file -> Move as is.
@@ -152,17 +165,21 @@ if __name__ == "__main__":
     for i, sub_run in enumerate(sorted(exp_dir)):
         abspath = os.path.join(args.experiment_dir, sub_run)
         # This is a seed run.
-        if os.path.isdir(abspath) and \
-                re.search("^(\\w+?)_(\\w+?-v\\d+)(_\\d+)", sub_run):
+        if os.path.isdir(abspath) and re.search(
+            "^(\\w+?)_(\\w+?-v\\d+)(_\\d+)", sub_run
+        ):
             # Create meaningful output dir name:
             # [algo]_[env]_[trial #]_[trial-config]_[date YYYY-MM-DD].
             cleaned_up_out = re.sub(
                 "^(\\w+?)_(\\w+?-v\\d+)(_\\d+)(_.+)?(_\\d{4}-\\d{2}-\\d{2})"
-                "_\\d{2}-\\d{2}-\\w+", "{:02}_\\1_\\2\\4\\5".format(i),
-                sub_run)
+                "_\\d{2}-\\d{2}-\\w+",
+                "{:02}_\\1_\\2\\4\\5".format(i),
+                sub_run,
+            )
             # Remove superflous `env=` specifier (anv always included in name).
-            cleaned_up_out = re.sub("^(.+)env=\\w+?-v\\d+,?(.+)", "\\1\\2",
-                                    cleaned_up_out)
+            cleaned_up_out = re.sub(
+                "^(.+)env=\\w+?-v\\d+,?(.+)", "\\1\\2", cleaned_up_out
+            )
             out_path = os.path.join(args.output_dir, cleaned_up_out)
             process_single_run(abspath, out_path)
     # Done.

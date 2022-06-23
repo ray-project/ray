@@ -45,8 +45,7 @@ pytestmark = pytest.mark.skipif(skip, reason="Missing Ludwig dependency")
 if not skip:
     from ludwig.backend.ray import RayBackend, get_horovod_kwargs
 
-    from ray.tests.ludwig.ludwig_test_utils import (create_data_set_to_use,
-                                                    spawn)
+    from ray.tests.ludwig.ludwig_test_utils import create_data_set_to_use, spawn
     from ray.tests.ludwig.ludwig_test_utils import bag_feature
     from ray.tests.ludwig.ludwig_test_utils import binary_feature
     from ray.tests.ludwig.ludwig_test_utils import category_feature
@@ -58,6 +57,7 @@ if not skip:
     from ray.tests.ludwig.ludwig_test_utils import set_feature
     from ray.tests.ludwig.ludwig_test_utils import train_with_backend
     from ray.tests.ludwig.ludwig_test_utils import vector_feature
+
 else:
 
     def spawn(func):
@@ -87,43 +87,37 @@ def ray_start_2_cpus():
 def run_api_experiment(config, data_parquet):
     # Sanity check that we get 4 slots over 1 host
     kwargs = get_horovod_kwargs()
-    assert kwargs.get("num_hosts") == 1
-    assert kwargs.get("num_slots") == 2
+    assert kwargs.get("num_workers") == 2
 
     # Train on Parquet
     dask_backend = RayBackend()
-    train_with_backend(
-        dask_backend, config, dataset=data_parquet, evaluate=False)
+    assert train_with_backend(
+        dask_backend, config, dataset=data_parquet, evaluate=False
+    )
 
 
 @spawn
-def run_test_parquet(input_features,
-                     output_features,
-                     num_examples=100,
-                     run_fn=run_api_experiment,
-                     expect_error=False):
+def run_test_parquet(
+    input_features,
+    output_features,
+    num_examples=100,
+    run_fn=run_api_experiment,
+    expect_error=False,
+):
     tf.config.experimental_run_functions_eagerly(True)
     with ray_start_2_cpus():
         config = {
             "input_features": input_features,
             "output_features": output_features,
-            "combiner": {
-                "type": "concat",
-                "fc_size": 14
-            },
-            "training": {
-                "epochs": 2,
-                "batch_size": 8
-            }
+            "combiner": {"type": "concat", "fc_size": 14},
+            "training": {"epochs": 2, "batch_size": 8},
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
             csv_filename = os.path.join(tmpdir, "dataset.csv")
             dataset_csv = generate_data(
-                input_features,
-                output_features,
-                csv_filename,
-                num_examples=num_examples)
+                input_features, output_features, csv_filename, num_examples=num_examples
+            )
             dataset_parquet = create_data_set_to_use("parquet", dataset_csv)
 
             if expect_error:
@@ -163,3 +157,10 @@ def test_ray_tabular_client():
             assert ray.util.client.ray.is_connected()
 
             test_ray_tabular()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

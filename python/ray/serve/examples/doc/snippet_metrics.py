@@ -8,7 +8,7 @@ serve.start()
 
 
 @serve.deployment
-def f(request):
+def f():
     time.sleep(1)
 
 

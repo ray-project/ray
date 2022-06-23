@@ -1,10 +1,10 @@
 import random
 
 import numpy as np
-from ray.rllib.examples.env.coin_game_non_vectorized_env import \
-    CoinGame, AsymCoinGame
-from ray.rllib.env.wrappers.uncertainty_wrappers import\
-    add_RewardUncertaintyEnvClassWrapper
+from ray.rllib.examples.env.coin_game_non_vectorized_env import CoinGame, AsymCoinGame
+from ray.rllib.env.wrappers.uncertainty_wrappers import (
+    add_RewardUncertaintyEnvClassWrapper,
+)
 
 
 def init_env(max_steps, env_class, seed=None, grid_size=3):
@@ -23,9 +23,11 @@ def test_add_RewardUncertaintyEnvClassWrapper():
     n_steps = int(max_steps * 8.25)
     reward_uncertainty_mean, reward_uncertainty_std = 10, 1
     MyCoinGame = add_RewardUncertaintyEnvClassWrapper(
-        CoinGame, reward_uncertainty_std, reward_uncertainty_mean)
+        CoinGame, reward_uncertainty_std, reward_uncertainty_mean
+    )
     MyAsymCoinGame = add_RewardUncertaintyEnvClassWrapper(
-        AsymCoinGame, reward_uncertainty_std, reward_uncertainty_mean)
+        AsymCoinGame, reward_uncertainty_std, reward_uncertainty_mean
+    )
     coin_game = init_env(max_steps, MyCoinGame, grid_size)
     asymm_coin_game = init_env(max_steps, MyAsymCoinGame, grid_size)
 

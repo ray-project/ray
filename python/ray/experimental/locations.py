@@ -1,10 +1,12 @@
-import ray
-from ray._raylet import ObjectRef
 from typing import Any, Dict, List
 
+import ray
+from ray._raylet import ObjectRef
 
-def get_object_locations(obj_refs: List[ObjectRef], timeout_ms: int = -1
-                         ) -> Dict[ObjectRef, Dict[str, Any]]:
+
+def get_object_locations(
+    obj_refs: List[ObjectRef], timeout_ms: int = -1
+) -> Dict[ObjectRef, Dict[str, Any]]:
     """Lookup the locations for a list of objects.
 
     It returns a dict maps from an object to its location. The dict excludes
@@ -12,7 +14,7 @@ def get_object_locations(obj_refs: List[ObjectRef], timeout_ms: int = -1
 
     Args:
         object_refs (List[ObjectRef]): List of object refs.
-        timeout_ms (int): The maximum amount of time in micro seconds to wait
+        timeout_ms: The maximum amount of time in micro seconds to wait
             before returning. Wait infinitely if it's negative.
 
     Returns:
@@ -33,5 +35,6 @@ def get_object_locations(obj_refs: List[ObjectRef], timeout_ms: int = -1
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray hasn't been initialized.")
-    return ray.worker.global_worker.core_worker.get_object_locations(
-        obj_refs, timeout_ms)
+    return ray._private.worker.global_worker.core_worker.get_object_locations(
+        obj_refs, timeout_ms
+    )

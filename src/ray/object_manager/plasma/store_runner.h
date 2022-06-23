@@ -5,6 +5,7 @@
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/file_system_monitor.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/store.h"
 
@@ -12,8 +13,10 @@ namespace plasma {
 
 class PlasmaStoreRunner {
  public:
-  PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
-                    bool hugepages_enabled, std::string plasma_directory,
+  PlasmaStoreRunner(std::string socket_name,
+                    int64_t system_memory,
+                    bool hugepages_enabled,
+                    std::string plasma_directory,
                     std::string fallback_directory);
   void Start(ray::SpillObjectsCallback spill_objects_callback,
              std::function<void()> object_store_full_callback,
@@ -41,6 +44,7 @@ class PlasmaStoreRunner {
   std::string fallback_directory_;
   mutable instrumented_io_context main_service_;
   std::unique_ptr<PlasmaAllocator> allocator_;
+  std::unique_ptr<ray::FileSystemMonitor> fs_monitor_;
   std::unique_ptr<PlasmaStore> store_;
 };
 

@@ -61,6 +61,8 @@ public class FunctionManagerTest {
     }
   }
 
+  private static final JobId JOB_ID = JobId.fromInt(1);
+
   private static RayFunc0<Object> fooFunc;
   private static RayFunc1<ChildClass, Object> childClassBarFunc;
   private static RayFunc0<ChildClass> childClassConstructor;
@@ -95,17 +97,17 @@ public class FunctionManagerTest {
   public void testGetFunctionFromRayFunc() {
     final FunctionManager functionManager = new FunctionManager(null);
     // Test normal function.
-    RayFunction func = functionManager.getFunction(JobId.NIL, fooFunc);
+    RayFunction func = functionManager.getFunction(fooFunc);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), fooDescriptor);
 
     // Test actor method
-    func = functionManager.getFunction(JobId.NIL, childClassBarFunc);
+    func = functionManager.getFunction(childClassBarFunc);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), childClassBarDescriptor);
 
     // Test actor constructor
-    func = functionManager.getFunction(JobId.NIL, childClassConstructor);
+    func = functionManager.getFunction(childClassConstructor);
     Assert.assertTrue(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), childClassConstructorDescriptor);
   }
@@ -114,17 +116,17 @@ public class FunctionManagerTest {
   public void testGetFunctionFromFunctionDescriptor() {
     final FunctionManager functionManager = new FunctionManager(null);
     // Test normal function.
-    RayFunction func = functionManager.getFunction(JobId.NIL, fooDescriptor);
+    RayFunction func = functionManager.getFunction(fooDescriptor);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), fooDescriptor);
 
     // Test actor method
-    func = functionManager.getFunction(JobId.NIL, childClassBarDescriptor);
+    func = functionManager.getFunction(childClassBarDescriptor);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), childClassBarDescriptor);
 
     // Test actor constructor
-    func = functionManager.getFunction(JobId.NIL, childClassConstructorDescriptor);
+    func = functionManager.getFunction(childClassConstructorDescriptor);
     Assert.assertTrue(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), childClassConstructorDescriptor);
 
@@ -133,7 +135,6 @@ public class FunctionManagerTest {
         RuntimeException.class,
         () -> {
           functionManager.getFunction(
-              JobId.NIL,
               new JavaFunctionDescriptor(
                   FunctionManagerTest.class.getName(), "overloadFunction", ""));
         });
@@ -146,11 +147,10 @@ public class FunctionManagerTest {
     fooDescriptor =
         new JavaFunctionDescriptor(ParentClass.class.getName(), "foo", "()Ljava/lang/Object;");
     Assert.assertEquals(
-        functionManager.getFunction(JobId.NIL, fooDescriptor).executable.getDeclaringClass(),
+        functionManager.getFunction(fooDescriptor).executable.getDeclaringClass(),
         ParentClass.class);
     RayFunction fooFunc =
         functionManager.getFunction(
-            JobId.NIL,
             new JavaFunctionDescriptor(ChildClass.class.getName(), "foo", "()Ljava/lang/Object;"));
     Assert.assertEquals(fooFunc.executable.getDeclaringClass(), ParentClass.class);
 
@@ -159,21 +159,16 @@ public class FunctionManagerTest {
     childClassBarDescriptor =
         new JavaFunctionDescriptor(ParentClass.class.getName(), "bar", "()Ljava/lang/Object;");
     Assert.assertEquals(
-        functionManager
-            .getFunction(JobId.NIL, childClassBarDescriptor)
-            .executable
-            .getDeclaringClass(),
+        functionManager.getFunction(childClassBarDescriptor).executable.getDeclaringClass(),
         ParentClass.class);
     RayFunction barFunc =
         functionManager.getFunction(
-            JobId.NIL,
             new JavaFunctionDescriptor(ChildClass.class.getName(), "bar", "()Ljava/lang/Object;"));
     Assert.assertEquals(barFunc.executable.getDeclaringClass(), ChildClass.class);
 
     // Check interface default methods.
     RayFunction interfaceNameFunc =
         functionManager.getFunction(
-            JobId.NIL,
             new JavaFunctionDescriptor(
                 ChildClass.class.getName(), "interfaceName", "()Ljava/lang/String;"));
     Assert.assertEquals(
@@ -183,14 +178,15 @@ public class FunctionManagerTest {
   @Test
   public void testLoadFunctionTableForClass() {
     JobFunctionTable functionTable = new JobFunctionTable(getClass().getClassLoader());
-    Map<Pair<String, String>, RayFunction> res =
+    Map<Pair<String, String>, Pair<RayFunction, Boolean>> res =
         functionTable.loadFunctionsForClass(ChildClass.class.getName());
-    // The result should be 4 entries:
+    // The result should be 5 entries:
     //   1, the constructor with signature
     //   2, the constructor without signature
     //   3, bar with signature
     //   4, bar without signature
-    Assert.assertEquals(res.size(), 11);
+    //   5, bar with the number of signature acting as signature field (xlang)
+    Assert.assertEquals(res.size(), 16);
     Assert.assertTrue(
         res.containsKey(
             ImmutablePair.of(childClassBarDescriptor.name, childClassBarDescriptor.signature)));
@@ -211,7 +207,7 @@ public class FunctionManagerTest {
                 overloadFunctionDescriptorDouble.signature)));
     Assert.assertTrue(res.containsKey(ImmutablePair.of(overloadFunctionDescriptorInt.name, "")));
     Pair<String, String> overloadKey = ImmutablePair.of(overloadFunctionDescriptorInt.name, "");
-    RayFunction func = res.get(overloadKey);
+    RayFunction func = res.get(overloadKey).getLeft();
     // The function is overloaded.
     Assert.assertTrue(res.containsKey(overloadKey));
     Assert.assertNull(func);
@@ -219,7 +215,6 @@ public class FunctionManagerTest {
 
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
-    JobId jobId = JobId.fromInt(1);
     final String codeSearchPath = FileUtils.getTempDirectoryPath() + "/ray_test_resources/";
     File jobResourceDir = new File(codeSearchPath);
     FileUtils.deleteQuietly(jobResourceDir);
@@ -249,7 +244,7 @@ public class FunctionManagerTest {
         new JavaFunctionDescriptor("DemoApp", "hello", "()Ljava/lang/String;");
     final FunctionManager functionManager =
         new FunctionManager(Collections.singletonList(codeSearchPath));
-    RayFunction func = functionManager.getFunction(jobId, descriptor);
+    RayFunction func = functionManager.getFunction(descriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), descriptor);
   }
 }

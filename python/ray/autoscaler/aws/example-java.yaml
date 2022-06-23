@@ -12,8 +12,8 @@ provider:
     type: aws
     region: us-west-2
     # Availability zone(s), comma-separated, that nodes may be launched in.
-    # Nodes are currently spread between zones by a round-robin approach,
-    # however this implementation detail should not be relied upon.
+    # Nodes will be launched in the first listed availability zone and will
+    # be tried in the subsequent availability zones if launching fails.
     availability_zone: us-west-2a,us-west-2b
 # How Ray will authenticate with newly launched nodes.
 auth:

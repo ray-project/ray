@@ -17,49 +17,57 @@ namespace gcs {
 
 class MockStoreClient : public StoreClient {
  public:
-  MOCK_METHOD(Status, AsyncPut,
-              (const std::string &table_name, const std::string &key,
-               const std::string &data, const StatusCallback &callback),
+  MOCK_METHOD(Status,
+              AsyncPut,
+              (const std::string &table_name,
+               const std::string &key,
+               const std::string &data,
+               bool overwrite,
+               std::function<void(bool)> callback),
               (override));
-  MOCK_METHOD(Status, AsyncPutWithIndex,
-              (const std::string &table_name, const std::string &key,
-               const std::string &index_key, const std::string &data,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncGet,
-              (const std::string &table_name, const std::string &key,
+  MOCK_METHOD(Status,
+              AsyncGet,
+              (const std::string &table_name,
+               const std::string &key,
                const OptionalItemCallback<std::string> &callback),
               (override));
-  MOCK_METHOD(Status, AsyncGetByIndex,
-              (const std::string &table_name, const std::string &index_key,
-               (const MapCallback<std::string, std::string> &callback)),
-              (override));
-  MOCK_METHOD(Status, AsyncGetAll,
+  MOCK_METHOD(Status,
+              AsyncGetAll,
               (const std::string &table_name,
                (const MapCallback<std::string, std::string> &callback)),
               (override));
-  MOCK_METHOD(Status, AsyncDelete,
-              (const std::string &table_name, const std::string &key,
-               const StatusCallback &callback),
+  MOCK_METHOD(Status,
+              AsyncMultiGet,
+              (const std::string &table_name,
+               const std::vector<std::string> &key,
+               (const MapCallback<std::string, std::string> &callback)),
               (override));
-  MOCK_METHOD(Status, AsyncDeleteWithIndex,
-              (const std::string &table_name, const std::string &key,
-               const std::string &index_key, const StatusCallback &callback),
+  MOCK_METHOD(Status,
+              AsyncDelete,
+              (const std::string &table_name,
+               const std::string &key,
+               std::function<void(bool)> callback),
               (override));
-  MOCK_METHOD(Status, AsyncBatchDelete,
-              (const std::string &table_name, const std::vector<std::string> &keys,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncBatchDeleteWithIndex,
-              (const std::string &table_name, const std::vector<std::string> &keys,
-               const std::vector<std::string> &index_keys,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncDeleteByIndex,
-              (const std::string &table_name, const std::string &index_key,
-               const StatusCallback &callback),
+  MOCK_METHOD(Status,
+              AsyncBatchDelete,
+              (const std::string &table_name,
+               const std::vector<std::string> &keys,
+               std::function<void(int64_t)> callback),
               (override));
   MOCK_METHOD(int, GetNextJobID, (), (override));
+  MOCK_METHOD(Status,
+              AsyncGetKeys,
+              (const std::string &table_name,
+               const std::string &prefix,
+               std::function<void(std::vector<std::string>)> callback),
+              (override));
+
+  MOCK_METHOD(Status,
+              AsyncExists,
+              (const std::string &table_name,
+               const std::string &key,
+               std::function<void(bool)> callback),
+              (override));
 };
 
 }  // namespace gcs

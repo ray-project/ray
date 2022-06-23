@@ -24,15 +24,15 @@ def test_errors_before_initializing_ray(set_enable_auto_connect):
         lambda: ray.kill(None),  # Not valid API usage.
         ray.nodes,
         lambda: ray.put(1),
-        lambda: ray.wait([])
+        lambda: ray.wait([]),
     ]
 
     def test_exceptions_raised():
         for api_method in api_methods:
             print(api_method)
             with pytest.raises(
-                    ray.exceptions.RaySystemError,
-                    match="Ray has not been started yet."):
+                ray.exceptions.RaySystemError, match="Ray has not been started yet."
+            ):
                 api_method()
 
     test_exceptions_raised()
@@ -46,4 +46,9 @@ def test_errors_before_initializing_ray(set_enable_auto_connect):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

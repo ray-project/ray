@@ -1,9 +1,11 @@
 import collections
 from typing import List
 
+from ray.util.annotations import Deprecated
 from ray.util.timer import _Timer
 
 
+@Deprecated
 class MetricsContext:
     """Metrics context object for a local iterator.
 
@@ -13,10 +15,10 @@ class MetricsContext:
     allowable inside iterator functions.
 
     Attributes:
-        counters (defaultdict): dict storing increasing metrics.
-        timers (defaultdict): dict storing latency timers.
-        info (dict): dict storing misc metric values.
-        current_actor (ActorHandle): reference to the actor handle that
+        counters: dict storing increasing metrics.
+        timers: dict storing latency timers.
+        info: dict storing misc metric values.
+        current_actor: reference to the actor handle that
             produced the current iterator output. This is automatically set
             for gather_async().
     """
@@ -43,15 +45,16 @@ class MetricsContext:
         self.info = values["info"]
 
 
+@Deprecated
 class SharedMetrics:
     """Holds an indirect reference to a (shared) metrics context.
 
     This is used by LocalIterator.union() to point the metrics contexts of
     entirely separate iterator chains to the same underlying context."""
 
-    def __init__(self,
-                 metrics: MetricsContext = None,
-                 parents: List["SharedMetrics"] = None):
+    def __init__(
+        self, metrics: MetricsContext = None, parents: List["SharedMetrics"] = None
+    ):
         self.metrics = metrics or MetricsContext()
         self.parents = parents or []
         self.set(self.metrics)

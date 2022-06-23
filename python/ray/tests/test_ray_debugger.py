@@ -9,9 +9,9 @@ import pexpect
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster
+from ray._private import ray_constants, services
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
-from ray._private import services
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -24,15 +24,25 @@ def test_ray_debugger_breakpoint(shutdown_only):
 
     result = f.remote()
 
-    wait_for_condition(lambda: len(
-        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")) > 0)
+    wait_for_condition(
+        lambda: len(
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+            )
+        )
+        > 0
+    )
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
-        "RAY_PDB_")
+        "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+    )
     assert len(active_sessions) == 1
 
     # Now continue execution:
     session = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB
+        )
+    )
     host, port = session["pdb_address"].split(":")
     assert host == "localhost"  # Should be private by default.
 
@@ -43,8 +53,7 @@ def test_ray_debugger_breakpoint(shutdown_only):
     ray.get(result)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_commands(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -55,6 +64,15 @@ def test_ray_debugger_commands(shutdown_only):
 
     result1 = f.remote()
     result2 = f.remote()
+
+    wait_for_condition(
+        lambda: len(
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+            )
+        )
+        > 0
+    )
 
     # Make sure that calling "continue" in the debugger
     # gives back control to the debugger loop:
@@ -75,8 +93,7 @@ def test_ray_debugger_commands(shutdown_only):
     ray.get([result1, result2])
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_stepping(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -106,8 +123,7 @@ def test_ray_debugger_stepping(shutdown_only):
     ray.get(result)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_recursive(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -140,10 +156,9 @@ def test_ray_debugger_recursive(shutdown_only):
     ray.get(result)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_job_exit_cleanup(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
 
     driver_script = """
 import time
@@ -158,14 +173,24 @@ def f():
 f.remote()
 # Give the remote function long enough to actually run.
 time.sleep(5)
-""".format(address)
+""".format(
+        address
+    )
 
-    assert not len(ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+    assert not len(
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+        )
+    )
 
     run_string_as_driver(driver_script)
 
     def one_active_session():
-        return len(ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+        return len(
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+            )
+        )
 
     wait_for_condition(one_active_session)
 
@@ -175,26 +200,27 @@ time.sleep(5)
 
     def no_active_sessions():
         return not len(
-            ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+            )
+        )
 
     wait_for_condition(no_active_sessions)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
-def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
-                             ray_debugger_external):
+def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_external):
     redis_substring_prefix = "--address='"
     cmd = ["ray", "start", "--head", "--num-cpus=1"]
     if ray_debugger_external:
         cmd.append("--ray-debugger-external")
     out = ray._private.utils.decode(
-        subprocess.check_output(cmd, stderr=subprocess.STDOUT))
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+    )
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
-    address_location = (
-        out.find(redis_substring_prefix) + len(redis_substring_prefix))
+    address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
     address = out[address_location:]
     address = address.split("'")[0]
 
@@ -207,14 +233,24 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
 
     result = f.remote()
 
-    wait_for_condition(lambda: len(
-        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")) > 0)
+    wait_for_condition(
+        lambda: len(
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+            )
+        )
+        > 0
+    )
 
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
-        "RAY_PDB_")
+        "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+    )
     assert len(active_sessions) == 1
     session = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB
+        )
+    )
 
     host, port = session["pdb_address"].split(":")
     if ray_debugger_external:
@@ -230,8 +266,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
     ray.get(result)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
 def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
     c = Cluster(
@@ -240,8 +275,9 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
         head_node_args={
             "num_cpus": 0,
             "num_gpus": 1,
-            "ray_debugger_external": ray_debugger_external
-        })
+            "ray_debugger_external": ray_debugger_external,
+        },
+    )
     c.add_node(num_cpus=1, ray_debugger_external=ray_debugger_external)
 
     @ray.remote
@@ -255,16 +291,29 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
     # num_cpus=1 forces the task onto the worker node.
     worker_node_result = f.options(num_cpus=1).remote()
 
-    wait_for_condition(lambda: len(
-        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")) == 2)
+    wait_for_condition(
+        lambda: len(
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+            )
+        )
+        == 2
+    )
 
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
-        "RAY_PDB_")
+        "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+    )
     assert len(active_sessions) == 2
     session1 = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB
+        )
+    )
     session2 = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[1]))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[1], namespace=ray_constants.KV_NAMESPACE_PDB
+        )
+    )
 
     host1, port1 = session1["pdb_address"].split(":")
     if ray_debugger_external:
@@ -291,7 +340,11 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
 
 if __name__ == "__main__":
     import pytest
+
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

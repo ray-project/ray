@@ -1,5 +1,7 @@
 :orphan:
 
+.. include:: we_are_hiring.rst
+
 .. _k8s-advanced:
 
 Ray Operator Advanced Configuration
@@ -224,7 +226,7 @@ The ``RESTARTS`` column reports the RayCluster's ``status.autoscalerRetries`` fi
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst
 
 .. _`RayCluster CRD`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/crds/cluster_crd.yaml
 .. _`finalizer` : https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#finalizers

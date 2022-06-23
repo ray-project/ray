@@ -21,8 +21,10 @@ public class HttpProxyTest {
 
   @Test
   public void test() throws IOException {
-
     boolean inited = Ray.isInitialized();
+    String previous_namespace = System.getProperty("ray.job.namespace");
+    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
+
     Ray.init();
 
     try {
@@ -43,6 +45,9 @@ public class HttpProxyTest {
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null);
+      Serve.getReplicaContext()
+          .setRayServeConfig(
+              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();
@@ -58,7 +63,7 @@ public class HttpProxyTest {
       try (CloseableHttpResponse httpResponse =
           (CloseableHttpResponse) httpClient.execute(httpPost)) {
 
-        // No Backend replica, so error is expected.
+        // No replica, so error is expected.
         int status = httpResponse.getCode();
         Assert.assertEquals(status, HttpURLConnection.HTTP_INTERNAL_ERROR);
       }
@@ -66,6 +71,11 @@ public class HttpProxyTest {
     } finally {
       if (!inited) {
         Ray.shutdown();
+      }
+      if (previous_namespace == null) {
+        System.clearProperty("ray.job.namespace");
+      } else {
+        System.setProperty("ray.job.namespace", previous_namespace);
       }
       Serve.setInternalReplicaContext(null);
       Serve.setGlobalClient(null);

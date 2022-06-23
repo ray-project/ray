@@ -29,7 +29,8 @@ class LocalModeObjectStore : public ObjectStore {
  public:
   LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime);
 
-  std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+  std::vector<bool> Wait(const std::vector<ObjectID> &ids,
+                         int num_objects,
                          int timeout_ms);
 
   void AddLocalReference(const std::string &id);

@@ -22,8 +22,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
@@ -45,7 +45,9 @@ class GcsPlacementGroup {
   ///
   /// \param placement_group_table_data Data of the placement_group (see gcs.proto).
   explicit GcsPlacementGroup(rpc::PlacementGroupTableData placement_group_table_data)
-      : placement_group_table_data_(std::move(placement_group_table_data)) {}
+      : placement_group_table_data_(std::move(placement_group_table_data)) {
+    SetupStates();
+  }
 
   /// Create a GcsPlacementGroup by CreatePlacementGroupRequest.
   ///
@@ -69,6 +71,7 @@ class GcsPlacementGroup {
         placement_group_spec.creator_actor_dead());
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
+    SetupStates();
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
@@ -124,8 +127,28 @@ class GcsPlacementGroup {
   /// Returns whether or not this is a detached placement group.
   bool IsDetached() const;
 
+  const rpc::PlacementGroupStats &GetStats() const;
+
+  rpc::PlacementGroupStats *GetMutableStats();
+
  private:
   FRIEND_TEST(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache);
+
+  /// Setup states other than placement_group_table_data_.
+  void SetupStates() {
+    auto stats = placement_group_table_data_.mutable_stats();
+    // The default value for the field is 0
+    if (stats->creation_request_received_ns() == 0) {
+      auto now = absl::GetCurrentTimeNanos();
+      stats->set_creation_request_received_ns(now);
+    }
+    // The default value for the field is 0
+    // Only set the state to the QUEUED when the state wasn't persisted before.
+    if (stats->scheduling_state() == 0) {
+      stats->set_scheduling_state(rpc::PlacementGroupStats::QUEUED);
+    }
+  }
+
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).
   rpc::PlacementGroupTableData placement_group_table_data_;
@@ -150,6 +173,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param scheduler Used to schedule placement group creation tasks.
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
+  /// \param get_ray_namespace A callback to get the ray namespace.
   explicit GcsPlacementGroupManager(
       instrumented_io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
@@ -202,6 +226,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                               StatusCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
+  /// The method handles all states of placement groups
+  /// (e.g., REMOVED states should be properly ignored within the method.)
   void SchedulePendingPlacementGroups();
 
   /// Get the placement_group ID for the named placement_group. Returns nil if the
@@ -218,7 +244,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
   void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      ExponentialBackOff backoff, bool is_feasible);
+                                      ExponentialBackOff backoff,
+                                      bool is_feasible);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.
@@ -274,9 +301,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// to.
   void CleanPlacementGroupIfNeededWhenActorDead(const ActorID &actor_id);
 
-  /// Collect stats from gcs placement group manager in-memory data structures.
-  void CollectStats() const;
-
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
@@ -285,13 +309,17 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   std::string DebugString() const;
 
+  /// Record internal metrics of the placement group manager.
+  void RecordMetrics() const;
+
  private:
   /// Push a placement group to pending queue.
   ///
   /// \param pg The placementgroup we are adding
   /// \param rank The rank for this placement group. Semantically it's the time
   /// this placement group to be scheduled. By default it'll be assigned to be
-  /// the current time.
+  /// the current time. If you assign 0, it means it will be scheduled as a highest
+  /// priority.
   /// \param exp_backer The exponential backoff. A default one will be given if
   /// it's not set. This will be used to generate the deferred time for this pg.
   void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,

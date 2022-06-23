@@ -1,0 +1,29 @@
+interest-evolution-recsim-env-bandit-linucb:
+    env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
+    run: BanditLinUCB
+    stop:
+        episode_reward_mean: 180.0
+        timesteps_total: 50000
+    config:
+        framework: torch
+
+        # RLlib/RecSim wrapper specific settings:
+        env_config:
+            # Env class specified above takes one `config` arg in its c'tor:
+            config:
+                # Each step, sample `num_candidates` documents using the env-internal
+                # document sampler model (a logic that creates n documents to select
+                # the slate from).
+                resample_documents: true
+                num_candidates: 100
+                # How many documents to recommend (out of `num_candidates`) each
+                # timestep?
+                slate_size: 2
+                # Should the action space be purely Discrete? Useful for algos that
+                # don't support MultiDiscrete (e.g. DQN or Bandits).
+                # SlateQ handles MultiDiscrete action spaces.
+                convert_to_discrete_action_space: true
+                wrap_for_bandits: true
+                seed: 0
+
+        metrics_num_episodes_for_smoothing: 500

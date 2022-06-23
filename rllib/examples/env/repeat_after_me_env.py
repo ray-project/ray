@@ -9,7 +9,7 @@ class RepeatAfterMeEnv(gym.Env):
     def __init__(self, config=None):
         config = config or {}
         if config.get("continuous"):
-            self.observation_space = Box(-1.0, 1.0, (2, ))
+            self.observation_space = Box(-1.0, 1.0, (2,))
         else:
             self.observation_space = Discrete(2)
 
@@ -39,7 +39,7 @@ class RepeatAfterMeEnv(gym.Env):
 
     def _next_obs(self):
         if isinstance(self.observation_space, Box):
-            token = np.random.random(size=(2, ))
+            token = np.random.random(size=(2,))
         else:
             token = np.random.choice([0, 1])
         self.history.append(token)

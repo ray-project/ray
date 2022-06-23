@@ -1,13 +1,26 @@
+load("//bazel:python.bzl", "py_test_module_list")
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
+#
+# Tags:
+# "team:ml": Tag indicating this test is owned by the ML team.
+# "client": Test uses the ray client.
+# "example": Test runs a tune example script.
+# "exclusive": ???
+# "py37": Test requires py3.7 or later.
+# "soft_imports": Tests checking whether Tune runs without any of its soft dependencies.
+# "pytorch": Test uses PyTorch.
+# "tensorflow": Test uses TensorFlow.
+# "tests_dir_A-Z": Tags to spread out tests. Make sure you tag your newly added tests with this.
 # --------------------------------------------------------------------
 py_test(
     name = "test_actor_reuse",
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_A"],
     deps = [":tune_lib"],
 )
 
@@ -16,7 +29,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_api.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "rllib", "tests_dir_A"],
 )
 
 py_test(
@@ -24,7 +37,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_automl_searcher.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_A"],
 )
 
 py_test(
@@ -32,7 +45,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_checkpoint_manager.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_C"],
 )
 
 py_test(
@@ -40,7 +53,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_client.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "client", "py37", "exclusive"]
+    tags = ["team:ml", "client", "py37", "exclusive", "tests_dir_C"]
 )
 
 py_test(
@@ -48,7 +61,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "rllib", "tests_dir_C"],
 )
 
 py_test(
@@ -56,15 +69,15 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster_searcher.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_C"],
 )
 
 py_test(
     name = "test_commands",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_commands.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_C"],
 )
 
 py_test(
@@ -72,7 +85,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_convergence.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_C"],
 )
 
 py_test(
@@ -80,7 +93,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_dependency.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_D"],
 )
 
 py_test(
@@ -88,7 +101,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_experiment.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_E"],
 )
 
 py_test(
@@ -96,7 +109,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_experiment_analysis.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_E"],
 )
 
 py_test(
@@ -104,7 +117,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_experiment_analysis_mem.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_E"],
 )
 
 py_test(
@@ -112,23 +125,24 @@ py_test(
     size = "medium",
     srcs = ["tests/test_function_api.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_F"],
+)
+
+
+py_test(
+    name = "test_legacy_import",
+    size = "small",
+    srcs = ["tests/test_legacy_import.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_L"],
 )
 
 py_test(
-    name = "test_integration_docker",
+    name = "test_integration_comet",
     size = "small",
-    srcs = ["tests/test_integration_docker.py"],
+    srcs = ["tests/test_integration_comet.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_kubernetes",
-    size = "small",
-    srcs = ["tests/test_integration_kubernetes.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_I"],
 )
 
 py_test(
@@ -136,7 +150,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_I"],
 )
 
 py_test(
@@ -144,7 +158,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_integration_wandb.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_I"],
 )
 
 py_test(
@@ -152,7 +166,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_integration_mlflow.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"]
+    tags = ["team:ml", "exclusive", "tests_dir_I"]
 )
 
 py_test(
@@ -160,7 +174,15 @@ py_test(
     size = "small",
     srcs = ["tests/test_logger.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml"],
+    tags = ["team:ml", "tests_dir_L"],
+)
+
+py_test(
+    name = "test_multinode_sync",
+    size = "large",
+    srcs = ["tests/test_multinode_sync.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "multinode"],
 )
 
 py_test(
@@ -168,15 +190,23 @@ py_test(
     size = "medium",
     srcs = ["tests/test_progress_reporter.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_P"],
+)
+
+py_test(
+    name = "test_resource_updater",
+    size = "large",
+    srcs = ["tests/test_resource_updater.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
 )
 
 py_test(
     name = "test_ray_trial_executor",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
 )
 
 py_test(
@@ -184,7 +214,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_run_experiment.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
 )
 
 py_test(
@@ -192,15 +222,31 @@ py_test(
     size = "medium",
     srcs = ["tests/test_remote.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
+    name = "test_result_grid",
+    size = "medium",
+    srcs = ["tests/test_result_grid.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
+    name = "test_warnings",
+    size = "medium",
+    srcs = ["tests/test_warnings.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_W"],
 )
 
 py_test(
     name = "test_sample",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
 )
 
 py_test(
@@ -208,7 +254,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_searchers.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
 )
 
 py_test(
@@ -216,15 +262,39 @@ py_test(
     size = "small",
     srcs = ["tests/test_soft_imports.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "soft_imports"],
+    tags = ["team:ml", "soft_imports", "tests_dir_S"],
 )
 
 py_test(
-    name = "test_sync",
-    size = "medium",
-    srcs = ["tests/test_sync.py"],
+    name = "test_stopper",
+    size = "small",
+    srcs = ["tests/test_stopper.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_util_file_transfer",
+    size = "medium",
+    srcs = ["tests/test_util_file_transfer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_syncer",
+    size = "medium",
+    srcs = ["tests/test_syncer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_syncer_callback",
+    size = "medium",
+    srcs = ["tests/test_syncer_callback.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
 )
 
 py_test(
@@ -232,7 +302,15 @@ py_test(
     size = "small",
     srcs = ["tests/test_trainable_util.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_trial_relative_logdir",
+    size = "medium",
+    srcs = ["tests/test_trial_relative_logdir.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
@@ -240,7 +318,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_trial_runner.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
@@ -248,7 +326,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_trial_runner_2.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
@@ -256,7 +334,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_trial_runner_3.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
@@ -264,7 +342,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_trial_runner_pg.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
@@ -272,7 +350,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_trial_runner_callbacks.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
@@ -280,7 +358,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_var.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_V"],
 )
 
 py_test(
@@ -288,15 +366,31 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_scheduler.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
     name = "test_trial_scheduler_pbt",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "flaky"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_trial_scheduler_resource_changing",
+    size = "small",
+    srcs = ["tests/test_trial_scheduler_resource_changing.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_tune_restore_warm_start",
+    size = "large",
+    srcs = ["tests/test_tune_restore_warm_start.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
@@ -304,7 +398,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_restore.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "rllib", "tests_dir_T"],
 )
 
 py_test(
@@ -312,7 +406,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_tune_save_restore.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
@@ -320,7 +414,23 @@ py_test(
     size = "medium",
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_tuner",
+    size = "medium",
+    srcs = ["tests/test_tuner.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_U"],
 )
 
 # --------------------------------------------------------------------
@@ -333,7 +443,7 @@ py_test(
     size = "small",
     srcs = ["tests/example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_main"],
 )
 
 py_test(
@@ -350,7 +460,7 @@ py_test(
     size = "medium",
     srcs = ["tests/tutorial.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_main"],
 )
 
 # --------------------------------------------------------------------
@@ -386,7 +496,7 @@ py_test(
 
 py_test(
     name = "blendsearch_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/blendsearch_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
@@ -395,7 +505,7 @@ py_test(
 
 py_test(
     name = "bohb_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
@@ -420,44 +530,11 @@ py_test(
 )
 
 py_test(
-    name = "test_torch_trainable",
-    size = "medium",
-    srcs = ["tests/test_torch_trainable.py"],
-    tags = ["team:ml", "exclusive", "example", "pytorch"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "test_tensorflow_trainable",
-    size = "medium",
-    srcs = ["tests/test_tensorflow_trainable.py"],
-    tags = ["team:ml", "exclusive", "example", "tensorflow"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "test_horovod",
-    size = "medium",
-    srcs = ["tests/test_horovod.py"],
-    tags = ["team:ml", "exclusive", "example", "py37"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "ddp_mnist_torch",
+    name = "custom_func_checkpointing",
     size = "small",
-    srcs = ["examples/ddp_mnist_torch.py"],
+    srcs = ["examples/custom_func_checkpointing.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "pytorch"],
-    args = ["--num-workers=2"]
-)
-
-py_test(
-    name = "tf_distributed_keras_example",
-    size = "small",
-    srcs = ["examples/tf_distributed_keras_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "tensorflow"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -469,16 +546,6 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
-
-# Does not work without awscli tool installed. Check if can be mocked.
-# py_test(
-#     name = "durable_trainable_example",
-#     size = "medium",
-#     srcs = ["examples/durable_trainable_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["team:ml", "exclusive", "example"],
-#     args = ["--local", "--mock-storage"]
-# )
 
 py_test(
     name = "genetic_example",
@@ -495,15 +562,6 @@ py_test(
     srcs = ["examples/hebo_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "horovod_simple",
-    size = "medium",
-    srcs = ["examples/horovod_simple.py"],
-    tags = ["team:ml", "exclusive", "example", "py37"],
-    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 
@@ -526,15 +584,6 @@ py_test(
 )
 
 py_test(
-    name = "hyperopt_example",
-    size = "medium",
-    srcs = ["examples/hyperopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "hyperopt_conditional_search_space_example",
     size = "medium",
     srcs = ["examples/hyperopt_conditional_search_space_example.py"],
@@ -543,13 +592,22 @@ py_test(
     args = ["--smoke-test"]
 )
 
-
 py_test(
     name = "lightgbm_example",
     size = "small",
     srcs = ["examples/lightgbm_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "lightgbm_example_cv",
+    size = "small",
+    main = "examples/lightgbm_example.py",
+    srcs = ["examples/lightgbm_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(
@@ -645,6 +703,15 @@ py_test(
     name = "optuna_example",
     size = "small",
     srcs = ["examples/optuna_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "optuna_multiobjective_example",
+    size = "small",
+    srcs = ["examples/optuna_multiobjective_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
@@ -847,6 +914,16 @@ py_test(
 )
 
 py_test(
+    name = "xgboost_example_cv",
+    size = "small",
+    main = "examples/xgboost_example.py",
+    srcs = ["examples/xgboost_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
+)
+
+py_test(
     name = "xgboost_dynamic_resources_example",
     size = "large",
     srcs = ["examples/xgboost_dynamic_resources_example.py"],
@@ -861,20 +938,6 @@ py_test(
     srcs = ["examples/zoopt_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-# --------------------------------------------------------------------
-# Tune related tests from the ../../../../release directory.
-# Please keep these sorted alphabetically.
-# --------------------------------------------------------------------
-
-py_test(
-    name = "horovod_cifar_pbt_example",
-    size = "medium",
-    srcs = ["examples/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive", "pytorch", "example", "release", "py37"],
-    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 

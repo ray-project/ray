@@ -1,5 +1,6 @@
 .. _tune-reporter-doc:
 
+
 Console Output (Reporters)
 ==========================
 
@@ -22,7 +23,11 @@ By default, Tune reports experiment progress periodically to the command-line as
     | MyTrainable_a826b7bc | RUNNING  | 10.234.98.164:31112 | 0.729127  | 0.0748 | 0.1784 | 0.1797 | 1.7161 |          7.05715 |    14 |
     +----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------+
 
-Note that columns will be hidden if they are completely empty. The output can be configured in various ways by instantiating a ``CLIReporter`` instance (or ``JupyterNotebookReporter`` if you're using jupyter notebook). Here's an example:
+Note that columns will be hidden if they are completely empty. The output can be configured in various ways by
+instantiating a ``CLIReporter`` instance (or ``JupyterNotebookReporter`` if you're using jupyter notebook).
+Here's an example:
+
+.. TODO: test these snippets
 
 .. code-block:: python
 

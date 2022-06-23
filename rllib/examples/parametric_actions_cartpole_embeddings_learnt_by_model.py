@@ -19,10 +19,12 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.examples.env.parametric_actions_cartpole import \
-    ParametricActionsCartPoleNoEmbeddings
-from ray.rllib.examples.models.parametric_actions_model import \
-    ParametricActionsModelThatLearnsEmbeddings
+from ray.rllib.examples.env.parametric_actions_cartpole import (
+    ParametricActionsCartPoleNoEmbeddings,
+)
+from ray.rllib.examples.models.parametric_actions_model import (
+    ParametricActionsModelThatLearnsEmbeddings,
+)
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
@@ -34,7 +36,8 @@ parser.add_argument(
     choices=["tf", "tf2", "tfe"],
     default="tf",
     help="The DL framework specifier (torch not supported yet "
-    "due to lack of model).")
+    "due to lack of model).",
+)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=150.0)
@@ -44,11 +47,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    register_env("pa_cartpole",
-                 lambda _: ParametricActionsCartPoleNoEmbeddings(10))
+    register_env("pa_cartpole", lambda _: ParametricActionsCartPoleNoEmbeddings(10))
 
     ModelCatalog.register_custom_model(
-        "pa_model", ParametricActionsModelThatLearnsEmbeddings)
+        "pa_model", ParametricActionsModelThatLearnsEmbeddings
+    )
 
     if args.run == "DQN":
         cfg = {
@@ -73,7 +76,8 @@ if __name__ == "__main__":
             "num_workers": 0,
             "framework": args.framework,
         },
-        **cfg)
+        **cfg
+    )
 
     stop = {
         "training_iteration": args.stop_iters,

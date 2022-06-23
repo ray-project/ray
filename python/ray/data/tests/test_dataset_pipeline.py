@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data.dataset_pipeline import DatasetPipeline
 
 from ray.tests.conftest import *  # noqa
@@ -13,10 +14,12 @@ from ray.tests.conftest import *  # noqa
 
 def test_pipeline_actors(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1)
-    pipe = ray.data.range(3) \
-        .repeat(10) \
-        .map(lambda x: x + 1) \
+    pipe = (
+        ray.data.range(3)
+        .repeat(10)
+        .map(lambda x: x + 1)
         .map(lambda x: x + 1, compute="actors", num_gpus=1)
+    )
 
     assert sorted(pipe.take(999)) == sorted([2, 3, 4] * 10)
 
@@ -35,10 +38,90 @@ def test_incremental_take(shutdown_only):
     assert pipe.take(1) == [0]
 
 
+def test_pipeline_is_parallel(shutdown_only):
+    ray.init(num_cpus=4)
+    ds = ray.data.range(10)
+
+    @ray.remote(num_cpus=0)
+    class ParallelismTracker:
+        def __init__(self):
+            self.in_progress = 0
+            self.max_in_progress = 0
+
+        def inc(self):
+            self.in_progress += 1
+            if self.in_progress > self.max_in_progress:
+                self.max_in_progress = self.in_progress
+
+        def dec(self):
+            self.in_progress = 0
+
+        def get_max(self):
+            return self.max_in_progress
+
+    tracker = ParallelismTracker.remote()
+
+    def sleep(x):
+        ray.get(tracker.inc.remote())
+        time.sleep(0.1)
+        ray.get(tracker.dec.remote())
+        return x
+
+    pipe = ds.window(blocks_per_window=1)
+    # Shuffle in between to prevent fusion.
+    pipe = pipe.map(sleep).random_shuffle_each_window().map(sleep)
+    for i, v in enumerate(pipe.iter_rows()):
+        print(i, v)
+    assert ray.get(tracker.get_max.remote()) > 1
+
+
+def test_window_by_bytes(ray_start_regular_shared):
+    with pytest.raises(ValueError):
+        ray.data.range_table(10).window(blocks_per_window=2, bytes_per_window=2)
+
+    pipe = ray.data.range_table(10000000, parallelism=100).window(blocks_per_window=2)
+    assert str(pipe) == "DatasetPipeline(num_windows=50, num_stages=2)"
+
+    pipe = ray.data.range_table(10000000, parallelism=100).window(
+        bytes_per_window=10 * 1024 * 1024
+    )
+    assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=2)"
+    dss = list(pipe.iter_datasets())
+    assert len(dss) == 8, dss
+    for ds in dss[:-1]:
+        assert ds.num_blocks() in [12, 13]
+
+    pipe = ray.data.range_table(10000000, parallelism=100).window(bytes_per_window=1)
+    assert str(pipe) == "DatasetPipeline(num_windows=100, num_stages=2)"
+    for ds in pipe.iter_datasets():
+        assert ds.num_blocks() == 1
+
+    pipe = ray.data.range_table(10000000, parallelism=100).window(bytes_per_window=1e9)
+    assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=2)"
+    for ds in pipe.iter_datasets():
+        assert ds.num_blocks() == 100
+
+    # Test creating from non-lazy BlockList.
+    pipe = (
+        ray.data.range_table(10000000, parallelism=100)
+        .map_batches(lambda x: x)
+        .window(bytes_per_window=10 * 1024 * 1024)
+    )
+    assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=1)"
+
+    context = DatasetContext.get_current()
+    old = context.optimize_fuse_read_stages
+    try:
+        context.optimize_fuse_read_stages = False
+        dataset = ray.data.range(10).window(bytes_per_window=1)
+        assert dataset.take(10) == list(range(10))
+    finally:
+        context.optimize_fuse_read_stages = old
+
+
 def test_epoch(ray_start_regular_shared):
     # Test dataset repeat.
-    pipe = ray.data.range(5).map(lambda x: x * 2).repeat(3).map(
-        lambda x: x * 2)
+    pipe = ray.data.range(5).map(lambda x: x * 2).repeat(3).map(lambda x: x * 2)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 4, 8, 12, 16], [0, 4, 8, 12, 16], [0, 4, 8, 12, 16]]
 
@@ -47,11 +130,15 @@ def test_epoch(ray_start_regular_shared):
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
 
+    # Test max epochs.
+    pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
+    results = [p.take() for p in pipe.iter_epochs(2)]
+    assert results == [[0, 1, 2], [0, 1, 2]]
+
     # Test nested repeat.
     pipe = ray.data.range(5).repeat(2).repeat(2)
     results = [p.take() for p in pipe.iter_epochs()]
-    assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
-                       [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
+    assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4], [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
 
     # Test preserve_epoch=True.
     pipe = ray.data.range(5).repeat(2).rewindow(blocks_per_window=2)
@@ -59,10 +146,19 @@ def test_epoch(ray_start_regular_shared):
     assert results == [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
 
     # Test preserve_epoch=False.
-    pipe = ray.data.range(5).repeat(2).rewindow(
-        blocks_per_window=2, preserve_epoch=False)
+    pipe = (
+        ray.data.range(5).repeat(2).rewindow(blocks_per_window=2, preserve_epoch=False)
+    )
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2, 3], [4, 0, 1, 2, 3, 4]]
+
+
+# https://github.com/ray-project/ray/issues/20394
+def test_unused_epoch(ray_start_regular_shared):
+    pipe = ray.data.from_items([0, 1, 2, 3, 4]).repeat(3).random_shuffle_each_window()
+
+    for i, epoch in enumerate(pipe.iter_epochs()):
+        print("Epoch", i)
 
 
 def test_cannot_read_twice(ray_start_regular_shared):
@@ -80,31 +176,35 @@ def test_cannot_read_twice(ray_start_regular_shared):
 
 
 def test_basic_pipeline(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
     ds = ray.data.range(10)
 
     pipe = ds.window(blocks_per_window=1)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
     assert pipe.count() == 10
 
     pipe = ds.window(blocks_per_window=1).map(lambda x: x).map(lambda x: x)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=3)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=4)"
     assert pipe.take() == list(range(10))
 
     pipe = ds.window(blocks_per_window=999)
-    assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=2)"
     assert pipe.count() == 10
 
     pipe = ds.repeat(10)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
     assert pipe.count() == 100
     pipe = ds.repeat(10)
     assert pipe.sum() == 450
 
 
 def test_window(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
     ds = ray.data.range(10)
     pipe = ds.window(blocks_per_window=1)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
     pipe = pipe.rewindow(blocks_per_window=3)
     assert str(pipe) == "DatasetPipeline(num_windows=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
@@ -116,7 +216,7 @@ def test_window(ray_start_regular_shared):
 
     ds = ray.data.range(10)
     pipe = ds.window(blocks_per_window=5)
-    assert str(pipe) == "DatasetPipeline(num_windows=2, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=2, num_stages=2)"
     pipe = pipe.rewindow(blocks_per_window=3)
     assert str(pipe) == "DatasetPipeline(num_windows=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
@@ -128,17 +228,19 @@ def test_window(ray_start_regular_shared):
 
 
 def test_repeat(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
     ds = ray.data.range(5)
     pipe = ds.window(blocks_per_window=1)
-    assert str(pipe) == "DatasetPipeline(num_windows=5, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=5, num_stages=2)"
     pipe = pipe.repeat(2)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
     assert pipe.take() == (list(range(5)) + list(range(5)))
 
     ds = ray.data.range(5)
     pipe = ds.window(blocks_per_window=1)
     pipe = pipe.repeat()
-    assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=2)"
     assert len(pipe.take(99)) == 99
 
     pipe = ray.data.range(5).repeat()
@@ -148,14 +250,17 @@ def test_repeat(ray_start_regular_shared):
 
 def test_from_iterable(ray_start_regular_shared):
     pipe = DatasetPipeline.from_iterable(
-        [lambda: ray.data.range(3), lambda: ray.data.range(2)])
+        [lambda: ray.data.range(3), lambda: ray.data.range(2)]
+    )
     assert pipe.take() == [0, 1, 2, 0, 1]
 
 
 def test_repeat_forever(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
     ds = ray.data.range(10)
     pipe = ds.repeat()
-    assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=2)"
     for i, v in enumerate(pipe.iter_rows()):
         assert v == i % 10, (v, i, i % 10)
         if i > 1000:
@@ -171,11 +276,21 @@ def test_repartition(ray_start_regular_shared):
     assert pipe.repartition_each_window(100).sum() == 450
 
 
-def test_iter_batches(ray_start_regular_shared):
+def test_iter_batches_basic(ray_start_regular_shared):
     pipe = ray.data.range(10).window(blocks_per_window=2)
     batches = list(pipe.iter_batches())
     assert len(batches) == 10
     assert all(len(e) == 1 for e in batches)
+
+
+def test_iter_batches_batch_across_windows(ray_start_regular_shared):
+    # 3 windows, each containing 3 blocks, each containing 3 rows.
+    pipe = ray.data.range(27, parallelism=9).window(blocks_per_window=3)
+    # 4-row batches, with batches spanning both blocks and windows.
+    batches = list(pipe.iter_batches(batch_size=4))
+    assert len(batches) == 7, batches
+    assert all(len(e) == 4 for e in batches[:-1])
+    assert len(batches[-1]) == 3
 
 
 def test_iter_datasets(ray_start_regular_shared):
@@ -199,12 +314,39 @@ def test_schema(ray_start_regular_shared):
     assert pipe.schema() == int
 
 
-def test_split(ray_start_regular_shared):
-    pipe = ray.data.range(3) \
-        .map(lambda x: x + 1) \
-        .repeat(10)
+def test_schema_peek(ray_start_regular_shared):
+    # Multiple datasets
+    pipe = ray.data.range(6).window(blocks_per_window=2)
+    assert pipe.schema() == int
+    assert pipe._first_dataset is not None
+    dss = list(pipe.iter_datasets())
+    assert len(dss) == 3, dss
+    assert pipe._first_dataset is None
+    assert pipe.schema() == int
 
-    @ray.remote
+    # Only 1 dataset
+    pipe = ray.data.range(1).window(blocks_per_window=2)
+    assert pipe.schema() == int
+    assert pipe._first_dataset is not None
+    dss = list(pipe.iter_datasets())
+    assert len(dss) == 1, dss
+    assert pipe._first_dataset is None
+    assert pipe.schema() == int
+
+    # Empty datasets
+    pipe = ray.data.range(6).filter(lambda x: x < 0).window(blocks_per_window=2)
+    assert pipe.schema() is None
+    assert pipe._first_dataset is not None
+    dss = list(pipe.iter_datasets())
+    assert len(dss) == 3, dss
+    assert pipe._first_dataset is None
+    assert pipe.schema() is None
+
+
+def test_split(ray_start_regular_shared):
+    pipe = ray.data.range(3).map(lambda x: x + 1).repeat(10)
+
+    @ray.remote(num_cpus=0)
     def consume(shard, i):
         total = 0
         for row in shard.iter_rows():
@@ -220,11 +362,9 @@ def test_split(ray_start_regular_shared):
 def test_split_at_indices(ray_start_regular_shared):
     indices = [2, 5]
     n = 8
-    pipe = ray.data.range(n) \
-        .map(lambda x: x + 1) \
-        .repeat(2)
+    pipe = ray.data.range(n).map(lambda x: x + 1).repeat(2)
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def consume(shard, i):
         total = 0
         out = []
@@ -245,8 +385,9 @@ def test_split_at_indices(ray_start_regular_shared):
     np.testing.assert_equal(
         np.array(outs, dtype=np.object),
         np.array(
-            [[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]],
-            dtype=np.object))
+            [[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=np.object
+        ),
+    )
 
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):
@@ -304,6 +445,13 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
     assert 9 == pipe.sum()
 
 
+def test_randomize_block_order_each_window(ray_start_regular_shared):
+    pipe = ray.data.range(12).repartition(6).window(blocks_per_window=3)
+    pipe = pipe.randomize_block_order_each_window(seed=0)
+    assert pipe.take() == [0, 1, 4, 5, 2, 3, 6, 7, 10, 11, 8, 9]
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

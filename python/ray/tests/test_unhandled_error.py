@@ -26,14 +26,14 @@ if __name__ == "__main__":
     ray.init(num_cpus=1)
 
     # Test we report unhandled exceptions.
-    ray.worker._unhandled_error_handler = interceptor
+    ray._private.worker._unhandled_error_handler = interceptor
     x1 = f.remote()
 
     start = time.time()
     while time.time() - start < 10:
         if num_exceptions == 1:
             sys.exit(0)
-        time.sleep(.5)
+        time.sleep(0.5)
         print("wait for exception", num_exceptions)
 
     assert False

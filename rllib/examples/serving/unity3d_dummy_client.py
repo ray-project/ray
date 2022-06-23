@@ -29,32 +29,41 @@ parser.add_argument(
     type=str,
     default="3DBall",
     choices=[
-        "3DBall", "3DBallHard", "FoodCollector", "GridFoodCollector",
-        "Pyramids", "Sorter", "Tennis", "VisualHallway", "Walker"
+        "3DBall",
+        "3DBallHard",
+        "FoodCollector",
+        "GridFoodCollector",
+        "Pyramids",
+        "Sorter",
+        "Tennis",
+        "VisualHallway",
+        "Walker",
     ],
     help="The name of the Env to mimic. Only those examples supported so "
     "far for which all agents have the same "
-    "observation- and action spaces (feel free to add more to this script!)")
+    "observation- and action spaces (feel free to add more to this script!)",
+)
 parser.add_argument(
     "--horizon",
     type=int,
     default=200,
     help="The max. number of `step()`s for any episode (per agent) before "
-    "it'll be reset again automatically.")
+    "it'll be reset again automatically.",
+)
 parser.add_argument(
     "--server",
     type=str,
     default=SERVER_ADDRESS,
-    help="The Policy server's address to connect to from this client.")
+    help="The Policy server's address to connect to from this client.",
+)
 parser.add_argument(
-    "--port",
-    type=int,
-    default=SERVER_PORT,
-    help="The port to use (on --server).")
+    "--port", type=int, default=SERVER_PORT, help="The port to use (on --server)."
+)
 parser.add_argument(
     "--no-train",
     action="store_true",
-    help="Whether to disable training (on the server side).")
+    help="Whether to disable training (on the server side).",
+)
 parser.add_argument(
     "--inference-mode",
     type=str,
@@ -62,18 +71,21 @@ parser.add_argument(
     choices=["local", "remote"],
     help="Whether to compute actions `local`ly or `remote`ly. Note that "
     "`local` is much faster b/c observations/actions do not have to be "
-    "sent via the network.")
+    "sent via the network.",
+)
 parser.add_argument(
     "--update-interval-local-mode",
     type=float,
     default=10.0,
     help="For `inference-mode=local`, every how many seconds do we update "
-    "learnt policy weights from the server?")
+    "learnt policy weights from the server?",
+)
 parser.add_argument(
     "--num-episodes",
     type=int,
     default=10,
-    help="Stop once the specified number of episodes have been played.")
+    help="Stop once the specified number of episodes have been played.",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -83,35 +95,36 @@ if __name__ == "__main__":
     client = PolicyClient(
         "http://" + args.server + ":" + str(args.port),
         inference_mode=args.inference_mode,
-        update_interval=args.update_interval_local_mode)
+        update_interval=args.update_interval_local_mode,
+    )
 
     # Get the multi-agent policies dict and agent->policy
     # mapping-fn.
-    policies, policy_mapping_fn = \
-        Unity3DEnv.get_policy_configs_for_game(args.env)
+    policies, policy_mapping_fn = Unity3DEnv.get_policy_configs_for_game(args.env)
 
     # Make sure all policies' obs- and action spaces are the same.
     # If not, we won't be able to mimic the Unity3D env using RLlib's
     # RandomMultiAgentEnv.
     first_policy_spec = next(iter(policies.values()))
     for pid, policy_spec in policies.items():
-        assert policy_spec.observation_space == \
-               first_policy_spec.observation_space
+        assert policy_spec.observation_space == first_policy_spec.observation_space
         assert policy_spec.action_space == first_policy_spec.action_space
 
     # Start and reset the actual Unity3DEnv (either already running Unity3D
     # editor or a binary (game) to be started automatically).
-    env = RandomMultiAgentEnv({
-        # Same number of agents as the actual Unity3D game would have.
-        "num_agents": len(policies),
-        # Make sure we stick to the user given horizons using our
-        # RandomMultiAgentEnv options.
-        "max_episode_len": args.horizon,
-        "p_done": 0.0,
-        # Same obs- action spaces as the actual Unity3D game would have.
-        "observation_space": first_policy_spec.observation_space,
-        "action_space": first_policy_spec.action_space,
-    })
+    env = RandomMultiAgentEnv(
+        {
+            # Same number of agents as the actual Unity3D game would have.
+            "num_agents": len(policies),
+            # Make sure we stick to the user given horizons using our
+            # RandomMultiAgentEnv options.
+            "max_episode_len": args.horizon,
+            "p_done": 0.0,
+            # Same obs- action spaces as the actual Unity3D game would have.
+            "observation_space": first_policy_spec.observation_space,
+            "action_space": first_policy_spec.action_space,
+        }
+    )
     obs = env.reset()
     eid = client.start_episode(training_enabled=not args.no_train)
 

@@ -16,6 +16,7 @@
 
 #include <ray/api/function_manager.h>
 #include <ray/api/task_options.h>
+#include <ray/api/xlang_function.h>
 
 #include <cstdint>
 #include <memory>
@@ -28,6 +29,15 @@ namespace internal {
 
 struct RemoteFunctionHolder {
   RemoteFunctionHolder() = default;
+  RemoteFunctionHolder(const std::string &module_name,
+                       const std::string &function_name,
+                       const std::string &class_name = "",
+                       LangType lang_type = LangType::CPP) {
+    this->module_name = module_name;
+    this->function_name = function_name;
+    this->class_name = class_name;
+    this->lang_type = lang_type;
+  }
   template <typename F>
   RemoteFunctionHolder(F func) {
     auto func_name = FunctionManager::Instance().GetFunctionName(func);
@@ -38,8 +48,10 @@ struct RemoteFunctionHolder {
     function_name = std::move(func_name);
   }
 
-  /// The remote function name.
+  std::string module_name;
   std::string function_name;
+  std::string class_name;
+  LangType lang_type = LangType::CPP;
 };
 
 class RayRuntime {
@@ -50,7 +62,8 @@ class RayRuntime {
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
       const std::vector<std::string> &ids) = 0;
 
-  virtual std::vector<bool> Wait(const std::vector<std::string> &ids, int num_objects,
+  virtual std::vector<bool> Wait(const std::vector<std::string> &ids,
+                                 int num_objects,
                                  int timeout_ms) = 0;
 
   virtual std::string Call(const RemoteFunctionHolder &remote_function_holder,
@@ -60,11 +73,12 @@ class RayRuntime {
                                   std::vector<TaskArg> &args,
                                   const ActorCreationOptions &create_options) = 0;
   virtual std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
-                                const std::string &actor, std::vector<TaskArg> &args,
+                                const std::string &actor,
+                                std::vector<TaskArg> &args,
                                 const CallOptions &call_options) = 0;
   virtual void AddLocalReference(const std::string &id) = 0;
   virtual void RemoveLocalReference(const std::string &id) = 0;
-  virtual std::string GetActorId(bool global, const std::string &actor_name) = 0;
+  virtual std::string GetActorId(const std::string &actor_name) = 0;
   virtual void KillActor(const std::string &str_actor_id, bool no_restart) = 0;
   virtual void ExitActor() = 0;
   virtual ray::PlacementGroup CreatePlacementGroup(
@@ -75,7 +89,8 @@ class RayRuntime {
   virtual bool WasCurrentActorRestarted() = 0;
   virtual std::vector<PlacementGroup> GetAllPlacementGroups() = 0;
   virtual PlacementGroup GetPlacementGroupById(const std::string &id) = 0;
-  virtual PlacementGroup GetPlacementGroup(const std::string &name, bool global) = 0;
+  virtual PlacementGroup GetPlacementGroup(const std::string &name) = 0;
+  virtual bool IsLocalMode() { return false; }
 };
 }  // namespace internal
 }  // namespace ray

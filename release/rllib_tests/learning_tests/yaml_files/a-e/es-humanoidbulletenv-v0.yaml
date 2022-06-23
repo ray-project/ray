@@ -1,0 +1,11 @@
+es-humanoidbulletenv-v0:
+    env: HumanoidBulletEnv-v0
+    run: ES
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 100.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 3600
+    config:
+        num_workers: 50

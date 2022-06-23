@@ -1,2 +1,2 @@
-build --cxxopt="-std=c++14"
+build --cxxopt="-std=c++17"
 build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"

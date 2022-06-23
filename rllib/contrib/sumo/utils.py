@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 def sumo_default_config():
-    """ Return the default configuration for the SUMO Connector. """
+    """Return the default configuration for the SUMO Connector."""
     return deepcopy(DEFAULT_CONFIG)
 
 
@@ -45,12 +45,12 @@ def sumo_default_config():
 
 class SUMOUtils(SUMOConnector):
     """
-        A wrapper for the interaction with the SUMO simulation that adds
-        functionalities.
+    A wrapper for the interaction with the SUMO simulation that adds
+    functionalities.
     """
 
     def _initialize_metrics(self):
-        """ Specific metrics initialization """
+        """Specific metrics initialization"""
         # Default TripInfo file metrics
         self.tripinfo = collections.defaultdict(dict)
         self.personinfo = collections.defaultdict(dict)
@@ -60,20 +60,24 @@ class SUMOUtils(SUMOConnector):
 
     def process_tripinfo_file(self):
         """
-            Closes the TraCI connections, then reads and process the tripinfo
-            data. It requires "tripinfo_xml_file" and "tripinfo_xml_schema"
-            configuration parametes set.
+        Closes the TraCI connections, then reads and process the tripinfo
+        data. It requires "tripinfo_xml_file" and "tripinfo_xml_schema"
+        configuration parametes set.
         """
 
         if "tripinfo_keyword" not in self._config:
             raise Exception(
                 "Function process_tripinfo_file requires the parameter "
-                "'tripinfo_keyword' set.", self._config)
+                "'tripinfo_keyword' set.",
+                self._config,
+            )
 
         if "tripinfo_xml_schema" not in self._config:
             raise Exception(
                 "Function process_tripinfo_file requires the parameter "
-                "'tripinfo_xml_schema' set.", self._config)
+                "'tripinfo_xml_schema' set.",
+                self._config,
+            )
 
         # Make sure that the simulation is finished and the tripinfo file is
         # written.
@@ -85,8 +89,9 @@ class SUMOUtils(SUMOConnector):
 
         schema = etree.XMLSchema(file=self._config["tripinfo_xml_schema"])
         parser = etree.XMLParser(schema=schema)
-        tripinfo_file = "{}{}".format(self._sumo_output_prefix,
-                                      self._config["tripinfo_keyword"])
+        tripinfo_file = "{}{}".format(
+            self._sumo_output_prefix, self._config["tripinfo_keyword"]
+        )
         tree = etree.parse(tripinfo_file, parser)
 
         logger.info("Processing %s tripinfo file.", tripinfo_file)
@@ -105,7 +110,7 @@ class SUMOUtils(SUMOConnector):
         logger.debug("PERSONINFO: \n%s", pformat(self.personinfo))
 
     def get_timeloss(self, entity, default=float("NaN")):
-        """ Returns the timeLoss computed by SUMO for the given entity. """
+        """Returns the timeLoss computed by SUMO for the given entity."""
 
         if entity in self.tripinfo:
             logger.debug("TRIPINFO for %s", entity)
@@ -137,13 +142,13 @@ class SUMOUtils(SUMOConnector):
 
     def get_depart(self, entity, default=float("NaN")):
         """
-            Returns the departure recorded by SUMO for the given entity.
+        Returns the departure recorded by SUMO for the given entity.
 
-            The functions process_tripinfo_file() needs to be called in advance
-            to initialize the data structures required.
+        The functions process_tripinfo_file() needs to be called in advance
+        to initialize the data structures required.
 
-            If the entity does not exist or does not have the value, it returns
-            the default value.
+        If the entity does not exist or does not have the value, it returns
+        the default value.
         """
         if entity in self.tripinfo:
             logger.debug("TRIPINFO for %s", entity)
@@ -164,13 +169,13 @@ class SUMOUtils(SUMOConnector):
 
     def get_duration(self, entity, default=float("NaN")):
         """
-            Returns the duration computed by SUMO for the given entity.
+        Returns the duration computed by SUMO for the given entity.
 
-            The functions process_tripinfo_file() needs to be called in advance
-            to initialize the data structures required.
+        The functions process_tripinfo_file() needs to be called in advance
+        to initialize the data structures required.
 
-            If the entity does not exist or does not have the value, it returns
-            the default value.
+        If the entity does not exist or does not have the value, it returns
+        the default value.
         """
         if entity in self.tripinfo:
             logger.debug("TRIPINFO for %s", entity)
@@ -198,13 +203,13 @@ class SUMOUtils(SUMOConnector):
 
     def get_arrival(self, entity, default=float("NaN")):
         """
-            Returns the arrival computed by SUMO for the given entity.
+        Returns the arrival computed by SUMO for the given entity.
 
-            The functions process_tripinfo_file() needs to be called in advance
-            to initialize the data structures required.
+        The functions process_tripinfo_file() needs to be called in advance
+        to initialize the data structures required.
 
-            If the entity does not exist or does not have the value, it returns
-            the default value.
+        If the entity does not exist or does not have the value, it returns
+        the default value.
         """
         if entity in self.tripinfo:
             logger.debug("TRIPINFO for %s", entity)
@@ -235,10 +240,10 @@ class SUMOUtils(SUMOConnector):
 
     def get_global_travel_time(self):
         """
-            Returns the global travel time computed from SUMO tripinfo data.
+        Returns the global travel time computed from SUMO tripinfo data.
 
-            The functions process_tripinfo_file() needs to be called in advance
-            to initialize the data structures required.
+        The functions process_tripinfo_file() needs to be called in advance
+        to initialize the data structures required.
         """
         gtt = 0
         for entity in self.tripinfo:

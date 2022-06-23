@@ -1,11 +1,13 @@
 from collections import defaultdict
 from functools import lru_cache
 
-from boto3.exceptions import ResourceNotExistsError
-from botocore.config import Config
 import boto3
+from boto3.exceptions import ResourceNotExistsError
+from boto3.resources.base import ServiceResource
+from botocore.client import BaseClient
+from botocore.config import Config
 
-from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 
 
@@ -41,10 +43,9 @@ def handle_boto_error(exc, msg, *args, **kwargs):
         error_code = error_info.get("Code", None)
 
     generic_message_args = [
-        "{}\n"
-        "Error code: {}",
+        "{}\nError code: {}",
         msg.format(*args, **kwargs),
-        cf.bold(error_code)
+        cf.bold(error_code),
     ]
 
     # apparently
@@ -53,7 +54,9 @@ def handle_boto_error(exc, msg, *args, **kwargs):
     # RequestExpired
     # are all the same pretty much
     credentials_expiration_codes = [
-        "ExpiredTokenException", "ExpiredToken", "RequestExpired"
+        "ExpiredTokenException",
+        "ExpiredToken",
+        "RequestExpired",
     ]
 
     if error_code in credentials_expiration_codes:
@@ -66,24 +69,35 @@ def handle_boto_error(exc, msg, *args, **kwargs):
 
         token_command = (
             "aws sts get-session-token "
-            "--serial-number arn:aws:iam::" + cf.underlined("ROOT_ACCOUNT_ID")
-            + ":mfa/" + cf.underlined("AWS_USERNAME") + " --token-code " +
-            cf.underlined("TWO_FACTOR_AUTH_CODE"))
+            "--serial-number arn:aws:iam::"
+            + cf.underlined("ROOT_ACCOUNT_ID")
+            + ":mfa/"
+            + cf.underlined("AWS_USERNAME")
+            + " --token-code "
+            + cf.underlined("TWO_FACTOR_AUTH_CODE")
+        )
 
         secret_key_var = (
-            "export AWS_SECRET_ACCESS_KEY = " + cf.underlined("REPLACE_ME") +
-            " # found at Credentials.SecretAccessKey")
+            "export AWS_SECRET_ACCESS_KEY = "
+            + cf.underlined("REPLACE_ME")
+            + " # found at Credentials.SecretAccessKey"
+        )
         session_token_var = (
-            "export AWS_SESSION_TOKEN = " + cf.underlined("REPLACE_ME") +
-            " # found at Credentials.SessionToken")
+            "export AWS_SESSION_TOKEN = "
+            + cf.underlined("REPLACE_ME")
+            + " # found at Credentials.SessionToken"
+        )
         access_key_id_var = (
-            "export AWS_ACCESS_KEY_ID = " + cf.underlined("REPLACE_ME") +
-            " # found at Credentials.AccessKeyId")
+            "export AWS_ACCESS_KEY_ID = "
+            + cf.underlined("REPLACE_ME")
+            + " # found at Credentials.AccessKeyId"
+        )
 
         # fixme: replace with a Github URL that points
         # to our repo
-        aws_session_script_url = ("https://gist.github.com/maximsmol/"
-                                  "a0284e1d97b25d417bd9ae02e5f450cf")
+        aws_session_script_url = (
+            "https://gist.github.com/maximsmol/a0284e1d97b25d417bd9ae02e5f450cf"
+        )
 
         cli_logger.verbose_error(*generic_message_args)
         cli_logger.verbose(vars(exc))
@@ -115,7 +129,7 @@ def handle_boto_error(exc, msg, *args, **kwargs):
 
 def boto_exception_handler(msg, *args, **kwargs):
     # todo: implement timer
-    class ExceptionHandlerContextManager():
+    class ExceptionHandlerContextManager:
         def __enter__(self):
             pass
 
@@ -129,9 +143,12 @@ def boto_exception_handler(msg, *args, **kwargs):
 
 
 @lru_cache()
-def resource_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
-    cli_logger.verbose("Creating AWS resource `{}` in `{}`", cf.bold(name),
-                       cf.bold(region))
+def resource_cache(
+    name, region, max_retries=BOTO_MAX_RETRIES, **kwargs
+) -> ServiceResource:
+    cli_logger.verbose(
+        "Creating AWS resource `{}` in `{}`", cf.bold(name), cf.bold(region)
+    )
     kwargs.setdefault(
         "config",
         Config(retries={"max_attempts": max_retries}),
@@ -144,14 +161,15 @@ def resource_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
 
 
 @lru_cache()
-def client_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
+def client_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs) -> BaseClient:
     try:
         # try to re-use a client from the resource cache first
         return resource_cache(name, region, max_retries, **kwargs).meta.client
     except ResourceNotExistsError:
         # fall back for clients without an associated resource
-        cli_logger.verbose("Creating AWS client `{}` in `{}`", cf.bold(name),
-                           cf.bold(region))
+        cli_logger.verbose(
+            "Creating AWS client `{}` in `{}`", cf.bold(name), cf.bold(region)
+        )
         kwargs.setdefault(
             "config",
             Config(retries={"max_attempts": max_retries}),

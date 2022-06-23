@@ -1,0 +1,27 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+# 1k max replicas (ceil(1000 / 32) = 32  nodes needed)
+max_workers: 32
+
+head_node_type:
+    name: head_node
+    # 32 cpus, x86, 128G mem, 10Gb NIC
+    instance_type: m5.8xlarge
+
+worker_node_types:
+    - name: worker_node
+      # 32 cpus, x86, 128G mem, 10Gb NIC
+      instance_type: m5.8xlarge
+      min_workers: 32
+      max_workers: 32
+      use_spot: false
+
+aws:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: anyscale-user
+          Value: '{{env["ANYSCALE_USER"]}}'
+        - Key: anyscale-expiration
+          Value: '{{env["EXPIRATION_1D"]}}'

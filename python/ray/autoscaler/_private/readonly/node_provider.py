@@ -1,10 +1,15 @@
-from typing import Tuple, List
+from typing import List, Tuple
 
-from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
-                                 TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_NAME,
-                                 TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE)
 from ray.autoscaler._private.util import format_readonly_node_type
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    STATUS_UP_TO_DATE,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
+)
 
 
 class ReadOnlyNodeProvider(NodeProvider):
@@ -51,7 +56,7 @@ class ReadOnlyNodeProvider(NodeProvider):
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
             TAG_RAY_USER_NODE_TYPE: self.nodes[node_id]["node_type"],
             TAG_RAY_NODE_NAME: node_id,
-            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
         }
         return tags
 

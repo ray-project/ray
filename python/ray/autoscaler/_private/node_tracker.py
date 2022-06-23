@@ -1,5 +1,6 @@
-from ray.autoscaler._private import constants
 from typing import List, Set, Tuple
+
+from ray.autoscaler._private import constants
 
 
 class NodeTracker:
@@ -36,9 +37,9 @@ class NodeTracker:
         Begin to track a new node.
 
         Args:
-            node_id (str): The node id.
-            ip (str): The node ip address.
-            node_type (str): The node type.
+            node_id: The node id.
+            ip: The node ip address.
+            node_type: The node type.
         """
         if node_id not in self.node_mapping:
             self._add_node_mapping(node_id, (ip, node_type))
@@ -49,19 +50,20 @@ class NodeTracker:
         as failed.
 
         Args:
-            node_id (str): The node id which failed.
+            node_id: The node id which failed.
         """
         if node_id in self.node_mapping:
             self.lru_order.remove(node_id)
             del self.node_mapping[node_id]
 
     def get_all_failed_node_info(
-            self, non_failed_ids: Set[str]) -> List[Tuple[str, str]]:
+        self, non_failed_ids: Set[str]
+    ) -> List[Tuple[str, str]]:
         """Get the information about all failed nodes. A failed node is any node which
         we began to track that is not pending or alive (i.e. not failed).
 
         Args:
-            non_failed_ids (set): Nodes are failed unless they are in this set.
+            non_failed_ids: Nodes are failed unless they are in this set.
 
         Returns:
             List[Tuple[str, str]]: A list of tuples. Each tuple is the ip
@@ -70,7 +72,6 @@ class NodeTracker:
         failed_nodes = self.node_mapping.keys() - non_failed_ids
         failed_info = []
         # Returning the list in order is important for display purposes.
-        for node_id in filter(lambda node_id: node_id in failed_nodes,
-                              self.lru_order):
+        for node_id in filter(lambda node_id: node_id in failed_nodes, self.lru_order):
             failed_info.append(self.node_mapping[node_id])
         return failed_info

@@ -4,10 +4,11 @@ import sys
 import threading
 import pytest
 import ray
+import time
 
 
 # This tests the methods are executed in the correct eventloop.
-def test_basic():
+def test_basic(ray_start_regular_shared):
     @ray.remote(concurrency_groups={"io": 2, "compute": 4})
     class AsyncActor:
         def __init__(self):
@@ -71,12 +72,13 @@ def test_basic():
 
     # It also has the ability to specify it at runtime.
     # This task will be invoked in the `compute` thread pool.
-    a.f2.options(concurrency_group="compute").remote()
+    result = ray.get(a.f2.options(concurrency_group="compute").remote())
+    assert result == f3_thread_id
 
 
 # The case tests that the asyncio count down works well in one concurrency
 # group.
-def test_async_methods_in_concurrency_group():
+def test_async_methods_in_concurrency_group(ray_start_regular_shared):
     @ray.remote(concurrency_groups={"async": 3})
     class AsyncBatcher:
         def __init__(self):
@@ -110,5 +112,60 @@ def test_async_methods_in_concurrency_group():
     assert r1 == r2 == r3
 
 
+# This case tests that if blocking task in default group blocks
+# tasks in other groups.
+# See https://github.com/ray-project/ray/issues/20475
+def test_default_concurrency_group_does_not_block_others(ray_start_regular_shared):
+    @ray.remote(concurrency_groups={"my_group": 1})
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        async def f1(self):
+            time.sleep(10000)
+            return "never return"
+
+        @ray.method(concurrency_group="my_group")
+        def f2(self):
+            return "ok"
+
+    async_actor = AsyncActor.remote()
+    async_actor.f1.remote()
+    assert "ok" == ray.get(async_actor.f2.remote())
+
+
+# This case tests that a blocking group doesn't blocks
+# tasks in other groups.
+# See https://github.com/ray-project/ray/issues/19593
+def test_blocking_group_does_not_block_others(ray_start_regular_shared):
+    @ray.remote(concurrency_groups={"group1": 1, "group2": 1})
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        @ray.method(concurrency_group="group1")
+        async def f1(self):
+            time.sleep(10000)
+            return "never return"
+
+        @ray.method(concurrency_group="group2")
+        def f2(self):
+            return "ok"
+
+    async_actor = AsyncActor.remote()
+    # Execute f1 twice for blocking the group1.
+    obj_0 = async_actor.f1.remote()
+    obj_1 = async_actor.f1.remote()
+    # Wait a while to make sure f2 is scheduled after f1.
+    ray.wait([obj_0, obj_1], timeout=5)
+    # f2 should work well even if group1 is blocking.
+    assert "ok" == ray.get(async_actor.f2.remote())
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -18,26 +18,15 @@
 
 namespace ray {
 
-RayTask::RayTask(const rpc::Task &message)
-    : task_spec_(message.task_spec()),
-      task_execution_spec_(message.task_execution_spec()) {
+RayTask::RayTask(const rpc::Task &message) : task_spec_(message.task_spec()) {
   ComputeDependencies();
 }
 
-RayTask::RayTask(TaskSpecification task_spec,
-                 TaskExecutionSpecification task_execution_spec)
-    : task_spec_(std::move(task_spec)),
-      task_execution_spec_(std::move(task_execution_spec)) {
+RayTask::RayTask(TaskSpecification task_spec) : task_spec_(std::move(task_spec)) {
   ComputeDependencies();
-}
-
-const TaskExecutionSpecification &RayTask::GetTaskExecutionSpec() const {
-  return task_execution_spec_;
 }
 
 const TaskSpecification &RayTask::GetTaskSpecification() const { return task_spec_; }
-
-void RayTask::IncrementNumForwards() { task_execution_spec_.IncrementNumForwards(); }
 
 const std::vector<rpc::ObjectReference> &RayTask::GetDependencies() const {
   return dependencies_;
@@ -45,14 +34,9 @@ const std::vector<rpc::ObjectReference> &RayTask::GetDependencies() const {
 
 void RayTask::ComputeDependencies() { dependencies_ = task_spec_.GetDependencies(); }
 
-void RayTask::CopyTaskExecutionSpec(const RayTask &task) {
-  task_execution_spec_ = task.task_execution_spec_;
-}
-
 std::string RayTask::DebugString() const {
   std::ostringstream stream;
-  stream << "task_spec={" << task_spec_.DebugString() << "}, task_execution_spec={"
-         << task_execution_spec_.DebugString() << "}";
+  stream << "task_spec={" << task_spec_.DebugString() << "}";
   return stream.str();
 }
 

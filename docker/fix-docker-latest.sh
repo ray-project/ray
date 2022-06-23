@@ -29,8 +29,6 @@ AWS_ACCESS_KEY_ID=$(echo "$ASSUME_ROLE_CREDENTIALS" | jq -r .Credentials.AccessK
 AWS_SECRET_ACCESS_KEY=$(echo "$ASSUME_ROLE_CREDENTIALS" | jq -r .Credentials.SecretAccessKey)
 AWS_SESSION_TOKEN=$(echo "$ASSUME_ROLE_CREDENTIALS" | jq -r .Credentials.SessionToken)
 
-
-
 echo -e "Invoking this lambda!\nView logs at https://us-west-2.console.aws.amazon.com/cloudwatch/home?region=us-west-2#logsV2:log-groups"
 AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN AWS_SECURITY_TOKEN='' aws \
 lambda invoke --function-name DockerTagLatest \
@@ -38,4 +36,4 @@ lambda invoke --function-name DockerTagLatest \
 --cli-read-timeout 600 \
 --payload "{\"source_tag\" : \"$IMAGE\", \"destination_tag\" : \"latest\"}" /dev/stdout
 
-echo -e "Please check logs before rerunning!!!!\n\nAt the time of writing Ray-ML/Autoscaler Images are not built for Py39\nSo retagging errors for those images are expected!"
+echo -e "Please check logs before rerunning!!!!\n\nAt the time of writing, Autoscaler Images are not built & Ray-ML Images are not built for Py39\nSo retagging errors for those images are expected!"

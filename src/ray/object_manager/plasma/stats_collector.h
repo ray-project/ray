@@ -43,7 +43,10 @@ class ObjectStatsCollector {
   // Called after an object's ref count is decreased by 1.
   void OnObjectRefDecreased(const LocalObject &object);
 
-  // Debug dump the stats.
+  /// Record the internal metrics.
+  void RecordMetrics() const;
+
+  /// Debug dump the stats.
   void GetDebugDump(std::stringstream &buffer) const;
 
   int64_t GetNumBytesInUse() const;

@@ -4,7 +4,7 @@ from kubernetes.config.config_exception import ConfigException
 _configured = False
 _core_api = None
 _auth_api = None
-_extensions_beta_api = None
+_networking_api = None
 _custom_objects_api = None
 
 
@@ -37,13 +37,13 @@ def auth_api():
     return _auth_api
 
 
-def extensions_beta_api():
-    global _extensions_beta_api
-    if _extensions_beta_api is None:
+def networking_api():
+    global _networking_api
+    if _networking_api is None:
         _load_config()
-        _extensions_beta_api = kubernetes.client.ExtensionsV1beta1Api()
+        _networking_api = kubernetes.client.NetworkingV1Api()
 
-    return _extensions_beta_api
+    return _networking_api
 
 
 def custom_objects_api():

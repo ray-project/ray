@@ -13,7 +13,7 @@ my_handle = serve.get_deployment("my_model").get_handle()
 
 # Define our AIOHTTP request handler.
 async def handle_request(request):
-    # Offload the computation to our Ray Serve backend.
+    # Offload the computation to our Ray Serve deployment.
     result = await my_handle.remote("dummy input")
     return web.Response(text=result)
 

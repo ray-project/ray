@@ -12,12 +12,12 @@ from ray.includes.unique_ids cimport (
 )
 from ray.includes.common cimport (
     CRayStatus,
+    CGcsClientOptions,
 )
 
 cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
-        CGlobalStateAccessor(const c_string &redis_address,
-                             const c_string &redis_password)
+        CGlobalStateAccessor(const CGcsClientOptions&)
         c_bool Connect()
         void Disconnect()
         c_vector[c_string] GetAllJobInfo()
@@ -25,7 +25,6 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_vector[c_string] GetAllNodeInfo()
         c_vector[c_string] GetAllAvailableResources()
         c_vector[c_string] GetAllProfileInfo()
-        c_vector[c_string] GetAllObjectInfo()
         unique_ptr[c_string] GetObjectInfo(const CObjectID &object_id)
         unique_ptr[c_string] GetAllResourceUsage()
         c_vector[c_string] GetAllActorInfo()

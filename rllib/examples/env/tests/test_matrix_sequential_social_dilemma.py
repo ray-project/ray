@@ -4,13 +4,14 @@
 ##########
 import random
 
-from ray.rllib.examples.env.matrix_sequential_social_dilemma import \
-    IteratedPrisonersDilemma, IteratedChicken, \
-    IteratedStagHunt, IteratedBoS
+from ray.rllib.examples.env.matrix_sequential_social_dilemma import (
+    IteratedPrisonersDilemma,
+    IteratedChicken,
+    IteratedStagHunt,
+    IteratedBoS,
+)
 
-ENVS = [
-    IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS
-]
+ENVS = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
 
 
 def test_reset():
@@ -106,8 +107,7 @@ def test_multiple_episodes():
             obs, reward, done, info = env.step(actions)
             check_obs(obs, env)
             assert_logger_buffer_size_two_players(env, n_steps=step_i)
-            assert not done["__all__"] or \
-                (step_i == max_steps and done["__all__"])
+            assert not done["__all__"] or (step_i == max_steps and done["__all__"])
             if done["__all__"]:
                 obs = env.reset()
                 check_obs(obs, env)
@@ -120,7 +120,7 @@ def assert_info(n_steps, p_row_act, p_col_act, env, max_steps, CC, DD, CD, DC):
         step_i += 1
         actions = {
             "player_row": p_row_act[step_i - 1],
-            "player_col": p_col_act[step_i - 1]
+            "player_col": p_col_act[step_i - 1],
         }
         obs, reward, done, info = env.step(actions)
         check_obs(obs, env)
@@ -164,7 +164,8 @@ def test_logged_info_full_CC():
             CC=1.0,
             DD=0.0,
             CD=0.0,
-            DC=0.0)
+            DC=0.0,
+        )
 
 
 def test_logged_info_full_DD():
@@ -188,7 +189,8 @@ def test_logged_info_full_DD():
             CC=0.0,
             DD=1.0,
             CD=0.0,
-            DC=0.0)
+            DC=0.0,
+        )
 
 
 def test_logged_info_full_CD():
@@ -212,7 +214,8 @@ def test_logged_info_full_CD():
             CC=0.0,
             DD=0.0,
             CD=1.0,
-            DC=0.0)
+            DC=0.0,
+        )
 
 
 def test_logged_info_full_DC():
@@ -236,7 +239,8 @@ def test_logged_info_full_DC():
             CC=0.0,
             DD=0.0,
             CD=0.0,
-            DC=1.0)
+            DC=1.0,
+        )
 
 
 def test_logged_info_mix_CC_DD():
@@ -260,7 +264,8 @@ def test_logged_info_mix_CC_DD():
             CC=0.25,
             DD=0.75,
             CD=0.0,
-            DC=0.0)
+            DC=0.0,
+        )
 
 
 def test_logged_info_mix_CD_CD():
@@ -284,7 +289,8 @@ def test_logged_info_mix_CD_CD():
             CC=0.0,
             DD=0.0,
             CD=0.5,
-            DC=0.5)
+            DC=0.5,
+        )
 
 
 def test_observations_are_invariant_to_the_player_trained():
@@ -301,7 +307,7 @@ def test_observations_are_invariant_to_the_player_trained():
             step_i += 1
             actions = {
                 "player_row": p_row_act[step_i - 1],
-                "player_col": p_col_act[step_i - 1]
+                "player_col": p_col_act[step_i - 1],
             }
             obs, reward, done, info = env.step(actions)
             # assert observations are symmetrical respective to the actions
@@ -312,7 +318,5 @@ def test_observations_are_invariant_to_the_player_trained():
             elif step_i == 3:
                 obs_step_3 = obs
             elif step_i == 4:
-                assert obs[env.players_ids[0]] == obs_step_3[env.players_ids[
-                    1]]
-                assert obs[env.players_ids[1]] == obs_step_3[env.players_ids[
-                    0]]
+                assert obs[env.players_ids[0]] == obs_step_3[env.players_ids[1]]
+                assert obs[env.players_ids[1]] == obs_step_3[env.players_ids[0]]

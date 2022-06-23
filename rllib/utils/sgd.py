@@ -4,13 +4,14 @@ import logging
 import numpy as np
 import random
 
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
-    MultiAgentBatch
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 def standardized(array: np.ndarray):
     """Normalize the values in an array.
 
@@ -23,9 +24,8 @@ def standardized(array: np.ndarray):
     return (array - array.mean()) / max(1e-4, array.std())
 
 
-def minibatches(samples: SampleBatch,
-                sgd_minibatch_size: int,
-                shuffle: bool = True):
+@DeveloperAPI
+def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = True):
     """Return a generator yielding minibatches from a sample batch.
 
     Args:
@@ -45,7 +45,8 @@ def minibatches(samples: SampleBatch,
 
     if isinstance(samples, MultiAgentBatch):
         raise NotImplementedError(
-            "Minibatching not implemented for multi-agent in simple mode")
+            "Minibatching not implemented for multi-agent in simple mode"
+        )
 
     if "state_in_0" not in samples and "state_out_0" not in samples:
         samples.shuffle()
@@ -67,24 +68,32 @@ def minibatches(samples: SampleBatch,
             yield samples.slice(i, j, si, sj)
 
 
-def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
-                     sgd_minibatch_size, standardize_fields):
+@DeveloperAPI
+def do_minibatch_sgd(
+    samples,
+    policies,
+    local_worker,
+    num_sgd_iter,
+    sgd_minibatch_size,
+    standardize_fields,
+):
     """Execute minibatch SGD.
 
     Args:
-        samples (SampleBatch): Batch of samples to optimize.
-        policies (dict): Dictionary of policies to optimize.
-        local_worker (RolloutWorker): Master rollout worker instance.
-        num_sgd_iter (int): Number of epochs of optimization to take.
-        sgd_minibatch_size (int): Size of minibatches to use for optimization.
-        standardize_fields (list): List of sample field names that should be
+        samples: Batch of samples to optimize.
+        policies: Dictionary of policies to optimize.
+        local_worker: Master rollout worker instance.
+        num_sgd_iter: Number of epochs of optimization to take.
+        sgd_minibatch_size: Size of minibatches to use for optimization.
+        standardize_fields: List of sample field names that should be
             normalized prior to optimization.
 
     Returns:
         averaged info fetches over the last SGD epoch taken.
     """
-    if isinstance(samples, SampleBatch):
-        samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
+
+    # Handle everything as if multi-agent.
+    samples = samples.as_multi_agent()
 
     # Use LearnerInfoBuilder as a unified way to build the final
     # results dict from `learn_on_loaded_batch` call(s).
@@ -92,7 +101,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
     # tf vs torch).
     learner_info_builder = LearnerInfoBuilder(num_devices=1)
-    for policy_id in policies.keys():
+    for policy_id, policy in policies.items():
         if policy_id not in samples.policy_batches:
             continue
 
@@ -100,14 +109,28 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         for field in standardize_fields:
             batch[field] = standardized(batch[field])
 
+        # Check to make sure that the sgd_minibatch_size is not smaller
+        # than max_seq_len otherwise this will cause indexing errors while
+        # performing sgd when using a RNN or Attention model
+        if (
+            policy.is_recurrent()
+            and policy.config["model"]["max_seq_len"] > sgd_minibatch_size
+        ):
+            raise ValueError(
+                "`sgd_minibatch_size` ({}) cannot be smaller than"
+                "`max_seq_len` ({}).".format(
+                    sgd_minibatch_size, policy.config["model"]["max_seq_len"]
+                )
+            )
+
         for i in range(num_sgd_iter):
             for minibatch in minibatches(batch, sgd_minibatch_size):
-                results = (local_worker.learn_on_batch(
-                    MultiAgentBatch({
-                        policy_id: minibatch
-                    }, minibatch.count)))[policy_id]
-                learner_info_builder.add_learn_on_batch_results(
-                    results, policy_id)
+                results = (
+                    local_worker.learn_on_batch(
+                        MultiAgentBatch({policy_id: minibatch}, minibatch.count)
+                    )
+                )[policy_id]
+                learner_info_builder.add_learn_on_batch_results(results, policy_id)
 
     learner_info = learner_info_builder.finalize()
     return learner_info

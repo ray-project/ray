@@ -21,7 +21,9 @@
 // Randomly samples num_elements from the elements between first and last using reservoir
 // sampling.
 template <class Iterator, class T = typename std::iterator_traits<Iterator>::value_type>
-void random_sample(Iterator begin, Iterator end, size_t num_elements,
+void random_sample(Iterator begin,
+                   Iterator end,
+                   size_t num_elements,
                    std::vector<T> *out) {
   out->resize(0);
   if (num_elements == 0) {

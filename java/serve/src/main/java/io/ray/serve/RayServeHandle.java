@@ -49,7 +49,7 @@ public class RayServeHandle {
    * Returns a Ray ObjectRef whose results can be waited for or retrieved using ray.wait or ray.get
    * (or ``await object_ref``), respectively.
    *
-   * @param parameters The input parameters of the specified method to invoke on the backend.
+   * @param parameters The input parameters of the specified method to be invoked in the deployment.
    * @return ray.ObjectRef
    */
   public ObjectRef<Object> remote(Object[] parameters) {
@@ -58,7 +58,7 @@ public class RayServeHandle {
     requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
     requestMetadata.setEndpoint(endpointName);
     requestMetadata.setCallMethod(
-        handleOptions != null ? handleOptions.getMethodName() : Constants.DEFAULT_CALL_METHOD);
+        handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);
     return router.assignRequest(requestMetadata.build(), parameters);
   }
 

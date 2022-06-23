@@ -31,7 +31,8 @@ def test_memory_request():
         a = Actor.remote()
         b = Actor.remote()
         ok, _ = ray.wait(
-            [a.ping.remote(), b.ping.remote()], timeout=60.0, num_returns=2)
+            [a.ping.remote(), b.ping.remote()], timeout=60.0, num_returns=2
+        )
         assert len(ok) == 2
         # does not fit
         c = Actor.remote()
@@ -74,5 +75,10 @@ def test_object_store_memory_reporting_task():
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

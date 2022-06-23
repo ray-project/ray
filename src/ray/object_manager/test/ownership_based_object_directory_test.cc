@@ -16,18 +16,20 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client/service_based_accessor.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/pubsub/mock_pubsub.h"
 
 // clang-format off
-#include "mock/ray/gcs/accessor.h"
+#include "mock/ray/gcs/gcs_client/accessor.h"
 // clang-format on
 
 namespace ray {
+
+using ::testing::_;
+using ::testing::Return;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
@@ -35,13 +37,13 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       const rpc::UpdateObjectLocationBatchRequest &request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
     const auto &worker_id = WorkerID::FromBinary(request.intended_worker_id());
-    const auto &object_location_states = request.object_location_states();
+    const auto &object_location_updates = request.object_location_updates();
 
-    for (const auto &object_location_state : object_location_states) {
-      const auto &object_id = ObjectID::FromBinary(object_location_state.object_id());
-      const auto &state = object_location_state.state();
+    for (const auto &object_location_update : object_location_updates) {
+      const auto &object_id = ObjectID::FromBinary(object_location_update.object_id());
 
-      buffered_object_locations_[worker_id][object_id] = state;
+      buffered_object_locations_[worker_id][object_id] = object_location_update;
+      object_location_updates_.emplace_back(object_location_update);
     }
     batch_sent++;
     callbacks.push_back(callback);
@@ -59,26 +61,28 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  void AssertObjectIDState(const WorkerID &worker_id, const ObjectID &object_id,
-                           rpc::ObjectLocationState state) {
+  void AssertObjectPlasmaLocationUpdate(const WorkerID &worker_id,
+                                        const ObjectID &object_id,
+                                        rpc::ObjectPlasmaLocationUpdate update) {
     auto it = buffered_object_locations_.find(worker_id);
     RAY_CHECK(it != buffered_object_locations_.end())
         << "Worker ID " << worker_id << " wasn't updated.";
     auto object_it = it->second.find(object_id);
-    RAY_CHECK(object_it->second == state)
-        << "Object ID " << object_id << "'s state " << object_it->second
-        << "is unexpected. Expected: " << state;
+    RAY_CHECK(object_it->second.has_plasma_location_update());
+    RAY_CHECK_EQ(object_it->second.plasma_location_update(), update);
   }
 
   void Reset() {
     buffered_object_locations_.clear();
+    object_location_updates_.clear();
     callbacks.clear();
     callback_invoked = 0;
     batch_sent = 0;
   }
 
-  std::unordered_map<WorkerID, std::unordered_map<ObjectID, rpc::ObjectLocationState>>
+  absl::flat_hash_map<WorkerID, absl::flat_hash_map<ObjectID, rpc::ObjectLocationUpdate>>
       buffered_object_locations_;
+  std::vector<rpc::ObjectLocationUpdate> object_location_updates_;
   std::deque<rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply>> callbacks;
   int callback_invoked = 0;
   int batch_sent = 0;
@@ -105,13 +109,16 @@ class MockGcsClient : public gcs::GcsClient {
 class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
  public:
   OwnershipBasedObjectDirectoryTest()
-      : options_("", 1, ""),
+      : options_("localhost:6973"),
         node_info_accessor_(new gcs::MockNodeInfoAccessor()),
         gcs_client_mock_(new MockGcsClient(options_, node_info_accessor_)),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
-        obod_(io_service_, gcs_client_mock_, subscriber_.get(), &client_pool,
+        obod_(io_service_,
+              gcs_client_mock_,
+              subscriber_.get(),
+              &client_pool,
               /*max_object_report_batch_size=*/20,
               [this](const ObjectID &object_id, const rpc::ErrorType &error_type) {
                 MarkAsFailed(object_id, error_type);
@@ -139,9 +146,10 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
     return info;
   }
 
-  void AssertObjectIDState(const WorkerID &worker_id, const ObjectID &object_id,
-                           rpc::ObjectLocationState state) {
-    owner_client->AssertObjectIDState(worker_id, object_id, state);
+  void AssertObjectPlasmaLocationUpdate(const WorkerID &worker_id,
+                                        const ObjectID &object_id,
+                                        rpc::ObjectPlasmaLocationUpdate update) {
+    owner_client->AssertObjectPlasmaLocationUpdate(worker_id, object_id, update);
   }
 
   void AssertNoLeak() {
@@ -163,6 +171,14 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
     RAY_LOG(INFO) << "First batch sent.";
   }
 
+  void HandleMessage(const rpc::WorkerObjectLocationsPubMessage &location_info,
+                     const ObjectID &object_id,
+                     bool location_lookup_failed = false) {
+    // Mock for receiving a message from the pubsub layer.
+    obod_.ObjectLocationSubscriptionCallback(
+        location_info, object_id, location_lookup_failed);
+  }
+
   int64_t max_batch_size = 20;
   instrumented_io_context io_service_;
   gcs::GcsClientOptions options_;
@@ -182,10 +198,11 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
   {
     RAY_LOG(INFO) << "Object added basic.";
     auto object_info_added = CreateNewObjectInfo(owner_id);
-    obod_.ReportObjectAdded(object_info_added.object_id, current_node_id,
-                            object_info_added);
-    AssertObjectIDState(object_info_added.owner_worker_id, object_info_added.object_id,
-                        rpc::ObjectLocationState::ADDED);
+    obod_.ReportObjectAdded(
+        object_info_added.object_id, current_node_id, object_info_added);
+    AssertObjectPlasmaLocationUpdate(object_info_added.owner_worker_id,
+                                     object_info_added.object_id,
+                                     rpc::ObjectPlasmaLocationUpdate::ADDED);
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
     ASSERT_EQ(NumBatchRequestSent(), 1);
     ASSERT_EQ(NumBatchReplied(), 1);
@@ -195,15 +212,62 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
   {
     RAY_LOG(INFO) << "Object removed basic.";
     auto object_info_removed = CreateNewObjectInfo(owner_id);
-    obod_.ReportObjectRemoved(object_info_removed.object_id, current_node_id,
-                              object_info_removed);
-    AssertObjectIDState(object_info_removed.owner_worker_id,
-                        object_info_removed.object_id, rpc::ObjectLocationState::REMOVED);
+    obod_.ReportObjectRemoved(
+        object_info_removed.object_id, current_node_id, object_info_removed);
+    AssertObjectPlasmaLocationUpdate(object_info_removed.owner_worker_id,
+                                     object_info_removed.object_id,
+                                     rpc::ObjectPlasmaLocationUpdate::REMOVED);
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
     ASSERT_EQ(NumBatchRequestSent(), 2);
     ASSERT_EQ(NumBatchReplied(), 2);
     AssertNoLeak();
   }
+
+  {
+    RAY_LOG(INFO) << "Object spilled basic.";
+    auto object_info_spilled = CreateNewObjectInfo(owner_id);
+    rpc::Address owner_address;
+    owner_address.set_worker_id(object_info_spilled.owner_worker_id.Binary());
+    obod_.ReportObjectSpilled(
+        object_info_spilled.object_id, current_node_id, owner_address, "url1", true);
+    rpc::ObjectLocationUpdate update =
+        owner_client->buffered_object_locations_.at(object_info_spilled.owner_worker_id)
+            .at(object_info_spilled.object_id);
+    ASSERT_EQ(update.spilled_location_update().spilled_url(), "url1");
+    ASSERT_EQ(update.spilled_location_update().spilled_to_local_storage(), true);
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+    ASSERT_EQ(NumBatchRequestSent(), 3);
+    ASSERT_EQ(NumBatchReplied(), 3);
+    AssertNoLeak();
+  }
+}
+
+TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateFIFOOrder) {
+  const auto owner_id = WorkerID::FromRandom();
+  SendDummyBatch(owner_id);
+
+  auto object_info_1 = CreateNewObjectInfo(owner_id);
+  auto object_info_2 = CreateNewObjectInfo(owner_id);
+  auto object_info_3 = CreateNewObjectInfo(owner_id);
+  obod_.ReportObjectAdded(object_info_1.object_id, current_node_id, object_info_1);
+  obod_.ReportObjectAdded(object_info_3.object_id, current_node_id, object_info_3);
+  obod_.ReportObjectAdded(object_info_2.object_id, current_node_id, object_info_2);
+  obod_.ReportObjectRemoved(object_info_1.object_id, current_node_id, object_info_1);
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ(NumBatchReplied(), 1);
+  ASSERT_EQ(NumBatchRequestSent(), 2);
+
+  ASSERT_EQ(owner_client->object_location_updates_.size(), 4);
+  ASSERT_EQ(owner_client->object_location_updates_[1].object_id(),
+            object_info_1.object_id.Binary());
+  ASSERT_EQ(owner_client->object_location_updates_[2].object_id(),
+            object_info_3.object_id.Binary());
+  ASSERT_EQ(owner_client->object_location_updates_[3].object_id(),
+            object_info_2.object_id.Binary());
+
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ(NumBatchReplied(), 2);
+  AssertNoLeak();
 }
 
 TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBufferedUpdate) {
@@ -213,13 +277,23 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBufferedUpdate) {
   auto object_info = CreateNewObjectInfo(owner_id);
   obod_.ReportObjectAdded(object_info.object_id, current_node_id, object_info);
   obod_.ReportObjectRemoved(object_info.object_id, current_node_id, object_info);
+  rpc::Address owner_address;
+  owner_address.set_worker_id(object_info.owner_worker_id.Binary());
+  obod_.ReportObjectSpilled(
+      object_info.object_id, current_node_id, owner_address, "url1", true);
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchReplied(), 1);
 
   ASSERT_EQ(NumBatchRequestSent(), 2);
   // For the same object ID, it should report the latest result (which is REMOVED).
-  AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
-                      rpc::ObjectLocationState::REMOVED);
+  rpc::ObjectLocationUpdate update =
+      owner_client->buffered_object_locations_.at(object_info.owner_worker_id)
+          .at(object_info.object_id);
+  AssertObjectPlasmaLocationUpdate(object_info.owner_worker_id,
+                                   object_info.object_id,
+                                   rpc::ObjectPlasmaLocationUpdate::REMOVED);
+  ASSERT_EQ(update.spilled_location_update().spilled_url(), "url1");
+  ASSERT_EQ(update.spilled_location_update().spilled_to_local_storage(), true);
 
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchReplied(), 2);
@@ -244,10 +318,12 @@ TEST_F(OwnershipBasedObjectDirectoryTest,
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchReplied(), 2);
   // For the same object ID, it should report the latest result (which is REMOVED).
-  AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
-                      rpc::ObjectLocationState::REMOVED);
-  AssertObjectIDState(object_info_2.owner_worker_id, object_info_2.object_id,
-                      rpc::ObjectLocationState::ADDED);
+  AssertObjectPlasmaLocationUpdate(object_info.owner_worker_id,
+                                   object_info.object_id,
+                                   rpc::ObjectPlasmaLocationUpdate::REMOVED);
+  AssertObjectPlasmaLocationUpdate(object_info_2.owner_worker_id,
+                                   object_info_2.object_id,
+                                   rpc::ObjectPlasmaLocationUpdate::ADDED);
   AssertNoLeak();
 }
 
@@ -275,10 +351,12 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBufferedMultipleOwne
   ASSERT_EQ(NumBatchRequestSent(), 4);
   ASSERT_EQ(NumBatchReplied(), 2);
   // For the same object ID, it should report the latest result (which is REMOVED).
-  AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
-                      rpc::ObjectLocationState::REMOVED);
-  AssertObjectIDState(object_info_2.owner_worker_id, object_info_2.object_id,
-                      rpc::ObjectLocationState::ADDED);
+  AssertObjectPlasmaLocationUpdate(object_info.owner_worker_id,
+                                   object_info.object_id,
+                                   rpc::ObjectPlasmaLocationUpdate::REMOVED);
+  AssertObjectPlasmaLocationUpdate(object_info_2.owner_worker_id,
+                                   object_info_2.object_id,
+                                   rpc::ObjectPlasmaLocationUpdate::ADDED);
 
   // Clean up reply and check assert.
   // owner_1 batch replied
@@ -305,8 +383,9 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateOneInFlightRequest) 
 
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchRequestSent(), 2);
-  AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
-                      rpc::ObjectLocationState::REMOVED);
+  AssertObjectPlasmaLocationUpdate(object_info.owner_worker_id,
+                                   object_info.object_id,
+                                   rpc::ObjectPlasmaLocationUpdate::REMOVED);
 
   // After it is replied, if there's no more entry in the buffer, it doesn't send a new
   // request.
@@ -344,8 +423,9 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateMaxBatchSize) {
 
   // Check if object id states are updated properly.
   for (const auto &object_info : object_infos) {
-    AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
-                        rpc::ObjectLocationState::REMOVED);
+    AssertObjectPlasmaLocationUpdate(object_info.owner_worker_id,
+                                     object_info.object_id,
+                                     rpc::ObjectPlasmaLocationUpdate::REMOVED);
   }
   AssertNoLeak();
 }
@@ -374,6 +454,73 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestOwnerFailed) {
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch(ray::Status::Invalid("")));
   // Requests are not sent anymore.
   ASSERT_EQ(NumBatchRequestSent(), 2);
+  // Make sure metadata is cleaned up properly.
+  AssertNoLeak();
+}
+
+TEST_F(OwnershipBasedObjectDirectoryTest, TestNotifyOnUpdate) {
+  UniqueID callback_id = UniqueID::FromRandom();
+  ObjectID obj_id = ObjectID::FromRandom();
+  int num_callbacks = 0;
+  EXPECT_CALL(*subscriber_, Subscribe(_, _, _, _, _, _, _)).WillOnce(Return(true));
+  ASSERT_TRUE(
+      obod_
+          .SubscribeObjectLocations(callback_id,
+                                    obj_id,
+                                    rpc::Address(),
+                                    [&](const ObjectID &object_id,
+                                        const std::unordered_set<NodeID> &client_ids,
+                                        const std::string &spilled_url,
+                                        const NodeID &spilled_node_id,
+                                        bool pending_creation,
+                                        size_t object_size) { num_callbacks++; })
+          .ok());
+  ASSERT_EQ(num_callbacks, 0);
+
+  // Object pending, no other metadata. This is the same as the initial state,
+  // so no callbacks triggered.
+  rpc::WorkerObjectLocationsPubMessage location_info;
+  location_info.set_pending_creation(true);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 0);
+
+  // Setting object size triggers callback once.
+  location_info.set_object_size(100);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 1);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 1);
+
+  // Adding object location triggers callback once.
+  location_info.add_node_ids(NodeID::FromRandom().Binary());
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 2);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 2);
+
+  // Removing object location triggers callback once.
+  location_info.mutable_node_ids()->Clear();
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 3);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 3);
+
+  // Adding spilled location triggers callback once.
+  location_info.set_spilled_url("1234");
+  location_info.set_spilled_node_id(NodeID::FromRandom().Binary());
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 4);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 4);
+
+  // Setting pending creation back to false (happens during reconstruction)
+  // triggers callback.
+  location_info.set_pending_creation(false);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 5);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 5);
+
   // Make sure metadata is cleaned up properly.
   AssertNoLeak();
 }

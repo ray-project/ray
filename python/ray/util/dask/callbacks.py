@@ -27,8 +27,7 @@ CBS_DONT_DROP = {"ray_pretask", "ray_posttask"}
 RayCallback = namedtuple("RayCallback", " ".join(CBS))
 
 # The Ray-specific callbacks for one or more RayDaskCallbacks.
-RayCallbacks = namedtuple("RayCallbacks",
-                          " ".join([field + "_cbs" for field in CBS]))
+RayCallbacks = namedtuple("RayCallbacks", " ".join([field + "_cbs" for field in CBS]))
 
 
 class RayDaskCallback(Callback):
@@ -57,13 +56,13 @@ class RayDaskCallback(Callback):
                 value will be used as the would-be task's result value.
 
                 Args:
-                    task (tuple): A Dask task, where the first tuple item is
+                    task: A Dask task, where the first tuple item is
                         the task function, and the remaining tuple items are
                         the task arguments (either the actual argument values,
                         or Dask keys into the deps dictionary whose
                         corresponding values are the argument values).
-                    key (str): The Dask graph key for the given task.
-                    deps (dict): The dependencies of this task.
+                    key: The Dask graph key for the given task.
+                    deps: The dependencies of this task.
 
                 Returns:
                     Either None, in which case a Ray task will be submitted, or
@@ -75,13 +74,13 @@ class RayDaskCallback(Callback):
                 Run after submitting a Ray task.
 
                 Args:
-                    task (tuple): A Dask task, where the first tuple item is
+                    task: A Dask task, where the first tuple item is
                         the task function, and the remaining tuple items are
                         the task arguments (either the actual argument values,
                         or Dask keys into the deps dictionary whose
                         corresponding values are the argument values).
-                    key (str): The Dask graph key for the given task.
-                    deps (dict): The dependencies of this task.
+                    key: The Dask graph key for the given task.
+                    deps: The dependencies of this task.
                     object_ref (ray.ObjectRef): The object reference for the
                         return value of the Ray task.
 
@@ -92,7 +91,7 @@ class RayDaskCallback(Callback):
                 _ray_posttask callback, if provided.
 
                 Args:
-                    key (str): The Dask graph key for the Dask task.
+                    key: The Dask graph key for the Dask task.
                     object_refs (List[ray.ObjectRef]): The object references
                         for the arguments of the Ray task.
 
@@ -106,9 +105,9 @@ class RayDaskCallback(Callback):
                 value of the _ray_pretask callback, if provided.
 
                 Args:
-                    key (str): The Dask graph key for the Dask task.
-                    result (object): The task result value.
-                    pre_state (object): The return value of the corresponding
+                    key: The Dask graph key for the Dask task.
+                    result: The task result value.
+                    pre_state: The return value of the corresponding
                         _ray_pretask callback, if said callback is defined.
 
             - def _ray_postsubmit_all(object_refs, dsk):
@@ -117,14 +116,14 @@ class RayDaskCallback(Callback):
                 Args:
                     object_refs (List[ray.ObjectRef]): The object references
                         for the output (leaf) Ray tasks of the task graph.
-                    dsk (dict): The Dask graph.
+                    dsk: The Dask graph.
 
             - def _ray_finish(result):
                 Run after all Ray tasks have finished executing and the final
                 result has been returned.
 
                 Args:
-                    result (object): The final result (output) of the Dask
+                    result: The final result (output) of the Dask
                         computation, before any repackaging is done by
                         Dask collection-specific post-compute callbacks.
         """
@@ -137,8 +136,7 @@ class RayDaskCallback(Callback):
 
     @property
     def _ray_callback(self):
-        return RayCallback(
-            *[getattr(self, field, None) for field in CB_FIELDS])
+        return RayCallback(*[getattr(self, field, None) for field in CB_FIELDS])
 
     def __enter__(self):
         self._ray_cm = add_ray_callbacks(self)
@@ -179,17 +177,20 @@ def normalize_ray_callback(cb):
         return cb
     else:
         raise TypeError(
-            "Callbacks must be either 'RayDaskCallback' or 'RayCallback' "
-            "namedtuple")
+            "Callbacks must be either 'RayDaskCallback' or 'RayCallback' namedtuple"
+        )
 
 
 def unpack_ray_callbacks(cbs):
     """Take an iterable of callbacks, return a list of each callback."""
     if cbs:
         # Only drop callback methods that aren't in CBS_DONT_DROP.
-        return RayCallbacks(*(
-            [cb for cb in cbs_ if cb or CBS[idx] in CBS_DONT_DROP] or None
-            for idx, cbs_ in enumerate(zip(*cbs))))
+        return RayCallbacks(
+            *(
+                [cb for cb in cbs_ if cb or CBS[idx] in CBS_DONT_DROP] or None
+                for idx, cbs_ in enumerate(zip(*cbs))
+            )
+        )
     else:
         return RayCallbacks(*([()] * len(CBS)))
 
@@ -204,8 +205,7 @@ def local_ray_callbacks(callbacks=None):
     """
     global_callbacks = callbacks is None
     if global_callbacks:
-        callbacks, RayDaskCallback.ray_active = (RayDaskCallback.ray_active,
-                                                 set())
+        callbacks, RayDaskCallback.ray_active = (RayDaskCallback.ray_active, set())
     try:
         yield callbacks or ()
     finally:
@@ -244,14 +244,16 @@ class ProgressBarCallback(RayDaskCallback):
                     scheduled = self.scheduled[key]
                     # deps = self.deps[key]
                     result[key]["execution_time"] = (
-                        finished - scheduled).total_seconds()
+                        finished - scheduled
+                    ).total_seconds()
                     # Calculate the scheduling time.
                     # This is inaccurate.
                     # We should subtract scheduled - (last dep completed).
                     # But currently it is not easy because
                     # of how getitem is implemented in dask on ray sort.
                     result[key]["scheduling_time"] = (
-                        scheduled - submitted).total_seconds()
+                        scheduled - submitted
+                    ).total_seconds()
                 result["submission_order"] = self.submission_queue
                 return result
 

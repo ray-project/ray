@@ -30,7 +30,7 @@ Debugging
 ---------
 The primary method to debug the test while it is running is to view the logs and the dashboard from the UI. After the test has failed, you can still view the stdout logs in the UI and also inspect
 the logs under ``/tmp/ray/session*/logs/`` and
-``/tmp/ray/session*/debug_state.txt``.
+``/tmp/ray/session*/logs/debug_state.txt``.
 
 Shut Down the Workloads
 -----------------------

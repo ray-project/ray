@@ -14,8 +14,8 @@ atari-impala:
         timesteps_total: 45000000
     stop:
         time_total_s: 3600
+    frameworks: [ "tf" ]
     config:
-        framework: tf
         num_gpus: 1
         num_cpus_for_driver: 0
         rollout_fragment_length: 50

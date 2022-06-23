@@ -24,42 +24,47 @@ def get_cli_args():
 
     # general args
     parser.add_argument(
-        "--run", default="PPO", help="The RLlib-registered algorithm to use.")
+        "--run", default="PPO", help="The RLlib-registered algorithm to use."
+    )
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
-        help="The DL framework specifier.")
+        help="The DL framework specifier.",
+    )
     parser.add_argument(
-        "--stop-iters",
-        type=int,
-        default=200,
-        help="Number of iterations to train.")
+        "--stop-iters", type=int, default=200, help="Number of iterations to train."
+    )
     parser.add_argument(
         "--stop-timesteps",
         type=int,
         default=500000,
-        help="Number of timesteps to train.")
+        help="Number of timesteps to train.",
+    )
     parser.add_argument(
         "--stop-reward",
         type=float,
         default=80.0,
-        help="Reward at which we stop training.")
+        help="Reward at which we stop training.",
+    )
     parser.add_argument(
         "--as-test",
         action="store_true",
         help="Whether this script should be run as a test: --stop-reward must "
-        "be achieved within --stop-timesteps AND --stop-iters.")
+        "be achieved within --stop-timesteps AND --stop-iters.",
+    )
     parser.add_argument(
         "--no-tune",
         action="store_true",
         help="Run without Tune using a manual train loop instead. Here,"
-        "there is no TensorBoard support.")
+        "there is no TensorBoard support.",
+    )
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Init Ray in local mode for easier debugging.")
+        help="Init Ray in local mode for easier debugging.",
+    )
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -75,15 +80,19 @@ if __name__ == "__main__":
         "env": "ray.rllib.examples.env.random_env.RandomEnv",
         "env_config": {
             "config": {
-                "observation_space": Dict({
-                    "a": Discrete(2),
-                    "b": Dict({
-                        "ba": Discrete(3),
-                        "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32)
-                    }),
-                    "c": Tuple((MultiDiscrete([2, 3]), Discrete(2))),
-                    "d": Box(-1.0, 1.0, (2, ), dtype=np.int32),
-                }),
+                "observation_space": Dict(
+                    {
+                        "a": Discrete(2),
+                        "b": Dict(
+                            {
+                                "ba": Discrete(3),
+                                "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32),
+                            }
+                        ),
+                        "c": Tuple((MultiDiscrete([2, 3]), Discrete(2))),
+                        "d": Box(-1.0, 1.0, (2,), dtype=np.int32),
+                    }
+                ),
             },
         },
         # Set this to True to enforce no preprocessors being used.

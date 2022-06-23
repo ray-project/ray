@@ -16,9 +16,14 @@ class TorchModelV2(ModelV2):
     Note that this class by itself is not a valid model unless you
     inherit from nn.Module and implement forward() in a subclass."""
 
-    def __init__(self, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, num_outputs: int,
-                 model_config: ModelConfigDict, name: str):
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+    ):
         """Initialize a TorchModelV2.
 
         Here is an example implementation for a subclass
@@ -35,7 +40,8 @@ class TorchModelV2(ModelV2):
         if not isinstance(self, nn.Module):
             raise ValueError(
                 "Subclasses of TorchModelV2 must also inherit from "
-                "nn.Module, e.g., MyModel(TorchModelV2, nn.Module)")
+                "nn.Module, e.g., MyModel(TorchModelV2, nn.Module)"
+            )
 
         ModelV2.__init__(
             self,
@@ -44,7 +50,8 @@ class TorchModelV2(ModelV2):
             num_outputs,
             model_config,
             name,
-            framework="torch")
+            framework="torch",
+        )
 
         # Dict to store per multi-gpu tower stats into.
         # In PyTorch multi-GPU, we use a single TorchPolicy and copy
@@ -55,20 +62,20 @@ class TorchModelV2(ModelV2):
         self.tower_stats = {}
 
     @override(ModelV2)
-    def variables(self, as_dict: bool = False) -> \
-            Union[List[TensorType], Dict[str, TensorType]]:
+    def variables(
+        self, as_dict: bool = False
+    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         p = list(self.parameters())
         if as_dict:
             return {k: p[i] for i, k in enumerate(self.state_dict().keys())}
         return p
 
     @override(ModelV2)
-    def trainable_variables(self, as_dict: bool = False) -> \
-            Union[List[TensorType], Dict[str, TensorType]]:
+    def trainable_variables(
+        self, as_dict: bool = False
+    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         if as_dict:
             return {
-                k: v
-                for k, v in self.variables(as_dict=True).items()
-                if v.requires_grad
+                k: v for k, v in self.variables(as_dict=True).items() if v.requires_grad
             }
         return [v for v in self.variables() if v.requires_grad]

@@ -17,15 +17,15 @@ public class ServeTest {
 
     try {
       // Test context setting and getting.
-      String backendTag = "backendTag";
+      String deploymentName = "deploymentName";
       String replicaTag = "replicaTag";
       String controllerName = "controllerName";
       Object servableObject = new Object();
-      Serve.setInternalReplicaContext(backendTag, replicaTag, controllerName, servableObject);
+      Serve.setInternalReplicaContext(deploymentName, replicaTag, controllerName, servableObject);
 
       ReplicaContext replicaContext = Serve.getReplicaContext();
       Assert.assertNotNull(replicaContext, "no replica context");
-      Assert.assertEquals(replicaContext.getBackendTag(), backendTag);
+      Assert.assertEquals(replicaContext.getDeploymentName(), deploymentName);
       Assert.assertEquals(replicaContext.getReplicaTag(), replicaTag);
       Assert.assertEquals(replicaContext.getInternalControllerName(), controllerName);
     } finally {
@@ -38,6 +38,8 @@ public class ServeTest {
   @Test
   public void getGlobalClientTest() {
     boolean inited = Ray.isInitialized();
+    String previous_namespace = System.getProperty("ray.job.namespace");
+    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
     Ray.init();
     try {
       Client client = null;
@@ -59,6 +61,11 @@ public class ServeTest {
     } finally {
       if (!inited) {
         Ray.shutdown();
+      }
+      if (previous_namespace == null) {
+        System.clearProperty("ray.job.namespace");
+      } else {
+        System.setProperty("ray.job.namespace", previous_namespace);
       }
       Serve.setInternalReplicaContext(null);
       Serve.setGlobalClient(null);

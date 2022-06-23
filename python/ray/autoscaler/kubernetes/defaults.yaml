@@ -171,7 +171,7 @@ available_node_types:
           command: ["/bin/bash", "-c", "--"]
           args: ['trap : TERM INT; sleep infinity & wait;']
           ports:
-          - containerPort: 6379  # Redis port
+          - containerPort: 6379  # Redis port for Ray <= 1.10.0. GCS server port for Ray >= 1.11.0.
           - containerPort: 10001  # Used by Ray Client
           - containerPort: 8265  # Used by Ray Dashboard
 
@@ -200,7 +200,7 @@ available_node_types:
 # Note dashboard-host is set to 0.0.0.0 so that kubernetes can port forward.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host 0.0.0.0
+    - ulimit -n 65536; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host 0.0.0.0
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

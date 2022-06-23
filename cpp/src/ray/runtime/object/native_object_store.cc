@@ -34,7 +34,8 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
   auto status = core_worker.Put(
-      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {},
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()),
+      {},
       object_id);
   if (!status.ok()) {
     throw RayException("Put object error");
@@ -48,7 +49,8 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
   auto status = core_worker.Put(
-      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {},
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()),
+      {},
       object_id);
   if (!status.ok()) {
     throw RayException("Put object error");
@@ -113,7 +115,8 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
 }
 
 std::vector<bool> NativeObjectStore::Wait(const std::vector<ObjectID> &ids,
-                                          int num_objects, int timeout_ms) {
+                                          int num_objects,
+                                          int timeout_ms) {
   std::vector<bool> results;
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   // TODO(SongGuyang): Support `fetch_local` option in API.

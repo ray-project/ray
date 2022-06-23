@@ -6,8 +6,7 @@ from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 
 
 class CartPoleMassEnv(CartPoleEnv, EzPickle, TaskSettableEnv):
-    """CartPoleMassEnv varies the weights of the cart and the pole.
-    """
+    """CartPoleMassEnv varies the weights of the cart and the pole."""
 
     def sample_tasks(self, n_tasks):
         # Sample new cart- and pole masses (random floats between 0.5 and 2.0

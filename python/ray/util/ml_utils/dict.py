@@ -1,11 +1,14 @@
-from typing import Dict, List, Union, Optional, TypeVar
 import copy
 from collections import deque
 from collections.abc import Mapping, Sequence
+from typing import Dict, List, Optional, TypeVar, Union
+
+from ray.util.annotations import Deprecated
 
 T = TypeVar("T")
 
 
+@Deprecated
 def merge_dicts(d1: dict, d2: dict) -> dict:
     """
     Args:
@@ -20,12 +23,15 @@ def merge_dicts(d1: dict, d2: dict) -> dict:
     return merged
 
 
+@Deprecated
 def deep_update(
-        original: dict,
-        new_dict: dict,
-        new_keys_allowed: str = False,
-        allow_new_subkey_list: Optional[List[str]] = None,
-        override_all_if_type_changes: Optional[List[str]] = None) -> dict:
+    original: dict,
+    new_dict: dict,
+    new_keys_allowed: bool = False,
+    allow_new_subkey_list: Optional[List[str]] = None,
+    override_all_if_type_changes: Optional[List[str]] = None,
+    override_all_key_list: Optional[List[str]] = None,
+) -> dict:
     """Updates original dict with values from new_dict recursively.
 
     If new key is introduced in new_dict, then if new_keys_allowed is not
@@ -33,36 +39,56 @@ def deep_update(
     in the allow_new_subkey_list, then new subkeys can be introduced.
 
     Args:
-        original (dict): Dictionary with default values.
-        new_dict (dict): Dictionary with values to be updated
-        new_keys_allowed (bool): Whether new keys are allowed.
-        allow_new_subkey_list (Optional[List[str]]): List of keys that
+        original: Dictionary with default values.
+        new_dict: Dictionary with values to be updated
+        new_keys_allowed: Whether new keys are allowed.
+        allow_new_subkey_list: List of keys that
             correspond to dict values where new subkeys can be introduced.
             This is only at the top level.
-        override_all_if_type_changes(Optional[List[str]]): List of top level
+        override_all_if_type_changes: List of top level
             keys with value=dict, for which we always simply override the
             entire value (dict), iff the "type" key in that value dict changes.
+        override_all_key_list: List of top level keys
+            for which we override the entire value if the key is in the new_dict.
     """
     allow_new_subkey_list = allow_new_subkey_list or []
     override_all_if_type_changes = override_all_if_type_changes or []
+    override_all_key_list = override_all_key_list or []
 
     for k, value in new_dict.items():
         if k not in original and not new_keys_allowed:
             raise Exception("Unknown config parameter `{}` ".format(k))
 
         # Both orginal value and new one are dicts.
-        if isinstance(original.get(k), dict) and isinstance(value, dict):
+        if (
+            isinstance(original.get(k), dict)
+            and isinstance(value, dict)
+            and k not in override_all_key_list
+        ):
             # Check old type vs old one. If different, override entire value.
-            if k in override_all_if_type_changes and \
-                "type" in value and "type" in original[k] and \
-                    value["type"] != original[k]["type"]:
+            if (
+                k in override_all_if_type_changes
+                and "type" in value
+                and "type" in original[k]
+                and value["type"] != original[k]["type"]
+            ):
                 original[k] = value
             # Allowed key -> ok to add new subkeys.
             elif k in allow_new_subkey_list:
-                deep_update(original[k], value, True)
+                deep_update(
+                    original[k],
+                    value,
+                    True,
+                    override_all_key_list=override_all_key_list,
+                )
             # Non-allowed key.
             else:
-                deep_update(original[k], value, new_keys_allowed)
+                deep_update(
+                    original[k],
+                    value,
+                    new_keys_allowed,
+                    override_all_key_list=override_all_key_list,
+                )
         # Original value not a dict OR new value not a dict:
         # Override entire value.
         else:
@@ -70,10 +96,13 @@ def deep_update(
     return original
 
 
-def flatten_dict(dt: Dict,
-                 delimiter: str = "/",
-                 prevent_delimiter: bool = False,
-                 flatten_list: bool = False):
+@Deprecated
+def flatten_dict(
+    dt: Dict,
+    delimiter: str = "/",
+    prevent_delimiter: bool = False,
+    flatten_list: bool = False,
+):
     """Flatten dict.
 
     Output and input are of the same dict type.
@@ -83,7 +112,8 @@ def flatten_dict(dt: Dict,
     def _raise_delimiter_exception():
         raise ValueError(
             f"Found delimiter `{delimiter}` in key when trying to flatten "
-            f"array. Please avoid using the delimiter in your specification.")
+            f"array. Please avoid using the delimiter in your specification."
+        )
 
     dt = copy.copy(dt)
     if prevent_delimiter and any(delimiter in key for key in dt):
@@ -119,6 +149,7 @@ def flatten_dict(dt: Dict,
     return dt
 
 
+@Deprecated
 def unflatten_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
     """Unflatten dict. Does not support unflattening lists."""
     dict_type = type(dt)
@@ -133,13 +164,14 @@ def unflatten_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
                     f"Cannot unflatten dict due the key '{key}' "
                     f"having a parent key '{k}', which value is not "
                     f"of type {dict_type} (got {type(item)}). "
-                    "Change the key names to resolve the conflict.")
+                    "Change the key names to resolve the conflict."
+                )
         item[path[-1]] = val
     return out
 
 
-def unflatten_list_dict(dt: Dict[str, T],
-                        delimiter: str = "/") -> Dict[str, T]:
+@Deprecated
+def unflatten_list_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
     """Unflatten nested dict and list.
 
     This function now has some limitations:
@@ -154,17 +186,16 @@ def unflatten_list_dict(dt: Dict[str, T],
     please also improve the unit test. See #14487 for more details.
 
     Args:
-        dt (dict): Flattened dictionary that is originally nested by multiple
+        dt: Flattened dictionary that is originally nested by multiple
             list and dict.
-        delimiter (str): Delimiter of keys.
+        delimiter: Delimiter of keys.
 
     Example:
         >>> dt = {"aaa/0/bb": 12, "aaa/1/cc": 56, "aaa/1/dd": 92}
         >>> unflatten_list_dict(dt)
         {'aaa': [{'bb': 12}, {'cc': 56, 'dd': 92}]}
     """
-    out_type = list if list(dt)[0].split(delimiter, 1)[0].isdigit() \
-        else type(dt)
+    out_type = list if list(dt)[0].split(delimiter, 1)[0].isdigit() else type(dt)
     out = out_type()
     for key, val in dt.items():
         path = key.split(delimiter)
@@ -188,10 +219,10 @@ def unflatten_list_dict(dt: Dict[str, T],
     return out
 
 
-def unflattened_lookup(flat_key: str,
-                       lookup: Union[Mapping, Sequence],
-                       delimiter: str = "/",
-                       **kwargs) -> Union[Mapping, Sequence]:
+@Deprecated
+def unflattened_lookup(
+    flat_key: str, lookup: Union[Mapping, Sequence], delimiter: str = "/", **kwargs
+) -> Union[Mapping, Sequence]:
     """
     Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
     `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.

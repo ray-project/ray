@@ -16,9 +16,8 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/rpc/server_call.h"
 
 namespace ray {
@@ -32,10 +31,8 @@ class GlobalStateAccessor {
  public:
   /// Constructor of GlobalStateAccessor.
   ///
-  /// \param redis_address The address of GCS Redis.
-  /// \param redis_password The password of GCS Redis.
-  explicit GlobalStateAccessor(const std::string &redis_address,
-                               const std::string &redis_password);
+  /// \param gcs_client_options The client options to connect to gcs
+  explicit GlobalStateAccessor(const GcsClientOptions &gcs_client_options);
 
   ~GlobalStateAccessor() LOCKS_EXCLUDED(mutex_);
 
@@ -70,22 +67,6 @@ class GlobalStateAccessor {
   /// ProfileTableData and returned the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllProfileInfo() LOCKS_EXCLUDED(mutex_);
-
-  /// Get information of all objects from GCS Service.
-  ///
-  /// \return All object info. To support multi-language, we serialize each
-  /// ObjectTableData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::vector<std::string> GetAllObjectInfo() LOCKS_EXCLUDED(mutex_);
-
-  /// Get information of an object from GCS Service.
-  ///
-  /// \param object_id The ID of object to look up in the GCS Service.
-  /// \return Object info. To support multi-language, we serialize each ObjectTableData
-  /// and return the serialized string. Where used, it needs to be deserialized with
-  /// protobuf function.
-  std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id)
-      LOCKS_EXCLUDED(mutex_);
 
   /// Get information of a node resource from GCS Service.
   ///
@@ -178,9 +159,11 @@ class GlobalStateAccessor {
 
   /// Get value of the key from GCS Service.
   ///
+  /// \param ns namespace to get.
   /// \param key key to get.
   /// \return Value of the key.
-  std::unique_ptr<std::string> GetInternalKV(const std::string &key)
+  std::unique_ptr<std::string> GetInternalKV(const std::string &ns,
+                                             const std::string &key)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get the serialized system config from GCS.
@@ -205,9 +188,11 @@ class GlobalStateAccessor {
   template <class DATA>
   MultiItemCallback<DATA> TransformForMultiItemCallback(
       std::vector<std::string> &data_vec, std::promise<bool> &promise) {
-    return [&data_vec, &promise](const Status &status, const std::vector<DATA> &result) {
+    return [&data_vec, &promise](const Status &status, std::vector<DATA> &&result) {
       RAY_CHECK_OK(status);
-      std::transform(result.begin(), result.end(), std::back_inserter(data_vec),
+      std::transform(result.begin(),
+                     result.end(),
+                     std::back_inserter(data_vec),
                      [](const DATA &data) { return data.SerializeAsString(); });
       promise.set_value(true);
     };
@@ -248,10 +233,10 @@ class GlobalStateAccessor {
 
   /// Whether this client is connected to gcs server.
   bool is_connected_ GUARDED_BY(mutex_) = false;
-  std::unique_ptr<ServiceBasedGcsClient> gcs_client_ GUARDED_BY(mutex_);
 
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<instrumented_io_context> io_service_;
+  std::unique_ptr<GcsClient> gcs_client_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

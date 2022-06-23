@@ -3,7 +3,6 @@ from typing import Dict
 
 import torch
 import torch.nn as nn
-from torch.nn.parallel import DistributedDataParallel
 
 import ray
 import ray.train as train
@@ -13,30 +12,24 @@ from ray.train import Trainer
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
 
 
-def get_datasets(a=5, b=10, size=1000,
-                 split=0.8) -> Dict[str, DatasetPipeline]:
+def get_datasets(a=5, b=10, size=1000, split=0.8) -> Dict[str, DatasetPipeline]:
     def get_dataset(a, b, size) -> Dataset:
         items = [i / size for i in range(size)]
-        dataset = ray.data.from_items([{
-            "x": x,
-            "y": a * x + b
-        } for x in items])
+        dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
         return dataset
 
     dataset = get_dataset(a, b, size)
 
-    split_index = int(dataset.count() * split)
+    train_dataset, validation_dataset = dataset.random_shuffle().split_proportionately(
+        [split]
+    )
 
-    train_dataset, validation_dataset = \
-        dataset.random_shuffle().split_at_indices([split_index])
-
-    train_dataset_pipeline = \
-        train_dataset.repeat().random_shuffle_each_window()
+    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()
     validation_dataset_pipeline = validation_dataset.repeat()
 
     datasets = {
         "train": train_dataset_pipeline,
-        "validation": validation_dataset_pipeline
+        "validation": validation_dataset_pipeline,
     }
 
     return datasets
@@ -83,16 +76,8 @@ def train_func(config):
     train_dataset_pipeline_shard = train.get_dataset_shard("train")
     validation_dataset_pipeline_shard = train.get_dataset_shard("validation")
 
-    device = torch.device(f"cuda:{train.local_rank()}"
-                          if torch.cuda.is_available() else "cpu")
-    if torch.cuda.is_available():
-        torch.cuda.set_device(device)
-
     model = nn.Linear(1, hidden_size)
-    model = model.to(device)
-    model = DistributedDataParallel(
-        model,
-        device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
+    model = train.torch.prepare_model(model)
 
     loss_fn = nn.MSELoss()
 
@@ -100,9 +85,8 @@ def train_func(config):
 
     results = []
 
-    train_dataset_iterator = train_dataset_pipeline_shard.iter_datasets()
-    validation_dataset_iterator = \
-        validation_dataset_pipeline_shard.iter_datasets()
+    train_dataset_iterator = train_dataset_pipeline_shard.iter_epochs()
+    validation_dataset_iterator = validation_dataset_pipeline_shard.iter_epochs()
 
     for _ in range(epochs):
         train_dataset = next(train_dataset_iterator)
@@ -112,19 +96,21 @@ def train_func(config):
             label_column="y",
             feature_columns=["x"],
             label_column_dtype=torch.float,
-            feature_column_dtypes=[torch.float],
+            feature_column_dtypes=torch.float,
             batch_size=batch_size,
         )
         validation_torch_dataset = validation_dataset.to_torch(
             label_column="y",
             feature_columns=["x"],
             label_column_dtype=torch.float,
-            feature_column_dtypes=[torch.float],
-            batch_size=batch_size)
+            feature_column_dtypes=torch.float,
+            batch_size=batch_size,
+        )
+
+        device = train.torch.get_device()
 
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
-        result = validate_epoch(validation_torch_dataset, model, loss_fn,
-                                device)
+        result = validate_epoch(validation_torch_dataset, model, loss_fn, device)
         train.report(**result)
         results.append(result)
 
@@ -141,8 +127,8 @@ def train_linear(num_workers=2, use_gpu=False):
         train_func,
         config,
         dataset=datasets,
-        callbacks=[JsonLoggerCallback(),
-                   TBXLoggerCallback()])
+        callbacks=[JsonLoggerCallback(), TBXLoggerCallback()],
+    )
     trainer.shutdown()
     print(results)
     return results
@@ -151,26 +137,24 @@ def train_linear(num_workers=2, use_gpu=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="the address to use for Ray")
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
     parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
         default=2,
-        help="Sets number of workers for training.")
+        help="Sets number of workers for training.",
+    )
     parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for testing.")
+        help="Finish quickly for testing.",
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Use GPU for training.")
+        "--use-gpu", action="store_true", default=False, help="Use GPU for training."
+    )
 
     args, _ = parser.parse_known_args()
 

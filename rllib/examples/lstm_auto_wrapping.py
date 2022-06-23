@@ -1,7 +1,7 @@
 import numpy as np
 
 import ray
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.framework import try_import_torch
@@ -13,10 +13,8 @@ torch, _ = try_import_torch()
 
 # The custom model that will be wrapped by an LSTM.
 class MyCustomModel(TorchModelV2):
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
         self.num_outputs = int(np.product(self.obs_space.shape))
         self._last_batch_size = None
 
@@ -32,7 +30,7 @@ class MyCustomModel(TorchModelV2):
         return obs * 2.0, []
 
     def value_function(self):
-        return torch.from_numpy(np.zeros(shape=(self._last_batch_size, )))
+        return torch.from_numpy(np.zeros(shape=(self._last_batch_size,)))
 
 
 if __name__ == "__main__":
@@ -42,7 +40,7 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("my_torch_model", MyCustomModel)
 
     # Create the Trainer.
-    trainer = ppo.PPOTrainer(
+    algo = ppo.PPO(
         env="CartPole-v0",
         config={
             "framework": "torch",
@@ -51,13 +49,13 @@ if __name__ == "__main__":
                 "use_lstm": True,
                 # To further customize the LSTM auto-wrapper.
                 "lstm_cell_size": 64,
-
                 # Specify our custom model from above.
                 "custom_model": "my_torch_model",
                 # Extra kwargs to be passed to your model's c'tor.
                 "custom_model_config": {},
             },
-        })
-    trainer.train()
+        },
+    )
+    algo.train()
 
 # __sphinx_doc_end__

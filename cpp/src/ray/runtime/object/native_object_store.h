@@ -24,7 +24,8 @@ namespace internal {
 
 class NativeObjectStore : public ObjectStore {
  public:
-  std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+  std::vector<bool> Wait(const std::vector<ObjectID> &ids,
+                         int num_objects,
                          int timeout_ms);
 
   void AddLocalReference(const std::string &id);

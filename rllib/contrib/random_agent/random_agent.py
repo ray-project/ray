@@ -1,25 +1,28 @@
 import numpy as np
 
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
-class RandomAgent(Trainer):
-    """Policy that takes random actions and never learns."""
+class RandomAgent(Algorithm):
+    """Algo that produces random actions and never learns."""
 
-    _name = "RandomAgent"
-    _default_config = with_common_config({
-        "rollouts_per_iteration": 10,
-        "framework": "tf",  # not used
-    })
+    @classmethod
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
+        return with_common_config({
+            "rollouts_per_iteration": 10,
+            "framework": "tf",  # not used
+        })
 
-    @override(Trainer)
+    @override(Algorithm)
     def _init(self, config, env_creator):
         self.env = env_creator(config["env_config"])
 
-    @override(Trainer)
+    @override(Algorithm)
     def step(self):
         rewards = []
         steps = 0
@@ -38,12 +41,14 @@ class RandomAgent(Trainer):
             "timesteps_this_iter": steps,
         }
 # __sphinx_doc_end__
+# FIXME: We switched our code formatter from YAPF to Black. Check if we can enable code
+# formatting on this module and update the comment below. See issue #21318.
 # don't enable yapf after, it's buggy here
 
 
 if __name__ == "__main__":
-    trainer = RandomAgent(
+    algo = RandomAgent(
         env="CartPole-v0", config={"rollouts_per_iteration": 10})
-    result = trainer.train()
+    result = algo.train()
     assert result["episode_reward_mean"] > 10, result
     print("Test: OK")

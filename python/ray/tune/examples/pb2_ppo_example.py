@@ -31,12 +31,13 @@ if __name__ == "__main__":
     parser.add_argument("--t_ready", type=int, default=50000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
-        "--horizon", type=int, default=1600)  # make this 1000 for other envs
+        "--horizon", type=int, default=1600
+    )  # make this 1000 for other envs
     parser.add_argument("--perturb", type=float, default=0.25)  # if using PBT
     parser.add_argument("--env_name", type=str, default="BipedalWalker-v2")
     parser.add_argument(
-        "--criteria", type=str,
-        default="timesteps_total")  # "training_iteration", "time_total_s"
+        "--criteria", type=str, default="timesteps_total"
+    )  # "training_iteration", "time_total_s"
     parser.add_argument(
         "--net", type=str, default="32_32"
     )  # May be important to use a larger network for bigger tasks.
@@ -66,7 +67,8 @@ if __name__ == "__main__":
             "lr": lambda: random.uniform(1e-3, 1e-5),
             "train_batch_size": lambda: random.randint(1000, 60000),
         },
-        custom_explore_fn=explore)
+        custom_explore_fn=explore,
+    )
 
     pb2 = PB2(
         time_attr=args.criteria,
@@ -79,23 +81,30 @@ if __name__ == "__main__":
             "lambda": [0.9, 1.0],
             "clip_param": [0.1, 0.5],
             "lr": [1e-3, 1e-5],
-            "train_batch_size": [1000, 60000]
-        })
+            "train_batch_size": [1000, 60000],
+        },
+    )
 
     methods = {"pbt": pbt, "pb2": pb2}
 
-    timelog = str(datetime.date(datetime.now())) + "_" + str(
-        datetime.time(datetime.now()))
+    timelog = (
+        str(datetime.date(datetime.now())) + "_" + str(datetime.time(datetime.now()))
+    )
 
-    args.dir = "{}_{}_{}_Size{}_{}_{}".format(args.algo,
-                                              args.filename, args.method,
-                                              str(args.num_samples),
-                                              args.env_name, args.criteria)
+    args.dir = "{}_{}_{}_Size{}_{}_{}".format(
+        args.algo,
+        args.filename,
+        args.method,
+        str(args.num_samples),
+        args.env_name,
+        args.criteria,
+    )
 
     analysis = run(
         args.algo,
-        name="{}_{}_{}_seed{}_{}".format(timelog, args.method, args.env_name,
-                                         str(args.seed), args.filename),
+        name="{}_{}_{}_seed{}_{}".format(
+            timelog, args.method, args.env_name, str(args.seed), args.filename
+        ),
         scheduler=methods[args.method],
         verbose=1,
         num_samples=args.num_samples,
@@ -111,18 +120,18 @@ if __name__ == "__main__":
             "model": {
                 "fcnet_hiddens": [
                     int(args.net.split("_")[0]),
-                    int(args.net.split("_")[1])
+                    int(args.net.split("_")[1]),
                 ],
-                "free_log_std": True
+                "free_log_std": True,
             },
             "num_sgd_iter": 10,
             "sgd_minibatch_size": 128,
             "lambda": sample_from(lambda spec: random.uniform(0.9, 1.0)),
             "clip_param": sample_from(lambda spec: random.uniform(0.1, 0.5)),
             "lr": sample_from(lambda spec: random.uniform(1e-3, 1e-5)),
-            "train_batch_size": sample_from(
-                lambda spec: random.randint(1000, 60000))
-        })
+            "train_batch_size": sample_from(lambda spec: random.randint(1000, 60000)),
+        },
+    )
 
     all_dfs = analysis.trial_dataframes
     names = list(all_dfs.keys())
@@ -130,10 +139,14 @@ if __name__ == "__main__":
     results = pd.DataFrame()
     for i in range(args.num_samples):
         df = all_dfs[names[i]]
-        df = df[[
-            "timesteps_total", "episodes_total", "episode_reward_mean",
-            "info/learner/default_policy/cur_kl_coeff"
-        ]]
+        df = df[
+            [
+                "timesteps_total",
+                "episodes_total",
+                "episode_reward_mean",
+                "info/learner/default_policy/cur_kl_coeff",
+            ]
+        ]
         df["Agent"] = i
         results = pd.concat([results, df]).reset_index(drop=True)
 

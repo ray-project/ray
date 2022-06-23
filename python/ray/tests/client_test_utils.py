@@ -24,6 +24,7 @@ def create_remote_signal_actor(ray):
 # run_wrapped_actor_creation and SomeClass.
 def run_wrapped_actor_creation():
     import ray
+
     RemoteClass = ray.remote(SomeClass)
     handle = RemoteClass.remote()
     return ray.get(handle.ready.remote())

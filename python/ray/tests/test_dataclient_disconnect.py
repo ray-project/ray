@@ -1,16 +1,19 @@
-from ray.util.client.ray_client_helpers import ray_start_client_server
-from unittest.mock import Mock, patch
-import pytest
 import os
 import time
+from unittest.mock import Mock, patch
+
+import pytest
+
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def test_dataclient_disconnect_on_request():
     # Client can't signal graceful shutdown to server after unrecoverable
     # error. Lower grace period so we don't have to sleep as long before
     # checking new connection data.
-    with patch.dict(os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}), \
-            ray_start_client_server() as ray:
+    with patch.dict(
+        os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}
+    ), ray_start_client_server() as ray:
         assert ray.is_connected()
 
         @ray.remote
@@ -36,8 +39,9 @@ def test_dataclient_disconnect_before_request():
     # Client can't signal graceful shutdown to server after unrecoverable
     # error. Lower grace period so we don't have to sleep as long before
     # checking new connection data.
-    with patch.dict(os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}), \
-            ray_start_client_server() as ray:
+    with patch.dict(
+        os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}
+    ), ray_start_client_server() as ray:
         assert ray.is_connected()
 
         @ray.remote
@@ -64,8 +68,8 @@ def test_dataclient_disconnect_before_request():
             ray.get(f.remote())
 
         with pytest.raises(
-                ConnectionError,
-                match="Ray client has already been disconnected"):
+            ConnectionError, match="Ray client has already been disconnected"
+        ):
             ray.get(f.remote())
 
         # Client should be disconnected
@@ -80,4 +84,8 @@ def test_dataclient_disconnect_before_request():
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

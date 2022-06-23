@@ -18,6 +18,7 @@
 #include <sstream>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/runtime_env_common.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -37,7 +38,8 @@ SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
   return it->second;
 }
 
-SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_cls) {
+SchedulingClass TaskSpecification::GetSchedulingClass(
+    const SchedulingClassDescriptor &sched_cls) {
   SchedulingClass sched_cls_id;
   absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
@@ -52,7 +54,7 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
                      << " types of tasks seen, this may reduce performance.";
     }
     sched_cls_to_id_[sched_cls] = sched_cls_id;
-    sched_id_to_cls_[sched_cls_id] = sched_cls;
+    sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
   } else {
     sched_cls_id = it->second;
   }
@@ -60,12 +62,31 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
 }
 
 const BundleID TaskSpecification::PlacementGroupBundleId() const {
-  return std::make_pair(PlacementGroupID::FromBinary(message_->placement_group_id()),
-                        message_->placement_group_bundle_index());
+  if (message_->scheduling_strategy().scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    return std::make_pair(
+        PlacementGroupID::FromBinary(message_->scheduling_strategy()
+                                         .placement_group_scheduling_strategy()
+                                         .placement_group_id()),
+        message_->scheduling_strategy()
+            .placement_group_scheduling_strategy()
+            .placement_group_bundle_index());
+  } else {
+    return std::make_pair(PlacementGroupID::Nil(), -1);
+  }
 }
 
 bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
-  return message_->placement_group_capture_child_tasks();
+  if (message_->scheduling_strategy().scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    return message_->scheduling_strategy()
+        .placement_group_scheduling_strategy()
+        .placement_group_capture_child_tasks();
+  } else {
+    return false;
+  }
 }
 
 void TaskSpecification::ComputeResources() {
@@ -92,10 +113,13 @@ void TaskSpecification::ComputeResources() {
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
-
+    const auto &resource_set = GetRequiredResources();
+    const auto &function_descriptor = FunctionDescriptor();
+    auto depth = GetDepth();
+    auto sched_cls_desc = SchedulingClassDescriptor(
+        resource_set, function_descriptor, depth, GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = GetRequiredPlacementResources();
-    sched_cls_id_ = GetSchedulingClass(sched_cls);
+    sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
 }
 
@@ -132,22 +156,35 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
-rpc::RuntimeEnv TaskSpecification::RuntimeEnv() const { return message_->runtime_env(); }
+rpc::RuntimeEnvInfo TaskSpecification::RuntimeEnvInfo() const {
+  return message_->runtime_env_info();
+}
 
 std::string TaskSpecification::SerializedRuntimeEnv() const {
-  return message_->runtime_env().serialized_runtime_env();
+  return message_->runtime_env_info().serialized_runtime_env();
+}
+
+rpc::RuntimeEnvConfig TaskSpecification::RuntimeEnvConfig() const {
+  return message_->runtime_env_info().runtime_env_config();
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
-  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
+  return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }
+
+uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
   absl::flat_hash_map<std::string, double> required_resource;
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {SerializedRuntimeEnv(), required_resource};
+  WorkerCacheKey env = {
+      SerializedRuntimeEnv(),
+      required_resource,
+      IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types(),
+      GetRequiredResources().GetResource("GPU") > 0 &&
+          RayConfig::instance().isolate_workers_across_resource_types()};
   return env.IntHash();
 }
 
@@ -203,6 +240,26 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
+const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
+  return message_->scheduling_strategy();
+}
+
+bool TaskSpecification::IsNodeAffinitySchedulingStrategy() const {
+  return GetSchedulingStrategy().scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeAffinitySchedulingStrategy;
+}
+
+NodeID TaskSpecification::GetNodeAffinitySchedulingStrategyNodeId() const {
+  RAY_CHECK(IsNodeAffinitySchedulingStrategy());
+  return NodeID::FromBinary(
+      GetSchedulingStrategy().node_affinity_scheduling_strategy().node_id());
+}
+
+bool TaskSpecification::GetNodeAffinitySchedulingStrategySoft() const {
+  RAY_CHECK(IsNodeAffinitySchedulingStrategy());
+  return GetSchedulingStrategy().node_affinity_scheduling_strategy().soft();
+}
+
 std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
@@ -240,6 +297,8 @@ std::string TaskSpecification::GetDebuggerBreakpoint() const {
   return message_->debugger_breakpoint();
 }
 
+int64_t TaskSpecification::GetDepth() const { return message_->depth(); }
+
 bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
 }
@@ -258,6 +317,11 @@ bool TaskSpecification::IsActorCreationTask() const {
 
 bool TaskSpecification::IsActorTask() const {
   return message_->type() == TaskType::ACTOR_TASK;
+}
+
+bool TaskSpecification::IsSpreadSchedulingStrategy() const {
+  return message_->scheduling_strategy().scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
 // === Below are getter methods specific to actor creation tasks.
@@ -329,6 +393,11 @@ std::string TaskSpecification::ConcurrencyGroupName() const {
   return message_->concurrency_group_name();
 }
 
+bool TaskSpecification::ExecuteOutOfOrder() const {
+  return IsActorCreationTask() &&
+         message_->actor_creation_task_spec().execute_out_of_order();
+}
+
 bool TaskSpecification::IsAsyncioActor() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().is_asyncio();
@@ -360,7 +429,7 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns();
+         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
@@ -374,6 +443,23 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
            << "}";
+  }
+
+  // Print runtime env.
+  if (HasRuntimeEnv()) {
+    const auto &runtime_env_info = RuntimeEnvInfo();
+    stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
+    const auto &uris = runtime_env_info.uris();
+    if (uris.size() > 0) {
+      stream << ", runtime_env_uris=";
+      for (const auto &uri : uris) {
+        stream << uri << ":";
+      }
+      // Erase the last ":"
+      stream.seekp(-1, std::ios_base::end);
+    }
+    stream << ", runtime_env_eager_install="
+           << runtime_env_info.runtime_env_eager_install();
   }
 
   return stream.str();
@@ -395,9 +481,13 @@ std::string TaskSpecification::CallSiteString() const {
 
 WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
-    const absl::flat_hash_map<std::string, double> &required_resources)
+    const absl::flat_hash_map<std::string, double> &required_resources,
+    bool is_actor,
+    bool is_gpu)
     : serialized_runtime_env(serialized_runtime_env),
-      required_resources(std::move(required_resources)) {}
+      required_resources(std::move(required_resources)),
+      is_actor(is_actor),
+      is_gpu(is_gpu) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   // FIXME we should compare fields
@@ -405,8 +495,8 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
-         required_resources.empty();
+  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
+         !is_gpu;
 }
 
 std::size_t WorkerCacheKey::Hash() const {
@@ -415,9 +505,15 @@ std::size_t WorkerCacheKey::Hash() const {
     if (EnvIsEmpty()) {
       // It's useful to have the same predetermined value for both unspecified and empty
       // runtime envs.
-      hash_ = 0;
+      if (is_actor) {
+        hash_ = 1;
+      } else {
+        hash_ = 0;
+      }
     } else {
       boost::hash_combine(hash_, serialized_runtime_env);
+      boost::hash_combine(hash_, is_actor);
+      boost::hash_combine(hash_, is_gpu);
 
       std::vector<std::pair<std::string, double>> resource_vars(
           required_resources.begin(), required_resources.end());

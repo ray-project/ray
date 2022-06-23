@@ -1,19 +1,31 @@
+import math
 import os
-
-import pytest
 from unittest.mock import patch
 
-import ray
-from ray.cluster_utils import Cluster
-import ray.train as train
-from ray.train.backends.backend import BackendConfig, BackendExecutor
-from ray.train.backends.tensorflow import TensorflowConfig
-from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
-from ray.train.worker_group import WorkerGroup
-from ray.train.backends.torch import TorchConfig
+import pytest
 
-from ray.train.backends.backend import Backend, \
-    InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
+import ray
+import ray.train as train
+from ray.cluster_utils import Cluster
+
+# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.train._internal.backend_executor import (
+    BackendExecutor,
+    InactiveWorkerGroupError,
+    TrainBackendError,
+    TrainingWorkerError,
+)
+from ray.train._internal.dataset_spec import RayDatasetSpec
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
+from ray.train.constants import (
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
+)
+from ray.train.tensorflow import TensorflowConfig
+from ray.train.torch import TorchConfig
+from ray.util.placement_group import get_current_placement_group
 
 
 @pytest.fixture
@@ -22,6 +34,20 @@ def ray_start_2_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_4_node_4_cpu():
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=4)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.fixture
@@ -57,8 +83,7 @@ def gen_execute_special(special_f):
         """Runs f on worker 0, special_f on other workers."""
         futures = [self.workers[0].actor._BaseWorkerMixin__execute.remote(f)]
         for worker in self.workers[1:]:
-            futures.append(
-                worker.actor._BaseWorkerMixin__execute.remote(special_f))
+            futures.append(worker.actor._BaseWorkerMixin__execute.remote(special_f))
         return futures
 
     return execute_async_special
@@ -74,58 +99,62 @@ class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: TestConfig):
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
 
-def test_start(ray_start_2_cpus, tmp_path):
+EMPTY_RAY_DATASET_SPEC = RayDatasetSpec(dataset_or_dict=None)
+
+
+def test_start(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     with pytest.raises(InactiveWorkerGroupError):
-        e.start_training(lambda: 1, run_dir=tmp_path)
+        e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     e.start()
     assert len(e.worker_group) == 2
 
 
-def test_initialization_hook(ray_start_2_cpus, tmp_path):
+def test_initialization_hook(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
 
     def init_hook():
         import os
+
         os.environ["TEST"] = "1"
 
     e.start(initialization_hook=init_hook)
 
     def check():
         import os
+
         return os.getenv("TEST", "0")
 
-    e.start_training(check, run_dir=tmp_path)
+    e.start_training(check, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert e.finish_training() == ["1", "1"]
 
 
-def test_shutdown(ray_start_2_cpus, tmp_path):
+def test_shutdown(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
     assert len(e.worker_group) == 2
     e.shutdown()
     with pytest.raises(InactiveWorkerGroupError):
-        e.start_training(lambda: 1, run_dir=tmp_path)
+        e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
 
 
-def test_train(ray_start_2_cpus, tmp_path):
+def test_train(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    e.start_training(lambda: 1, run_dir=tmp_path)
+    e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert e.finish_training() == [1, 1]
 
 
-def test_local_ranks(ray_start_2_cpus, tmp_path):
+def test_local_ranks(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
@@ -133,30 +162,33 @@ def test_local_ranks(ray_start_2_cpus, tmp_path):
     def train_func():
         return train.local_rank()
 
-    e.start_training(train_func, run_dir=tmp_path)
+    e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert set(e.finish_training()) == {0, 1}
 
 
-def test_train_failure(ray_start_2_cpus, tmp_path):
+def test_train_failure(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
     with pytest.raises(TrainBackendError):
-        e.fetch_next_result()
+        e.get_next_results()
+
+    with pytest.raises(TrainBackendError):
+        e.pause_reporting()
 
     with pytest.raises(TrainBackendError):
         e.finish_training()
 
-    e.start_training(lambda: 1, run_dir=tmp_path)
+    e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
 
     with pytest.raises(TrainBackendError):
-        e.start_training(lambda: 2, run_dir=tmp_path)
+        e.start_training(lambda: 2, dataset_spec=EMPTY_RAY_DATASET_SPEC)
 
     assert e.finish_training() == [1, 1]
 
 
-def test_worker_failure(ray_start_2_cpus, tmp_path):
+def test_worker_failure(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
@@ -167,94 +199,11 @@ def test_worker_failure(ray_start_2_cpus, tmp_path):
     new_execute_func = gen_execute_special(train_fail)
     with patch.object(WorkerGroup, "execute_async", new_execute_func):
         with pytest.raises(TrainingWorkerError):
-            e.start_training(lambda: 1, run_dir=tmp_path)
+            e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
             e.finish_training()
 
 
-def test_no_exhaust(ray_start_2_cpus, tmp_path):
-    """Tests if training can finish even if queue is not exhausted."""
-
-    def train_func():
-        for _ in range(2):
-            train.report(loss=1)
-        return 2
-
-    config = TestConfig()
-    e = BackendExecutor(config, num_workers=2)
-    e.start()
-
-    e.start_training(train_func, run_dir=tmp_path)
-    output = e.finish_training()
-
-    assert output == [2, 2]
-
-
-def test_checkpoint(ray_start_2_cpus, tmp_path):
-    def train_func():
-        for i in range(2):
-            train.save_checkpoint(epoch=i)
-
-    config = TestConfig()
-    e = BackendExecutor(config, num_workers=1)
-    e.start()
-
-    e.start_training(train_func, run_dir=tmp_path)
-    e.finish_training()
-
-    assert e.latest_checkpoint is not None
-    assert e.latest_checkpoint["epoch"] == 1
-
-
-def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
-    def train_func():
-        for i in range(2):
-            train.save_checkpoint(epoch=i)
-
-    config = TestConfig()
-    e = BackendExecutor(config)
-    e.start()
-    e.start_training(train_func, run_dir=tmp_path)
-    e.finish_training()
-
-    assert e.latest_checkpoint_id == 2
-    assert e.latest_checkpoint is not None
-    assert e.latest_checkpoint["epoch"] == 1
-    assert e.latest_checkpoint_path is not None
-
-    assert os.path.exists(e.latest_checkpoint_path)
-
-    def validate():
-        checkpoint = train.load_checkpoint()
-        assert checkpoint is not None
-        assert checkpoint["epoch"] == 1
-
-    e2 = BackendExecutor(config)
-    e2.start()
-    e2.start_training(
-        validate, checkpoint=e.latest_checkpoint_path, run_dir=tmp_path)
-    e2.finish_training()
-
-
-def test_persisted_checkpoint_id(ray_start_2_cpus, tmp_path):
-    def train_func():
-        for i in range(2):
-            train.save_checkpoint(epoch=i)
-
-    config = TestConfig()
-    e = BackendExecutor(config)
-    e.start()
-    e.start_training(train_func, run_dir=tmp_path, latest_checkpoint_id=100)
-    e.finish_training()
-
-    assert e.latest_checkpoint_id == 102
-    assert e.latest_checkpoint is not None
-    assert e.latest_checkpoint["epoch"] == 1
-    assert e.latest_checkpoint_path is not None
-
-    assert os.path.exists(e.latest_checkpoint_path)
-
-
-def test_mismatch_checkpoint_report(ray_start_2_cpus, tmp_path):
+def test_mismatch_checkpoint_report(ray_start_2_cpus):
     def train_func():
         if (train.world_rank()) == 0:
             train.save_checkpoint(epoch=0)
@@ -264,12 +213,12 @@ def test_mismatch_checkpoint_report(ray_start_2_cpus, tmp_path):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
-    e.start_training(train_func, run_dir=tmp_path)
+    e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     with pytest.raises(RuntimeError):
-        e.finish_training()
+        e.get_next_results()
 
 
-def test_tensorflow_start(ray_start_2_cpus, tmp_path):
+def test_tensorflow_start(ray_start_2_cpus):
     num_workers = 2
     tensorflow_config = TensorflowConfig()
     e = BackendExecutor(tensorflow_config, num_workers=num_workers)
@@ -278,9 +227,10 @@ def test_tensorflow_start(ray_start_2_cpus, tmp_path):
     def get_tf_config():
         import json
         import os
+
         return json.loads(os.environ["TF_CONFIG"])
 
-    e.start_training(get_tf_config, run_dir=tmp_path)
+    e.start_training(get_tf_config, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     results = e.finish_training()
     assert len(results) == num_workers
 
@@ -292,29 +242,38 @@ def test_tensorflow_start(ray_start_2_cpus, tmp_path):
 
 
 @pytest.mark.parametrize("init_method", ["env", "tcp"])
-def test_torch_start_shutdown(ray_start_2_cpus, init_method, tmp_path):
+def test_torch_start_shutdown(ray_start_2_cpus, init_method):
     torch_config = TorchConfig(backend="gloo", init_method=init_method)
     e = BackendExecutor(torch_config, num_workers=2)
     e.start()
 
     def check_process_group():
         import torch
-        return torch.distributed.is_initialized(
-        ) and torch.distributed.get_world_size() == 2
 
-    e.start_training(check_process_group, run_dir=tmp_path)
+        return (
+            torch.distributed.is_initialized()
+            and torch.distributed.get_world_size() == 2
+        )
+
+    e.start_training(check_process_group, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert all(e.finish_training())
 
     e._backend.on_shutdown(e.worker_group, e._backend_config)
 
-    e.start_training(check_process_group, run_dir=tmp_path)
+    e.start_training(check_process_group, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert not any(e.finish_training())
 
 
-@pytest.mark.parametrize("worker_results", [(1, ["0"]), (2, ["0,1", "0,1"]),
-                                            (3, ["0", "0,1", "0,1"]),
-                                            (4, ["0,1", "0,1", "0,1", "0,1"])])
-def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results, tmp_path):
+@pytest.mark.parametrize(
+    "worker_results",
+    [
+        (1, ["0"]),
+        (2, ["0,1", "0,1"]),
+        (3, ["0", "0,1", "0,1"]),
+        (4, ["0,1", "0,1", "0,1", "0,1"]),
+    ],
+)
+def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
     def get_resources():
@@ -324,12 +283,10 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results, tmp_path):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config,
-        num_workers=num_workers,
-        num_cpus_per_worker=0,
-        num_gpus_per_worker=1)
+        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=1
+    )
     e.start()
-    e.start_training(get_resources, tmp_path)
+    e.start_training(get_resources, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     results = e.finish_training()
     results.sort()
     assert results == expected_results
@@ -337,13 +294,18 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results, tmp_path):
 
 @pytest.mark.parametrize(
     "worker_results",
-    [(1, ["0"]), (2, ["0", "0"]), (3, ["0,1", "0,1", "0,1"]),
-     (4, ["0,1", "0,1", "0,1", "0,1"]), (5, ["0", "0,1", "0,1", "0,1", "0,1"]),
-     (6, ["0", "0", "0,1", "0,1", "0,1", "0,1"]),
-     (7, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
-     (8, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"])])
-def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results,
-                                         tmp_path):
+    [
+        (1, ["0"]),
+        (2, ["0", "0"]),
+        (3, ["0,1", "0,1", "0,1"]),
+        (4, ["0,1", "0,1", "0,1", "0,1"]),
+        (5, ["0", "0,1", "0,1", "0,1", "0,1"]),
+        (6, ["0", "0", "0,1", "0,1", "0,1", "0,1"]),
+        (7, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
+        (8, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
+    ],
+)
+def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
     def get_resources():
@@ -353,23 +315,25 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results,
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config,
-        num_workers=num_workers,
-        num_cpus_per_worker=0,
-        num_gpus_per_worker=0.5)
+        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=0.5
+    )
     e.start()
-    e.start_training(get_resources, tmp_path)
+    e.start_training(get_resources, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     results = e.finish_training()
     results.sort()
     assert results == expected_results
 
 
-@pytest.mark.parametrize("worker_results",
-                         [(1, ["0,1"]), (2, ["0,1,2,3", "0,1,2,3"]),
-                          (3, ["0,1", "0,1,2,3", "0,1,2,3"]),
-                          (4, ["0,1,2,3", "0,1,2,3", "0,1,2,3", "0,1,2,3"])])
-def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results,
-                                       tmp_path):
+@pytest.mark.parametrize(
+    "worker_results",
+    [
+        (1, ["0,1"]),
+        (2, ["0,1,2,3", "0,1,2,3"]),
+        (3, ["0,1", "0,1,2,3", "0,1,2,3"]),
+        (4, ["0,1,2,3", "0,1,2,3", "0,1,2,3", "0,1,2,3"]),
+    ],
+)
+def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
     config = TestConfig()
 
     def get_resources():
@@ -379,19 +343,78 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results,
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config,
-        num_workers=num_workers,
-        num_cpus_per_worker=0,
-        num_gpus_per_worker=2)
+        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=2
+    )
     e.start()
-    e.start_training(get_resources, run_dir=tmp_path)
+    e.start_training(get_resources, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     results = e.finish_training()
     results.sort()
     assert results == expected_results
+
+
+def get_node_id_set():
+    node_id_set = set()
+    for actor_info in ray._private.state.actors().values():
+        node_id = actor_info["Address"]["NodeID"]
+        node_id_set.add(node_id)
+    return node_id_set
+
+
+@pytest.mark.parametrize("num_workers", [3, 4, 5])
+def test_placement_group_pack(ray_4_node_4_cpu, num_workers):
+    """Tests that workers are packed on nodes."""
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=num_workers)
+    e.start()
+    node_id_set = get_node_id_set()
+    assert len(node_id_set) == math.ceil(num_workers / 4)
+
+
+@pytest.mark.parametrize("num_workers", [3, 4, 5])
+def test_placement_group_spread(ray_4_node_4_cpu, num_workers):
+    """Tests that workers are spread across nodes."""
+    os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] = "1"
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=num_workers)
+    e.start()
+    node_id_set = get_node_id_set()
+    assert len(node_id_set) == min(num_workers, 4)
+
+
+@pytest.mark.parametrize("placement_group_capture_child_tasks", [True, False])
+def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_tasks):
+    """Tests that parent placement group will be used."""
+    num_workers = 2
+    bundle = {"CPU": 1}
+    bundles = [bundle.copy() for _ in range(num_workers + 1)]
+    placement_group = ray.util.placement_group(bundles)
+
+    def train_func():
+        return get_current_placement_group().id
+
+    @ray.remote
+    def test():
+        config = TestConfig()
+        e = BackendExecutor(config, num_workers=2)
+        e.start()
+        e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+        return e.finish_training()
+
+    results_future = test.options(
+        placement_group=placement_group,
+        placement_group_capture_child_tasks=placement_group_capture_child_tasks,
+    ).remote()
+    results = ray.get(results_future)
+    for worker_result in results:
+        if placement_group_capture_child_tasks:
+            assert worker_result == placement_group.id
+        else:
+            assert worker_result != placement_group.id
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

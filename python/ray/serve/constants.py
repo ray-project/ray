@@ -1,8 +1,20 @@
+import os
+from enum import Enum
+
+#: Used for debugging to turn on DEBUG-level logs
+DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
+
+#: Logger used by serve components
+SERVE_LOGGER_NAME = "ray.serve"
+
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
+
+#: Ray namespace used for all Serve actors
+SERVE_NAMESPACE = "serve"
 
 #: HTTP Address
 DEFAULT_HTTP_ADDRESS = "http://127.0.0.1:8000"
@@ -21,11 +33,6 @@ ASYNC_CONCURRENCY = int(1e6)
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
-
-# Upon controller failure and recovery with running actor names,
-# we will update replica handles that halt all traffic to the cluster.
-# This constant indicates grace period to avoid controller thrashing.
-CONTROLLER_STARTUP_GRACE_PERIOD_S = 5
 
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
@@ -52,8 +59,11 @@ DEFAULT_LATENCY_BUCKET_MS = [
     5000,
 ]
 
-#: Name of backend reconfiguration method implemented by user.
-BACKEND_RECONFIGURE_METHOD = "reconfigure"
+#: Name of deployment health check method implemented by user.
+HEALTH_CHECK_METHOD = "check_health"
+
+#: Name of deployment reconfiguration method implemented by user.
+RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
@@ -66,4 +76,30 @@ MAX_CACHED_HANDLES = 100
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
-CONTROLLER_MAX_CONCURRENCY = 5000
+CONTROLLER_MAX_CONCURRENCY = 15000
+
+DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
+DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
+DEFAULT_HEALTH_CHECK_PERIOD_S = 10
+DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
+
+#: Number of times in a row that a replica must fail the health check before
+#: being marked unhealthy.
+REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
+
+# Key used to idenfity given json represents a serialized RayServeHandle
+SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
+
+# The time in seconds that the Serve client waits before rechecking deployment state
+CLIENT_POLLING_INTERVAL_S: float = 1
+
+# Handle metric push interval. (This interval will affect the cold start time period)
+HANDLE_METRIC_PUSH_INTERVAL_S = 10
+
+# Timeout for GCS internal KV service
+RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
+
+
+class ServeHandleType(str, Enum):
+    SYNC = "SYNC"
+    ASYNC = "ASYNC"

@@ -1,0 +1,15 @@
+{
+    "stage_0_time": 6.007530212402344,
+    "stage_1_avg_iteration_time": 19.269780373573305,
+    "stage_1_max_iteration_time": 20.231750011444092,
+    "stage_1_min_iteration_time": 18.361438751220703,
+    "stage_1_time": 192.69790053367615,
+    "stage_2_avg_iteration_time": 55.27566561698914,
+    "stage_2_max_iteration_time": 56.53947997093201,
+    "stage_2_min_iteration_time": 53.03127360343933,
+    "stage_2_time": 276.3792636394501,
+    "stage_3_creation_time": 0.06605648994445801,
+    "stage_3_time": 2362.923815011978,
+    "stage_4_spread": 2.715341642450062,
+    "success": 1
+}

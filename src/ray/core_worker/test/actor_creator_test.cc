@@ -16,7 +16,7 @@
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/common/test_util.h"
-#include "mock/ray/gcs/gcs_client.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
 
 namespace ray {
@@ -47,7 +47,7 @@ TEST_F(ActorCreatorTest, IsRegister) {
   auto task_spec = GetTaskSpec(actor_id);
   std::function<void(Status)> cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(task_spec, ::testing::_))
+              AsyncRegisterActor(task_spec, ::testing::_, ::testing::_))
       .WillOnce(
           ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(task_spec, nullptr).ok());
@@ -61,7 +61,7 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   auto task_spec = GetTaskSpec(actor_id);
   std::function<void(Status)> cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(::testing::_, ::testing::_))
+              AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
       .WillRepeatedly(
           ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
   int cnt = 0;
@@ -86,7 +86,8 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler(argv[0]);

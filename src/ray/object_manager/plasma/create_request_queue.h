@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-
+#include "ray/common/file_system_monitor.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
@@ -34,12 +34,14 @@ class CreateRequestQueue {
   using CreateObjectCallback = std::function<PlasmaError(
       bool fallback_allocator, PlasmaObject *result, bool *spilling_required)>;
 
-  CreateRequestQueue(int64_t oom_grace_period_s,
+  CreateRequestQueue(ray::FileSystemMonitor &fs_monitor,
+                     int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc,
                      std::function<int64_t()> get_time,
                      std::function<std::string()> dump_debug_info_callback = nullptr)
-      : oom_grace_period_ns_(oom_grace_period_s * 1e9),
+      : fs_monitor_(fs_monitor),
+        oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),
         get_time_(get_time),
@@ -91,8 +93,10 @@ class CreateRequestQueue {
   /// if there are other requests queued or there is not enough space left in
   /// the object store, this will return an out-of-memory error.
   std::pair<PlasmaObject, PlasmaError> TryRequestImmediately(
-      const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
-      const CreateObjectCallback &create_callback, size_t object_size);
+      const ObjectID &object_id,
+      const std::shared_ptr<ClientInterface> &client,
+      const CreateObjectCallback &create_callback,
+      size_t object_size);
 
   /// Process requests in the queue.
   ///
@@ -115,9 +119,11 @@ class CreateRequestQueue {
 
  private:
   struct CreateRequest {
-    CreateRequest(const ObjectID &object_id, uint64_t request_id,
+    CreateRequest(const ObjectID &object_id,
+                  uint64_t request_id,
                   const std::shared_ptr<ClientInterface> &client,
-                  CreateObjectCallback create_callback, size_t object_size)
+                  CreateObjectCallback create_callback,
+                  size_t object_size)
         : object_id(object_id),
           request_id(request_id),
           client(client),
@@ -149,11 +155,15 @@ class CreateRequestQueue {
   /// Process a single request. Sets the request's error result to the error
   /// returned by the request handler inside. Returns OK if the request can be
   /// finished.
-  Status ProcessRequest(bool fallback_allocator, std::unique_ptr<CreateRequest> &request,
+  Status ProcessRequest(bool fallback_allocator,
+                        std::unique_ptr<CreateRequest> &request,
                         bool *spilling_required);
 
   /// Finish a queued request and remove it from the queue.
   void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);
+
+  /// Monitor the disk utilization.
+  ray::FileSystemMonitor &fs_monitor_;
 
   /// The next request ID to assign, so that the caller can get the results of
   /// a request by retrying. Start at 1 because 0 means "do not retry".

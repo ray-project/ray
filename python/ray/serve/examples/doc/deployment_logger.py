@@ -5,7 +5,7 @@ import requests
 
 ray.init(address="auto")
 
-logger = logging.getLogger("ray")
+logger = logging.getLogger("ray.serve")
 
 
 @serve.deployment

@@ -9,17 +9,14 @@ from sklearn.metrics.pairwise import euclidean_distances
 
 
 class TV_SquaredExp(Kern):
-    """ Time varying squared exponential kernel.
-        For more info see the TV-GP-UCB paper:
-        http://proceedings.mlr.press/v51/bogunovic16.pdf
+    """Time varying squared exponential kernel.
+    For more info see the TV-GP-UCB paper:
+    http://proceedings.mlr.press/v51/bogunovic16.pdf
     """
 
-    def __init__(self,
-                 input_dim,
-                 variance=1.,
-                 lengthscale=1.,
-                 epsilon=0.,
-                 active_dims=None):
+    def __init__(
+        self, input_dim, variance=1.0, lengthscale=1.0, epsilon=0.0, active_dims=None
+    ):
         super().__init__(input_dim, active_dims, "time_se")
         self.variance = Param("variance", variance)
         self.lengthscale = Param("lengthscale", lengthscale)
@@ -35,13 +32,14 @@ class TV_SquaredExp(Kern):
         T1 = X[:, 0].reshape(-1, 1)
         T2 = X2[:, 0].reshape(-1, 1)
         dists = pairwise_distances(T1, T2, "cityblock")
-        timekernel = (1 - self.epsilon)**(0.5 * dists)
+        timekernel = (1 - self.epsilon) ** (0.5 * dists)
 
         X = X[:, 1:]
         X2 = X2[:, 1:]
 
         RBF = self.variance * np.exp(
-            -np.square(euclidean_distances(X, X2)) / self.lengthscale)
+            -np.square(euclidean_distances(X, X2)) / self.lengthscale
+        )
 
         return RBF * timekernel
 
@@ -58,12 +56,12 @@ class TV_SquaredExp(Kern):
         X2 = X2[:, 1:]
         dist2 = np.square(euclidean_distances(X, X2)) / self.lengthscale
 
-        dvar = np.exp(-np.square(
-            (euclidean_distances(X, X2)) / self.lengthscale))
-        dl = -(2 * euclidean_distances(X, X2)**2 * self.variance *
-               np.exp(-dist2)) * self.lengthscale**(-2)
+        dvar = np.exp(-np.square((euclidean_distances(X, X2)) / self.lengthscale))
+        dl = -(
+            2 * euclidean_distances(X, X2) ** 2 * self.variance * np.exp(-dist2)
+        ) * self.lengthscale ** (-2)
         n = pairwise_distances(T1, T2, "cityblock") / 2
-        deps = -n * (1 - self.epsilon)**(n - 1)
+        deps = -n * (1 - self.epsilon) ** (n - 1)
 
         self.variance.gradient = np.sum(dvar * dL_dK)
         self.lengthscale.gradient = np.sum(dl * dL_dK)
@@ -71,30 +69,30 @@ class TV_SquaredExp(Kern):
 
 
 def normalize(data, wrt):
-    """ Normalize data to be in range (0,1), with respect to (wrt) boundaries,
-        which can be specified.
+    """Normalize data to be in range (0,1), with respect to (wrt) boundaries,
+    which can be specified.
     """
     return (data - np.min(wrt, axis=0)) / (
-        np.max(wrt, axis=0) - np.min(wrt, axis=0) + 1e-8)
+        np.max(wrt, axis=0) - np.min(wrt, axis=0) + 1e-8
+    )
 
 
 def standardize(data):
-    """ Standardize to be Gaussian N(0,1). Clip final values.
-    """
+    """Standardize to be Gaussian N(0,1). Clip final values."""
     data = (data - np.mean(data, axis=0)) / (np.std(data, axis=0) + 1e-8)
     return np.clip(data, -2, 2)
 
 
 def UCB(m, m1, x, fixed, kappa=0.5):
-    """ UCB acquisition function. Interesting points to note:
-        1) We concat with the fixed points, because we are not optimizing wrt
-           these. This is the Reward and Time, which we can't change. We want
-           to find the best hyperparameters *given* the reward and time.
-        2) We use m to get the mean and m1 to get the variance. If we already
-           have trials running, then m1 contains this information. This reduces
-           the variance at points currently running, even if we don't have
-           their label.
-           Ref: https://jmlr.org/papers/volume15/desautels14a/desautels14a.pdf
+    """UCB acquisition function. Interesting points to note:
+    1) We concat with the fixed points, because we are not optimizing wrt
+       these. This is the Reward and Time, which we can't change. We want
+       to find the best hyperparameters *given* the reward and time.
+    2) We use m to get the mean and m1 to get the variance. If we already
+       have trials running, then m1 contains this information. This reduces
+       the variance at points currently running, even if we don't have
+       their label.
+       Ref: https://jmlr.org/papers/volume15/desautels14a/desautels14a.pdf
 
     """
 
@@ -103,8 +101,7 @@ def UCB(m, m1, x, fixed, kappa=0.5):
     beta_t = c1 * np.log(c2 * m.X.shape[0])
     kappa = np.sqrt(beta_t)
 
-    xtest = np.concatenate((fixed.reshape(-1, 1), np.array(x).reshape(-1,
-                                                                      1))).T
+    xtest = np.concatenate((fixed.reshape(-1, 1), np.array(x).reshape(-1, 1))).T
 
     try:
         preds = m.predict(xtest)
@@ -122,7 +119,7 @@ def UCB(m, m1, x, fixed, kappa=0.5):
 
 
 def optimize_acq(func, m, m1, fixed, num_f):
-    """ Optimize acquisition function."""
+    """Optimize acquisition function."""
 
     opts = {"maxiter": 200, "maxfun": 200, "disp": False}
 
@@ -140,23 +137,23 @@ def optimize_acq(func, m, m1, fixed, num_f):
             x0,
             bounds=bounds,
             method="L-BFGS-B",
-            options=opts)
+            options=opts,
+        )
 
         val = func(m, m1, res.x, fixed)
         if val > best_value:
             best_value = val
             best_theta = res.x
 
-    return (np.clip(best_theta, 0, 1))
+    return np.clip(best_theta, 0, 1)
 
 
 def select_length(Xraw, yraw, bounds, num_f):
-    """Select the number of datapoints to keep, using cross validation
-    """
+    """Select the number of datapoints to keep, using cross validation"""
     min_len = 200
 
     if Xraw.shape[0] < min_len:
-        return (Xraw.shape[0])
+        return Xraw.shape[0]
     else:
         length = min_len - 10
         scores = []
@@ -167,20 +164,21 @@ def select_length(Xraw, yraw, bounds, num_f):
             X_len = Xraw[-length:, :]
             y_len = yraw[-length:]
             oldpoints = X_len[:, :num_f]
-            old_lims = np.concatenate((np.max(oldpoints, axis=0),
-                                       np.min(oldpoints, axis=0))).reshape(
-                                           2, oldpoints.shape[1])
+            old_lims = np.concatenate(
+                (np.max(oldpoints, axis=0), np.min(oldpoints, axis=0))
+            ).reshape(2, oldpoints.shape[1])
             limits = np.concatenate((old_lims, base_vals), axis=1)
 
             X = normalize(X_len, limits)
             y = standardize(y_len).reshape(y_len.size, 1)
 
             kernel = TV_SquaredExp(
-                input_dim=X.shape[1], variance=1., lengthscale=1., epsilon=0.1)
+                input_dim=X.shape[1], variance=1.0, lengthscale=1.0, epsilon=0.1
+            )
             m = GPy.models.GPRegression(X, y, kernel)
             m.optimize(messages=True)
 
             scores.append(m.log_likelihood())
         idx = np.argmax(scores)
         length = (idx + int((min_len / 10))) * 10
-        return (length)
+        return length

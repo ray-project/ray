@@ -55,9 +55,7 @@ def function_compose(steps: List[List[Callable]]) -> Callable:
         layer_0 = steps[0]
         wf = [ray.workflow.step(f).step(*args, **kw_args) for f in layer_0]
         for layer_i in steps[1:]:
-            new_wf = [
-                ray.workflow.step(f).step(w) for f in layer_i for w in wf
-            ]
+            new_wf = [ray.workflow.step(f).step(w) for f in layer_i for w in wf]
             wf = new_wf
         return finish.step(*wf)
 
@@ -69,17 +67,26 @@ if __name__ == "__main__":
     def add(i: int, v: int):
         return i + v
 
-    pipeline = function_chain([
-        lambda v: add(v, 1), lambda v: add(v, 2), lambda v: add(v, 3),
-        lambda v: add(v, 4)
-    ])
+    pipeline = function_chain(
+        [
+            lambda v: add(v, 1),
+            lambda v: add(v, 2),
+            lambda v: add(v, 3),
+            lambda v: add(v, 4),
+        ]
+    )
     assert pipeline.step(10).run(workflow_id="test") == 20
 
-    pipeline = function_compose([[
-        lambda v: add(v, 1),
-        lambda v: add(v, 2),
-    ], [
-        lambda v: add(v, 3),
-        lambda v: add(v, 4),
-    ]])
+    pipeline = function_compose(
+        [
+            [
+                lambda v: add(v, 1),
+                lambda v: add(v, 2),
+            ],
+            [
+                lambda v: add(v, 3),
+                lambda v: add(v, 4),
+            ],
+        ]
+    )
     assert pipeline.step(10).run(workflow_id="compose") == (14, 15, 15, 16)

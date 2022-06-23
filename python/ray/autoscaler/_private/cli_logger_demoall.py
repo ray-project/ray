@@ -4,12 +4,11 @@
 # function for demonstration purposes. Primarily useful for tuning color and
 # other formatting.
 
-from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 
 cli_logger.configure(log_style="auto", verbosity=999)
 
-cli_logger.print(
-    cf.bold("Bold ") + cf.italic("Italic ") + cf.underlined("Underlined"))
+cli_logger.print(cf.bold("Bold ") + cf.italic("Italic ") + cf.underlined("Underlined"))
 cli_logger.labeled_value("Label", "value")
 cli_logger.print("List: {}", cli_logger.render_list([1, 2, 3]))
 cli_logger.newline()

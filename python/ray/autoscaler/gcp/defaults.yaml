@@ -139,7 +139,7 @@ setup_commands:
     - >-
         (stat /opt/conda/bin/ &> /dev/null &&
         echo 'export PATH="/opt/conda/bin:$PATH"' >> ~/.bashrc) || true
-    - which ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+    - which ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 
 # Custom commands that will be run on the head node after common setup.

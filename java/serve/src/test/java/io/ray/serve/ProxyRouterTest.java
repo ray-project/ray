@@ -15,8 +15,9 @@ public class ProxyRouterTest {
 
   @Test
   public void test() {
-
     boolean inited = Ray.isInitialized();
+    String previous_namespace = System.getProperty("ray.job.namespace");
+    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
     Ray.init();
 
     try {
@@ -40,6 +41,9 @@ public class ProxyRouterTest {
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null);
+      Serve.getReplicaContext()
+          .setRayServeConfig(
+              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();
@@ -60,6 +64,11 @@ public class ProxyRouterTest {
     } finally {
       if (!inited) {
         Ray.shutdown();
+      }
+      if (previous_namespace == null) {
+        System.clearProperty("ray.job.namespace");
+      } else {
+        System.setProperty("ray.job.namespace", previous_namespace);
       }
       Serve.setInternalReplicaContext(null);
       Serve.setGlobalClient(null);

@@ -1,15 +1,14 @@
 import unittest
 
 import ray
-import ray.rllib.agents.impala as impala
-import ray.rllib.agents.pg as pg
+import ray.rllib.algorithms.impala as impala
+import ray.rllib.algorithms.pg as pg
 from ray.rllib.utils.error import EnvError
 from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestErrors(unittest.TestCase):
-    """Tests various failure-modes, making sure we produce meaningful errmsgs.
-    """
+    """Tests various failure-modes, making sure we produce meaningful errmsgs."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -33,12 +32,11 @@ class TestErrors(unittest.TestCase):
                 RuntimeError,
                 # (?s): "dot matches all" (also newlines).
                 "(?s)Found 0 GPUs on your machine.+To change the config",
-                lambda: impala.ImpalaTrainer(config=config, env=env),
+                lambda: impala.Impala(config=config, env=env),
             )
 
     def test_bad_envs(self):
-        """Tests different "bad env" errors.
-        """
+        """Tests different "bad env" errors."""
         config = pg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0
 
@@ -48,7 +46,7 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 EnvError,
                 f"The env string you provided \\('{env}'\\) is",
-                lambda: pg.PGTrainer(config=config, env=env),
+                lambda: pg.PG(config=config, env=env),
             )
 
         # Malformed gym env string (must have v\d at end).
@@ -57,7 +55,7 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 EnvError,
                 f"The env string you provided \\('{env}'\\) is",
-                lambda: pg.PGTrainer(config=config, env=env),
+                lambda: pg.PG(config=config, env=env),
             )
 
         # Non-existing class in a full-class-path.
@@ -66,7 +64,7 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 EnvError,
                 f"The env string you provided \\('{env}'\\) is",
-                lambda: pg.PGTrainer(config=config, env=env),
+                lambda: pg.PG(config=config, env=env),
             )
 
         # Non-existing module inside a full-class-path.
@@ -75,11 +73,12 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 EnvError,
                 f"The env string you provided \\('{env}'\\) is",
-                lambda: pg.PGTrainer(config=config, env=env),
+                lambda: pg.PG(config=config, env=env),
             )
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

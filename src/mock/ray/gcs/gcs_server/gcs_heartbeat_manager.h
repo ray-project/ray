@@ -17,13 +17,16 @@ namespace gcs {
 
 class MockGcsHeartbeatManager : public GcsHeartbeatManager {
  public:
-  MOCK_METHOD(void, HandleReportHeartbeat,
+  MOCK_METHOD(void,
+              HandleReportHeartbeat,
               (const rpc::ReportHeartbeatRequest &request,
                rpc::ReportHeartbeatReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(void, HandleCheckAlive,
-              (const rpc::CheckAliveRequest &request, rpc::CheckAliveReply *reply,
+  MOCK_METHOD(void,
+              HandleCheckAlive,
+              (const rpc::CheckAliveRequest &request,
+               rpc::CheckAliveReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
 };

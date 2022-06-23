@@ -57,6 +57,7 @@ python/.eggs
 *.so
 *.dylib
 *.dll
+python/ray/_raylet.pyd
 
 # Incremental linking files
 *.ilk
@@ -163,23 +164,15 @@ java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
 
+dependency-reduced-pom.xml
+
 # Cpp
 cpp/example/thirdparty/
 
-# streaming/python
-streaming/python/generated/
-streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated/
-streaming/build/java
 .clwb
-streaming/**/.settings
-streaming/java/**/target
-streaming/java/**/.classpath
-streaming/java/**/.project
-streaming/java/**/*.log
 
 # pom.xml files generated from pom_template.xml
 java/**/pom.xml
-streaming/java/**/pom.xml
 
 # python virtual env
 venv
@@ -214,3 +207,17 @@ test_state.json
 
 # workflow storage
 workflow_data/
+
+# vscode java extention generated
+.factorypath
+
+# Jupyter Notebooks
+**/.ipynb_checkpoints/
+
+### Added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor
+# The external link: Differs on Windows vs macOS/Linux, so we can't check it in. The pattern needs to not have a trailing / because it's a symlink on macOS/Linux.
+/external
+# Compiled output -> don't check in
+/compile_commands.json
+# Directory where clangd puts its indexing work
+/.cache/

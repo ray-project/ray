@@ -5,7 +5,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
-import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
@@ -15,8 +14,8 @@ import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.ConcurrencyGroupImpl;
-import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
@@ -60,7 +59,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private final Map<ObjectId, Set<TaskSpec>> waitingTasks = new HashMap<>();
   private final Object taskAndObjectLock = new Object();
-  private final RayRuntimeInternal runtime;
+  private final AbstractRayRuntime runtime;
   private final TaskExecutor taskExecutor;
   private final LocalModeObjectStore objectStore;
 
@@ -170,7 +169,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   public LocalModeTaskSubmitter(
-      RayRuntimeInternal runtime, TaskExecutor taskExecutor, LocalModeObjectStore objectStore) {
+      AbstractRayRuntime runtime, TaskExecutor taskExecutor, LocalModeObjectStore objectStore) {
     this.runtime = runtime;
     this.taskExecutor = taskExecutor;
     this.objectStore = objectStore;
@@ -286,9 +285,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     if (options != null) {
       if (options.group != null) {
         PlacementGroupImpl group = (PlacementGroupImpl) options.group;
+        // bundleIndex == -1 indicates using any available bundle.
         Preconditions.checkArgument(
-            options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
-            String.format("Bundle index %s is invalid", options.bundleIndex));
+            options.bundleIndex == -1
+                || options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
+            String.format(
+                "Bundle index %s is invalid, the correct bundle index should be "
+                    + "either in the range of 0 to the number of bundles "
+                    + "or -1 which means put the task to any available bundles.",
+                options.bundleIndex));
       }
     }
 
@@ -296,7 +301,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     ActorCreationTaskSpec.Builder actorCreationTaskSpecBuilder =
         ActorCreationTaskSpec.newBuilder()
             .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
-            .setMaxConcurrency(options.maxConcurrency);
+            .setMaxConcurrency(options.maxConcurrency)
+            .setMaxPendingCalls(options.maxPendingCalls);
     appendConcurrencyGroupsBuilder(actorCreationTaskSpecBuilder, options);
     TaskSpec taskSpec =
         getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
@@ -308,13 +314,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
     actorHandles.put(actorId, actorHandle.copy());
     if (StringUtils.isNotBlank(options.name)) {
-      String fullName =
-          options.global
-              ? options.name
-              : String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), options.name);
       Preconditions.checkArgument(
-          !namedActors.containsKey(fullName), String.format("Actor of name %s exists", fullName));
-      namedActors.put(fullName, actorHandle);
+          !namedActors.containsKey(options.name),
+          String.format("Actor of name %s exists", options.name));
+      namedActors.put(options.name, actorHandle);
     }
     return actorHandle;
   }
@@ -381,10 +384,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     return actorHandles.get(actorId).copy();
   }
 
-  public Optional<BaseActorHandle> getActor(String name, boolean global) {
-    String fullName =
-        global ? name : String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
-    ActorHandle actorHandle = namedActors.get(fullName);
+  public Optional<BaseActorHandle> getActor(String name) {
+    ActorHandle actorHandle = namedActors.get(name);
     if (null == actorHandle) {
       return Optional.empty();
     }
@@ -495,7 +496,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                         ? objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
                         : arg.value)
             .collect(Collectors.toList());
-    runtime.setIsContextSet(true);
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
 
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentWorkerId(workerId);
@@ -512,9 +512,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     // Set this flag to true is necessary because at the end of `taskExecutor.execute()`,
     // this flag will be set to false. And `runtime.getWorkerContext()` requires it to be
     // true.
-    runtime.setIsContextSet(true);
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(null);
-    runtime.setIsContextSet(false);
     List<ObjectId> returnIds = getReturnIds(taskSpec);
     for (int i = 0; i < returnIds.size(); i++) {
       NativeRayObject putObject;

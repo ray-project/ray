@@ -190,16 +190,16 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
 
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
-  RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir() + ray::GetDirSep());
+  RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir());
   PrintLog();
   RayLog::ShutDownRayLog();
 }
 
 // This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
-  RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR,
-                      ray::GetUserTempDir() + ray::GetDirSep());
-  int rounds = 100000;
+  RayLog::StartRayLog(
+      "/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR, ray::GetUserTempDir());
+  int rounds = 10;
 
   int64_t start_time = current_time_ms();
   for (int i = 0; i < rounds; ++i) {
@@ -228,6 +228,31 @@ TEST(LogPerfTest, PerfTest) {
   std::cout << "Testing RAY_CHECK(true) for " << rounds << " rounds takes " << elapsed
             << " ms." << std::endl;
   RayLog::ShutDownRayLog();
+}
+
+TEST(PrintLogTest, TestCheckOp) {
+  int i = 1;
+  RAY_CHECK_EQ(i, 1);
+  ASSERT_DEATH(RAY_CHECK_EQ(i, 2), "1 vs 2");
+
+  RAY_CHECK_NE(i, 0);
+  ASSERT_DEATH(RAY_CHECK_NE(i, 1), "1 vs 1");
+
+  RAY_CHECK_LE(i, 1);
+  ASSERT_DEATH(RAY_CHECK_LE(i, 0), "1 vs 0");
+
+  RAY_CHECK_LT(i, 2);
+  ASSERT_DEATH(RAY_CHECK_LT(i, 1), "1 vs 1");
+
+  RAY_CHECK_GE(i, 1);
+  ASSERT_DEATH(RAY_CHECK_GE(i, 2), "1 vs 2");
+
+  RAY_CHECK_GT(i, 0);
+  ASSERT_DEATH(RAY_CHECK_GT(i, 1), "1 vs 1");
+
+  int j = 0;
+  RAY_CHECK_NE(i, j);
+  ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
 }
 
 std::string TestFunctionLevel0() {

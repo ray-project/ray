@@ -15,17 +15,17 @@
 #include <ray/api.h>
 
 #include "config_internal.h"
+#include "ray/core_worker/core_worker.h"
 #include "runtime/abstract_ray_runtime.h"
 
 namespace ray {
 
-static bool is_init_;
+static bool is_init_ = false;
 
 void Init(ray::RayConfig &config, int argc, char **argv) {
   if (!IsInitialized()) {
     internal::ConfigInternal::Instance().Init(config, argc, argv);
     auto runtime = internal::AbstractRayRuntime::DoInit();
-    internal::RayRuntimeHolder::Instance().Init(runtime);
     is_init_ = true;
   }
 }
@@ -44,5 +44,7 @@ void Shutdown() {
   internal::AbstractRayRuntime::DoShutdown();
   is_init_ = false;
 }
+
+void RunTaskExecutionLoop() { ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop(); }
 
 }  // namespace ray

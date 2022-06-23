@@ -31,7 +31,7 @@ class LookAndPush(gym.Env):
 
         if self._state == 4:
             if action and self._case:
-                return self._state, 10., True, {}
+                return self._state, 10.0, True, {}
             else:
                 return self._state, -10, True, {}
         else:
@@ -49,8 +49,7 @@ class LookAndPush(gym.Env):
 class OneHot(gym.Wrapper):
     def __init__(self, env):
         super(OneHot, self).__init__(env)
-        self.observation_space = gym.spaces.Box(0., 1.,
-                                                (env.observation_space.n, ))
+        self.observation_space = gym.spaces.Box(0.0, 1.0, (env.observation_space.n,))
 
     def reset(self, **kwargs):
         obs = self.env.reset(**kwargs)

@@ -7,14 +7,12 @@ import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
-from ray._private.test_utils import (wait_for_condition,
-                                     run_string_as_driver_nonblocking)
+from ray._private.test_utils import wait_for_condition, run_string_as_driver_nonblocking
 
 
 def get_all_ray_worker_processes():
     processes = [
-        p.info["cmdline"]
-        for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])
+        p.info["cmdline"] for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])
     ]
 
     result = []
@@ -24,14 +22,21 @@ def get_all_ray_worker_processes():
     return result
 
 
+@pytest.fixture
+def short_gcs_publish_timeout(monkeypatch):
+    monkeypatch.setenv("RAY_MAX_GCS_PUBLISH_RETRIES", "3")
+    yield
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_ray_shutdown(shutdown_only):
+def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is done."""
     ray.init()
 
     @ray.remote
     def f():
         import time
+
         time.sleep(10)
 
     num_cpus = int(ray.available_resources()["CPU"])
@@ -44,11 +49,11 @@ def test_ray_shutdown(shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_driver_dead(shutdown_only):
+def test_driver_dead(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is killed."""
     driver = """
 import ray
-ray.init(_system_config={"ping_gcs_rpc_server_max_retries": 1})
+ray.init(_system_config={"gcs_rpc_server_reconnect_timeout_s": 1})
 @ray.remote
 def f():
     import time
@@ -73,12 +78,13 @@ tasks = [f.remote() for _ in range(num_cpus)]
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_node_killed(ray_start_cluster):
+def test_node_killed(short_gcs_publish_timeout, ray_start_cluster):
     """Make sure all ray workers when nodes are dead."""
     cluster = ray_start_cluster
     # head node.
     cluster.add_node(
-        num_cpus=0, _system_config={"ping_gcs_rpc_server_max_retries": 1})
+        num_cpus=0, _system_config={"gcs_rpc_server_reconnect_timeout_s": 1}
+    )
     ray.init(address="auto")
 
     num_worker_nodes = 2
@@ -90,6 +96,7 @@ def test_node_killed(ray_start_cluster):
     @ray.remote
     def f():
         import time
+
         time.sleep(100)
 
     num_cpus = int(ray.available_resources()["CPU"])
@@ -103,12 +110,13 @@ def test_node_killed(ray_start_cluster):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_head_node_down(ray_start_cluster):
+def test_head_node_down(short_gcs_publish_timeout, ray_start_cluster):
     """Make sure all ray workers when head node is dead."""
     cluster = ray_start_cluster
     # head node.
     head = cluster.add_node(
-        num_cpus=2, _system_config={"ping_gcs_rpc_server_max_retries": 1})
+        num_cpus=2, _system_config={"gcs_rpc_server_reconnect_timeout_s": 1}
+    )
 
     # worker nodes.
     num_worker_nodes = 2
@@ -129,7 +137,9 @@ num_cpus = int(ray.available_resources()["CPU"])
 tasks = [f.remote() for _ in range(num_cpus)]
 import time
 time.sleep(100)
-""".format(cluster.address)
+""".format(
+        cluster.address
+    )
 
     p = run_string_as_driver_nonblocking(driver)
     # Make sure the driver is running.
@@ -143,4 +153,9 @@ time.sleep(100)
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
