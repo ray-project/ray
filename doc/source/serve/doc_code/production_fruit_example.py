@@ -130,7 +130,7 @@ def check_fruit_deployment_graph_updates():
 
 
 # Test behavior from this documentation example
-serve.start()
+serve.start(detached=True)
 app = build(deployment_graph)
 for deployment in app.deployments.values():
     deployment.set_options(ray_actor_options={"num_cpus": 0.1})
@@ -139,6 +139,7 @@ check_fruit_deployment_graph()
 MangoStand.options(name="MangoStand", user_config={"price": 0}).deploy()
 OrangeStand.options(user_config={"price": 0}).deploy()
 PearStand.options(user_config={"price": 0}).deploy()
+check_fruit_deployment_graph_updates()
 print("Example ran successfully from the file.")
 serve.shutdown()
 
@@ -151,7 +152,7 @@ except requests.exceptions.ConnectionError:
 print("Deployments have been torn down.")
 
 # Check for regression in remote repository
-client = serve.start()
+client = serve.start(detached=True)
 config1 = {
     "import_path": "fruit.deployment_graph",
     "runtime_env": {
@@ -169,10 +170,9 @@ config1 = {
 }
 client.deploy_app(ServeApplicationSchema.parse_obj(config1))
 wait_for_condition(
-    lambda: client.get_serve_status().app_status.deployment_timestamp > 0
+    lambda: requests.post("http://localhost:8000/", json=["MANGO", 1]).json() == 3,
+    timeout=15,
 )
-wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
-dt1 = client.get_serve_status().app_status.deployment_timestamp
 check_fruit_deployment_graph()
 config2 = {
     "import_path": "fruit.deployment_graph",
@@ -203,10 +203,9 @@ config2 = {
 }
 client.deploy_app(ServeApplicationSchema.parse_obj(config2))
 wait_for_condition(
-    lambda: client.get_serve_status().app_status.deployment_timestamp > dt1
+    lambda: requests.post("http://localhost:8000/", json=["MANGO", 1]).json() == 0,
+    timeout=15,
 )
-print(client.get_serve_status().app_status.deployment_timestamp > dt1)
-print(client.get_serve_status().app_status.status)
-wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+check_fruit_deployment_graph_updates()
 serve.shutdown()
 print("Example ran successfully from the remote repository.")
