@@ -110,7 +110,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.columns.tolist()
 
     @staticmethod
-    def _build_tensor_row(row: PandasRow) -> np.ndarray:
+    def _unwrap_single_column_row(row: PandasRow) -> np.ndarray:
+        # TODO(ekl) handle the non-numpy case (DO NOT MERGE)
         # Getting an item in a Pandas tensor column returns a TensorArrayElement, which
         # we have to convert to an ndarray.
         return row[VALUE_COL_NAME].iloc[0].to_numpy()

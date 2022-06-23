@@ -16,6 +16,7 @@ from typing import (
 
 import numpy as np
 
+import ray
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     _concatenate_extension_column,
@@ -108,6 +109,9 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
                     from ray.data.extensions.tensor_extension import ArrowTensorArray
 
                     col = ArrowTensorArray.from_numpy(col)
+                else:
+                    # TODO(ekl) we should use aPython object extension type here instead.
+                    col = [ray.cloudpickle.dumps(c) for c in col]
                 columns[col_name] = col
         return pyarrow.Table.from_pydict(columns)
 
@@ -169,11 +173,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return pa.Table.from_pydict(new_batch)
 
     @staticmethod
-    def _build_tensor_row(row: ArrowRow) -> np.ndarray:
+    def _unwrap_single_column_row(row: ArrowRow) -> np.ndarray:
         value = row[VALUE_COL_NAME][0]
         # Getting an item in a tensor column automatically does a NumPy conversion.
         if not isinstance(value, np.ndarray):
             value = value.as_py()
+            if isinstance(value, bytes):
+                value = ray.cloudpickle.loads(value) 
         return value
 
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":

@@ -110,18 +110,18 @@ class TableBlockAccessor(BlockAccessor):
 
     def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
         row = self.slice(index, index + 1, copy=copy)
-        if self.is_tensor_wrapper():
-            row = self._build_tensor_row(row)
+        if self.is_single_column_row():
+            row = self._unwrap_single_column_row(row)
         else:
             row = self.ROW_TYPE(row)
         return row
 
     @staticmethod
-    def _build_tensor_row(row: TableRow) -> np.ndarray:
+    def _unwrap_single_column_row(row: TableRow) -> np.ndarray:
         raise NotImplementedError
 
     def to_native(self) -> Block:
-        if self.is_tensor_wrapper():
+        if self.is_single_column_row():
             native = self.to_numpy()
         else:
             # Always promote Arrow blocks to pandas for consistency, since
@@ -135,7 +135,7 @@ class TableBlockAccessor(BlockAccessor):
     def to_block(self) -> Block:
         return self._table
 
-    def is_tensor_wrapper(self) -> bool:
+    def is_single_column_row(self) -> bool:
         return self.column_names() == [VALUE_COL_NAME]
 
     def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
