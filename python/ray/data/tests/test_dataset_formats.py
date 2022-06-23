@@ -547,9 +547,15 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
-    # Expect directory path expansion to fail.
-    with pytest.raises(OSError):
+    # Expect directory path expansion to fail due to default format-based path
+    # filtering: The filter will not match any of the files.
+    with pytest.raises(ValueError):
         ray.data.read_parquet_bulk(data_path, filesystem=fs)
+
+    # Expect directory path expansion to fail with OS error if default format-based path
+    # filtering is turned off.
+    with pytest.raises(OSError):
+        ray.data.read_parquet_bulk(data_path, filesystem=fs, partition_filter=None)
 
     # Expect individual file paths to be processed successfully.
     paths = [path1, path2]
@@ -576,6 +582,27 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
         "schema={one: int64, two: string})"
     ), ds
     assert ds._plan.execute()._num_computed() == 2
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+    # Add a file with a non-matching file extension. This file should be ignored.
+    txt_path = os.path.join(data_path, "foo.txt")
+    txt_df = pd.DataFrame({"foobar": [4, 5, 6]})
+    txt_table = pa.Table.from_pandas(txt_df)
+    pq.write_table(txt_table, _unwrap_protocol(txt_path), filesystem=fs)
+
+    ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
+    assert ds.num_blocks() == 2
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -1114,6 +1141,19 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         "schema={__item__: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
+
+    # Add a file with a non-matching file extension. This file should be ignored.
+    with open(os.path.join(path, "foo.txt"), "w") as f:
+        f.write("foobar")
+
+    ds = ray.data.read_numpy(path)
+    assert ds.num_blocks() == 1
+    assert ds.count() == 10
+    assert str(ds) == (
+        "Dataset(num_blocks=1, num_rows=10, "
+        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+    )
+    assert [v.item() for v in ds.take(2)] == [0, 1]
 
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
@@ -1657,6 +1697,38 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     else:
         fs.delete_dir(_unwrap_protocol(dir_path))
 
+    # Directory, two files and non-json file (test default extension-based filtering).
+    path = os.path.join(data_path, "test_json_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(path, "data0.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(path, "data1.json")
+    df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
+
+    # Add a file with a non-matching file extension. This file should be ignored.
+    df_txt = pd.DataFrame({"foobar": [1, 2, 3]})
+    df_txt.to_json(
+        os.path.join(path, "foo.txt"),
+        orient="records",
+        lines=True,
+        storage_options=storage_options,
+    )
+
+    ds = ray.data.read_json(path, filesystem=fs)
+    assert ds.num_blocks() == 2
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas()
+    assert df.equals(dsdf)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
 
 def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     # Single file.
@@ -2122,6 +2194,36 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(dir_path)
     else:
         fs.delete_dir(_unwrap_protocol(dir_path))
+
+    # Directory, two files and non-csv file (test extension-based path filtering).
+    path = os.path.join(data_path, "test_csv_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(path, "data0.csv")
+    df1.to_csv(path1, index=False, storage_options=storage_options)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(path, "data1.csv")
+    df2.to_csv(path2, index=False, storage_options=storage_options)
+
+    # Add a file with a non-matching file extension. This file should be ignored.
+    df_txt = pd.DataFrame({"foobar": [1, 2, 3]})
+    df_txt.to_json(
+        os.path.join(path, "foo.txt"),
+        storage_options=storage_options,
+    )
+
+    ds = ray.data.read_csv(path, filesystem=fs)
+    assert ds.num_blocks() == 2
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas()
+    assert df.equals(dsdf)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
 
 
 @pytest.mark.parametrize(

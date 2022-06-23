@@ -1029,7 +1029,7 @@ class Dataset(Generic[T]):
 
         def build_node_id_by_actor(actors: List[Any]) -> Dict[Any, str]:
             """Build a map from a actor to its node_id."""
-            actors_state = ray.state.actors()
+            actors_state = ray._private.state.actors()
             return {
                 actor: actors_state.get(actor._actor_id.hex(), {})
                 .get("Address", {})
@@ -3209,7 +3209,7 @@ class Dataset(Generic[T]):
             state["_last_export_session_and_job"] = None
             return reconstructor, args, state
 
-        context = ray.worker.global_worker.get_serialization_context()
+        context = ray._private.worker.global_worker.get_serialization_context()
         try:
             context._register_cloudpickle_reducer(
                 ray.remote_function.RemoteFunction, _reduce

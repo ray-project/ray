@@ -1,13 +1,17 @@
-from ray.util.client import ray
-from ray.job_config import JobConfig
-from ray._private.client_mode_hook import _set_client_hook_status
-from ray._private.client_mode_hook import _explicitly_enable_client_mode
-
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import grpc
 
+from ray._private.client_mode_hook import (
+    _explicitly_enable_client_mode,
+    _set_client_hook_status,
+)
+from ray.job_config import JobConfig
+from ray.util.annotations import Deprecated
+from ray.util.client import ray
 
+
+@Deprecated
 def connect(
     conn_str: str,
     secure: bool = False,
@@ -47,6 +51,7 @@ def connect(
     return conn
 
 
+@Deprecated
 def disconnect():
     """Disconnects from server; is idempotent."""
     return ray.disconnect()
