@@ -253,7 +253,6 @@ class ModelWrapper(SimpleSchemaIngress):
         checkpoint: Union[Checkpoint, str],
         predictor_cls: Union[str, Type["Predictor"]],
     ) -> Type["Predictor"]:
-
         """Returns a new Predictor from Checkpoint"""
         return await predictor_cls.from_checkpoint(checkpoint, predictor_cls)
 
