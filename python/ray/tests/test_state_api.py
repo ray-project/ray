@@ -10,7 +10,7 @@ from click.testing import CliRunner
 
 import ray
 import ray.dashboard.consts as dashboard_consts
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
 from ray.core.generated.common_pb2 import (
@@ -20,6 +20,7 @@ from ray.core.generated.common_pb2 import (
     TaskInfoEntry,
     TaskStatus,
     WorkerType,
+    TaskType,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -105,13 +106,13 @@ def verify_schema(state, result_dict: dict):
         assert k in state_fields_columns
 
 
-def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE):
+def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
     return ActorTableData(
         actor_id=id,
         state=state,
         name="abc",
         pid=1234,
-        class_name="class",
+        class_name=class_name,
     )
 
 
@@ -147,35 +148,61 @@ def generate_worker_data(id, pid=1234):
     )
 
 
-def generate_task_data(id, name):
+def generate_task_entry(
+    id,
+    name="class",
+    func_or_class="class",
+    state=TaskStatus.SCHEDULED,
+    type=TaskType.NORMAL_TASK,
+):
+    return TaskInfoEntry(
+        task_id=id,
+        name=name,
+        func_or_class_name=func_or_class,
+        scheduling_state=state,
+        type=type,
+    )
+
+
+def generate_task_data(
+    id, name="class", func_or_class="class", state=TaskStatus.SCHEDULED
+):
     return GetTasksInfoReply(
         owned_task_info_entries=[
-            TaskInfoEntry(
-                task_id=id,
-                name=name,
-                func_or_class_name="class",
-                scheduling_state=TaskStatus.SCHEDULED,
+            generate_task_entry(
+                id=id, name=name, func_or_class=func_or_class, state=state
             )
         ]
     )
 
 
-def generate_object_info(obj_id):
+def generate_object_info(
+    obj_id,
+    size_bytes=1,
+    callsite="main.py",
+    task_state=TaskStatus.SCHEDULED,
+    local_ref_count=1,
+    attempt_number=1,
+    pid=1234,
+    ip="1234",
+    worker_type=WorkerType.DRIVER,
+    pinned_in_memory=True,
+):
     return CoreWorkerStats(
-        pid=1234,
-        worker_type=WorkerType.DRIVER,
-        ip_address="1234",
+        pid=pid,
+        worker_type=worker_type,
+        ip_address=ip,
         object_refs=[
             ObjectRefInfo(
                 object_id=obj_id,
-                call_site="",
-                object_size=1,
-                local_ref_count=1,
+                call_site=callsite,
+                object_size=size_bytes,
+                local_ref_count=local_ref_count,
                 submitted_task_ref_count=1,
                 contained_in_owned=[],
-                pinned_in_memory=True,
-                task_status=TaskStatus.SCHEDULED,
-                attempt_number=1,
+                pinned_in_memory=pinned_in_memory,
+                task_status=task_state,
+                attempt_number=attempt_number,
             )
         ],
     )
@@ -766,7 +793,7 @@ async def test_state_data_source_client(ray_start_cluster):
     Test job
     """
     job_client = JobSubmissionClient(
-        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
     job_id = job_client.submit_job(  # noqa
         # Entrypoint shell command to execute
@@ -903,7 +930,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     runner = CliRunner()
 
     client = JobSubmissionClient(
-        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
 
     @ray.remote
@@ -1017,7 +1044,7 @@ def test_list_nodes(shutdown_only):
 def test_list_jobs(shutdown_only):
     ray.init()
     client = JobSubmissionClient(
-        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
     job_id = client.submit_job(  # noqa
         # Entrypoint shell command to execute
@@ -1271,7 +1298,7 @@ def test_network_failure(shutdown_only):
     wait_for_condition(lambda: len(list_tasks()) == 4)
 
     # Kill raylet so that list_tasks will have network error on querying raylets.
-    ray.worker._global_node.kill_raylet()
+    ray._private.worker._global_node.kill_raylet()
 
     with pytest.raises(RayStateApiException):
         list_tasks(_explain=True)

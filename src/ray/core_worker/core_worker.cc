@@ -1501,17 +1501,6 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   for (const auto &uri : runtime_env->uris().py_modules_uris()) {
     result.emplace_back(uri);
   }
-  if (!runtime_env->uris().conda_uri().empty()) {
-    const auto &uri = runtime_env->uris().conda_uri();
-    result.emplace_back(uri);
-  }
-  if (!runtime_env->uris().pip_uri().empty()) {
-    const auto &uri = runtime_env->uris().pip_uri();
-    result.emplace_back(uri);
-  }
-  for (const auto &uri : runtime_env->uris().plugin_uris()) {
-    result.emplace_back(uri);
-  }
   return result;
 }
 

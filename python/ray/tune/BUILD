@@ -128,6 +128,15 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_F"],
 )
 
+
+py_test(
+    name = "test_legacy_import",
+    size = "small",
+    srcs = ["tests/test_legacy_import.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_L"],
+)
+
 py_test(
     name = "test_integration_comet",
     size = "small",
