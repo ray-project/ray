@@ -228,7 +228,10 @@ class _WandbLoggingProcess(Process):
     def run(self):
         # Since we're running in a separate process already, use threads.
         os.environ["WANDB_START_METHOD"] = "thread"
-        wandb.init(*self.args, **self.kwargs)
+        run = wandb.init(*self.args, **self.kwargs)
+        
+        group_url = f"https://wandb.ai/{wandb.run.entity}/{wandb.run.project}/groups/{wandb.run.group}"
+        # TODO send this to jobs endpoint
 
         while True:
             item_type, item_content = self.queue.get()
