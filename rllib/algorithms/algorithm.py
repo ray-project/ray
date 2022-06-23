@@ -790,9 +790,7 @@ class Algorithm(Trainable):
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
-                            _agent_steps
-                            if self._by_agent_steps
-                            else _env_steps
+                            _agent_steps if self._by_agent_steps else _env_steps
                         )
 
                     agent_steps_this_iter += _agent_steps

@@ -529,7 +529,13 @@ class ApexDQN(DQN):
                 ):
                     remote_sampler_worker.set_weights.remote(
                         self.curr_learner_weights,
-                        {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED]},
+                        {
+                            "timestep": self._counters[
+                                NUM_AGENT_STEPS_TRAINED
+                                if self._by_agent_steps
+                                else NUM_ENV_STEPS_TRAINED
+                            ]
+                        },
                     )
                     self.steps_since_update[remote_sampler_worker] = 0
                     num_workers_updated += 1
@@ -639,7 +645,11 @@ class ApexDQN(DQN):
                     lambda p, pid: pid in to_update and p.update_target()
                 )
             self._counters[NUM_TARGET_UPDATES] += 1
-            self._counters[LAST_TARGET_UPDATE_TS] = self._counters[NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED]
+            self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
+                NUM_AGENT_STEPS_TRAINED
+                if self._by_agent_steps
+                else NUM_ENV_STEPS_TRAINED
+            ]
 
     @override(Algorithm)
     def on_worker_failures(
