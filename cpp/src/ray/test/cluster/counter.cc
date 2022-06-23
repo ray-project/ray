@@ -95,6 +95,7 @@ RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
            &Counter::CheckRestartInActorCreationTask,
            &Counter::CheckRestartInActorTask,
            &Counter::GetVal,
-           &Counter::GetIntVal);
+           &Counter::GetIntVal,
+           &Counter::Initialized);
 
 RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);
