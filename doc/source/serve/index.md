@@ -182,6 +182,43 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         :type: ref
         :text: Serve Examples
         :classes: btn-outline-info btn-block
+    ---
+
+    **Serve FAQ**
+    ^^^
+
+    Find answers to commonly asked questions in our detailed FAQ.
+
+    +++
+    .. link-button:: serve-faq
+        :type: ref
+        :text: Ray Serve FAQ
+        :classes: btn-outline-info btn-block
+    ---
+
+    **API**
+    ^^^
+
+    Get more in-depth information about the Ray Serve API.
+
+    +++
+    .. link-button:: serve-api
+        :type: ref
+        :text: Read the API Reference
+        :classes: btn-outline-info btn-block
+
+    ---
+
+    **Serve Architecture**
+    ^^^
+
+    Understand how each component in Ray Serve works.
+
+    +++
+    .. link-button:: serve-architecture
+        :type: ref
+        :text: Understand Serve Architecture
+        :classes: btn-outline-info btn-block
 ```
 
 For more, see the following blog posts about Ray Serve:
