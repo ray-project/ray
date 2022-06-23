@@ -331,6 +331,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
+      --test_env=PARALLEL_CI=1
       python/ray/tests/...
 - label: ":redis: (External Redis) (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
