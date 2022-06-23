@@ -164,7 +164,9 @@ class TunerInternal:
             sync_config=self._run_config.sync_config,
             stop=self._run_config.stop,
             max_failures=(
-                self._run_config.failure.max_failures if self._run_config.failure else 0
+                self._run_config.failure_config.max_failures
+                if self._run_config.failure_config
+                else 0
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
@@ -184,7 +186,9 @@ class TunerInternal:
             sync_config=self._run_config.sync_config,
             stop=self._run_config.stop,
             max_failures=(
-                self._run_config.failure.max_failures if self._run_config.failure else 0
+                self._run_config.failure_config.max_failures
+                if self._run_config.failure_config
+                else 0
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,

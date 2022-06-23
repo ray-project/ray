@@ -9,10 +9,10 @@ from typing import Callable
 
 import ray
 from ray.exceptions import RayActorError
+from ray.serve.client import ServeControllerClient
 from ray.serve.common import ReplicaTag
 from ray.serve.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.serve.client import ServeControllerClient
 
 logger = logging.getLogger(__file__)
 
@@ -92,8 +92,8 @@ def _connect() -> ServeControllerClient:
         RayServeException: if there is no running Serve controller actor.
     """
 
-    # Initialize Ray if needed.
-    ray.worker.global_worker.filter_logs_by_job = False
+    # Initialize ray if needed.
+    ray._private.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 

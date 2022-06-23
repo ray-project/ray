@@ -59,6 +59,7 @@ class DatasetWriter(OutputWriter):
         self.compress_columns = compress_columns
 
         self.samples = []
+        self.curr_count = 0
 
     @override(OutputWriter)
     def write(self, sample_batch: SampleBatchType):
@@ -67,10 +68,12 @@ class DatasetWriter(OutputWriter):
         # Make sure columns like obs are compressed and writable.
         d = _to_json_dict(sample_batch, self.compress_columns)
         self.samples.append(d)
+        self.curr_count += sample_batch.count
 
         # Todo: We should flush at the end of sampling even if this
         # condition was not reached.
-        if len(self.samples) >= self.max_num_samples_per_file:
+        if self.curr_count >= self.max_num_samples_per_file:
+            self.curr_count = 0
             ds = data.from_items(self.samples).repartition(num_blocks=1, shuffle=False)
             if self.format == "json":
                 ds.write_json(self.path, try_create_dir=True)
