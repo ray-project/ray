@@ -38,6 +38,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
+    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
 )
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
@@ -874,15 +875,15 @@ class Impala(Algorithm):
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.
         global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
-        self._counters["num_training_step_calls_since_last_broadcast"] += 1
+        self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
             self.workers.remote_workers()
-            and self._counters["num_training_step_calls_since_last_broadcast"]
+            and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
             >= self.config["broadcast_interval"]
             and self.workers_that_need_updates
         ):
             weights = ray.put(self.workers.local_worker().get_weights())
-            self._counters["num_training_step_calls_since_last_broadcast"] = 0
+            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._learner_thread.weights_updated = False
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
 
