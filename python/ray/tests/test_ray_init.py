@@ -275,7 +275,9 @@ def test_auto_init_client(call_ray_start, function):
         assert isinstance(res, ClientObjectRef)
         ray.shutdown()
 
-    with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": f"ray://{call_ray_start}"}):
+    with unittest.mock.patch.dict(
+        os.environ, {"RAY_ADDRESS": f"ray://{call_ray_start}"}
+    ):
         res = function()
         # Ensure this is a client connection.
         assert isinstance(res, ClientObjectRef)

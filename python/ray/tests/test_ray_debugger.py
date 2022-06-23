@@ -1,7 +1,6 @@
 import json
 import os
 import platform
-import subprocess
 import sys
 from telnetlib import Telnet
 
@@ -209,9 +208,12 @@ time.sleep(5)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.parametrize("call_ray_start,ray_debugger_external",
-                         [("ray start --head --num-cpus=1", False),
-                          ("ray start --head --num-cpus=1 --ray-debugger-external", True)],
+@pytest.mark.parametrize(
+    "call_ray_start,ray_debugger_external",
+    [
+        ("ray start --head --num-cpus=1", False),
+        ("ray start --head --num-cpus=1 --ray-debugger-external", True),
+    ],
     indirect=["call_ray_start"],
 )
 def test_ray_debugger_public(call_ray_start, ray_debugger_external):
