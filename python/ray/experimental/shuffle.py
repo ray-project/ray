@@ -254,9 +254,12 @@ def run(
         print(f"Object store memory per node: {object_store_memory}")
         cluster = build_cluster(num_nodes, num_cpus, object_store_memory)
         ray.init(address=cluster.address)
+        ray_address = cluster.address
     else:
         print("Start a new cluster...")
-        ray.init(num_cpus=num_cpus, object_store_memory=object_store_memory)
+        ray_address = ray.init(
+            num_cpus=num_cpus, object_store_memory=object_store_memory
+        ).address_info["address"]
 
     partition_size = int(partition_size)
     num_partitions = num_partitions
@@ -311,7 +314,9 @@ def run(
 
     time.sleep(0.5)
     print()
-    print(ray._private.internal_api.memory_summary(stats_only=True))
+    print(
+        ray._private.internal_api.memory_summary(stats_only=True, address=ray_address)
+    )
     print()
     print(
         "Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta, "seconds"
