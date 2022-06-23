@@ -220,6 +220,8 @@ if __name__ == "__main__":
     import sys
 
     if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        file_path = os.path.abspath(__file__)
+        os.chdir(os.path.abspath(os.path.dirname(__file__)))
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", file_path]))
     else:
         sys.exit(pytest.main(["-sv", __file__]))
