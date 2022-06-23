@@ -8,7 +8,6 @@ from ray._private.utils import import_attr
 from ray.air.checkpoint import Checkpoint
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve.utils import require_packages
-from ray.train.batch_predictor import BatchPredictor
 
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor
