@@ -45,7 +45,6 @@ parser.add_argument(
     choices=["interest-evolution", "interest-exploration", "long-term-satisfaction"],
     help=("Select the RecSim env to use."),
 )
-parser.add_argument("--num-ts-added-before-sampling-starts", type=int, default=20000)
 
 parser.add_argument(
     "--random-test-episodes",
@@ -72,6 +71,16 @@ parser.add_argument(
     "`--env-slate-size` from each timestep. These candidates will be "
     "sampled by the environment's built-in document sampler model.",
 )
+
+parser.add_argument(
+    "--num-ts-added-before-sampling_starts",
+    type=int,
+    default=20000,
+    help="The number of timesteps to add to the replay buffer before sampling from "
+    "it for learning returns experiences. This leads to a delay in learning to first "
+    "populate the buffer.",
+)
+
 parser.add_argument(
     "--env-slate-size",
     type=int,
