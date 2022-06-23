@@ -253,6 +253,7 @@ class ModelWrapper(SimpleSchemaIngress):
         """Returns a new Batch Predictor from Checkpoint"""
         return await BatchPredictor.from_checkpoint(checkpoint, BatchPredictor)
 
+
 @serve.deployment
 class ModelWrapperDeployment(ModelWrapper):
     """Ray Serve Deployment of the ModelWrapper class."""
