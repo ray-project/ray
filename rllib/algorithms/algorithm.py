@@ -2401,8 +2401,8 @@ class Algorithm(Trainable):
                 <= self.config["metrics_num_episodes_for_smoothing"]
             )
         # Note that when there are more than `metrics_num_episodes_for_smoothing`
-        # episodes in the buffer, leave them as-is. In this case, we'll compute the
-        # stats over that larger number.
+        # episodes in `episodes_for_metrics`, leave them as-is. In this case, we'll
+        # compute the stats over that larger number.
 
         # Add new episodes to our history and make sure it doesn't grow larger than
         # needed.
