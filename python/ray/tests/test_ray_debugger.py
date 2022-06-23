@@ -55,7 +55,7 @@ def test_ray_debugger_breakpoint(shutdown_only):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_commands(shutdown_only):
-    ray.init(num_cpus=2)
+    address = ray.init(num_cpus=2).address_info["address"]
 
     @ray.remote
     def f():
@@ -76,7 +76,7 @@ def test_ray_debugger_commands(shutdown_only):
 
     # Make sure that calling "continue" in the debugger
     # gives back control to the debugger loop:
-    p = pexpect.spawn("ray debug")
+    p = pexpect.spawn(f"ray debug --address {address}")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("-> ray.util.pdb.set_trace()")
@@ -95,7 +95,7 @@ def test_ray_debugger_commands(shutdown_only):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_stepping(shutdown_only):
-    ray.init(num_cpus=1)
+    address = ray.init(num_cpus=1).address_info["address"]
 
     @ray.remote
     def g():
@@ -109,7 +109,7 @@ def test_ray_debugger_stepping(shutdown_only):
 
     result = f.remote()
 
-    p = pexpect.spawn("ray debug")
+    p = pexpect.spawn(f"ray debug --address {address}")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("-> x = g.remote()")
@@ -125,7 +125,7 @@ def test_ray_debugger_stepping(shutdown_only):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_recursive(shutdown_only):
-    ray.init(num_cpus=1)
+    address = ray.init(num_cpus=1).address_info["address"]
 
     @ray.remote
     def fact(n):
@@ -137,7 +137,7 @@ def test_ray_debugger_recursive(shutdown_only):
 
     result = fact.remote(5)
 
-    p = pexpect.spawn("ray debug")
+    p = pexpect.spawn(f"ray debug --address {address}")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("(Pdb)")
@@ -196,7 +196,7 @@ time.sleep(5)
 
     # Start the debugger. This should clean up any existing sessions that
     # belong to dead jobs.
-    p = pexpect.spawn("ray debug")  # noqa:F841
+    p = pexpect.spawn(f"ray debug --address {address}")  # noqa:F841
 
     def no_active_sessions():
         return not len(
@@ -209,20 +209,13 @@ time.sleep(5)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.parametrize("ray_debugger_external", [False, True])
-def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_external):
-    redis_substring_prefix = "--address='"
-    cmd = ["ray", "start", "--head", "--num-cpus=1"]
-    if ray_debugger_external:
-        cmd.append("--ray-debugger-external")
-    out = ray._private.utils.decode(
-        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-    )
-    # Get the redis address from the output.
-    redis_substring_prefix = "--address='"
-    address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
-    address = out[address_location:]
-    address = address.split("'")[0]
+@pytest.mark.parametrize("call_ray_start,ray_debugger_external",
+                         [("ray start --head --num-cpus=1", False),
+                          ("ray start --head --num-cpus=1 --ray-debugger-external", True)],
+    indirect=["call_ray_start"],
+)
+def test_ray_debugger_public(call_ray_start, ray_debugger_external):
+    address = call_ray_start
 
     ray.init(address=address)
 
