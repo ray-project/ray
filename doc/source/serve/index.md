@@ -145,6 +145,19 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         :type: ref
         :text: Get Started with Ray Serve
         :classes: btn-outline-info btn-block
+    ---
+
+    **Key Concepts**
+    ^^^
+
+    Understand the key concepts behind Ray Serve.
+    Learn about :ref:`Deployment<serve-key-concepts-deployment>`, :ref:`how to query it<serve-key-concepts-query-deployment>` and the :ref:`Deployment Graph<serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
+
+    +++
+    .. link-button:: key-concepts
+        :type: ref
+        :text: Learn Key Concepts
+        :classes: btn-outline-info btn-block
 ```
 
 For more, see the following blog posts about Ray Serve:
