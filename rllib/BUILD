@@ -87,7 +87,7 @@ load("//bazel:python.bzl", "py_test_module_list")
 py_test(
     name = "learning_tests_cartpole_a2c_microbatch",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a2c/cartpole-a2c-microbatch.yaml"],
@@ -97,7 +97,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_a2c_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
@@ -109,7 +109,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_cartpole_a3c",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/a3c/cartpole-a3c.yaml"],
@@ -120,7 +120,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_alpha_star",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
@@ -142,7 +142,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_cartpole_apex",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = [
@@ -155,7 +155,7 @@ py_test(
 # py_test(
 #    name = "learning_cartpole_apex_fake_gpus",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/apex_dqn/cartpole-apex-fake-gpus.yaml"],
@@ -166,7 +166,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_appo_no_vtrace",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo.yaml"],
@@ -176,7 +176,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_cartpole_appo_vtrace",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/appo/cartpole-appo-vtrace.yaml"],
@@ -186,7 +186,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_separate_losses_appo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "tf_only", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "tf_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
@@ -198,7 +198,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi-agent-cartpole-appo.yaml"],
@@ -208,7 +208,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_frozenlake_appo",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/appo/frozenlake-appo-vtrace.yaml"],
@@ -218,7 +218,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_appo_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
@@ -229,7 +229,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_ars",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ars/cartpole-ars.yaml"],
@@ -240,7 +240,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_cql",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
@@ -285,7 +285,7 @@ py_test(
 # py_test(
 #   name = "learning_tests_pendulum_ddpg",
 #   main = "tests/run_regression_tests.py",
-#   tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#   tags = ["team:rllib", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
 #   size = "large",
 #   srcs = ["tests/run_regression_tests.py"],
 #   data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
@@ -295,7 +295,7 @@ py_test(
 py_test(
    name = "learning_tests_pendulum_ddpg_fake_gpus",
    main = "tests/run_regression_tests.py",
-   tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
+   tags = ["team:rllib", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
    size = "large",
    srcs = ["tests/run_regression_tests.py"],
    data = ["tuned_examples/ddpg/pendulum-ddpg-fake-gpus.yaml"],
@@ -327,7 +327,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_cartpole_dqn",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/dqn/cartpole-dqn.yaml"],
@@ -337,7 +337,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dqn_softq",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-dqn-softq.yaml"],
@@ -350,7 +350,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dqn_param_noise",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_eager_tracing"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_eager_tracing"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-dqn-param-noise.yaml"],
@@ -360,7 +360,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dqn_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-dqn-fake-gpus.yaml"],
@@ -371,7 +371,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_simpleq",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
@@ -383,7 +383,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_simpleq_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/simple_q/cartpole-simpleq-fake-gpus.yaml"],
@@ -394,7 +394,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_cartpole_es",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/es/cartpole-es.yaml"],
@@ -405,7 +405,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_cartpole_impala",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/impala/cartpole-impala.yaml"],
@@ -415,7 +415,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/impala/multi-agent-cartpole-impala.yaml"],
@@ -425,7 +425,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_impala_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/impala/cartpole-impala-fake-gpus.yaml"],
@@ -460,7 +460,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_pg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-pg.yaml"],
@@ -470,7 +470,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crashing_pg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-pg.yaml"],
@@ -480,7 +480,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crashing_with_remote_envs_pg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-with_remote-envs-pg.yaml"],
@@ -490,7 +490,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_pg_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-pg-fake-gpus.yaml"],
@@ -501,7 +501,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_cartpole_ppo",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
@@ -511,7 +511,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
@@ -521,7 +521,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
@@ -531,7 +531,7 @@ py_test(
 py_test(
     name = "learning_tests_repeat_after_me_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
@@ -541,7 +541,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_ppo_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole-ppo-fake-gpus.yaml"],
@@ -552,7 +552,7 @@ py_test(
 py_test(
     name = "learning_tests_two_step_game_qmix",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix.yaml"],
@@ -562,7 +562,7 @@ py_test(
 py_test(
     name = "learning_tests_two_step_game_qmix_vdn_mixer",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix-vdn-mixer.yaml"],
@@ -572,7 +572,7 @@ py_test(
 py_test(
     name = "learning_tests_two_step_game_qmix_no_mixer",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix-no-mixer.yaml"],
@@ -583,7 +583,7 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_r2d2",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/r2d2/stateless-cartpole-r2d2.yaml"],
@@ -593,7 +593,7 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_r2d2_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/r2d2/stateless-cartpole-r2d2-fake-gpus.yaml"],
@@ -604,7 +604,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_sac",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/cartpole-sac.yaml"],
@@ -614,7 +614,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_cartpole_continuous_pybullet_sac",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_continuous"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_continuous"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/sac/cartpole-continuous-pybullet-sac.yaml"],
@@ -624,7 +624,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_pendulum_sac",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/sac/pendulum-sac.yaml"],
@@ -634,7 +634,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_transformed_actions_pendulum_sac",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
@@ -644,7 +644,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_pendulum_sac_fake_gpus",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
@@ -655,7 +655,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
@@ -665,7 +665,7 @@ py_test(
 py_test(
     name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
@@ -676,7 +676,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_pendulum_td3",
 #    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#    tags = ["team:rllib", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/ddpg/pendulum-td3.yaml"],
