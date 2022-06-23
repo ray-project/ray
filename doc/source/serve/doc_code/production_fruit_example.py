@@ -15,7 +15,6 @@ from ray.serve.deployment_graph import ClassNode
 
 @serve.deployment(num_replicas=2)
 class FruitMarket:
-
     def __init__(
         self,
         mango_stand: ClassNode,
@@ -27,7 +26,7 @@ class FruitMarket:
             "ORANGE": orange_stand,
             "PEAR": pear_stand,
         }
-    
+
     def check_price(self, fruit: str, amount: float) -> float:
         if fruit not in self.directory:
             return -1
@@ -45,10 +44,10 @@ class MangoStand:
         # This default price is overwritten by the one specified in the
         # user_config through the reconfigure() method.
         self.price = self.DEFAULT_PRICE
-    
+
     def reconfigure(self, config: Dict):
         self.price = config.get("price", self.DEFAULT_PRICE)
-    
+
     def check_price(self, amount: float) -> float:
         return self.price * amount
 
@@ -62,10 +61,10 @@ class OrangeStand:
         # This default price is overwritten by the one specified in the
         # user_config through the reconfigure() method.
         self.price = self.DEFAULT_PRICE
-    
+
     def reconfigure(self, config: Dict):
         self.price = config.get("price", self.DEFAULT_PRICE)
-    
+
     def check_price(self, amount: float) -> float:
         return self.price * amount
 
@@ -79,10 +78,10 @@ class PearStand:
         # This default price is overwritten by the one specified in the
         # user_config through the reconfigure() method.
         self.price = self.DEFAULT_PRICE
-    
+
     def reconfigure(self, config: Dict):
         self.price = config.get("price", self.DEFAULT_PRICE)
-    
+
     def check_price(self, amount: float) -> float:
         return self.price * amount
 
@@ -109,6 +108,7 @@ serve.start()
 serve.run(deployment_graph)
 
 import requests
+
 assert requests.post("http://localhost:8000/", json=["MANGO", 1]).json() == 3
 assert requests.post("http://localhost:8000/", json=["ORANGE", 1]).json() == 2
 assert requests.post("http://localhost:8000/", json=["PEAR", 1]).json() == 4
