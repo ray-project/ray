@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 
 from ray.tune import Trainable
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
 from ray.tune.integration.wandb import (
     WandbLoggerCallback,
     _WandbLoggingProcess,
