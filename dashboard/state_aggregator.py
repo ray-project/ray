@@ -1,5 +1,6 @@
 import asyncio
 import logging
+
 from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
@@ -16,11 +17,18 @@ from ray.experimental.state.common import (
     ObjectState,
     PlacementGroupState,
     RuntimeEnvState,
+    SummaryApiResponse,
+    DEFAULT_LIMIT,
+    SummaryApiOptions,
+    TaskSummaries,
     StateSchema,
     SupportedFilterType,
     TaskState,
     WorkerState,
     filter_fields,
+    StateSummary,
+    ActorSummaries,
+    ObjectSummaries,
 )
 from ray.experimental.state.state_manager import (
     DataSourceUnavailable,
@@ -358,7 +366,7 @@ class StateAPIManager:
 
         unresponsive_nodes = 0
         worker_stats = []
-        for reply, node_id in zip(replies, raylet_ids):
+        for reply, _ in zip(replies, raylet_ids):
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
                 continue
@@ -481,6 +489,51 @@ class StateAPIManager:
         return ListApiResponse(
             result=list(islice(result, option.limit)),
             partial_failure_warning=partial_failure_warning,
+        )
+
+    async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        result = await self.list_tasks(
+            option=ListApiOptions(
+                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+            )
+        )
+        summary = StateSummary(
+            node_id_to_summary={
+                "cluster": TaskSummaries.to_summary(tasks=result.result)
+            }
+        )
+        return SummaryApiResponse(
+            result=summary, partial_failure_warning=result.partial_failure_warning
+        )
+
+    async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        result = await self.list_actors(
+            option=ListApiOptions(
+                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+            )
+        )
+        summary = StateSummary(
+            node_id_to_summary={
+                "cluster": ActorSummaries.to_summary(actors=result.result)
+            }
+        )
+        return SummaryApiResponse(
+            result=summary, partial_failure_warning=result.partial_failure_warning
+        )
+
+    async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        result = await self.list_objects(
+            option=ListApiOptions(
+                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+            )
+        )
+        summary = StateSummary(
+            node_id_to_summary={
+                "cluster": ObjectSummaries.to_summary(objects=result.result)
+            }
+        )
+        return SummaryApiResponse(
+            result=summary, partial_failure_warning=result.partial_failure_warning
         )
 
     def _message_to_dict(

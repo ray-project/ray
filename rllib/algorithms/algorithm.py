@@ -102,8 +102,8 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
-from ray.tune.trial import ExportFormat
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.experiment.trial import ExportFormat
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util import log_once
 from ray.util.timer import _Timer
 

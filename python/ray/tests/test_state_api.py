@@ -20,6 +20,7 @@ from ray.core.generated.common_pb2 import (
     TaskInfoEntry,
     TaskStatus,
     WorkerType,
+    TaskType,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -105,13 +106,13 @@ def verify_schema(state, result_dict: dict):
         assert k in state_fields_columns
 
 
-def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE):
+def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
     return ActorTableData(
         actor_id=id,
         state=state,
         name="abc",
         pid=1234,
-        class_name="class",
+        class_name=class_name,
     )
 
 
@@ -147,35 +148,61 @@ def generate_worker_data(id, pid=1234):
     )
 
 
-def generate_task_data(id, name):
+def generate_task_entry(
+    id,
+    name="class",
+    func_or_class="class",
+    state=TaskStatus.SCHEDULED,
+    type=TaskType.NORMAL_TASK,
+):
+    return TaskInfoEntry(
+        task_id=id,
+        name=name,
+        func_or_class_name=func_or_class,
+        scheduling_state=state,
+        type=type,
+    )
+
+
+def generate_task_data(
+    id, name="class", func_or_class="class", state=TaskStatus.SCHEDULED
+):
     return GetTasksInfoReply(
         owned_task_info_entries=[
-            TaskInfoEntry(
-                task_id=id,
-                name=name,
-                func_or_class_name="class",
-                scheduling_state=TaskStatus.SCHEDULED,
+            generate_task_entry(
+                id=id, name=name, func_or_class=func_or_class, state=state
             )
         ]
     )
 
 
-def generate_object_info(obj_id):
+def generate_object_info(
+    obj_id,
+    size_bytes=1,
+    callsite="main.py",
+    task_state=TaskStatus.SCHEDULED,
+    local_ref_count=1,
+    attempt_number=1,
+    pid=1234,
+    ip="1234",
+    worker_type=WorkerType.DRIVER,
+    pinned_in_memory=True,
+):
     return CoreWorkerStats(
-        pid=1234,
-        worker_type=WorkerType.DRIVER,
-        ip_address="1234",
+        pid=pid,
+        worker_type=worker_type,
+        ip_address=ip,
         object_refs=[
             ObjectRefInfo(
                 object_id=obj_id,
-                call_site="",
-                object_size=1,
-                local_ref_count=1,
+                call_site=callsite,
+                object_size=size_bytes,
+                local_ref_count=local_ref_count,
                 submitted_task_ref_count=1,
                 contained_in_owned=[],
-                pinned_in_memory=True,
-                task_status=TaskStatus.SCHEDULED,
-                attempt_number=1,
+                pinned_in_memory=pinned_in_memory,
+                task_status=task_state,
+                attempt_number=attempt_number,
             )
         ],
     )
