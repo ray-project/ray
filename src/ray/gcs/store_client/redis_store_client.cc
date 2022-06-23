@@ -389,7 +389,7 @@ Status RedisStoreClient::AsyncGetKeys(
     const std::string &prefix,
     std::function<void(std::vector<std::string>)> callback) {
   std::string match_pattern = GenKeyRedisMatchPattern(table_name, prefix);
-  auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
+  auto scanner = std::make_shared<RedisScanner>(redis_client_, cluster_id_, table_name);
   auto on_done = [this, table_name, callback, scanner](auto /* status*/, auto keys) {
     std::vector<std::string> result;
     result.reserve(keys.size());
