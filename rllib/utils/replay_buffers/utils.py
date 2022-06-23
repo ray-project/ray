@@ -214,7 +214,6 @@ def validate_buffer_config(config: dict) -> None:
         "prioritized_replay_eps",
         "no_local_replay_buffer",
         "replay_zero_init_states",
-        "learning_starts",
         "replay_buffer_shards_colocated_with_driver",
     ]
     for k in keys_with_deprecated_positions:

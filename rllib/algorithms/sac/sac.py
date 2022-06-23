@@ -64,7 +64,9 @@ class SACConfig(AlgorithmConfig):
             "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": int(1e6),
-            # How many steps of the model to sample before learning starts.
+            # Number of timesteps in the replay buffer(s) to reach before sample()
+            # returns a batch. Before num_ts_added_before_sampling_starts is reached,
+            # sample() will return an empty batch and no learning will happen.
             "num_ts_added_before_sampling_starts": 1500,
             # If True prioritized replay buffer will be used.
             "prioritized_replay": False,

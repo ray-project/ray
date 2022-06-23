@@ -166,6 +166,9 @@ class ApexDQNConfig(DQNConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
+            # Number of timesteps in the replay buffer(s) to reach before sample()
+            # returns a batch. Before num_ts_added_before_sampling_starts is reached,
+            # sample() will return an empty batch and no learning will happen.
             "num_ts_added_before_sampling_starts": 50000,
             # Whether all shards of the replay buffer must be co-located
             # with the learner process (running the execution plan).

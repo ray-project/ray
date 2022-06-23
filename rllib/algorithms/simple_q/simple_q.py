@@ -106,7 +106,9 @@ class SimpleQConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
-            # How many steps of the model to sample before learning starts.
+            # Number of timesteps in the replay buffer(s) to reach before sample()
+            # returns a batch. Before num_ts_added_before_sampling_starts is reached,
+            # sample() will return an empty batch and no learning will happen.
             "num_ts_added_before_sampling_starts": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,

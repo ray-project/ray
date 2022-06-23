@@ -105,13 +105,14 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.sgd_minibatch_size = 128
         self.shuffle_sequences = True
         self.num_sgd_iter = 30
-        self.num_ts_added_before_sampling_starts = 1000
         self.replay_buffer_config = {
             "type": "SimpleReplayBuffer",
-            # Size of the replay buffer in batches (not timesteps!).
+            # Size of the replay buffer in items (not timesteps!).
             "capacity": 1000,
-            # When to start returning samples (in batches, not timesteps!).
-            "num_ts_added_before_sampling_starts": 500,
+            # Number of timesteps in the replay buffer(s) to reach before sample()
+            # returns a batch. Before num_ts_added_before_sampling_starts is reached,
+            # sample() will return an empty batch and no learning will happen.
+            "num_ts_added_before_sampling_starts": 1000,
         }
         self.lr_schedule = None
         self.vf_share_layers = False
