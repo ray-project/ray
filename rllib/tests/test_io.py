@@ -306,7 +306,7 @@ class JsonIOTest(unittest.TestCase):
                 "output_config": {
                     "format": "json",
                     "path": self.test_dir,
-                    "max_num_samples_per_file": 2,
+                    "max_num_samples_per_file": 8,
                 },
             },
             0,

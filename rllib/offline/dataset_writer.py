@@ -21,6 +21,7 @@ class DatasetWriter(OutputWriter):
     def __init__(
         self,
         ioctx: IOContext = None,
+        config: Dict = None,
         compress_columns: List[str] = frozenset(["obs", "new_obs"]),
     ):
         """Initializes a DatasetWriter instance.
@@ -41,7 +42,11 @@ class DatasetWriter(OutputWriter):
         """
         self.ioctx = ioctx or IOContext()
 
-        output_config: Dict = ioctx.output_config
+        if ioctx:
+            output_config: Dict = ioctx.output_config
+        else:
+            config = config or {}
+            output_config = config
         assert (
             "format" in output_config
         ), "output_config.format must be specified when using Dataset output."
@@ -63,8 +68,6 @@ class DatasetWriter(OutputWriter):
 
     @override(OutputWriter)
     def write(self, sample_batch: SampleBatchType):
-        start = time.time()
-
         # Make sure columns like obs are compressed and writable.
         d = _to_json_dict(sample_batch, self.compress_columns)
         self.samples.append(d)
@@ -73,13 +76,17 @@ class DatasetWriter(OutputWriter):
         # Todo: We should flush at the end of sampling even if this
         # condition was not reached.
         if self.curr_count >= self.max_num_samples_per_file:
-            self.curr_count = 0
-            ds = data.from_items(self.samples).repartition(num_blocks=1, shuffle=False)
-            if self.format == "json":
-                ds.write_json(self.path, try_create_dir=True)
-            elif self.format == "parquet":
-                ds.write_parquet(self.path, try_create_dir=True)
-            else:
-                raise ValueError("Unknown output type: ", self.format)
-            self.samples = []
-            logger.debug("Wrote dataset in {}s".format(time.time() - start))
+            self.finish_writing_to_current_file()
+
+    def finish_writing_to_current_file(self):
+        start = time.time()
+        self.curr_count = 0
+        ds = data.from_items(self.samples).repartition(num_blocks=1, shuffle=False)
+        if self.format == "json":
+            ds.write_json(self.path, try_create_dir=True)
+        elif self.format == "parquet":
+            ds.write_parquet(self.path, try_create_dir=True)
+        else:
+            raise ValueError("Unknown output type: ", self.format)
+        self.samples = []
+        logger.debug("Wrote dataset in {}s".format(time.time() - start))
