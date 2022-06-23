@@ -1,43 +1,47 @@
-import os
-import sys
-import copy
-import json
-import time
-import logging
 import asyncio
-import ipaddress
-import subprocess
 import collections
+import copy
+import ipaddress
+import json
+import logging
+import os
+import subprocess
+import sys
+import time
 
 import numpy as np
-import ray
-import psutil
 import pytest
 import requests
 
-from ray import ray_constants
+import ray
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.modules
+import ray.dashboard.utils as dashboard_utils
+from ray._private import ray_constants
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS_LEGACY,
+)
 from ray._private.test_utils import (
     format_web_url,
+    get_error_message,
+    init_error_pubsub,
+    run_string_as_driver,
     wait_for_condition,
     wait_until_server_available,
-    run_string_as_driver,
     wait_until_succeeded_without_exception,
-    init_error_pubsub,
-    get_error_message,
 )
-from ray.ray_constants import DEBUG_AUTOSCALING_STATUS_LEGACY, DEBUG_AUTOSCALING_ERROR
 from ray.dashboard import dashboard
-import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.modules
 from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
-
-from ray.experimental.state.exception import ServerUnavailable
-from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.api import StateApiClient
+from ray.experimental.state.common import ListApiOptions, StateResource
+from ray.experimental.state.exception import ServerUnavailable
+
+import psutil
 
 try:
     import aiohttp.web
+
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
     routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -106,7 +110,7 @@ def test_basic(ray_start_with_dashboard):
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
     assert ray_constants.PROCESS_TYPE_REPORTER not in all_processes
     dashboard_proc_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
@@ -151,7 +155,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     ray.init(include_dashboard=True)
     p = init_error_pubsub()
 
-    node = ray.worker._global_node
+    node = ray._private.worker._global_node
     all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -174,7 +178,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     ray.shutdown()
 
     ray.init(include_dashboard=True)
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
     wait_for_condition(lambda: search_agent(raylet_proc.children()))
@@ -195,7 +199,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     ray.init(include_dashboard=True)
     p = init_error_pubsub()
 
-    node = ray.worker._global_node
+    node = ray._private.worker._global_node
     all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -229,7 +233,7 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     ray.init(include_dashboard=True)
     p = init_error_pubsub()
 
-    node = ray.worker._global_node
+    node = ray._private.worker._global_node
     all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -788,7 +792,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
 
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
     dashboard_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
     dashboard_proc = psutil.Process(dashboard_info.process.pid)
     gcs_server_info = all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]

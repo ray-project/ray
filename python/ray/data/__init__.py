@@ -35,16 +35,12 @@ from ray.data.read_api import (  # noqa: F401
     read_text,
 )
 
-# Module-level cached global functions (for impl/compute). It cannot be defined
-# in impl/compute since it has to be process-global across cloudpickled funcs.
-_cached_fn = None
-_cached_cls = None
-
 # Register custom Arrow JSON ReadOptions serializer after worker has initialized.
 if ray.is_initialized():
     _register_arrow_json_readoptions_serializer()
 else:
-    ray.worker._post_init_hooks.append(_register_arrow_json_readoptions_serializer)
+    pass
+#    ray._internal.worker._post_init_hooks.append(_register_arrow_json_readoptions_serializer)
 
 __all__ = [
     "ActorPoolStrategy",

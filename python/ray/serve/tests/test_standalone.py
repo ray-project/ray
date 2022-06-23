@@ -9,37 +9,36 @@ import subprocess
 import sys
 from tempfile import mkstemp
 
-import pytest
 import pydantic
-from ray.serve.http_util import set_socket_reuse_port
+import pytest
 import requests
 
 import ray
 import ray._private.gcs_utils as gcs_utils
+from ray import serve
 from ray._private.services import new_port
 from ray._private.test_utils import (
+    convert_actor_state,
     run_string_as_driver,
     wait_for_condition,
-    convert_actor_state,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
-
-from ray import serve
-from ray.serve.context import get_global_client
 from ray.serve.config import HTTPOptions
 from ray.serve.constants import (
     SERVE_NAMESPACE,
-    SERVE_ROOT_URL_ENV_KEY,
     SERVE_PROXY_NAME,
+    SERVE_ROOT_URL_ENV_KEY,
 )
+from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
-from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
+from ray.serve.http_util import set_socket_reuse_port
+from ray.serve.utils import block_until_http_ready, format_actor_name, get_all_node_ids
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
-from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
 from ray.tests.conftest import maybe_external_redis  # noqa: F401
+from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
 
 
 @pytest.fixture
@@ -205,7 +204,7 @@ def test_multiple_routers(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray.state.node_ids()
+    node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
 
@@ -389,7 +388,7 @@ def test_no_http(ray_shutdown):
         # Only controller actor should exist
         live_actors = [
             actor
-            for actor in ray.state.actors().values()
+            for actor in ray._private.state.actors().values()
             if actor["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
         ]
         assert len(live_actors) == 1
@@ -413,17 +412,18 @@ def test_http_head_only(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray.state.node_ids()
+    node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 2
 
     serve.start(http_options={"port": new_port(), "location": "HeadOnly"})
 
     # Only the controller and head node actor should be started
-    assert len(ray.state.actors()) == 2
+    assert len(ray._private.state.actors()) == 2
 
     # They should all be placed on the head node
     cpu_per_nodes = {
-        r["CPU"] for r in ray.state.state._available_resources_per_node().values()
+        r["CPU"]
+        for r in ray._private.state.state._available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
 
@@ -442,7 +442,7 @@ def test_fixed_number_proxies(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray.state.node_ids()
+    node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 3
 
     with pytest.raises(
@@ -667,6 +667,35 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
             if "Autoscaling metrics pusher thread" in msg:
                 continue
             assert test_msg in msg
+
+    serve.shutdown()
+    ray.shutdown()
+
+
+def test_recovering_controller_no_redeploy():
+    """Ensure controller doesn't redeploy running deployments when recovering."""
+    ray.init(namespace="x")
+    client = serve.start(detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    f.deploy()
+
+    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
+    pid = ray.get(client._controller.get_pid.remote())
+
+    ray.kill(client._controller, no_restart=False)
+
+    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+
+    # Confirm that no new deployment is deployed over the next 10 seconds
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: len(ray.util.list_named_actors(all_namespaces=True)) > num_actors,
+            timeout=5,
+        )
 
     serve.shutdown()
     ray.shutdown()
