@@ -133,9 +133,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         /// The default max concurrency for creating PoolManager should
         /// be 0 if this is an asyncio actor.
         RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
+        const bool is_async_actor = is_async_actor_func_(func); 
         const int default_max_concurrency =
-            is_async_actor_func_(func) ? 0 : task_spec.MaxActorConcurrency();
-        SetupActor(is_async_actor_func_(func),
+            is_async_actor ? 0 : task_spec.MaxActorConcurrency();
+        SetupActor(is_async_actor,
                task_spec.MaxActorConcurrency(),
                task_spec.ExecuteOutOfOrder());
         pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(

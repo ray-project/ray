@@ -294,7 +294,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute) nogil
          ) task_execution_callback
-        (c_bool(const CRayFunction &ray_function) nogil) is_async_actor_callback
+        (c_bool(const CRayFunction &ray_function) nogil) is_async_actor_func
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect

@@ -113,7 +113,7 @@ class CoreWorkerDirectTaskReceiver {
   instrumented_io_context &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
   OnTaskDone task_done_;
-  ///
+  /// The function that gets the is_async_actor flag from Python frontend.
   IsAsyncActorFunc is_async_actor_func_;
   /// Shared pool for producing new core worker clients.
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;

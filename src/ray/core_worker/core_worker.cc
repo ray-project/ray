@@ -105,7 +105,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->TaskDone();
-        }, options.is_async_actor_callback);
+        }, options.is_async_actor_func);
   }
 
   // Initialize raylet client.

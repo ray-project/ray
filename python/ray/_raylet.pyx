@@ -1134,7 +1134,7 @@ cdef class CoreWorker:
         options.stdout_file = stdout_file
         options.stderr_file = stderr_file
         options.task_execution_callback = task_execution_handler
-        options.is_async_actor_callback = is_async_actor_callback
+        options.is_async_actor_func = is_async_actor_func
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
@@ -2317,7 +2317,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback(result)
     cpython.Py_DECREF(py_callback)
 
-cdef c_bool is_async_actor_callback(const CRayFunction &ray_function) with gil:
+cdef c_bool is_async_actor_func(const CRayFunction &ray_function) with gil:
     cdef:
         CoreWorker core_worker = ray.worker.global_worker.core_worker
         JobID job_id = core_worker.get_current_job_id()

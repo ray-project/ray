@@ -53,7 +53,7 @@ struct CoreWorkerOptions {
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
       const std::string name_of_concurrency_group_to_execute)>;
 
-    using IsAsyncActorCallbackType = std::function<bool(const RayFunction &ray_function)>;
+    using IsAsyncActorFunc = std::function<bool(const RayFunction &ray_function)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -69,7 +69,7 @@ struct CoreWorkerOptions {
         stdout_file(""),
         stderr_file(""),
         task_execution_callback(nullptr),
-        is_async_actor_callback(nullptr),
+        is_async_actor_func(nullptr),
         check_signals(nullptr),
         gc_collect(nullptr),
         spill_objects(nullptr),
@@ -120,8 +120,8 @@ struct CoreWorkerOptions {
   std::string stderr_file;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
-  /// 
-  IsAsyncActorCallbackType is_async_actor_callback;
+  /// The function that gets the is_async_actor flag.
+  IsAsyncActorFunc is_async_actor_func;
   /// The callback to be called when shutting down a `CoreWorker` instance.
   std::function<void(const WorkerID &)> on_worker_shutdown;
   /// Application-language callback to check for signals that have been received
