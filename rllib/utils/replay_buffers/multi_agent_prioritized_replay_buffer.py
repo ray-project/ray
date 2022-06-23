@@ -2,6 +2,7 @@ from typing import Dict
 import logging
 import numpy as np
 
+from ray.util.timer import _Timer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
@@ -16,7 +17,6 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
 )
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.timer import TimerStat
 from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
@@ -137,7 +137,7 @@ class MultiAgentPrioritizedReplayBuffer(
         )
 
         self.prioritized_replay_eps = prioritized_replay_eps
-        self.update_priorities_timer = TimerStat()
+        self.update_priorities_timer = _Timer()
 
     @DeveloperAPI
     @override(MultiAgentReplayBuffer)
