@@ -60,7 +60,7 @@ Installation
 
     .. note::
 
-      If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file``cpp/example/.bazelrc`` before you run the example application. The related issue is [here](https://discuss.ray.io/t/cpp-example-doesnt-work/5807).
+      If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before you run the example application. The related issue is [here](https://discuss.ray.io/t/cpp-example-doesnt-work/5807).
 
 Starting Ray
 ------------
