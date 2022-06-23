@@ -1604,7 +1604,9 @@ class Algorithm(Trainable):
                 '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
             )
 
-    def _sync_filters_if_needed(self, workers: WorkerSet, timeout_seconds: int = None):
+    def _sync_filters_if_needed(
+        self, workers: WorkerSet, timeout_seconds: Optional[float] = None
+    ):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
                 workers.local_worker().filters,
