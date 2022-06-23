@@ -58,16 +58,6 @@ def test_import_logger_all(logging_setup):
     import ray.tune.logger  # noqa: F401
 
 
-def test_import_trainable_function_trainable(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.function_runner  # noqa: F401
-
-
-def test_import_trainable_session(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.session  # noqa: F401
-
-
 if __name__ == "__main__":
     import sys
 

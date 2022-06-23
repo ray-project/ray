@@ -10,7 +10,7 @@ import urllib
 
 from ray import logger
 from ray.tune import Trainable
-from ray.tune.trainable import FunctionTrainable
+from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
@@ -490,7 +490,7 @@ class WandbTrainableMixin:
             )
 
         # Grouping
-        if isinstance(self, FunctionTrainable):
+        if isinstance(self, FunctionRunner):
             default_group = self._name
         else:
             default_group = type(self).__name__

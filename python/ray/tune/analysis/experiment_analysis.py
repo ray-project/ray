@@ -34,7 +34,7 @@ from ray.tune.execution.trial_runner import (
     find_newest_experiment_checkpoint,
     load_trial_from_checkpoint,
 )
-from ray.tune.trainable.util import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
 from ray.util.annotations import PublicAPI
