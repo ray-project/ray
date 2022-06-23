@@ -23,7 +23,6 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
-    find_free_port,
     chdir,
 )
 from ray._private.utils import (
@@ -157,7 +156,7 @@ context.disconnect()
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    [f"ray start --head --ray-client-server-port {find_free_port()}"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_client_tasks_and_actors_inherit_from_driver(conda_envs, call_ray_start):
@@ -395,7 +394,7 @@ def test_inject_dependencies():
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    [f"ray start --head --ray-client-server-port {find_free_port()} --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_conda_create_ray_client(call_ray_start):
@@ -574,7 +573,7 @@ def test_experimental_package_github(shutdown_only):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    [f"ray start --head --ray-client-server-port {find_free_port()} --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_client_working_dir_filepath(call_ray_start, tmp_path):
@@ -623,7 +622,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    [f"ray start --head --ray-client-server-port {find_free_port}"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_conda_pip_filepaths_remote(call_ray_start, tmp_path):
@@ -777,7 +776,7 @@ def test_simultaneous_install(shutdown_only):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    [f"ray start --head --ray-client-server-port {find_free_port()}"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_e2e_complex(call_ray_start, tmp_path):

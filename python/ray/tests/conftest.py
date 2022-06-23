@@ -298,17 +298,23 @@ def call_ray_start(request):
     )
     command_args = parameter.split(" ")
     port = str(find_free_port())
+    gcs_port = port
 
     command_args += ["--port", port, "--block"]
     if "--ray-client-server-port" in command_args:
-        port = command_args[command_args.index("--ray-client-server-port") + 1]
+        client_server_port_idx = command_args.index("--ray-client-server-port") + 1
+        if command_args[client_server_port_idx] == "0":
+            command_args[client_server_port_idx] = str(find_free_port())
+        port = command_args[client_server_port_idx]
 
     address = f"localhost:{port}"
     with subprocess.Popen(
         command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     ) as proc:
         for _ in range(10):
-            status_check = subprocess.run(["ray", "status", "--address", address])
+            status_check = subprocess.run(
+                ["ray", "status", "--address", f"localhost:{gcs_port}"]
+            )
             if status_check.returncode == 0:
                 break
             time.sleep(1)
