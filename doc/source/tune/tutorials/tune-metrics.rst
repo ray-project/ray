@@ -25,7 +25,7 @@ This simple callback just prints a metric each time a result is received:
 
     def train(config):
         for i in range(10):
-            session.report(metric=i)
+            session.report({"metric": i})
 
 
     tune.run(
@@ -47,7 +47,7 @@ You can log arbitrary values and metrics in both Function and Class training API
     def trainable(config):
         for i in range(num_epochs):
             ...
-            session.report(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
+            session.report({"acc": accuracy, "metric_foo": random_metric_1, "bar": metric_2})
 
     class Trainable(tune.Trainable):
         def step(self):
