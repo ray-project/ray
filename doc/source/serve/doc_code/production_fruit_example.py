@@ -1,3 +1,4 @@
+# __fruit_example_begin__
 # File name: fruit.py
 
 import ray
@@ -102,3 +103,22 @@ with InputNode() as query:
     net_price = fruit_market.check_price.bind(fruit, amount)
 
 deployment_graph = DAGDriver.bind(net_price, http_adapter=json_request)
+# __fruit_example_end__
+
+serve.start()
+serve.run(deployment_graph)
+
+import requests
+assert requests.post("http://localhost:8000/", json=["MANGO", 1]).json() == 3
+assert requests.post("http://localhost:8000/", json=["ORANGE", 1]).json() == 2
+assert requests.post("http://localhost:8000/", json=["PEAR", 1]).json() == 4
+assert requests.post("http://localhost:8000/", json=["TOMATO", 1]).json() == -1
+
+MangoStand.options(user_config={"price": 0}).deploy()
+assert requests.post("http://localhost:8000/", json=["MANGO", 1]).json() == 0
+
+OrangeStand.options(user_config={"price": 0}).deploy()
+assert requests.post("http://localhost:8000/", json=["ORANGE", 1]).json() == 0
+
+PearStand.options(user_config={"price": 0}).deploy()
+assert requests.post("http://localhost:8000/", json=["PEAR", 1]).json() == 0
