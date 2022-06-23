@@ -214,7 +214,7 @@ def validate_buffer_config(config: dict) -> None:
         "prioritized_replay_eps",
         "no_local_replay_buffer",
         "replay_zero_init_states",
-        "num_ts_added_before_sampling_starts",
+        "learning_starts",
         "replay_buffer_shards_colocated_with_driver",
     ]
     for k in keys_with_deprecated_positions:
@@ -237,6 +237,22 @@ def validate_buffer_config(config: dict) -> None:
             error=False,
         )
         config["replay_buffer_config"]["replay_mode"] = replay_mode
+
+    learning_starts = config.get(
+        "learning_starts",
+        config.get("replay_buffer_config", {}).get("learning_starts", DEPRECATED_VALUE),
+    )
+    if learning_starts != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['learning_starts'] or"
+            "config['replay_buffer_config']['learning_starts']",
+            help="config['replay_buffer_config']"
+            "['num_ts_added_before_sampling_starts']",
+            error=False,
+        )
+        config["replay_buffer_config"][
+            "num_ts_added_before_sampling_starts"
+        ] = learning_starts
 
     # Can't use DEPRECATED_VALUE here because this is also a deliberate
     # value set for some algorithms
