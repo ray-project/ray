@@ -182,11 +182,8 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
-        if self._stages_after_snapshot:
-            if fetch_if_missing:
-                self.execute()
-            else:
-                return None
+        if fetch_if_missing:
+            self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
         if not blocks:

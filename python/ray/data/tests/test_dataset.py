@@ -316,6 +316,7 @@ def test_zip(ray_start_regular_shared):
     ds1 = ray.data.range(5)
     ds2 = ray.data.range(5).map(lambda x: x + 1)
     ds = ds1.zip(ds2)
+    print(ds, ds1, ds2)
     assert ds.schema() == tuple
     assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
     with pytest.raises(ValueError):
@@ -1276,7 +1277,7 @@ def test_schema(ray_start_regular_shared):
     ds2 = ray.data.range_table(10)
     ds3 = ds2.repartition(5)
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
-    assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema={__item__: int64})"
     assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
     assert (
