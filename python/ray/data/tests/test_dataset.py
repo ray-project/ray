@@ -2162,13 +2162,6 @@ def test_to_torch_feature_columns(
 
 
 def test_block_builder_for_block(ray_start_regular_shared):
-    # list
-    builder = BlockBuilder.for_block(list())
-    builder.add_block([1, 2])
-    assert builder.build() == [1, 2]
-    builder.add_block([3, 4])
-    assert builder.build() == [1, 2, 3, 4]
-
     # pandas dataframe
     builder = BlockBuilder.for_block(pd.DataFrame())
     b1 = pd.DataFrame({"A": [1], "B": ["a"]})
