@@ -142,7 +142,6 @@ void LocalObjectManager::FlushFreeObjects() {
     on_objects_freed_(objects_to_free_);
     objects_to_free_.clear();
   }
-  // Deletion wouldn't work when the object pinning is not enabled.
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
   last_free_objects_at_ms_ = current_time_ms();
 }
@@ -160,7 +159,6 @@ void LocalObjectManager::SpillObjectUptoMaxThroughput() {
     }
     {
       absl::MutexLock lock(&mutex_);
-      num_active_workers_ += 1;
       can_spill_more = num_active_workers_ < max_active_workers_;
     }
   }
@@ -296,16 +294,22 @@ void LocalObjectManager::SpillObjectsInternal(
     }
     return;
   }
+  {
+    absl::MutexLock lock(&mutex_);
+    num_active_workers_ += 1;
+  }
   io_worker_pool_.PopSpillWorker(
       [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
         std::vector<ObjectID> requested_objects_to_spill;
         for (const auto &object_id : objects_to_spill) {
-          RAY_CHECK(objects_pending_spill_.count(object_id));
+          auto it = objects_pending_spill_.find(object_id);
+          RAY_CHECK(it != objects_pending_spill_.end());
           auto freed_it = local_objects_.find(object_id);
           // If the object hasn't already been freed, spill it.
           if (freed_it == local_objects_.end() || freed_it->second.second) {
-            objects_pending_spill_.erase(object_id);
+            num_bytes_pending_spill_ -= it->second->GetSize();
+            objects_pending_spill_.erase(it);
           } else {
             auto ref = request.add_object_refs_to_spill();
             ref->set_object_id(object_id.Binary());
@@ -314,6 +318,17 @@ void LocalObjectManager::SpillObjectsInternal(
             requested_objects_to_spill.push_back(object_id);
           }
         }
+
+        if (request.object_refs_to_spill_size() == 0) {
+          {
+            absl::MutexLock lock(&mutex_);
+            num_active_workers_ -= 1;
+          }
+          io_worker_pool_.PushSpillWorker(io_worker);
+          callback(Status::OK());
+          return;
+        }
+
         io_worker->rpc_client()->SpillObjects(
             request,
             [this, requested_objects_to_spill, callback, io_worker](
@@ -350,6 +365,13 @@ void LocalObjectManager::SpillObjectsInternal(
               }
             });
       });
+
+  // Deleting spilled objects can fall behind when there is a lot
+  // of concurrent spilling and object frees. Clear the queue here
+  // if needed.
+  if (spilled_object_pending_delete_.size() >= free_objects_batch_size_) {
+    ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
+  }
 }
 
 void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids,
@@ -604,6 +626,8 @@ std::string LocalObjectManager::DebugString() const {
   result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
   result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
   result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
+  result << "- spilled objects pending delete: " << spilled_object_pending_delete_.size()
+         << "\n";
   return result.str();
 }
 

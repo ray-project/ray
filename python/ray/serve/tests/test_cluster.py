@@ -1,17 +1,17 @@
-from collections import defaultdict
 import os
 import sys
 import time
+from collections import defaultdict
 
 import pytest
 import requests
 
 import ray
 from ray import serve
-from ray.cluster_utils import Cluster
-
-from ray.serve.deployment_state import ReplicaStartupStatus, ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.cluster_utils import Cluster
+from ray.serve.constants import SERVE_NAMESPACE
+from ray.serve.deployment_state import ReplicaStartupStatus, ReplicaState
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def ray_cluster():
 def test_scale_up(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
@@ -77,7 +77,7 @@ def test_scale_up(ray_cluster):
 def test_node_failure(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=3)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
 
     worker_node = cluster.add_node(num_cpus=2)
 
@@ -123,7 +123,7 @@ def test_node_failure(ray_cluster):
 def test_replica_startup_status_transitions(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
     serve_instance = serve.start()
 
     signal = SignalActor.remote()
@@ -170,7 +170,7 @@ def test_intelligent_scale_down(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
     serve.start()
 
     @serve.deployment(version="1")
@@ -178,7 +178,7 @@ def test_intelligent_scale_down(ray_cluster):
         pass
 
     def get_actor_distributions():
-        actors = ray.state.actors()
+        actors = ray._private.state.actors()
         node_to_actors = defaultdict(list)
         for actor in actors.values():
             if "RayServeWrappedReplica" not in actor["ActorClassName"]:

@@ -94,7 +94,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       // Get the controller by controllerName.
       Preconditions.checkArgument(
           StringUtils.isNotBlank(controllerName), "Must provide a valid controllerName");
-      Optional<BaseActorHandle> optional = Ray.getActor(controllerName);
+      Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
       Preconditions.checkState(optional.isPresent(), "Controller does not exist");
 
       // Enable metrics.

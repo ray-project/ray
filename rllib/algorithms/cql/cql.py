@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 from typing import Optional, Type
 
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
@@ -8,14 +7,15 @@ from ray.rllib.algorithms.sac.sac import (
     SAC,
     SACConfig,
 )
+from ray.rllib.execution.rollout_ops import (
+    synchronous_parallel_sample,
+)
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -25,14 +25,16 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -52,8 +54,8 @@ class CQLConfig(SACConfig):
         >>> trainer.train()
     """
 
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or CQL)
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or CQL)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -70,8 +72,8 @@ class CQLConfig(SACConfig):
         self.off_policy_estimation_methods = {}
 
         # .reporting()
-        self.min_sample_timesteps_per_reporting = 0
-        self.min_train_timesteps_per_reporting = 100
+        self.min_sample_timesteps_per_iteration = 0
+        self.min_train_timesteps_per_iteration = 100
         # fmt: on
         # __sphinx_doc_end__
 
@@ -99,7 +101,7 @@ class CQLConfig(SACConfig):
             min_q_weight: in Q weight multiplier.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -123,63 +125,23 @@ class CQLConfig(SACConfig):
 class CQL(SAC):
     """CQL (derived from SAC)."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Add the entire dataset to Replay Buffer (global variable)
-        reader = self.workers.local_worker().input_reader
-
-        # For d4rl, add the D4RLReaders' dataset to the buffer.
-        if isinstance(self.config["input"], str) and "d4rl" in self.config["input"]:
-            dataset = reader.dataset
-            self.local_replay_buffer.add(dataset)
-        # For a list of files, add each file's entire content to the buffer.
-        elif isinstance(reader, ShuffledInput):
-            num_batches = 0
-            total_timesteps = 0
-            for batch in reader.child.read_all_files():
-                num_batches += 1
-                total_timesteps += len(batch)
-                # Add NEXT_OBS if not available. This is slightly hacked
-                # as for the very last time step, we will use next-obs=zeros
-                # and therefore force-set DONE=True to avoid this missing
-                # next-obs to cause learning problems.
-                if SampleBatch.NEXT_OBS not in batch:
-                    obs = batch[SampleBatch.OBS]
-                    batch[SampleBatch.NEXT_OBS] = np.concatenate(
-                        [obs[1:], np.zeros_like(obs[0:1])]
-                    )
-                    batch[SampleBatch.DONES][-1] = True
-                self.local_replay_buffer.add_batch(batch)
-            logger.info(
-                f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
-                " replay buffer, which has capacity "
-                f"{self.local_replay_buffer.capacity}."
-            )
-        else:
-            raise ValueError(
-                "Unknown offline input! config['input'] must either be list of"
-                " offline files (json) or a D4RL-specific InputReader "
-                "specifier (e.g. 'd4rl.hopper-medium-v0')."
-            )
-
     @classmethod
     @override(SAC)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return CQLConfig().to_dict()
 
     @override(SAC)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # First check, whether old `timesteps_per_iteration` is used. If so
         # convert right away as for CQL, we must measure in training timesteps,
         # never sampling timesteps (CQL does not sample).
         if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="timesteps_per_iteration",
-                new="min_train_timesteps_per_reporting",
+                new="min_train_timesteps_per_iteration",
                 error=False,
             )
-            config["min_train_timesteps_per_reporting"] = config[
+            config["min_train_timesteps_per_iteration"] = config[
                 "timesteps_per_iteration"
             ]
             config["timesteps_per_iteration"] = DEPRECATED_VALUE
@@ -206,14 +168,21 @@ class CQL(SAC):
             try_import_tfp(error=True)
 
     @override(SAC)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
         else:
             return CQLTFPolicy
 
     @override(SAC)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
+        # Collect SampleBatches from sample workers.
+        batch = synchronous_parallel_sample(worker_set=self.workers)
+        batch = batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+        # Add batch to replay buffer.
+        self.local_replay_buffer.add(batch)
 
         # Sample training batch from replay buffer.
         train_batch = sample_min_n_steps_from_buffer(

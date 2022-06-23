@@ -5,14 +5,14 @@ import tempfile
 
 import ray
 from ray import serve
-from ray.experimental.dag import DAGNode
-from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.dag import DAGNode
+from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
 import starlette.requests
 
-from ray.serve.pipeline.generate import transform_ray_dag_to_serve_dag
+from ray.serve.generate import transform_ray_dag_to_serve_dag
 
 NESTED_HANDLE_KEY = "nested_handle"
 
@@ -116,7 +116,7 @@ async def json_resolver(request: starlette.requests.Request):
 
 
 def ray_dag_to_serve_dag(dag: DAGNode):
-    with DAGNodeNameGenerator() as deployment_name_generator:
+    with _DAGNodeNameGenerator() as deployment_name_generator:
         serve_dag = dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, deployment_name_generator)
         )
@@ -130,10 +130,10 @@ def test_serve_pipeline_single_func_no_input_plot():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         to_file = os.path.join(tmpdir, "tmp.png")
-        ray.experimental.dag.plot(serve_dag, to_file)
+        ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "fn_hello -> NoargDriver" in to_string
 
@@ -146,10 +146,10 @@ def test_serve_pipeline_single_func_deployment_dag_plot():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         to_file = os.path.join(tmpdir, "tmp.png")
-        ray.experimental.dag.plot(serve_dag, to_file)
+        ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "INPUT_NODE -> INPUT_ATTRIBUTE_NODE" in to_string
     assert "INPUT_NODE -> INPUT_ATTRIBUTE_NODE_1" in to_string
@@ -175,10 +175,10 @@ def test_serve_pipeline_chained_function_plot():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         to_file = os.path.join(tmpdir, "tmp.png")
-        ray.experimental.dag.plot(serve_dag, to_file)
+        ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "INPUT_NODE -> func_1" in to_string
     assert "INPUT_NODE -> func_2" in to_string
@@ -195,10 +195,10 @@ def test_serve_pipeline_class_with_class_method_plot():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         to_file = os.path.join(tmpdir, "tmp.png")
-        ray.experimental.dag.plot(serve_dag, to_file)
+        ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "Model -> forward" in to_string
     assert "INPUT_NODE -> forward" in to_string
@@ -217,10 +217,10 @@ def test_serve_pipeline_func_class_with_class_method_plot():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         to_file = os.path.join(tmpdir, "tmp.png")
-        ray.experimental.dag.plot(serve_dag, to_file)
+        ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "INPUT_NODE -> INPUT_ATTRIBUTE_NODE" in to_string
     assert "INPUT_NODE -> INPUT_ATTRIBUTE_NODE_1" in to_string
@@ -246,10 +246,10 @@ def test_serve_pipeline_multi_instantiation_class_deployment_in_init_args_plot()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         to_file = os.path.join(tmpdir, "tmp.png")
-        ray.experimental.dag.plot(serve_dag, to_file)
+        ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "Model -> Combine" in to_string
     assert "Model_1 -> Combine" in to_string
@@ -268,10 +268,10 @@ def test_serve_pipeline_test_shared_deployment_handle_plot():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         to_file = os.path.join(tmpdir, "tmp.png")
-        ray.experimental.dag.plot(serve_dag, to_file)
+        ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "Model -> Combine" in to_string
     assert "Combine -> __call__" in to_string
@@ -290,10 +290,10 @@ def test_serve_pipeline_multi_instantiation_class_nested_deployment_arg_dag_plot
 
     with tempfile.TemporaryDirectory() as tmpdir:
         to_file = os.path.join(tmpdir, "tmp.png")
-        ray.experimental.dag.plot(serve_dag, to_file)
+        ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "Model -> Combine" in to_string
     assert "Model_1 -> Combine" in to_string
@@ -311,10 +311,10 @@ def test_serve_pipeline_class_factory_plot():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         to_file = os.path.join(tmpdir, "tmp.png")
-        ray.experimental.dag.plot(serve_dag, to_file)
+        ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "MyInlineClass -> get" in to_string
     assert "get -> NoargDriver" in to_string

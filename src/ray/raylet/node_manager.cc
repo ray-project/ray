@@ -274,11 +274,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             return result;
           },
           /*fail_pull_request=*/
-          [this](const ObjectID &object_id) {
+          [this](const ObjectID &object_id, rpc::ErrorType error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(object_id.Binary());
-            MarkObjectsAsFailed(
-                rpc::ErrorType::OBJECT_FETCH_TIMED_OUT, {ref}, JobID::Nil());
+            MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -683,9 +682,12 @@ void NodeManager::HandleReleaseUnusedBundles(
   std::unordered_set<BundleID, pair_hash> in_use_bundles;
   for (int index = 0; index < request.bundles_in_use_size(); ++index) {
     const auto &bundle_id = request.bundles_in_use(index).bundle_id();
-    in_use_bundles.emplace(
-        std::make_pair(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
-                       bundle_id.bundle_index()));
+    in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                           bundle_id.bundle_index());
+    // Add -1 one to the in_use_bundles. It's ok to add it more than one times since it's
+    // a set.
+    in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                           -1);
   }
 
   // Kill all workers that are currently associated with the unused bundles.
@@ -767,7 +769,8 @@ void NodeManager::QueryAllWorkerStates(
     rpc::SendReplyCallback &send_reply_callback,
     bool include_memory_info,
     bool include_task_info) {
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                          /*filter_io_workers*/ true);
   for (auto driver :
        worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);

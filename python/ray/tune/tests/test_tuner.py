@@ -1,21 +1,21 @@
 import os
 import shutil
-from typing import Optional
 import unittest
+from typing import Optional
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 from ray import tune
-from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
-from ray.data.block import BlockMetadata
 from ray.air.config import RunConfig
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
-from ray.air.train.integrations.torch import TorchTrainer
-from ray.air.train.integrations.xgboost import XGBoostTrainer
-from ray.air.train import Trainer
+from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
+from ray.data.block import BlockMetadata
+from ray.train.torch import TorchTrainer
+from ray.train.trainer import BaseTrainer
+from ray.train.xgboost import XGBoostTrainer
 from ray.tune import Callback, TuneError
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -23,14 +23,13 @@ from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 
-class DummyTrainer(Trainer):
+class DummyTrainer(BaseTrainer):
     _scaling_config_allowed_keys = [
-        "num_workers",
-        "num_cpus_per_worker",
-        "num_gpus_per_worker",
-        "additional_resources_per_worker",
-        "use_gpu",
         "trainer_resources",
+        "num_workers",
+        "use_gpu",
+        "resources_per_worker",
+        "placement_strategy",
     ]
 
     def training_loop(self) -> None:
@@ -246,7 +245,8 @@ class TunerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

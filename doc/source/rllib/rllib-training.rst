@@ -8,13 +8,13 @@ Training APIs
 Getting Started
 ---------------
 
-At a high level, RLlib provides an ``Trainer`` class which
-holds a policy for environment interaction. Through the trainer interface, the policy can
-be trained, checkpointed, or an action computed. In multi-agent training, the trainer manages the querying and optimization of multiple policies at once.
+At a high level, RLlib provides an ``Algorithm`` class which
+holds a policy for environment interaction. Through the algorithm's interface, the policy can
+be trained, checkpointed, or an action computed. In multi-agent training, the algorithm manages the querying and optimization of multiple policies at once.
 
 .. image:: images/rllib-api.svg
 
-You can train a simple DQN trainer with the following commands:
+You can train DQN with the following commands:
 
 .. code-block:: bash
 
@@ -75,8 +75,8 @@ Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
 
 Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of
-`common hyperparameters <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__
-(soon to be replaced by `TrainerConfig objects <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer_config.py>`__).
+`common hyperparameters <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
+(soon to be replaced by `AlgorithmConfig objects <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm_config.py>`__).
 
 See the `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
@@ -90,10 +90,10 @@ Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
 You can control the degree of parallelism used by setting the ``num_workers``
-hyperparameter for most algorithms. The Trainer will construct that many
+hyperparameter for most algorithms. The Algorithm will construct that many
 "remote worker" instances (`see RolloutWorker class <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__)
 that are constructed as ray.remote actors, plus exactly one "local worker", a ``RolloutWorker`` object that is not a
-ray actor, but lives directly inside the Trainer.
+ray actor, but lives directly inside the Algorithm.
 For most algorithms, learning updates are performed on the local worker and sample collection from
 one or more environments is performed by the remote workers (in parallel).
 For example, setting ``num_workers=0`` will only create the local worker, in which case both
@@ -106,7 +106,7 @@ to that worker via the ``num_gpus`` setting.
 Similarly, the resource allocation to remote workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``.
 
 The number of GPUs can be fractional quantities (e.g. 0.5) to allocate only a fraction
-of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting
+of a GPU. For example, with DQN you can pack five algorithms onto one GPU by setting
 ``num_gpus: 0.2``. Check out `this fractional GPU example here <https://github.com/ray-project/ray/blob/master/rllib/examples/fractional_gpus.py>`__
 as well that also demonstrates how environments (running on the remote workers) that
 require a GPU can benefit from the ``num_gpus_per_worker`` setting.
@@ -148,23 +148,27 @@ Here are some rules of thumb for scaling training with RLlib.
 
 
 In case you are using lots of workers (``num_workers >> 10``) and you observe worker failures for whatever reasons, which normally interrupt your RLlib training runs, consider using
-the config settings ``ignore_worker_failures=True`` or ``recreate_failed_workers=True``:
+the config settings ``ignore_worker_failures=True``, ``recreate_failed_workers=True``, or ``restart_failed_sub_environments=True``:
 
-``ignore_worker_failures=True`` allows your Trainer to not crash due to a single worker error, but to continue for as long as there is at least one functional worker remaining.
-``recreate_failed_workers=True`` will have your Trainer attempt to replace/recreate any failed worker(s) with a new one.
+``ignore_worker_failures``: When set to True, your Algorithm will not crash due to a single worker error but continue for as long as there is at least one functional worker remaining.
+``recreate_failed_workers``: When set to True, your Algorithm will attempt to replace/recreate any failed worker(s) with newly created one(s). This way, your number of workers will never decrease, even if some of them fail from time to time.
+``restart_failed_sub_environments``: When set to True and there is a failure in one of the vectorized sub-environments in one of your workers, the worker will try to recreate only the failed sub-environment and re-integrate the newly created one into your vectorized env stack on that worker.
 
-Both these settings will make your training runs much more stable and more robust against occasional OOM or other similar "once in a while" errors.
+Note that only one of ``ignore_worker_failures`` or ``recreate_failed_workers`` may be set to True (they are mutually exclusive settings). However,
+you can combine each of these with the ``restart_failed_sub_environments=True`` setting.
+Using these options will make your training runs much more stable and more robust against occasional OOM or other similar "once in a while" errors on your workers
+themselves or inside your environments.
 
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
 
 .. tip::
-    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.agents.trainer_config.TrainerConfig`
+    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.training(lr=0.0003)``), and offer the ability to
-    construct a Trainer instance from these config objects (via their ``build()`` method).
-    So far, this is only supported for some Trainer classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
+    construct an Algorithm instance from these config objects (via their ``build()`` method).
+    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
     but we are rolling this out right now across all RLlib.
 
 The following is a list of the common algorithm hyper-parameters:
@@ -173,7 +177,7 @@ The following is a list of the common algorithm hyper-parameters:
 
     # === Settings for Rollout Worker processes ===
     # Number of rollout worker actors to create for parallel sampling. Setting
-    # this to 0 will force rollouts to be done in the trainer actor.
+    # this to 0 will force rollouts to be done in the algorithm's actor.
     "num_workers": 2,
     # Number of environments to evaluate vector-wise per worker. This enables
     # model inference batching, which can improve performance for inference
@@ -214,7 +218,7 @@ The following is a list of the common algorithm hyper-parameters:
     #   terminates or a configured horizon (hard or soft) is hit.
     "batch_mode": "truncate_episodes",
 
-    # === Settings for the Trainer process ===
+    # === Settings for the Algorithm process ===
     # Discount factor of the MDP.
     "gamma": 0.99,
     # The default learning rate.
@@ -257,7 +261,7 @@ The following is a list of the common algorithm hyper-parameters:
     # a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
     # Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
     "env": None,
-    # The observation- and action spaces for the Policies of this Trainer.
+    # The observation- and action spaces for the Policies of this Algorithm.
     # Use None for automatically inferring these from the given env.
     "observation_space": None,
     "action_space": None,
@@ -399,10 +403,10 @@ The following is a list of the common algorithm hyper-parameters:
     # The unit, with which to count the evaluation duration. Either "episodes"
     # (default) or "timesteps".
     "evaluation_duration_unit": "episodes",
-    # Whether to run evaluation in parallel to a Trainer.train() call
+    # Whether to run evaluation in parallel to a Algorithm.train() call
     # using threading. Default=False.
     # E.g. evaluation_interval=2 -> For every other training iteration,
-    # the Trainer.train() and Trainer.evaluate() calls run in parallel.
+    # the Algorithm.train() and Algorithm.evaluate() calls run in parallel.
     # Note: This is experimental. Possible pitfalls could be race conditions
     # for weight synching at the beginning of the evaluation loop.
     "evaluation_parallel_to_training": False,
@@ -420,16 +424,16 @@ The following is a list of the common algorithm hyper-parameters:
     },
 
     # Number of parallel workers to use for evaluation. Note that this is set
-    # to zero by default, which means evaluation will be run in the trainer
+    # to zero by default, which means evaluation will be run in the algorithm
     # process (only if evaluation_interval is not None). If you increase this,
-    # it will increase the Ray resource usage of the trainer since evaluation
+    # it will increase the Ray resource usage of the algorithm since evaluation
     # workers are created separately from rollout workers (used to sample data
     # for training).
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
-    # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
-    # Trainer.evaluate() method to see the default implementation.
-    # The Trainer guarantees all eval workers have the latest policy state
+    # (algorithm: Algorithm, eval_workers: WorkerSet) -> metrics: dict. See the
+    # Algorithm.evaluate() method to see the default implementation.
+    # The Algorithm guarantees all eval workers have the latest policy state
     # before this function is called.
     "custom_eval_function": None,
     # Make sure the latest available evaluation results are always attached to
@@ -489,7 +493,7 @@ The following is a list of the common algorithm hyper-parameters:
     # If - after one `step_attempt()`, the time limit has not been reached,
     # will perform n more `step_attempt()` calls until this minimum time has been
     # consumed. Set to 0 for no minimum time.
-    "min_time_s_per_reporting": 0,
+    "min_time_s_per_iteration": 0,
     # Minimum train/sample timesteps to accumulate within a single `train()` call.
     # This value does not affect learning, only the number of times
     # `self.step_attempt()` is called by `self.train()`.
@@ -497,22 +501,22 @@ The following is a list of the common algorithm hyper-parameters:
     # training) have not been reached, will perform n more `step_attempt()`
     # calls until the minimum timesteps have been executed.
     # Set to 0 for no minimum timesteps.
-    "min_train_timesteps_per_reporting": 0,
-    "min_sample_timesteps_per_reporting": 0,
+    "min_train_timesteps_per_iteration": 0,
+    "min_sample_timesteps_per_iteration": 0,
 
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
     "seed": None,
-    # Any extra python env vars to set in the trainer process, e.g.,
+    # Any extra python env vars to set in the algorithm process, e.g.,
     # {"OMP_NUM_THREADS": "16"}
     "extra_python_environs_for_driver": {},
     # The extra python environments need to set for worker processes.
     "extra_python_environs_for_worker": {},
 
     # === Resource Settings ===
-    # Number of GPUs to allocate to the trainer process. Note that not all
-    # algorithms can take advantage of trainer GPUs. Support for multi-GPU
+    # Number of GPUs to allocate to the algorithm process. Note that not all
+    # algorithms can take advantage of GPUs. Support for multi-GPU
     # is currently only available for tf-[PPO/IMPALA/DQN/PG].
     # This can be fractional (e.g., 0.3 GPUs).
     "num_gpus": 0,
@@ -528,13 +532,13 @@ The following is a list of the common algorithm hyper-parameters:
     "num_gpus_per_worker": 0,
     # Any custom Ray resources to allocate per worker.
     "custom_resources_per_worker": {},
-    # Number of CPUs to allocate for the trainer. Note: this only takes effect
-    # when running in Tune. Otherwise, the trainer runs in the main program.
+    # Number of CPUs to allocate for the algorithm. Note: this only takes effect
+    # when running in Tune. Otherwise, the algorithm runs in the main program.
     "num_cpus_for_driver": 1,
     # The strategy for the placement group factory returned by
-    # `Trainer.default_resource_request()`. A PlacementGroup defines, which
+    # `Algorithm.default_resource_request()`. A PlacementGroup defines, which
     # devices (resources) should always be co-located on the same node.
-    # For example, a Trainer with 2 rollout workers, running with
+    # For example, an Algorithm with 2 rollout workers, running with
     # num_gpus=1 will request a placement group with the bundles:
     # [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle is
     # for the driver and the other 2 bundles are for the two workers.
@@ -655,7 +659,7 @@ The following is a list of the common algorithm hyper-parameters:
 
     # === API deprecations/simplifications/changes ===
     # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration()` method will be called on each
+    # a Algorithm's `training_step()` method will be called on each
     # training iteration.
     "_disable_execution_plan_api": True,
 
@@ -716,17 +720,17 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
-    trainer = ppo.PPO(config=config, env="CartPole-v0")
+    algo = ppo.PPO(config=config, env="CartPole-v0")
 
-    # Can optionally call trainer.restore(path) to load a checkpoint.
+    # Can optionally call algo.restore(path) to load a checkpoint.
 
     for i in range(1000):
        # Perform one iteration of training the policy with PPO
-       result = trainer.train()
+       result = algo.train()
        print(pretty_print(result))
 
        if i % 100 == 0:
-           checkpoint = trainer.save()
+           checkpoint = algo.save()
            print("checkpoint saved at", checkpoint)
 
     # Also, in case you have trained a model outside of ray/RLlib and have created
@@ -734,19 +738,19 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     # my_keras_model_trained_outside_rllib.save_weights("model.h5")
     # (see: https://keras.io/models/about-keras-models/)
 
-    # ... you can load the h5-weights into your Trainer's Policy's ModelV2
+    # ... you can load the h5-weights into your Algorithm's Policy's ModelV2
     # (tf or torch) by doing:
-    trainer.import_model("my_weights.h5")
+    algo.import_model("my_weights.h5")
     # NOTE: In order for this to work, your (custom) model needs to implement
     # the `import_from_h5` method.
     # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
-    # for detailed examples for tf- and torch trainers/models.
+    # for detailed examples for tf- and torch policies/models.
 
 .. note::
 
-    It's recommended that you run RLlib trainers with :doc:`Tune <../tune/index>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
+    It's recommended that you run RLlib algorithms with :doc:`Tune <../tune/index>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :doc:`Tune <../tune/index>`. For example, the following code performs a simple hyperparam sweep of PPO:
+All RLlib algorithms are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :doc:`Tune <../tune/index>`. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 
@@ -818,7 +822,7 @@ Loading and restoring a trained agent from a checkpoint is simple:
 Computing Actions
 ~~~~~~~~~~~~~~~~~
 
-The simplest way to programmatically compute actions from a trained agent is to use ``trainer.compute_action()``.
+The simplest way to programmatically compute actions from a trained agent is to use ``Algorithm.compute_action()``.
 This method preprocesses and filters the observation before passing it to the agent policy.
 Here is a simple example of testing a trained agent for one episode:
 
@@ -836,12 +840,12 @@ Here is a simple example of testing a trained agent for one episode:
         obs, reward, done, info = env.step(action)
         episode_reward += reward
 
-For more advanced usage, you can access the ``workers`` and policies held by the trainer
+For more advanced usage, you can access the ``workers`` and policies held by the algorithm
 directly as ``compute_action()`` does:
 
 .. code-block:: python
 
-  class Trainer(Trainable):
+  class Algorithm(Trainable):
 
     @PublicAPI
     def compute_action(self,
@@ -857,7 +861,7 @@ directly as ``compute_action()`` does:
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
-        Arguments:
+        Args:
             observation (obj): observation from the environment.
             state (list): RNN hidden state, if any. If state is not None,
                           then all of compute_single_action(...) is returned
@@ -905,23 +909,31 @@ directly as ``compute_action()`` does:
 
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
-It is common to need to access a trainer's internal state, e.g., to set or get internal weights. In RLlib trainer state is replicated across multiple *rollout workers* (Ray actors) in the cluster. However, you can easily get and update this state between calls to ``train()`` via ``trainer.workers.foreach_worker()`` or ``trainer.workers.foreach_worker_with_index()``. These functions take a lambda function that is applied with the worker as an arg. You can also return values from these functions and those will be returned as a list.
+It is common to need to access a algorithm's internal state, e.g., to set or get internal weights.
+In RLlib algorithm state is replicated across multiple *rollout workers* (Ray actors) in the cluster.
+However, you can easily get and update this state between calls to ``train()`` via ``Algorithm.workers.foreach_worker()`` or ``Algorithm.workers.foreach_worker_with_index()``.
+These functions take a lambda function that is applied with the worker as an arg.
+You can also return values from these functions and those will be returned as a list.
 
-You can also access just the "master" copy of the trainer state through ``trainer.get_policy()`` or ``trainer.workers.local_worker()``, but note that updates here may not be immediately reflected in remote replicas if you have configured ``num_workers > 0``. For example, to access the weights of a local TF policy, you can run ``trainer.get_policy().get_weights()``. This is also equivalent to ``trainer.workers.local_worker().policy_map["default_policy"].get_weights()``:
+You can also access just the "master" copy of the algorithm state through ``Algorithm.get_policy()`` or
+``Algorithm.workers.local_worker()``, but note that updates here may not be immediately reflected in
+remote replicas if you have configured ``num_workers > 0``.
+For example, to access the weights of a local TF policy, you can run ``Algorithm.get_policy().get_weights()``.
+This is also equivalent to ``Algorithm.workers.local_worker().policy_map["default_policy"].get_weights()``:
 
 .. code-block:: python
 
     # Get weights of the default local policy
-    trainer.get_policy().get_weights()
+    algo.get_policy().get_weights()
 
     # Same as above
-    trainer.workers.local_worker().policy_map["default_policy"].get_weights()
+    algo.workers.local_worker().policy_map["default_policy"].get_weights()
 
     # Get list of weights of each worker, including remote replicas
-    trainer.workers.foreach_worker(lambda ev: ev.get_policy().get_weights())
+    algo.workers.foreach_worker(lambda ev: ev.get_policy().get_weights())
 
     # Same as above
-    trainer.workers.foreach_worker_with_index(lambda ev, i: ev.get_policy().get_weights())
+    algo.workers.foreach_worker_with_index(lambda ev, i: ev.get_policy().get_weights())
 
 Accessing Model State
 ~~~~~~~~~~~~~~~~~~~~~
@@ -967,7 +979,9 @@ Advanced Python APIs
 Custom Training Workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per training iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your algorithm once per training iteration and report the new training results.
+Sometimes, it is desirable to have full control over training, but still run inside Tune.
+Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
 
 For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
 
@@ -1003,7 +1017,7 @@ You can provide callbacks to be called at points during policy evaluation. These
 
 User-defined state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. For a full example, see `custom_metrics_and_callbacks.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__.
 
-.. autoclass:: ray.rllib.agents.callbacks.DefaultCallbacks
+.. autoclass:: ray.rllib.algorithms.callbacks.DefaultCallbacks
     :members:
 
 
@@ -1012,7 +1026,7 @@ Chaining Callbacks
 
 Use the ``MultiCallbacks`` class to chaim multiple callbacks together.
 
-.. autoclass:: ray.rllib.agents.callbacks.MultiCallbacks
+.. autoclass:: ray.rllib.algorithms.callbacks.MultiCallbacks
 
 
 Visualizing Custom Metrics
@@ -1032,19 +1046,19 @@ exploration behavior, including the decisions (how and whether) to sample
 actions from distributions (stochastically or deterministically).
 The setup can be done via using built-in Exploration classes
 (see `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
-which are specified (and further configured) inside ``Trainer.config["exploration_config"]``.
+which are specified (and further configured) inside ``Algorithm.config["exploration_config"]``.
 Besides using one of the available classes, one can sub-class any of
 these built-ins, add custom behavior to it, and use that new class in
 the config instead.
 
-Every policy has-an Exploration object, which is created from the Trainer’s
+Every policy has-an Exploration object, which is created from the Algorithm’s
 ``config[“exploration_config”]`` dict, which specifies the class to use via the
 special “type” key, as well as constructor arguments via all other keys,
 e.g.:
 
 .. code-block:: python
 
-    # in Trainer.config:
+    # in Algorithm.config:
     "exploration_config": {
         "type": "StochasticSampling",  # <- Special `type` key provides class information
         "[c'tor arg]" : "[value]",  # <- Add any needed constructor args here.
@@ -1070,19 +1084,19 @@ b) log-likelihood:
    :start-after: __sphinx_doc_begin_get_exploration_action__
    :end-before: __sphinx_doc_end_get_exploration_action__
 
-On the highest level, the ``Trainer.compute_action`` and ``Policy.compute_action(s)``
+On the highest level, the ``Algorithm.compute_actions`` and ``Policy.compute_actions``
 methods have a boolean ``explore`` switch, which is passed into
 ``Exploration.get_exploration_action``. If ``explore=None``, the value of
-``Trainer.config[“explore”]`` is used, which thus serves as a main switch for
+``Algorithm.config[“explore”]`` is used, which thus serves as a main switch for
 exploratory behavior, allowing e.g. turning off any exploration easily for
 evaluation purposes (see :ref:`CustomEvaluation`).
 
-The following are example excerpts from different Trainers' configs
-(see rllib/agents/trainer.py) to setup different exploration behaviors:
+The following are example excerpts from different Algorithms' configs
+(see rllib/algorithms/algorithm.py) to setup different exploration behaviors:
 
 .. code-block:: python
 
-    # All of the following configs go into Trainer.config.
+    # All of the following configs go into Algorithm.config.
 
     # 1) Switching *off* exploration by default.
     # Behavior: Calling `compute_action(s)` without explicitly setting its `explore`
@@ -1119,10 +1133,10 @@ The following are example excerpts from different Trainers' configs
        "temperature": 1.0,
     },
 
-    # c) All policy-gradient algos and SAC: see rllib/agents/trainer.py
+    # c) All policy-gradient algos and SAC: see rllib/algorithms/algorithm.py
     # Behavior: The algo samples stochastically from the
-    # model-parameterized distribution. This is the global Trainer default
-    # setting defined in trainer.py and used by all PG-type algos (plus SAC).
+    # model-parameterized distribution. This is the global Algorithm default
+    # setting defined in algorithm.py and used by all PG-type algos (plus SAC).
     "explore": True,
     "exploration_config": {
        "type": "StochasticSampling",
@@ -1137,57 +1151,60 @@ Customized Evaluation During Training
 
 RLlib will report online training rewards, however in some cases you may want to compute
 rewards with different settings (e.g., with exploration turned off, or on a specific set
-of environment configurations). You can activate evaluating policies during training (``Trainer.train()``) by setting
-the ``evaluation_interval`` to an int value (> 0) indicating every how many ``Trainer.train()``
+of environment configurations). You can activate evaluating policies during training (``Algorithm.train()``) by setting
+the ``evaluation_interval`` to an int value (> 0) indicating every how many ``Algorithm.train()``
 calls an "evaluation step" is run:
 
 .. code-block:: python
 
-    # Run one evaluation step on every 3rd `Trainer.train()` call.
+    # Run one evaluation step on every 3rd `Algorithm.train()` call.
     {
         "evaluation_interval": 3,
     }
 
 
-One such evaluation step runs over ``evaluation_duration`` episodes or timesteps, depending
+An evaluation step runs - using its own RolloutWorkers - for ``evaluation_duration`` episodes or timesteps, depending
 on the ``evaluation_duration_unit`` setting, which can be either "episodes" (default) or "timesteps".
 
 
 .. code-block:: python
 
-    # Every time we do run an evaluation step, run it for exactly 10 episodes.
+    # Every time we run an evaluation step, run it for exactly 10 episodes.
     {
         "evaluation_duration": 10,
         "evaluation_duration_unit": "episodes",
     }
-    # Every time we do run an evaluation step, run it for close to 200 timesteps.
+    # Every time we run an evaluation step, run it for (close to) 200 timesteps.
     {
         "evaluation_duration": 200,
         "evaluation_duration_unit": "timesteps",
     }
 
 
+Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration`` setting is NOT dividable
+by the number of evaluation workers (configurable via ``evaluation_num_workers``), RLlib will round up the number of timesteps specified to the nearest whole number of timesteps that is divisible by the number of evaluation workers.
+
 Before each evaluation step, weights from the main model are synchronized to all evaluation workers.
 
-Normally, the evaluation step is run right after the respective train step. For example, for
-``evaluation_interval=2``, the sequence of steps is: ``train, train, eval, train, train, eval, ...``.
+By default, the evaluation step is run right after the respective training step. For example, for
+``evaluation_interval=2``, the sequence of events is: ``train, train, eval, train, train, eval, ...``.
 For ``evaluation_interval=1``, the sequence is: ``train, eval, train, eval, ...``.
 
 However, it is possible to run evaluation in parallel to training via the ``evaluation_parallel_to_training=True``
-config setting. In this case, both steps (train and eval) are run at the same time via threading.
+config setting. In this case, both training- and evaluation steps are run at the same time via threading.
 This can speed up the evaluation process significantly, but leads to a 1-iteration delay between reported
-training results and evaluation results (the evaluation results are behind b/c they use slightly outdated
-model weights).
+training- and evaluation results. The evaluation results are behind b/c they use slightly outdated
+model weights (synchronized after the previous training step).
 
 When running with the ``evaluation_parallel_to_training=True`` setting, a special "auto" value
 is supported for ``evaluation_duration``. This can be used to make the evaluation step take
-roughly as long as the train step:
+roughly as long as the concurrently ongoing training step:
 
 .. code-block:: python
 
-    # Run eval and train at the same time via threading and make sure they roughly
-    # take the same time, such that the next `Trainer.train()` call can execute
-    # immediately and not have to wait for a still ongoing (e.g. very long episode)
+    # Run evaluation and training at the same time via threading and make sure they roughly
+    # take the same time, such that the next `Algorithm.train()` call can execute
+    # immediately and not have to wait for a still ongoing (e.g. b/c of very long episodes)
     # evaluation step:
     {
         "evaluation_interval": 1,
@@ -1204,8 +1221,8 @@ do:
 .. code-block:: python
 
     # Switching off exploration behavior for evaluation workers
-    # (see rllib/agents/trainer.py). Use any keys in this sub-dict that are
-    # also supported in the main Trainer config.
+    # (see rllib/algorithms/algorithm.py). Use any keys in this sub-dict that are
+    # also supported in the main Algorithm config.
     "evaluation_config": {
        "explore": False
     }
@@ -1216,18 +1233,21 @@ do:
     policy, even if this is a stochastic one. Setting "explore=False" above
     will result in the evaluation workers not using this stochastic policy.
 
-Parallelism for the evaluation step is determined via the ``evaluation_num_workers``
+
+The level of parallelism within the evaluation step is determined via the ``evaluation_num_workers``
 setting. Set this to larger values if you want the desired evaluation episodes or timesteps to
 run as much in parallel as possible. For example, if your ``evaluation_duration=10``,
-``evaluation_duration_unit=episodes``, and ``evaluation_num_workers=10``, each eval worker
-only has to run 1 episode in each eval step.
+``evaluation_duration_unit=episodes``, and ``evaluation_num_workers=10``, each eval RolloutWorker
+only has to run 1 episode in each evaluation step.
 
 In case you would like to entirely customize the evaluation step, set ``custom_eval_function`` in your
-config to a callable taking the Trainer object and a WorkerSet object (the evaluation WorkerSet)
-and returning a metrics dict. See `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__
+config to a callable taking the Algorithm object and a WorkerSet object (the Algorithm's ``self.evaluation_workers`` WorkerSet instance)
+and returning a metrics dict. See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
 for further documentation.
 
-There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
+There is also an end-to-end example of how to set up a custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__.
+Note that if you only want to evaluate your policy at the end of training, you can set ``evaluation_interval: [int]``, where ``[int]`` should be the number of training
+iterations before stopping.
 
 Below are some examples of how the custom evaluation metrics are reported nested under the ``evaluation`` key of normal training results:
 
@@ -1237,12 +1257,12 @@ Below are some examples of how the custom evaluation metrics are reported nested
     Sample output for `python custom_eval.py`
     ------------------------------------------------------------------------
 
-    INFO trainer.py:623 -- Evaluating current policy for 10 episodes.
-    INFO trainer.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
-    INFO trainer.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
-    INFO trainer.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
-    INFO trainer.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
-    INFO trainer.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
+    INFO algorithm.py:623 -- Evaluating current policy for 10 episodes.
+    INFO algorithm.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
+    INFO algorithm.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
+    INFO algorithm.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
+    INFO algorithm.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
+    INFO algorithm.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
 
     Result for PG_SimpleCorridor_2c6b27dc:
       ...
@@ -1260,7 +1280,7 @@ Below are some examples of how the custom evaluation metrics are reported nested
     Sample output for `python custom_eval.py --custom-eval`
     ------------------------------------------------------------------------
 
-    INFO trainer.py:631 -- Running custom eval function <function ...>
+    INFO algorithm.py:631 -- Running custom eval function <function ...>
     Update corridor length to 4
     Update corridor length to 7
     Custom evaluation round 1
@@ -1278,6 +1298,7 @@ Below are some examples of how the custom evaluation metrics are reported nested
         episode_reward_min: 0.0
         episodes_this_iter: 223
         foo: 1
+
 
 Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -1326,17 +1347,17 @@ which receives the last training results and returns a new task for the env to b
         new_task = current_task + 1
         return new_task
 
-    # Setup your Trainer's config like so:
+    # Setup your Algorithm's config like so:
     config = {
         "env": MyEnv,
         "env_task_fn": curriculum_fn,
     }
-    # Train using `tune.run` or `Trainer.train()` and the above config stub.
+    # Train using `tune.run` or `Algorithm.train()` and the above config stub.
     # ...
 
 There are two more ways to use the RLlib's other APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__.
 
-Use the Trainer API and update the environment between calls to ``train()``. This example shows the trainer being run inside a Tune function.
+Use the Algorithm API and update the environment between calls to ``train()``. This example shows the algorithm being run inside a Tune function.
 This is basically the same as what the built-in `env_task_fn` API described above already does under the hood, but allows you to do even more
 customizations to your training loop.
 
@@ -1347,9 +1368,9 @@ customizations to your training loop.
     from ray.rllib.algorithms.ppo import PPO
 
     def train(config, reporter):
-        trainer = PPO(config=config, env=YourEnv)
+        algo = PPO(config=config, env=YourEnv)
         while True:
-            result = trainer.train()
+            result = algo.train()
             reporter(**result)
             if result["episode_reward_mean"] > 200:
                 task = 2
@@ -1357,7 +1378,7 @@ customizations to your training loop.
                 task = 1
             else:
                 task = 0
-            trainer.workers.foreach_worker(
+            algo.workers.foreach_worker(
                 lambda ev: ev.foreach_env(
                     lambda env: env.set_task(task)))
 
@@ -1382,28 +1403,26 @@ You could also use RLlib's callbacks API to update the environment on new traini
 
     import ray
     from ray import tune
+    from ray.rllib.agents.callbacks import DefaultCallbacks
 
-    def on_train_result(info):
-        result = info["result"]
-        if result["episode_reward_mean"] > 200:
-            task = 2
-        elif result["episode_reward_mean"] > 100:
-            task = 1
-        else:
-            task = 0
-        trainer = info["trainer"]
-        trainer.workers.foreach_worker(
-            lambda ev: ev.foreach_env(
-                lambda env: env.set_task(task)))
+    class MyCallbacks(DefaultCallbacks):
+        def on_train_result(self, algorithm, result, **kwargs):
+            if result["episode_reward_mean"] > 200:
+                task = 2
+            elif result["episode_reward_mean"] > 100:
+                task = 1
+            else:
+                task = 0
+            algorithm.workers.foreach_worker(
+                lambda ev: ev.foreach_env(
+                    lambda env: env.set_task(task)))
 
     ray.init()
     tune.run(
         "PPO",
         config={
             "env": YourEnv,
-            "callbacks": {
-                "on_train_result": on_train_result,
-            },
+            "callbacks": MyCallbacks,
         },
     )
 
@@ -1444,8 +1463,8 @@ However, eager can be slower than graph mode unless tracing is enabled.
 Using PyTorch
 ~~~~~~~~~~~~~
 
-Trainers that have an implemented TorchPolicy, will allow you to run
-`rllib train` using the command line ``--torch`` flag.
+Algorithms that have an implemented TorchPolicy, will allow you to run
+`rllib train` using the command line ``--framework=torch`` flag.
 Algorithms that do not have a torch version yet will complain with an error in
 this case.
 
@@ -1467,7 +1486,10 @@ You can use the `data output API <rllib-offline.html>`__ to save episode traces 
 Log Verbosity
 ~~~~~~~~~~~~~
 
-You can control the trainer log level via the ``"log_level"`` flag. Valid values are "DEBUG", "INFO", "WARN" (default), and "ERROR". This can be used to increase or decrease the verbosity of internal logging. You can also use the ``-v`` and ``-vv`` flags. For example, the following two commands are about equivalent:
+You can control the log level via the ``"log_level"`` flag. Valid values are "DEBUG",
+"INFO", "WARN" (default), and "ERROR". This can be used to increase or decrease the
+verbosity of internal logging. You can also use the ``-v`` and ``-vv`` flags.
+For example, the following two commands are about equivalent:
 
 .. code-block:: bash
 

@@ -1,5 +1,6 @@
 from copy import copy
 import inspect
+import logging
 from typing import (
     Any,
     Callable,
@@ -10,19 +11,23 @@ from typing import (
 )
 
 from ray.serve.context import get_global_client
-from ray.experimental.dag.class_node import ClassNode
-from ray.experimental.dag.function_node import FunctionNode
+from ray.dag.class_node import ClassNode
+from ray.dag.function_node import FunctionNode
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
+from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import DEFAULT, get_deployment_import_path
+from ray.serve.utils import DEFAULT
 from ray.util.annotations import PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
 )
+
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI
@@ -82,15 +87,6 @@ class Deployment:
             init_args = ()
         if init_kwargs is None:
             init_kwargs = {}
-
-        # TODO(architkulkarni): Enforce that autoscaling_config and
-        # user-provided num_replicas should be mutually exclusive.
-        if version is None and config.autoscaling_config is not None:
-            # TODO(architkulkarni): Remove this restriction.
-            raise ValueError(
-                "Currently autoscaling is only supported for "
-                "versioned deployments. Try @serve.deployment(version=...)."
-            )
 
         self._func_or_class = func_or_class
         self._name = name
@@ -461,12 +457,11 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     return DeploymentSchema(
         name=d.name,
-        import_path=get_deployment_import_path(
-            d, enforce_importable=True, replace_main=True
-        ),
-        init_args=(),
-        init_kwargs={},
-        num_replicas=d.num_replicas,
+        # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
+        # because internally we use these two field for autoscale and deploy.
+        # We can improve the code after we separate the user faced deployment config and
+        # internal deployment config.
+        num_replicas=None if d._config.autoscaling_config else d.num_replicas,
         route_prefix=d.route_prefix,
         max_concurrent_queries=d.max_concurrent_queries,
         user_config=d.user_config,
@@ -480,6 +475,14 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    """Creates a deployment with parameters specified in schema.
+
+    The returned deployment CANNOT be deployed immediately. It's func_or_class
+    value is an empty string (""), which is not a valid import path. The
+    func_or_class value must be overwritten with a valid function or class
+    before the deployment can be deployed.
+    """
+
     if s.ray_actor_options is None:
         ray_actor_options = None
     else:
@@ -498,7 +501,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     )
 
     return Deployment(
-        func_or_class=s.import_path,
+        func_or_class="",
         name=s.name,
         config=config,
         init_args=(),

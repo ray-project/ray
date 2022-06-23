@@ -20,7 +20,7 @@ Ray AIR exposes a ``Preprocessor`` class for preprocessing. The ``Preprocessor``
 #. ``transform()``: Apply a transformation to a ``Dataset``.
    If the ``Preprocessor`` is stateful, then ``fit()`` must be called first.
    *This is typically called on the training, validation, test datasets.*
-#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.air.predictor.DataBatchType>` of data.
+#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.train.predictor.DataBatchType>` of data.
    *This is typically called on online or offline inference data.*
 #. ``fit_transform()``: Syntactic sugar for calling both ``fit()`` and ``transform()`` on a ``Dataset``.
 
@@ -63,7 +63,7 @@ The same logic is applicable to other integrations as well.
 Trainer
 ~~~~~~~
 
-The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.air.trainer.Trainer>`.
+The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.train.trainer.BaseTrainer>`.
 If the ``Trainer`` is instantiated with a ``Preprocessor``, then the following logic will be executed when ``Trainer.fit()`` is called:
 
 #. If a ``"train"`` ``Dataset`` is passed in, then the ``Preprocessor`` will call ``fit()`` on it.
@@ -127,31 +127,32 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
 
 .. tabbed:: Common APIs
 
-    #. :class:`Preprocessor <ray.air.preprocessor.Preprocessor>`
-    #. :class:`BatchMapper <ray.air.preprocessors.BatchMapper>`
-    #. :class:`Chain <ray.air.preprocessors.Chain>`
+    #. :class:`Preprocessor <ray.data.preprocessor.Preprocessor>`
+    #. :class:`BatchMapper <ray.data.preprocessors.BatchMapper>`
+    #. :class:`Chain <ray.data.preprocessors.Chain>`
+    #. :class:`CustomStatefulPreprocessor <ray.data.preprocessors.CustomStatefulPreprocessor>`
 
 .. tabbed:: Tabular
 
-    #. :class:`Categorizer <ray.air.preprocessors.Categorizer>`
-    #. :class:`FeatureHasher <ray.air.preprocessors.FeatureHasher>`
-    #. :class:`LabelEncoder <ray.air.preprocessors.LabelEncoder>`
-    #. :class:`MaxAbsScaler <ray.air.preprocessors.MaxAbsScaler>`
-    #. :class:`MinMaxScaler <ray.air.preprocessors.MinMaxScaler>`
-    #. :class:`Normalizer <ray.air.preprocessors.Normalizer>`
-    #. :class:`OneHotEncoder <ray.air.preprocessors.OneHotEncoder>`
-    #. :class:`OrdinalEncoder <ray.air.preprocessors.OrdinalEncoder>`
-    #. :class:`PowerTransformer <ray.air.preprocessors.PowerTransformer>`
-    #. :class:`RobustScaler <ray.air.preprocessors.RobustScaler>`
-    #. :class:`SimpleImputer <ray.air.preprocessors.SimpleImputer>`
-    #. :class:`StandardScaler <ray.air.preprocessors.StandardScaler>`
-    #. :class:`SimpleImputer <ray.air.preprocessors.SimpleImputer>`
+    #. :class:`Categorizer <ray.data.preprocessors.Categorizer>`
+    #. :class:`FeatureHasher <ray.data.preprocessors.FeatureHasher>`
+    #. :class:`LabelEncoder <ray.data.preprocessors.LabelEncoder>`
+    #. :class:`MaxAbsScaler <ray.data.preprocessors.MaxAbsScaler>`
+    #. :class:`MinMaxScaler <ray.data.preprocessors.MinMaxScaler>`
+    #. :class:`Normalizer <ray.data.preprocessors.Normalizer>`
+    #. :class:`OneHotEncoder <ray.data.preprocessors.OneHotEncoder>`
+    #. :class:`OrdinalEncoder <ray.data.preprocessors.OrdinalEncoder>`
+    #. :class:`PowerTransformer <ray.data.preprocessors.PowerTransformer>`
+    #. :class:`RobustScaler <ray.data.preprocessors.RobustScaler>`
+    #. :class:`SimpleImputer <ray.data.preprocessors.SimpleImputer>`
+    #. :class:`StandardScaler <ray.data.preprocessors.StandardScaler>`
+    #. :class:`SimpleImputer <ray.data.preprocessors.SimpleImputer>`
 
 .. tabbed:: Text
 
-    #. :class:`CountVectorizer <ray.air.preprocessors.CountVectorizer>`
-    #. :class:`HashingVectorizer <ray.air.preprocessors.HashingVectorizer>`
-    #. :class:`Tokenizer <ray.air.preprocessors.Tokenizer>`
+    #. :class:`CountVectorizer <ray.data.preprocessors.CountVectorizer>`
+    #. :class:`HashingVectorizer <ray.data.preprocessors.HashingVectorizer>`
+    #. :class:`Tokenizer <ray.data.preprocessors.Tokenizer>`
 
 .. tabbed:: Image
 
@@ -188,5 +189,9 @@ Custom Preprocessors
     :start-after: __custom_stateless_start__
     :end-before: __custom_stateless_end__
 
-**Stateful Preprocessors:** Coming soon!
+**Stateful Preprocessors:** Stateful preprocessors can be implemented with the ``CustomStatefulPreprocessor``.
 
+.. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __custom_stateful_start__
+    :end-before: __custom_stateful_end__

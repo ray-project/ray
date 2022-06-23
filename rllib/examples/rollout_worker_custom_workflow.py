@@ -1,6 +1,6 @@
 """Example of using rollout worker classes directly to implement training.
 
-Instead of using the built-in Trainer classes provided by RLlib, here we define
+Instead of using the built-in Algorithm classes provided by RLlib, here we define
 a custom Policy class and manually coordinate distributed sample
 collection and policy optimization.
 """

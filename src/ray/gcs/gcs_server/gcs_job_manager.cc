@@ -76,8 +76,6 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
   job_table_data.set_timestamp(time);
   job_table_data.set_end_time(time);
   job_table_data.set_is_dead(true);
-  job_table_data.set_driver_ip_address("");
-  job_table_data.set_driver_pid(-1);
   auto on_done = [this, job_id, job_table_data, done_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;

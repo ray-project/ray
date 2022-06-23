@@ -2,7 +2,7 @@
 Distributed Prioritized Experience Replay (Ape-X)
 =================================================
 
-This file defines a DQN trainer using the Ape-X architecture.
+This file defines a DQN algorithm using the Ape-X architecture.
 
 Ape-X uses a single GPU learner and many CPU workers for experience collection.
 Experience collection can scale to hundreds of CPU workers due to the
@@ -11,17 +11,17 @@ distributed prioritization of experience prior to storage in replay buffers.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x
 """  # noqa: E501
-import queue
-from collections import defaultdict
 import copy
 import platform
+import queue
 import random
-from typing import Dict, List, Type, Optional, Callable
+from collections import defaultdict
+from typing import Callable, Dict, List, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
 from ray.rllib import Policy
-from ray.rllib.agents import Trainer
+from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -29,13 +29,11 @@ from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
-from ray.rllib.execution.parallel_requests import (
-    AsyncRequestsManager,
-)
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -48,9 +46,9 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    TrainerConfigDict,
+    AlgorithmConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    PartialTrainerConfigDict,
 )
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -58,7 +56,7 @@ from ray.util.ml_utils.dict import merge_dicts
 
 
 class ApexDQNConfig(DQNConfig):
-    """Defines a configuration class from which an ApexDQN Trainer can be built.
+    """Defines a configuration class from which an ApexDQN Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
@@ -76,9 +74,9 @@ class ApexDQNConfig(DQNConfig):
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = config.build()
+        >>> algo = config.build()
         >>> while True:
-        >>>     trainer.train()
+        >>>     algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
@@ -121,9 +119,9 @@ class ApexDQNConfig(DQNConfig):
         >>>       .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a ApexConfig instance."""
-        super().__init__(trainer_class=trainer_class or ApexDQN)
+        super().__init__(algo_class=algo_class or ApexDQN)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -194,8 +192,8 @@ class ApexDQNConfig(DQNConfig):
         self.num_gpus = 1
 
         # .reporting()
-        self.min_time_s_per_reporting = 30
-        self.min_sample_timesteps_per_reporting = 25000
+        self.min_time_s_per_iteration = 30
+        self.min_sample_timesteps_per_iteration = 25000
 
         # fmt: on
         # __sphinx_doc_end__
@@ -352,7 +350,7 @@ class ApexDQNConfig(DQNConfig):
 
 class ApexDQN(DQN):
     @override(Trainable)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         # Shortcut: If execution_plan, thread and buffer will be created in there.
@@ -424,7 +422,7 @@ class ApexDQN(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ApexDQNConfig().to_dict()
 
     @override(DQN)
@@ -434,8 +432,8 @@ class ApexDQN(DQN):
         # Call DQN's validation method.
         super().validate_config(config)
 
-    @override(Trainable)
-    def training_iteration(self) -> ResultDict:
+    @override(DQN)
+    def training_step(self) -> ResultDict:
         num_samples_ready_dict = self.get_samples_and_store_to_replay_buffers()
         worker_samples_collected = defaultdict(int)
 
@@ -642,7 +640,7 @@ class ApexDQN(DQN):
                 STEPS_TRAINED_COUNTER
             ]
 
-    @override(Trainer)
+    @override(Algorithm)
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -652,13 +650,16 @@ class ApexDQN(DQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        self._sampling_actor_manager.remove_workers(removed_workers)
-        self._sampling_actor_manager.add_workers(new_workers)
+        if self.config["_disable_execution_plan_api"]:
+            self._sampling_actor_manager.remove_workers(
+                removed_workers, remove_in_flight_requests=True
+            )
+            self._sampling_actor_manager.add_workers(new_workers)
 
-    @override(Trainer)
-    def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
-        result = super()._compile_step_results(
-            step_ctx=step_ctx, step_attempt_results=step_attempt_results
+    @override(Algorithm)
+    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
+        result = super()._compile_iteration_results(
+            step_ctx=step_ctx, iteration_results=iteration_results
         )
         replay_stats = ray.get(
             self._replay_actors[0].stats.remote(self.config["optimizer"].get("debug"))
@@ -680,7 +681,7 @@ class ApexDQN(DQN):
         return result
 
     @classmethod
-    @override(Trainable)
+    @override(Algorithm)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 

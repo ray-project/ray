@@ -1,23 +1,24 @@
-from collections import Counter
 import copy
-from gym.spaces import Box
 import logging
-import numpy as np
 import random
 import re
 import time
+from collections import Counter
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
+
+import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 import yaml
+from gym.spaces import Box
 
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-from ray.rllib.utils.typing import PartialTrainerConfigDict
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import CLIReporter, run_experiments
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.trainer_config import TrainerConfig
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(
-    config: Optional[Union["TrainerConfig", PartialTrainerConfigDict]] = None,
+    config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
@@ -46,7 +47,7 @@ def framework_iterator(
     as the correct eager/non-eager contexts for tfe/tf.
 
     Args:
-        config: An optional config dict or TrainerConfig object. This will be modified
+        config: An optional config dict or AlgorithmConfig object. This will be modified
             (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
@@ -281,12 +282,12 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
 
 
 def check_compute_single_action(
-    trainer, include_state=False, include_prev_action_reward=False
+    algorithm, include_state=False, include_prev_action_reward=False
 ):
-    """Tests different combinations of args for trainer.compute_single_action.
+    """Tests different combinations of args for algorithm.compute_single_action.
 
     Args:
-        trainer: The Trainer object to test.
+        algorithm: The Algorithm object to test.
         include_state: Whether to include the initial state of the Policy's
             Model in the `compute_single_action` call.
         include_prev_action_reward: Whether to include the prev-action and
@@ -298,15 +299,15 @@ def check_compute_single_action(
     # Have to import this here to avoid circular dependency.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
-    # Some Trainers may not abide to the standard API.
+    # Some Algorithms may not abide to the standard API.
     pid = DEFAULT_POLICY_ID
     try:
         # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(trainer.workers.local_worker().get_policies_to_train()))
-        pol = trainer.get_policy(pid)
+        pid = next(iter(algorithm.workers.local_worker().get_policies_to_train()))
+        pol = algorithm.get_policy(pid)
     except AttributeError:
-        pol = trainer.policy
+        pol = algorithm.policy
     # Get the policy's model.
     model = pol.model
 
@@ -316,7 +317,7 @@ def check_compute_single_action(
         what, method_to_test, obs_space, full_fetch, explore, timestep, unsquash, clip
     ):
         call_kwargs = {}
-        if what is trainer:
+        if what is algorithm:
             call_kwargs["full_fetch"] = full_fetch
             call_kwargs["policy_id"] = pid
 
@@ -401,15 +402,15 @@ def check_compute_single_action(
         if clip is None:
             clip = what.config["clip_actions"]
 
-        # Test whether unsquash/clipping works on the Trainer's
+        # Test whether unsquash/clipping works on the Algorithm's
         # compute_single_action method: Both flags should force the action
         # to be within the space's bounds.
-        if method_to_test == "single" and what == trainer:
+        if method_to_test == "single" and what == algorithm:
             if not action_space.contains(action) and (
                 clip or unsquash or not isinstance(action_space, Box)
             ):
                 raise ValueError(
-                    f"Returned action ({action}) of trainer/policy {what} "
+                    f"Returned action ({action}) of algorithm/policy {what} "
                     f"not in Env's action_space {action_space}"
                 )
             # We are operating in normalized space: Expect only smaller action
@@ -421,21 +422,21 @@ def check_compute_single_action(
                 and np.any(np.abs(action) > 15.0)
             ):
                 raise ValueError(
-                    f"Returned action ({action}) of trainer/policy {what} "
+                    f"Returned action ({action}) of algorithm/policy {what} "
                     "should be in normalized space, but seems too large/small "
                     "for that!"
                 )
 
-    # Loop through: Policy vs Trainer; Different API methods to calculate
+    # Loop through: Policy vs Algorithm; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
-    for what in [pol, trainer]:
-        if what is trainer:
+    for what in [pol, algorithm]:
+        if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(trainer, "workers", None)
+            worker_set = getattr(algorithm, "workers", None)
             assert worker_set
             if isinstance(worker_set, list):
-                obs_space = trainer.get_policy(pid).observation_space
+                obs_space = algorithm.get_policy(pid).observation_space
             else:
                 obs_space = worker_set.local_worker().for_policy(
                     lambda p: p.observation_space, policy_id=pid
@@ -446,7 +447,7 @@ def check_compute_single_action(
 
         for method_to_test in ["single"] + (["input_dict"] if what is pol else []):
             for explore in [True, False]:
-                for full_fetch in [False, True] if what is trainer else [False]:
+                for full_fetch in [False, True] if what is algorithm else [False]:
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
                         for clip in [False] if unsquash else [True, False, None]:
@@ -492,7 +493,7 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
 
 
 def check_train_results(train_results):
-    """Checks proper structure of a Trainer.train() returned dict.
+    """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
         train_results: The train results dict to check.
@@ -577,6 +578,7 @@ def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
     max_num_repeats: int = 2,
+    use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
 ) -> Dict[str, Any]:
     """Runs the given experiments in yaml_files and returns results dict.
@@ -585,6 +587,8 @@ def run_learning_tests_from_yaml(
         yaml_files: List of yaml file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
+        use_pass_criteria_as_stop: Configure the Trial so that it stops
+            as soon as pass criterias are met.
         smoke_test: Whether this is just a smoke-test. If True,
             set time_total_s to 5min and don't early out due to rewards
             or timesteps reached.
@@ -635,24 +639,26 @@ def run_learning_tests_from_yaml(
             e["stop"] = e["stop"] if "stop" in e else {}
             e["pass_criteria"] = e["pass_criteria"] if "pass_criteria" in e else {}
 
+            check_eval = should_check_eval(e)
+            episode_reward_key = (
+                "episode_reward_mean"
+                if not check_eval
+                else "evaluation/episode_reward_mean"
+            )
+
             # For smoke-tests, we just run for n min.
             if smoke_test:
                 # 0sec for each(!) experiment/trial.
                 # This is such that if there are many experiments/trials
                 # in a test (e.g. rllib_learning_test), each one can at least
-                # create its trainer and run a first iteration.
+                # create its Algorithm and run a first iteration.
                 e["stop"]["time_total_s"] = 0
             else:
-                check_eval = should_check_eval(e)
-                episode_reward_key = (
-                    "episode_reward_mean"
-                    if not check_eval
-                    else "evaluation/episode_reward_mean"
-                )
-                # We also stop early, once we reach the desired reward.
-                min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
-                if min_reward is not None:
-                    e["stop"][episode_reward_key] = min_reward
+                if use_pass_criteria_as_stop:
+                    # We also stop early, once we reach the desired reward.
+                    min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
+                    if min_reward is not None:
+                        e["stop"][episode_reward_key] = min_reward
 
             # Generate `checks` dict for all experiments
             # (tf, tf2 and/or torch).
@@ -664,7 +670,7 @@ def run_learning_tests_from_yaml(
                     ec["config"]["eager_tracing"] = True
 
                 checks[k_] = {
-                    "min_reward": ec["pass_criteria"].get("episode_reward_mean", 0.0),
+                    "min_reward": ec["pass_criteria"].get(episode_reward_key, 0.0),
                     "min_throughput": ec["pass_criteria"].get("timesteps_total", 0.0)
                     / (ec["stop"].get("time_total_s", 1.0) or 1.0),
                     "time_total_s": ec["stop"].get("time_total_s"),
@@ -676,10 +682,6 @@ def run_learning_tests_from_yaml(
 
                 # One experiment to run.
                 experiments[k_] = ec
-
-    # Print out the actual config.
-    print("== Test config ==")
-    print(yaml.dump(experiments))
 
     # Keep track of those experiments we still have to run.
     # If an experiment passes, we'll remove it from this dict.
@@ -698,6 +700,10 @@ def run_learning_tests_from_yaml(
 
         print(f"Starting learning test iteration {i}...")
 
+        # Print out the actual config.
+        print("== Test config ==")
+        print(yaml.dump(experiments_to_run))
+
         # Run remaining experiments.
         trials = run_experiments(
             experiments_to_run,
@@ -713,6 +719,7 @@ def run_learning_tests_from_yaml(
                     "episode_reward_mean": "reward_mean",
                     "evaluation/episode_reward_mean": "eval_reward_mean",
                 },
+                parameter_columns=["framework"],
                 sort_by_metric=True,
                 max_report_frequency=30,
             ),
@@ -748,22 +755,24 @@ def run_learning_tests_from_yaml(
             # Experiment finished: Check reward achieved and timesteps done
             # (throughput).
             else:
+                # Use best_result's reward to check min_reward.
                 if check_eval:
                     episode_reward_mean = np.mean(
                         [
-                            t.last_result["evaluation"]["episode_reward_mean"]
+                            t.metric_analysis["evaluation/episode_reward_mean"]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 else:
                     episode_reward_mean = np.mean(
                         [
-                            t.last_result["episode_reward_mean"]
+                            t.metric_analysis["episode_reward_mean"]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 desired_reward = checks[experiment]["min_reward"]
 
+                # Use last_result["timesteps_total"] to check throughput.
                 timesteps_total = np.mean(
                     [t.last_result["timesteps_total"] for t in trials_for_experiment]
                 )
@@ -771,10 +780,13 @@ def run_learning_tests_from_yaml(
                     [t.last_result["time_total_s"] for t in trials_for_experiment]
                 )
 
-                # TODO(jungong) : track trainer and env throughput separately.
+                # TODO(jungong) : track training- and env throughput separately.
                 throughput = timesteps_total / (total_time_s or 1.0)
-                # TODO(jungong) : enable throughput check again after
-                #   TD3_HalfCheetahBulletEnv is fixed and verified.
+                # Throughput verification is not working. Many algorithm, e.g. TD3,
+                # achieves the learning goal, but fails the throughput check
+                # miserably.
+                # TODO(jungong): Figure out why.
+                #
                 # desired_throughput = checks[experiment]["min_throughput"]
                 desired_throughput = None
 
@@ -803,7 +815,11 @@ def run_learning_tests_from_yaml(
                     checks[experiment]["failures"] += 1
                 # We succeeded!
                 else:
-                    print(" ... Successful: (mark ok).")
+                    print(
+                        " ... Successful: (mark ok). Actual "
+                        f"reward={episode_reward_mean}; "
+                        f"actual throughput={throughput}"
+                    )
                     checks[experiment]["passed"] = True
                     del experiments_to_run[experiment]
 
@@ -840,7 +856,7 @@ def check_same_batch(batch1, batch2) -> None:
         batch2: Batch to compare against batch1
     """
     # Avoids circular import
-    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 
     assert type(batch1) == type(
         batch2

@@ -1,12 +1,12 @@
 import logging
 from typing import List, Optional, Type
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
-from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import Deprecated
 
@@ -44,9 +44,9 @@ class DDPGConfig(SimpleQConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DDPGConfig instance."""
-        super().__init__(trainer_class=trainer_class or DDPG)
+        super().__init__(algo_class=algo_class or DDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -129,7 +129,7 @@ class DDPGConfig(SimpleQConfig):
         # Deprecated.
         self.worker_side_prioritization = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -256,12 +256,12 @@ class DDPGConfig(SimpleQConfig):
 class DDPG(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    # TODO make this return a TrainerConfig
-    def get_default_config(cls) -> TrainerConfigDict:
+    # TODO make this return a AlgorithmConfig
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DDPGConfig().to_dict()
 
     @override(SimpleQ)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 
@@ -270,7 +270,7 @@ class DDPG(SimpleQ):
             return DDPGTFPolicy
 
     @override(SimpleQ)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
 
         # Call super's validation method.
         super().validate_config(config)

@@ -1,36 +1,38 @@
 import json
 import os
-import requests
-
-from unittest.mock import MagicMock
-from typing import List
-import pytest
 import sys
+from typing import List
+from unittest.mock import MagicMock
+
+import pytest
+import requests
+from click.testing import CliRunner
+
+import ray
+import ray.scripts.scripts as scripts
+from ray._private.test_utils import (
+    format_web_url,
+    wait_for_condition,
+    wait_until_server_available,
+)
+from ray._raylet import ActorID, NodeID, TaskID, WorkerID
+from ray.core.generated.common_pb2 import Address
+from ray.core.generated.gcs_pb2 import ActorTableData
+from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
+from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
+from ray.dashboard.modules.log.log_agent import tail as tail_file
+from ray.dashboard.modules.log.log_manager import LogsManager
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
+from ray.experimental.state.common import GetLogOptions
+from ray.experimental.state.exception import DataSourceUnavailable
+from ray.experimental.state.state_manager import StateDataSourceClient
 
 if sys.version_info > (3, 7, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock
 
-import ray
-
-from ray._private.test_utils import (
-    format_web_url,
-    wait_until_server_available,
-)
-from ray._raylet import WorkerID, ActorID, TaskID, NodeID
-from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
-from ray.dashboard.tests.conftest import *  # noqa
-from ray.core.generated.common_pb2 import Address
-from ray.core.generated.reporter_pb2 import StreamLogReply, ListLogsReply
-from ray.core.generated.gcs_pb2 import ActorTableData
-from ray.dashboard.modules.log.log_agent import tail as tail_file
-from ray.dashboard.modules.log.log_manager import LogsManager
-from ray.experimental.state.api import list_nodes, list_workers
-from ray.experimental.state.common import GetLogOptions
-from ray.experimental.state.exception import DataSourceUnavailable
-from ray.experimental.state.state_manager import StateDataSourceClient
-from ray._private.test_utils import wait_for_condition
 
 ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
 
@@ -162,8 +164,11 @@ async def test_logs_manager_resolve_file(logs_manager):
     """
     Test filename is given.
     """
+    logs_client = logs_manager.data_source_client
+    logs_client.get_all_registered_agent_ids = MagicMock()
+    logs_client.get_all_registered_agent_ids.return_value = [node_id.hex()]
     expected_filename = "filename"
-    log_file_name = await logs_manager.resolve_filename(
+    log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id,
         log_filename=expected_filename,
         actor_id=None,
@@ -173,6 +178,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         timeout=10,
     )
     assert log_file_name == expected_filename
+    assert n == node_id
     """
     Test actor id is given.
     """
@@ -185,7 +191,7 @@ async def test_logs_manager_resolve_file(logs_manager):
                 return None
             assert False, "Not reachable."
 
-        log_file_name = await logs_manager.resolve_filename(
+        log_file_name, n = await logs_manager.resolve_filename(
             node_id=node_id,
             log_filename=None,
             actor_id=actor_id,
@@ -199,7 +205,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     actor_id = ActorID(b"2" * 16)
 
     with pytest.raises(ValueError):
-        log_file_name = await logs_manager.resolve_filename(
+        log_file_name, n = await logs_manager.resolve_filename(
             node_id=node_id,
             log_filename=None,
             actor_id=actor_id,
@@ -216,7 +222,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     logs_manager.list_logs.return_value = {
         "worker_out": [f"worker-{worker_id.hex()}-123-123.out"]
     }
-    log_file_name = await logs_manager.resolve_filename(
+    log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=actor_id,
@@ -229,13 +235,14 @@ async def test_logs_manager_resolve_file(logs_manager):
         node_id.hex(), 10, glob_filter=f"*{worker_id.hex()}*"
     )
     assert log_file_name == f"worker-{worker_id.hex()}-123-123.out"
+    assert n == node_id.hex()
 
     """
     Test task id is given.
     """
     with pytest.raises(NotImplementedError):
         task_id = TaskID(b"2" * 24)
-        log_file_name = await logs_manager.resolve_filename(
+        log_file_name, n = await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
             actor_id=None,
@@ -269,7 +276,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     logs_manager.list_logs = AsyncMock()
     # Provide the wrong pid.
     logs_manager.list_logs.return_value = {"worker_out": [f"worker-123-123-{pid}.out"]}
-    log_file_name = await logs_manager.resolve_filename(
+    log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=None,
@@ -370,7 +377,7 @@ def test_logs_list(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
-    node_id = list(list_nodes().keys())[0]
+    node_id = list_nodes()[0]["node_id"]
 
     def verify():
         response = requests.get(webui_url + f"/api/v0/logs?node_id={node_id}")
@@ -411,7 +418,7 @@ def test_logs_list(ray_start_with_dashboard):
         logs = result["data"]["result"]
         assert "gcs_server" in logs
         assert "internal" in logs
-        assert len(logs.keys()) == 2
+        assert len(logs) == 2
         assert "gcs_server.out" in logs["gcs_server"]
         assert "gcs_server.err" in logs["gcs_server"]
         assert "debug_state_gcs.txt" in logs["internal"]
@@ -434,9 +441,7 @@ def test_logs_list(ray_start_with_dashboard):
         ]
         assert all([cat in logs for cat in worker_log_categories])
         num_workers = len(
-            list(
-                filter(lambda w: w["worker_type"] == "WORKER", list_workers().values())
-            )
+            list(filter(lambda w: w["worker_type"] == "WORKER", list_workers()))
         )
         assert (
             len(logs["worker_out"])
@@ -454,7 +459,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
-    node_id = list(list_nodes().keys())[0]
+    node_id = list_nodes()[0]["node_id"]
 
     def verify_basic():
         stream_response = requests.get(
@@ -484,20 +489,20 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     actor = Actor.remote()
     ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
 
-    # def verify_actor_stream_log():
     # Test stream and fetching by actor id
     stream_response = requests.get(
         webui_url
-        + f"/api/v0/logs/stream?node_id={node_id}&lines=2"
+        + "/api/v0/logs/stream?&lines=2"
         + f"&actor_id={actor._ray_actor_id.hex()}",
         stream=True,
     )
     if stream_response.status_code != 200:
         raise ValueError(stream_response.content.decode("utf-8"))
     stream_iterator = stream_response.iter_content(chunk_size=None)
+    # NOTE: Prefix 1 indicates the stream has succeeded.
     assert (
         next(stream_iterator).decode("utf-8")
-        == ":actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
+        == "1:actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
     )
 
     streamed_string = ""
@@ -512,18 +517,20 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         for s in strings:
             string += s + "\n"
         streamed_string += string
-        assert next(stream_iterator).decode("utf-8") == string
+        # NOTE: Prefix 1 indicates the stream has succeeded.
+        assert next(stream_iterator).decode("utf-8") == "1" + string
     del stream_response
 
     # Test tailing log by actor id
     LINES = 150
     file_response = requests.get(
         webui_url
-        + f"/api/v0/logs/file?node_id={node_id}&lines={LINES}"
+        + f"/api/v0/logs/file?&lines={LINES}"
         + "&actor_id="
         + actor._ray_actor_id.hex(),
     ).content.decode("utf-8")
-    assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+    # NOTE: Prefix 1 indicates the stream has succeeded.
+    assert file_response == "1" + "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
 
     # Test query by pid & node_ip instead of actor id.
     node_ip = list(ray.nodes())[0]["NodeManagerAddress"]
@@ -533,10 +540,153 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + f"/api/v0/logs/file?node_ip={node_ip}&lines={LINES}"
         + f"&pid={pid}",
     ).content.decode("utf-8")
-    assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+    # NOTE: Prefix 1 indicates the stream has succeeded.
+    assert file_response == "1" + "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+
+
+def test_log_list(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    def verify():
+        head_node = list_nodes()[0]
+        # When glob filter is not provided, it should provide all logs
+        logs = list_logs(node_id=head_node["node_id"])
+        assert "raylet" in logs
+        assert "gcs_server" in logs
+        assert "dashboard" in logs
+        assert "agent" in logs
+        assert "internal" in logs
+        assert "driver" in logs
+        assert "autoscaler" in logs
+
+        # Test glob works.
+        logs = list_logs(node_id=head_node["node_id"], glob_filter="raylet*")
+        assert len(logs) == 1
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_log_get(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    head_node = list_nodes()[0]
+    cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def print(self, i):
+            for _ in range(i):
+                print("1")
+
+        def getpid(self):
+            import os
+
+            return os.getpid()
+
+    """
+    Test filename match
+    """
+
+    def verify():
+        # By default, node id should be configured to the head node.
+        for log in get_log(
+            node_id=head_node["node_id"], filename="raylet.out", tail=10
+        ):
+            # + 1 since the last line is just empty.
+            assert len(log.split("\n")) == 11
+        return True
+
+    wait_for_condition(verify)
+
+    """
+    Test worker pid / IP match
+    """
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    ray.get(a.print.remote(20))
+
+    def verify():
+        # By default, node id should be configured to the head node.
+        for log in get_log(node_ip=head_node["node_ip"], pid=pid, tail=10):
+            # + 1 since the last line is just empty.
+            assert len(log.split("\n")) == 11
+        return True
+
+    wait_for_condition(verify)
+
+    """
+    Test actor logs.
+    """
+    actor_id = a._actor_id.hex()
+
+    def verify():
+        # By default, node id should be configured to the head node.
+        for log in get_log(actor_id=actor_id, tail=10):
+            # + 1 since the last line is just empty.
+            assert len(log.split("\n")) == 11
+        return True
+
+    wait_for_condition(verify)
+
+    with pytest.raises(NotImplementedError):
+        for _ in get_log(task_id=123, tail=10):
+            pass
+
+
+def test_log_cli(shutdown_only):
+    ray.init(num_cpus=1)
+    runner = CliRunner()
+
+    # Test the head node is chosen by default.
+    def verify():
+        result = runner.invoke(scripts.logs)
+        print(result.output)
+        assert result.exit_code == 0
+        assert "raylet.out" in result.output
+        assert "raylet.err" in result.output
+        assert "gcs_server.out" in result.output
+        assert "gcs_server.err" in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test when there's only 1 match, it prints logs.
+    def verify():
+        result = runner.invoke(scripts.logs, ["raylet.out"])
+        assert result.exit_code == 0
+        print(result.output)
+        assert "raylet.out" not in result.output
+        assert "raylet.err" not in result.output
+        assert "gcs_server.out" not in result.output
+        assert "gcs_server.err" not in result.output
+        # Make sure it prints the log message.
+        assert "NodeManager server started" in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test when there's more than 1 match, it prints a list of logs.
+    def verify():
+        result = runner.invoke(scripts.logs, ["raylet.*"])
+        assert result.exit_code == 0
+        print(result.output)
+        assert "raylet.out" in result.output
+        assert "raylet.err" in result.output
+        assert "gcs_server.out" not in result.output
+        assert "gcs_server.err" not in result.output
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

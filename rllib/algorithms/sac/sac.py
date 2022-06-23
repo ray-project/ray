@@ -1,18 +1,18 @@
 import logging
 from typing import Type, Dict, Any, Optional, Union
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
     Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -20,21 +20,21 @@ tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
 
 
-class SACConfig(TrainerConfig):
-    """Defines a configuration class from which an SAC Trainer can be built.
+class SACConfig(AlgorithmConfig):
+    """Defines a configuration class from which an SAC Algorithm can be built.
 
     Example:
         >>> config = SACConfig().training(gamma=0.9, lr=0.01)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
     """
 
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or SAC)
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or SAC)
         # fmt: off
         # __sphinx_doc_begin__
         # SAC-specific config settings.
@@ -92,8 +92,8 @@ class SACConfig(TrainerConfig):
         self.train_batch_size = 256
 
         # .reporting()
-        self.min_time_s_per_reporting = 1
-        self.min_sample_timesteps_per_reporting = 100
+        self.min_time_s_per_iteration = 1
+        self.min_sample_timesteps_per_iteration = 100
         # __sphinx_doc_end__
         # fmt: on
 
@@ -103,7 +103,7 @@ class SACConfig(TrainerConfig):
         self.use_state_preprocessor = DEPRECATED_VALUE
         self.worker_side_prioritization = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -230,7 +230,7 @@ class SACConfig(TrainerConfig):
                 recommended; for debugging only).
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -272,9 +272,9 @@ class SACConfig(TrainerConfig):
 
 
 class SAC(DQN):
-    """Soft Actor Critic (SAC) Trainer class.
+    """Soft Actor Critic (SAC) Algorithm class.
 
-    This file defines the distributed Trainer class for the soft actor critic
+    This file defines the distributed Algorithm class for the soft actor critic
     algorithm.
     See `sac_[tf|torch]_policy.py` for the definition of the policy loss.
 
@@ -288,11 +288,11 @@ class SAC(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return SACConfig().to_dict()
 
     @override(DQN)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -329,7 +329,7 @@ class SAC(DQN):
             try_import_tfp(error=True)
 
     @override(DQN)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.sac.sac_torch_policy import SACTorchPolicy
 

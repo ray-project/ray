@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 
+import sys
 import time
-import numpy as np
 from typing import Optional
+
+import numpy as np
 
 import ray
 from ray import train
-from ray.air.preprocessors import Chain, BatchMapper
 from ray.air.config import DatasetConfig
-from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.data.preprocessors import BatchMapper, Chain
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import DeveloperAPI
 
 
@@ -62,6 +64,8 @@ class DummyTrainer(DataParallelTrainer):
         """Make a debug train loop that runs for the given amount of runtime."""
 
         def train_loop_per_worker():
+            import pandas as pd
+
             rank = train.world_rank()
             data_shard = train.get_dataset_shard("train")
             start = time.perf_counter()
@@ -78,7 +82,16 @@ class DummyTrainer(DataParallelTrainer):
                     batch_delay = time.perf_counter() - batch_start
                     batch_delays.append(batch_delay)
                     num_batches += 1
-                    num_bytes += int(batch.memory_usage(index=True, deep=True).sum())
+                    if isinstance(batch, pd.DataFrame):
+                        num_bytes += int(
+                            batch.memory_usage(index=True, deep=True).sum()
+                        )
+                    elif isinstance(batch, np.ndarray):
+                        num_bytes += batch.nbytes
+                    else:
+                        # NOTE: This isn't recursive and will just return the size of
+                        # the object pointers if list of non-primitive types.
+                        num_bytes += sys.getsizeof(batch)
                     train.report(
                         bytes_read=num_bytes,
                         num_batches=num_batches,
@@ -138,7 +151,7 @@ if __name__ == "__main__":
     try:
         print(
             "Memory stats at end of ingest:\n\n{}".format(
-                ray.internal.internal_api.memory_summary(stats_only=True)
+                ray._private.internal_api.memory_summary(stats_only=True)
             )
         )
     except Exception:

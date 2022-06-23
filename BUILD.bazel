@@ -111,6 +111,7 @@ cc_library(
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 
@@ -1431,6 +1432,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_common",
         ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -2444,6 +2446,19 @@ cc_test(
     deps = [
         ":ray_common",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "bundle_location_index_test",
+    srcs = [
+        "src/ray/common/test/bundle_location_index_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

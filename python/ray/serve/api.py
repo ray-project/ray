@@ -1,15 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-    overload,
-)
+from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
@@ -18,52 +10,46 @@ from uvicorn.lifespan.on import LifespanOn
 
 import ray
 from ray import cloudpickle
+from ray.dag import DAGNode
 from ray._private.usage import usage_lib
-from ray.experimental.dag import DAGNode
-from ray.util.annotations import PublicAPI
 
 from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient, get_controller_namespace
-from ray.serve.config import (
-    AutoscalingConfig,
-    DeploymentConfig,
-    HTTPOptions,
-)
+from ray.serve.client import ServeControllerClient
+from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
-    HTTP_PROXY_TIMEOUT,
-    SERVE_CONTROLLER_NAME,
     CONTROLLER_MAX_CONCURRENCY,
+    DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    HTTP_PROXY_TIMEOUT,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve.context import (
-    set_global_client,
+    ReplicaContext,
     get_global_client,
     get_internal_replica_context,
-    ReplicaContext,
+    set_global_client,
 )
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment_graph_build import build as pipeline_build
+from ray.serve.deployment_graph_build import get_and_validate_ingress_deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.logging_utils import LoggingContext
-from ray.serve.pipeline.api import (
-    build as pipeline_build,
-    get_and_validate_ingress_deployment,
-)
 from ray.serve.utils import (
+    DEFAULT,
     ensure_serialization_context,
     format_actor_name,
     get_current_node_resource_key,
     get_random_letters,
     in_interactive_shell,
-    DEFAULT,
     install_serve_encoders_to_fastapi,
 )
-
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__file__)
 
@@ -74,7 +60,6 @@ def start(
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
     _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
-    _override_controller_namespace: Optional[str] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -125,22 +110,14 @@ def start(
                 f'{{"{key}": {kwargs[key]}}}) instead.'
             )
     # Initialize ray if needed.
-    ray.worker.global_worker.filter_logs_by_job = False
+    ray._private.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init(namespace="serve")
-
-    controller_namespace = get_controller_namespace(
-        detached, _override_controller_namespace=_override_controller_namespace
-    )
+        ray.init(namespace=SERVE_NAMESPACE)
 
     try:
-        client = get_global_client(
-            _override_controller_namespace=_override_controller_namespace,
-            _health_check_controller=True,
-        )
+        client = get_global_client(_health_check_controller=True)
         logger.info(
-            "Connecting to existing Serve instance in namespace "
-            f"'{controller_namespace}'."
+            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
         )
 
         _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
@@ -166,14 +143,13 @@ def start(
         max_task_retries=-1,
         # Pin Serve controller on the head node.
         resources={get_current_node_resource_key(): 0.01},
-        namespace=controller_namespace,
+        namespace=SERVE_NAMESPACE,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
         controller_name,
         http_options,
         _checkpoint_path,
         detached=detached,
-        _override_controller_namespace=_override_controller_namespace,
     )
 
     proxy_handles = ray.get(controller.get_http_proxies.remote())
@@ -192,12 +168,11 @@ def start(
         controller,
         controller_name,
         detached=detached,
-        _override_controller_namespace=_override_controller_namespace,
     )
     set_global_client(client)
     logger.info(
         f"Started{' detached ' if detached else ' '}Serve instance in "
-        f"namespace '{controller_namespace}'."
+        f'namespace "{SERVE_NAMESPACE}".'
     )
     return client
 

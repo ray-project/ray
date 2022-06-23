@@ -8,7 +8,7 @@ import os
 import shutil
 import torch
 
-# Configure our PPO trainer
+# Configure our PPO.
 config = ppo.DEFAULT_CONFIG.copy()
 config["num_gpus"] = 0
 config["num_workers"] = 1
@@ -26,15 +26,15 @@ test_data = {
     "state_ins": np.array([0.0], dtype=np.float32),
 }
 
-# Start Ray and initialize a PPO trainer
+# Start Ray and initialize a PPO Algorithm.
 ray.init()
-trainer = ppo.PPO(config=config, env="CartPole-v0")
+algo = ppo.PPO(config=config, env="CartPole-v0")
 
 # You could train the model here
-# trainer.train()
+# algo.train()
 
 # Let's run inference on the torch model
-policy = trainer.get_policy()
+policy = algo.get_policy()
 result_pytorch, _ = policy.model(
     {
         "obs": torch.tensor(test_data["obs"]),
@@ -45,7 +45,7 @@ result_pytorch, _ = policy.model(
 result_pytorch = result_pytorch.detach().numpy()
 
 # This line will export the model to ONNX
-res = trainer.export_policy_model(outdir, onnx=11)
+res = algo.export_policy_model(outdir, onnx=11)
 
 # Import ONNX model
 exported_model_file = os.path.join(outdir, "model.onnx")

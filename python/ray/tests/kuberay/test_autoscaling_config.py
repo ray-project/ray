@@ -133,6 +133,22 @@ def _get_gpu_complaint() -> str:
     )
 
 
+def _get_ray_cr_with_autoscaler_options() -> dict:
+    cr = _get_basic_ray_cr()
+    cr["spec"]["autoscalerOptions"] = {
+        "upscalingMode": "Aggressive",
+        "idleTimeoutSeconds": 60,
+    }
+    return cr
+
+
+def _get_autoscaling_config_with_options() -> dict:
+    config = _get_basic_autoscaling_config()
+    config["upscaling_speed"] = 1000
+    config["idle_timeout_minutes"] = 1.0
+    return config
+
+
 PARAM_ARGS = ",".join(
     [
         "ray_cr_in",
@@ -178,6 +194,14 @@ TEST_DATA = (
             None,
             _get_gpu_complaint(),
             id="gpu-complaint",
+        ),
+        pytest.param(
+            _get_ray_cr_with_autoscaler_options(),
+            _get_autoscaling_config_with_options(),
+            None,
+            None,
+            None,
+            id="autoscaler-options",
         ),
     ]
 )

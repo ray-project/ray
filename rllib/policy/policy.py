@@ -52,7 +52,7 @@ from ray.rllib.utils.typing import (
     T,
     TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -75,8 +75,8 @@ PolicySpec = PublicAPI(
     namedtuple(
         "PolicySpec",
         [
-            # If None, use the Trainer's default policy class stored under
-            # `Trainer._policy_class`.
+            # If None, use the Algorithm's default policy class stored under
+            # `Algorithm._policy_class`.
             "policy_class",
             # If None, use the env's observation space. If None and there is no Env
             # (e.g. offline RL), an error is thrown.
@@ -84,7 +84,7 @@ PolicySpec = PublicAPI(
             # If None, use the env's action space. If None and there is no Env
             # (e.g. offline RL), an error is thrown.
             "action_space",
-            # Overrides defined keys in the main Trainer config.
+            # Overrides defined keys in the main Algorithm config.
             # If None, use {}.
             "config",
         ],
@@ -125,14 +125,14 @@ class Policy(metaclass=ABCMeta):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         """Initializes a Policy instance.
 
         Args:
             observation_space: Observation space of the policy.
             action_space: Action space of the policy.
-            config: A complete Trainer/Policy config dict. For the default
+            config: A complete Algorithm/Policy config dict. For the default
                 config keys and values, see rllib/trainer/trainer.py.
         """
         self.observation_space: gym.Space = observation_space
@@ -143,13 +143,13 @@ class Policy(metaclass=ABCMeta):
         self.observation_space_struct = get_base_struct_from_space(observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
-        self.config: TrainerConfigDict = config
+        self.config: AlgorithmConfigDict = config
         self.framework = self.config.get("framework")
         # Create the callbacks object to use for handling custom callbacks.
         if self.config.get("callbacks"):
             self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
         else:
-            from ray.rllib.agents.callbacks import DefaultCallbacks
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
             self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
 
@@ -523,7 +523,7 @@ class Policy(metaclass=ABCMeta):
         # Note that for better performance (less data sent through the
         # network), this policy should be co-located on the same node
         # as `replay_actor`. Such a co-location step is usually done during
-        # the Trainer's `setup()` phase.
+        # the Algorithm's `setup()` phase.
         batch = ray.get(replay_actor.replay.remote(policy_id=policy_id))
         if batch is None:
             return {}
@@ -877,10 +877,10 @@ class Policy(metaclass=ABCMeta):
             ),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            "t": ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(
@@ -1016,6 +1016,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.DONES,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
+                            SampleBatch.T,
                         ]
                     ):
                         self.view_requirements[key].used_for_training = False
@@ -1033,6 +1034,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.DONES,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
+                            SampleBatch.T,
                         ]
                         and key not in self.model.view_requirements
                     ):

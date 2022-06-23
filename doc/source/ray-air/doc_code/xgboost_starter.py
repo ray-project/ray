@@ -1,8 +1,9 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_xgb_preprocess_start__
 import ray
-from ray.air.preprocessors import StandardScaler
+from ray.data.preprocessors import StandardScaler
 
 import pandas as pd
 
@@ -25,7 +26,7 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 
 
 # __air_xgb_train_start__
-from ray.air.train.integrations.xgboost import XGBoostTrainer
+from ray.train.xgboost import XGBoostTrainer
 
 # XGBoost specific params
 params = {
@@ -53,8 +54,8 @@ print(result.metrics)
 # __air_xgb_train_end__
 
 # __air_xgb_batchpred_start__
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.xgboost import XGBoostPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 

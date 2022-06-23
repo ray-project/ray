@@ -1,6 +1,8 @@
-import numpy as np
+import copy
 import re
 import unittest
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.ddpg as ddpg
@@ -11,6 +13,7 @@ from ray.rllib.algorithms.sac.tests.test_sac import SimpleEnv
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
+from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -18,7 +21,6 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -47,48 +49,47 @@ class TestDDPG(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            """"""
-            trainer = config.build(env="Pendulum-v1")
+            algo = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
             # Ensure apply_gradient_fn is being called and updating global_step
-            pol = trainer.get_policy()
+            pol = algo.get_policy()
             if config.framework_str == "tf":
                 a = pol.get_session().run(pol.global_step)
             else:
                 a = pol.global_step
             check(a, 500)
-            trainer.stop()
+            algo.stop()
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
 
-        config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
+        core_config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
-            config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
+        for _ in framework_iterator(core_config):
+            config = copy.deepcopy(core_config)
             config.seed = 42
             # Default OUNoise setup.
-            trainer = config.build(env="Pendulum-v1")
+            algo = config.build(env="Pendulum-v1")
             # Setting explore=False should always return the same action.
-            a_ = trainer.compute_single_action(obs, explore=False)
-            check(trainer.get_policy().global_timestep, 1)
+            a_ = algo.compute_single_action(obs, explore=False)
+            check(algo.get_policy().global_timestep, 1)
             for i in range(50):
-                a = trainer.compute_single_action(obs, explore=False)
-                check(trainer.get_policy().global_timestep, i + 2)
+                a = algo.compute_single_action(obs, explore=False)
+                check(algo.get_policy().global_timestep, i + 2)
                 check(a, a_)
             # explore=None (default: explore) should return different actions.
             actions = []
             for i in range(50):
-                actions.append(trainer.compute_single_action(obs))
-                check(trainer.get_policy().global_timestep, i + 52)
+                actions.append(algo.compute_single_action(obs))
+                check(algo.get_policy().global_timestep, i + 52)
             check(np.std(actions), 0.0, false=True)
-            trainer.stop()
+            algo.stop()
 
             # Check randomness at beginning.
             config.exploration_config.update(
@@ -102,30 +103,30 @@ class TestDDPG(unittest.TestCase):
                 }
             )
 
-            trainer = ddpg.DDPG(config=config, env="Pendulum-v1")
+            algo = ddpg.DDPG(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
-            deterministic_action = trainer.compute_single_action(obs, explore=False)
-            check(trainer.get_policy().global_timestep, 1)
+            deterministic_action = algo.compute_single_action(obs, explore=False)
+            check(algo.get_policy().global_timestep, 1)
             # ts=1-49 (in random window).
             random_a = []
             for i in range(1, 50):
-                random_a.append(trainer.compute_single_action(obs, explore=True))
-                check(trainer.get_policy().global_timestep, i + 1)
+                random_a.append(algo.compute_single_action(obs, explore=True))
+                check(algo.get_policy().global_timestep, i + 1)
                 check(random_a[-1], deterministic_action, false=True)
             self.assertTrue(np.std(random_a) > 0.5)
 
             # ts > 50 (a=deterministic_action + scale * N[0,1])
             for i in range(50):
-                a = trainer.compute_single_action(obs, explore=True)
-                check(trainer.get_policy().global_timestep, i + 51)
+                a = algo.compute_single_action(obs, explore=True)
+                check(algo.get_policy().global_timestep, i + 51)
                 check(a, deterministic_action, rtol=0.1)
 
             # ts >> 50 (BUT: explore=False -> expect deterministic action).
             for i in range(50):
-                a = trainer.compute_single_action(obs, explore=False)
-                check(trainer.get_policy().global_timestep, i + 101)
+                a = algo.compute_single_action(obs, explore=False)
+                check(algo.get_policy().global_timestep, i + 101)
                 check(a, deterministic_action)
-            trainer.stop()
+            algo.stop()
 
     def test_ddpg_loss_function(self):
         """Tests DDPG loss function results across all frameworks."""
@@ -147,9 +148,9 @@ class TestDDPG(unittest.TestCase):
         # Use very simple nets.
         config.actor_hiddens = [10]
         config.critic_hiddens = [10]
-        # Make sure, timing differences do not affect trainer.train().
-        config.min_time_s_per_reporting = 0
-        config.min_sample_timesteps_per_reporting = 100
+        # Make sure, timing differences do not affect Algorithm.train().
+        config.min_time_s_per_iteration = 0
+        config.min_sample_timesteps_per_iteration = 100
 
         map_ = {
             # Normal net.
@@ -222,9 +223,9 @@ class TestDDPG(unittest.TestCase):
         for fw, sess in framework_iterator(
             config, frameworks=("tf", "torch"), session=True
         ):
-            # Generate Trainer and get its default Policy object.
-            trainer = config.build(env=env)
-            policy = trainer.get_policy()
+            # Generate Algorithm and get its default Policy object.
+            algo = config.build(env=env)
+            policy = algo.get_policy()
             p_sess = None
             if sess:
                 p_sess = policy.get_session()
@@ -367,9 +368,9 @@ class TestDDPG(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = trainer.local_replay_buffer
+                    buf = algo.local_replay_buffer
                     patch_buffer_with_fake_sampling_method(buf, in_)
-                    trainer.train()
+                    algo.train()
                     updated_weights = policy.get_weights()
                     # Net must have changed.
                     if tf_updated_weights:
@@ -388,9 +389,9 @@ class TestDDPG(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = trainer.local_replay_buffer
+                    buf = algo.local_replay_buffer
                     patch_buffer_with_fake_sampling_method(buf, in_)
-                    trainer.train()
+                    algo.train()
                     # Compare updated model and target weights.
                     for tf_key in tf_weights.keys():
                         tf_var = tf_weights[tf_key]
@@ -407,7 +408,7 @@ class TestDDPG(unittest.TestCase):
                         else:
                             check(tf_var, torch_var, atol=0.1)
 
-            trainer.stop()
+            algo.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return SampleBatch(
@@ -580,7 +581,8 @@ class TestDDPG(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

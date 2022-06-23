@@ -1,24 +1,23 @@
 import logging
+from dataclasses import asdict
+from typing import Callable
 
 import aiohttp.web
 
-import dataclasses
-
-from typing import Callable
-
-from ray.dashboard.datacenter import DataSource
-from ray.dashboard.utils import Change
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.datacenter import DataSource
+from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.optional_utils import rest_response
-from ray.dashboard.modules.log.log_manager import (
-    LogsManager,
-)
 from ray.dashboard.state_aggregator import StateAPIManager
+from ray.dashboard.utils import Change
 from ray.experimental.state.common import (
     ListApiOptions,
     GetLogOptions,
+    SummaryApiOptions,
+    SummaryApiResponse,
     DEFAULT_RPC_TIMEOUT,
+    DEFAULT_LIMIT,
 )
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -42,7 +41,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         DataSource.nodes.signal.append(self._update_raylet_stubs)
         DataSource.agents.signal.append(self._update_agent_stubs)
 
-    def _options_from_req(self, req) -> ListApiOptions:
+    def _options_from_req(self, req: aiohttp.web.Request) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
         limit = int(req.query.get("limit"))
         timeout = int(req.query.get("timeout"))
@@ -53,6 +52,10 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         for key, val in zip(filter_keys, filter_values):
             filters.append((key, val))
         return ListApiOptions(limit=limit, timeout=timeout, filters=filters)
+
+    def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:
+        timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
+        return SummaryApiOptions(timeout=timeout)
 
     def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
         """Reply to the client."""
@@ -132,10 +135,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             return self._reply(
                 success=True,
                 error_message="",
-                result={
-                    job_id: dataclasses.asdict(job_info)
-                    for job_id, job_info in result.result.items()
-                },
+                result=result.result,
                 partial_failure_warning=result.partial_failure_warning,
             )
         except DataSourceUnavailable as e:
@@ -211,40 +211,70 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/logs/{media_type}")
     async def get_logs(self, req: aiohttp.web.Request):
-        """
-        If `media_type = stream`, creates HTTP stream which is either kept alive while
-        the HTTP connection is not closed. Else, if `media_type = file`, the stream
-        ends once all the lines in the file requested are transmitted.
-        """
+        # TODO(sang): We need a better error handling for streaming
+        # when we refactor the server framework.
         options = GetLogOptions(
-            timeout=req.query.get("timeout", DEFAULT_RPC_TIMEOUT),
-            node_id=req.query.get("node_id"),
-            node_ip=req.query.get("node_ip"),
+            timeout=int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT)),
+            node_id=req.query.get("node_id", None),
+            node_ip=req.query.get("node_ip", None),
             media_type=req.match_info.get("media_type", "file"),
-            filename=req.query.get("filename"),
-            actor_id=req.query.get("actor_id"),
-            task_id=req.query.get("task_id"),
-            pid=req.query.get("pid"),
-            lines=req.query.get("lines", 1000),
-            interval=req.query.get("interval"),
+            filename=req.query.get("filename", None),
+            actor_id=req.query.get("actor_id", None),
+            task_id=req.query.get("task_id", None),
+            pid=req.query.get("pid", None),
+            lines=req.query.get("lines", DEFAULT_LIMIT),
+            interval=req.query.get("interval", None),
         )
 
         response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
         await response.prepare(req)
 
-        # try-except here in order to properly handle ongoing HTTP stream
+        # NOTE: The first byte indicates the success / failure of individual
+        # stream. If the first byte is b"1", it means the stream was successful.
+        # If it is b"0", it means it is failed.
         try:
             async for logs_in_bytes in self._log_api.stream_logs(options):
-                await response.write(logs_in_bytes)
+                logs_to_stream = bytearray(b"1")
+                logs_to_stream.extend(logs_in_bytes)
+                await response.write(bytes(logs_to_stream))
             await response.write_eof()
             return response
         except Exception as e:
             logger.exception(e)
-            await response.write(b"Closing HTTP stream due to internal server error:\n")
-            await response.write(str(e).encode())
+            error_msg = bytearray(b"0")
+            error_msg.extend(
+                f"Closing HTTP stream due to internal server error.\n{e}".encode()
+            )
+
+            await response.write(bytes(error_msg))
             await response.write_eof()
             return response
+
+    async def _handle_summary_api(
+        self,
+        summary_fn: Callable[[SummaryApiOptions], SummaryApiResponse],
+        req: aiohttp.web.Request,
+    ):
+        result = await summary_fn(option=self._summary_options_from_req(req))
+        return self._reply(
+            success=True,
+            error_message="",
+            result=asdict(result.result),
+            partial_failure_warning=result.partial_failure_warning,
+        )
+
+    @routes.get("/api/v0/tasks/summarize")
+    async def summarize_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        return await self._handle_summary_api(self._state_api.summarize_tasks, req)
+
+    @routes.get("/api/v0/actors/summarize")
+    async def summarize_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        return await self._handle_summary_api(self._state_api.summarize_actors, req)
+
+    @routes.get("/api/v0/objects/summarize")
+    async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        return await self._handle_summary_api(self._state_api.summarize_objects, req)
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

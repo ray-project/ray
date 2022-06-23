@@ -1,31 +1,30 @@
 #!/usr/bin/env python
 import os
+import pathlib
 import sys
 import time
-import yaml
-import click
-import pathlib
 from typing import Optional, Union
 
+import click
+import yaml
+
 import ray
-from ray._private.utils import import_attr
-from ray.serve.config import DeploymentMode
 from ray import serve
+from ray._private.utils import import_attr
+from ray.autoscaler._private.cli_logger import cli_logger
+from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.serve.api import build as build_app
+from ray.serve.config import DeploymentMode
 from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SERVE_NAMESPACE,
 )
+from ray.serve.deployment import deployment_to_schema
+from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
-from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
-from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.api import build as build_app
-from ray.serve.application import Application
-from ray.serve.deployment_graph import (
-    FunctionNode,
-    ClassNode,
-)
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -59,14 +58,6 @@ def cli():
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
 @click.option(
-    "--namespace",
-    "-n",
-    default="serve",
-    required=False,
-    type=str,
-    help='Ray namespace to connect to. Defaults to "serve".',
-)
-@click.option(
     "--http-host",
     default=DEFAULT_HTTP_HOST,
     required=False,
@@ -96,7 +87,6 @@ def cli():
 )
 def start(
     address,
-    namespace,
     http_host,
     http_port,
     http_location,
@@ -104,7 +94,7 @@ def start(
 ):
     ray.init(
         address=address,
-        namespace=namespace,
+        namespace=SERVE_NAMESPACE,
     )
     serve.start(
         detached=True,
@@ -115,32 +105,6 @@ def start(
         ),
         _checkpoint_path=checkpoint_path,
     )
-
-
-@cli.command(help="Shut down the running Serve app on the Ray cluster.")
-@click.option(
-    "--address",
-    "-a",
-    default=os.environ.get("RAY_ADDRESS", "auto"),
-    required=False,
-    type=str,
-    help=RAY_INIT_ADDRESS_HELP_STR,
-)
-@click.option(
-    "--namespace",
-    "-n",
-    default="serve",
-    required=False,
-    type=str,
-    help='Ray namespace to connect to. Defaults to "serve".',
-)
-def shutdown(address: str, namespace: str):
-    ray.init(
-        address=address,
-        namespace=namespace,
-    )
-    serve.context._connect()
-    serve.shutdown()
 
 
 @cli.command(
@@ -185,7 +149,7 @@ def deploy(config_file_name: str, address: str):
     short_help="Run a Serve app.",
     help=(
         "Runs the Serve app from the specified import path or YAML config.\n"
-        "Any import path must lead to an Application or ClassNode object. "
+        "Any import path must lead to a FunctionNode or ClassNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
@@ -278,22 +242,28 @@ def run(
         working_dir=working_dir,
     )
 
-    app_or_node = None
     if pathlib.Path(config_or_import_path).is_file():
         config_path = config_or_import_path
-        cli_logger.print(f"Deploying from config file: '{config_path}'.")
+        cli_logger.print(f'Deploying from config file: "{config_path}".')
+
         with open(config_path, "r") as config_file:
-            app_or_node = Application.from_yaml(config_file)
+            config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
+        is_config = True
     else:
         import_path = config_or_import_path
-        cli_logger.print(f"Deploying from import path: '{import_path}'.")
-        app_or_node = import_attr(import_path)
+        cli_logger.print(f'Deploying from import path: "{import_path}".')
+        node = import_attr(import_path)
+        is_config = False
 
     # Setting the runtime_env here will set defaults for the deployments.
-    ray.init(address=address, namespace="serve", runtime_env=final_runtime_env)
+    ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
+    client = serve.start(detached=True)
 
     try:
-        serve.run(app_or_node, host=host, port=port)
+        if is_config:
+            client.deploy_app(config)
+        else:
+            serve.run(node, host=host, port=port)
         cli_logger.success("Deployed successfully.")
 
         if blocking:
@@ -353,7 +323,7 @@ def status(address: str):
 
 
 @cli.command(
-    help="Deletes all deployments in the Serve app.",
+    help="Deletes the Serve app.",
     hidden=True,
 )
 @click.option(
@@ -365,7 +335,7 @@ def status(address: str):
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
-def delete(address: str, yes: bool):
+def shutdown(address: str, yes: bool):
     if not yes:
         click.confirm(
             f"\nThis will shutdown the Serve application at address "
@@ -390,6 +360,7 @@ def delete(address: str, yes: bool):
     ),
     hidden=True,
 )
+@click.argument("import_path")
 @click.option(
     "--app-dir",
     "-d",
@@ -407,8 +378,7 @@ def delete(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
-@click.argument("import_path")
-def build(app_dir: str, output_path: Optional[str], import_path: str):
+def build(import_path: str, app_dir: str, output_path: Optional[str]):
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
@@ -420,11 +390,16 @@ def build(app_dir: str, output_path: Optional[str], import_path: str):
 
     app = build_app(node)
 
+    config = ServeApplicationSchema(
+        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
+    ).dict()
+    config["import_path"] = import_path
+
     if output_path is not None:
         if not output_path.endswith(".yaml"):
             raise ValueError("FILE_PATH must end with '.yaml'.")
 
         with open(output_path, "w") as f:
-            app.to_yaml(f)
+            yaml.safe_dump(config, stream=f, default_flow_style=False, sort_keys=False)
     else:
-        print(app.to_yaml(), end="")
+        print(yaml.safe_dump(config, default_flow_style=False, sort_keys=False), end="")

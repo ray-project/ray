@@ -1,26 +1,38 @@
 import copy
-from typing import (
-    Callable,
-    List,
-    Tuple,
-    Optional,
-    Union,
-    Iterator,
-    Iterable,
-    TYPE_CHECKING,
-)
+import itertools
 import uuid
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+import ray
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.compute import (
+    UDF,
+    ActorPoolStrategy,
+    BlockTransform,
+    CallableClass,
+    ComputeStrategy,
+    get_compute,
+    is_task_compute,
+)
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.stats import DatasetStats
+from ray.data.block import Block
+from ray.data.context import DatasetContext
 
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
-from ray.data.context import DatasetContext
-from ray.data.block import Block
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import get_compute
-from ray.data._internal.stats import DatasetStats
-from ray.data._internal.lazy_block_list import LazyBlockList
 
 # Scheduling strategy can be inherited from prev stage if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -393,25 +405,119 @@ class ExecutionPlan:
         )
 
 
+def _pack_args(
+    self_fn_args: Iterable[Any],
+    self_fn_kwargs: Dict[str, Any],
+    prev_fn_args: Iterable[Any],
+    prev_fn_kwargs: Dict[str, Any],
+) -> Tuple[
+    Tuple[Any],
+    Callable[
+        [Tuple[Any]],
+        Tuple[
+            Tuple[Any],
+            Dict[str, Any],
+            Tuple[Any],
+            Dict[str, Any],
+        ],
+    ],
+]:
+    """Pack the (kw)args from two stages into a single, flat positional args tuple that
+    can be given to a Ray task, ensuring resoultion of each argument.
+    This function returns this args tuple along with a function that will unpack this
+    flat args tuple back into it's original args and kwargs structure.
+    """
+    if not self_fn_args:
+        self_fn_args = tuple()
+    if not self_fn_kwargs:
+        self_fn_kwargs = {}
+    if not prev_fn_args:
+        prev_fn_args = tuple()
+    if not prev_fn_kwargs:
+        prev_fn_kwargs = {}
+    # Offsets into flat args tuple.
+    offsets = list(
+        itertools.accumulate(
+            [
+                len(self_fn_args),
+                len(prev_fn_args),
+                len(self_fn_kwargs),
+                len(prev_fn_kwargs),
+            ]
+        )
+    )
+    # Keys for the kwargs.
+    keys = list(self_fn_kwargs.keys()) + list(prev_fn_kwargs.keys())
+
+    fn_args = (
+        self_fn_args
+        + prev_fn_args
+        + tuple(self_fn_kwargs.values())
+        + tuple(prev_fn_kwargs.values())
+    )
+
+    def unpack(
+        fn_args: List[Any],
+    ) -> Tuple[List[Any], Dict[str, Any], List[Any], Dict[str, Any]]:
+        self_fn_args = fn_args[: offsets[0]]
+        prev_fn_args = fn_args[offsets[0] : offsets[1]]
+        self_fn_kwargs = fn_args[offsets[1] : offsets[2]]
+        prev_fn_kwargs = fn_args[offsets[2] :]
+        prev_key_offset = offsets[2] - offsets[1]
+        self_fn_kwargs = {k: v for k, v in zip(keys[:prev_key_offset], self_fn_kwargs)}
+        prev_fn_kwargs = {k: v for k, v in zip(keys[prev_key_offset:], prev_fn_kwargs)}
+        return self_fn_args, self_fn_kwargs, prev_fn_args, prev_fn_kwargs
+
+    return fn_args, unpack
+
+
 class OneToOneStage(Stage):
     """A stage that transforms blocks independently (e.g., map or filter)."""
 
     def __init__(
         self,
         name: str,
-        block_fn: Callable[[Block], Block],
-        compute: str,
+        block_fn: BlockTransform,
+        compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
+        fn: Optional[UDF] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(name, None)
         self.block_fn = block_fn
         self.compute = compute or "tasks"
         self.ray_remote_args = ray_remote_args or {}
+        self.fn = fn
+        self.fn_args = fn_args
+        self.fn_kwargs = fn_kwargs
+        self.fn_constructor_args = fn_constructor_args
+        self.fn_constructor_kwargs = fn_constructor_kwargs
 
     def can_fuse(self, prev: Stage):
         if not isinstance(prev, OneToOneStage):
             return False
-        if prev.compute != self.compute:
+        # Allow fusing tasks->actors if the resources are compatible (read->map), but
+        # not the other way around. The latter will be used as the compute if fused.
+        if is_task_compute(self.compute) and prev.compute != self.compute:
+            return False
+        if (
+            isinstance(self.fn, CallableClass)
+            and isinstance(prev.fn, CallableClass)
+            and (
+                prev.fn != self.fn
+                or (
+                    prev.fn_constructor_args != self.fn_constructor_args
+                    or prev.fn_constructor_kwargs != self.fn_constructor_kwargs
+                )
+            )
+        ):
+            # Fusing callable classes is only supported if they are the same function
+            # AND their construction arguments are the same.
+            # TODO(Clark): Support multiple callable classes instantiating in the same
+            # actor worker constructor.
             return False
         if not _are_remote_args_compatible(prev.ray_remote_args, self.ray_remote_args):
             return False
@@ -423,22 +529,88 @@ class OneToOneStage(Stage):
                 f"Tried to fuse {prev} with {self}, but these are not fusable."
             )
         name = prev.name + "->" + self.name
-        fn1 = prev.block_fn
-        fn2 = self.block_fn
+        prev_fn = prev.fn
+        if isinstance(self.fn, CallableClass) and isinstance(prev_fn, CallableClass):
+            assert self.fn == prev_fn
+            assert (
+                prev.fn_constructor_args == self.fn_constructor_args
+                and prev.fn_constructor_kwargs == self.fn_constructor_kwargs
+            )
+            # If both UDFs are callable classes, they must be equal and have the same
+            # construction args, so we tell the previous stage to reuse the passed
+            # (instantiated) callable class UDF that's provided to the block function.
+            use_outer_fn = True
+            prev_fn = None
+        else:
+            # Otherwise, we're either fusing two non-callable class UDFs, or a
+            # non-callable class UDF with a callable class UDF. In either case, prev
+            # will be a non-callable class UDF, so we use it within the block function.
+            use_outer_fn = False
 
-        def block_fn(block: Block) -> Iterable[Block]:
-            for tmp1 in fn1(block):
-                for tmp2 in fn2(tmp1):
+        # Package args into a flat positional args list.
+        fn_args, unpack_args = _pack_args(
+            self.fn_args,
+            self.fn_kwargs,
+            prev.fn_args,
+            prev.fn_kwargs,
+        )
+
+        block_fn1 = prev.block_fn
+        block_fn2 = self.block_fn
+
+        def block_fn(
+            block: Block,
+            fn: UDF,
+            *fn_args,
+            **fn_kwargs,
+        ) -> Iterable[Block]:
+            assert not fn_kwargs, fn_kwargs
+            # Unpack flat position args list into
+            self_fn_args, self_fn_kwargs, prev_fn_args, prev_fn_kwargs = unpack_args(
+                fn_args
+            )
+            self_fn_args = self_fn_args if fn is None else (fn,) + self_fn_args
+            if use_outer_fn:
+                prev_fn_ = fn
+            else:
+                prev_fn_ = prev_fn
+            prev_fn_args = (
+                prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
+            )
+            for tmp1 in block_fn1(block, *prev_fn_args, **prev_fn_kwargs):
+                for tmp2 in block_fn2(tmp1, *self_fn_args, **self_fn_kwargs):
                     yield tmp2
 
-        return OneToOneStage(name, block_fn, prev.compute, prev.ray_remote_args)
+        return OneToOneStage(
+            name,
+            block_fn,
+            self.compute,
+            prev.ray_remote_args,
+            fn=self.fn,
+            fn_args=fn_args,
+            fn_kwargs={},
+            fn_constructor_args=self.fn_constructor_args,
+            fn_constructor_kwargs=self.fn_constructor_kwargs,
+        )
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
+        assert (
+            self.fn_constructor_args is None and self.fn_constructor_kwargs is None
+        ) or isinstance(compute, ActorPoolStrategy)
         blocks = compute._apply(
-            self.block_fn, self.ray_remote_args, blocks, clear_input_blocks, self.name
+            self.block_fn,
+            self.ray_remote_args,
+            blocks,
+            clear_input_blocks,
+            name=self.name,
+            fn=self.fn,
+            fn_args=self.fn_args,
+            fn_kwargs=self.fn_kwargs,
+            fn_constructor_args=self.fn_constructor_args,
+            fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
         assert isinstance(blocks, BlockList), blocks
         return blocks, {}
@@ -453,8 +625,8 @@ class AllToAllStage(Stage):
         num_blocks: Optional[int],
         fn: Callable[[BlockList, bool, Callable], Tuple[BlockList, dict]],
         supports_block_udf: bool = False,
-        block_udf=None,
-        remote_args=None,
+        block_udf: Optional[BlockTransform] = None,
+        remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
@@ -471,7 +643,7 @@ class AllToAllStage(Stage):
             return False
         if not isinstance(prev, OneToOneStage):
             return False
-        if prev.compute != "tasks":
+        if not is_task_compute(prev.compute):
             return False
         if any(k not in INHERITABLE_REMOTE_ARGS for k in prev.ray_remote_args):
             return False
@@ -483,9 +655,31 @@ class AllToAllStage(Stage):
                 f"Tried to fuse {prev} with {self}, but these are not fusable."
             )
         assert self.supports_block_udf
+        assert prev.fn_constructor_args is None and prev.fn_constructor_kwargs is None
         name = prev.name + "->" + self.name
+        prev_fn_args = prev.fn_args or tuple()
+        prev_fn_args = prev_fn_args if prev.fn is None else (prev.fn,) + prev_fn_args
+        prev_fn_kwargs = prev.fn_kwargs or {}
+        prev_block_fn = prev.block_fn
+        if self.block_udf is None:
+
+            def block_udf(block: Block) -> Iterable[Block]:
+                yield from prev_block_fn(block, *prev_fn_args, **prev_fn_kwargs)
+
+        else:
+            self_block_udf = self.block_udf
+
+            def block_udf(block: Block) -> Iterable[Block]:
+                for tmp1 in prev_block_fn(
+                    block,
+                    *prev_fn_args,
+                    **prev_fn_kwargs,
+                ):
+                    for tmp2 in self_block_udf(tmp1):
+                        yield tmp2
+
         return AllToAllStage(
-            name, self.num_blocks, self.fn, True, prev.block_fn, prev.ray_remote_args
+            name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
         )
 
     def __call__(
@@ -574,6 +768,8 @@ def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
 
 def _are_remote_args_compatible(prev_args, next_args):
     """Check if Ray remote arguments are compatible for merging."""
+    prev_args = _canonicalize(prev_args)
+    next_args = _canonicalize(next_args)
     remote_args = next_args.copy()
     for key in INHERITABLE_REMOTE_ARGS:
         if key in prev_args:
@@ -581,6 +777,21 @@ def _are_remote_args_compatible(prev_args, next_args):
     if prev_args != remote_args:
         return False
     return True
+
+
+def _canonicalize(remote_args: dict) -> dict:
+    """Returns canonical form of given remote args."""
+    remote_args = remote_args.copy()
+    if "num_cpus" not in remote_args or remote_args["num_cpus"] is None:
+        remote_args["num_cpus"] = 1
+    if "num_gpus" not in remote_args or remote_args["num_gpus"] is None:
+        remote_args["num_gpus"] = 0
+    resources = remote_args.get("resources", {})
+    for k, v in list(resources.items()):
+        if v is None or v == 0.0:
+            del resources[k]
+    remote_args["resources"] = resources
+    return remote_args
 
 
 def _is_lazy(blocks: BlockList) -> bool:

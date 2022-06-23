@@ -9,21 +9,19 @@ import sys
 import traceback
 import warnings
 
+import psutil
 
 import ray
-import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
-from ray.dashboard import k8s_utils
-import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
-from ray._private.gcs_pubsub import GcsAioPublisher
 import ray._private.services
 import ray._private.utils
-from ray.core.generated import reporter_pb2
-from ray.core.generated import reporter_pb2_grpc
-from ray.ray_constants import DEBUG_AUTOSCALING_STATUS
-from ray._private.metrics_agent import MetricsAgent, Gauge, Record
+import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.experimental.internal_kv as internal_kv
+from ray._private.metrics_agent import Gauge, MetricsAgent, Record
+from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray.dashboard import k8s_utils
 from ray.util.debug import log_once
-import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -798,10 +796,7 @@ class ReporterAgent(
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
-        gcs_addr = self._dashboard_agent.gcs_address
-        assert gcs_addr is not None
-        publisher = GcsAioPublisher(address=gcs_addr)
-        await self._perform_iteration(publisher)
+        await self._perform_iteration(self._dashboard_agent.publisher)
 
     @staticmethod
     def is_minimal_module():
