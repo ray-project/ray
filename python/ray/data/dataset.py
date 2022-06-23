@@ -3333,26 +3333,14 @@ class Dataset(Generic[T]):
             state["_last_export_session_and_job"] = None
             return reconstructor, args, state
 
-        def _reduce_object_ref(object_ref: ray.ObjectRef):
-            raise ValueError(
-                "Lineage-based serialization is not supported for this dataset since "
-                "it contains an object ref in its lineage, which "
-                "means that it cannot be used as a tunable hyperparameter."
-                "Note this includes calling map_batches() on a UDF that closes over "
-                "object refs or with extra args via fn_{constructor_}_{kw}args that "
-                "contain object refs."
-            )
-
         context = ray._private.worker.global_worker.get_serialization_context()
         try:
             context._register_cloudpickle_reducer(
                 ray.remote_function.RemoteFunction, _reduce_remote_fn
             )
-            context._register_cloudpickle_reducer(ray.ObjectRef, _reduce_object_ref)
             serialized = pickle.dumps(ds)
         finally:
             context._unregister_cloudpickle_reducer(ray.remote_function.RemoteFunction)
-            context._unregister_cloudpickle_reducer(ray.ObjectRef)
         return serialized
 
     @staticmethod

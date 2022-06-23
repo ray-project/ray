@@ -316,49 +316,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
     with pytest.raises(ValueError):
         ds2.serialize_lineage()
 
-    # Object refs captured in UDF.
-    # TODO(Clark): Enable this test case after Ray Core hang on closed ref fetch is
-    # fixed.
-    # obj = ray.put(1)
-    # ds = ray.data.range(10)
-    # ds = maybe_lazy(ds, lazy)
-    # ds = ds.map_batches(
-    #     lambda x: [x_ + ray.get(obj) for x_ in x], batch_size=2,
-    # )
-
-    # with pytest.raises(ValueError):
-    #     ds.serialize_lineage()
-
-    # Object refs captured in stage.
-    obj = ray.put(1)
-    ds = ray.data.range(10)
-    ds = maybe_lazy(ds, lazy)
-    ds = ds.map_batches(lambda x, v: [x_ + v for x_ in x], batch_size=2, fn_args=(obj,))
-
-    with pytest.raises(ValueError):
-        ds.serialize_lineage()
-
-    obj = ray.put(1)
-    ds = ray.data.range(10)
-    ds = maybe_lazy(ds, lazy)
-
-    class CallableClass:
-        def __init__(self, v):
-            self.v = v
-
-        def __call__(self, x):
-            return [x_ + self.v for x_ in x]
-
-    ds = ds.map_batches(
-        CallableClass,
-        batch_size=2,
-        compute="actors",
-        fn_constructor_args=(obj,),
-    )
-
-    with pytest.raises(ValueError):
-        ds.serialize_lineage()
-
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic(ray_start_regular_shared, pipelined):
