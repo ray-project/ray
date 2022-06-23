@@ -158,6 +158,18 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         :type: ref
         :text: Learn Key Concepts
         :classes: btn-outline-info btn-block
+    ---
+
+    **User Guide**
+    ^^^
+
+    Learn how to :ref:`manage deployments<managing-deployments>`, :ref:`handle dependencies<handling-dependencies>`, :ref:`call deployments via HTTP<serve-http>`, :ref:`call deployments from Python<serve-handle-explainer>`, :ref:`deploy, update, and monitor your application with Ray Serve<serve-deploy-tutorial>`, :ref:`serve multiple ML models<serve-ml-models>`, :ref:`debug and monitor your Serve applications<serve-monitoring>`.
+
+    +++
+    .. link-button:: serve-user-guides
+        :type: ref
+        :text: Start Using Ray Serve
+        :classes: btn-outline-info btn-block
 ```
 
 For more, see the following blog posts about Ray Serve:
