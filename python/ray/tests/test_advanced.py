@@ -10,7 +10,11 @@ import pytest
 
 import ray._private.profiling as profiling
 import ray.cluster_utils
-from ray._private.test_utils import RayTestTimeoutException, client_test_enabled
+from ray._private.test_utils import (
+    RayTestTimeoutException,
+    client_test_enabled,
+    wait_for_condition,
+)
 from ray.exceptions import ReferenceCountingAssertionError
 
 if client_test_enabled():
@@ -140,7 +144,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     def get_path1():
         return sys.path
 
-    assert "fake_directory" == ray.get(get_path1.remote())[-1]
+    wait_for_condition(lambda: "fake_directory" == ray.get(get_path1.remote())[-1])
 
     # the function should only run on the current driver once.
     assert sys.path[-1] == "fake_directory"
@@ -159,7 +163,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     def get_path2():
         return sys.path
 
-    assert "fake_directory" not in ray.get(get_path2.remote())
+    wait_for_condition(lambda: "fake_directory" not in ray.get(get_path2.remote()))
 
 
 @pytest.mark.skipif(
@@ -173,6 +177,8 @@ def test_running_function_on_all_workers(ray_start_regular):
     ),
 )
 def test_profiling_api(ray_start_2_cpus):
+    print(">>>>????", client_test_enabled())
+
     @ray.remote
     def f(delay):
         with profiling.profile("custom_event", extra_data={"name": "custom name"}):
@@ -387,6 +393,9 @@ if __name__ == "__main__":
     import pytest
 
     if os.environ.get("PARALLEL_CI"):
+        if client_test_enabled():
+            # We need to setup this one since it's mutated during the import
+            os.environ["RAY_CLIENT_MODE"] = "1"
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
         sys.exit(pytest.main(["-sv", __file__]))

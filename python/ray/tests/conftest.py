@@ -43,7 +43,7 @@ class TestingCluster(Cluster):
         if self.head_node is None:
             if "dashboard_port" not in node_args:
                 node_args["dashboard_port"] = 0
-            self._prev_ray_address = os.environ.get("RAY_ADDRESS", None)
+            self._prev_ray_address = os.environ.pop("RAY_ADDRESS", None)
             node = super().add_node(wait, **node_args)
             os.environ["RAY_ADDRESS"] = self.address
             return node
@@ -149,8 +149,8 @@ def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     # Start the Ray processes.
+    prev_ray_address = os.environ.pop("RAY_ADDRESS", None)
     address_info = ray.init(**init_kwargs)
-    prev_ray_address = os.environ.get("RAY_ADDRESS", None)
     os.environ["RAY_ADDRESS"] = address_info["address"]
     yield address_info
     # The code after the yield will run as teardown code.
