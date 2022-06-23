@@ -1424,7 +1424,7 @@ def start_api_server(
             # that are irrelevant to the dashboard.
             # TODO(sang): Modules like job or state APIs should be
             # loaded although dashboard is disabled. Fix it.
-            command.append(f"--modules-to-load=UsageStatsHead")
+            command.append("--modules-to-load=UsageStatsHead")
 
         process_info = start_ray_process(
             command,
