@@ -25,16 +25,125 @@ namespace ray {
 
 namespace gcs {
 
-std::string RedisStoreClient::table_separator_ = ":";
-std::string RedisStoreClient::cluster_separator_ = "@";
-std::string RedisStoreClient::index_table_separator_ = "&";
+namespace {
+
+const std::string_view kTableSeparator = ":";
+const std::string_view kClusterSeparator = "@";
+const std::string_view kIndexTableSeparator = "&";
+
+// "[, ], -, ?, *, ^, \" are special chars in Redis pattern matching.
+// escape them with / according to the doc:
+// https://redis.io/commands/keys/
+std::string EscapeMatchPattern(const std::string &s) {
+  static std::regex kSpecialChars("\\[|\\]|-|\\?|\\*|\\^|\\\\");
+  return std::regex_replace(s, kSpecialChars, "\\$&");
+}
+
+std::string GenRedisKey(const std::string &cluster_id,
+                        const std::string &table_name,
+                        const std::string &key) {
+  return absl::StrCat(cluster_id, kClusterSeparator, table_name, kTableSeparator, key);
+}
+
+std::string GenKeyRedisMatchPattern(const std::string &cluster_id,
+                                    const std::string &table_name) {
+  return absl::StrCat(cluster_id,
+                      kClusterSeparator,
+                      EscapeMatchPattern(table_name),
+                      kTableSeparator,
+                      "*");
+}
+
+std::string GetKeyFromRedisKey(const std::string &cluster_id,
+                               const std::string &redis_key,
+                               const std::string &table_name) {
+  auto pos = cluster_id.size() + kClusterSeparator.size() + table_name.size() +
+             kTableSeparator.size();
+  return redis_key.substr(pos, redis_key.size() - pos);
+}
+
+absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
+GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
+                    const std::string &command,
+                    const std::vector<std::string> &keys,
+                    int *count) {
+  absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
+      commands_by_shards;
+  for (auto &key : keys) {
+    auto shard_context = redis_client->GetShardContext(key).get();
+    auto it = commands_by_shards.find(shard_context);
+    if (it == commands_by_shards.end()) {
+      auto key_vector = commands_by_shards[shard_context].emplace(
+          commands_by_shards[shard_context].begin(), std::vector<std::string>());
+      key_vector->push_back(command);
+      key_vector->push_back(key);
+      (*count)++;
+    } else {
+      // If the last batch is full, add a new batch.
+      if (it->second.back().size() - 1 ==
+          RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
+        it->second.emplace_back(std::vector<std::string>());
+        it->second.back().push_back(command);
+        (*count)++;
+      }
+      it->second.back().push_back(key);
+    }
+  }
+  return commands_by_shards;
+}
+
+Status MGetValues(std::shared_ptr<RedisClient> redis_client,
+                  const std::string &cluster_id,
+                  const std::string &table_name,
+                  const std::vector<std::string> &keys,
+                  const MapCallback<std::string, std::string> &callback) {
+  // The `MGET` command for each shard.
+  int total_count = 0;
+  auto mget_commands_by_shards =
+      GenCommandsByShards(redis_client, "MGET", keys, &total_count);
+  auto finished_count = std::make_shared<int>(0);
+  auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
+  for (auto &command_list : mget_commands_by_shards) {
+    for (auto &command : command_list.second) {
+      auto mget_keys = std::move(command);
+      auto mget_callback = [table_name,
+                            cluster_id,
+                            finished_count,
+                            total_count,
+                            mget_keys,
+                            callback,
+                            key_value_map](const std::shared_ptr<CallbackReply> &reply) {
+        if (!reply->IsNil()) {
+          auto value = reply->ReadAsStringArray();
+          // The 0 th element of mget_keys is "MGET", so we start from the 1 th
+          // element.
+          for (size_t index = 0; index < value.size(); ++index) {
+            if (value[index].has_value()) {
+              (*key_value_map)[GetKeyFromRedisKey(
+                  cluster_id, mget_keys[index + 1], table_name)] = *(value[index]);
+            }
+          }
+        }
+
+        ++(*finished_count);
+        if (*finished_count == total_count) {
+          callback(std::move(*key_value_map));
+        }
+      };
+      RAY_CHECK_OK(command_list.first->RunArgvAsync(mget_keys, mget_callback));
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,
                                   const std::string &data,
                                   bool overwrite,
                                   std::function<void(bool)> callback) {
-  return DoPut(GenRedisKey(table_name, key), data, overwrite, callback);
+  return DoPut(GenRedisKey(cluster_id_, table_name, key), data, overwrite, callback);
 }
 
 Status RedisStoreClient::AsyncGet(const std::string &table_name,
@@ -53,7 +162,7 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
     callback(Status::OK(), result);
   };
 
-  std::string redis_key = GenRedisKey(table_name, key);
+  std::string redis_key = GenRedisKey(cluster_id_, table_name, key);
   std::vector<std::string> args = {"GET", redis_key};
 
   auto shard_context = redis_client_->GetShardContext(redis_key);
@@ -64,7 +173,7 @@ Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
     const MapCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback);
-  std::string match_pattern = GenKeyRedisMatchPattern(table_name);
+  std::string match_pattern = GenKeyRedisMatchPattern(cluster_id_, table_name);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
   auto on_done = [callback,
                   scanner](absl::flat_hash_map<std::string, std::string> &&result) {
@@ -83,7 +192,7 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
     };
   }
 
-  std::string redis_key = GenRedisKey(table_name, key);
+  std::string redis_key = GenRedisKey(cluster_id_, table_name, key);
   // We always replace `DEL` with `UNLINK`.
   std::vector<std::string> args = {"UNLINK", redis_key};
 
@@ -97,7 +206,7 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
   std::vector<std::string> redis_keys;
   redis_keys.reserve(keys.size());
   for (auto &key : keys) {
-    redis_keys.push_back(GenRedisKey(table_name, key));
+    redis_keys.push_back(GenRedisKey(cluster_id_, table_name, key));
   }
   return DeleteByKeys(redis_keys, callback);
 }
@@ -112,9 +221,9 @@ Status RedisStoreClient::AsyncMultiGet(
   }
   std::vector<std::string> true_keys;
   for (auto &key : keys) {
-    true_keys.push_back(GenRedisKey(table_name, key));
+    true_keys.push_back(GenRedisKey(cluster_id_, table_name, key));
   }
-  RAY_CHECK_OK(MGetValues(redis_client_, table_name, true_keys, callback));
+  RAY_CHECK_OK(MGetValues(redis_client_, cluster_id_, table_name, true_keys, callback));
   return Status::OK();
 }
 
@@ -169,153 +278,12 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
   return Status::OK();
 }
 
-absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
-RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
-                                      const std::string &command,
-                                      const std::vector<std::string> &keys,
-                                      int *count) {
-  absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
-      commands_by_shards;
-  for (auto &key : keys) {
-    auto shard_context = redis_client->GetShardContext(key).get();
-    auto it = commands_by_shards.find(shard_context);
-    if (it == commands_by_shards.end()) {
-      auto key_vector = commands_by_shards[shard_context].emplace(
-          commands_by_shards[shard_context].begin(), std::vector<std::string>());
-      key_vector->push_back(command);
-      key_vector->push_back(key);
-      (*count)++;
-    } else {
-      // If the last batch is full, add a new batch.
-      if (it->second.back().size() - 1 ==
-          RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
-        it->second.emplace_back(std::vector<std::string>());
-        it->second.back().push_back(command);
-        (*count)++;
-      }
-      it->second.back().push_back(key);
-    }
-  }
-  return commands_by_shards;
-}
-
-std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
-                                          const std::string &key) const {
-  return absl::StrCat(cluster_id_, cluster_separator_, table_name, table_separator_, key);
-}
-
-std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
-                                          const std::string &key,
-                                          const std::string &index_key) const {
-  return absl::StrCat(cluster_id_,
-                      cluster_separator_,
-                      table_name,
-                      index_table_separator_,
-                      index_key,
-                      index_table_separator_,
-                      key);
-  std::stringstream ss;
-}
-
-namespace {
-
-// "[, ], -, ?, *, ^, \" are special chars in Redis pattern matching.
-// escape them with / according to the doc:
-// https://redis.io/commands/keys/
-std::string EscapeMatchPattern(const std::string &s) {
-  static std::regex kSpecialChars("\\[|\\]|-|\\?|\\*|\\^|\\\\");
-  return std::regex_replace(s, kSpecialChars, "\\$&");
-}
-};  // namespace
-
-std::string RedisStoreClient::GenKeyRedisMatchPattern(
-    const std::string &table_name) const {
-  return absl::StrCat(cluster_id_,
-                      cluster_separator_,
-                      EscapeMatchPattern(table_name),
-                      table_separator_,
-                      "*");
-}
-
-std::string RedisStoreClient::GenKeyRedisMatchPattern(const std::string &table_name,
-                                                      const std::string &key) const {
-  return absl::StrCat(cluster_id_,
-                      cluster_separator_,
-                      EscapeMatchPattern(table_name),
-                      table_separator_,
-                      EscapeMatchPattern(key),
-                      "*");
-}
-
-std::string RedisStoreClient::GenIndexRedisMatchPattern(
-    const std::string &table_name, const std::string &index_key) const {
-  return absl::StrCat(cluster_id_,
-                      cluster_separator_,
-                      table_name,
-                      index_table_separator_,
-                      index_key,
-                      index_table_separator_,
-                      "*");
-}
-
-std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
-                                                 const std::string &table_name) const {
-  auto pos = cluster_id_.size() + cluster_separator_.size() + table_name.size() +
-             table_separator_.size();
-  return redis_key.substr(pos, redis_key.size() - pos);
-}
-
-std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
-                                                 const std::string &table_name,
-                                                 const std::string &index_key) const {
-  auto pos = cluster_id_.size() + cluster_separator_.size() + table_name.size() +
-             index_table_separator_.size() * 2 + index_key.size();
-  return redis_key.substr(pos, redis_key.size() - pos);
-}
-
-Status RedisStoreClient::MGetValues(
-    std::shared_ptr<RedisClient> redis_client,
-    const std::string &table_name,
-    const std::vector<std::string> &keys,
-    const MapCallback<std::string, std::string> &callback) const {
-  // The `MGET` command for each shard.
-  int total_count = 0;
-  auto mget_commands_by_shards =
-      GenCommandsByShards(redis_client, "MGET", keys, &total_count);
-  auto finished_count = std::make_shared<int>(0);
-  auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
-  for (auto &command_list : mget_commands_by_shards) {
-    for (auto &command : command_list.second) {
-      auto mget_keys = std::move(command);
-      auto mget_callback =
-          [table_name, finished_count, total_count, mget_keys, callback, key_value_map](
-              const std::shared_ptr<CallbackReply> &reply) {
-            if (!reply->IsNil()) {
-              auto value = reply->ReadAsStringArray();
-              // The 0 th element of mget_keys is "MGET", so we start from the 1 th
-              // element.
-              for (size_t index = 0; index < value.size(); ++index) {
-                if (value[index].has_value()) {
-                  (*key_value_map)[GetKeyFromRedisKey(mget_keys[index + 1], table_name)] =
-                      *(value[index]);
-                }
-              }
-            }
-
-            ++(*finished_count);
-            if (*finished_count == total_count) {
-              callback(std::move(*key_value_map));
-            }
-          };
-      RAY_CHECK_OK(command_list.first->RunArgvAsync(mget_keys, mget_callback));
-    }
-  }
-  return Status::OK();
-}
-
 RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_client,
+                                             const std::string &cluster_id,
                                              const std::string &table_name)
-    : table_name_(std::move(table_name)), redis_client_(std::move(redis_client)) {
+    : table_name_(table_name),
+      cluster_id_(cluster_id),
+      redis_client_(std::move(redis_client)) {
   for (size_t index = 0; index < redis_client_->GetShardContexts().size(); ++index) {
     shard_to_cursor_[index] = 0;
   }
@@ -329,7 +297,7 @@ Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
     if (result.empty()) {
       callback(absl::flat_hash_map<std::string, std::string>());
     } else {
-      RAY_CHECK_OK(MGetValues(redis_client_, table_name_, result, callback));
+      RAY_CHECK_OK(MGetValues(redis_client_, cluster_id_, table_name_, result, callback));
     }
   };
   return ScanKeys(match_pattern, on_done);
@@ -422,11 +390,11 @@ Status RedisStoreClient::AsyncGetKeys(
     std::function<void(std::vector<std::string>)> callback) {
   std::string match_pattern = GenKeyRedisMatchPattern(table_name, prefix);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
-  auto on_done = [table_name, callback, scanner](auto /* status*/, auto keys) {
+  auto on_done = [this, table_name, callback, scanner](auto /* status*/, auto keys) {
     std::vector<std::string> result;
     result.reserve(keys.size());
     for (auto &key : keys) {
-      result.push_back(GetKeyFromRedisKey(std::move(key), table_name));
+      result.push_back(GetKeyFromRedisKey(cluster_id_, std::move(key), table_name));
     }
     callback(std::move(result));
   };
@@ -436,7 +404,7 @@ Status RedisStoreClient::AsyncGetKeys(
 Status RedisStoreClient::AsyncExists(const std::string &table_name,
                                      const std::string &key,
                                      std::function<void(bool)> callback) {
-  std::string redis_key = GenRedisKey(table_name, key);
+  std::string redis_key = GenRedisKey(cluster_id_, table_name, key);
   std::vector<std::string> args = {"EXISTS", redis_key};
 
   auto shard_context = redis_client_->GetShardContext(redis_key);

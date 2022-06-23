@@ -75,6 +75,7 @@ class RedisStoreClient : public StoreClient {
   class RedisScanner {
    public:
     explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
+                          const std::string &cluster_id,
                           const std::string &table_name);
 
     Status ScanKeysAndValues(const std::string &match_pattern,
@@ -92,6 +93,7 @@ class RedisStoreClient : public StoreClient {
                         const StatusCallback &callback);
 
     std::string table_name_;
+    std::string cluster_id_;
 
     /// Mutex to protect the shard_to_cursor_ field and the keys_ field and the
     /// key_value_map_ field.
@@ -116,45 +118,6 @@ class RedisStoreClient : public StoreClient {
 
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       std::function<void(int64_t)> callback);
-
-  /// The return value is a map, whose key is the shard and the value is a list of batch
-  /// operations.
-  static absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
-  GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
-                      const std::string &command,
-                      const std::vector<std::string> &keys,
-                      int *count);
-
-  /// The separator is used when building redis key.
-  static std::string table_separator_;
-  static std::string cluster_separator_;
-  static std::string index_table_separator_;
-
-  std::string GenRedisKey(const std::string &table_name, const std::string &key) const;
-
-  std::string GenRedisKey(const std::string &table_name,
-                          const std::string &key,
-                          const std::string &index_key) const;
-
-  std::string GenKeyRedisMatchPattern(const std::string &table_name) const;
-
-  std::string GenKeyRedisMatchPattern(const std::string &table_name,
-                                      const std::string &key) const;
-
-  std::string GenIndexRedisMatchPattern(const std::string &table_name,
-                                        const std::string &index_key) const;
-
-  std::string GetKeyFromRedisKey(const std::string &redis_key,
-                                 const std::string &table_name) const;
-
-  std::string GetKeyFromRedisKey(const std::string &redis_key,
-                                 const std::string &table_name,
-                                 const std::string &index_key) const;
-
-  Status MGetValues(std::shared_ptr<RedisClient> redis_client,
-                    const std::string &table_name,
-                    const std::vector<std::string> &keys,
-                    const MapCallback<std::string, std::string> &callback);
 
   std::string cluster_id_;
   std::shared_ptr<RedisClient> redis_client_;

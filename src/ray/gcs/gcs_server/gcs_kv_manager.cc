@@ -45,8 +45,8 @@ Status RedisInternalKV::ValidateKey(const std::string &key) const {
 }
 
 std::string RedisInternalKV::ExtractKey(const std::string &key) const {
-  auto view = std::string_view(
-      key.begin() + cluster_id_.size() + kClusterSeparator.size(), key.end());
+  auto view = std::string_view(key);
+  view.substr(cluster_id_.size() + kClusterSeparator.size());
   if (absl::StartsWith(view, kNamespacePrefix)) {
     std::vector<std::string> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
