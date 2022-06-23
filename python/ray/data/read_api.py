@@ -31,6 +31,7 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
+    Reader,
     ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
