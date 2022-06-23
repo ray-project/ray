@@ -1,11 +1,11 @@
 from django.shortcuts import render
 
-from ray.tune.automlboard.settings import (
+from ray.tune.automl.board.settings import (
     AUTOMLBOARD_RELOAD_INTERVAL,
     AUTOMLBOARD_LOG_DIR,
 )
-from ray.tune.automlboard.models.models import JobRecord, TrialRecord, ResultRecord
-from ray.tune.trial import Trial
+from ray.tune.automl.board.models.models import JobRecord, TrialRecord, ResultRecord
+from ray.tune.experiment import Trial
 
 import datetime
 
