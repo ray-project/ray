@@ -174,7 +174,7 @@ Status RedisStoreClient::AsyncGetAll(
     const MapCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback);
   std::string match_pattern = GenKeyRedisMatchPattern(cluster_id_, table_name);
-  auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
+  auto scanner = std::make_shared<RedisScanner>(redis_client_, cluster_id_, table_name);
   auto on_done = [callback,
                   scanner](absl::flat_hash_map<std::string, std::string> &&result) {
     callback(std::move(result));
