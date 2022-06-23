@@ -60,22 +60,21 @@ def replace_tensors(m: torch.nn.Module, tensors: List[Dict]):
 def download_model():
     bert = transformers.BertModel.from_pretrained("bert-base-uncased", force_download=True)
     bert_skeleton, bert_weights = extract_tensors(bert)
-    return bert_skeleton, bert_weights
+    tokenizer = transformers.BertTokenizerFast.from_pretrained("bert-base-uncased")
+    return bert_skeleton, bert_weights, tokenizer
 
 
 @serve.deployment(_autoscaling_config={"min_replicas": 0, "max_replicas": 8, "upscale_delay_s": 0.1})
 class ZeroCopyModel:
     def __init__(self, model):
-        self.model_skeleton, self.model_weights = model
-        self.tokenizer = transformers.BertTokenizerFast.from_pretrained("bert-base-uncased")
+        self.model_skeleton, self.model_weights, self.tokenizer = model
         replace_tensors(self.model_skeleton, self.model_weights)
 
     def __call__(self, *args):
         test_text = "All work and no play makes Jack a dull boy."
         test_tokens = self.tokenizer(test_text, return_tensors="pt")
         res = self.model_skeleton(**test_tokens).last_hidden_state
-        print("123", res)
-        return res.detach().numpy()
+        return str(ray.get_runtime_context().actor_id)
 
 
 @serve.deployment(_autoscaling_config={"min_replicas": 0, "max_replicas": 8, "upscale_delay_s": 0.1})
@@ -88,7 +87,7 @@ class NoZeroCopyModel:
         test_text = "All work and no play makes Jack a dull boy."
         test_tokens = self.tokenizer(test_text, return_tensors="pt")
         res = self.model_skeleton(**test_tokens).last_hidden_state
-        return res.detach().numpy()
+        return str(ray.get_runtime_context().actor_id)
 
 
 zero = ZeroCopyModel.bind(download_model.bind())
