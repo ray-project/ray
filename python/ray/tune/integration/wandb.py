@@ -13,7 +13,7 @@ from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 
 import yaml
 

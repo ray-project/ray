@@ -38,6 +38,21 @@ def test_import_execution_trial_runner(logging_setup):
         import ray.tune.trial_runner  # noqa: F401
 
 
+def test_import_experiment_config_parser(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.config_parser  # noqa: F401
+
+
+def test_import_experiment_experiment(logging_setup):
+    # No warning - original imports still work
+    from ray.tune.experiment import Experiment, convert_to_experiment_list  # noqa: F401
+
+
+def test_import_experiment_trial(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.trial  # noqa: F401
+
+
 if __name__ == "__main__":
     import sys
 

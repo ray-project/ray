@@ -27,7 +27,7 @@ from ray.tune.result import (
     TIMESTEPS_TOTAL,
     AUTO_RESULT_KEYS,
 )
-from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
+from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 
