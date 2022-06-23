@@ -106,6 +106,7 @@ class TestAPPO(unittest.TestCase):
                     [500, 0.0001],
                 ],
             )
+            .reporting(min_train_timesteps_per_iteration=20)
         )
 
         config.min_sample_timesteps_per_iteration = 20
@@ -143,7 +144,8 @@ class TestAPPO(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

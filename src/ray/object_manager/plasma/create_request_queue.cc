@@ -93,6 +93,17 @@ Status CreateRequestQueue::ProcessRequests() {
     bool spilling_required = false;
     auto status =
         ProcessRequest(/*fallback_allocator=*/false, *request_it, &spilling_required);
+
+    // if allocation failed due to OOM, and fs_monitor_ indicates the local disk is full,
+    // we should failed the request with out of disk error
+    if ((*request_it)->error == PlasmaError::OutOfMemory && fs_monitor_.OverCapacity()) {
+      (*request_it)->error = PlasmaError::OutOfDisk;
+      RAY_LOG(INFO) << "Out-of-disk: Failed to create object " << (*request_it)->object_id
+                    << " of size " << (*request_it)->object_size / 1024 / 1024 << "MB\n";
+      FinishRequest(request_it);
+      return Status::OutOfDisk("System running out of disk.");
+    }
+
     if (spilling_required) {
       spill_objects_callback_();
     }
@@ -141,6 +152,7 @@ Status CreateRequestQueue::ProcessRequests() {
       }
     }
   }
+
   return Status::OK();
 }
 
