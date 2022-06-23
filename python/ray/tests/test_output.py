@@ -449,22 +449,22 @@ ray.init(address="auto")
 # Run the workload.
 
 run_experiments(
-    {{
-        "PPO": {{
+    {
+        "PPO": {
             "run": "PPO",
             "env": "CartPole-v0",
             "num_samples": 10,
-            "config": {{
+            "config": {
                 "framework": "torch",
                 "num_workers": 1,
                 "num_gpus": 0,
                 "num_sgd_iter": 1,
-            }},
-            "stop": {{
+            },
+            "stop": {
                 "timesteps_total": 1,
-            }},
-        }}
-    }},
+            },
+        }
+    },
     callbacks=[ProgressCallback()])
     """
 
