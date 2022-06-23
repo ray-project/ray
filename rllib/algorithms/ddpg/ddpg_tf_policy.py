@@ -1,4 +1,3 @@
-from gym.spaces import Box
 from functools import partial
 import logging
 import numpy as np
@@ -14,7 +13,11 @@ from ray.rllib.algorithms.dqn.dqn_tf_policy import (
 )
 from ray.rllib.evaluation import Episode
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import Deterministic, Dirichlet, TFActionDistribution
+from ray.rllib.models.tf.tf_action_dist import (
+    Deterministic,
+    Dirichlet,
+    TFActionDistribution,
+)
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.utils.annotations import override
@@ -85,7 +88,9 @@ class TargetNetworkMixin:
         self.update_target(tau=1.0)
 
     # Support both hard and soft sync.
-    def update_target(self: Union[DynamicTFPolicyV2, EagerTFPolicyV2], tau: int = None) -> None:
+    def update_target(
+        self: Union[DynamicTFPolicyV2, EagerTFPolicyV2], tau: int = None
+    ) -> None:
         self._do_update(np.float32(tau or self.config.get("tau")))
 
     @override(TFPolicy)
@@ -102,6 +107,7 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
     Returns:
         A TF Policy to be used with DDPG.
     """
+
     class DDPGTFPolicy(TargetNetworkMixin, ComputeTDErrorMixin, base):
         def __init__(
             self,
@@ -115,7 +121,9 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.ddpg.ddpg.DDPGConfig().to_dict(), **config)
+            config = dict(
+                ray.rllib.algorithms.ddpg.ddpg.DDPGConfig().to_dict(), **config
+            )
 
             # Validate action space for DDPG
             validate_spaces(self, observation_space, action_space)
@@ -140,7 +148,11 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
             return make_ddpg_models(self)
 
         @override(base)
-        def optimizer(self) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
+        def optimizer(
+            self,
+        ) -> Union[
+            "tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]
+        ]:
             """Create separate optimizers for actor & critic losses."""
             if self.config["framework"] in ["tf2", "tfe"]:
                 self.global_step = get_variable(0, tf_name="global_step")
@@ -217,9 +229,13 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
                 return self._actor_optimizer.apply_gradients(self._actor_grads_and_vars)
 
             actor_op = tf.cond(
-                should_apply_actor_opt, true_fn=make_apply_op, false_fn=lambda: tf.no_op()
+                should_apply_actor_opt,
+                true_fn=make_apply_op,
+                false_fn=lambda: tf.no_op(),
             )
-            critic_op = self._critic_optimizer.apply_gradients(self._critic_grads_and_vars)
+            critic_op = self._critic_optimizer.apply_gradients(
+                self._critic_grads_and_vars
+            )
             # Increment global step & apply ops.
             if self.config["framework"] in ["tf2", "tfe"]:
                 self.global_step.assign_add(1)
@@ -236,7 +252,7 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
             obs_batch: TensorType,
             state_batches: TensorType,
             is_training: bool = False,
-            **kwargs
+            **kwargs,
         ) -> Tuple[TensorType, type, List[TensorType]]:
             model_out, _ = model(SampleBatch(obs=obs_batch, _is_training=is_training))
             dist_inputs = model.get_policy_output(model_out)
@@ -272,7 +288,9 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
             huber_threshold = self.config["huber_threshold"]
             l2_reg = self.config["l2_reg"]
 
-            input_dict = SampleBatch(obs=train_batch[SampleBatch.CUR_OBS], _is_training=True)
+            input_dict = SampleBatch(
+                obs=train_batch[SampleBatch.CUR_OBS], _is_training=True
+            )
             input_dict_next = SampleBatch(
                 obs=train_batch[SampleBatch.NEXT_OBS], _is_training=True
             )
@@ -320,7 +338,9 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
                 )
 
             # Target q-net(s) evaluation.
-            q_tp1 = self.target_model.get_q_values(target_model_out_tp1, policy_tp1_smoothed)
+            q_tp1 = self.target_model.get_q_values(
+                target_model_out_tp1, policy_tp1_smoothed
+            )
 
             if twin_q:
                 twin_q_tp1 = self.target_model.get_twin_q_values(
@@ -334,8 +354,8 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
 
             q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
             q_tp1_best_masked = (
-                                    1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)
-                                ) * q_tp1_best
+                1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+            ) * q_tp1_best
 
             # Compute RHS of bellman equation.
             q_t_selected_target = tf.stop_gradient(

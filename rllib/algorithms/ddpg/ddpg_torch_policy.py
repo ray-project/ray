@@ -28,9 +28,9 @@ from ray.rllib.utils.torch_utils import (
     l2_loss,
 )
 from ray.rllib.utils.typing import (
-    TrainerConfigDict,
     ModelGradients,
-    TensorType, AlgorithmConfigDict,
+    TensorType,
+    AlgorithmConfigDict,
 )
 from ray.rllib.algorithms.ddpg.utils import make_ddpg_models, validate_spaces
 
@@ -177,7 +177,9 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         is_training: bool = False,
         **kwargs
     ) -> Tuple[TensorType, type, List[TensorType]]:
-        model_out, _ = model(SampleBatch(obs=obs_batch[SampleBatch.CUR_OBS], _is_training=is_training))
+        model_out, _ = model(
+            SampleBatch(obs=obs_batch[SampleBatch.CUR_OBS], _is_training=is_training)
+        )
         dist_inputs = model.get_policy_output(model_out)
 
         if isinstance(self.action_space, Simplex):
