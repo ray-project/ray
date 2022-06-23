@@ -55,4 +55,4 @@ halfcheetah-ddpg:
 
         # === Evaluation ===
         evaluation_interval: 5
-        evaluation_num_episodes: 10
+        evaluation_duration: 10

@@ -25,4 +25,4 @@ mujoco-td3:
           learning_starts: 10000
         # === Evaluation ===
         evaluation_interval: 10
-        evaluation_num_episodes: 10
+        evaluation_duration: 10
