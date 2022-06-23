@@ -66,7 +66,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        learning_starts: int = 1000,
+        min_buffer_size_for_sampling: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
@@ -83,7 +83,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
-            learning_starts: Number of timesteps after which a call to
+            min_buffer_size_for_sampling: Number of timesteps after which a call to
                 `sample()` will yield samples (before that, `sample()` will
                 return None).
             capacity: The capacity of the buffer, measured in `storage_unit`.
@@ -121,7 +121,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         else:
             self.underlying_buffer_call_args = {}
         self.replay_sequence_override = replay_sequence_override
-        self.replay_starts = learning_starts // num_shards
+        self.replay_starts = min_buffer_size_for_sampling // num_shards
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in

@@ -78,7 +78,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Test lockstep mode with different policy ids using MultiAgentBatches
         buffer = MultiAgentPrioritizedReplayBuffer(
-            capacity=10, replay_mode="independent", learning_starts=0, num_shards=1
+            capacity=10, replay_mode="independent", min_buffer_size_for_sampling=0, num_shards=1
         )
 
         self._add_multi_agent_batch_to_buffer(buffer, num_policies=1, num_batches=1)
@@ -98,7 +98,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         buffer = MultiAgentPrioritizedReplayBuffer(
             capacity=buffer_size,
             replay_mode="lockstep",
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
         )
 
@@ -130,7 +130,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         buffer = MultiAgentPrioritizedReplayBuffer(
             capacity=buffer_size,
             replay_mode="independent",
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
         )
 
@@ -172,7 +172,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
             prioritized_replay_beta=self.beta,
             replay_mode="independent",
             replay_sequence_length=2,
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
         )
 
@@ -221,7 +221,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
             prioritized_replay_alpha=self.alpha,
             prioritized_replay_beta=self.beta,
             replay_mode="independent",
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
         )
         new_buffer.set_state(state)

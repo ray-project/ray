@@ -238,6 +238,15 @@ def validate_buffer_config(config: dict) -> None:
         )
         config["replay_buffer_config"]["replay_mode"] = replay_mode
 
+    replay_mode = config.get("learning_starts", DEPRECATED_VALUE)
+    if replay_mode != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['learning_starts']",
+            help="config['replay_buffer_config']['min_buffer_size_for_sampling']",
+            error=False,
+        )
+        config["replay_buffer_config"]["min_buffer_size_for_sampling"] = replay_mode
+
     # Can't use DEPRECATED_VALUE here because this is also a deliberate
     # value set for some algorithms
     # TODO: (Artur): Compare to DEPRECATED_VALUE on deprecation

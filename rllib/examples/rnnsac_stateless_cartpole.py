@@ -38,7 +38,7 @@ config = {
             "type": "MultiAgentReplayBuffer",
             "storage_unit": "sequences",
             "capacity": 100000,
-            "learning_starts": 1000,
+            "min_buffer_size_for_sampling": 1000,
             "replay_burn_in": 4,
         },
         "train_batch_size": 480,

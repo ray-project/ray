@@ -45,7 +45,7 @@ pendulum-ddpg:
         use_huber: True
         huber_threshold: 1.0
         l2_reg: 0.000001
-        learning_starts: 500
+        min_buffer_size_for_sampling: 500
         rollout_fragment_length: 1
         train_batch_size: 64
 

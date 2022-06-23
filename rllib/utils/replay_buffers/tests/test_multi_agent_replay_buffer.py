@@ -85,7 +85,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
 
         # Test lockstep mode with different policy ids using MultiAgentBatches
         buffer = MultiAgentReplayBuffer(
-            capacity=10, replay_mode="independent", learning_starts=0, num_shards=1
+            capacity=10, replay_mode="independent", min_buffer_size_for_sampling=0, num_shards=1
         )
 
         self._add_multi_agent_batch_to_buffer(buffer, num_policies=1, num_batches=1)
@@ -105,7 +105,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         buffer = MultiAgentReplayBuffer(
             capacity=buffer_size,
             replay_mode="lockstep",
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
         )
 
@@ -142,7 +142,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
             replay_mode="independent",
             storage_unit="sequences",
             replay_sequence_length=2,
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
         )
 
@@ -188,7 +188,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         buffer = MultiAgentReplayBuffer(
             capacity=buffer_size,
             replay_mode="independent",
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
         )
 
@@ -234,7 +234,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         buffer = MultiAgentReplayBuffer(
             capacity=buffer_size,
             replay_mode="lockstep",
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
             underlying_buffer_config=replay_buffer_config,
         )
@@ -280,7 +280,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         buffer = MultiAgentReplayBuffer(
             capacity=buffer_size,
             replay_mode="independent",
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
             underlying_buffer_config=prioritized_replay_buffer_config,
         )
@@ -302,7 +302,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         buffer = MultiAgentReplayBuffer(
             capacity=buffer_size,
             replay_mode="independent",
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
         )
 
@@ -315,7 +315,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         another_buffer = MultiAgentReplayBuffer(
             capacity=buffer_size,
             replay_mode="independent",
-            learning_starts=0,
+            min_buffer_size_for_sampling=0,
             num_shards=1,
         )
 

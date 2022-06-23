@@ -12,7 +12,7 @@ two-step-game-maddpg:
             env_config:
               actions_are_logits: true
 
-        learning_starts: 200
+        min_buffer_size_for_sampling: 200
 
         multiagent:
             policies:

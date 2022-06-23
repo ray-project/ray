@@ -44,12 +44,12 @@ class TestEagerSupportPG(unittest.TestCase):
     def test_simple_q(self):
         check_support(
             "SimpleQ",
-            {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}},
+            {"num_workers": 0, "replay_buffer_config": {"min_buffer_size_for_sampling": 0}},
         )
 
     def test_dqn(self):
         check_support(
-            "DQN", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+            "DQN", {"num_workers": 0, "replay_buffer_config": {"min_buffer_size_for_sampling": 0}}
         )
 
     def test_ddpg(self):
@@ -91,12 +91,12 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
     def test_simple_q(self):
         check_support(
             "SimpleQ",
-            {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}},
+            {"num_workers": 0, "replay_buffer_config": {"min_buffer_size_for_sampling": 0}},
         )
 
     def test_dqn(self):
         check_support(
-            "DQN", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+            "DQN", {"num_workers": 0, "replay_buffer_config": {"min_buffer_size_for_sampling": 0}}
         )
 
     def test_ddpg(self):
@@ -113,7 +113,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
             "APEX",
             {
                 "num_workers": 2,
-                "replay_buffer_config": {"learning_starts": 0},
+                "replay_buffer_config": {"min_buffer_size_for_sampling": 0},
                 "num_gpus": 0,
                 "min_time_s_per_iteration": 1,
                 "min_sample_timesteps_per_iteration": 100,
@@ -125,7 +125,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
 
     def test_sac(self):
         check_support(
-            "SAC", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+            "SAC", {"num_workers": 0, "replay_buffer_config": {"min_buffer_size_for_sampling": 0}}
         )
 
 
