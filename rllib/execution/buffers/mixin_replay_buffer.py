@@ -3,11 +3,11 @@ import platform
 import random
 from typing import Optional
 
+from ray.util.timer import _Timer
 from ray.rllib.execution.replay_ops import SimpleReplayBuffer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
-from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 
 
@@ -87,9 +87,9 @@ class MixInMultiAgentReplayBuffer:
         self.replay_buffers = collections.defaultdict(new_buffer)
 
         # Metrics.
-        self.add_batch_timer = TimerStat()
-        self.replay_timer = TimerStat()
-        self.update_priorities_timer = TimerStat()
+        self.add_batch_timer = _Timer()
+        self.replay_timer = _Timer()
+        self.update_priorities_timer = _Timer()
 
         # Added timesteps over lifetime.
         self.num_added = 0

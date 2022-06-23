@@ -12,7 +12,7 @@ from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.trial import ExportFormat
+from ray.tune.experiment.trial import ExportFormat
 
 # __tutorial_imports_end__
 

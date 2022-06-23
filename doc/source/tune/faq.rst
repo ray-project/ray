@@ -234,7 +234,7 @@ How do I set resources?
 ~~~~~~~~~~~~~~~~~~~~~~~
 If you want to allocate specific resources to a trial, you can use the
 ``resources_per_trial`` parameter of ``tune.run()``, to which you can pass
-a dict or a :class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>` object:
+a dict or a :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>` object:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
