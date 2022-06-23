@@ -127,6 +127,26 @@ Because it's built on top of Ray, you can run it anywhere Ray can: on your lapto
 Check out {ref}`getting-started` and {doc}`key-concepts`, look at the {ref}`serve-faq`,
 or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
 
+
+```{eval-rst}
+.. panels::
+    :container: text-center
+    :column: col-lg-6 px-2 py-2
+    :card:
+
+    **Getting Started**
+    ^^^
+
+    Start with our quick start tutorials for :ref:`deploying a single model locally<getting-started>`, how to :ref:`convert an existing model into a Ray Serve deployment<converting-to-ray-serve-deployment>` .
+    These concrete examples will give you an idea of how to use Ray Serve.
+
+    +++
+    .. link-button:: getting-started
+        :type: ref
+        :text: Get Started with Ray Serve
+        :classes: btn-outline-info btn-block
+```
+
 For more, see the following blog posts about Ray Serve:
 
 - [Serving ML Models in Production: Common Patterns](https://www.anyscale.com/blog/serving-ml-models-in-production-common-patterns) by Simon Mo, Edward Oakes, and Michael Galarnyk
