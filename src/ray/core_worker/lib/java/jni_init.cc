@@ -115,7 +115,7 @@ jfieldID java_actor_creation_options_serialized_runtime_env;
 jfieldID java_actor_creation_options_max_pending_calls;
 
 jclass java_actor_lifetime_class;
-jobject STATUS_DETACHED;
+int DETACHED_LIFETIME_ORDINAL_VALUE;
 jmethodID java_actor_lifetime_ordinal;
 
 jclass java_placement_group_creation_options_class;
@@ -371,8 +371,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetMethodID(java_actor_lifetime_class, "ordinal", "()I");
   jfieldID java_actor_lifetime_detached_field = env->GetStaticFieldID(
       java_actor_lifetime_class, "DETACHED", "Lio/ray/api/options/ActorLifetime;");
-  STATUS_DETACHED = env->GetStaticObjectField(java_actor_lifetime_class,
-                                              java_actor_lifetime_detached_field);
+  jobject status_detached = env->GetStaticObjectField(java_actor_lifetime_class,
+                                                      java_actor_lifetime_detached_field);
+  DETACHED_LIFETIME_ORDINAL_VALUE =
+      env->CallIntMethod(status_detached, java_actor_lifetime_ordinal);
 
   java_concurrency_group_impl_class =
       LoadClass(env, "io/ray/runtime/ConcurrencyGroupImpl");
