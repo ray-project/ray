@@ -7,6 +7,7 @@ NUM_ENV_STEPS_TRAINED = "num_env_steps_trained"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
 NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"
 NUM_AGENT_STEPS_TRAINED_THIS_ITER = "num_agent_steps_trained_this_iter"
+NUM_SYNCH_WORKER_WEIGHTS = "num_weight_broadcasts"
 
 # Counters to track target network updates.
 LAST_TARGET_UPDATE_TS = "last_target_update_ts"
@@ -22,6 +23,3 @@ SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
-
-# Deprecated: Use `SYNCH_WORKER_WEIGHTS_TIMER` instead.
-WORKER_UPDATE_TIMER = "update"

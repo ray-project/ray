@@ -42,7 +42,9 @@ from ray.rllib.evaluation.metrics import (
 )
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import WORKER_UPDATE_TIMER
+from ray.rllib.execution.common import (
+    STEPS_TRAINED_THIS_ITER_COUNTER,  # TODO: Backward compatibility.
+)
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline import get_offline_io_resource_bundles
@@ -73,6 +75,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -569,7 +572,6 @@ class Algorithm(Trainable):
         # Results dict for training (and if appolicable: evaluation).
         results: ResultDict = {}
 
-        self._rollout_worker_metrics = []
         local_worker = (
             self.workers.local_worker()
             if hasattr(self.workers, "local_worker")
@@ -593,13 +595,12 @@ class Algorithm(Trainable):
             results.update(self._run_one_evaluation(train_future=None))
 
         # Collect rollout worker metrics.
-        episodes, self._episodes_to_be_collected = collect_episodes(
+        episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
             local_worker,
             self._remote_workers_for_metrics,
             self._episodes_to_be_collected,
             timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
         )
-        self._rollout_worker_metrics.extend(episodes)
 
         # Attach latest available evaluation results to train results,
         # if necessary.
@@ -613,9 +614,10 @@ class Algorithm(Trainable):
             # Sync filters on workers.
             self._sync_filters_if_needed(self.workers)
 
-            # Collect worker metrics.
+            # Collect worker metrics and add combine them with `results`.
             if self.config["_disable_execution_plan_api"]:
                 results = self._compile_iteration_results(
+                    episodes_this_iter=episodes_this_iter,
                     step_ctx=train_iter_ctx,
                     iteration_results=results,
                 )
@@ -780,18 +782,21 @@ class Algorithm(Trainable):
                             < units_left_to_do
                         ]
                     )
-                    agent_steps_this_iter = sum(b.agent_steps() for b in batches)
-                    env_steps_this_iter = sum(b.env_steps() for b in batches)
+                    _agent_steps = sum(b.agent_steps() for b in batches)
+                    _env_steps = sum(b.env_steps() for b in batches)
                     # 1 episode per returned batch.
                     if unit == "episodes":
                         num_units_done += len(batches)
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
-                            agent_steps_this_iter
+                            _agent_steps
                             if self._by_agent_steps
-                            else env_steps_this_iter
+                            else _env_steps
                         )
+
+                    agent_steps_this_iter += _agent_steps
+                    env_steps_this_iter += _env_steps
 
                     logger.info(
                         f"Ran round {round_} of parallel evaluation "
@@ -862,7 +867,7 @@ class Algorithm(Trainable):
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
-        with self._timers[WORKER_UPDATE_TIMER]:
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             self.workers.sync_weights(global_vars=global_vars)
 
         return train_results
@@ -2366,7 +2371,9 @@ class Algorithm(Trainable):
                 * eval_cfg["num_envs_per_worker"]
             )
 
-    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
+    def _compile_iteration_results(
+        self, *, episodes_this_iter, step_ctx, iteration_results=None
+    ):
         # Return dict.
         results: ResultDict = {}
         iteration_results = iteration_results or {}
@@ -2382,18 +2389,29 @@ class Algorithm(Trainable):
         # Learner info.
         results["info"] = {LEARNER_INFO: iteration_results}
 
-        episodes = self._rollout_worker_metrics
-        orig_episodes = list(episodes)
-        missing = self.config["metrics_num_episodes_for_smoothing"] - len(episodes)
+        # Calculate how many (if any) of older, historical episodes we have to add to
+        # `episodes_this_iter` in order to reach the required smoothing window.
+        episodes_for_metrics = episodes_this_iter[:]
+        missing = self.config["metrics_num_episodes_for_smoothing"] - len(
+            episodes_this_iter
+        )
+        # We have to add some older episodes to reach the window size.
         if missing > 0:
-            episodes = self._episode_history[-missing:] + episodes
-            assert len(episodes) <= self.config["metrics_num_episodes_for_smoothing"]
-        self._episode_history.extend(orig_episodes)
+            episodes_for_metrics = self._episode_history[-missing:] + episodes_this_iter
+            assert (
+                len(episodes_for_metrics)
+                <= self.config["metrics_num_episodes_for_smoothing"]
+            )
+        # Add new episodes to our history and make sure it doesn't grow larger than
+        # needed.
+        self._episode_history.extend(episodes_this_iter)
         self._episode_history = self._episode_history[
             -self.config["metrics_num_episodes_for_smoothing"] :
         ]
         results["sampler_results"] = summarize_episodes(
-            episodes, orig_episodes, self.config["keep_per_episode_custom_metrics"]
+            episodes_for_metrics,
+            episodes_this_iter,
+            self.config["keep_per_episode_custom_metrics"],
         )
         # TODO: Don't dump sampler results into top-level.
         results.update(results["sampler_results"])
@@ -2413,11 +2431,15 @@ class Algorithm(Trainable):
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
+            # TODO: Backward compatibility.
+            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         else:
             results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
+            # TODO: Backward compatibility.
+            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         # TODO: Backward compatibility.
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 

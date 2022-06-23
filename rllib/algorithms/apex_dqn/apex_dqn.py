@@ -25,10 +25,6 @@ from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_COUNTER,
-    STEPS_TRAINED_THIS_ITER_COUNTER,
-)
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
@@ -507,6 +503,7 @@ class ApexDQN(DQN):
         Args:
             _num_samples_ready: A mapping from ActorHandle (RolloutWorker) to
                 the number of samples returned by the remote worker.
+
         Returns:
             The number of remote workers whose weights were updated.
         """
@@ -517,6 +514,9 @@ class ApexDQN(DQN):
             self.learner_thread.weights_updated = False
             weights = self.workers.local_worker().get_weights()
             self.curr_learner_weights = ray.put(weights)
+
+        num_workers_updated = 0
+
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             for (
                 remote_sampler_worker,
@@ -529,10 +529,14 @@ class ApexDQN(DQN):
                 ):
                     remote_sampler_worker.set_weights.remote(
                         self.curr_learner_weights,
-                        {"timestep": self._counters[STEPS_TRAINED_COUNTER]},
+                        {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED]},
                     )
                     self.steps_since_update[remote_sampler_worker] = 0
+                    num_workers_updated += 1
+
                 self._counters["num_weight_syncs"] += 1
+
+        return num_workers_updated
 
     def sample_from_replay_buffer_place_on_learner_queue_non_blocking(
         self, num_samples_collected: Dict[ActorHandle, int]
@@ -617,7 +621,6 @@ class ApexDQN(DQN):
             else:
                 raise RuntimeError("The learner thread died in while training")
 
-        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_samples_trained_this_itr
         self._timers["learner_dequeue"] = self.learner_thread.queue_timer
         self._timers["learner_grad"] = self.learner_thread.grad_timer
         self._timers["learner_overall"] = self.learner_thread.overall_timer
@@ -636,9 +639,7 @@ class ApexDQN(DQN):
                     lambda p, pid: pid in to_update and p.update_target()
                 )
             self._counters[NUM_TARGET_UPDATES] += 1
-            self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
-                STEPS_TRAINED_COUNTER
-            ]
+            self._counters[LAST_TARGET_UPDATE_TS] = self._counters[NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED]
 
     @override(Algorithm)
     def on_worker_failures(
@@ -657,10 +658,8 @@ class ApexDQN(DQN):
             self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Algorithm)
-    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
-        result = super()._compile_iteration_results(
-            step_ctx=step_ctx, iteration_results=iteration_results
-        )
+    def _compile_iteration_results(self, *args, **kwargs):
+        result = super()._compile_iteration_results(*args, **kwargs)
         replay_stats = ray.get(
             self._replay_actors[0].stats.remote(self.config["optimizer"].get("debug"))
         )
