@@ -77,7 +77,6 @@ print("success")
 
     def all_workers_exited():
         gcs_port = address.split(":")[1]
-        result = True
         import re
 
         gcs_pattern = re.compile(f".* --gcs-address=.*:{gcs_port} .*")
