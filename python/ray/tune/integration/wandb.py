@@ -16,9 +16,7 @@ from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.trial import Trial
 
-import ray
-from ray.ray_secret_proxy.ray_secret_operator import AWSRaySecretOperator, GCPRaySecretOperator
-from ray.ray_secret_proxy.ray_secret_proxy import RaySecretProxy
+import boto3
 
 import yaml
 
