@@ -90,5 +90,9 @@ class NoZeroCopyModel:
         return str(ray.get_runtime_context().actor_id)
 
 
-zero = ZeroCopyModel.bind(download_model.bind())
+# How it works today: each replica will download its own copy of the model.
 no_zero = NoZeroCopyModel.bind()
+
+# To use shared memory, we just need to provide a function that downloads the model.
+# The result will be placed into the object store and shared among the replicas.
+zero = ZeroCopyModel.bind(download_model.bind())
