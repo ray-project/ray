@@ -62,7 +62,7 @@ from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.syncer import Syncer
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils import flatten_dict
 from ray.tune.execution.placement_groups import PlacementGroupFactory

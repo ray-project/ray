@@ -8,7 +8,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 
 
 def train(config):

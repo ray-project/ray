@@ -22,7 +22,7 @@ from ray.tune.error import (
 )
 from ray.tune.logger import NoopLogger
 from ray.tune.result import STDERR_FILE, STDOUT_FILE, TRIAL_INFO
-from ray.tune.trial import Trial, _Location, _TrialInfo
+from ray.tune.experiment.trial import Trial, _Location, _TrialInfo
 from ray.tune.utils import warn_if_slow
 from ray.tune.execution.placement_groups import (
     _PlacementGroupManager,

@@ -11,7 +11,7 @@ from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.resources import Resources
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.mock import TrialStatusSnapshotTaker, TrialStatusSnapshot
 from ray.tune.execution.placement_groups import PlacementGroupFactory

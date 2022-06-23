@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (
     CLIReporter,
@@ -68,7 +68,7 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 END_TO_END_COMMAND = """
 import ray
 from ray import tune
-from ray.tune.trial import _Location
+from ray.tune.experiment.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -262,7 +262,7 @@ VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
-from ray.tune.trial import _Location
+from ray.tune.experiment.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 

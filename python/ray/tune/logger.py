@@ -25,7 +25,7 @@ from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial  # noqa: F401
+    from ray.tune.experiment.trial import Trial  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
