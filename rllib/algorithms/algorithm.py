@@ -2395,13 +2395,17 @@ class Algorithm(Trainable):
         missing = self.config["metrics_num_episodes_for_smoothing"] - len(
             episodes_this_iter
         )
-        # We have to add some older episodes to reach the window size.
+        # We have to add some older episodes to reach the smoothing window size.
         if missing > 0:
             episodes_for_metrics = self._episode_history[-missing:] + episodes_this_iter
             assert (
                 len(episodes_for_metrics)
                 <= self.config["metrics_num_episodes_for_smoothing"]
             )
+        # Note that when there are more than `metrics_num_episodes_for_smoothing`
+        # episodes in the buffer, leave them as-is. In this case, we'll compute the
+        # stats over that larger number.
+
         # Add new episodes to our history and make sure it doesn't grow larger than
         # needed.
         self._episode_history.extend(episodes_this_iter)
