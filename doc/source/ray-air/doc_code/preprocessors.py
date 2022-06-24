@@ -88,8 +88,8 @@ from ray.train.xgboost import XGBoostPredictor
 test_dataset = ray.data.from_items([{"x": x} for x in range(2, 32, 3)])
 
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
-predicted_labels = batch_predictor.predict(test_dataset)
-predicted_labels.show()
+predicted_probabilities = batch_predictor.predict(test_dataset)
+predicted_probabilities.show()
 # {'predictions': 0.09843720495700836}
 # {'predictions': 5.604666709899902}
 # {'predictions': 11.405311584472656}
