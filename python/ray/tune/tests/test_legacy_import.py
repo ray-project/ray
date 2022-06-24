@@ -53,6 +53,11 @@ def test_import_experiment_trial(logging_setup):
         import ray.tune.trial  # noqa: F401
 
 
+def test_import_logger_all(logging_setup):
+    # No warning - original imports still work
+    import ray.tune.logger  # noqa: F401
+
+
 def test_import_trainable_function_trainable(logging_setup):
     with pytest.warns(DeprecationWarning):
         import ray.tune.function_runner  # noqa: F401
