@@ -134,8 +134,15 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         TargetNetworkMixin.__init__(self)
 
     @override(TorchPolicyV2)
-    def make_model(self) -> ModelV2:
-        return make_ddpg_models(self)
+    def make_model_and_action_dist(
+        self,
+    ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
+        model = make_ddpg_models(self)
+        if isinstance(self.action_space, Simplex):
+            distr_class = TorchDirichlet
+        else:
+            distr_class = TorchDeterministic
+        return model, distr_class
 
     @override(TorchPolicyV2)
     def optimizer(
