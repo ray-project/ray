@@ -431,6 +431,7 @@ cdef prepare_args_internal(
                 if metadata_fields[0] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
+                        ray_constants.OBJECT_METADATA_TYPE_NEW_PROTOCOL,
                         ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
                     raise Exception("Can't transfer {} data to {}".format(
                         metadata_fields[0], language))

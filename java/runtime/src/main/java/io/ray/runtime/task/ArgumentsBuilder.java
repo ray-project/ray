@@ -50,6 +50,9 @@ public class ArgumentsBuilder {
                       == 0
                   || Bytes.indexOf(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW) == 0
                   || Bytes.indexOf(
+                          value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_NEW_PROTOCOL)
+                      == 0
+                  || Bytes.indexOf(
                           value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_ACTOR_HANDLE)
                       == 0;
           if (!isCrossData) {

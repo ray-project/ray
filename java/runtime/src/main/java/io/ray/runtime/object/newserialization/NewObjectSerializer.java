@@ -4,11 +4,15 @@ import io.ray.runtime.object.newserialization.serializers.ByteArraySerializer;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class NewObjectSerializer {
 
   public static final Map<String, RaySerializer> CLS_TO_SERIALIZER_MAP = new HashMap<>();
   public static final Map<ByteBuffer, String> TYPE_ID_TO_CLS_MAP = new HashMap<>();
+
+  private static final Logger LOG = LoggerFactory.getLogger(NewObjectSerializer.class);
 
   static {
     registerSerializer(byte[].class, ByteArraySerializer.TYPE_ID, new ByteArraySerializer());
@@ -21,6 +25,11 @@ public class NewObjectSerializer {
 
   public static Object deserialize(RaySerializationResult result) {
     String className = TYPE_ID_TO_CLS_MAP.get(result.typeId);
+    LOG.debug(
+        "Deserializing, typeId={}, className={}, TYPE_ID_TO_CLS_MAP={}",
+        result.typeId.toString(),
+        className,
+        TYPE_ID_TO_CLS_MAP);
     return CLS_TO_SERIALIZER_MAP
         .get(className)
         .deserialize(result.inBandBuffer, result.outOfBandBuffers);

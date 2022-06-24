@@ -7,13 +7,19 @@ import java.util.Map;
 
 public class ByteArraySerializer implements RaySerializer<byte[]> {
 
-  public static final ByteBuffer TYPE_ID = ByteBuffer.wrap("ray_serde_bytes".getBytes());
+  public static final ByteBuffer TYPE_ID;
+
+  static {
+    TYPE_ID = ByteBuffer.wrap("ray_serde_bytes".getBytes());
+    TYPE_ID.position(TYPE_ID.capacity());
+  }
 
   @Override
   public RaySerializationResult serialize(byte[] obj) {
     RaySerializationResult res = new RaySerializationResult();
     res.typeId = TYPE_ID;
     res.inBandBuffer = ByteBuffer.wrap(obj);
+    res.inBandBuffer.position(obj.length);
     return res;
   }
 

@@ -10,30 +10,29 @@ import org.msgpack.core.MessagePack;
 import org.msgpack.core.MessageUnpacker;
 
 public class RaySerializationResult {
-
   public ByteBuffer typeId;
   public ByteBuffer inBandBuffer;
   // type ID -> buffer ID -> buffer
-  public Map<ByteBuffer, Map<ByteBuffer, ByteBuffer>> outOfBandBuffers;
+  public Map<ByteBuffer, Map<ByteBuffer, ByteBuffer>> outOfBandBuffers = new HashMap<>();
 
   public byte[] toBytes() throws IOException {
     MessageBufferPacker packer = MessagePack.newDefaultBufferPacker();
     packer
+        .packArrayHeader(3)
+        // typeId
         .packBinaryHeader(typeId.capacity())
         .addPayload(typeId.array())
+        // inBandBuffer
         .packBinaryHeader(inBandBuffer.capacity())
         .addPayload(inBandBuffer.array());
-    if (outOfBandBuffers != null) {
-      packer.packMapHeader(outOfBandBuffers.size());
-      for (Map.Entry<ByteBuffer, Map<ByteBuffer, ByteBuffer>> entry : outOfBandBuffers.entrySet()) {
-        packer.packBinaryHeader(entry.getKey().capacity()).addPayload(entry.getKey().array());
-        packer.packMapHeader(entry.getValue().size());
-        for (Map.Entry<ByteBuffer, ByteBuffer> entry2 : entry.getValue().entrySet()) {
-          packer.packBinaryHeader(entry2.getKey().capacity()).addPayload(entry2.getKey().array());
-          packer
-              .packBinaryHeader(entry2.getValue().capacity())
-              .addPayload(entry2.getValue().array());
-        }
+    // outOfBandBuffers
+    packer.packMapHeader(outOfBandBuffers.size());
+    for (Map.Entry<ByteBuffer, Map<ByteBuffer, ByteBuffer>> entry : outOfBandBuffers.entrySet()) {
+      packer.packBinaryHeader(entry.getKey().capacity()).addPayload(entry.getKey().array());
+      packer.packMapHeader(entry.getValue().size());
+      for (Map.Entry<ByteBuffer, ByteBuffer> entry2 : entry.getValue().entrySet()) {
+        packer.packBinaryHeader(entry2.getKey().capacity()).addPayload(entry2.getKey().array());
+        packer.packBinaryHeader(entry2.getValue().capacity()).addPayload(entry2.getValue().array());
       }
     }
     return packer.toByteArray();
@@ -54,7 +53,10 @@ public class RaySerializationResult {
     res.inBandBuffer = ByteBuffer.allocate(bytes_size);
     unpacker.readPayload(res.inBandBuffer);
     // outOfBandBuffers
-    int map1_size = unpacker.unpackMapHeader();
+    int map1_size = 0;
+    if (!unpacker.hasNext()) {
+      map1_size = unpacker.unpackMapHeader();
+    }
     res.outOfBandBuffers = new HashMap<>(map1_size);
     for (int i = 0; i < map1_size; ++i) {
       // key1
