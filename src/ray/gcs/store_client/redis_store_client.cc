@@ -29,7 +29,6 @@ namespace {
 
 const std::string_view kTableSeparator = ":";
 const std::string_view kClusterSeparator = "@";
-const std::string_view kIndexTableSeparator = "&";
 
 // "[, ], -, ?, *, ^, \" are special chars in Redis pattern matching.
 // escape them with / according to the doc:
