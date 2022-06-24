@@ -105,6 +105,8 @@ class MemoryTableEntry:
             self.task_status = f"Attempt #{self.attempt_number + 1}: {self.task_status}"
         self.object_size = int(object_ref.get("objectSize", -1))
         self.call_site = object_ref.get("callSite", "<Unknown>")
+        if len(self.call_site) == 0:
+            self.call_site = "disabled"
         self.object_ref = ray.ObjectRef(
             decode_object_ref_if_needed(object_ref["objectId"])
         )
