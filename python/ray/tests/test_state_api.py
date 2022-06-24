@@ -279,10 +279,10 @@ async def test_api_manager_list_actors(state_api_manager):
     # If the column is not supported for filtering, it should raise an exception.
     with pytest.raises(ValueError):
         result = await state_api_manager.list_actors(
-            option=create_api_options(filters=[("stat", "DEAD")])
+            option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
     result = await state_api_manager.list_actors(
-        option=create_api_options(filters=[("state", "DEAD")])
+        option=create_api_options(filters=[("state", "=", "DEAD")])
     )
     assert len(result.result) == 1
 
@@ -328,10 +328,12 @@ async def test_api_manager_list_pgs(state_api_manager):
     # If the column is not supported for filtering, it should raise an exception.
     with pytest.raises(ValueError):
         result = await state_api_manager.list_placement_groups(
-            option=create_api_options(filters=[("stat", "DEAD")])
+            option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
     result = await state_api_manager.list_placement_groups(
-        option=create_api_options(filters=[("placement_group_id", bytearray(id).hex())])
+        option=create_api_options(
+            filters=[("placement_group_id", "=", bytearray(id).hex())]
+        )
     )
     assert len(result.result) == 1
 
@@ -374,10 +376,10 @@ async def test_api_manager_list_nodes(state_api_manager):
     # If the column is not supported for filtering, it should raise an exception.
     with pytest.raises(ValueError):
         result = await state_api_manager.list_nodes(
-            option=create_api_options(filters=[("stat", "DEAD")])
+            option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
     result = await state_api_manager.list_nodes(
-        option=create_api_options(filters=[("node_id", bytearray(id).hex())])
+        option=create_api_options(filters=[("node_id", "=", bytearray(id).hex())])
     )
     assert len(result.result) == 1
 
@@ -419,15 +421,15 @@ async def test_api_manager_list_workers(state_api_manager):
     # If the column is not supported for filtering, it should raise an exception.
     with pytest.raises(ValueError):
         result = await state_api_manager.list_workers(
-            option=create_api_options(filters=[("stat", "DEAD")])
+            option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
     result = await state_api_manager.list_workers(
-        option=create_api_options(filters=[("worker_id", bytearray(id).hex())])
+        option=create_api_options(filters=[("worker_id", "=", bytearray(id).hex())])
     )
     assert len(result.result) == 1
     # Make sure it works with int type.
     result = await state_api_manager.list_workers(
-        option=create_api_options(filters=[("pid", 2)])
+        option=create_api_options(filters=[("pid", "=", 2)])
     )
     assert len(result.result) == 1
 
@@ -488,7 +490,7 @@ async def test_api_manager_list_tasks(state_api_manager):
         generate_task_data(b"2345", second_task_name),
     ]
     result = await state_api_manager.list_tasks(
-        option=create_api_options(filters=[("task_id", bytearray(id).hex())])
+        option=create_api_options(filters=[("task_id", "=", bytearray(id).hex())])
     )
     assert len(result.result) == 1
 
@@ -567,7 +569,9 @@ async def test_api_manager_list_objects(state_api_manager):
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
     result = await state_api_manager.list_objects(
-        option=create_api_options(filters=[("object_id", bytearray(obj_1_id).hex())])
+        option=create_api_options(
+            filters=[("object_id", "=", bytearray(obj_1_id).hex())]
+        )
     )
     assert len(result.result) == 1
 
@@ -666,7 +670,7 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]}), success=False),
     ]
     result = await state_api_manager.list_runtime_envs(
-        option=create_api_options(filters=[("success", False)])
+        option=create_api_options(filters=[("success", "=", False)])
     )
     assert len(result.result) == 1
 
@@ -704,39 +708,39 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
 
 def test_type_conversion():
     # Test string
-    r = _convert_filters_type([("actor_id", "123")], ActorState)
-    assert r[0][1] == "123"
-    r = _convert_filters_type([("actor_id", "abcd")], ActorState)
-    assert r[0][1] == "abcd"
-    r = _convert_filters_type([("actor_id", "True")], ActorState)
-    assert r[0][1] == "True"
+    r = _convert_filters_type([("actor_id", "=", "123")], ActorState)
+    assert r[0][2] == "123"
+    r = _convert_filters_type([("actor_id", "=", "abcd")], ActorState)
+    assert r[0][2] == "abcd"
+    r = _convert_filters_type([("actor_id", "=", "True")], ActorState)
+    assert r[0][2] == "True"
 
     # Test boolean
-    r = _convert_filters_type([("success", "1")], RuntimeEnvState)
-    assert r[0][1]
-    r = _convert_filters_type([("success", "True")], RuntimeEnvState)
-    assert r[0][1]
-    r = _convert_filters_type([("success", "true")], RuntimeEnvState)
-    assert r[0][1]
+    r = _convert_filters_type([("success", "=", "1")], RuntimeEnvState)
+    assert r[0][2]
+    r = _convert_filters_type([("success", "=", "True")], RuntimeEnvState)
+    assert r[0][2]
+    r = _convert_filters_type([("success", "=", "true")], RuntimeEnvState)
+    assert r[0][2]
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("success", "random_string")], RuntimeEnvState)
-    r = _convert_filters_type([("success", "false")], RuntimeEnvState)
-    assert r[0][1] is False
-    r = _convert_filters_type([("success", "False")], RuntimeEnvState)
-    assert r[0][1] is False
-    r = _convert_filters_type([("success", "0")], RuntimeEnvState)
-    assert r[0][1] is False
+        r = _convert_filters_type([("success", "=", "random_string")], RuntimeEnvState)
+    r = _convert_filters_type([("success", "=", "false")], RuntimeEnvState)
+    assert r[0][2] is False
+    r = _convert_filters_type([("success", "=", "False")], RuntimeEnvState)
+    assert r[0][2] is False
+    r = _convert_filters_type([("success", "=", "0")], RuntimeEnvState)
+    assert r[0][2] is False
 
     # Test int
-    r = _convert_filters_type([("pid", "0")], ObjectState)
-    assert r[0][1] == 0
-    r = _convert_filters_type([("pid", "123")], ObjectState)
-    assert r[0][1] == 123
+    r = _convert_filters_type([("pid", "=", "0")], ObjectState)
+    assert r[0][2] == 0
+    r = _convert_filters_type([("pid", "=", "123")], ObjectState)
+    assert r[0][2] == 123
     # Only integer can be provided.
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("pid", "123.3")], ObjectState)
+        r = _convert_filters_type([("pid", "=", "123.3")], ObjectState)
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("pid", "abc")], ObjectState)
+        r = _convert_filters_type([("pid", "=", "abc")], ObjectState)
 
     # currently, there's no schema that has float column.
 
@@ -1395,6 +1399,10 @@ async def test_cli_format_print(state_api_manager):
 def test_filter(shutdown_only):
     ray.init()
 
+    # Test unsupported predicates.
+    with pytest.raises(ValueError):
+        list_actors(filters=[("state", ">", "DEAD")])
+
     @ray.remote
     class Actor:
         def __init__(self):
@@ -1417,12 +1425,23 @@ def test_filter(shutdown_only):
     a = Actor.remote()
     b = Actor.remote()
 
+    a_pid = ray.get(a.getpid.remote())
+    b_pid = ray.get(b.getpid.remote())
+
     ray.get([a.ready.remote(), b.ready.remote()])
     ray.kill(b)
 
     def verify():
-        result = list_actors(filters=[("state", "DEAD")])
-        return len(result) == 1
+        result = list_actors(filters=[("state", "=", "DEAD")])
+        assert len(result) == 1
+        actor = result[0]
+        assert actor["pid"] == b_pid
+
+        result = list_actors(filters=[("state", "!=", "DEAD")])
+        assert len(result) == 1
+        actor = result[0]
+        assert actor["pid"] == a_pid
+        return True
 
     wait_for_condition(verify)
 
@@ -1436,7 +1455,7 @@ def test_filter(shutdown_only):
     def verify():
         # There's only 1 object.
         result = list_objects(
-            filters=[("pid", pid), ("reference_type", "LOCAL_REFERENCE")]
+            filters=[("pid", "=", pid), ("reference_type", "=", "LOCAL_REFERENCE")]
         )
         return len(result) == 1
 
@@ -1445,13 +1464,18 @@ def test_filter(shutdown_only):
     """
     Test CLI
     """
-    dead_actor_id = list_actors(filters=[("state", "DEAD")])[0]["actor_id"]
-    alive_actor_id = list_actors(filters=[("state", "ALIVE")])[0]["actor_id"]
+    dead_actor_id = list_actors(filters=[("state", "=", "DEAD")])[0]["actor_id"]
+    alive_actor_id = list_actors(filters=[("state", "=", "ALIVE")])[0]["actor_id"]
     runner = CliRunner()
-    result = runner.invoke(cli_list, ["actors", "--filter", "state", "DEAD"])
+    result = runner.invoke(cli_list, ["actors", "--filter", "state=DEAD"])
     assert result.exit_code == 0
     assert dead_actor_id in result.output
     assert alive_actor_id not in result.output
+
+    result = runner.invoke(cli_list, ["actors", "--filter", "state!=DEAD"])
+    assert result.exit_code == 0
+    assert dead_actor_id not in result.output
+    assert alive_actor_id in result.output
 
 
 if __name__ == "__main__":

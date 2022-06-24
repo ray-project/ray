@@ -46,11 +46,12 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         limit = int(req.query.get("limit"))
         timeout = int(req.query.get("timeout"))
         filter_keys = req.query.getall("filter_keys", [])
+        filter_predicates = req.query.getall("filter_predicates", [])
         filter_values = req.query.getall("filter_values", [])
         assert len(filter_keys) == len(filter_values)
         filters = []
-        for key, val in zip(filter_keys, filter_values):
-            filters.append((key, val))
+        for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
+            filters.append((key, predicate, val))
         return ListApiOptions(limit=limit, timeout=timeout, filters=filters)
 
     def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:

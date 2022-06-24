@@ -22,6 +22,8 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     ListApiOptions,
     StateResource,
+    AvailablePredicate,
+    SupportedFilterType,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,26 @@ class AvailableFormat(Enum):
     JSON = "json"
     YAML = "yaml"
     TABLE = "table"
+
+
+def _parse_filter(filter: str) -> Tuple[str, AvailablePredicate, SupportedFilterType]:
+    """Parse the filter string to a tuple of key, preciate, and value."""
+    # The function assumes there's going to be no key that includes "="" or "!=".
+    if "!=" in filter:
+        splitted = filter.split("!=")
+        key = splitted.pop(0)
+        val = "".join(splitted)
+        return (key, "!=", val)
+    elif "=" in filter:
+        splitted = filter.split("=")
+        key = splitted.pop(0)
+        val = "".join(splitted)
+        return (key, "=", val)
+    else:
+        raise ValueError(
+            f"The format of a given filter {filter} is invalid. "
+            "Please provide key=val or key!=val format string."
+        )
 
 
 def _get_available_formats() -> List[str]:
@@ -130,12 +152,12 @@ def _should_explain(format: AvailableFormat):
     "-f",
     "--filter",
     help=(
-        "A key value pair to filter the result. "
-        "For example, specify --filter [column] [value] "
-        "to filter out data that satisfies column==value."
+        "A key, predicate, and value to filter the result. "
+        "E.g., --filter 'key=value' or --filter 'key!=value'. "
+        "You can specify multiple --filter options. In this case all predicates "
+        "are concatenated as AND. For example, --filter key=value --filter key2=value "
+        "means (key==val) AND (key2==val2)"
     ),
-    nargs=2,
-    type=click.Tuple([str, str]),
     multiple=True,
 )
 @timeout_option
@@ -143,7 +165,7 @@ def _should_explain(format: AvailableFormat):
 def list(
     resource: str,
     format: str,
-    filter: List[Tuple[str, str]],
+    filter: List[str],
     timeout: float,
     address: str,
 ):
@@ -166,6 +188,8 @@ def list(
     client = StateApiClient(
         api_server_address=api_server_address,
     )
+
+    filter = [_parse_filter(f) for f in filter]
 
     options = ListApiOptions(
         limit=DEFAULT_LIMIT,  # TODO(rickyyx): parameters discussion to be finalized
