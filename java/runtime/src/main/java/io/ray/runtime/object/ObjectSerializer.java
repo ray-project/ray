@@ -24,12 +24,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.apache.commons.lang3.tuple.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Serialize to and deserialize from {@link NativeRayObject}. Metadata is generated during
  * serialization and respected during deserialization.
  */
 public class ObjectSerializer {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ObjectSerializer.class);
 
   private static final byte[] WORKER_EXCEPTION_META =
       String.valueOf(ErrorType.WORKER_DIED.getNumber()).getBytes();
@@ -144,6 +148,7 @@ public class ObjectSerializer {
    */
   public static NativeRayObject serialize(Object object) {
     // New serialization infrastructure hock
+    LOG.info("class = {}", object.getClass().getCanonicalName());
     if (NewObjectSerializer.hasSerializer(object.getClass())) {
       try {
         byte[] res = NewObjectSerializer.serialize(object).toBytes();

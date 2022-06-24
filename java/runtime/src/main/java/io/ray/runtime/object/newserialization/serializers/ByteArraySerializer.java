@@ -12,6 +12,7 @@ public class ByteArraySerializer implements RaySerializer<byte[]> {
   @Override
   public RaySerializationResult serialize(byte[] obj) {
     RaySerializationResult res = new RaySerializationResult();
+    res.typeId = TYPE_ID;
     res.inBandBuffer = ByteBuffer.wrap(obj);
     return res;
   }
