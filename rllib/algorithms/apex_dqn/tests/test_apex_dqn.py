@@ -130,14 +130,21 @@ class TestApexDQN(unittest.TestCase):
             )
         )
 
-        def _step_n_times(trainer, n: int):
+        def _train_n_ts(trainer, n: int):
             """Step trainer n times.
 
             Returns:
                 learning rate at the end of the execution.
             """
-            for _ in range(n):
+            ts = 0
+            while ts < n:
                 results = trainer.train()
+                ts += (
+                    results["info"][LEARNER_INFO]
+                    .get(DEFAULT_POLICY_ID, {})
+                    .get("num_agent_steps_trained", 0)
+                )
+
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
                 "cur_lr"
             ]
@@ -145,11 +152,11 @@ class TestApexDQN(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = config.build(env="CartPole-v0")
 
-            lr = _step_n_times(trainer, 3)  # 50 timesteps
+            lr = _train_n_ts(trainer, 50)
             # Close to 0.2
             self.assertGreaterEqual(lr, 0.1)
 
-            lr = _step_n_times(trainer, 20)  # 200 timesteps
+            lr = _train_n_ts(trainer, 200)
             # LR Annealed to 0.001
             self.assertLessEqual(lr, 0.0011)
 
