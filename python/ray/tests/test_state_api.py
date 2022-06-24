@@ -1620,6 +1620,17 @@ def test_detail(shutdown_only):
     assert set(actor_state.keys()) == ActorState.min_columns()
     assert set(actor_state_in_detail.keys()) == ActorState.columns()
 
+    """
+    Test CLI
+    """
+    runner = CliRunner()
+    result = runner.invoke(cli_list, ["actors", "--detail"])
+    assert result.exit_code == 0
+    # The column for --detail should be in the output.
+    assert "serialized_runtime_env" in result.output
+    assert "test_detail" in result.output
+    assert "actor_id" in result.output
+
 
 if __name__ == "__main__":
     import os

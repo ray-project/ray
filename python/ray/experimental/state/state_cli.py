@@ -138,12 +138,23 @@ def _should_explain(format: AvailableFormat):
     type=click.Tuple([str, str]),
     multiple=True,
 )
+@click.option(
+    "--detail",
+    help=(
+        "If the flag is set, the output will contain data in more details. "
+        "Note that the API could query more sources "
+        "to obtain information in a greater detail."
+    ),
+    is_flag=True,
+    default=False,
+)
 @timeout_option
 @address_option
 def list(
     resource: str,
     format: str,
     filter: List[Tuple[str, str]],
+    detail: bool,
     timeout: float,
     address: str,
 ):
@@ -171,6 +182,7 @@ def list(
         limit=DEFAULT_LIMIT,  # TODO(rickyyx): parameters discussion to be finalized
         timeout=timeout,
         filters=filter,
+        detail=detail,
     )
 
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.
