@@ -30,8 +30,8 @@ def create_dataset():
         assert args.data_type == 1
         # Parquet data
         files = [
-            f"s3://ursa-labs-taxi-data/{year}/{month}/data.parquet"
-            for year in range(2009, 2018) for month in range(1, 12)
+            f"s3://ursa-labs-taxi-data/{year}/{str(month).zfill(2)}/data.parquet"
+            for year in range(2017, 2019) for month in range(1, 13)
         ]
         ds = ray.data.read_parquet(files)
     return ds
