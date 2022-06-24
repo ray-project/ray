@@ -886,6 +886,8 @@ Status CoreWorker::Put(const RayObject &object,
                                      contained_object_ids,
                                      rpc_address_,
                                      CurrentCallSite(),
+                                     /*spilled_url=*/"",
+                                     /*spilled_node_id=*/NodeID::Nil(),
                                      object.GetSize(),
                                      /*is_reconstructable=*/false,
                                      /*add_local_ref=*/true,
@@ -962,6 +964,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        contained_object_ids,
                                        rpc_address_,
                                        CurrentCallSite(),
+                                       /*spilled_url=*/"",
+                                       /*spilled_node_id=*/NodeID::Nil(),
                                        data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
                                        /*add_local_ref=*/true,
@@ -2498,6 +2502,8 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                                          /*inner_ids=*/{},
                                          rpc_address_,
                                          CurrentCallSite(),
+                                         /*spilled_url=*/"",
+                                         /*spilled_node_id=*/NodeID::Nil(),
                                          -1,
                                          /*is_reconstructable=*/false,
                                          /*add_local_ref=*/true);
@@ -3284,11 +3290,15 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
   for (const auto &id_binary : request.contained_object_ids()) {
     contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
   }
+  std::string spilled_url = request.spilled_url();
+  NodeID spilled_node_id = NodeID::FromBinary(request.spilled_node_id());
   reference_counter_->AddOwnedObject(
       object_id,
       contained_object_ids,
       rpc_address_,
       call_site,
+      spilled_url,
+      spilled_node_id,
       request.object_size(),
       /*is_reconstructable=*/false,
       /*add_local_ref=*/false,

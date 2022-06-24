@@ -186,41 +186,61 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const std::vector<ObjectID> &inner_ids,
                                       const rpc::Address &owner_address,
                                       const std::string &call_site,
+                                      const std::string &spilled_url,
+                                      const NodeID &spilled_node_id,
                                       const int64_t object_size,
                                       bool is_reconstructable,
                                       bool add_local_ref,
                                       const absl::optional<NodeID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
-  RAY_CHECK(object_id_refs_.count(object_id) == 0)
-      << "Tried to create an owned object that already exists: " << object_id;
-  // If the entry doesn't exist, we initialize the direct reference count to zero
-  // because this corresponds to a submitted task whose return ObjectID will be created
-  // in the frontend language, incrementing the reference count.
-  // TODO(swang): Objects that are not reconstructable should not increment
-  // their arguments' lineage ref counts.
-  auto it = object_id_refs_
-                .emplace(object_id,
-                         Reference(owner_address,
-                                   call_site,
-                                   object_size,
-                                   is_reconstructable,
-                                   pinned_at_raylet_id))
-                .first;
-  if (!inner_ids.empty()) {
-    // Mark that this object ID contains other inner IDs. Then, we will not GC
-    // the inner objects until the outer object ID goes out of scope.
-    AddNestedObjectIdsInternal(object_id, inner_ids, rpc_address_);
+  auto it = object_id_refs_.find(object_id);
+  if (spilled_url.empty()) {
+    RAY_CHECK(it == object_id_refs_.end())
+        << "Tried to create an owned object that already exists: " << object_id;
   }
-  if (pinned_at_raylet_id.has_value()) {
-    // We eagerly add the pinned location to the set of object locations.
-    AddObjectLocationInternal(it, pinned_at_raylet_id.value());
+  if (it != object_id_refs_.end()) {
+    // If the entry doesn't exist, we initialize the direct reference count to zero
+    // because this corresponds to a submitted task whose return ObjectID will be created
+    // in the frontend language, incrementing the reference count.
+    // TODO(swang): Objects that are not reconstructable should not increment
+    // their arguments' lineage ref counts.
+    it = object_id_refs_
+             .emplace(object_id,
+                      Reference(owner_address,
+                                call_site,
+                                object_size,
+                                is_reconstructable,
+                                pinned_at_raylet_id))
+             .first;
+    if (!inner_ids.empty()) {
+      // Mark that this object ID contains other inner IDs. Then, we will not GC
+      // the inner objects until the outer object ID goes out of scope.
+      AddNestedObjectIdsInternal(object_id, inner_ids, rpc_address_);
+    }
+    if (pinned_at_raylet_id.has_value()) {
+      // We eagerly add the pinned location to the set of object locations.
+      AddObjectLocationInternal(it, pinned_at_raylet_id.value());
+    }
+    reconstructable_owned_objects_.emplace_back(object_id);
+    auto back_it = reconstructable_owned_objects_.end();
+    back_it--;
+    RAY_CHECK(reconstructable_owned_objects_index_.emplace(object_id, back_it).second);
   }
 
-  reconstructable_owned_objects_.emplace_back(object_id);
-  auto back_it = reconstructable_owned_objects_.end();
-  back_it--;
-  RAY_CHECK(reconstructable_owned_objects_index_.emplace(object_id, back_it).second);
+  if (!spilled_url.empty()) {
+    it->second.spilled_url = spilled_url;
+    it->second.spilled_node_id = spilled_node_id;
+    auto location_updates = std::move(pending_object_location_updates_[object_id]);
+    pending_object_location_updates_.erase(object_id);
+    for (auto [location, is_add]: location_updates) {
+      if (is_add) {
+        AddObjectLocationInternal(it, location);
+      } else {
+        RemoveObjectLocationInternal(it, location);
+      }
+    }
+  }
 
   if (add_local_ref) {
     it->second.local_ref_count++;
@@ -1171,6 +1191,11 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
     RAY_LOG(DEBUG) << "Tried to add an object location for an object " << object_id
                    << " that doesn't exist in the reference table. It can happen if the "
                       "object is already evicted.";
+    // NOTE(kfstorm): We should delay adding the object location if this object has HA
+    // enabled. Maybe the global owner just restarted and a Raylet tries to re-announce
+    // the location of the object.
+    // TODO(kfstorm): Maybe we should make RemoveObjectLocation pending as well.
+    pending_object_location_updates_[object_id].emplace_back(node_id, true);
     return false;
   }
   AddObjectLocationInternal(it, node_id);
@@ -1197,6 +1222,11 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
     RAY_LOG(DEBUG) << "Tried to remove an object location for an object " << object_id
                    << " that doesn't exist in the reference table. It can happen if the "
                       "object is already evicted.";
+    // NOTE(kfstorm): We should delay adding the object location if this object has HA
+    // enabled. Maybe the global owner just restarted and a Raylet tries to re-announce
+    // the location of the object.
+    // TODO(kfstorm): Maybe we should make RemoveObjectLocation pending as well.
+    pending_object_location_updates_[object_id].emplace_back(node_id, false);
     return false;
   }
   RemoveObjectLocationInternal(it, node_id);

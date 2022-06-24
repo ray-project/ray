@@ -47,6 +47,8 @@ class ReferenceCounterInterface {
       const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address,
       const std::string &call_site,
+      const std::string &spilled_url,
+      const NodeID &spilled_node_id,
       const int64_t object_size,
       bool is_reconstructable,
       bool add_local_ref,
@@ -186,6 +188,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                       const std::vector<ObjectID> &contained_ids,
                       const rpc::Address &owner_address,
                       const std::string &call_site,
+                      const std::string &spilled_url,
+                      const NodeID &spilled_node_id,
                       const int64_t object_size,
                       bool is_reconstructable,
                       bool add_local_ref,
@@ -980,6 +984,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// due to node failure. These objects are still in scope and need to be
   /// recovered.
   std::vector<ObjectID> objects_to_recover_ GUARDED_BY(mutex_);
+
+  absl::flat_hash_map<ObjectID, std::vector<std::pair<NodeID, bool>>> pending_object_location_updates_ GUARDED_BY(mutex_);
 };
 
 }  // namespace core

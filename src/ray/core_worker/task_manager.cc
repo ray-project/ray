@@ -80,6 +80,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                          /*inner_ids=*/{},
                                          caller_address,
                                          call_site,
+                                         /*spilled_url=*/"",
+                                         /*spilled_node_id=*/NodeID::Nil(),
                                          -1,
                                          /*is_reconstructable=*/is_reconstructable,
                                          /*add_local_ref=*/true);
