@@ -57,6 +57,20 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "ray_cpp_lib",
+    srcs = [
+        "libray_api.so",
+    ],
+    hdrs = glob([
+        "include/ray/*.h",
+        "include/ray/**/*.h",
+        "include/ray/**/**/*.h",
+    ]),
+    strip_include_prefix = "include",
+    visibility = ["//visibility:public"],
+)
+
 cc_binary(
     name = "default_worker",
     srcs = glob([
@@ -64,9 +78,19 @@ cc_binary(
     ]),
     copts = COPTS,
     linkstatic = True,
-    deps = [
-        "ray_api",
-    ],
+    deps = select({
+        "@bazel_tools//src/conditions:windows": [
+            # TODO(SongGuyang): Change to use dynamic library
+            # "ray_cpp_lib" when we make it work on Windows.
+            "ray_api",
+        ],
+        "//conditions:default": [
+            "ray_cpp_lib",
+            "@boost//:callable_traits",
+            "@boost//:optional",
+            "@msgpack",
+        ],
+    }),
 )
 
 genrule(
@@ -144,10 +168,15 @@ cc_test(
 
 cc_test(
     name = "cluster_mode_test",
-    srcs = glob([
-        "src/ray/test/cluster/*.cc",
-        "src/ray/test/cluster/*.h",
-    ]),
+    srcs = glob(
+        [
+            "src/ray/test/cluster/*.cc",
+            "src/ray/test/cluster/*.h",
+        ],
+        exclude = [
+            "src/ray/test/cluster/cluster_mode_xlang_test.cc",
+        ],
+    ),
     args = [
         "--ray_code_search_path=$(location plus.so):$(location counter.so):cpp/src/ray/test/cluster",
         "--ray_head_args '--include-dashboard false'",
@@ -158,6 +187,29 @@ cc_test(
         "plus.so",
         "ray_cpp_pkg",
         "src/ray/test/cluster/test_cross_language_invocation.py",
+    ],
+    linkstatic = True,
+    tags = ["team:core"],
+    deps = [
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "cluster_mode_xlang_test",
+    srcs = glob([
+        "src/ray/test/cluster/cluster_mode_xlang_test.cc",
+        "src/ray/test/cluster/*.h",
+    ]),
+    args = [
+        "--ray_code_search_path=$(location //java:libio_ray_ray_test.jar)",
+        "--ray_head_args '--include-dashboard false'",
+    ],
+    copts = COPTS,
+    data = [
+        "ray_cpp_pkg",
+        "//java:libio_ray_ray_test.jar",
     ],
     linkstatic = True,
     tags = ["team:core"],
@@ -178,7 +230,10 @@ cc_binary(
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        "ray_api",
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
     ],
 )
 
@@ -193,7 +248,10 @@ cc_binary(
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        "ray_api",
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
     ],
 )
 
@@ -202,13 +260,18 @@ cc_test(
     srcs = glob([
         "src/ray/test/examples/*.cc",
     ]),
+    args = [
+        "--ray_code_search_path=$(location simple_kv_store.so)",
+        "--ray_head_args '--include-dashboard false'",
+    ],
+    copts = COPTS,
     data = [
         "simple_kv_store.so",
     ],
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        ":ray_api",
+        "ray_api",
     ],
 )
 
@@ -218,10 +281,14 @@ cc_binary(
     srcs = glob([
         "src/ray/test/examples/*.cc",
     ]),
+    copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        ":ray_api",
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
     ],
 )
 

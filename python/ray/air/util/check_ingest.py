@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 
-import time
-import numpy as np
-from typing import Optional
 import sys
+import time
+from typing import Optional
+
+import numpy as np
 
 import ray
 from ray import train
-from ray.air.preprocessors import Chain, BatchMapper
 from ray.air.config import DatasetConfig
+from ray.data.preprocessors import BatchMapper, Chain
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import DeveloperAPI
 
@@ -150,7 +151,7 @@ if __name__ == "__main__":
     try:
         print(
             "Memory stats at end of ingest:\n\n{}".format(
-                ray.internal.internal_api.memory_summary(stats_only=True)
+                ray._private.internal_api.memory_summary(stats_only=True)
             )
         )
     except Exception:

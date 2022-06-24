@@ -1,55 +1,55 @@
-from enum import Enum
+import copy
 import json
-import jsonschema
 import os
 import re
 import shutil
-from subprocess import CalledProcessError
 import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import Mock
-import yaml
-import copy
 from collections import defaultdict
-from ray.autoscaler._private.commands import get_or_create_head_node
-from jsonschema.exceptions import ValidationError
-from typing import Dict, Callable, List, Optional
-
-import ray
-from ray.core.generated import gcs_service_pb2
-from ray.autoscaler._private.util import prepare_config, validate_config
-from ray.autoscaler._private import commands
-from ray.autoscaler.sdk import get_docker_host_mount_location
-from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.autoscaler import StandardAutoscaler, NonTerminatedNodes
-from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
-from ray.autoscaler._private.providers import (
-    _NODE_PROVIDERS,
-    _clear_provider_cache,
-    _DEFAULT_CONFIGS,
-)
-from ray.autoscaler._private.readonly.node_provider import ReadOnlyNodeProvider
-from ray.autoscaler.tags import (
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_NODE_STATUS,
-    STATUS_UP_TO_DATE,
-    STATUS_UPDATE_FAILED,
-    TAG_RAY_USER_NODE_TYPE,
-    NODE_TYPE_LEGACY_HEAD,
-    NODE_TYPE_LEGACY_WORKER,
-    NODE_KIND_HEAD,
-    NODE_KIND_WORKER,
-    STATUS_UNINITIALIZED,
-    TAG_RAY_CLUSTER_NAME,
-)
-from ray.autoscaler._private.constants import FOREGROUND_NODE_LAUNCH_KEY
-from ray.autoscaler.node_provider import NodeProvider
-from ray._private.test_utils import RayTestTimeoutException
+from enum import Enum
+from subprocess import CalledProcessError
+from typing import Callable, Dict, List, Optional
+from unittest.mock import Mock
 
 import grpc
+import jsonschema
 import pytest
+import yaml
+from jsonschema.exceptions import ValidationError
+
+import ray
+from ray._private.test_utils import RayTestTimeoutException
+from ray.autoscaler._private import commands
+from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutoscaler
+from ray.autoscaler._private.commands import get_or_create_head_node
+from ray.autoscaler._private.constants import FOREGROUND_NODE_LAUNCH_KEY
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
+from ray.autoscaler._private.providers import (
+    _DEFAULT_CONFIGS,
+    _NODE_PROVIDERS,
+    _clear_provider_cache,
+)
+from ray.autoscaler._private.readonly.node_provider import ReadOnlyNodeProvider
+from ray.autoscaler._private.util import prepare_config, validate_config
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.sdk import get_docker_host_mount_location
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    NODE_TYPE_LEGACY_HEAD,
+    NODE_TYPE_LEGACY_WORKER,
+    STATUS_UNINITIALIZED,
+    STATUS_UP_TO_DATE,
+    STATUS_UPDATE_FAILED,
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
+)
+from ray.core.generated import gcs_service_pb2
 
 WORKER_FILTER = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
 
@@ -3550,4 +3550,7 @@ def test_import():
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

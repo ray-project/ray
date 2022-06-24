@@ -7,37 +7,35 @@ return a list of node types that can satisfy the demands given constraints
 (i.e., reverse bin packing).
 """
 
-import copy
-import numpy as np
-import logging
 import collections
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Tuple
+import copy
+import logging
+from typing import Dict, List, Optional, Tuple
 
-from ray.autoscaler.node_provider import NodeProvider
+import numpy as np
+
+import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
-from ray.core.generated.common_pb2 import PlacementStrategy
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.util import (
-    is_placement_group_resource,
+    NodeID,
+    NodeIP,
     NodeType,
     NodeTypeConfigDict,
     ResourceDict,
-    NodeID,
-    NodeIP,
+    is_placement_group_resource,
 )
+from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
-    TAG_RAY_USER_NODE_TYPE,
+    NODE_KIND_HEAD,
     NODE_KIND_UNMANAGED,
-    NODE_TYPE_LEGACY_WORKER,
     NODE_KIND_WORKER,
     NODE_TYPE_LEGACY_HEAD,
+    NODE_TYPE_LEGACY_WORKER,
     TAG_RAY_NODE_KIND,
-    NODE_KIND_HEAD,
+    TAG_RAY_USER_NODE_TYPE,
 )
-import ray.ray_constants as ray_constants
+from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
 

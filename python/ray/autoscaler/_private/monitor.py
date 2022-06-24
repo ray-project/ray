@@ -1,50 +1,48 @@
 """Autoscaler monitoring loop daemon."""
 
 import argparse
-from dataclasses import asdict
+import json
 import logging.handlers
 import os
-import sys
 import signal
+import sys
 import time
-from typing import Any, Callable, Dict, Union
 import traceback
-import json
+from dataclasses import asdict
 from multiprocessing.synchronize import Event
-from typing import Optional
+from typing import Any, Callable, Dict, Optional, Union
+
+import ray
+import ray._private.ray_constants as ray_constants
+import ray._private.utils
+from ray._private.gcs_pubsub import GcsPublisher
+from ray._private.gcs_utils import GcsClient
+from ray._private.ray_logging import setup_component_logger
+from ray.autoscaler._private.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.commands import teardown_cluster
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
+    AUTOSCALER_METRIC_PORT,
+    AUTOSCALER_UPDATE_INTERVAL_S,
+)
+from ray.autoscaler._private.event_summarizer import EventSummarizer
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
+from ray.autoscaler._private.util import format_readonly_node_type
+from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
+from ray.experimental.internal_kv import (
+    _initialize_internal_kv,
+    _internal_kv_del,
+    _internal_kv_get,
+    _internal_kv_initialized,
+    _internal_kv_put,
+)
 
 try:
     import prometheus_client
 except ImportError:
     prometheus_client = None
 
-import ray
-from ray.autoscaler._private.autoscaler import StandardAutoscaler
-from ray.autoscaler._private.commands import teardown_cluster
-from ray.autoscaler._private.constants import (
-    AUTOSCALER_UPDATE_INTERVAL_S,
-    AUTOSCALER_METRIC_PORT,
-)
-from ray.autoscaler._private.event_summarizer import EventSummarizer
-from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
-from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.util import format_readonly_node_type
-
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-from ray.core.generated import gcs_pb2
-import ray.ray_constants as ray_constants
-from ray._private.ray_logging import setup_component_logger
-from ray._private.gcs_pubsub import GcsPublisher
-from ray._private.gcs_utils import GcsClient
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_put,
-    _internal_kv_initialized,
-    _internal_kv_get,
-    _internal_kv_del,
-)
-import ray._private.utils
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +155,7 @@ class Monitor:
         if redis_password is not None:
             logger.warning("redis_password has been deprecated.")
         # Set the redis client and mode so _internal_kv works for autoscaler.
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         gcs_client = GcsClient(address=gcs_address)
 
         if monitor_ip:
@@ -321,7 +319,9 @@ class Monitor:
         """Fetches resource requests from the internal KV and updates load."""
         if not _internal_kv_initialized():
             return
-        data = _internal_kv_get(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
+        data = _internal_kv_get(
+            ray._private.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+        )
         if data:
             try:
                 resource_request = json.loads(data)

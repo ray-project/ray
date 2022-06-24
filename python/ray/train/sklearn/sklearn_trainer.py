@@ -4,26 +4,11 @@ import warnings
 from collections import defaultdict
 from time import time
 from traceback import format_exc
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
 from joblib import parallel_backend
-
-from ray import tune
-import ray.cloudpickle as cpickle
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
-from ray.train.trainer import GenDataset, BaseTrainer
-from ray.air._internal.checkpointing import (
-    load_preprocessor_from_dir,
-    save_preprocessor_to_dir,
-)
-from ray.air._internal.sklearn_utils import has_cpu_params, set_cpu_params
-from ray.util import PublicAPI
-from ray.util.joblib import register_ray
-
 from sklearn.base import BaseEstimator, clone
 from sklearn.metrics import check_scoring
 from sklearn.model_selection import BaseCrossValidator, cross_validate
@@ -31,8 +16,20 @@ from sklearn.model_selection import BaseCrossValidator, cross_validate
 # we are using a private API here, but it's consistent across versions
 from sklearn.model_selection._validation import _check_multimetric_scoring, _score
 
+import ray.cloudpickle as cpickle
+from ray import tune
+from ray.air._internal.checkpointing import (
+    save_preprocessor_to_dir,
+)
+from ray.air.config import RunConfig, ScalingConfig
+from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.train.sklearn._sklearn_utils import _has_cpu_params, _set_cpu_params
+from ray.train.trainer import BaseTrainer, GenDataset
+from ray.util import PublicAPI
+from ray.util.joblib import register_ray
+
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -150,9 +147,8 @@ class SklearnTrainer(BaseTrainer):
         scaling_config: Configuration for how to scale training.
             Only the ``trainer_resources`` key can be provided,
             as the training is not distributed.
-        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         **fit_params: Additional kwargs passed to ``estimator.fit()``
             method.
@@ -347,7 +343,7 @@ class SklearnTrainer(BaseTrainer):
 
         assert not (has_gpus and self.parallelize_cv)
 
-        estimator_has_parallelism_params = has_cpu_params(self.estimator)
+        estimator_has_parallelism_params = _has_cpu_params(self.estimator)
 
         if self.cv and self.parallelize_cv is True:
             parallelize_cv = True
@@ -397,7 +393,7 @@ class SklearnTrainer(BaseTrainer):
         parallelize_cv = self._get_cv_parallelism(has_gpus)
         if self.set_estimator_cpus:
             num_estimator_cpus = 1 if parallelize_cv else num_cpus
-            set_cpu_params(self.estimator, num_estimator_cpus)
+            _set_cpu_params(self.estimator, num_estimator_cpus)
 
         with parallel_backend("ray", n_jobs=num_cpus):
             start_time = time()
@@ -436,25 +432,3 @@ class SklearnTrainer(BaseTrainer):
             "fit_time": fit_time,
         }
         tune.report(**results)
-
-
-def load_checkpoint(
-    checkpoint: Checkpoint,
-) -> Tuple[BaseEstimator, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``SklearnTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the estimator and
-            preprocessor from. It is expected to be from the result of a
-            ``SklearnTrainer`` run.
-
-    Returns:
-        The estimator and AIR preprocessor contained within.
-    """
-    with checkpoint.as_directory() as checkpoint_path:
-        estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
-        with open(estimator_path, "rb") as f:
-            estimator = cpickle.load(f)
-        preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
-    return estimator, preprocessor
