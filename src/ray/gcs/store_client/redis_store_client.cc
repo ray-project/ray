@@ -46,10 +46,21 @@ std::string GenRedisKey(const std::string &cluster_id,
 
 std::string GenKeyRedisMatchPattern(const std::string &cluster_id,
                                     const std::string &table_name) {
-  return absl::StrCat(cluster_id,
+  return absl::StrCat(EscapeMatchPattern(cluster_id),
                       kClusterSeparator,
                       EscapeMatchPattern(table_name),
                       kTableSeparator,
+                      "*");
+}
+
+std::string GenKeyRedisMatchPattern(const std::string &cluster_id,
+                                    const std::string &table_name,
+                                    const std::string &key) {
+  return absl::StrCat(EscapeMatchPattern(cluster_id),
+                      kClusterSeparator,
+                      EscapeMatchPattern(table_name),
+                      kTableSeparator,
+                      EscapeMatchPattern(key),
                       "*");
 }
 
@@ -387,7 +398,7 @@ Status RedisStoreClient::AsyncGetKeys(
     const std::string &table_name,
     const std::string &prefix,
     std::function<void(std::vector<std::string>)> callback) {
-  std::string match_pattern = GenKeyRedisMatchPattern(table_name, prefix);
+  std::string match_pattern = GenKeyRedisMatchPattern(cluster_id_, table_name, prefix);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, cluster_id_, table_name);
   auto on_done = [this, table_name, callback, scanner](auto /* status*/, auto keys) {
     std::vector<std::string> result;
