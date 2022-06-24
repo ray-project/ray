@@ -220,11 +220,12 @@ def test_model_wrapper_reconfigure(serve_instance):
             predictor_cls=predictor_cls,
             checkpoint=uri,
         )
-        new_predictor_cls = m1.reconfigure(uri, predictor_cls)
+        m1.reconfigure(uri, predictor_cls)
 
+        new_checkpoint = Checkpoint.from_dict({"increment": 5})
         m2 = ModelWrapperDeployment.bind(
-            predictor_cls=new_predictor_cls,
-            checkpoint=uri,
+            predictor_cls=m1.model,
+            checkpoint=new_checkpoint,
         )
 
         dag = m2.predict.bind(dag_input)
@@ -235,7 +236,7 @@ def test_model_wrapper_reconfigure(serve_instance):
     resp = requests.post("http://127.0.0.1:8000/ingress", json={"array": [40]})
     print(resp.text)
     resp.raise_for_status()
-    return resp.json() == {"value": [44], "batch_size": 1}
+    return resp.json() == {"value": [47], "batch_size": 1}
 
 
 if __name__ == "__main__":
