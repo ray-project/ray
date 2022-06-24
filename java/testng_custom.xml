@@ -3,9 +3,9 @@
 <suite name="RAY suite" verbose="2" configfailurepolicy="continue">
     <test name = "RAY test">
         <classes>
-            <class name="io.ray.test.JobConfigTest">
+            <class name="io.ray.test.CrossLanguageInvocationTest">
                 <methods>
-                    <include name="testInActor" />
+                    <include name="testPythonCallJavaFunction" />
                 </methods>
             </class>
         </classes>

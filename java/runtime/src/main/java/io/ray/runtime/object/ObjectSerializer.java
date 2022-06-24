@@ -148,7 +148,7 @@ public class ObjectSerializer {
    */
   public static NativeRayObject serialize(Object object) {
     // New serialization infrastructure hock
-    if (NewObjectSerializer.hasSerializer(object.getClass())) {
+    if (object != null && NewObjectSerializer.hasSerializer(object.getClass())) {
       try {
         byte[] res = NewObjectSerializer.serialize(object).toBytes();
         return new NativeRayObject(res, OBJECT_METADATA_TYPE_NEW_PROTOCOL);

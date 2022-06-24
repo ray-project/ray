@@ -180,7 +180,10 @@ define_java_module(
 java_test(
     name = "all_tests",
     args = ["java/testng.xml"],
-    data = ["testng.xml"],
+    data = [
+        "testng_custom.xml",
+        ":ray_java_pkg",
+    ],
     main_class = "org.testng.TestNG",
     runtime_deps = [
         ":io_ray_ray_performance_test",
@@ -195,7 +198,10 @@ java_test(
 java_test(
     name = "custom_test",
     args = ["java/testng_custom.xml"],
-    data = ["testng_custom.xml"],
+    data = [
+        "testng_custom.xml",
+        ":ray_java_pkg",
+    ],
     main_class = "org.testng.TestNG",
     runtime_deps = [
         ":io_ray_ray_performance_test",
