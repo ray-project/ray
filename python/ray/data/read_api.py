@@ -12,7 +12,8 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import _lazy_import_pyarrow_dataset
+from ray.data._internal.util import _lazy_import_pyarrow_dataset, \
+    _estimate_available_parallelism
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
 from ray.data.dataset import Dataset
@@ -241,7 +242,7 @@ def read_datasource(
     if parallelism <= 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must be either -1 or a positive integer.")
-        parallelism = max(200, estimate_available_parallelism() * 2)
+        parallelism = max(200, _estimate_available_parallelism() * 2)
         auto_repartition = True
     else:
         parallelism = 200
@@ -284,7 +285,7 @@ def read_datasource(
     if len(read_tasks) < parallelism:
         if auto_repartition:
             ds = ds.repartition(-1)
-        elif len(read_tasks) < estimate_available_parallelism() // 2:
+        elif len(read_tasks) < _estimate_available_parallelism() // 2:
             logger.warning(
                 "The number of blocks in this dataset ({}) limits its parallelism to {} "
                 "concurrent tasks. This is much less than the number of available "

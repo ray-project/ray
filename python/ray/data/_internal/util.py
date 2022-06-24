@@ -55,6 +55,6 @@ def _check_pyarrow_version():
             _VERSION_VALIDATED = True
 
 
-def estimate_available_parallelism():
+def _estimate_available_parallelism():
     # TODO: if in tune, use placement group to estimate this
     return int(ray.available_resources().get("CPU", 1))
