@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
 from datetime import datetime
+
 
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
@@ -22,6 +23,13 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 import ray
 
 # -- General configuration ------------------------------------------------
+
+# The name of a reST role (builtin or Sphinx extension) to use as the default role, that
+# is, for text marked up `like this`. This can be set to 'py:obj' to make `filter` a
+# cross-reference to the Python function “filter”. The default is None, which doesn’t
+# reassign the default role.
+
+default_role = "py:obj"
 
 extensions = [
     "sphinx_panels",

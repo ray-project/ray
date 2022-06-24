@@ -1,14 +1,5 @@
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Mapping,
-    Optional,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
 
 from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
@@ -19,7 +10,7 @@ if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.tune.callback import Callback
     from ray.tune.stopper import Stopper
-    from ray.tune.trainable import PlacementGroupFactory
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 ScalingConfig = Dict[str, Any]
 
@@ -98,7 +89,7 @@ class ScalingConfigDataClass:
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
         """Returns a PlacementGroupFactory to specify resources for Tune."""
-        from ray.tune.trainable import PlacementGroupFactory
+        from ray.tune.execution.placement_groups import PlacementGroupFactory
 
         trainer_resources = (
             self.trainer_resources if self.trainer_resources else {"CPU": 1}
@@ -267,6 +258,7 @@ class DatasetConfig:
         return new_config
 
 
+@dataclass
 @PublicAPI(stability="alpha")
 class FailureConfig:
     """Configuration related to failure handling of each run/trial.
@@ -306,7 +298,7 @@ class RunConfig:
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
-        failure: The failure mode configuration.
+        failure_config: The failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
@@ -318,6 +310,6 @@ class RunConfig:
     local_dir: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
-    failure: Optional[FailureConfig] = None
+    failure_config: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS

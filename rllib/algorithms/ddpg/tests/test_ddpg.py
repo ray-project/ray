@@ -1,6 +1,8 @@
-import numpy as np
+import copy
 import re
 import unittest
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.ddpg as ddpg
@@ -11,6 +13,7 @@ from ray.rllib.algorithms.sac.tests.test_sac import SimpleEnv
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
+from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -18,7 +21,6 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -65,12 +67,12 @@ class TestDDPG(unittest.TestCase):
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
 
-        config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
+        core_config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
-            config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
+        for _ in framework_iterator(core_config):
+            config = copy.deepcopy(core_config)
             config.seed = 42
             # Default OUNoise setup.
             algo = config.build(env="Pendulum-v1")
@@ -579,7 +581,8 @@ class TestDDPG(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

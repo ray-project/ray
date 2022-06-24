@@ -57,7 +57,7 @@ The driver will then pull the result via ``ray.get``.
 
 If the trainable is a callable or a function, it will be executed on the Ray actor process on a separate execution thread.
 Whenever ``tune.report`` is called, the execution thread is paused and waits for the driver to pull a
-result (see `function_runner.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/function_runner.py>`__.
+result (see `function_trainable.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable/function_trainable.py>`__.
 After pulling, the actor’s execution thread will automatically resume.
 
 

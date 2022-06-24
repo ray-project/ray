@@ -6,14 +6,21 @@ from typing import Optional
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
+    ParallelRollouts,
     synchronous_parallel_sample,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+)
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     SampleBatchType,
@@ -248,6 +255,48 @@ def total_sampled_timesteps(worker):
     return worker.policy_map[DEFAULT_POLICY_ID].global_timestep
 
 
+class DreamerIteration:
+    def __init__(
+        self, worker, episode_buffer, dreamer_train_iters, batch_size, act_repeat
+    ):
+        self.worker = worker
+        self.episode_buffer = episode_buffer
+        self.dreamer_train_iters = dreamer_train_iters
+        self.repeat = act_repeat
+        self.batch_size = batch_size
+
+    def __call__(self, samples):
+        # Dreamer training loop.
+        for n in range(self.dreamer_train_iters):
+            print(f"sub-iteration={n}/{self.dreamer_train_iters}")
+            batch = self.episode_buffer.sample(self.batch_size)
+            # if n == self.dreamer_train_iters - 1:
+            #     batch["log_gif"] = True
+            fetches = self.worker.learn_on_batch(batch)
+
+        # Custom Logging
+        policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
+        if "log_gif" in policy_fetches:
+            gif = policy_fetches["log_gif"]
+            policy_fetches["log_gif"] = self.postprocess_gif(gif)
+
+        # Metrics Calculation
+        metrics = _get_shared_metrics()
+        metrics.info[LEARNER_INFO] = fetches
+        metrics.counters[STEPS_SAMPLED_COUNTER] = self.episode_buffer.timesteps
+        metrics.counters[STEPS_SAMPLED_COUNTER] *= self.repeat
+        res = collect_metrics(local_worker=self.worker)
+        res["info"] = metrics.info
+        res["info"].update(metrics.counters)
+        res["timesteps_total"] = metrics.counters[STEPS_SAMPLED_COUNTER]
+
+        self.episode_buffer.add(samples)
+        return res
+
+    def postprocess_gif(self, gif: np.ndarray):
+        return _postprocess_gif(gif=gif)
+
+
 class Dreamer(Algorithm):
     @classmethod
     @override(Algorithm)
@@ -287,15 +336,49 @@ class Dreamer(Algorithm):
         super().setup(config)
         # `training_iteration` implementation: Setup buffer in `setup`, not
         # in `execution_plan` (deprecated).
-        self.local_replay_buffer = EpisodicBuffer(length=config["batch_length"])
+        if self.config["_disable_execution_plan_api"] is True:
+            self.local_replay_buffer = EpisodicBuffer(length=config["batch_length"])
+
+            # Prefill episode buffer with initial exploration (uniform sampling)
+            while (
+                total_sampled_timesteps(self.workers.local_worker())
+                < self.config["prefill_timesteps"]
+            ):
+                samples = self.workers.local_worker().sample()
+                self.local_replay_buffer.add(samples)
+
+    @staticmethod
+    @override(Algorithm)
+    def execution_plan(workers, config, **kwargs):
+        assert (
+            len(kwargs) == 0
+        ), "Dreamer execution_plan does NOT take any additional parameters"
+
+        # Special replay buffer for Dreamer agent.
+        episode_buffer = EpisodicBuffer(length=config["batch_length"])
+
+        local_worker = workers.local_worker()
 
         # Prefill episode buffer with initial exploration (uniform sampling)
-        while (
-            total_sampled_timesteps(self.workers.local_worker())
-            < self.config["prefill_timesteps"]
-        ):
-            samples = self.workers.local_worker().sample()
-            self.local_replay_buffer.add(samples)
+        while total_sampled_timesteps(local_worker) < config["prefill_timesteps"]:
+            samples = local_worker.sample()
+            episode_buffer.add(samples)
+
+        batch_size = config["batch_size"]
+        dreamer_train_iters = config["dreamer_train_iters"]
+        act_repeat = config["action_repeat"]
+
+        rollouts = ParallelRollouts(workers)
+        rollouts = rollouts.for_each(
+            DreamerIteration(
+                local_worker,
+                episode_buffer,
+                dreamer_train_iters,
+                batch_size,
+                act_repeat,
+            )
+        )
+        return rollouts
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
@@ -304,10 +387,11 @@ class Dreamer(Algorithm):
         # Number of sub-iterations for Dreamer
         dreamer_train_iters = self.config["dreamer_train_iters"]
         batch_size = self.config["batch_size"]
-        action_repeat = self.config["action_repeat"]
 
         # Collect SampleBatches from rollout workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
 
         fetches = {}
 
@@ -319,24 +403,15 @@ class Dreamer(Algorithm):
             fetches = local_worker.learn_on_batch(batch)
 
         if fetches:
-            # Custom Logging
+            # Custom logging.
             policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
             if "log_gif" in policy_fetches:
                 gif = policy_fetches["log_gif"]
                 policy_fetches["log_gif"] = self._postprocess_gif(gif)
 
-        self._counters[STEPS_SAMPLED_COUNTER] = (
-            self.local_replay_buffer.timesteps * action_repeat
-        )
-
         self.local_replay_buffer.add(batch)
 
         return fetches
-
-    def _compile_iteration_results(self, *args, **kwargs):
-        results = super()._compile_iteration_results(*args, **kwargs)
-        results["timesteps_total"] = self._counters[STEPS_SAMPLED_COUNTER]
-        return results
 
 
 # Deprecated: Use ray.rllib.algorithms.dreamer.DreamerConfig instead!

@@ -1,37 +1,36 @@
 import asyncio
-from collections import defaultdict
 import json
 import logging
-import pickle
-import traceback
-import time
 import os
-from typing import Dict, Iterable, List, Optional, Tuple, Any
+import pickle
+import time
+import traceback
+from collections import defaultdict
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import ray
-from ray.types import ObjectRef
-from ray.actor import ActorHandle
 from ray._private.utils import import_attr
+from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.common import (
-    DeploymentInfo,
-    EndpointTag,
-    EndpointInfo,
-    NodeId,
-    RunningReplicaInfo,
     ApplicationStatus,
     ApplicationStatusInfo,
+    DeploymentInfo,
+    EndpointInfo,
+    EndpointTag,
+    NodeId,
+    RunningReplicaInfo,
     StatusOverview,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
     CONTROL_LOOP_PERIOD_S,
-    SERVE_ROOT_URL_ENV_KEY,
     SERVE_LOGGER_NAME,
+    SERVE_ROOT_URL_ENV_KEY,
+    SERVE_NAMESPACE,
 )
-from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
+from ray.serve.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.logging_utils import configure_component_logger
@@ -40,6 +39,7 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.utils import override_runtime_envs_except_env_vars
+from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -111,15 +111,22 @@ class ServeController:
             http_config,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
+
         # Fetch all running actors in current cluster as source of current
         # replica state for controller failure recovery
-        all_current_actor_names = ray.util.list_named_actors()
+        all_current_actors = ray.util.list_named_actors(all_namespaces=True)
+        all_serve_actor_names = [
+            actor["name"]
+            for actor in all_current_actors
+            if actor["namespace"] == SERVE_NAMESPACE
+        ]
+
         self.deployment_state_manager = DeploymentStateManager(
             controller_name,
             detached,
             self.kv_store,
             self.long_poll_host,
-            all_current_actor_names,
+            all_serve_actor_names,
         )
 
         # Reference to Ray task executing most recent deployment request
@@ -346,7 +353,6 @@ class ServeController:
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
-
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
@@ -480,7 +486,7 @@ class ServeController:
         Returns:
             DeploymentRouteList's protobuf serialized bytes
         """
-        from ray.serve.generated.serve_pb2 import DeploymentRouteList, DeploymentRoute
+        from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
 
         deployment_route_list = DeploymentRouteList()
         for deployment_name, (
@@ -528,6 +534,18 @@ class ServeController:
 
         return status_info.to_proto().SerializeToString()
 
+    def get_app_config(self) -> Dict:
+        checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        if checkpoint is None:
+            return {
+                "import_path": "",
+                "runtime_env": "",
+                "deployments": [],
+            }
+        else:
+            _, config = pickle.loads(checkpoint)
+            return config
+
 
 @ray.remote(max_calls=1)
 def run_graph(
@@ -549,7 +567,7 @@ def run_graph(
             # Merge graph-level and deployment-level runtime_envs
             if "ray_actor_options" in options:
                 # If specified, get ray_actor_options from config
-                ray_actor_options = options["ray_actor_options"]
+                ray_actor_options = options["ray_actor_options"] or {}
             else:
                 # Otherwise, get options from graph code (and default to {} if code
                 # sets options to None)

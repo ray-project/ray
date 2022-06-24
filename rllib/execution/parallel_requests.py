@@ -201,30 +201,29 @@ class AsyncRequestsManager:
             AsyncRequestsManager.get_ready_results().
 
     Example:
-        >>> import time # doctest: +SKIP
-        >>> import ray # doctest: +SKIP
-        >>> from ray.rllib.execution.parallel_requests import ( # doctest: +SKIP
-        ...    AsyncRequestsManager # doctest: +SKIP
-        >>> # doctest: +SKIP
-        >>> @ray.remote # doctest: +SKIP
-        ... class MyActor: # doctest: +SKIP
-        ...    def apply(self, fn, *args, **kwargs): # doctest: +SKIP
-        ...        return fn(*args, **kwargs) # doctest: +SKIP
-        ...    # doctest: +SKIP
-        ...    def task(self, a, b): # doctest: +SKIP
-        ...        time.sleep(0.5) # doctest: +SKIP
-        ...        return a + b # doctest: +SKIP
+        >>> import time
+        >>> import ray
+        >>> from ray.rllib.execution.parallel_requests_manager import (
+        ...     AsyncRequestsManager)
         >>>
-        >>> workers = [MyActor.remote() for _ in range(3)] # doctest: +SKIP
-        >>> manager = AsyncRequestsManager(workers, # doctest: +SKIP
-        ...     max_remote_requests_in_flight_per_worker=2) # doctest: +SKIP
-        >>> manager.call(lambda worker, a, b: worker.task(a, b), # doctest: +SKIP
-        ...     fn_args=[1, 2]) # doctest: +SKIP
-        >>> print(manager.get_ready()) # doctest: +SKIP
-        >>> manager.call(lambda worker, a, b: worker.task(a, b), # doctest: +SKIP
-        ...                fn_kwargs={"a": 1, "b": 2}) # doctest: +SKIP
-        >>> time.sleep(2) # doctest: +SKIP
-        >>> print(manager.get_ready()) # doctest: +SKIP
+        >>> @ray.remote
+        ... class MyActor:
+        ...    def apply(self, fn, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
+        ...        return fn(*args, **kwargs)
+        ...
+        ...    def task(self, a: int, b: int) -> Any:
+        ...        time.sleep(0.5)
+        ...        return a + b
+        >>>
+        >>> workers = [MyActor.remote() for _ in range(3)]
+        >>> manager = AsyncRequestsManager(workers,
+        ...                                max_remote_requests_in_flight_per_worker=2)
+        >>> manager.call(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2])
+        >>> print(manager.get_ready())
+        >>> manager.call(lambda worker, a, b: worker.task(a, b),
+        ...                fn_kwargs={"a": 1, "b": 2})
+        >>> time.sleep(2) # Wait for the tasks to finish.
+        >>> print(manager.get_ready())
     """
 
     def __init__(
@@ -254,21 +253,21 @@ class AsyncRequestsManager:
         fn_args: List[Any] = None,
         fn_kwargs: Dict[str, Any] = None,
     ) -> bool:
-        """Call a remote function on an available worker or on actor
-            if actor is specified.
+        """Call remote function on any available worker or `actor`, if provided.
 
         Args:
-            remote_fn: The remote function to call
+            remote_fn: The remote function to call.
             actor: The actor to call the remote function on.
-            fn_args: The arguments to pass to the remote function
-            fn_kwargs: The keyword arguments to pass to the remote function
-        Raises:
-            ValueError: If actor has not been added to the manager.
-            ValueError: If there are no actors available to submit a request to.
+            fn_args: The arguments to pass to the remote function.
+            fn_kwargs: The keyword arguments to pass to the remote function.
 
         Returns:
             True if the remoted_fn was scheduled on an actor. False if it was unable
             to be scheduled.
+
+        Raises:
+            ValueError: If actor has not been added to the manager.
+            ValueError: If there are no actors available to submit a request to.
         """
         if actor and actor not in self._all_workers:
             raise ValueError(
@@ -333,13 +332,13 @@ class AsyncRequestsManager:
         return num_launched
 
     def get_ready(self) -> Dict[ActorHandle, List[Any]]:
-        """Get results that are ready to be returned
+        """Get results that are ready to be returned.
 
         Returns:
             A dictionary of actor handles to lists of returns from tasks that were
-             previously submitted to this actor pool that are now ready to be returned.
-             If return_object_refs
-
+            previously submitted to this actor pool that are now ready to be returned.
+            If self._return_object_refs is True, return only the object store
+            references, not the actual return values.
         """
         ready_requests_dict = defaultdict(list)
         ready_requests, self._pending_remotes = ray.wait(
@@ -372,15 +371,18 @@ class AsyncRequestsManager:
             if new_worker not in self._all_workers:
                 self._all_workers.append(new_worker)
 
-    def remove_workers(self, workers: Union[List[ActorHandle], ActorHandle]) -> None:
+    def remove_workers(
+        self,
+        workers: Union[List[ActorHandle], ActorHandle],
+        remove_in_flight_requests: bool = False,
+    ) -> None:
         """Make workers unschedulable and remove them from this manager.
 
-        Note:
-            This will not stop their inflight requests. ray.kill can be used to kill
-                the workers and their inflight requests.
-
         Args:
-            workers: The actors to remove
+            workers: The actors to remove.
+            remove_in_flight_requests: If True, will remove the actor completely from
+                this manager, even all of its in-flight requests. Useful for removing
+                a worker after some detected failure.
         """
         if isinstance(workers, ActorHandle):
             workers = [workers]
@@ -393,6 +395,19 @@ class AsyncRequestsManager:
             self._curr_actor_ptr = len(self._all_workers) - 1
         elif not self._all_workers:
             self._curr_actor_ptr = 0
+        # Remove all in-flight requests as well such that nothing related to the
+        # removed workers remains in this manager.
+        if remove_in_flight_requests is True:
+            for worker in workers_to_remove:
+                # Get all remote requests currently in-flight for this worker ..
+                if worker in self._remote_requests_in_flight:
+                    # .. and remove all of them from our internal maps/lists.
+                    reqs = self._remote_requests_in_flight[worker]
+                    del self._remote_requests_in_flight[worker]
+                    for req in reqs:
+                        del self._pending_to_actor[req]
+                        if req in self._pending_remotes:
+                            self._pending_remotes.remove(req)
 
     def get_manager_statistics(self) -> Dict[str, Any]:
         """Get statistics about the the manager

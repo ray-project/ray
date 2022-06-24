@@ -1,6 +1,6 @@
 from ray.util.iter import LocalIterator
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.typing import Dict, SampleBatchType
 from ray.util.iter_metrics import MetricsContext
 
 # Backward compatibility.
@@ -9,7 +9,7 @@ from ray.rllib.utils.metrics import (  # noqa: F401
     NUM_TARGET_UPDATES,
     APPLY_GRADS_TIMER,
     COMPUTE_GRADS_TIMER,
-    WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER as WORKER_UPDATE_TIMER,
     GRAD_WAIT_TIMER,
     SAMPLE_TIMER,
     LEARN_ON_BATCH_TIMER,
@@ -32,6 +32,12 @@ def _check_sample_batch_type(batch: SampleBatchType) -> None:
             "Expected either SampleBatch or MultiAgentBatch, "
             "got {}: {}".format(type(batch), batch)
         )
+
+
+# Returns pipeline global vars that should be periodically sent to each worker.
+def _get_global_vars() -> Dict:
+    metrics = LocalIterator.get_metrics()
+    return {"timestep": metrics.counters[STEPS_SAMPLED_COUNTER]}
 
 
 def _get_shared_metrics() -> MetricsContext:

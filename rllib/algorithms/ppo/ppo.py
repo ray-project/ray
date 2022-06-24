@@ -38,7 +38,7 @@ from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 
 logger = logging.getLogger(__name__)
@@ -209,6 +209,37 @@ class PPOConfig(AlgorithmConfig):
             )
 
         return self
+
+
+class UpdateKL:
+    """Callback to update the KL based on optimization info.
+
+    This is used inside the execution_plan function. The Policy must define
+    a `update_kl` method for this to work. This is achieved for PPO via a
+    Policy mixin class (which adds the `update_kl` method),
+    defined in ppo_[tf|torch]_policy.py.
+    """
+
+    def __init__(self, workers):
+        self.workers = workers
+
+    def __call__(self, fetches):
+        def update(pi, pi_id):
+            assert LEARNER_STATS_KEY not in fetches, (
+                "{} should be nested under policy id key".format(LEARNER_STATS_KEY),
+                fetches,
+            )
+            if pi_id in fetches:
+                kl = fetches[pi_id][LEARNER_STATS_KEY].get("kl")
+                assert kl is not None, (fetches, pi_id)
+                # Make the actual `Policy.update_kl()` call.
+                pi.update_kl(kl)
+            else:
+                logger.warning("No data for {}, not updating kl".format(pi_id))
+
+        # Update KL on all trainable policies within the local (trainer)
+        # Worker.
+        self.workers.local_worker().foreach_policy_to_train(update)
 
 
 def warn_about_bad_reward_scales(config, result):
@@ -395,7 +426,7 @@ class PPO(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
         # For each policy: update KL scale and warn about possible issues

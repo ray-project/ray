@@ -1,22 +1,22 @@
 import json
+import os
 import pathlib
 from pprint import pformat
-import os
 from unittest.mock import MagicMock
 
 import pytest
 
 import ray
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
-from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray.util.metrics import Counter, Histogram, Gauge
+from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
-    wait_for_condition,
     SignalActor,
     fetch_prometheus,
     get_log_batch,
+    wait_for_condition,
 )
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+from ray.util.metrics import Counter, Gauge, Histogram
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -299,7 +299,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
 
 def test_prome_file_discovery_run_by_dashboard(shutdown_only):
     ray.init(num_cpus=0)
-    global_node = ray.worker._global_node
+    global_node = ray._private.worker._global_node
     temp_dir = global_node.get_temp_dir_path()
 
     def is_service_discovery_exist():
@@ -491,4 +491,7 @@ if __name__ == "__main__":
     import sys
 
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
