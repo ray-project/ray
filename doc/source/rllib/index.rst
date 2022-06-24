@@ -52,21 +52,22 @@ PyTorch (or both as shown below):
 
 .. code-block:: bash
 
-    $ conda create -n rllib python=3.8
-    $ conda activate rllib
-    $ pip install "ray[rllib]" tensorflow torch
+    conda create -n rllib python=3.8
+    conda activate rllib
+    pip install "ray[rllib]" tensorflow torch
 
-Note, for installation on computers running Apple Silicon (such as M1), please follow instructions `here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
+Note, for installation on computers running Apple Silicon (such as M1), please follow instructions
+`here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
 
 To be able to run our Atari examples, you should also install:
 
 .. code-block:: bash
 
-    $ pip install "gym[atari]" "gym[accept-rom-license]" atari_py
+    pip install "gym[atari]" "gym[accept-rom-license]" atari_py
 
 After these quick pip installs, you can start coding against RLlib.
 
-Here is an example of running a PPO Trainer on the "`Taxi domain <https://gym.openai.com/envs/Taxi-v3/>`_"
+Here is an example of running PPO on the "`Taxi domain <https://www.gymlibrary.ml/environments/toy_text/taxi/>`_"
 for a few training iterations, then perform a single evaluation loop
 (with rendering enabled):
 
@@ -81,8 +82,6 @@ Feature Overview
 ----------------
 
 The following is a summary of RLlib's most striking features.
-For an in-depth overview, check out our `documentation <http://docs.ray.io/en/latest/rllib/index.html>`_.
-
 Click on the images below to see an example script for each of the listed features:
 
 .. include:: feature_overview.rst
@@ -127,20 +126,20 @@ click on the dropdowns below:
 
     *  Model-based / Meta-learning / Offline
 
-       -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+       -  |pytorch| :ref:`Single-Player AlphaZero (AlphaZero) <alphazero>`
 
        -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
        -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
-       -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+       -  |pytorch| :ref:`Dreamer <dreamer>`
 
        -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
 
     *  Multi-agent
 
        -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
-       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
+       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <maddpg>`
 
     *  Offline
 
@@ -148,8 +147,8 @@ click on the dropdowns below:
 
     *  Contextual bandits
 
-       -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <linucb>`
-       -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
+       -  |pytorch| :ref:`Linear Upper Confidence Bound (LinUCB) <lin-ucb>`
+       -  |pytorch| :ref:`Linear Thompson Sampling (LinTS) <lints>`
 
     *  Exploration-based plug-ins (can be combined with any algo)
 
@@ -159,27 +158,27 @@ click on the dropdowns below:
 .. dropdown:: **RLlib Environments**
     :animate: fade-in-slide-down
 
-    *  `RLlib Environments Overview <rllib/rllib-env.html>`__
-    *  `OpenAI Gym <rllib/rllib-env.html#openai-gym>`__
-    *  `Vectorized <rllib/rllib-env.html#vectorized>`__
-    *  `Multi-Agent and Hierarchical <rllib/rllib-env.html#multi-agent-and-hierarchical>`__
-    *  `External Agents and Applications <rllib/rllib-env.html#external-agents-and-applications>`__
+    *  `RLlib Environments Overview <rllib-env.html>`__
+    *  `OpenAI Gym <rllib-env.html#openai-gym>`__
+    *  `Vectorized <rllib-env.html#vectorized>`__
+    *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
+    *  `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
 
-       -  `External Application Clients <rllib/rllib-env.html#external-application-clients>`__
+       -  `External Application Clients <rllib-env.html#external-application-clients>`__
 
-    *  `Advanced Integrations <rllib/rllib-env.html#advanced-integrations>`__
+    *  `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
 
 Customizing RLlib
 -----------------
 
 RLlib provides simple APIs to customize all aspects of your training- and experimental workflows.
-For example, you may code your own `environments <../rllib-env.html#configuring-environments>`__
+For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
 in python using openAI's gym or DeepMind's OpenSpiel, provide custom
-`TensorFlow/Keras- <../rllib-models.html#tensorflow-models>`__ or ,
-`Torch models <../rllib-models.html#torch-models>`_, write your own
-`policy- and loss definitions <../rllib-concepts.html#policies>`__, or define
-custom `exploratory behavior <../rllib-training.htmlexploration-api>`_.
+`TensorFlow/Keras- <rllib-models.html#tensorflow-models>`__ or ,
+`Torch models <rllib-models.html#torch-models>`_, write your own
+`policy- and loss definitions <rllib-concepts.html#policies>`__, or define
+custom `exploratory behavior <rllib-training.html#exploration-api>`_.
 
 Via mapping one or more agents in your environments to (one or more) policies, multi-agent
 RL (MARL) becomes an easy-to-use low-level primitive for our users.

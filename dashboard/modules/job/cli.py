@@ -1,28 +1,25 @@
 import asyncio
 import os
 import pprint
-from subprocess import list2cmdline
 import time
+from subprocess import list2cmdline
 from typing import Optional, Tuple
 
 import click
 
-from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
+import ray._private.ray_constants as ray_constants
+from ray._private.storage import _load_class
+from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
+from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
-from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 
 
 def _get_sdk_client(
     address: Optional[str], create_cluster_if_needed: bool = False
 ) -> JobSubmissionClient:
 
-    if address is None:
-        if "RAY_ADDRESS" not in os.environ:
-            raise ValueError(
-                "Address must be specified using either the --address flag "
-                "or RAY_ADDRESS environment variable."
-            )
+    if address is None and "RAY_ADDRESS" in os.environ:
         address = os.environ["RAY_ADDRESS"]
 
     cli_logger.labeled_value("Job submission server address", address)
@@ -136,11 +133,24 @@ def submit(
     entrypoint: Tuple[str],
     no_wait: bool,
 ):
-    """Submits a job to be run on the cluster docstring
+    """Submits a job to be run on the cluster.
 
     Example:
-        >>> ray job submit -- python my_script.py --arg=val
+        ray job submit -- python my_script.py --arg=val
     """
+
+    if ray_constants.RAY_JOB_SUBMIT_HOOK in os.environ:
+        # Submit all args as **kwargs per the JOB_SUBMIT_HOOK contract.
+        _load_class(os.environ[ray_constants.RAY_JOB_SUBMIT_HOOK])(
+            address=address,
+            job_id=job_id,
+            runtime_env=runtime_env,
+            runtime_env_json=runtime_env_json,
+            working_dir=working_dir,
+            entrypoint=entrypoint,
+            no_wait=no_wait,
+        )
+
     client = _get_sdk_client(address, create_cluster_if_needed=True)
 
     final_runtime_env = parse_runtime_env_args(
@@ -205,7 +215,7 @@ def status(address: Optional[str], job_id: str):
     """Queries for the current status of a job.
 
     Example:
-        >>> ray job status <my_job_id>
+        ray job status <my_job_id>
     """
     client = _get_sdk_client(address)
     _log_job_status(client, job_id)
@@ -236,7 +246,7 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
     """Attempts to stop a job.
 
     Example:
-        >>> ray job stop <my_job_id>
+        ray job stop <my_job_id>
     """
     client = _get_sdk_client(address)
     cli_logger.print(f"Attempting to stop job {job_id}")
@@ -285,7 +295,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     """Gets the logs of a job.
 
     Example:
-        >>> ray job logs <my_job_id>
+        ray job logs <my_job_id>
     """
     client = _get_sdk_client(address)
     sdk_version = client.get_version()
@@ -322,7 +332,7 @@ def list(address: Optional[str]):
     """Lists all running jobs and their information.
 
     Example:
-        >>> ray job list
+        ray job list
     """
     client = _get_sdk_client(address)
     # Set no_format to True because the logs may have unescaped "{" and "}"

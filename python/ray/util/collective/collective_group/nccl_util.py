@@ -101,9 +101,9 @@ def create_nccl_communicator(world_size, nccl_unique_id, rank):
     """Create an NCCL communicator using NCCL APIs.
 
     Args:
-        world_size (int): the number of processes of this communicator group.
-        nccl_unique_id (str): the NCCLUniqueID for this group.
-        rank (int): the rank of this process.
+        world_size: the number of processes of this communicator group.
+        nccl_unique_id: the NCCLUniqueID for this group.
+        rank: the rank of this process.
     Returns:
         comm (nccl.ncclComm_t): an NCCL communicator.
     """
@@ -115,7 +115,7 @@ def get_nccl_reduce_op(reduce_op):
     """Map the reduce op to NCCL reduce op type.
 
     Args:
-        reduce_op (ReduceOp): ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
+        reduce_op: ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
     Returns:
         (nccl.ncclRedOp_t): the mapped NCCL reduce op.
     """
@@ -162,7 +162,7 @@ def get_tensor_ptr(tensor):
         if isinstance(tensor, torch.Tensor):
             if not tensor.is_cuda:
                 raise RuntimeError(
-                    "Torch tensor must be on GPU " "when using NCCL collectives."
+                    "Torch tensor must be on GPU when using NCCL collectives."
                 )
             return tensor.data_ptr()
     raise ValueError(
@@ -226,7 +226,7 @@ def get_tensor_device(tensor):
         if not isinstance(device, int):
             raise RuntimeError("The tensor is not on a valid GPU.")
     else:
-        raise ValueError("Unsupported tensor type. " "Got: {}.".format(type(tensor)))
+        raise ValueError("Unsupported tensor type. Got: {}.".format(type(tensor)))
     return device
 
 

@@ -190,12 +190,6 @@ bool NameStartsWith(const std::string &name, const std::string &prefix) {
 }
 }  // namespace NetIf
 
-bool Ping(const std::string &ip, int port, int64_t timeout_ms) {
-  AsyncClient client;
-  bool is_timeout;
-  return client.Connect(ip, port, timeout_ms, &is_timeout);
-}
-
 bool CheckFree(int port) {
   instrumented_io_context io_service;
   tcp::socket socket(io_service);

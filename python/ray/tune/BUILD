@@ -57,14 +57,6 @@ py_test(
 )
 
 py_test(
-    name = "test_cloud",
-    size = "medium",
-    srcs = ["tests/test_cloud.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_C"],
-)
-
-py_test(
     name = "test_cluster",
     size = "large",
     srcs = ["tests/test_cluster.py"],
@@ -136,26 +128,19 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_F"],
 )
 
+
+py_test(
+    name = "test_legacy_import",
+    size = "small",
+    srcs = ["tests/test_legacy_import.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_L"],
+)
+
 py_test(
     name = "test_integration_comet",
     size = "small",
     srcs = ["tests/test_integration_comet.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_I"],
-)
-
-py_test(
-    name = "test_integration_docker",
-    size = "small",
-    srcs = ["tests/test_integration_docker.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_I"],
-)
-
-py_test(
-    name = "test_integration_kubernetes",
-    size = "small",
-    srcs = ["tests/test_integration_kubernetes.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_I"],
 )
@@ -209,6 +194,14 @@ py_test(
 )
 
 py_test(
+    name = "test_resource_updater",
+    size = "large",
+    srcs = ["tests/test_resource_updater.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
     name = "test_ray_trial_executor",
     size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
@@ -230,6 +223,22 @@ py_test(
     srcs = ["tests/test_remote.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
+    name = "test_result_grid",
+    size = "medium",
+    srcs = ["tests/test_result_grid.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
+    name = "test_warnings",
+    size = "medium",
+    srcs = ["tests/test_warnings.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_W"],
 )
 
 py_test(
@@ -257,9 +266,33 @@ py_test(
 )
 
 py_test(
-    name = "test_sync",
+    name = "test_stopper",
+    size = "small",
+    srcs = ["tests/test_stopper.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_util_file_transfer",
     size = "medium",
-    srcs = ["tests/test_sync.py"],
+    srcs = ["tests/test_util_file_transfer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_syncer",
+    size = "medium",
+    srcs = ["tests/test_syncer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_syncer_callback",
+    size = "medium",
+    srcs = ["tests/test_syncer_callback.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_S"],
 )
@@ -268,6 +301,14 @@ py_test(
     name = "test_trainable_util",
     size = "small",
     srcs = ["tests/test_trainable_util.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_trial_relative_logdir",
+    size = "medium",
+    srcs = ["tests/test_trial_relative_logdir.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
@@ -376,14 +417,20 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
-py_test_module_list(
-  files = [
-      "tests/test_trial_executor_inheritance.py",
-  ],
-  size = "large",
-  extra_srcs = [],
-  tags = ["exclusive", "manual", "team:ml"],
-  deps = ["//:tune_lib"],
+py_test(
+    name = "test_tuner",
+    size = "medium",
+    srcs = ["tests/test_tuner.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_U"],
 )
 
 # --------------------------------------------------------------------
@@ -396,7 +443,7 @@ py_test(
     size = "small",
     srcs = ["tests/example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_main"],
 )
 
 py_test(
@@ -413,7 +460,7 @@ py_test(
     size = "medium",
     srcs = ["tests/tutorial.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_main"],
 )
 
 # --------------------------------------------------------------------
@@ -492,48 +539,6 @@ py_test(
 )
 
 py_test(
-    name = "test_torch_trainable",
-    size = "medium",
-    srcs = ["tests/test_torch_trainable.py"],
-    tags = ["team:ml", "exclusive", "example", "pytorch"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "test_tensorflow_trainable",
-    size = "medium",
-    srcs = ["tests/test_tensorflow_trainable.py"],
-    tags = ["team:ml", "exclusive", "example", "tensorflow"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "test_horovod",
-    size = "medium",
-    srcs = ["tests/test_horovod.py"],
-    tags = ["team:ml", "exclusive", "example", "py37"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "ddp_mnist_torch",
-    size = "small",
-    srcs = ["examples/ddp_mnist_torch.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "pytorch"],
-    args = ["--num-workers=2"]
-)
-
-py_test(
-    name = "tf_distributed_keras_example",
-    size = "small",
-    srcs = ["examples/tf_distributed_keras_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "tensorflow"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "dragonfly_example",
     size = "medium",
     srcs = ["examples/dragonfly_example.py"],
@@ -541,16 +546,6 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
-
-# Does not work without awscli tool installed. Check if can be mocked.
-# py_test(
-#     name = "durable_trainable_example",
-#     size = "medium",
-#     srcs = ["examples/durable_trainable_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["team:ml", "exclusive", "example"],
-#     args = ["--local", "--mock-storage"]
-# )
 
 py_test(
     name = "genetic_example",
@@ -567,15 +562,6 @@ py_test(
     srcs = ["examples/hebo_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "horovod_simple",
-    size = "medium",
-    srcs = ["examples/horovod_simple.py"],
-    tags = ["team:ml", "exclusive", "example", "py37"],
-    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 
@@ -612,6 +598,16 @@ py_test(
     srcs = ["examples/lightgbm_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "lightgbm_example_cv",
+    size = "small",
+    main = "examples/lightgbm_example.py",
+    srcs = ["examples/lightgbm_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(
@@ -918,6 +914,16 @@ py_test(
 )
 
 py_test(
+    name = "xgboost_example_cv",
+    size = "small",
+    main = "examples/xgboost_example.py",
+    srcs = ["examples/xgboost_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
+)
+
+py_test(
     name = "xgboost_dynamic_resources_example",
     size = "large",
     srcs = ["examples/xgboost_dynamic_resources_example.py"],
@@ -932,20 +938,6 @@ py_test(
     srcs = ["examples/zoopt_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-# --------------------------------------------------------------------
-# Tune related tests from the ../../../../release directory.
-# Please keep these sorted alphabetically.
-# --------------------------------------------------------------------
-
-py_test(
-    name = "horovod_cifar_pbt_example",
-    size = "medium",
-    srcs = ["examples/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive", "pytorch", "example", "release", "py37"],
-    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 

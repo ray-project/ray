@@ -16,10 +16,14 @@ def test_max_running_tasks(num_tasks):
     def task():
         time.sleep(sleep_time)
 
+    def time_up(start_time):
+        return time.time() - start_time >= sleep_time
+
     refs = [task.remote() for _ in tqdm.trange(num_tasks, desc="Launching tasks")]
 
     max_cpus = ray.cluster_resources()["CPU"]
     min_cpus_available = max_cpus
+    start_time = time.time()
     for _ in tqdm.trange(int(sleep_time / 0.1), desc="Waiting"):
         try:
             cur_cpus = ray.available_resources().get("CPU", 0)
@@ -28,12 +32,15 @@ def test_max_running_tasks(num_tasks):
             # There are race conditions `.get` can fail if a new heartbeat
             # comes at the same time.
             pass
+        if time_up(start_time):
+            print(f"Time up for sleeping {sleep_time} seconds")
+            break
         time.sleep(0.1)
 
     # There are some relevant magic numbers in this check. 10k tasks each
     # require 1/4 cpus. Therefore, ideally 2.5k cpus will be used.
     err_str = f"Only {max_cpus - min_cpus_available}/{max_cpus} cpus used."
-    threshold = num_tasks * cpus_per_task * 0.75
+    threshold = num_tasks * cpus_per_task * 0.70
     assert max_cpus - min_cpus_available > threshold, err_str
 
     for _ in tqdm.trange(num_tasks, desc="Ensuring all tasks have finished"):
@@ -42,12 +49,19 @@ def test_max_running_tasks(num_tasks):
 
 
 def no_resource_leaks():
-    return ray.available_resources() == ray.cluster_resources()
+    return test_utils.no_resource_leaks_excluding_node_resources()
 
 
 @click.command()
 @click.option("--num-tasks", required=True, type=int, help="Number of tasks to launch.")
-def test(num_tasks):
+@click.option(
+    "--smoke-test",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="If set, it's a smoke test",
+)
+def test(num_tasks, smoke_test):
     ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
@@ -78,6 +92,14 @@ def test(num_tasks):
             "_peak_memory": round(used_gb, 2),
             "_peak_process_memory": usage,
         }
+        if not smoke_test:
+            results["perf_metrics"] = [
+                {
+                    "perf_metric_name": "tasks_per_second",
+                    "perf_metric_value": rate,
+                    "perf_metric_type": "THROUGHPUT",
+                }
+            ]
         json.dump(results, out_file)
 
 

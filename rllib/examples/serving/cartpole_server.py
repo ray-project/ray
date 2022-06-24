@@ -28,8 +28,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.dqn import DQNTrainer
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
 from ray.tune.logger import pretty_print
@@ -78,7 +77,7 @@ def get_cli_args():
     parser.add_argument(
         "--run",
         default="PPO",
-        choices=["DQN", "PPO"],
+        choices=["APEX", "DQN", "IMPALA", "PPO", "R2D2"],
         help="The RLlib-registered algorithm to use.",
     )
     parser.add_argument("--num-cpus", type=int, default=3)
@@ -87,6 +86,12 @@ def get_cli_args():
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
         help="The DL framework specifier.",
+    )
+    parser.add_argument(
+        "--use-lstm",
+        action="store_true",
+        help="Whether to auto-wrap the model with an LSTM. Only valid option for "
+        "--run=[IMPALA|PPO|R2D2]",
     )
     parser.add_argument(
         "--stop-iters", type=int, default=200, help="Number of iterations to train."
@@ -145,10 +150,10 @@ if __name__ == "__main__":
         else:
             return None
 
-    # Trainer config. Note that this config is sent to the client only in case
+    # Algorithm config. Note that this config is sent to the client only in case
     # the client needs to create its own policy copy for local inference.
     config = {
-        # Indicate that the Trainer we setup here doesn't need an actual env.
+        # Indicate that the Algorithm we setup here doesn't need an actual env.
         # Allow spaces to be determined by user (see below).
         "env": None,
         # TODO: (sven) make these settings unnecessary and get the information
@@ -160,29 +165,42 @@ if __name__ == "__main__":
         # Use n worker processes to listen on different ports.
         "num_workers": args.num_workers,
         # Disable OPE, since the rollouts are coming from online clients.
-        "input_evaluation": [],
+        "off_policy_estimation_methods": {},
         # Create a "chatty" client/server or not.
         "callbacks": MyCallbacks if args.callbacks_verbose else None,
         # DL framework to use.
         "framework": args.framework,
         # Set to INFO so we'll see the server's actual address:port.
         "log_level": "INFO",
+        "model": {},
     }
 
     # DQN.
-    if args.run == "DQN":
+    if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":
         # Example of using DQN (supports off-policy actions).
         config.update(
             {
-                "learning_starts": 100,
-                "timesteps_per_iteration": 200,
+                "replay_buffer_config": {"learning_starts": 100},
+                "min_sample_timesteps_per_iteration": 200,
                 "n_step": 3,
+                "rollout_fragment_length": 4,
+                "train_batch_size": 8,
             }
         )
         config["model"] = {
             "fcnet_hiddens": [64],
             "fcnet_activation": "linear",
         }
+        if args.run == "R2D2":
+            config["model"]["use_lstm"] = args.use_lstm
+
+    elif args.run == "IMPALA":
+        config.update(
+            {
+                "num_gpus": 0,
+                "model": {"use_lstm": args.use_lstm},
+            }
+        )
 
     # PPO.
     else:
@@ -191,6 +209,7 @@ if __name__ == "__main__":
             {
                 "rollout_fragment_length": 1000,
                 "train_batch_size": 4000,
+                "model": {"use_lstm": args.use_lstm},
             }
         )
 
@@ -203,21 +222,19 @@ if __name__ == "__main__":
 
     # Manual training loop (no Ray tune).
     if args.no_tune:
-        if args.run == "DQN":
-            trainer = DQNTrainer(config=config)
-        else:
-            trainer = PPOTrainer(config=config)
+        algo_cls = get_algorithm_class(args.run)
+        algo = algo_cls(config=config)
 
         if checkpoint_path:
             print("Restoring from checkpoint path", checkpoint_path)
-            trainer.restore(checkpoint_path)
+            algo.restore(checkpoint_path)
 
         # Serving and training loop.
         ts = 0
         for _ in range(args.stop_iters):
-            results = trainer.train()
+            results = algo.train()
             print(pretty_print(results))
-            checkpoint = trainer.save()
+            checkpoint = algo.save()
             print("Last checkpoint", checkpoint)
             with open(checkpoint_path, "w") as f:
                 f.write(checkpoint)
@@ -228,7 +245,7 @@ if __name__ == "__main__":
                 break
             ts += results["timesteps_total"]
 
-    # Run with Tune for auto env and trainer creation and TensorBoard.
+    # Run with Tune for auto env and algo creation and TensorBoard.
     else:
         stop = {
             "training_iteration": args.stop_iters,

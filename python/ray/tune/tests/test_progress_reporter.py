@@ -6,11 +6,12 @@ from unittest.mock import MagicMock, Mock, patch
 
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
+    ProgressReporter,
     _fair_filter_trials,
     best_trial_str,
     detect_reporter,
@@ -67,7 +68,7 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 END_TO_END_COMMAND = """
 import ray
 from ray import tune
-from ray.tune.trial import Location
+from ray.tune.experiment.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -75,7 +76,7 @@ from unittest.mock import patch
 def mock_get_trial_location(trial, result):
     location = _get_trial_location(trial, result)
     if location.pid:
-        return Location("123.123.123.123", "1")
+        return _Location("123.123.123.123", "1")
     return location
 
 
@@ -195,9 +196,7 @@ EXPECTED_BEST_1 = (
     "parameters={'a': 1, 'b': 2, 'n': {'k': [1, 2]}}"
 )
 
-EXPECTED_BEST_2 = (
-    "Current best trial: 00004 with metric_1=2.0 and " "parameters={'a': 4}"
-)
+EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and parameters={'a': 4}"
 
 EXPECTED_SORT_RESULT_UNSORTED = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
 +--------------+------------+-------+-----+------------+
@@ -235,14 +234,23 @@ EXPECTED_SORT_RESULT_DESC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERM
 VERBOSE_EXP_OUT_1 = "Number of trials: 3/3 (2 PENDING, 1 RUNNING)"
 VERBOSE_EXP_OUT_2 = "Number of trials: 3/3 (3 TERMINATED)"
 
-VERBOSE_TRIAL_NORM = (
-    "Trial train_xxxxx_00000 reported acc=5 with "
-    + """parameters={'do': 'complete'}. This trial completed.
+VERBOSE_TRIAL_NORM_1 = (
+    "Trial train_xxxxx_00000 reported acc=5 "
+    "with parameters={'do': 'complete'}. This trial completed.\n"
+)
+
+VERBOSE_TRIAL_NORM_2 = """
 Trial train_xxxxx_00001 reported _metric=6 with parameters={'do': 'once'}.
 Trial train_xxxxx_00001 completed. Last result: _metric=6
+"""
+
+VERBOSE_TRIAL_NORM_3 = """
 Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.
-Trial train_xxxxx_00002 reported acc=8 with parameters={'do': 'twice'}. """
-    + "This trial completed."
+"""
+
+VERBOSE_TRIAL_NORM_4 = (
+    "Trial train_xxxxx_00002 reported acc=8 "
+    "with parameters={'do': 'twice'}. This trial completed.\n"
 )
 
 VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+----------+
@@ -254,7 +262,7 @@ VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
-from ray.tune.trial import Location
+from ray.tune.experiment.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -262,7 +270,7 @@ from unittest.mock import patch
 def mock_get_trial_location(trial, result):
     location = _get_trial_location(trial, result)
     if location.pid:
-        return Location("123.123.123.123", "1")
+        return _Location("123.123.123.123", "1")
     return location
 
 
@@ -587,6 +595,7 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
+                assert "(raylet)" not in output, "Unexpected raylet log messages"
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
@@ -604,7 +613,10 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 self.assertNotIn(VERBOSE_EXP_OUT_1, output)
                 self.assertNotIn(VERBOSE_EXP_OUT_2, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -617,7 +629,10 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -630,7 +645,10 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
-                self.assertIn(VERBOSE_TRIAL_NORM, output)
+                self.assertIn(VERBOSE_TRIAL_NORM_1, output)
+                self.assertIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIn(VERBOSE_TRIAL_NORM_3, output)
+                self.assertIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -643,7 +661,10 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -663,6 +684,35 @@ class ProgressReporterTest(unittest.TestCase):
             reporter = detect_reporter()
             self.assertFalse(isinstance(reporter, CLIReporter))
             self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
+
+    def testProgressReporterAPI(self):
+        class CustomReporter(ProgressReporter):
+            def should_report(self, trials, done=False):
+                return True
+
+            def report(self, trials, done, *sys_info):
+                pass
+
+        tune.run(lambda config: 2, num_samples=1, progress_reporter=CustomReporter())
+
+    def testMaxLen(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            t.status = "TERMINATED"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"verylong" * 20: i}
+            t.evaluated_params = {"verylong" * 20: i}
+            t.last_result = {"some_metric": "evenlonger" * 100}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+
+        progress_str = trial_progress_str(
+            trials, metric_columns=["some_metric"], force_table=True
+        )
+        assert any(len(row) <= 90 for row in progress_str.split("\n"))
 
 
 if __name__ == "__main__":

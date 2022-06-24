@@ -3,15 +3,12 @@ import logging
 import os
 import re
 import time
-from typing import Any
-from typing import Dict
-from typing import Iterator
-from typing import List
+from typing import Any, Dict, Iterator, List
 
-from kubernetes.watch import Watch
 from kubernetes.client.rest import ApiException
+from kubernetes.watch import Watch
 
-from ray import ray_constants
+from ray._private import ray_constants
 from ray.autoscaler._private._kubernetes import custom_objects_api
 from ray.autoscaler._private._kubernetes.node_provider import head_service_selector
 from ray.autoscaler._private.providers import _get_default_config
@@ -259,7 +256,7 @@ def set_status(cluster_name: str, cluster_namespace: str, status: str) -> None:
         except ApiException as e:
             if e.status == 409:
                 logger.info(
-                    "Caught a 409 error while setting" " RayCluster status. Retrying..."
+                    "Caught a 409 error while setting RayCluster status. Retrying..."
                 )
                 time.sleep(DELAY_BEFORE_STATUS_RETRY)
                 continue

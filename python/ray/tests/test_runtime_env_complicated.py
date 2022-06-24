@@ -6,7 +6,7 @@ import sys
 import tempfile
 import time
 from typing import List
-from unittest import mock, skipIf
+from unittest import mock
 import yaml
 
 import ray
@@ -38,9 +38,11 @@ if not os.environ.get("CI"):
 
 REQUEST_VERSIONS = ["2.2.0", "2.3.0"]
 
+_WIN32 = os.name == "nt"
+
 
 @pytest.fixture(scope="session")
-def conda_envs():
+def conda_envs(tmp_path_factory):
     """Creates two conda env with different requests versions."""
     conda_path = get_conda_bin_executable("conda")
     init_cmd = f". {os.path.dirname(conda_path)}" f"/../etc/profile.d/conda.sh"
@@ -50,34 +52,58 @@ def conda_envs():
 
     def create_package_env(env_name, package_version: str):
         delete_env(env_name)
-        subprocess.run(
-            ["conda", "create", "-n", env_name, "-y", f"python={_current_py_version()}"]
+        proc = subprocess.run(
+            [
+                "conda",
+                "create",
+                "-n",
+                env_name,
+                "-y",
+                f"python={_current_py_version()}",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
+        if proc.returncode != 0:
+            print("conda create failed, returned %d" % proc.returncode)
+            print(proc.stdout.decode())
+            print(proc.stderr.decode())
+            assert False
 
         _inject_ray_to_conda_site(get_conda_env_dir(env_name))
         ray_deps: List[str] = _resolve_install_from_source_ray_dependencies()
         ray_deps.append(f"requests=={package_version}")
-        with tempfile.NamedTemporaryFile("w") as f:
-            f.writelines([line + "\n" for line in ray_deps])
-            f.flush()
 
-            commands = [
-                init_cmd,
-                f"conda activate {env_name}",
-                f"python -m pip install -r {f.name}",
-                "conda deactivate",
-            ]
-            proc = subprocess.run(
-                [" && ".join(commands)],
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            if proc.returncode != 0:
-                print("pip install failed")
-                print(proc.stdout.decode())
-                print(proc.stderr.decode())
-                assert False
+        reqs = tmp_path_factory.mktemp("reqs") / "requirements.txt"
+        with reqs.open("wt") as fid:
+            for line in ray_deps:
+                fid.write(line)
+                fid.write("\n")
+
+        commands = [
+            f"conda activate {env_name}",
+            f"python -m pip install -r {str(reqs)}",
+            "conda deactivate",
+        ]
+        if _WIN32:
+            # as a string
+            command = " && ".join(commands)
+        else:
+            commands.insert(0, init_cmd)
+            # as a list
+            command = [" && ".join(commands)]
+        proc = subprocess.run(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if proc.returncode != 0:
+            print("conda/pip install failed, returned %d" % proc.returncode)
+            print("command", command)
+            print(proc.stdout.decode())
+            print(proc.stderr.decode())
+            assert False
 
     for package_version in REQUEST_VERSIONS:
         create_package_env(
@@ -155,10 +181,6 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs, call_ray_start)
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_task_actor_conda_env(conda_envs, shutdown_only):
     ray.init()
 
@@ -196,10 +218,6 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_job_config_conda_env(conda_envs, shutdown_only):
     for package_version in REQUEST_VERSIONS:
         runtime_env = {"conda": f"package-{package_version}"}
@@ -225,7 +243,10 @@ def test_job_eager_install(shutdown_only, runtime_env_class):
     wait_for_condition(lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
     ray.shutdown()
     # Test disable eager install
-    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": False}
+    runtime_env = {
+        "conda": {"dependencies": ["toolz"]},
+        "config": {"eager_install": False},
+    }
     ray.init(runtime_env=runtime_env_class(**runtime_env))
     with pytest.raises(RuntimeError):
         wait_for_condition(
@@ -233,7 +254,10 @@ def test_job_eager_install(shutdown_only, runtime_env_class):
         )
     ray.shutdown()
     # Test unavailable type
-    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
+    runtime_env = {
+        "conda": {"dependencies": ["toolz"]},
+        "config": {"eager_install": 123},
+    }
     with pytest.raises(TypeError):
         ray.init(runtime_env=runtime_env_class(**runtime_env))
     ray.shutdown()
@@ -276,11 +300,12 @@ def test_get_conda_env_dir(tmp_path):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
+    os.environ.get("CONDA_EXE") is None,
+    reason="Requires properly set-up conda shell",
 )
 def test_conda_create_task(shutdown_only):
-    """Tests dynamic creation of a conda env in a task's runtime env."""
+    """Tests dynamic creation of a conda env in a task's runtime env. Assumes
+    `conda init` has been successfully called."""
     ray.init()
     runtime_env = {
         "conda": {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
@@ -304,6 +329,10 @@ def test_conda_create_task(shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
+)
+@pytest.mark.skipif(
+    os.environ.get("CONDA_EXE") is None,
+    reason="Requires properly set-up conda shell",
 )
 def test_conda_create_job_config(shutdown_only):
     """Tests dynamic conda env creation in a runtime env in the JobConfig."""
@@ -398,10 +427,6 @@ def test_conda_create_ray_client(call_ray_start):
             ray.get(f.remote())
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.parametrize("pip_as_str", [True, False])
 def test_pip_task(shutdown_only, pip_as_str, tmp_path):
     """Tests pip installs in the runtime env specified in f.options()."""
@@ -499,7 +524,10 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
     assert ray.get(f.remote())
 
 
-@skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="dirname(__file__) returns an invalid path",
+)
 def test_experimental_package(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(
@@ -513,7 +541,10 @@ def test_experimental_package(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
-@skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="dirname(__file__) returns an invalid path",
+)
 def test_experimental_package_lazy(shutdown_only):
     pkg = ray.experimental.load_package(
         os.path.join(
@@ -527,7 +558,7 @@ def test_experimental_package_lazy(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
-@skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(_WIN32, reason="requires tar cli command")
 def test_experimental_package_github(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(
@@ -539,6 +570,7 @@ def test_experimental_package_github(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
+@pytest.mark.skipif(_WIN32, reason="Fails on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
@@ -587,6 +619,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
             assert ray.get(f.remote())
 
 
+@pytest.mark.skipif(_WIN32, reason="Hangs on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
@@ -727,12 +760,12 @@ def test_simultaneous_install(shutdown_only):
     # installed concurrently, leading to errors:
     # https://github.com/ray-project/ray/issues/17086
     # Now we use a global lock, so the envs are installed sequentially.
-    worker_1 = VersionWorker.options(runtime_env={"pip": ["requests==2.2.0"]}).remote(
-        key=1
-    )
-    worker_2 = VersionWorker.options(runtime_env={"pip": ["requests==2.3.0"]}).remote(
-        key=2
-    )
+    worker_1 = VersionWorker.options(
+        runtime_env={"pip": {"packages": ["requests==2.2.0"], "pip_check": False}}
+    ).remote(key=1)
+    worker_2 = VersionWorker.options(
+        runtime_env={"pip": {"packages": ["requests==2.3.0"], "pip_check": False}}
+    ).remote(key=2)
 
     assert ray.get(worker_1.get.remote()) == (1, "2.2.0")
     assert ray.get(worker_2.get.remote()) == (2, "2.3.0")
@@ -741,13 +774,14 @@ def test_simultaneous_install(shutdown_only):
 CLIENT_SERVER_PORT = 24001
 
 
+@pytest.mark.skipif(_WIN32, reason="Fails on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    [f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT}" " --port 0"],
+    [f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT} --port 0"],
     indirect=True,
 )
 def test_e2e_complex(call_ray_start, tmp_path):
@@ -883,6 +917,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         assert ray.get(a.test.remote()) == "Hello"
 
 
+@pytest.mark.skipif(_WIN32, reason="Fails on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
@@ -940,6 +975,7 @@ def test_runtime_env_override(call_ray_start):
         ray.shutdown()
 
 
+@pytest.mark.skipif(_WIN32, reason="RecursionError on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
@@ -1013,4 +1049,7 @@ setup(
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

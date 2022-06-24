@@ -35,7 +35,7 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
     const std::string &ip_address, int port)>
     RuntimeEnvAgentClientFactoryFn;
 
-/// Callback that's callaed after runtime env is created.
+/// Callback that's called after runtime env is created.
 /// \param[in] successful Whether or not the creation was successful.
 /// \param[in] serialized_runtime_env_context Serialized context.
 /// \param[in] setup_error_message The error message if runtime env creation fails.
@@ -43,8 +43,8 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
 typedef std::function<void(bool successful,
                            const std::string &serialized_runtime_env_context,
                            const std::string &setup_error_message)>
-    CreateRuntimeEnvCallback;
-typedef std::function<void(bool successful)> DeleteURIsCallback;
+    GetOrCreateRuntimeEnvCallback;
+typedef std::function<void(bool successful)> DeleteRuntimeEnvIfPossibleCallback;
 
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
@@ -69,18 +69,24 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
                            rpc::RegisterAgentReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Request agent to create a runtime env.
-  /// \param[in] runtime_env The runtime env.
-  virtual void CreateRuntimeEnv(
+  /// Request agent to increase the runtime env reference. This API is not idempotent.
+  /// \param[in] job_id The job id which the runtime env belongs to.
+  /// \param[in] serialized_runtime_env The serialized runtime environment.
+  /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
+  /// instances.
+  /// \param[in] callback The callback function.
+  virtual void GetOrCreateRuntimeEnv(
       const JobID &job_id,
       const std::string &serialized_runtime_env,
+      const rpc::RuntimeEnvConfig &runtime_env_config,
       const std::string &serialized_allocated_resource_instances,
-      CreateRuntimeEnvCallback callback);
+      GetOrCreateRuntimeEnvCallback callback);
 
-  /// Request agent to delete a list of URIs.
-  /// \param[in] URIs The list of URIs to delete.
-  virtual void DeleteURIs(const std::vector<std::string> &uris,
-                          DeleteURIsCallback callback);
+  /// Request agent to decrease the runtime env reference. This API is not idempotent.
+  /// \param[in] serialized_runtime_env The serialized runtime environment.
+  /// \param[in] callback The callback function.
+  virtual void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                          DeleteRuntimeEnvIfPossibleCallback callback);
 
  private:
   void StartAgent();
@@ -89,8 +95,6 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   Options options_;
   pid_t agent_pid_ = 0;
   int agent_port_ = 0;
-  /// The number of times the agent is restarted.
-  std::atomic<uint32_t> agent_restart_count_ = 0;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;
@@ -98,6 +102,9 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
+  /// When the grpc port of agent is invalid, set this flag to indicate that agent client
+  /// is disable.
+  bool disable_agent_client_ = false;
 };
 
 class DefaultAgentManagerServiceHandler : public rpc::AgentManagerServiceHandler {

@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray import workflow
-from ray.experimental.dag import InputNode
+from ray.dag import InputNode
 
 
 def test_dag_to_workflow_execution(workflow_start_regular_shared):
@@ -26,6 +26,9 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
     @ray.remote
     def end(lf, rt, b):
         return f"{lf},{rt};{b}"
+
+    with pytest.raises(TypeError):
+        workflow.create(begin.remote(1, 2, 3))
 
     with InputNode() as dag_input:
         f = begin.bind(2, dag_input[1], a=dag_input.a)
@@ -106,6 +109,104 @@ def test_same_object_many_dags(workflow_start_regular_shared):
     assert ray.get(*result1) == 10
     assert ray.get(*result2) == 10
     assert ray.get(*result3) == 10
+
+
+def test_dereference_object_refs(workflow_start_regular_shared):
+    """Ensure that object refs are dereferenced like in ray tasks."""
+
+    @ray.remote
+    def f(obj_list):
+        assert isinstance(obj_list[0], ray.ObjectRef)
+        assert ray.get(obj_list) == [42]
+
+    @ray.remote
+    def g(x, y):
+        assert x == 314
+        assert isinstance(y[0], ray.ObjectRef)
+        assert ray.get(y) == [2022]
+        return [ray.put(42)]
+
+    @ray.remote
+    def h():
+        return ray.put(2022)
+
+    dag = f.bind(g.bind(x=ray.put(314), y=[ray.put(2022)]))
+
+    # Run with workflow and normal Ray engine.
+    workflow.create(dag).run()
+    ray.get(dag.execute())
+
+
+def test_dereference_dags(workflow_start_regular_shared):
+    """Ensure that DAGs are dereferenced like ObjectRefs in ray tasks."""
+
+    @ray.remote
+    def g(x0, y0, z0, x1, y1, z1):
+        assert x0 == 314
+        assert isinstance(x1[0], ray.ObjectRef)
+        assert ray.get(x1) == [314]
+
+        assert isinstance(y0, ray.ObjectRef)
+        assert ray.get(y0) == 271828
+        (y10,) = y1
+        assert isinstance(y10, ray.ObjectRef)
+        assert isinstance(ray.get(y10), ray.ObjectRef)
+        assert ray.get(ray.get(y10)) == 271828
+
+        assert z0 == 46692
+        assert isinstance(z1[0], ray.ObjectRef)
+        assert ray.get(z1) == [46692]
+
+        return "ok"
+
+    @ray.remote
+    def h(x):
+        return x
+
+    @ray.remote
+    def nested(x):
+        return h.bind(x).execute()
+
+    @ray.remote
+    def nested_continuation(x):
+        return workflow.continuation(h.bind(x))
+
+    dag = g.bind(
+        x0=h.bind(314),
+        y0=nested.bind(271828),
+        z0=nested_continuation.bind(46692),
+        x1=[h.bind(314)],
+        y1=[nested.bind(271828)],
+        z1=[nested_continuation.bind(46692)],
+    )
+
+    # Run with workflow and normal Ray engine.
+    assert workflow.create(dag).run() == "ok"
+    assert ray.get(dag.execute()) == "ok"
+
+
+def test_workflow_continuation(workflow_start_regular_shared):
+    """Test unified behavior of returning continuation inside
+    workflow and default Ray execution engine."""
+
+    @ray.remote
+    def h(a, b):
+        return a + b
+
+    @ray.remote
+    def g(x):
+        return workflow.continuation(h.bind(42, x))
+
+    @ray.remote
+    def f():
+        return workflow.continuation(g.bind(1))
+
+    with pytest.raises(TypeError):
+        workflow.continuation(f.remote())
+
+    dag = f.bind()
+    assert ray.get(dag.execute()) == 43
+    assert workflow.create(dag).run() == 43
 
 
 if __name__ == "__main__":

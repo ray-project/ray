@@ -81,6 +81,28 @@ class LoggerSuite(unittest.TestCase):
         logger.on_trial_complete(3, [], t)
         self._validate_csv_result()
 
+    def testCSVEmptyHeader(self):
+        """Test that starting a trial twice does not lead to empty CSV headers.
+
+        In a previous bug, the CSV header was sometimes missing when a trial
+        crashed before reporting results. See
+        https://github.com/ray-project/ray/issues/15106
+        """
+        config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
+        t = Trial(evaluated_params=config, trial_id="csv", logdir=self.test_dir)
+        logger = CSVLoggerCallback()
+        logger.on_trial_start(0, [], t)
+        logger.on_trial_start(0, [], t)
+        logger.on_trial_result(1, [], t, result(1, 5))
+
+        with open(os.path.join(self.test_dir, "progress.csv"), "rt") as f:
+            csv_contents = f.read()
+
+        csv_lines = csv_contents.split("\n")
+
+        # Assert header has been written to progress.csv
+        assert "training_iteration" in csv_lines[0]
+
     def _validate_csv_result(self):
         results = []
         result_file = os.path.join(self.test_dir, EXPR_PROGRESS_FILE)

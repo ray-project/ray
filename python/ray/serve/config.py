@@ -1,5 +1,5 @@
 import inspect
-import pickle
+import json
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -14,7 +14,7 @@ from pydantic import (
     validator,
 )
 
-from ray import cloudpickle as cloudpickle
+from ray import cloudpickle
 from ray.serve.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -27,7 +27,10 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
     AutoscalingConfig as AutoscalingConfigProto,
+    ReplicaConfig as ReplicaConfigProto,
 )
+from ray._private import ray_option_utils
+from ray._private.utils import resources_from_ray_options
 
 
 class AutoscalingConfig(BaseModel):
@@ -105,7 +108,7 @@ class DeploymentConfig(BaseModel):
             replica's health check before marking it unhealthy.
     """
 
-    num_replicas: PositiveInt = 1
+    num_replicas: NonNegativeInt = 1
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
 
@@ -129,6 +132,9 @@ class DeploymentConfig(BaseModel):
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
+    version: Optional[str] = None
+    prev_version: Optional[str] = None
+
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -144,19 +150,21 @@ class DeploymentConfig(BaseModel):
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
-    def to_proto_bytes(self):
+    def to_proto(self):
         data = self.dict()
         if data.get("user_config"):
-            data["user_config"] = pickle.dumps(data["user_config"])
+            data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
-        return DeploymentConfigProto(**data).SerializeToString()
+        return DeploymentConfigProto(**data)
+
+    def to_proto_bytes(self):
+        return self.to_proto().SerializeToString()
 
     @classmethod
-    def from_proto_bytes(cls, proto_bytes: bytes):
-        proto = DeploymentConfigProto.FromString(proto_bytes)
+    def from_proto(cls, proto: DeploymentConfigProto):
         data = MessageToDict(
             proto,
             including_default_value_fields=True,
@@ -165,125 +173,283 @@ class DeploymentConfig(BaseModel):
         )
         if "user_config" in data:
             if data["user_config"] != "":
-                data["user_config"] = pickle.loads(proto.user_config)
+                data["user_config"] = cloudpickle.loads(proto.user_config)
             else:
                 data["user_config"] = None
         if "autoscaling_config" in data:
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
-
+        if "prev_version" in data:
+            if data["prev_version"] == "":
+                data["prev_version"] = None
+        if "version" in data:
+            if data["version"] == "":
+                data["version"] = None
         return cls(**data)
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = DeploymentConfigProto.FromString(proto_bytes)
+        return cls.from_proto(proto)
+
+    @classmethod
+    def from_default(cls, ignore_none: bool = False, **kwargs):
+        """Creates a default DeploymentConfig and overrides it with kwargs.
+
+        Only accepts the same keywords as the class. Passing in any other
+        keyword raises a ValueError.
+
+        Args:
+            ignore_none: When True, any valid keywords with value None
+                are ignored, and their values stay default. Invalid keywords
+                still raise a TypeError.
+
+        Raises:
+            TypeError: when a keyword that's not an argument to the class is
+                passed in.
+        """
+
+        config = cls()
+        valid_config_options = set(config.dict().keys())
+
+        # Friendly error if a non-DeploymentConfig kwarg was passed in
+        for key, val in kwargs.items():
+            if key not in valid_config_options:
+                raise TypeError(
+                    f'Got invalid Deployment config option "{key}" '
+                    f"(with value {val}) as keyword argument. All Deployment "
+                    "config options must come from this list: "
+                    f"{list(valid_config_options)}."
+                )
+
+        if ignore_none:
+            kwargs = {key: val for key, val in kwargs.items() if val is not None}
+
+        for key, val in kwargs.items():
+            config.__setattr__(key, val)
+
+        return config
 
 
 class ReplicaConfig:
+    """Configuration for a deployment's replicas.
+
+    Provides five main properties (see property docstrings for more info):
+        deployment_def: the code, or a reference to the code, that this
+            replica should run.
+        init_args: the deployment_def's init_args.
+        init_kwargs: the deployment_def's init_kwargs.
+        ray_actor_options: the Ray actor options to pass into the replica's
+            actor.
+        resource_dict: contains info on this replica's actor's resource needs.
+
+    Offers a serialized equivalent (e.g. serialized_deployment_def) for
+    deployment_def, init_args, and init_kwargs. Deserializes these properties
+    when they're first accessed, if they were not passed in directly through
+    create().
+
+    Use the classmethod create() to make a ReplicaConfig with the deserialized
+    properties.
+
+    Note: overwriting or setting any property after the ReplicaConfig has been
+    constructed is currently undefined behavior. The config's fields should not
+    be modified externally after it is created.
+    """
+
     def __init__(
         self,
+        deployment_def_name: str,
+        serialized_deployment_def: bytes,
+        serialized_init_args: bytes,
+        serialized_init_kwargs: bytes,
+        ray_actor_options: Dict,
+    ):
+        """Construct a ReplicaConfig with serialized properties.
+
+        All parameters are required. See classmethod create() for defaults.
+        """
+        self.deployment_def_name = deployment_def_name
+
+        # Store serialized versions of code properties.
+        self.serialized_deployment_def = serialized_deployment_def
+        self.serialized_init_args = serialized_init_args
+        self.serialized_init_kwargs = serialized_init_kwargs
+
+        # Deserialize properties when first accessed. See @property methods.
+        self._deployment_def = None
+        self._init_args = None
+        self._init_kwargs = None
+
+        # Configure ray_actor_options. These are the Ray options ultimately
+        # passed into the replica's actor when it's created.
+        self.ray_actor_options = ray_actor_options
+        self._validate_ray_actor_options()
+
+        # Create resource_dict. This contains info about the replica's resource
+        # needs. It does NOT set the replica's resource usage. That's done by
+        # the ray_actor_options.
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
+
+    @classmethod
+    def create(
+        cls,
         deployment_def: Union[Callable, str],
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
-        ray_actor_options=None,
+        ray_actor_options: Optional[Dict] = None,
+        deployment_def_name: Optional[str] = None,
     ):
-        # Validate that deployment_def is an import path, function, or class.
-        self.import_path = None
-        if isinstance(deployment_def, str):
-            self.func_or_class_name = deployment_def
-            self.import_path = deployment_def
-        elif inspect.isfunction(deployment_def):
-            self.func_or_class_name = deployment_def.__name__
+        """Create a ReplicaConfig from deserialized parameters."""
+
+        if inspect.isfunction(deployment_def):
             if init_args:
                 raise ValueError("init_args not supported for function deployments.")
-            if init_kwargs:
+            elif init_kwargs:
                 raise ValueError("init_kwargs not supported for function deployments.")
-        elif inspect.isclass(deployment_def):
-            self.func_or_class_name = deployment_def.__name__
-        else:
+
+        if not isinstance(deployment_def, (Callable, str)):
             raise TypeError(
-                "Deployment must be a function or class, it is {}.".format(
-                    type(deployment_def)
-                )
+                f'Got invalid type "{type(deployment_def)}" for '
+                "deployment_def. Expected deployment_def to be a "
+                "class, function, or string."
             )
 
-        self.serialized_deployment_def = cloudpickle.dumps(deployment_def)
-        self.init_args = init_args if init_args is not None else ()
-        self.init_kwargs = init_kwargs if init_kwargs is not None else {}
+        # Set defaults
+        if init_args is None:
+            init_args = ()
+        if init_kwargs is None:
+            init_kwargs = {}
         if ray_actor_options is None:
-            self.ray_actor_options = {}
-        else:
-            self.ray_actor_options = ray_actor_options
+            ray_actor_options = {}
+        if deployment_def_name is None:
+            if isinstance(deployment_def, str):
+                deployment_def_name = deployment_def
+            else:
+                deployment_def_name = deployment_def.__name__
 
-        self.resource_dict = {}
-        self._validate()
+        config = cls(
+            deployment_def_name,
+            cloudpickle.dumps(deployment_def),
+            cloudpickle.dumps(init_args),
+            cloudpickle.dumps(init_kwargs),
+            ray_actor_options,
+        )
 
-    def _validate(self):
+        config._deployment_def = deployment_def
+        config._init_args = init_args
+        config._init_kwargs = init_kwargs
+
+        return config
+
+    def _validate_ray_actor_options(self) -> None:
+
         if not isinstance(self.ray_actor_options, dict):
-            raise TypeError("ray_actor_options must be a dictionary.")
+            raise TypeError(
+                f'Got invalid type "{type(self.ray_actor_options)}" for '
+                "ray_actor_options. Expected a dictionary."
+            )
 
-        disallowed_ray_actor_options = {
-            "args",
-            "kwargs",
-            "max_concurrency",
-            "max_restarts",
-            "max_task_retries",
-            "name",
-            "namespace",
-            "lifetime",
-            "placement_group",
-            "placement_group_bundle_index",
-            "placement_group_capture_child_tasks",
-            "max_pending_calls",
-            "scheduling_strategy",
+        allowed_ray_actor_options = {
+            # Resource options
+            "accelerator_type",
+            "memory",
+            "num_cpus",
+            "num_gpus",
+            "object_store_memory",
+            "resources",
+            # Other options
+            "runtime_env",
         }
 
-        for option in disallowed_ray_actor_options:
-            if option in self.ray_actor_options:
+        for option in self.ray_actor_options:
+            if option not in allowed_ray_actor_options:
                 raise ValueError(
-                    f"Specifying {option} in ray_actor_options is not allowed."
+                    f"Specifying '{option}' in ray_actor_options is not allowed. "
+                    f"Allowed options: {allowed_ray_actor_options}"
                 )
+        ray_option_utils.validate_actor_options(self.ray_actor_options, in_options=True)
 
-        # Ray defaults to zero CPUs for placement, we default to one here.
-        if self.ray_actor_options.get("num_cpus", None) is None:
+        # Set Serve replica defaults
+        if self.ray_actor_options.get("num_cpus") is None:
             self.ray_actor_options["num_cpus"] = 1
-        num_cpus = self.ray_actor_options["num_cpus"]
-        if not isinstance(num_cpus, (int, float)):
-            raise TypeError("num_cpus in ray_actor_options must be an int or a float.")
-        elif num_cpus < 0:
-            raise ValueError("num_cpus in ray_actor_options must be >= 0.")
-        self.resource_dict["CPU"] = num_cpus
 
-        if self.ray_actor_options.get("num_gpus", None) is None:
-            self.ray_actor_options["num_gpus"] = 0
-        num_gpus = self.ray_actor_options["num_gpus"]
-        if not isinstance(num_gpus, (int, float)):
-            raise TypeError("num_gpus in ray_actor_options must be an int or a float.")
-        elif num_gpus < 0:
-            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-        self.resource_dict["GPU"] = num_gpus
+    @property
+    def deployment_def(self) -> Union[Callable, str]:
+        """The code, or a reference to the code, that this replica runs.
 
-        if self.ray_actor_options.get("memory", None) is None:
-            self.ray_actor_options["memory"] = 0
-        memory = self.ray_actor_options["memory"]
-        if not isinstance(memory, (int, float)):
-            raise TypeError("memory in ray_actor_options must be an int or a float.")
-        elif memory < 0:
-            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-        self.resource_dict["memory"] = memory
+        For Python replicas, this can be one of the following:
+            - Function (Callable)
+            - Class (Callable)
+            - Import path (str)
 
-        if self.ray_actor_options.get("object_store_memory", None) is None:
-            self.ray_actor_options["object_store_memory"] = 0
-        object_store_memory = self.ray_actor_options["object_store_memory"]
-        if not isinstance(object_store_memory, (int, float)):
-            raise TypeError(
-                "object_store_memory in ray_actor_options must be an int or a float."
-            )
-        elif object_store_memory < 0:
-            raise ValueError("object_store_memory in ray_actor_options must be >= 0.")
-        self.resource_dict["object_store_memory"] = object_store_memory
+        For Java replicas, this can be one of the following:
+            - Class path (str)
+        """
+        if self._deployment_def is None:
+            self._deployment_def = cloudpickle.loads(self.serialized_deployment_def)
 
-        if self.ray_actor_options.get("resources", None) is None:
-            self.ray_actor_options["resources"] = {}
-        custom_resources = self.ray_actor_options["resources"]
-        if not isinstance(custom_resources, dict):
-            raise TypeError("resources in ray_actor_options must be a dictionary.")
-        self.resource_dict.update(custom_resources)
+        return self._deployment_def
+
+    @property
+    def init_args(self) -> Optional[Tuple[Any]]:
+        """The init_args for a Python class.
+
+        This property is only meaningful if deployment_def is a Python class.
+        Otherwise, it is None.
+        """
+        if self._init_args is None:
+            self._init_args = cloudpickle.loads(self.serialized_init_args)
+
+        return self._init_args
+
+    @property
+    def init_kwargs(self) -> Optional[Tuple[Any]]:
+        """The init_kwargs for a Python class.
+
+        This property is only meaningful if deployment_def is a Python class.
+        Otherwise, it is None.
+        """
+
+        if self._init_kwargs is None:
+            self._init_kwargs = cloudpickle.loads(self.serialized_init_kwargs)
+
+        return self._init_kwargs
+
+    @classmethod
+    def from_proto(
+        cls, proto: ReplicaConfigProto, deployment_language: DeploymentLanguage
+    ):
+        if deployment_language == DeploymentLanguage.PYTHON:
+            deployment_def = proto.deployment_def
+        else:
+            # TODO use messagepack
+            deployment_def = proto.deployment_def
+
+        return ReplicaConfig(
+            proto.deployment_def_name,
+            deployment_def,
+            proto.init_args,
+            proto.init_kwargs,
+            json.loads(proto.ray_actor_options),
+        )
+
+    @classmethod
+    def from_proto_bytes(
+        cls, proto_bytes: bytes, deployment_language: DeploymentLanguage
+    ):
+        proto = ReplicaConfigProto.FromString(proto_bytes)
+        return cls.from_proto(proto, deployment_language)
+
+    def to_proto(self):
+        return ReplicaConfigProto(
+            deployment_def_name=self.deployment_def_name,
+            deployment_def=self.serialized_deployment_def,
+            init_args=self.serialized_init_args,
+            init_kwargs=self.serialized_init_kwargs,
+            ray_actor_options=json.dumps(self.ray_actor_options),
+        )
+
+    def to_proto_bytes(self):
+        return self.to_proto().SerializeToString()
 
 
 class DeploymentMode(str, Enum):

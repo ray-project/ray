@@ -68,6 +68,7 @@ bool NormalSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
        it != pending_normal_tasks_.rend();
        ++it) {
     if (it->TaskID() == task_id) {
+      it->Cancel();
       pending_normal_tasks_.erase(std::next(it).base());
       return true;
     }

@@ -30,6 +30,8 @@ struct WorkerThreadContext {
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
 
+  uint64_t GetTaskIndex() { return task_index_; }
+
   /// Returns the next put object index. The index starts at the number of
   /// return values for the current task in order to keep the put indices from
   /// conflicting with return object indices. 1 <= idx <= NumReturns() is reserved for
@@ -163,6 +165,8 @@ const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
 uint64_t WorkerContext::GetNextTaskIndex() {
   return GetThreadContext().GetNextTaskIndex();
 }
+
+uint64_t WorkerContext::GetTaskIndex() { return GetThreadContext().GetTaskIndex(); }
 
 ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();

@@ -71,6 +71,7 @@ ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
 
 PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
                          IAllocator &allocator,
+                         ray::FileSystemMonitor &fs_monitor,
                          const std::string &socket_name,
                          uint32_t delay_on_oom_ms,
                          float object_spilling_threshold,
@@ -83,12 +84,14 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service),
       allocator_(allocator),
+      fs_monitor_(fs_monitor),
       add_object_callback_(add_object_callback),
       delete_object_callback_(delete_object_callback),
       object_lifecycle_mgr_(allocator_, delete_object_callback_),
       delay_on_oom_ms_(delay_on_oom_ms),
       object_spilling_threshold_(object_spilling_threshold),
       create_request_queue_(
+          fs_monitor_,
           /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
           spill_objects_callback,
           object_store_full_callback,
@@ -321,7 +324,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   client->Close();
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
-  std::unordered_map<ObjectID, const LocalObject *> sealed_objects;
+  absl::flat_hash_map<ObjectID, const LocalObject *> sealed_objects;
   auto &object_ids = client->GetObjectIDs();
   for (const auto &object_id : object_ids) {
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
@@ -342,8 +345,8 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   /// Remove all of the client's GetRequests.
   get_request_queue_.RemoveGetRequestsForClient(client);
 
-  for (const auto &entry : sealed_objects) {
-    RemoveFromClientObjectIds(entry.first, client);
+  for (const auto &[object_id, _] : sealed_objects) {
+    RemoveFromClientObjectIds(object_id, client);
   }
 
   create_request_queue_.RemoveDisconnectedClientRequests(client);

@@ -157,10 +157,11 @@ raylet::RayletClient::RayletClient(
 }
 
 Status raylet::RayletClient::Disconnect(
-    rpc::WorkerExitType exit_type,
+    const rpc::WorkerExitType &exit_type,
+    const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "RayletClient::Disconnect, exit_type="
-                << rpc::WorkerExitType_Name(exit_type)
+                << rpc::WorkerExitType_Name(exit_type) << ", exit_detail=" << exit_detail
                 << ", has creation_task_exception_pb_bytes="
                 << (creation_task_exception_pb_bytes != nullptr);
   flatbuffers::FlatBufferBuilder fbb;
@@ -171,12 +172,14 @@ Status raylet::RayletClient::Disconnect(
         fbb.CreateVector(creation_task_exception_pb_bytes->Data(),
                          creation_task_exception_pb_bytes->Size());
   }
+  const auto &fb_exit_detail = fbb.CreateString(exit_detail);
   protocol::DisconnectClientBuilder builder(fbb);
   // Add to table builder here to avoid nested construction of flatbuffers
   if (creation_task_exception_pb_bytes != nullptr) {
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
   builder.add_disconnect_type(static_cast<int>(exit_type));
+  builder.add_disconnect_detail(fb_exit_detail);
   fbb.Finish(builder.Finish());
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
@@ -345,6 +348,10 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
+std::shared_ptr<grpc::Channel> raylet::RayletClient::GetChannel() const {
+  return grpc_client_->Channel();
+}
+
 void raylet::RayletClient::ReportWorkerBacklog(
     const WorkerID &worker_id,
     const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
@@ -507,6 +514,18 @@ void raylet::RayletClient::RequestResourceReport(
   grpc_client_->RequestResourceReport(request, callback);
 }
 
+void raylet::RayletClient::GetResourceLoad(
+    const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) {
+  rpc::GetResourceLoadRequest request;
+  grpc_client_->GetResourceLoad(request, callback);
+}
+
+void raylet::RayletClient::NotifyGCSRestart(
+    const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) {
+  rpc::NotifyGCSRestartRequest request;
+  grpc_client_->NotifyGCSRestart(request, callback);
+}
+
 void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
                                              const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
@@ -521,12 +540,6 @@ void raylet::RayletClient::GetSystemConfig(
     const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) {
   rpc::GetSystemConfigRequest request;
   grpc_client_->GetSystemConfig(request, callback);
-}
-
-void raylet::RayletClient::GetGcsServerAddress(
-    const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) {
-  rpc::GetGcsServerAddressRequest request;
-  grpc_client_->GetGcsServerAddress(request, callback);
 }
 
 }  // namespace ray

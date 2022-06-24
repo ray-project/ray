@@ -7,17 +7,17 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
+
 import ray
+from ray._private.external_storage import create_url_with_offset, parse_url_with_offset
+from ray._private.internal_api import memory_summary
+from ray._private.test_utils import wait_for_condition
+from ray._raylet import GcsClientOptions
 from ray.tests.conftest import (
-    file_system_object_spilling_config,
     buffer_object_spilling_config,
+    file_system_object_spilling_config,
     mock_distributed_fs_object_spilling_config,
 )
-from ray.external_storage import create_url_with_offset, parse_url_with_offset
-from ray._private.gcs_utils import use_gcs_for_bootstrap
-from ray._private.test_utils import wait_for_condition
-from ray.internal.internal_api import memory_summary
-from ray._raylet import GcsClientOptions
 
 
 def run_basic_workload():
@@ -28,7 +28,9 @@ def run_basic_workload():
     ray.get(ray.put(arr))
 
 
-def is_dir_empty(temp_folder, append_path=ray.ray_constants.DEFAULT_OBJECT_PREFIX):
+def is_dir_empty(
+    temp_folder, append_path=ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
+):
     # append_path is used because the file based spilling will append
     # new directory path.
     num_files = 0
@@ -41,13 +43,8 @@ def is_dir_empty(temp_folder, append_path=ray.ray_constants.DEFAULT_OBJECT_PREFI
 
 
 def assert_no_thrashing(address):
-    state = ray.state.GlobalState()
-    if use_gcs_for_bootstrap():
-        options = GcsClientOptions.from_gcs_address(address)
-    else:
-        options = GcsClientOptions.from_redis_address(
-            address, ray.ray_constants.REDIS_DEFAULT_PASSWORD
-        )
+    state = ray._private.state.GlobalState()
+    options = GcsClientOptions.from_gcs_address(address)
     state._initialize_global_state(options)
     summary = memory_summary(address=address, stats_only=True)
     restored_bytes = 0
@@ -109,9 +106,14 @@ def test_url_generation_and_parse():
 def test_default_config(shutdown_only):
     ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
     # Make sure the object spilling configuration is properly set.
-    config = json.loads(ray.worker._global_node._config["object_spilling_config"])
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
     assert config["type"] == "filesystem"
-    assert config["params"]["directory_path"] == ray.worker._global_node._session_dir
+    assert (
+        config["params"]["directory_path"]
+        == ray._private.worker._global_node._session_dir
+    )
     # Make sure the basic workload can succeed.
     run_basic_workload()
     ray.shutdown()
@@ -125,7 +127,7 @@ def test_default_config(shutdown_only):
             "object_store_full_delay_ms": 100,
         },
     )
-    assert "object_spilling_config" not in ray.worker._global_node._config
+    assert "object_spilling_config" not in ray._private.worker._global_node._config
     run_basic_workload()
     ray.shutdown()
 
@@ -138,7 +140,9 @@ def test_default_config(shutdown_only):
             )
         },
     )
-    config = json.loads(ray.worker._global_node._config["object_spilling_config"])
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
     assert config["type"] == "mock_distributed_fs"
 
 
@@ -149,7 +153,9 @@ def test_default_config_buffering(shutdown_only):
             "object_spilling_config": (json.dumps(buffer_object_spilling_config))
         },
     )
-    config = json.loads(ray.worker._global_node._config["object_spilling_config"])
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
     assert config["type"] == buffer_object_spilling_config["type"]
     assert (
         config["params"]["buffer_size"]
@@ -248,9 +254,10 @@ def test_spill_remote_object(
     assert_no_thrashing(cluster.address)
 
 
-def test_spill_objects_automatically(object_spilling_config, shutdown_only):
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
+def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    object_spilling_config, _ = object_spilling_config
+    object_spilling_config, _ = fs_only_object_spilling_config
     address = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
@@ -473,5 +480,71 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
     assert_no_thrashing(address["address"])
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        {
+            "object_store_memory": 75 * 1024 * 1024,
+            "_system_config": {"max_io_workers": 1},
+        }
+    ],
+    indirect=True,
+)
+def test_spill_worker_failure(ray_start_regular):
+    def run_workload():
+        @ray.remote
+        def f():
+            return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+
+        ids = []
+        for _ in range(5):
+            x = f.remote()
+            ids.append(x)
+        for id in ids:
+            ray.get(id)
+        del ids
+
+    run_workload()
+
+    def get_spill_worker():
+        import psutil
+
+        for proc in psutil.process_iter():
+            try:
+                name = ray._private.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
+                if name in proc.name():
+                    return proc
+                # for macOS
+                if proc.cmdline() and name in proc.cmdline()[0]:
+                    return proc
+                # for Windows
+                if proc.cmdline() and "--worker-type=SPILL_WORKER" in proc.cmdline():
+                    return proc
+            except psutil.AccessDenied:
+                pass
+            except psutil.NoSuchProcess:
+                pass
+
+    # Spilling occurred. Get the PID of the spill worker.
+    spill_worker_proc = get_spill_worker()
+    assert spill_worker_proc
+
+    # Kill the spill worker
+    spill_worker_proc.kill()
+    spill_worker_proc.wait()
+
+    # Now we trigger spilling again
+    run_workload()
+
+    # A new spill worker should be created
+    spill_worker_proc = get_spill_worker()
+    assert spill_worker_proc
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -1,5 +1,8 @@
+import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 import ray
@@ -9,11 +12,13 @@ from ray.tune import TuneError
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.result import DONE
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
+from ray.tune.trainable.util import TrainableUtil
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
 def create_mock_components():
@@ -206,7 +211,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
         runner.step()  # Process result, dispatch save
         runner.step()  # Process save, stop trial
-        kwargs["restore_path"] = trials[0].checkpoint.value
+        kwargs["restore_path"] = trials[0].checkpoint.dir_or_data
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
         runner.add_trial(Trial("__fake", **kwargs))
@@ -219,7 +224,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
-        self.addCleanup(os.remove, trials[0].checkpoint.value)
+        self.addCleanup(os.remove, trials[0].checkpoint.dir_or_data)
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -239,7 +244,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
-        kwargs["restore_path"] = trials[0].checkpoint.value
+        kwargs["restore_path"] = trials[0].checkpoint.dir_or_data
         kwargs.pop("stopping_criterion")
         kwargs.pop("checkpoint_freq")  # No checkpointing for next trial
         runner.add_trial(Trial("__fake", **kwargs))
@@ -258,7 +263,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
-        self.addCleanup(os.remove, trials[0].checkpoint.value)
+        self.addCleanup(os.remove, trials[0].checkpoint.dir_or_data)
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -310,6 +315,93 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.trial_executor.pause_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.PAUSED)
+
+    def testPauseResumeCheckpointCount(self):
+        ray.init(num_cpus=2)
+        tempdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tempdir)
+
+        trial = Trial("__fake", keep_checkpoints_num=2)
+        trial.init_logdir()
+        trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
+
+        def write_checkpoint(trial: Trial, index: int):
+            checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+                trial.logdir, index=index
+            )
+            result = {"training_iteration": index}
+            with open(os.path.join(checkpoint_dir, "cp.json"), "w") as f:
+                json.dump(result, f)
+
+            tune_cp = _TrackedCheckpoint(
+                dir_or_data=checkpoint_dir,
+                storage_mode=CheckpointStorage.PERSISTENT,
+                metrics=result,
+            )
+            trial.saving_to = tune_cp
+
+            return checkpoint_dir
+
+        def get_checkpoint_dirs(trial: Trial):
+            return [d for d in os.listdir(trial.logdir) if d.startswith("checkpoint_")]
+
+        runner = TrialRunner(local_checkpoint_dir=tempdir)
+        runner.add_trial(trial)
+
+        # Write 1 checkpoint
+        result = write_checkpoint(trial, 1)
+        runner._on_saving_result(trial, result)
+
+        # Expect 1 checkpoint
+        cp_dirs = get_checkpoint_dirs(trial)
+        self.assertEqual(len(cp_dirs), 1, msg=f"Checkpoint dirs: {cp_dirs}")
+
+        # Write second checkpoint
+        result = write_checkpoint(trial, 2)
+        runner._on_saving_result(trial, result)
+
+        # Expect 2 checkpoints
+        cp_dirs = get_checkpoint_dirs(trial)
+        self.assertEqual(len(cp_dirs), 2, msg=f"Checkpoint dirs: {cp_dirs}")
+
+        # Write third checkpoint
+        result = write_checkpoint(trial, 3)
+        runner._on_saving_result(trial, result)
+
+        # Expect 2 checkpoints because keep_checkpoints_num = 2
+        cp_dirs = get_checkpoint_dirs(trial)
+        self.assertEqual(len(cp_dirs), 2, msg=f"Checkpoint dirs: {cp_dirs}")
+
+        # Re-instantiate trial runner and resume
+        runner.checkpoint(force=True)
+        runner = TrialRunner(local_checkpoint_dir=tempdir)
+        runner.resume()
+
+        trial = runner.get_trials()[0]
+        trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
+
+        # Write fourth checkpoint
+        result = write_checkpoint(trial, 4)
+        runner._on_saving_result(trial, result)
+
+        # Expect 2 checkpoints because keep_checkpoints_num = 2
+        cp_dirs = get_checkpoint_dirs(trial)
+        self.assertEqual(len(cp_dirs), 2, msg=f"Checkpoint dirs: {cp_dirs}")
+
+        # Write fifth checkpoint
+        result = write_checkpoint(trial, 5)
+        runner._on_saving_result(trial, result)
+
+        # Expect 2 checkpoints because keep_checkpoints_num = 2
+        cp_dirs = get_checkpoint_dirs(trial)
+        self.assertEqual(len(cp_dirs), 2, msg=f"Checkpoint dirs: {cp_dirs}")
+
+        # Checkpoints before restore should be deleted
+        self.assertIn("checkpoint_000004", cp_dirs)
+        self.assertIn("checkpoint_000005", cp_dirs)
+
+        self.assertNotIn("checkpoint_000002", cp_dirs)
+        self.assertNotIn("checkpoint_000003", cp_dirs)
 
 
 if __name__ == "__main__":

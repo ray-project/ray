@@ -2,6 +2,7 @@
     For more information on WheelBandit, see https://arxiv.org/abs/1802.09127 .
 """
 
+import argparse
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
@@ -9,7 +10,7 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+from ray.rllib.algorithms.bandit.bandit import BanditLinTS
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
 
@@ -31,14 +32,26 @@ def plot_model_weights(means, covs, ax):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--framework",
+        choices=["tf2", "torch"],
+        default="torch",
+        help="The DL framework specifier.",
+    )
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+
     ray.init(num_cpus=2)
 
     config = {
         "env": WheelBanditEnv,
+        "framework": args.framework,
+        "eager_tracing": (args.framework == "tf2"),
     }
 
-    # Actual training_iterations will be 10 * timesteps_per_iteration
-    # (100 by default) = 2,000
+    # Actual env steps per `train()` call will be
+    # 10 * `min_sample_timesteps_per_iteration` (100 by default) = 1,000
     training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
@@ -48,7 +61,7 @@ if __name__ == "__main__":
         "BanditLinTS",
         config=config,
         stop={"training_iteration": training_iterations},
-        num_samples=2,
+        num_samples=1,
         checkpoint_at_end=True,
     )
 
@@ -72,8 +85,8 @@ if __name__ == "__main__":
 
     # Restore trainer from checkpoint
     trial = analysis.trials[0]
-    trainer = BanditLinTSTrainer(config=config)
-    trainer.restore(trial.checkpoint.value)
+    trainer = BanditLinTS(config=config)
+    trainer.restore(trial.checkpoint.dir_or_data)
 
     # Get model to plot arm weights distribution
     model = trainer.get_policy().model

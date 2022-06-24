@@ -55,6 +55,7 @@ DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
 
 /// Object Manager.
+DECLARE_stats(object_manager_bytes);
 DECLARE_stats(object_manager_received_chunks);
 
 /// Pull Manager
@@ -65,6 +66,8 @@ DECLARE_stats(pull_manager_requested_bundles);
 DECLARE_stats(pull_manager_requests);
 DECLARE_stats(pull_manager_active_bundles);
 DECLARE_stats(pull_manager_retries_total);
+DECLARE_stats(pull_manager_num_object_pins);
+DECLARE_stats(pull_manager_object_request_time_ms);
 
 /// Push Manager
 DECLARE_stats(push_manager_in_flight_pushes);
@@ -80,6 +83,10 @@ DECLARE_stats(spill_manager_objects);
 DECLARE_stats(spill_manager_objects_bytes);
 DECLARE_stats(spill_manager_request_total);
 DECLARE_stats(spill_manager_throughput_mb);
+
+/// GCS Storage
+DECLARE_stats(gcs_storage_operation_latency_ms);
+DECLARE_stats(gcs_storage_operation_count);
 
 /// GCS Resource Manager
 DECLARE_stats(gcs_new_resource_creation_latency_ms);
@@ -195,10 +202,10 @@ static Sum NumWorkersStarted(
     "The total number of worker processes the worker pool has created.",
     "processes");
 
-static Sum NumSpilledTasks("internal_num_spilled_tasks",
-                           "The cumulative number of lease requeusts that this raylet "
-                           "has spilled to other raylets.",
-                           "tasks");
+static Gauge NumSpilledTasks("internal_num_spilled_tasks",
+                             "The cumulative number of lease requeusts that this raylet "
+                             "has spilled to other raylets.",
+                             "tasks");
 
 static Gauge NumInfeasibleSchedulingClasses(
     "internal_num_infeasible_scheduling_classes",

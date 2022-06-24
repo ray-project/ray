@@ -1,7 +1,10 @@
 import pytest
 import sys
 import os
-from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
+from ray.dashboard.modules.dashboard_sdk import (
+    parse_runtime_env_args,
+    parse_cluster_info,
+)
 
 
 class TestParseRuntimeEnvArgs:
@@ -67,6 +70,25 @@ def test_get_job_submission_client_cluster_info():
     from ray.dashboard.modules.dashboard_sdk import (  # noqa: F401
         get_job_submission_client_cluster_info,
     )
+
+
+def test_parse_cluster_address_validation():
+    """Test that parse_cluster_info validates address schemes."""
+
+    # Check that "auto" is rejected
+    with pytest.raises(ValueError):
+        parse_cluster_info("auto")
+
+    # Check that invalid schemes raise a ValueError
+    invalid_schemes = ["ray"]
+    for scheme in invalid_schemes:
+        with pytest.raises(ValueError):
+            parse_cluster_info(f"{scheme}://localhost:10001")
+
+    # Check that valid schemes are OK
+    valid_schemes = ["http", "https"]
+    for scheme in valid_schemes:
+        parse_cluster_info(f"{scheme}://localhost:10001")
 
 
 if __name__ == "__main__":

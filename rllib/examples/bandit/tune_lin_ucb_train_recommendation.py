@@ -1,6 +1,7 @@
 """ Example of using LinUCB on a recommendation environment with parametric
     actions. """
 
+import argparse
 from matplotlib import pyplot as plt
 import os
 import pandas as pd
@@ -27,12 +28,24 @@ register_env(
 )
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--framework",
+        choices=["tf2", "torch"],
+        default="torch",
+        help="The DL framework specifier.",
+    )
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+
     # Temp fix to avoid OMP conflict.
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
     ray.init()
 
     config = {
+        "framework": args.framework,
+        "eager_tracing": (args.framework == "tf2"),
         "env": "ParametricRecSysEnv",
         "env_config": {
             "embedding_size": 20,
@@ -49,8 +62,8 @@ if __name__ == "__main__":
         "simple_optimizer": True,
     }
 
-    # Actual training_iterations will be 10 * timesteps_per_iteration
-    # (100 by default) = 2,000
+    # Actual env timesteps per `train()` call will be
+    # 10 * min_sample_timesteps_per_iteration (100 by default) = 1,000.
     training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)

@@ -9,7 +9,7 @@ import time
 
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
-from ray.data.impl.progress_bar import ProgressBar
+from ray.data._internal.progress_bar import ProgressBar
 from ray.util.placement_group import placement_group
 from ray._private.test_utils import get_log_message
 from ray.exceptions import RayTaskError, ObjectLostError
@@ -55,7 +55,7 @@ def set_kill_interval(request):
 
 
 @pytest.mark.skip(
-    reason="Skip until https://github.com/ray-project/ray/issues/20706 " "is fixed."
+    reason="Skip until https://github.com/ray-project/ray/issues/20706 is fixed."
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
@@ -133,7 +133,7 @@ def test_chaos_defer(monkeypatch, ray_start_cluster):
         # defer for 3s
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "NodeManagerService.grpc_client.PrepareBundleResources" "=2000000:2000000",
+            "NodeManagerService.grpc_client.PrepareBundleResources=2000000:2000000",
         )
         m.setenv("RAY_event_stats", "true")
         cluster = ray_start_cluster
@@ -246,6 +246,10 @@ def test_streaming_shuffle(set_kill_interval):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

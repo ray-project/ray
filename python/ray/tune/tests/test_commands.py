@@ -13,7 +13,7 @@ except ImportError:
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune import commands
+from ray.tune.cli import commands
 from ray.tune.result import CONFIG_PREFIX
 
 
@@ -114,7 +114,7 @@ def test_ls_with_cfg(start_ray, tmpdir):
         local_dir=str(tmpdir),
     )
 
-    columns = [CONFIG_PREFIX + "test_variable", "trial_id"]
+    columns = [CONFIG_PREFIX + "/test_variable", "trial_id"]
     limit = 4
     with Capturing() as output:
         commands.list_trials(experiment_path, info_keys=columns, limit=limit)

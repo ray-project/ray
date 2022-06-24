@@ -53,6 +53,11 @@ parser.add_argument(
     default=10000.0,
     help="Reward at which we stop training.",
 )
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 
 def curriculum_fn(
@@ -61,11 +66,11 @@ def curriculum_fn(
     """Function returning a possibly new task to set `task_settable_env` to.
 
     Args:
-        train_results (dict): The train results returned by Trainer.train().
-        task_settable_env (TaskSettableEnv): A single TaskSettableEnv object
+        train_results: The train results returned by Algorithm.train().
+        task_settable_env: A single TaskSettableEnv object
             used inside any worker and at any vector position. Use `env_ctx`
             to get the worker_index, vector_index, and num_workers.
-        env_ctx (EnvContext): The env context object (i.e. env's config dict
+        env_ctx: The env context object (i.e. env's config dict
             plus properties worker_index, vector_index and num_workers) used
             to setup the `task_settable_env`.
 
@@ -91,7 +96,7 @@ def curriculum_fn(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(local_mode=args.local_mode)
 
     # Can also register the env creator function explicitly with:
     # register_env(

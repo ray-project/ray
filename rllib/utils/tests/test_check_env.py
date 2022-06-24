@@ -29,7 +29,6 @@ class TestGymCheckEnv(unittest.TestCase):
         env = Mock(spec=["observation_space"])
         with pytest.raises(AttributeError, match="Env must have action_space."):
             check_gym_environments(env)
-        del env
 
     def test_obs_and_action_spaces_are_gym_spaces(self):
         env = RandomEnv()
@@ -41,7 +40,6 @@ class TestGymCheckEnv(unittest.TestCase):
         env.action_space = "not an action space"
         with pytest.raises(ValueError, match="Action space must be a gym.space"):
             check_env(env)
-        del env
 
     def test_reset(self):
         reset = MagicMock(return_value=5)
@@ -56,7 +54,6 @@ class TestGymCheckEnv(unittest.TestCase):
         env.reset = reset
         with pytest.raises(ValueError, match=error):
             check_env(env)
-        del env
 
     def test_step(self):
         step = MagicMock(return_value=(5, 5, True, {}))
@@ -75,7 +72,7 @@ class TestGymCheckEnv(unittest.TestCase):
         # check step that returns reward of non float/int fails
         step = MagicMock(return_value=(1, "Not a valid reward", True, {}))
         env.step = step
-        error = "Your step function must return a reward that is integer or " "float."
+        error = "Your step function must return a reward that is integer or float."
         with pytest.raises(ValueError, match=error):
             check_env(env)
 
@@ -92,7 +89,6 @@ class TestGymCheckEnv(unittest.TestCase):
         error = "Your step function must return a info that is a dict."
         with pytest.raises(ValueError, match=error):
             check_env(env)
-        del env
 
 
 class TestCheckMultiAgentEnv(unittest.TestCase):
@@ -104,7 +100,6 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         env = RandomEnv()
         with pytest.raises(ValueError, match="The passed env is not"):
             check_multiagent_environments(env)
-        del env
 
     def test_check_env_reset_incorrect_error(self):
         reset = MagicMock(return_value=5)
@@ -117,9 +112,8 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
             1: np.array([np.inf, np.inf, np.inf, np.inf]),
         }
         env.reset = lambda *_: bad_obs
-        with pytest.raises(ValueError, match="The observation collected from " "env"):
+        with pytest.raises(ValueError, match="The observation collected from env"):
             check_env(env)
-        del env
 
     def test_check_incorrect_space_contains_functions_error(self):
         def bad_contains_function(self, x):
@@ -128,21 +122,20 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         env.observation_space_contains = bad_contains_function
         with pytest.raises(
-            ValueError, match="Your observation_space_contains " "function has some"
+            ValueError, match="Your observation_space_contains function has some"
         ):
             check_env(env)
-        del env
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         bad_action = {0: 2, 1: 2}
         env.action_space_sample = lambda *_: bad_action
         with pytest.raises(
-            ValueError, match="The action collected from " "action_space_sample"
+            ValueError, match="The action collected from action_space_sample"
         ):
             check_env(env)
 
         env.action_space_contains = bad_contains_function
         with pytest.raises(
-            ValueError, match="Your action_space_contains " "function has some error"
+            ValueError, match="Your action_space_contains function has some error"
         ):
             check_env(env)
 
@@ -175,10 +168,9 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         bad_action = {0: 2, 1: 2}
         env.action_space_sample = lambda *_: bad_action
         with pytest.raises(
-            ValueError, match="The action collected from " "action_space_sample"
+            ValueError, match="The action collected from action_space_sample"
         ):
             check_env(env)
-        del env
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         bad_obs = {
             0: np.array([np.inf, np.inf, np.inf, np.inf]),
@@ -187,7 +179,7 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         env.observation_space_sample = lambda *_: bad_obs
         with pytest.raises(
             ValueError,
-            match="The observation collected from " "observation_space_sample",
+            match="The observation collected from observation_space_sample",
         ):
             check_env(env)
 
@@ -206,15 +198,12 @@ class TestCheckBaseEnv:
         env = RandomEnv()
         with pytest.raises(ValueError, match="The passed env is not"):
             check_base_env(env)
-        del env
 
     def test_check_env_reset_incorrect_error(self):
         reset = MagicMock(return_value=5)
         env = self._make_base_env()
         env.try_reset = reset
-        with pytest.raises(
-            ValueError, match=("MultiEnvDict. Instead, it is of" " type")
-        ):
+        with pytest.raises(ValueError, match=("MultiEnvDict. Instead, it is of type")):
             check_env(env)
         obs_with_bad_agent_ids = {
             2: np.array([np.inf, np.inf, np.inf, np.inf]),
@@ -223,9 +212,7 @@ class TestCheckBaseEnv:
         obs_with_bad_env_ids = {"bad_env_id": obs_with_bad_agent_ids}
         reset = MagicMock(return_value=obs_with_bad_env_ids)
         env.try_reset = reset
-        with pytest.raises(
-            ValueError, match="has dict keys that don't " "correspond to"
-        ):
+        with pytest.raises(ValueError, match="has dict keys that don't correspond to"):
             check_env(env)
         reset = MagicMock(return_value={0: obs_with_bad_agent_ids})
         env.try_reset = reset
@@ -245,10 +232,9 @@ class TestCheckBaseEnv:
         }
         env.try_reset = lambda *_: out_of_bounds_obs
         with pytest.raises(
-            ValueError, match="The observation collected from " "try_reset"
+            ValueError, match="The observation collected from try_reset"
         ):
             check_env(env)
-        del env
 
     def test_check_space_contains_functions_errors(self):
         def bad_contains_function(self, x):
@@ -258,29 +244,26 @@ class TestCheckBaseEnv:
 
         env.observation_space_contains = bad_contains_function
         with pytest.raises(
-            ValueError, match="Your observation_space_contains " "function has some"
+            ValueError, match="Your observation_space_contains function has some"
         ):
             check_env(env)
 
-        del env
         env = self._make_base_env()
         env.action_space_contains = bad_contains_function
         with pytest.raises(
-            ValueError, match="Your action_space_contains " "function has some error"
+            ValueError, match="Your action_space_contains function has some error"
         ):
             check_env(env)
-        del env
 
     def test_bad_sample_function(self):
         env = self._make_base_env()
         bad_action = {0: {0: 2, 1: 2}}
         env.action_space_sample = lambda *_: bad_action
         with pytest.raises(
-            ValueError, match="The action collected from " "action_space_sample"
+            ValueError, match="The action collected from action_space_sample"
         ):
             check_env(env)
 
-        del env
         env = self._make_base_env()
         bad_obs = {
             0: {
@@ -291,7 +274,7 @@ class TestCheckBaseEnv:
         env.observation_space_sample = lambda *_: bad_obs
         with pytest.raises(
             ValueError,
-            match="The observation collected from " "observation_space_sample",
+            match="The observation collected from observation_space_sample",
         ):
             check_env(env)
 
@@ -309,7 +292,7 @@ class TestCheckBaseEnv:
         with pytest.raises(
             ValueError,
             match="The element returned by step, "
-            "next_obs has values that are not"
+            "next_obs contains values that are not"
             " MultiAgentDicts",
         ):
             check_env(env)

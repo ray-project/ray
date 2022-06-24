@@ -12,6 +12,7 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 @pytest.mark.parametrize("field", ["conda", "pip"])
 @pytest.mark.parametrize("specify_env_in_init", [True, False])
 @pytest.mark.parametrize("spec_format", ["file", "python_object"])
@@ -69,4 +70,7 @@ def test_install_failure_logging(
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

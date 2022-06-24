@@ -7,8 +7,8 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.agents import DefaultCallbacks
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo import PPO
 
 
 def fn_trainable(config, checkpoint_dir=None):
@@ -33,8 +33,8 @@ def fn_trainable(config, checkpoint_dir=None):
         )
 
 
-class RLLibCallback(DefaultCallbacks):
-    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+class RLlibCallback(DefaultCallbacks):
+    def on_train_result(self, *, algorithm, result: dict, **kwargs) -> None:
         result["internal_iter"] = result["training_iteration"]
 
 
@@ -68,13 +68,13 @@ def run_tune(
         if trainable == "rllib_str":
             train = "PPO"
         else:
-            train = PPOTrainer
+            train = PPO
 
         config = {
             "env": "CartPole-v1",
             "num_workers": 1,
             "num_envs_per_worker": 1,
-            "callbacks": RLLibCallback,
+            "callbacks": RLlibCallback,
         }
         kwargs = {
             "stop": {"training_iteration": 100},

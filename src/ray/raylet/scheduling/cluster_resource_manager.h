@@ -22,6 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/bundle_location_index.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
@@ -31,7 +32,11 @@
 namespace ray {
 namespace raylet {
 class ClusterTaskManagerTest;
-}
+class SchedulingPolicyTest;
+}  // namespace raylet
+namespace gcs {
+class GcsActorSchedulerTest;
+}  // namespace gcs
 
 /// Class manages the resources view of the entire cluster.
 /// This class is not thread safe.
@@ -82,7 +87,7 @@ class ClusterResourceManager {
   const NodeResources &GetNodeResources(scheduling::NodeID node_id) const;
 
   /// Subtract available resource from a given node.
-  //// Return false if such node doesn't exist.
+  /// Return false if such node doesn't exist.
   bool SubtractNodeAvailableResources(scheduling::NodeID node_id,
                                       const ResourceRequest &resource_request);
 
@@ -96,10 +101,38 @@ class ClusterResourceManager {
                              const ResourceRequest &resource_request,
                              bool ignore_object_store_memory_requirement) const;
 
+  /// Add available resource to a given node.
+  /// Return false if such node doesn't exist.
+  bool AddNodeAvailableResources(scheduling::NodeID node_id,
+                                 const ResourceRequest &resource_request);
+
+  /// Update node available resources.
+  /// NOTE: This method only updates the existing resources of the node, and the
+  /// nonexistent resources will be filtered out, whitch is different from `UpdateNode`.
+  /// Return false if such node doesn't exist.
+  /// TODO(Shanly): This method will be replaced with UpdateNode once we have resource
+  /// version.
+  bool UpdateNodeAvailableResourcesIfExist(scheduling::NodeID node_id,
+                                           const rpc::ResourcesData &resource_data);
+
+  /// Update node normal task resources.
+  /// Return false if such node doesn't exist.
+  /// TODO(Shanly): Integrated this method into `UpdateNode` later.
+  bool UpdateNodeNormalTaskResources(scheduling::NodeID node_id,
+                                     const rpc::ResourcesData &resource_data);
+
+  /// Return false if the specified node doesn't exist.
+  /// TODO(Shanly): This method will be removed once the `gcs_resource_manager` is
+  /// replaced with `cluster_resource_scheduler`.
+  bool ContainsNode(scheduling::NodeID node_id) const;
+
   void DebugString(std::stringstream &buffer) const;
+
+  BundleLocationIndex &GetBundleLocationIndex();
 
  private:
   friend class ClusterResourceScheduler;
+  friend class gcs::GcsActorSchedulerTest;
 
   /// Add a new node or overwrite the resources of an existing node.
   ///
@@ -120,6 +153,8 @@ class ClusterResourceManager {
   /// The key of the map is the node ID.
   absl::flat_hash_map<scheduling::NodeID, Node> nodes_;
 
+  BundleLocationIndex bundle_location_index_;
+
   friend class ClusterResourceSchedulerTest;
   friend struct ClusterResourceManagerTest;
   friend class raylet::ClusterTaskManagerTest;
@@ -127,6 +162,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
@@ -141,6 +177,9 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
+  FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+
+  friend class raylet::SchedulingPolicyTest;
 };
 
 }  // end namespace ray

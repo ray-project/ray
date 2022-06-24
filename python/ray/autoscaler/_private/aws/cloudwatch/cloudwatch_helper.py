@@ -1,13 +1,15 @@
-import botocore
 import copy
-import json
-import os
-import logging
-import time
 import hashlib
-from typing import Any, Dict, List, Union, Tuple
+import json
+import logging
+import os
+import time
+from typing import Any, Dict, List, Tuple, Union
+
+import botocore
+
 from ray.autoscaler._private.aws.utils import client_cache, resource_cache
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, NODE_KIND_HEAD, TAG_RAY_NODE_KIND
+from ray.autoscaler.tags import NODE_KIND_HEAD, TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_KIND
 
 logger = logging.getLogger(__name__)
 
@@ -579,7 +581,7 @@ class CloudwatchHelper:
         try:
             response = self.ec2_client.describe_instances(InstanceIds=[self.node_id])
             reservations = response["Reservations"]
-            message = "More than 1 response received from " "describing current node"
+            message = "More than 1 response received from describing current node"
             assert len(reservations) == 1, message
             instances = reservations[0]["Instances"]
             assert len(reservations) == 1, message
@@ -607,7 +609,7 @@ class CloudwatchHelper:
         the Unified CloudWatch Agent installed.
         """
         logger.info(
-            "Checking Unified Cloudwatch Agent " "status on node {}".format(node_id)
+            "Checking Unified Cloudwatch Agent status on node {}".format(node_id)
         )
         parameters_status_cwa = {
             "action": ["status"],
@@ -651,7 +653,7 @@ class CloudwatchHelper:
         try:
             response = self.ec2_client.describe_instances(InstanceIds=[self.node_id])
             reservations = response["Reservations"]
-            message = "More than 1 response received from " "describing current node"
+            message = "More than 1 response received from describing current node"
             assert len(reservations) == 1, message
             instances = reservations[0]["Instances"]
             assert len(instances) == 1, message

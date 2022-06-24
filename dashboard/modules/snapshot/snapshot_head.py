@@ -1,29 +1,24 @@
 import asyncio
 import concurrent.futures
-from typing import Any, Dict, List, Optional
 import hashlib
+import json
+from typing import Any, Dict, List, Optional
+
+import aiohttp.web
 
 import ray
-from ray import ray_constants
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_pb2
-from ray.core.generated import gcs_service_pb2_grpc
+import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.utils as dashboard_utils
+from ray._private import ray_constants
+from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
+from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JobInfoStorageClient
 from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
     _internal_kv_get,
+    _internal_kv_initialized,
     _internal_kv_list,
 )
-import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.runtime_env import RuntimeEnv
 from ray.job_submission import JobInfo
-from ray.dashboard.modules.job.common import (
-    JobInfoStorageClient,
-    JOB_ID_METADATA_KEY,
-)
-
-import json
-import aiohttp.web
+from ray.runtime_env import RuntimeEnv
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
@@ -137,6 +132,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         for job_submission_id, job_info in self._job_info_client.get_all_jobs().items():
             if job_info is not None:
                 entry = {
+                    "job_submission_id": job_submission_id,
                     "status": job_info.status,
                     "message": job_info.message,
                     "error_type": job_info.error_type,
@@ -144,6 +140,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     "end_time": job_info.end_time,
                     "metadata": job_info.metadata,
                     "runtime_env": job_info.runtime_env,
+                    "entrypoint": job_info.entrypoint,
                 }
                 jobs[job_submission_id] = entry
         return jobs
@@ -168,7 +165,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "start_time": actor_table_entry.start_time,
                 "end_time": actor_table_entry.end_time,
                 "is_detached": actor_table_entry.is_detached,
-                "resources": dict(actor_table_entry.task_spec.required_resources),
+                "resources": dict(actor_table_entry.required_resources),
                 "actor_class": actor_table_entry.class_name,
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),
@@ -193,8 +190,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # Conditionally import serve to prevent ModuleNotFoundError from serve
         # dependencies when only ray[default] is installed (#17712)
         try:
-            from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
             from ray.serve.constants import SERVE_CONTROLLER_NAME
+            from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
         except Exception:
             return {}
 

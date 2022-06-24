@@ -21,10 +21,13 @@ option java_package = "io.ray.runtime.generated";
 
 /// The pip type runtime env.
 message PipRuntimeEnv {
-  /// The pip packages config.
   message Config {
     /// A list of pip packages, such as ["redis >= 3.5.0", "numpy"].
     repeated string packages = 1;
+    /// Whether enable pip check after runtime env finish pip install packages
+    bool pip_check = 2;
+    /// Pip version in virtualenv
+    string pip_version = 3;
   }
   oneof pip_runtime_env {
     /// The pip packages config.
@@ -149,12 +152,6 @@ message RuntimeEnvUris {
   string working_dir_uri = 1;
   /// python modules uris
   repeated string py_modules_uris = 2;
-  /// conda uri
-  string conda_uri = 3;
-  /// pip uri
-  string pip_uri = 4;
-  /// plugin uris
-  repeated string plugin_uris = 5;
 }
 
 /// The runtime environment describes all the runtime packages needed to
@@ -178,12 +175,35 @@ message RuntimeEnv {
   RuntimeEnvUris uris = 7;
 }
 
+/// The runtime env config, include some fields that do not
+/// participate in the calculation of the runtime_env hash.
+message RuntimeEnvConfig {
+  /// The timeout of runtime env creation.
+  int32 setup_timeout_seconds = 1;
+  /// Indicates whether to install runtime env eagerly before the workers are leased.
+  bool eager_install = 2;
+}
+
 /// The runtime env information which is transfered between ray core processes.
 message RuntimeEnvInfo {
   /// The serialized runtime env passed from the user.
   string serialized_runtime_env = 1;
   /// URIs used in this runtime env. These will be used for reference counting.
   repeated string uris = 2;
-  /// Indicates whether to install runtime env eagerly before the workers are leased.
-  bool runtime_env_eager_install = 3;
+  /// The serialized runtime env config passed from the user.
+  RuntimeEnvConfig runtime_env_config = 3;
+}
+
+message RuntimeEnvState {
+  /// The serialized runtime env.
+  string runtime_env = 1;
+  /// Total reference count (actors/tasks/jobs that use runtime env) of the runtime env.
+  int64 ref_cnt = 2;
+  /// Whether or not the runtime env creation has succeeded.
+  optional bool success = 3;
+  /// Set if success == False. Contains the error message regarding why runtime
+  /// env creation has failed.
+  optional string error = 4;
+  /// The time to create a runtime env in ms.
+  optional int64 creation_time_ms = 5;
 }

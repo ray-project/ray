@@ -166,6 +166,9 @@ class ResourceTrackingInterface {
   virtual void RequestResourceReport(
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
 
+  virtual void GetResourceLoad(
+      const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
+
   virtual ~ResourceTrackingInterface(){};
 };
 
@@ -182,13 +185,15 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 
-  virtual void GetGcsServerAddress(
-      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
+  virtual void NotifyGCSRestart(
+      const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;
 
   virtual void ShutdownRaylet(
       const NodeID &node_id,
       bool graceful,
       const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) = 0;
+
+  virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
 };
 
 namespace raylet {
@@ -276,9 +281,14 @@ class RayletClient : public RayletClientInterface {
   /// is used by actors to exit gracefully so that the raylet doesn't
   /// propagate an error message to the driver.
   ///
+  /// It's a blocking call.
+  ///
+  /// \param disconnect_type The reason why this worker process is disconnected.
+  /// \param disconnect_detail The detailed reason for a given exit.
   /// \return ray::Status.
   ray::Status Disconnect(
-      rpc::WorkerExitType exit_type,
+      const rpc::WorkerExitType &exit_type,
+      const std::string &exit_detail,
       const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
@@ -382,6 +392,8 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
+  std::shared_ptr<grpc::Channel> GetChannel() const override;
+
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const rpc::TaskSpec &resource_spec,
@@ -446,9 +458,6 @@ class RayletClient : public RayletClientInterface {
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
-  void GetGcsServerAddress(
-      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) override;
-
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
   void UpdateResourceUsage(
@@ -457,6 +466,12 @@ class RayletClient : public RayletClientInterface {
 
   void RequestResourceReport(
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
+
+  void GetResourceLoad(
+      const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;
+
+  void NotifyGCSRestart(
+      const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override;
 
   // Subscribe to receive notification on plasma object
   void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);

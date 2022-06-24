@@ -331,16 +331,34 @@ class ObjectID : public BaseID<ObjectID> {
 };
 
 class PlacementGroupID : public BaseID<PlacementGroupID> {
+ private:
+  static constexpr size_t kUniqueBytesLength = 14;
+
  public:
-  static constexpr size_t kLength = 16;
+  /// Length of `PlacementGroupID` in bytes.
+  static constexpr size_t kLength = kUniqueBytesLength + JobID::kLength;
 
   /// Size of `PlacementGroupID` in bytes.
   ///
   /// \return Size of `PlacementGroupID` in bytes.
   static constexpr size_t Size() { return kLength; }
 
+  /// Creates a `PlacementGroupID` by hashing the given information.
+  ///
+  /// \param job_id The job id to which this actor belongs.
+  ///
+  /// \return The random `PlacementGroupID`.
+  static PlacementGroupID Of(const JobID &job_id);
+
+  static PlacementGroupID FromRandom() = delete;
+
   /// Constructor of `PlacementGroupID`.
   PlacementGroupID() : BaseID() {}
+
+  /// Get the job id to which this placement group belongs.
+  ///
+  /// \return The job id to which this placement group belongs.
+  JobID JobId() const;
 
   MSGPACK_DEFINE(id_);
 

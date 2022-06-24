@@ -1,12 +1,11 @@
-import os
 import copy
-from typing import Any
-from typing import Dict
+import os
+from typing import Any, Dict
 
-from ray.autoscaler._private.cli_logger import cli_logger
 from ray._private.utils import get_ray_temp_dir
+from ray.autoscaler._private.cli_logger import cli_logger
 
-unsupported_field_message = "The field {} is not supported " "for on-premise clusters."
+unsupported_field_message = "The field {} is not supported for on-premise clusters."
 
 LOCAL_CLUSTER_NODE_TYPE = "local.cluster.node"
 
@@ -99,6 +98,13 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
         config["max_workers"] = num_ips
     else:
         node_type["max_workers"] = max_workers
+
+    if max_workers < num_ips:
+        cli_logger.warning(
+            f"The value of `max_workers` supplied ({max_workers}) is less"
+            f" than the number of available worker ips ({num_ips})."
+            f" At most {max_workers} Ray worker nodes will connect to the cluster."
+        )
 
     return config
 

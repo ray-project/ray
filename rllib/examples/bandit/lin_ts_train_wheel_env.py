@@ -2,10 +2,11 @@
     For more information on WheelBandit, see https://arxiv.org/abs/1802.09127 .
 """
 
+import argparse
 import numpy as np
 from matplotlib import pyplot as plt
 
-from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+from ray.rllib.algorithms.bandit.bandit import BanditLinTS
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 
@@ -30,20 +31,34 @@ def plot_model_weights(means, covs):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--framework",
+        choices=["tf2", "torch"],
+        default="torch",
+        help="The DL framework specifier.",
+    )
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+
     num_iter = 10
     print("Running training for %s time steps" % num_iter)
-    trainer = BanditLinTSTrainer(env=WheelBanditEnv)
+    config = {
+        "framework": args.framework,
+        "eager_tracing": (args.framework == "tf2"),
+    }
+    algo = BanditLinTS(env=WheelBanditEnv, config=config)
 
-    policy = trainer.get_policy()
+    policy = algo.get_policy()
     model = policy.model
 
     print("Using exploration strategy:", policy.exploration)
     print("Using model:", model)
 
     for i in range(num_iter):
-        trainer.train()
+        algo.train()
 
-    info = trainer.train()
+    info = algo.train()
     print(info["info"][LEARNER_INFO])
 
     # Get model parameters

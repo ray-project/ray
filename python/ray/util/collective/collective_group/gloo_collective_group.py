@@ -1,28 +1,28 @@
-import logging
 import datetime
-import time
+import logging
 import os
 import shutil
+import time
+
+import numpy
+import pygloo
 
 import ray
-from ray import ray_constants
-import pygloo
-import numpy
-
+from ray._private import ray_constants
 from ray.util.collective.collective_group import gloo_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
+from ray.util.collective.const import get_store_name
 from ray.util.collective.types import (
-    AllReduceOptions,
-    BarrierOptions,
-    Backend,
-    ReduceOptions,
-    BroadcastOptions,
     AllGatherOptions,
+    AllReduceOptions,
+    Backend,
+    BarrierOptions,
+    BroadcastOptions,
+    RecvOptions,
+    ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
-    RecvOptions,
 )
-from ray.util.collective.const import get_store_name
 
 logger = logging.getLogger(__name__)
 
@@ -37,16 +37,16 @@ class Rendezvous:
     process.
 
     Args:
-        group_name (str): the unique user-specified group name.
+        group_name: the unique user-specified group name.
     """
 
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
-        (
-            self._redis_ip_address,
-            self._redis_port,
-        ) = ray.worker._global_node.redis_address.split(":")
+        redis_address = ray._private.worker._global_node.redis_address
+        (self._redis_ip_address, self._redis_port) = (
+            redis_address.split(":") if store_type == "redis" else (None, None)
+        )
         self._process_ip_address = ray.util.get_node_ip_address()
         logger.debug(
             "Redis address: {}, port: {}, this actor address: {}.".format(
@@ -61,11 +61,16 @@ class Rendezvous:
         self.create_device(device_type)
 
     def create_store(self, store_type):
-        if store_type == "redis":
+        if store_type == "ray_internal_kv":
+            ray_internal_kv_store = gloo_util.RayInternalKvStore(self._group_name)
+            self._store = pygloo.rendezvous.CustomStore(ray_internal_kv_store)
+        elif store_type == "redis":
             redisStore = pygloo.rendezvous.RedisStore(
                 self._redis_ip_address, int(self._redis_port)
             )
-            redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
+            redis_password = ray._private.worker._global_node.redis_password
+            if redis_password is None or len(redis_password) == 0:
+                redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)
             self._store = redisStore
         elif store_type == "file":
@@ -99,7 +104,7 @@ class Rendezvous:
         """Meet at the named actor store.
 
         Args:
-            timeout_s (int): timeout in seconds.
+            timeout_s: timeout in seconds.
 
         Return:
             None
@@ -115,9 +120,10 @@ class Rendezvous:
         start_time = datetime.datetime.now()
         q, s = None, None
 
-        if self._store_type == "redis":
+        if self._store_type == "redis" or self._store_type == "ray_internal_kv":
             while elapsed < timeout_delta:
                 try:
+                    # I don't quite understand why we need gloo queue actor.
                     q = ray.get_actor("gloo_queue")
                     s = ray.get_actor(f"gloo_{self._group_name}_signal")
                     break
@@ -141,6 +147,7 @@ class Rendezvous:
                 ray.get(q.put_nowait.remote(self._group_name))
             while ray.get(q.index.remote(self._group_name)):
                 time.sleep(0.1)
+
             self._context.connectFullMesh(self._store, self._device)
             ray.get(s.send.remote(self._context.rank))
             if self._context.rank == 0:
@@ -176,17 +183,22 @@ class Rendezvous:
 
 class GLOOGroup(BaseGroup):
     def __init__(
-        self, world_size, rank, group_name, store_type="redis", device_type="tcp"
+        self,
+        world_size,
+        rank,
+        group_name,
+        store_type="ray_internal_kv",
+        device_type="tcp",
     ):
         """Init an GLOO collective group.
 
         Args:
-            world_size (int): The number of processes.
-            rank (int): The id of process
-            group_name (str): The unique user-specified group name.
-            store_type (str): The store type. Optional: "redis",
+            world_size: The number of processes.
+            rank: The id of process
+            group_name: The unique user-specified group name.
+            store_type: The store type. Optional: "redis",
                               "file", "hash".
-            device_type (str): The device type to transport.
+            device_type: The device type to transport.
                                Optional: "tcp", "uv".
         """
         super(GLOOGroup, self).__init__(world_size, rank, group_name)
@@ -255,7 +267,7 @@ class GLOOGroup(BaseGroup):
         """Reduce tensors following options.
 
         Args:
-            tensors (List): the list of tensors to be reduced,
+            tensors: the list of tensors to be reduced,
                             this list only have one tensor.
             reduce_options: reduce options.
 
@@ -281,7 +293,7 @@ class GLOOGroup(BaseGroup):
         """Broadcast tensors to all other processes following options.
 
         Args:
-            tensors (List): tensors to be broadcast or received.
+            tensors: tensors to be broadcast or received.
             broadcast_options: broadcast options.
 
         Returns:
@@ -344,7 +356,7 @@ class GLOOGroup(BaseGroup):
         """Reduce the scatter a list of tensors across the group.
 
         Args:
-            tensors (List): the output tensors (could be unspecified), each
+            tensors: the output tensors (could be unspecified), each
                             located on CPU.
             tensor_lists (List[List]): the list of tensors to be reduced then
                                        scattered.
@@ -386,7 +398,7 @@ class GLOOGroup(BaseGroup):
         """Send a tensor to a destination rank in the group.
 
         Args:
-            tensors (List): the tensor to send.
+            tensors: the tensor to send.
             send_options: send options.
 
         Returns:
@@ -408,7 +420,7 @@ class GLOOGroup(BaseGroup):
         """Receive a tensor from a source rank in the group.
 
         Args:
-            tensors (List): the received tensor.
+            tensors: the received tensor.
             recv_options: Receive options.
 
         Returns:
@@ -461,7 +473,7 @@ class GLOOGroup(BaseGroup):
         Args:
             tensors: the tensor to send or receive.
             p2p_fn: the p2p function call.
-            peer_rank (int): the rank of the peer process.
+            peer_rank: the rank of the peer process.
 
         Returns:
             None
@@ -482,7 +494,7 @@ def _check_cpu_tensors(tensors):
         )
     d = gloo_util.get_tensor_device(tensors[0])
     if d != "cpu":
-        raise RuntimeError("Gloo only accept cpu tensor." " Got {}.".format(d))
+        raise RuntimeError("Gloo only accept cpu tensor . Got {}.".format(d))
 
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
@@ -523,7 +535,7 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
 
     if not tensor_lists or not isinstance(tensor_lists, list):
         raise RuntimeError(
-            "The second argument 'tensor_lists' " "expects a list of tensor list."
+            "The second argument 'tensor_lists' expects a list of tensor list."
         )
 
     if len(tensor_lists) != 1:

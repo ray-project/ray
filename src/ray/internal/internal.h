@@ -36,5 +36,11 @@ std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
                                                int return_num);
 
 const stats::TagKeyType TagRegister(const std::string tag_name);
+
+/// Get current actor id via internal.
+const ActorID &GetCurrentActorID();
+
+/// Get core worker initialization flag via internal.
+bool IsInitialized();
 }  // namespace internal
 }  // namespace ray

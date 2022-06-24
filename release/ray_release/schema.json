@@ -21,6 +21,15 @@
 				"stable": {
 					"type": "boolean"
 				},
+                "python": {
+					"type": "string",
+					"enum": [
+						"3.6",
+						"3.7",
+						"3.8",
+						"3.9"
+                    ]
+				},
 				"frequency": {
 					"type": "string",
 					"enum": [
@@ -52,7 +61,6 @@
 			"required": [
 				"cluster",
 				"frequency",
-				"legacy",
 				"name",
 				"run",
 				"team",
@@ -163,8 +171,7 @@
 				}
 			},
 			"required": [
-				"num_nodes",
-				"timeout"
+				"num_nodes"
 			],
 			"title": "WaitForNodes"
 		},

@@ -25,7 +25,7 @@ def handle_result(
         target_update_diff = 300
 
     elif test_name in ["apex", "impala", "many_ppo", "pbt"]:
-        # Tune/RLLib style tests
+        # Tune/RLlib style tests
         target_update_diff = 480
     elif test_name in ["serve", "serve_failure"]:
         # Serve tests have workload logs every five minutes.

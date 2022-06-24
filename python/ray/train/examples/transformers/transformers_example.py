@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 require_version(
     "datasets>=1.8.0",
-    "To fix: pip install -r examples/pytorch/text-classification/requirements" ".txt",
+    "To fix: pip install -r examples/pytorch/text-classification/requirements.txt",
 )
 
 task_to_keys = {
@@ -66,7 +66,7 @@ task_to_keys = {
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Finetune a transformers model on a text classification " "task"
+        description="Finetune a transformers model on a text classification task"
     )
     parser.add_argument(
         "--task_name",
@@ -132,7 +132,7 @@ def parse_args():
         "--learning_rate",
         type=float,
         default=5e-5,
-        help="Initial learning rate (after the potential warmup period) to " "use.",
+        help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
         "--weight_decay", type=float, default=0.0, help="Weight decay to use."
@@ -228,10 +228,14 @@ def parse_args():
 
 
 def train_func(config: Dict[str, Any]):
+    # Accelerator reads from this environment variable for GPU placement.
+    os.environ["LOCAL_RANK"] = str(ray.train.local_rank())
+    os.environ["WORLD_SIZE"] = str(ray.train.world_size())
+
     args = config["args"]
     # Initialize the accelerator. We will let the accelerator handle device
     # placement for us in this example.
-    accelerator = Accelerator()
+    accelerator = Accelerator(cpu=not args.use_gpu)
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",

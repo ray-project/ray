@@ -1,11 +1,7 @@
 cluster_name: default
-min_workers: 0
-max_workers: 0
 docker:
     image: ""
     container_name: ""
-upscaling_speed: 1.0
-idle_timeout_minutes: 5
 provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME

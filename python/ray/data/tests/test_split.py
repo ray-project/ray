@@ -1,20 +1,19 @@
 import math
 import random
 import time
-
 from unittest.mock import patch
+
 import numpy as np
 import pytest
 
 import ray
-
-from ray.tests.conftest import *  # noqa
-from ray.data.dataset import Dataset
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.stats import DatasetStats
-from ray.data.impl.plan import ExecutionPlan
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 @ray.remote
@@ -221,6 +220,44 @@ def test_split_at_indices(ray_start_regular_shared):
     assert r == [[], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
 
 
+def test_split_proportionately(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=3)
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([])
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([-1])
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([0])
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([1])
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([0.5, 0.5])
+
+    splits = ds.split_proportionately([0.5])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_proportionately([0.2, 0.3])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_proportionately([0.2, 0.3, 0.3])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [5, 6, 7], [8, 9]]
+
+    splits = ds.split_proportionately([0.98, 0.01])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4, 5, 6, 7], [8], [9]]
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([0.90] + ([0.001] * 90))
+
+
 def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
@@ -286,7 +323,7 @@ def test_split_hints(ray_start_regular_shared):
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
-            with patch("ray.state.actors") as state_mock:
+            with patch("ray._private.state.actors") as state_mock:
                 block_locations = {}
                 for i, node_id in enumerate(block_node_ids):
                     if node_id:

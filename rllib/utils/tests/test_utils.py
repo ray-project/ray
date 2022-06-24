@@ -6,6 +6,7 @@ import unittest
 import ray
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor as flatten_np
+from ray.rllib.utils.numpy import make_action_immutable
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor as flatten_tf
 from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor as flatten_torch
@@ -59,6 +60,69 @@ class TestUtils(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
+
+    def test_make_action_immutable(self):
+        import gym
+        from types import MappingProxyType
+
+        # Test Box space.
+        space = gym.spaces.Box(low=-1.0, high=1.0, shape=(8,), dtype=np.float32)
+        action = space.sample()
+        action = make_action_immutable(action)
+        self.assertFalse(action.flags["WRITEABLE"])
+
+        # Test Discrete space.
+        # Nothing to be tested as sampled actions are integers
+        # and integers are immutable by nature.
+
+        # Test MultiDiscrete space.
+        space = gym.spaces.MultiDiscrete([3, 3, 3])
+        action = space.sample()
+        action = make_action_immutable(action)
+        self.assertFalse(action.flags["WRITEABLE"])
+
+        # Test MultiBinary space.
+        space = gym.spaces.MultiBinary([2, 2, 2])
+        action = space.sample()
+        action = make_action_immutable(action)
+        self.assertFalse(action.flags["WRITEABLE"])
+
+        # Test Tuple space.
+        space = gym.spaces.Tuple(
+            (
+                gym.spaces.Discrete(2),
+                gym.spaces.Box(low=-1.0, high=1.0, shape=(8,), dtype=np.float32),
+            )
+        )
+        action = space.sample()
+        action = tree.traverse(make_action_immutable, action, top_down=False)
+        self.assertFalse(action[1].flags["WRITEABLE"])
+
+        # Test Dict space.
+        space = gym.spaces.Dict(
+            {
+                "a": gym.spaces.Discrete(2),
+                "b": gym.spaces.Box(low=-1.0, high=1.0, shape=(8,), dtype=np.float32),
+                "c": gym.spaces.Tuple(
+                    (
+                        gym.spaces.Discrete(2),
+                        gym.spaces.Box(
+                            low=-1.0, high=1.0, shape=(8,), dtype=np.float32
+                        ),
+                    )
+                ),
+            }
+        )
+        action = space.sample()
+        action = tree.traverse(make_action_immutable, action, top_down=False)
+
+        def fail_fun(obj):
+            obj["a"] = 5
+
+        self.assertRaises(TypeError, fail_fun, action)
+        self.assertFalse(action["b"].flags["WRITEABLE"])
+        self.assertFalse(action["c"][1].flags["WRITEABLE"])
+        self.assertTrue(isinstance(action, MappingProxyType))
 
     def test_flatten_inputs_to_1d_tensor(self):
         # B=3; no time axis.

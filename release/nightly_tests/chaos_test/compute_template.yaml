@@ -15,7 +15,7 @@ worker_node_types:
      instance_type: m5.4xlarge
      min_workers: 9
      max_workers: 9
-     use_spot: false
+     use_spot: true
      resources:
       custom_resources:
         worker: 1

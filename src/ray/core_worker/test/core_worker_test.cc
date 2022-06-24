@@ -23,8 +23,6 @@
 #include "absl/container/flat_hash_set.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_object.h"
@@ -47,14 +45,6 @@ int node_manager_port = 0;
 
 namespace ray {
 namespace core {
-
-static void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
-  freeReplyObject(redisCommand(context, "FLUSHALL"));
-  freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
-  freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
-  redisFree(context);
-}
 
 ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
                           int64_t max_restarts) {
@@ -98,13 +88,7 @@ std::string MetadataToString(std::shared_ptr<RayObject> obj) {
 
 class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerTest(int num_nodes)
-      : num_nodes_(num_nodes), gcs_options_("127.0.0.1", 6379, "") {
-    TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
-
-    // flush redis first.
-    flushall_redis();
-
+  CoreWorkerTest(int num_nodes) : num_nodes_(num_nodes), gcs_options_("127.0.0.1:6379") {
     RAY_CHECK(num_nodes >= 0);
     if (num_nodes > 0) {
       raylet_socket_names_.resize(num_nodes);
@@ -112,17 +96,17 @@ class CoreWorkerTest : public ::testing::Test {
     }
 
     // start gcs server
-    gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
+    gcs_server_socket_name_ = TestSetupUtil::StartGcsServer(6379);
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] =
-          TestSetupUtil::StartRaylet("127.0.0.1",
-                                     node_manager_port + i,
-                                     "127.0.0.1",
-                                     "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
-                                     &raylet_store_socket_names_[i]);
+      raylet_socket_names_[i] = TestSetupUtil::StartRaylet(
+          "127.0.0.1",
+          node_manager_port + i,
+          "127.0.0.1:6379",
+          "\"CPU,4.0,object_store_memory,100,resource" + std::to_string(i) + ",10\"",
+          &raylet_store_socket_names_[i]);
     }
   }
 
@@ -134,8 +118,6 @@ class CoreWorkerTest : public ::testing::Test {
     if (!gcs_server_socket_name_.empty()) {
       TestSetupUtil::StopGcsServer(gcs_server_socket_name_);
     }
-
-    TestSetupUtil::ShutDownRedisServers();
   }
 
   JobID NextJobId() const {
@@ -158,7 +140,6 @@ class CoreWorkerTest : public ::testing::Test {
       options.node_manager_port = node_manager_port;
       options.raylet_ip_address = "127.0.0.1";
       options.driver_name = "core_worker_test";
-      options.num_workers = 1;
       options.metrics_agent_port = -1;
       CoreWorkerProcess::Initialize(options);
     }
@@ -171,7 +152,7 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   // Test normal tasks.
-  void TestNormalTask(std::unordered_map<std::string, double> &resources);
+  void TestNormalTask();
 
   // Test actor tasks.
   void TestActorTask(std::unordered_map<std::string, double> &resources);
@@ -239,7 +220,7 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   return std::stoi(pid_string);
 }
 
-void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
+void CoreWorkerTest::TestNormalTask() {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // Test for tasks with by-value and by-ref args.
@@ -895,10 +876,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_TRUE(results[1]->IsException());
 }
 
-TEST_F(SingleNodeTest, TestNormalTaskLocal) {
-  std::unordered_map<std::string, double> resources;
-  TestNormalTask(resources);
-}
+TEST_F(SingleNodeTest, TestNormalTaskLocal) { TestNormalTask(); }
 
 TEST_F(SingleNodeTest, TestCancelTasks) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
@@ -945,15 +923,10 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   // TestNormalTask will get stuck unless both func1 and func2 have been cancelled. Thus,
   // if TestNormalTask succeeds, we know that func2 must have been removed from the
   // worker's queue.
-  std::unordered_map<std::string, double> resources;
-  TestNormalTask(resources);
+  TestNormalTask();
 }
 
-TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) {
-  std::unordered_map<std::string, double> resources;
-  resources.emplace("resource1", 1);
-  TestNormalTask(resources);
-}
+TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) { TestNormalTask(); }
 
 TEST_F(SingleNodeTest, TestActorTaskLocal) {
   std::unordered_map<std::string, double> resources;
@@ -1138,7 +1111,5 @@ int main(int argc, char **argv) {
   ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[2]);
   ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[3]);
 
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[4]);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[5]);
   return RUN_ALL_TESTS();
 }

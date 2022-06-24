@@ -1,19 +1,20 @@
-import pickle
-from collections import Counter
 import copy
-from functools import partial
-import gym
-import numpy as np
 import os
+import pickle
 import shutil
 import sys
 import tempfile
 import time
 import unittest
+from collections import Counter
+from functools import partial
 from unittest.mock import patch
 
+import gym
+import numpy as np
 import ray
 from ray import tune
+from ray.air._internal.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
     register_env,
@@ -26,9 +27,9 @@ from ray.tune import (
 )
 from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
-from ray.tune.function_runner import wrap_function
-from ray.tune.logger import Logger
-from ray.tune.ray_trial_executor import noop_logger_creator
+from ray.tune.trainable import wrap_function
+from ray.tune.logger import Logger, LegacyLoggerCallback
+from ray.tune.execution.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (
     TIMESTEPS_TOTAL,
@@ -44,23 +45,27 @@ from ray.tune.result import (
     TRIAL_ID,
     EXPERIMENT_TAG,
 )
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler, AsyncHyperBandScheduler
+from ray.tune.schedulers import (
+    TrialScheduler,
+    FIFOScheduler,
+    AsyncHyperBandScheduler,
+)
+from ray.tune.schedulers.pb2 import PB2
 from ray.tune.stopper import (
     MaximumIterationStopper,
     TrialPlateauStopper,
     ExperimentPlateauStopper,
 )
 from ray.tune.suggest import BasicVariantGenerator, grid_search
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
+from ray.tune.suggest.ax import AxSearch
+from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.sync_client import CommandBasedClient
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
-from ray.tune.utils import flatten_dict, get_pinned_object, pin_in_object_store
-from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.syncer import Syncer
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.utils import flatten_dict
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -122,14 +127,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         [trial1] = run(
             _function_trainable,
-            loggers=[FunctionAPILogger],
+            callbacks=[LegacyLoggerCallback([FunctionAPILogger])],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
 
         [trial2] = run(
             class_trainable_name,
-            loggers=[ClassAPILogger],
+            callbacks=[LegacyLoggerCallback([ClassAPILogger])],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
@@ -179,33 +184,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         )
 
         return function_output, trials
-
-    def testPinObject(self):
-        X = pin_in_object_store("hello")
-
-        @ray.remote
-        def f():
-            return get_pinned_object(X)
-
-        self.assertEqual(ray.get(f.remote()), "hello")
-
-    def testFetchPinned(self):
-        X = pin_in_object_store("hello")
-
-        def train(config, reporter):
-            get_pinned_object(X)
-            reporter(timesteps_total=100, done=True)
-
-        register_trainable("f1", train)
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                }
-            }
-        )
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
@@ -337,19 +315,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.execution.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.execution.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(0, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.execution.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 0))
             assert warn_mock.assert_called_once()
@@ -756,7 +734,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             },
             verbose=1,
             local_dir=tmpdir,
-            loggers=None,
         )
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
@@ -902,8 +879,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Re-run the same trials but with added delay. This is to catch some
         # inconsistent timestep counting that was present in the multi-threaded
-        # FunctionRunner. This part of the test can be removed once the
-        # multi-threaded FunctionRunner is removed from ray/tune.
+        # FunctionTrainable. This part of the test can be removed once the
+        # multi-threaded FunctionTrainable is removed from ray/tune.
         # TODO: remove once the multi-threaded function runner is gone.
         logs2, _ = self.checkAndReturnConsistentLogs(results2, 0.5)
 
@@ -980,46 +957,39 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertTrue(all(complete_results1))
 
     def _testDurableTrainable(self, trainable, function=False, cleanup=True):
-        sync_client = mock_storage_client()
-        mock_get_client = "ray.tune.trainable.get_cloud_sync_client"
-        with patch(mock_get_client) as mock_get_cloud_sync_client:
-            mock_get_cloud_sync_client.return_value = sync_client
-            log_creator = partial(
-                noop_logger_creator, logdir="~/tmp/ray_results/exp/trial"
-            )
-            remote_checkpoint_dir = os.path.join(MOCK_REMOTE_DIR, "exp/trial")
+        remote_checkpoint_dir = "memory:///unit-test/bucket"
+        _ensure_directory(remote_checkpoint_dir)
+
+        log_creator = partial(noop_logger_creator, logdir="~/tmp/ray_results/exp/trial")
+        test_trainable = trainable(
+            logger_creator=log_creator, remote_checkpoint_dir=remote_checkpoint_dir
+        )
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 1)
+        checkpoint_path = test_trainable.save()
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 2)
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 3)
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 4)
+
+        shutil.rmtree("~/tmp/ray_results/exp/")
+        if not function:
+            test_trainable.state["hi"] = 2
+            test_trainable.restore(checkpoint_path)
+            self.assertEqual(test_trainable.state["hi"], 1)
+        else:
+            # Cannot re-use function trainable, create new
+            tune.trainable.session.shutdown()
             test_trainable = trainable(
-                logger_creator=log_creator, remote_checkpoint_dir=remote_checkpoint_dir
+                logger_creator=log_creator,
+                remote_checkpoint_dir=remote_checkpoint_dir,
             )
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 1)
-            checkpoint_path = test_trainable.save()
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 2)
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 3)
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 4)
+            test_trainable.restore(checkpoint_path)
 
-            shutil.rmtree("~/tmp/ray_results/exp/")
-            if not function:
-                test_trainable.state["hi"] = 2
-                test_trainable.restore(checkpoint_path)
-                self.assertEqual(test_trainable.state["hi"], 1)
-            else:
-                # Cannot re-use function trainable, create new
-                tune.session.shutdown()
-                test_trainable = trainable(
-                    logger_creator=log_creator,
-                    remote_checkpoint_dir=remote_checkpoint_dir,
-                )
-                test_trainable.restore(checkpoint_path)
-
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 2)
-
-        if cleanup:
-            self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 2)
 
     def testDurableTrainableClass(self):
         class TestTrain(Trainable):
@@ -1067,24 +1037,23 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testDurableTrainableSyncFunction(self):
         """Check custom sync functions in durable trainables"""
 
+        class CustomSyncer(Syncer):
+            def sync_up(
+                self, local_dir: str, remote_dir: str, exclude: list = None
+            ) -> bool:
+                pass  # sync up
+
+            def sync_down(
+                self, remote_dir: str, local_dir: str, exclude: list = None
+            ) -> bool:
+                pass  # sync down
+
+            def delete(self, remote_dir: str) -> bool:
+                pass  # delete
+
         class TestDurable(Trainable):
-            def __init__(self, *args, **kwargs):
-                # Mock distutils.spawn.find_executable
-                # so `aws` command is found
-                import distutils.spawn
-
-                distutils.spawn.find_executable = lambda *_, **__: True
-                super(TestDurable, self).__init__(*args, **kwargs)
-
-            def check(self):
-                return (
-                    bool(self.sync_function_tpl)
-                    and isinstance(self.storage_client, CommandBasedClient)
-                    and "aws" not in self.storage_client.sync_up_template
-                )
-
-        class TestTplDurable(TestDurable):
-            _sync_function_tpl = "echo static sync {source} {target}"
+            def has_custom_syncer(self):
+                return bool(self.custom_syncer)
 
         upload_dir = "s3://test-bucket/path"
 
@@ -1104,21 +1073,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                sync_function_tpl=trial.sync_function_tpl,
+                custom_syncer=trial.custom_syncer,
             )
             return actor
 
         # This actor should create a default aws syncer, so check should fail
         actor1 = _create_remote_actor(TestDurable, None)
-        self.assertFalse(ray.get(actor1.check.remote()))
+        self.assertFalse(ray.get(actor1.has_custom_syncer.remote()))
 
         # This actor should create a custom syncer, so check should pass
-        actor2 = _create_remote_actor(TestDurable, "echo test sync {source} {target}")
-        self.assertTrue(ray.get(actor2.check.remote()))
-
-        # This actor should create a custom syncer, so check should pass
-        actor3 = _create_remote_actor(TestTplDurable, None)
-        self.assertTrue(ray.get(actor3.check.remote()))
+        actor2 = _create_remote_actor(TestDurable, CustomSyncer())
+        self.assertTrue(ray.get(actor2.has_custom_syncer.remote()))
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
@@ -1499,6 +1464,16 @@ class ShimCreationTest(unittest.TestCase):
         shim_scheduler = tune.create_scheduler(scheduler, **kwargs)
         real_scheduler = AsyncHyperBandScheduler(**kwargs)
         assert type(shim_scheduler) is type(real_scheduler)
+
+    def testCreateLazyImportScheduler(self):
+        kwargs = {
+            "metric": "metric_foo",
+            "mode": "min",
+            "hyperparam_bounds": {"param1": [0, 1]},
+        }
+        shim_scheduler_pb2 = tune.create_scheduler("pb2", **kwargs)
+        real_scheduler_pb2 = PB2(**kwargs)
+        assert type(shim_scheduler_pb2) is type(real_scheduler_pb2)
 
     def testCreateSearcher(self):
         kwargs = {"metric": "metric_foo", "mode": "min"}

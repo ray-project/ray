@@ -47,34 +47,32 @@ class AxSearch(Searcher):
         $ pip install ax-platform sqlalchemy
 
     Parameters:
-        space (list[dict]): Parameters in the experiment search space.
+        space: Parameters in the experiment search space.
             Required elements in the dictionaries are: "name" (name of
             this parameter, string), "type" (type of the parameter: "range",
             "fixed", or "choice", string), "bounds" for range parameters
             (list of two values, lower bound first), "values" for choice
             parameters (list of values), and "value" for fixed parameters
             (single value).
-        metric (str): Name of the metric used as objective in this
+        metric: Name of the metric used as objective in this
             experiment. This metric must be present in `raw_data` argument
             to `log_data`. This metric must also be present in the dict
             reported/returned by the Trainable. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute. Defaults to "max".
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        parameter_constraints (list[str]): Parameter constraints, such as
+        parameter_constraints: Parameter constraints, such as
             "x3 >= x4" or "x3 + x4 >= 2".
-        outcome_constraints (list[str]): Outcome constraints of form
+        outcome_constraints: Outcome constraints of form
             "metric_name >= bound", like "m1 <= 3."
-        ax_client (AxClient): Optional AxClient instance. If this is set, do
+        ax_client: Optional AxClient instance. If this is set, do
             not pass any values to these parameters: `space`, `metric`,
             `parameter_constraints`, `outcome_constraints`.
-        use_early_stopped_trials: Deprecated.
-        max_concurrent (int): Deprecated.
         **ax_kwargs: Passed to AxClient instance. Ignored if `AxClient` is not
             None.
 
@@ -133,8 +131,6 @@ class AxSearch(Searcher):
         parameter_constraints: Optional[List] = None,
         outcome_constraints: Optional[List] = None,
         ax_client: Optional[AxClient] = None,
-        use_early_stopped_trials: Optional[bool] = None,
-        max_concurrent: Optional[int] = None,
         **ax_kwargs
     ):
         assert (
@@ -149,8 +145,6 @@ class AxSearch(Searcher):
         super(AxSearch, self).__init__(
             metric=metric,
             mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials,
         )
 
         self._ax = ax_client
@@ -169,8 +163,6 @@ class AxSearch(Searcher):
         self._outcome_constraints = outcome_constraints
 
         self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
-
-        self.max_concurrent = max_concurrent
 
         self._parameters = []
         self._live_trial_mapping = {}
@@ -328,7 +320,7 @@ class AxSearch(Searcher):
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
                 logger.warning(
-                    "AxSearch does not support quantization. " "Dropped quantization."
+                    "AxSearch does not support quantization. Dropped quantization."
                 )
                 sampler = sampler.sampler
 

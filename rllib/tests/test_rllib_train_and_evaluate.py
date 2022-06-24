@@ -35,14 +35,14 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
             "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo)
             + "--config='{"
             + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
-            + ', "timesteps_per_iteration": 5,"min_time_s_per_reporting": 0.1, '
+            + ', "min_sample_timesteps_per_iteration": 5,'
+            '"min_time_s_per_iteration": 0.1, '
             '"model": {"fcnet_hiddens": [10]}'
-            "}' --stop='{\"training_iteration\": 1}'"
-            + " --env={} --no-ray-ui".format(env)
+            "}' --stop='{\"training_iteration\": 1}'" + " --env={}".format(env)
         )
 
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_000001/" "checkpoint-1".format(tmp_dir)
+            "ls {}/default/*/checkpoint_000001/checkpoint-1".format(tmp_dir)
         ).read()[:-1]
         if not os.path.exists(checkpoint_path):
             sys.exit(1)
@@ -51,7 +51,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         # Test rolling out n steps.
         os.popen(
             'python {}/evaluate.py --run={} "{}" --steps=10 '
-            '--out="{}/rollouts_10steps.pkl" --no-render'.format(
+            '--out="{}/rollouts_10steps.pkl"'.format(
                 rllib_dir, algo, checkpoint_path, tmp_dir
             )
         ).read()
@@ -63,7 +63,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         if test_episode_rollout:
             os.popen(
                 'python {}/evaluate.py --run={} "{}" --episodes=1 '
-                '--out="{}/rollouts_1episode.pkl" --no-render'.format(
+                '--out="{}/rollouts_1episode.pkl"'.format(
                     rllib_dir, algo, checkpoint_path, tmp_dir
                 )
             ).read()
@@ -103,7 +103,7 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_*/" "checkpoint-*".format(tmp_dir)
+            "ls {}/default/*/checkpoint_*/checkpoint-*".format(tmp_dir)
         ).read()[:-1]
         checkpoints = [
             cp
@@ -123,7 +123,7 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
         result = os.popen(
             "python {}/evaluate.py --run={} "
             "--steps=400 "
-            '--out="{}/rollouts_n_steps.pkl" --no-render "{}"'.format(
+            '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
                 rllib_dir, algo, tmp_dir, last_checkpoint
             )
         ).read()[:-1]
@@ -187,7 +187,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen(
-            "ls {}/PPO/*/checkpoint_*/" "checkpoint-*".format(tmp_dir)
+            "ls {}/PPO/*/checkpoint_*/checkpoint-*".format(tmp_dir)
         ).read()[:-1]
         checkpoint_paths = checkpoint_path.split("\n")
         assert len(checkpoint_paths) > 0
@@ -209,7 +209,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
         result = os.popen(
             "python {}/evaluate.py --run={} "
             "--steps=400 "
-            '--out="{}/rollouts_n_steps.pkl" --no-render "{}"'.format(
+            '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
                 rllib_dir, algo, tmp_dir, last_checkpoint
             )
         ).read()[:-1]

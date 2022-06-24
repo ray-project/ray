@@ -23,7 +23,7 @@
 
 namespace ray {
 class GcsPlacementGroupSchedulerTest;
-namespace syncer {
+namespace gcs_syncer {
 
 // RaySyncer is a service to sync components in the cluster.
 // It's supposed to be used to synchronize resource usage and scheduling information
@@ -53,7 +53,7 @@ class RaySyncer {
   void Start() {
     poller_->Start();
     broadcast_thread_ = std::make_unique<std::thread>([this]() {
-      SetThreadName("resource_report_broadcaster");
+      SetThreadName("resource_bcast");
       boost::asio::io_service::work work(broadcast_service_);
       broadcast_service_.run();
     });
@@ -185,5 +185,5 @@ class RaySyncer {
   friend class ray::GcsPlacementGroupSchedulerTest;
 };
 
-}  // namespace syncer
+}  // namespace gcs_syncer
 }  // namespace ray

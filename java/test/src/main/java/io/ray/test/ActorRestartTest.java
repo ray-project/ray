@@ -2,8 +2,8 @@ package io.ray.test;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.runtime.exception.RayActorException;
-import io.ray.runtime.exception.RayException;
+import io.ray.api.exception.RayActorException;
+import io.ray.api.exception.RayException;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;

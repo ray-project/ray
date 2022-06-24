@@ -38,14 +38,51 @@ def test_incremental_take(shutdown_only):
     assert pipe.take(1) == [0]
 
 
+def test_pipeline_is_parallel(shutdown_only):
+    ray.init(num_cpus=4)
+    ds = ray.data.range(10)
+
+    @ray.remote(num_cpus=0)
+    class ParallelismTracker:
+        def __init__(self):
+            self.in_progress = 0
+            self.max_in_progress = 0
+
+        def inc(self):
+            self.in_progress += 1
+            if self.in_progress > self.max_in_progress:
+                self.max_in_progress = self.in_progress
+
+        def dec(self):
+            self.in_progress = 0
+
+        def get_max(self):
+            return self.max_in_progress
+
+    tracker = ParallelismTracker.remote()
+
+    def sleep(x):
+        ray.get(tracker.inc.remote())
+        time.sleep(0.1)
+        ray.get(tracker.dec.remote())
+        return x
+
+    pipe = ds.window(blocks_per_window=1)
+    # Shuffle in between to prevent fusion.
+    pipe = pipe.map(sleep).random_shuffle_each_window().map(sleep)
+    for i, v in enumerate(pipe.iter_rows()):
+        print(i, v)
+    assert ray.get(tracker.get_max.remote()) > 1
+
+
 def test_window_by_bytes(ray_start_regular_shared):
     with pytest.raises(ValueError):
-        ray.data.range_arrow(10).window(blocks_per_window=2, bytes_per_window=2)
+        ray.data.range_table(10).window(blocks_per_window=2, bytes_per_window=2)
 
-    pipe = ray.data.range_arrow(10000000, parallelism=100).window(blocks_per_window=2)
+    pipe = ray.data.range_table(10000000, parallelism=100).window(blocks_per_window=2)
     assert str(pipe) == "DatasetPipeline(num_windows=50, num_stages=2)"
 
-    pipe = ray.data.range_arrow(10000000, parallelism=100).window(
+    pipe = ray.data.range_table(10000000, parallelism=100).window(
         bytes_per_window=10 * 1024 * 1024
     )
     assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=2)"
@@ -54,23 +91,32 @@ def test_window_by_bytes(ray_start_regular_shared):
     for ds in dss[:-1]:
         assert ds.num_blocks() in [12, 13]
 
-    pipe = ray.data.range_arrow(10000000, parallelism=100).window(bytes_per_window=1)
+    pipe = ray.data.range_table(10000000, parallelism=100).window(bytes_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=100, num_stages=2)"
     for ds in pipe.iter_datasets():
         assert ds.num_blocks() == 1
 
-    pipe = ray.data.range_arrow(10000000, parallelism=100).window(bytes_per_window=1e9)
+    pipe = ray.data.range_table(10000000, parallelism=100).window(bytes_per_window=1e9)
     assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=2)"
     for ds in pipe.iter_datasets():
         assert ds.num_blocks() == 100
 
     # Test creating from non-lazy BlockList.
     pipe = (
-        ray.data.range_arrow(10000000, parallelism=100)
+        ray.data.range_table(10000000, parallelism=100)
         .map_batches(lambda x: x)
         .window(bytes_per_window=10 * 1024 * 1024)
     )
     assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=1)"
+
+    context = DatasetContext.get_current()
+    old = context.optimize_fuse_read_stages
+    try:
+        context.optimize_fuse_read_stages = False
+        dataset = ray.data.range(10).window(bytes_per_window=1)
+        assert dataset.take(10) == list(range(10))
+    finally:
+        context.optimize_fuse_read_stages = old
 
 
 def test_epoch(ray_start_regular_shared):
@@ -83,6 +129,11 @@ def test_epoch(ray_start_regular_shared):
     pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
+
+    # Test max epochs.
+    pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
+    results = [p.take() for p in pipe.iter_epochs(2)]
+    assert results == [[0, 1, 2], [0, 1, 2]]
 
     # Test nested repeat.
     pipe = ray.data.range(5).repeat(2).repeat(2)
@@ -392,6 +443,68 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
 
     pipe = ds.repeat(3)
     assert 9 == pipe.sum()
+
+
+def test_randomize_block_order_each_window(ray_start_regular_shared):
+    pipe = ray.data.range(12).repartition(6).window(blocks_per_window=3)
+    pipe = pipe.randomize_block_order_each_window(seed=0)
+    assert pipe.take() == [0, 1, 4, 5, 2, 3, 6, 7, 10, 11, 8, 9]
+
+
+def test_preserve_whether_base_datasets_can_be_cleared(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 3, 4, 5])
+    pipe = ds.repeat()
+    # pipe is directly consuming blocks of dataset, so cannot clear base dataset.
+    assert not pipe._base_datasets_can_be_cleared
+    # pipe has no transformation, so output blocks are blocks of dataset, so cannot
+    # be cleared.
+    assert not pipe._can_clear_output_blocks_after_read()
+
+    pipe = ds.repeat().map_batches(lambda x: x)
+    assert not pipe._base_datasets_can_be_cleared
+    # pipe now has transformation, so output blocks are created on-the-fly and can
+    # be cleared.
+    assert pipe._can_clear_output_blocks_after_read()
+
+    # rewindow(): collapse previous stages when creating new DatasetPipeline.
+    pipe = ds.repeat().map_batches(lambda x: x).rewindow(blocks_per_window=1)
+    assert len(pipe._stages) == 0
+    # The base datasets are generated by a pipeline prior to rewindow, so we
+    # can clear them.
+    assert pipe._base_datasets_can_be_cleared
+    # When base datasets can be cleared, we can surely clear output blocks from this
+    # pipeline.
+    assert pipe._can_clear_output_blocks_after_read()
+
+    # split(): Similar to rewindow, pipeline splitting will also collapse previous
+    # stages, so we expect same.
+    p1, p2 = ds.repeat().map_batches(lambda x: x).split(2)
+    assert len(p1._stages) == 0
+    assert len(p2._stages) == 0
+    assert p1._base_datasets_can_be_cleared
+    assert p2._base_datasets_can_be_cleared
+    assert p1._can_clear_output_blocks_after_read()
+    assert p2._can_clear_output_blocks_after_read()
+
+    # foreach_window(): will preserve the _base_datasets_can_be_cleared.
+    p1 = ds.repeat()
+    p2 = p1.foreach_window(lambda x: x)
+    assert p1._base_datasets_can_be_cleared == p2._base_datasets_can_be_cleared
+    assert not p2._base_datasets_can_be_cleared
+    p1 = ds.repeat().map_batches(lambda x: x).rewindow(blocks_per_window=1)
+    p2 = p1.foreach_window(lambda x: x)
+    assert p1._base_datasets_can_be_cleared == p2._base_datasets_can_be_cleared
+    assert p2._base_datasets_can_be_cleared
+
+    # repeat(): will preserve the _base_datasets_can_be_cleared.
+    p1 = ds.window(blocks_per_window=1)
+    p2 = p1.repeat()
+    assert p1._base_datasets_can_be_cleared == p2._base_datasets_can_be_cleared
+    assert not p2._base_datasets_can_be_cleared
+    p1 = ds.window(blocks_per_window=1).map_batches(lambda x: x)
+    p2 = p1.repeat()
+    assert p1._base_datasets_can_be_cleared == p2._base_datasets_can_be_cleared
+    assert not p2._base_datasets_can_be_cleared
 
 
 if __name__ == "__main__":

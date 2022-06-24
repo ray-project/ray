@@ -1,19 +1,17 @@
 import logging
 import uuid
 from functools import partial
-
 from types import FunctionType
-from typing import Optional
+from typing import Callable, Optional, Type, Union
 
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
     _internal_kv_get,
+    _internal_kv_initialized,
     _internal_kv_put,
 )
 from ray.tune.error import TuneError
-from typing import Callable
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -21,6 +19,7 @@ RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
 RLLIB_ACTION_DIST = "rllib_action_dist"
 RLLIB_INPUT = "rllib_input"
+RLLIB_CONNECTOR = "rllib_connector"
 TEST = "__test__"
 KNOWN_CATEGORIES = [
     TRAINABLE_CLASS,
@@ -29,6 +28,7 @@ KNOWN_CATEGORIES = [
     RLLIB_PREPROCESSOR,
     RLLIB_ACTION_DIST,
     RLLIB_INPUT,
+    RLLIB_CONNECTOR,
     TEST,
 ]
 
@@ -54,21 +54,33 @@ def validate_trainable(trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
 
-def register_trainable(name, trainable, warn=True):
+def is_function_trainable(trainable: Union[str, Callable, Type]) -> bool:
+    """Check if a given trainable is a function trainable."""
+    if isinstance(trainable, str):
+        trainable = get_trainable_cls(trainable)
+
+    return not isinstance(trainable, type) and (
+        isinstance(trainable, FunctionType)
+        or isinstance(trainable, partial)
+        or callable(trainable)
+    )
+
+
+def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool = True):
     """Register a trainable function or class.
 
     This enables a class or function to be accessed on every Ray process
     in the cluster.
 
     Args:
-        name (str): Name to register.
-        trainable (obj): Function or tune.Trainable class. Functions must
+        name: Name to register.
+        trainable: Function or tune.Trainable class. Functions must
             take (config, status_reporter) as arguments and will be
             automatically converted into a class during registration.
     """
 
+    from ray.tune.trainable import wrap_function
     from ray.tune.trainable import Trainable
-    from ray.tune.function_runner import wrap_function
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")
@@ -84,15 +96,15 @@ def register_trainable(name, trainable, warn=True):
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
-def register_env(name, env_creator):
+def register_env(name: str, env_creator: Callable):
     """Register a custom environment for use with RLlib.
 
     This enables the environment to be accessed on every Ray process
     in the cluster.
 
     Args:
-        name (str): Name to register.
-        env_creator (obj): Callable that creates an env.
+        name: Name to register.
+        env_creator: Callable that creates an env.
     """
 
     if not callable(env_creator):
@@ -101,11 +113,11 @@ def register_env(name, env_creator):
 
 
 def register_input(name: str, input_creator: Callable):
-    """Register a custom input api for RLLib.
+    """Register a custom input api for RLlib.
 
     Args:
-        name (str): Name to register.
-        input_creator (IOContext -> InputReader): Callable that creates an
+        name: Name to register.
+        input_creator: Callable that creates an
             input reader.
     """
     if not callable(input_creator):
@@ -125,13 +137,13 @@ def check_serializability(key, value):
     _global_registry.register(TEST, key, value)
 
 
-def _make_key(prefix, category, key):
+def _make_key(prefix: str, category: str, key: str):
     """Generate a binary key for the given category and key.
 
     Args:
-        prefix (str): Prefix
-        category (str): The category of the item
-        key (str): The unique identifier for the item
+        prefix: Prefix
+        category: The category of the item
+        key: The unique identifier for the item
 
     Returns:
         The key to use for storing a the value.
@@ -194,7 +206,7 @@ class _Registry:
 
 
 _global_registry = _Registry(prefix="global")
-ray.worker._post_init_hooks.append(_global_registry.flush_values)
+ray._private.worker._post_init_hooks.append(_global_registry.flush_values)
 
 
 class _ParameterRegistry:

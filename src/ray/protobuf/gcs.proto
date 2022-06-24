@@ -42,10 +42,10 @@ enum TablePrefix {
   // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 15;
   INTERNAL_CONFIG = 16;
-  TABLE_PREFIX_MAX = 17;
-  PLACEMENT_GROUP_SCHEDULE = 18;
-  PLACEMENT_GROUP = 19;
-  KV = 20;
+  PLACEMENT_GROUP_SCHEDULE = 17;
+  PLACEMENT_GROUP = 18;
+  KV = 19;
+  ACTOR_TASK_SPEC = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -126,13 +126,13 @@ message ActorTableData {
   string name = 12;
   // Last timestamp that the actor state was updated.
   double timestamp = 13;
-  // The task specification of this actor's creation task.
-  TaskSpec task_spec = 14;
   // Resource mapping ids acquired by the leased worker. This field is only set when this
   // actor already has a leased worker.
   repeated ResourceMapEntry resource_mapping = 15;
   // The process id of this actor.
   uint32 pid = 16;
+  // The function descriptor of the actor creation task.
+  FunctionDescriptor function_descriptor = 17;
   // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 19;
   // The unix ms timestamp the actor was started at.
@@ -148,6 +148,8 @@ message ActorTableData {
   string class_name = 23;
   // Contains metadata about why the actor is dead.
   ActorDeathCause death_cause = 24;
+  // Quantities of the different resources required by this actor.
+  map<string, double> required_resources = 28;
 }
 
 message ErrorTableData {
@@ -242,6 +244,9 @@ message GcsNodeInfo {
 
   // The total resources of this node.
   map<string, double> resources_total = 11;
+
+  // The user-provided identifier or name for this node.
+  string node_name = 12;
 }
 
 message HeartbeatTableData {
@@ -255,8 +260,6 @@ message JobConfig {
     NON_DETACHED = 1;
   }
 
-  // The number of java workers per worker process.
-  uint32 num_java_workers_per_process = 1;
   // The jvm options for java workers of the job.
   repeated string jvm_options = 2;
   // A list of directories or files (jar files or dynamic libraries) that specify the
@@ -301,8 +304,6 @@ message WorkerTableData {
   Address worker_address = 2;
   // The UNIX timestamp at which this worker's state was updated.
   int64 timestamp = 3;
-  // Whether it's an intentional disconnect, only applies then `is_alive` is false.
-  WorkerExitType exit_type = 4;
   // Type of this worker.
   WorkerType worker_type = 5;
   // This is for AddWorker.
@@ -310,6 +311,12 @@ message WorkerTableData {
   // The exception thrown in creation task. This field is set if this worker died because
   // of exception thrown in actor's creation task. Only applies when is_alive=false.
   RayException creation_task_exception = 18;
+  // Whether it's an intentional disconnect, only applies then `is_alive` is false.
+  optional WorkerExitType exit_type = 19;
+  // The detailed message about worker exit.
+  optional string exit_detail = 20;
+  // pid of the worker process.
+  uint32 pid = 21;
 }
 
 // Fields to publish when worker fails.

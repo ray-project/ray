@@ -82,26 +82,25 @@ class TestJobSubmitRequestValidation:
 
 
 def test_uri_to_http_and_back():
-    assert uri_to_http_components("gcs://hello.zip") == ("gcs", "hello")
+    assert uri_to_http_components("gcs://hello.zip") == ("gcs", "hello.zip")
+    assert uri_to_http_components("gcs://hello.whl") == ("gcs", "hello.whl")
 
     with pytest.raises(ValueError, match="'blah' is not a valid Protocol"):
         uri_to_http_components("blah://halb.zip")
 
-    with pytest.raises(ValueError, match="does not end in .zip"):
+    with pytest.raises(ValueError, match="does not end in .zip or .whl"):
         assert uri_to_http_components("gcs://hello.not_zip")
 
-    with pytest.raises(ValueError, match="does not end in .zip"):
+    with pytest.raises(ValueError, match="does not end in .zip or .whl"):
         assert uri_to_http_components("gcs://hello")
 
-    assert http_uri_components_to_uri("gcs", "hello") == "gcs://hello.zip"
-    assert http_uri_components_to_uri("blah", "halb") == "blah://halb.zip"
+    assert http_uri_components_to_uri("gcs", "hello.zip") == "gcs://hello.zip"
+    assert http_uri_components_to_uri("blah", "halb.zip") == "blah://halb.zip"
+    assert http_uri_components_to_uri("blah", "halb.whl") == "blah://halb.whl"
 
-    with pytest.raises(ValueError, match="should not end in .zip"):
-        assert http_uri_components_to_uri("gcs", "hello.zip")
-
-    original_uri = "gcs://hello.zip"
-    new_uri = http_uri_components_to_uri(*uri_to_http_components(original_uri))
-    assert new_uri == original_uri
+    for original_uri in ["gcs://hello.zip", "gcs://fasdf.whl"]:
+        new_uri = http_uri_components_to_uri(*uri_to_http_components(original_uri))
+        assert new_uri == original_uri
 
 
 if __name__ == "__main__":

@@ -27,17 +27,17 @@ Report:
 """
 
 import click
+import logging
 import math
-import os
 import random
 
 import ray
 from ray import serve
-from ray.serve.utils import logger
 from serve_test_utils import (
     aggregate_all_metrics,
     run_wrk_on_all_nodes,
     save_test_results,
+    is_smoke_test,
 )
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
@@ -48,15 +48,17 @@ from serve_test_cluster_utils import (
 )
 from typing import Optional
 
+logger = logging.getLogger(__file__)
+
 # Experiment configs
-DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA = 1
+DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA = 0
 DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA = 8
 DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 2 replicas each
 
 # TODO:(jiaodong) We should investigate and change this back to 1k
 # for now, we won't get valid latency numbers from wrk at 1k replica
 # likely due to request timeout.
-DEFAULT_FULL_TEST_MIN_NUM_REPLICA = 1
+DEFAULT_FULL_TEST_MIN_NUM_REPLICA = 0
 DEFAULT_FULL_TEST_MAX_NUM_REPLICA = 1000
 # TODO(simon): we should change this back to 100. But due to long poll issue
 # we temporarily downscoped this test.
@@ -130,8 +132,7 @@ def main(
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
-    if smoke_test == "1":
+    if is_smoke_test():
         min_replicas = min_replicas or DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA
         max_replicas = max_replicas or DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA
         num_deployments = num_deployments or DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS

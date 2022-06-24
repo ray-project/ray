@@ -135,8 +135,8 @@ initialization_commands:
 # List of shell commands to run to set up nodes.
 # NOTE: rayproject/ray-ml:latest has ray latest bundled
 setup_commands: []
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
-    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

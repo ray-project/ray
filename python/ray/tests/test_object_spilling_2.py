@@ -1,14 +1,15 @@
 import os
-import random
 import platform
+import random
 import subprocess
 import sys
 
 import numpy as np
 import pytest
+
 import ray
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
-from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 
 
 def test_delete_objects(object_spilling_config, shutdown_only):
@@ -215,9 +216,9 @@ def test_delete_objects_multi_node(
     assert_no_thrashing(cluster.address)
 
 
-def test_fusion_objects(object_spilling_config, shutdown_only):
+def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    object_spilling_config, temp_folder = object_spilling_config
+    object_spilling_config, temp_folder = fs_only_object_spilling_config
     min_spilling_size = 10 * 1024 * 1024
     address = ray.init(
         object_store_memory=75 * 1024 * 1024,
@@ -255,7 +256,7 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
     is_test_passing = False
     # Since we'd like to see the temp directory that stores the files,
     # we need to append this directory.
-    temp_folder = temp_folder / ray.ray_constants.DEFAULT_OBJECT_PREFIX
+    temp_folder = temp_folder / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
     for path in temp_folder.iterdir():
         file_size = path.stat().st_size
         # Make sure there are at least one
@@ -360,7 +361,7 @@ def test_spill_objects_on_object_transfer(
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on " "Windows and Mac."
+    platform.system() in ["Windows"], reason="Failing on Windows and Mac."
 )
 def test_file_deleted_when_driver_exits(tmp_path, shutdown_only):
     temp_folder = tmp_path / "spill"
@@ -412,4 +413,7 @@ os.kill(os.getpid(), sig)
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

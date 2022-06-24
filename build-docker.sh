@@ -7,7 +7,7 @@ set -x
 
 GPU=""
 BASE_IMAGE="ubuntu:focal"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 PYTHON_VERSION="3.7.7"
 
 
@@ -80,10 +80,10 @@ if [ $BUILD_DEV ]; then
     git rev-parse HEAD > ./docker/development/git-rev
     git archive -o ./docker/development/ray.tar "$(git rev-parse HEAD)"
     if [ $OUTPUT_SHA ]; then
-        IMAGE_SHA=$(docker build --no-cache -q -t rayproject/development docker/development)
+        IMAGE_SHA=$(docker build $NO_CACHE -q -t rayproject/development docker/development)
         echo "rayproject/development:latest SHA:$IMAGE_SHA"
     else
-        docker build --no-cache -t rayproject/development docker/development
+        docker build $NO_CACHE -t rayproject/development docker/development
     fi
     rm ./docker/development/ray.tar ./docker/development/git-rev
 fi

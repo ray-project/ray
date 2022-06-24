@@ -3,7 +3,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 
@@ -24,17 +24,18 @@ MyTorchPolicy = build_policy_class(
     name="MyTorchPolicy", framework="torch", loss_fn=policy_gradient_loss
 )
 
-# <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
-MyTrainer = build_trainer(
-    name="MyCustomTrainer",
-    default_policy=MyTorchPolicy,
-)
+
+# Create a new Algorithm using the Policy defined above.
+class MyAlgorithm(Algorithm):
+    def get_default_policy_class(self, config):
+        return MyTorchPolicy
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
     tune.run(
-        MyTrainer,
+        MyAlgorithm,
         stop={"training_iteration": args.stop_iters},
         config={
             "env": "CartPole-v0",

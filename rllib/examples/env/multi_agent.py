@@ -149,7 +149,7 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
                 self.dones.add(i)
 
         # Sometimes, add a new agent to the episode.
-        if random.random() > 0.75:
+        if random.random() > 0.75 and len(action_dict) > 0:
             i = self.spawn()
             obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
             if done[i]:

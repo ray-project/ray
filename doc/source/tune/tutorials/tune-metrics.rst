@@ -69,7 +69,7 @@ All of these can be used as stopping conditions or passed as a parameter to Tria
 * ``config``: The hyperparameter configuration
 * ``date``: String-formatted date and time when the result was processed
 * ``done``: True if the trial has been finished, False otherwise
-* ``episodes_total``: Total number of episodes (for RLLib trainables)
+* ``episodes_total``: Total number of episodes (for RLlib trainables)
 * ``experiment_id``: Unique experiment ID
 * ``experiment_tag``: Unique experiment tag (includes parameter values)
 * ``hostname``: Hostname of the worker

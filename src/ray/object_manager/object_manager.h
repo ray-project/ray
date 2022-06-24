@@ -114,9 +114,6 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
-  using RestoreSpilledObjectCallback = std::function<void(
-      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
-
   /// Implementation of object manager service
 
   /// Handle push request from remote object manager
@@ -176,7 +173,7 @@ class ObjectManager : public ObjectManagerInterface,
       AddObjectCallback add_object_callback,
       DeleteObjectCallback delete_object_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      const std::function<void(const ObjectID &)> fail_pull_request);
+      const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request);
 
   ~ObjectManager();
 
@@ -280,10 +277,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_id The object's id.
   /// \param node_id The remote node's id.
   /// \param chunk_reader Chunk reader used to read a chunk of the object
+  /// \param from_disk Whether chunk is being read from disk or plasma. This is
+  /// used only for metrics.
   /// Status::OK() if the read succeeded.
   void PushObjectInternal(const ObjectID &object_id,
                           const NodeID &node_id,
-                          std::shared_ptr<ChunkObjectReader> chunk_reader);
+                          std::shared_ptr<ChunkObjectReader> chunk_reader,
+                          bool from_disk);
 
   /// Send one chunk of the object to remote object manager
   ///
@@ -296,13 +296,16 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param rpc_client Rpc client used to send message to remote object manager
   /// \param on_complete Callback when the chunk is sent
   /// \param chunk_reader Chunk reader used to read a chunk of the object
+  /// \param from_disk Whether chunk is being read from disk or plasma. This is
+  /// used only for metrics.
   void SendObjectChunk(const UniqueID &push_id,
                        const ObjectID &object_id,
                        const NodeID &node_id,
                        uint64_t chunk_index,
                        std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
                        std::function<void(const Status &)> on_complete,
-                       std::shared_ptr<ChunkObjectReader> chunk_reader);
+                       std::shared_ptr<ChunkObjectReader> chunk_reader,
+                       bool from_disk);
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
@@ -411,7 +414,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Mapping from locally available objects to information about those objects
   /// including when the object was last pushed to other object managers.
-  std::unordered_map<ObjectID, LocalObjectInfo> local_objects_;
+  absl::flat_hash_map<ObjectID, LocalObjectInfo> local_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
@@ -420,9 +423,9 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
-  std::unordered_map<
+  absl::flat_hash_map<
       ObjectID,
-      std::unordered_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
+      absl::flat_hash_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
   /// The gPRC server.
@@ -435,7 +438,7 @@ class ObjectManager : public ObjectManagerInterface,
   rpc::ClientCallManager client_call_manager_;
 
   /// Client id - object manager gRPC client.
-  std::unordered_map<NodeID, std::shared_ptr<rpc::ObjectManagerClient>>
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
 
   /// Callback to trigger direct restoration of an object.
@@ -456,6 +459,11 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;
+
+  /// Metrics for bytes pushed and received.
+  size_t num_bytes_received_total_ = 0;
+  size_t num_bytes_pushed_from_disk_ = 0;
+  size_t num_bytes_pushed_from_plasma_ = 0;
 
   /// Running total of received chunks.
   size_t num_chunks_received_total_ = 0;

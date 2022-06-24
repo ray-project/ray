@@ -1,4 +1,4 @@
-from ray.ray_constants import env_integer
+from ray._private.ray_constants import env_integer
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_PORT_PREFIX = "DASHBOARD_AGENT_PORT_PREFIX:"
@@ -31,3 +31,8 @@ SIGNAL_WORKER_INFO_FETCHED = "worker_info_fetched"
 # Default value for datacenter (the default value in protobuf)
 DEFAULT_LANGUAGE = "PYTHON"
 DEFAULT_JOB_ID = "ffff"
+# Cache TTL for bad runtime env. After this time, delete the cache and retry to create
+# runtime env if needed.
+BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
+    "BAD_RUNTIME_ENV_CACHE_TTL_SECONDS", 60 * 10
+)

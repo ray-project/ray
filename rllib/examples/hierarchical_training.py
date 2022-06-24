@@ -29,7 +29,6 @@ import os
 
 import ray
 from ray import tune
-from ray.tune import function
 from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, HierarchicalWindyMazeEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -107,7 +106,7 @@ if __name__ == "__main__":
                         {"gamma": 0.0},
                     ),
                 },
-                "policy_mapping_fn": function(policy_mapping_fn),
+                "policy_mapping_fn": policy_mapping_fn,
             },
             "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

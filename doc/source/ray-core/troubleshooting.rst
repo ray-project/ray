@@ -261,7 +261,7 @@ different error types:
   distributed reference counting, so this error should not happen in general.
   However, there is a `known edge case`_ that can produce this error.
 
-.. _`lineage reconstruction`: https://docs.ray.io/en/master/fault-tolerance.html
+.. _`lineage reconstruction`: https://docs.ray.io/en/master/ray-core/actors/fault-tolerance.html
 .. _`known edge case`: https://github.com/ray-project/ray/issues/18456
 
 Crashes

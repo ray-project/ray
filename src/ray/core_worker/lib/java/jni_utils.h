@@ -49,6 +49,11 @@ extern jmethodID java_object_equals;
 /// hashCode method of Object class
 extern jmethodID java_object_hash_code;
 
+/// WeakReference class
+extern jclass java_weak_reference_class;
+extern jmethodID java_weak_reference_init;
+extern jmethodID java_weak_reference_get;
+
 /// List class
 extern jclass java_list_class;
 /// size method of List class
@@ -110,14 +115,17 @@ extern jclass java_ray_pending_calls_limit_exceeded_exception_class;
 /// RayIntentionalSystemExitException class
 extern jclass java_ray_intentional_system_exit_exception_class;
 
-/// RayActorCreationTaskException class
+/// RayActorException class
 extern jclass java_ray_actor_exception_class;
+
+/// RayExceptionSerializer class
+extern jclass java_ray_exception_serializer_class;
 
 /// RayTimeoutException class
 extern jclass java_ray_timeout_exception_class;
 
-/// toBytes method of RayException
-extern jmethodID java_ray_exception_to_bytes;
+/// RayExceptionSerializer to bytes
+extern jmethodID java_ray_exception_serializer_to_bytes;
 
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
@@ -170,6 +178,8 @@ extern jfieldID java_task_creation_options_group;
 extern jfieldID java_task_creation_options_bundle_index;
 /// concurrencyGroupName field of CallOptions class
 extern jfieldID java_call_options_concurrency_group_name;
+/// serializedRuntimeEnvInfo field of CallOptions class
+extern jfieldID java_call_options_serialized_runtime_env_info;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
@@ -256,6 +266,11 @@ extern jclass java_placement_group_class;
 /// id field of PlacementGroup class
 extern jfieldID java_placement_group_id;
 
+/// ObjectRefImpl class
+extern jclass java_object_ref_impl_class;
+/// onJavaObjectAllocated method of ObjectRefImpl class
+extern jmethodID java_object_ref_impl_class_on_memory_store_object_allocated;
+
 /// ResourceValue class that is used to convert resource_ids() to java class
 extern jclass java_resource_value_class;
 /// Construtor of ResourceValue class
@@ -304,6 +319,18 @@ extern JavaVM *jvm;
                      << error_message;                                                \
     }                                                                                 \
   }
+
+/// Convert a Java String to C++ std::string.
+/// If the Java String is null, return an empty C++ std::string.
+inline std::string JavaStringToNativeString(JNIEnv *env, jstring jstr) {
+  if (!jstr) {
+    return std::string();
+  }
+  const char *c_str = env->GetStringUTFChars(jstr, nullptr);
+  std::string result(c_str);
+  env->ReleaseStringUTFChars(static_cast<jstring>(jstr), c_str);
+  return result;
+}
 
 /// Represents a byte buffer of Java byte array.
 /// The destructor will automatically call ReleaseByteArrayElements.
@@ -376,14 +403,6 @@ inline jbyteArray NativeStringToJavaByteArray(JNIEnv *env, const std::string &st
   env->SetByteArrayRegion(
       array, 0, str.size(), reinterpret_cast<const jbyte *>(str.c_str()));
   return array;
-}
-
-/// Convert a Java String to C++ std::string.
-inline std::string JavaStringToNativeString(JNIEnv *env, jstring jstr) {
-  const char *c_str = env->GetStringUTFChars(jstr, nullptr);
-  std::string result(c_str);
-  env->ReleaseStringUTFChars(static_cast<jstring>(jstr), c_str);
-  return result;
 }
 
 /// Convert a Java List to C++ std::vector.
@@ -535,12 +554,15 @@ inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
   if (!buffer) {
     return nullptr;
   }
-  jbyteArray java_byte_array = env->NewByteArray(buffer->Size());
-  if (buffer->Size() > 0) {
+
+  auto buffer_size = buffer->Size();
+  jbyteArray java_byte_array = env->NewByteArray(buffer_size);
+  if (buffer_size > 0) {
     env->SetByteArrayRegion(java_byte_array,
                             0,
                             buffer->Size(),
                             reinterpret_cast<const jbyte *>(buffer->Data()));
+    RAY_CHECK_JAVA_EXCEPTION(env);
   }
   return java_byte_array;
 }
@@ -589,11 +611,13 @@ inline std::shared_ptr<RayObject> JavaNativeRayObjectToNativeRayObject(
 
 /// Convert a C++ RayObject to a Java NativeRayObject.
 inline jobject NativeRayObjectToJavaNativeRayObject(
-    JNIEnv *env, const std::shared_ptr<RayObject> &rayObject) {
+    JNIEnv *env, const std::shared_ptr<RayObject> rayObject) {
   if (!rayObject) {
     return nullptr;
   }
-  auto java_data = NativeBufferToJavaByteArray(env, rayObject->GetData());
+
+  std::shared_ptr<ray::Buffer> local_buffer = rayObject->GetData();
+  auto java_data = NativeBufferToJavaByteArray(env, local_buffer);
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   auto java_obj = env->NewObject(java_native_ray_object_class,
                                  java_native_ray_object_init,
@@ -652,10 +676,19 @@ inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject jav
 inline std::shared_ptr<LocalMemoryBuffer> SerializeActorCreationException(
     JNIEnv *env, jthrowable creation_exception) {
   jbyteArray exception_jbyte_array = static_cast<jbyteArray>(
-      env->CallObjectMethod(creation_exception, java_ray_exception_to_bytes));
+      env->CallStaticObjectMethod(java_ray_exception_serializer_class,
+                                  java_ray_exception_serializer_to_bytes,
+                                  creation_exception));
   int len = env->GetArrayLength(exception_jbyte_array);
   auto buf = std::make_shared<LocalMemoryBuffer>(len);
   env->GetByteArrayRegion(
       exception_jbyte_array, 0, len, reinterpret_cast<jbyte *>(buf->Data()));
   return buf;
+}
+
+inline jobject CreateJavaWeakRef(JNIEnv *env, jobject java_object) {
+  jobject java_weak_ref =
+      env->NewObject(java_weak_reference_class, java_weak_reference_init, java_object);
+  RAY_CHECK_JAVA_EXCEPTION(env);
+  return java_weak_ref;
 }

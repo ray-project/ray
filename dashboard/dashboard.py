@@ -5,12 +5,12 @@ import logging.handlers
 import platform
 import traceback
 
+import ray._private.ray_constants as ray_constants
+import ray._private.services
+import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
-import ray.ray_constants as ray_constants
-import ray._private.services
-import ray._private.utils
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 
@@ -190,12 +190,9 @@ if __name__ == "__main__":
             raise e
 
         # Something went wrong, so push an error to all drivers.
-        gcs_publisher = GcsPublisher(args.gcs_address)
-
+        gcs_publisher = GcsPublisher(address=args.gcs_address)
         ray._private.utils.publish_error_to_driver(
             ray_constants.DASHBOARD_DIED_ERROR,
             message,
-            None,
-            None,
-            gcs_publisher,
+            gcs_publisher=gcs_publisher,
         )

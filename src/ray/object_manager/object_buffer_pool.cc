@@ -150,8 +150,6 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
 
 void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
   absl::MutexLock lock(&pool_mutex_);
-  RAY_LOG(INFO) << "Not enough memory to create requested object " << object_id
-                << ", aborting";
   AbortCreateInternal(object_id);
 }
 
@@ -248,6 +246,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
       static_cast<int64_t>(metadata_size),
       &data,
       plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
+
   pool_mutex_.Lock();
 
   // No other thread could have created the buffer.
@@ -263,6 +262,9 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   }
 
   if (!s.ok()) {
+    if (s.IsOutOfDisk()) {
+      return s;
+    }
     // Create failed. Buffer creation will be tried by another chunk.
     // And this chunk will eventually make it here via retried pull requests.
     return ray::Status::IOError(s.message());

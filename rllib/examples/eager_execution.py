@@ -3,7 +3,7 @@ import os
 import random
 
 import ray
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.models.eager_model import EagerModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -91,11 +91,12 @@ MyTFPolicy = build_tf_policy(
     loss_fn=policy_gradient_loss,
 )
 
-# <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
-MyTrainer = build_trainer(
-    name="MyCustomTrainer",
-    default_policy=MyTFPolicy,
-)
+
+# Create a new Algorithm using the Policy defined above.
+class MyAlgo(Algorithm):
+    def get_default_policy_class(self, config):
+        return MyTFPolicy
+
 
 if __name__ == "__main__":
     ray.init()
@@ -108,8 +109,7 @@ if __name__ == "__main__":
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "model": {"custom_model": "eager_model"},
-        # Alternatively, use "tf2" here for enforcing TF version 2.x.
-        "framework": "tfe",
+        "framework": "tf2",
     }
     stop = {
         "timesteps_total": args.stop_timesteps,
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, stop=stop, config=config, verbose=1)
+    results = tune.run(MyAlgo, stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

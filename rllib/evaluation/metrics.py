@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -17,22 +17,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-RolloutMetrics = collections.namedtuple(
-    "RolloutMetrics",
-    [
-        "episode_length",
-        "episode_reward",
-        "agent_rewards",
-        "custom_metrics",
-        "perf_stats",
-        "hist_data",
-        "media",
-    ],
+RolloutMetrics = DeveloperAPI(
+    collections.namedtuple(
+        "RolloutMetrics",
+        [
+            "episode_length",
+            "episode_reward",
+            "agent_rewards",
+            "custom_metrics",
+            "perf_stats",
+            "hist_data",
+            "media",
+        ],
+    )
 )
 RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {})
 
 
-def extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
+def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
     if key in stats:
         return stats[key]
 
@@ -137,16 +139,17 @@ def summarize_episodes(
     """Summarizes a set of episode metrics tuples.
 
     Args:
-        episodes: smoothed set of episodes including historical ones
-        new_episodes: just the new episodes in this iteration. This must be
-            a subset of `episodes`. If None, assumes all episodes are new.
+        episodes: List of most recent n episodes. This may include historical ones
+            (not newly collected in this iteration) in order to achieve the size of
+            the smoothing window.
+        new_episodes: All the episodes that were completed in this iteration.
     """
 
     if new_episodes is None:
         new_episodes = episodes
 
-    episodes, estimates = _partition(episodes)
-    new_episodes, _ = _partition(new_episodes)
+    episodes, _ = _partition(episodes)
+    new_episodes, estimates = _partition(new_episodes)
 
     episode_rewards = []
     episode_lengths = []
@@ -221,9 +224,11 @@ def summarize_episodes(
         for k, v in e.metrics.items():
             acc[k].append(v)
     for name, metrics in estimators.items():
+        out = {}
         for k, v_list in metrics.items():
-            metrics[k] = np.mean(v_list)
-        estimators[name] = dict(metrics)
+            out[k + "_mean"] = np.mean(v_list)
+            out[k + "_std"] = np.std(v_list)
+        estimators[name] = out
 
     return dict(
         episode_reward_max=max_reward,

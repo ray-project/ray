@@ -45,10 +45,15 @@ class Counter {
     return *val.Get();
   }
 
+  bool Initialized() { return ray::IsInitialized(); }
+
  private:
   int count;
   bool is_restared = false;
 };
+
+inline Counter *CreateCounter() { return new Counter(0); }
+RAY_REMOTE(CreateCounter);
 
 class CountDownLatch {
  public:

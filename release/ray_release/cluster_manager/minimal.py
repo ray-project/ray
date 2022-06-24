@@ -86,27 +86,42 @@ class MinimalClusterManager(ClusterManager):
         # Fetch build
         build_id = None
         last_status = None
+        error_message = None
+        config_json = None
         result = self.sdk.list_cluster_environment_builds(self.cluster_env_id)
-        for build in sorted(result.results, key=lambda b: b.created_at):
-            build_id = build.id
-            last_status = build.status
+        if not result or not result.results:
+            raise ClusterEnvBuildError(f"No build found for cluster env: {result}")
 
-            if build.status == "failed":
-                continue
+        build = sorted(result.results, key=lambda b: b.created_at)[-1]
+        build_id = build.id
+        last_status = build.status
+        error_message = build.error_message
+        config_json = build.config_json
 
-            if build.status == "succeeded":
-                logger.info(
-                    f"Link to cluster env build: "
-                    f"{format_link(anyscale_cluster_env_build_url(build_id))}"
-                )
-                self.cluster_env_build_id = build_id
-                return
+        if last_status == "succeeded":
+            logger.info(
+                f"Link to succeeded cluster env build: "
+                f"{format_link(anyscale_cluster_env_build_url(build_id))}"
+            )
+            self.cluster_env_build_id = build_id
+            return
 
         if last_status == "failed":
-            raise ClusterEnvBuildError("Cluster env build failed.")
+            logger.info(f"Previous cluster env build failed: {error_message}")
+            logger.info("Starting new cluster env build...")
 
-        if not build_id:
-            raise ClusterEnvBuildError("No build found for cluster env.")
+            # Retry build
+            result = self.sdk.create_cluster_environment_build(
+                dict(
+                    cluster_environment_id=self.cluster_env_id, config_json=config_json
+                )
+            )
+            build_id = result.result.id
+
+            logger.info(
+                f"Link to created cluster env build: "
+                f"{format_link(anyscale_cluster_env_build_url(build_id))}"
+            )
 
         # Build found but not failed/finished yet
         completed = False
@@ -133,7 +148,8 @@ class MinimalClusterManager(ClusterManager):
             if build.status == "failed":
                 raise ClusterEnvBuildError(
                     f"Cluster env build failed. Please see "
-                    f"{anyscale_cluster_env_build_url(build_id)} for details"
+                    f"{anyscale_cluster_env_build_url(build_id)} for details. "
+                    f"Error message: {build.error_message}"
                 )
 
             if build.status == "succeeded":

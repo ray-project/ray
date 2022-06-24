@@ -1,3 +1,4 @@
+import sys
 import unittest
 
 from ray_release.alerts import (
@@ -39,3 +40,9 @@ class AlertsTest(unittest.TestCase):
     def testDefaultAlert(self):
         self.assertTrue(default.handle_result(self.test, Result(status="timeout")))
         self.assertFalse(default.handle_result(self.test, Result(status="finished")))
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

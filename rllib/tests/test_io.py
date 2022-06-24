@@ -15,7 +15,7 @@ from ray.tune.registry import (
     registry_get_input,
     registry_contains_input,
 )
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import (
     IOContext,
@@ -51,13 +51,14 @@ class AgentIOTest(unittest.TestCase):
         shutil.rmtree(self.test_dir)
         ray.shutdown()
 
-    def write_outputs(self, output, fw):
-        agent = PGTrainer(
+    def write_outputs(self, output, fw, output_config=None):
+        agent = PG(
             env="CartPole-v0",
             config={
                 "output": output + (fw if output != "logdir" else ""),
                 "rollout_fragment_length": 250,
                 "framework": fw,
+                "output_config": output_config or {},
             },
         )
         agent.train()
@@ -76,14 +77,28 @@ class AgentIOTest(unittest.TestCase):
             agent = self.write_outputs("logdir", fw)
             self.assertEqual(len(glob.glob(agent.logdir + "/output-*.json")), 1)
 
+    def test_agent_output_infos(self):
+        """Verify that the infos dictionary is written to the output files.
+
+        Note, with torch this is always the case.
+        """
+        output_config = {"store_infos": True}
+        for fw in framework_iterator(frameworks=("torch", "tf")):
+            self.write_outputs(self.test_dir, fw, output_config=output_config)
+            self.assertEqual(len(os.listdir(self.test_dir + fw)), 1)
+            reader = JsonReader(self.test_dir + fw + "/*.json")
+            data = reader.next()
+            assert "infos" in data
+
     def test_agent_input_dir(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
+            print("WROTE TO: ", self.test_dir)
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
-                    "input_evaluation": [],
+                    "off_policy_estimation_methods": {},
                     "framework": fw,
                 },
             )
@@ -122,11 +137,11 @@ class AgentIOTest(unittest.TestCase):
                     for data in out:
                         f.write(json.dumps(data))
 
-            agent = PGTrainer(
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
-                    "input_evaluation": [],
+                    "off_policy_estimation_methods": {},
                     "postprocess_inputs": True,  # adds back 'advantages'
                     "framework": fw,
                 },
@@ -139,11 +154,13 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_eval_sim(self):
         for fw in framework_iterator():
             self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
-                    "input_evaluation": ["simulation"],
+                    "off_policy_estimation_methods": {
+                        "simulation": {"type": "simulation"}
+                    },
                     "framework": fw,
                 },
             )
@@ -157,11 +174,11 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_list(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": glob.glob(self.test_dir + fw + "/*.json"),
-                    "input_evaluation": [],
+                    "off_policy_estimation_methods": {},
                     "rollout_fragment_length": 99,
                     "framework": fw,
                 },
@@ -173,7 +190,7 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_dict(self):
         for fw in framework_iterator():
             self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": {
@@ -181,7 +198,7 @@ class AgentIOTest(unittest.TestCase):
                         "sampler": 0.9,
                     },
                     "train_batch_size": 2000,
-                    "input_evaluation": [],
+                    "off_policy_estimation_methods": {},
                     "framework": fw,
                 },
             )
@@ -194,7 +211,7 @@ class AgentIOTest(unittest.TestCase):
         )
 
         for fw in framework_iterator():
-            pg = PGTrainer(
+            pg = PG(
                 env="multi_agent_cartpole",
                 config={
                     "num_workers": 0,
@@ -214,12 +231,14 @@ class AgentIOTest(unittest.TestCase):
             self.assertEqual(len(os.listdir(self.test_dir)), 1)
 
             pg.stop()
-            pg = PGTrainer(
+            pg = PG(
                 env="multi_agent_cartpole",
                 config={
                     "num_workers": 0,
                     "input": self.test_dir,
-                    "input_evaluation": ["simulation"],
+                    "off_policy_estimation_methods": {
+                        "simulation": {"type": "simulation"}
+                    },
                     "train_batch_size": 2000,
                     "multiagent": {
                         "policies": {"policy_1", "policy_2"},
@@ -256,12 +275,12 @@ class AgentIOTest(unittest.TestCase):
         for input_procedure in test_input_procedure:
             for fw in framework_iterator(frameworks=("torch", "tf")):
                 self.write_outputs(self.test_dir, fw)
-                agent = PGTrainer(
+                agent = PG(
                     env="CartPole-v0",
                     config={
                         "input": input_procedure,
                         "input_config": {"input_files": self.test_dir + fw},
-                        "input_evaluation": [],
+                        "off_policy_estimation_methods": {},
                         "framework": fw,
                     },
                 )

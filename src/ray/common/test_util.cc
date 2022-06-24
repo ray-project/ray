@@ -96,19 +96,15 @@ void TestSetupUtil::FlushRedisServer(const int &port) {
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
-std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
+std::string TestSetupUtil::StartGcsServer(int port) {
   std::string gcs_server_socket_name =
       ray::JoinPaths(ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex());
   std::vector<std::string> cmdargs(
       {TEST_GCS_SERVER_EXEC_PATH,
-       "--redis_address=" + redis_address,
+       "--gcs_server_port=" + std::to_string(port),
        "--config_list=" +
            absl::Base64Escape(R"({"object_timeout_milliseconds": 2000})")});
-  if (RayConfig::instance().bootstrap_with_gcs()) {
-    cmdargs.push_back("--gcs_server_port=6379");
-  } else {
-    cmdargs.push_back("--redis_port=6379");
-  }
+  cmdargs.push_back("--gcs_server_port=6379");
   RAY_LOG(INFO) << "Start gcs server command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, gcs_server_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -129,29 +125,27 @@ std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
       ray::JoinPaths(ray::GetUserTempDir(), "raylet" + ObjectID::FromRandom().Hex());
   std::string plasma_store_socket_name =
       ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
-  std::vector<std::string> cmdargs(
-      {TEST_RAYLET_EXEC_PATH,
-       "--raylet_socket_name=" + raylet_socket_name,
-       "--store_socket_name=" + plasma_store_socket_name,
-       "--object_manager_port=0",
-       "--node_manager_port=" + std::to_string(port),
-       "--node_ip_address=" + node_ip_address,
-       "--redis_port=6379",
-       "--min-worker-port=0",
-       "--max-worker-port=0",
-       "--maximum_startup_concurrency=10",
-       "--static_resource_list=" + resource,
-       "--python_worker_command=" + CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH,
+  std::string mock_worker_command = CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH,
                                                        plasma_store_socket_name,
                                                        raylet_socket_name,
-                                                       std::to_string(port)}),
-       "--object_store_memory=10000000"});
-  if (RayConfig::instance().bootstrap_with_gcs()) {
-    cmdargs.push_back("--gcs-address=" + bootstrap_address);
-  } else {
-    cmdargs.push_back("--redis_address=" + bootstrap_address);
-  }
-  RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
+                                                       std::to_string(port),
+                                                       ""});
+  RAY_LOG(INFO) << "MockWorkerCommand: " << mock_worker_command;
+  std::vector<std::string> cmdargs({TEST_RAYLET_EXEC_PATH,
+                                    "--raylet_socket_name=" + raylet_socket_name,
+                                    "--gcs-address=" + bootstrap_address,
+                                    "--store_socket_name=" + plasma_store_socket_name,
+                                    "--object_manager_port=0",
+                                    "--node_manager_port=" + std::to_string(port),
+                                    "--node_ip_address=" + node_ip_address,
+                                    "--min-worker-port=0",
+                                    "--max-worker-port=0",
+                                    "--maximum_startup_concurrency=10",
+                                    "--static_resource_list=" + resource,
+                                    "--python_worker_command=" + mock_worker_command,
+                                    "--object_store_memory=10000000"});
+
+  RAY_LOG(INFO) << "Raylet Start command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   *store_socket_name = plasma_store_socket_name;

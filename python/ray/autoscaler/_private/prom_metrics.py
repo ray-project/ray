@@ -1,11 +1,6 @@
 try:
 
-    from prometheus_client import (
-        CollectorRegistry,
-        Counter,
-        Gauge,
-        Histogram,
-    )
+    from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
     # The metrics in this class should be kept in sync with
     # python/ray/tests/test_metrics_agent.py
@@ -156,7 +151,7 @@ try:
             )
             self.update_loop_exceptions: Counter = Counter(
                 "update_loop_exceptions",
-                "Number of exceptions raised in the update loop of the " "autoscaler.",
+                "Number of exceptions raised in the update loop of the autoscaler.",
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry,

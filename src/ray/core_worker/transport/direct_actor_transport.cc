@@ -212,6 +212,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                     dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
+    RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
+                   << " to normal scheduling task queue.";
     normal_scheduling_queue_->Add(request.sequence_number(),
                                   request.client_processed_up_to(),
                                   std::move(accept_callback),
@@ -252,8 +254,8 @@ void CoreWorkerDirectTaskReceiver::SetupActor(bool is_asyncio,
 }
 
 void CoreWorkerDirectTaskReceiver::Stop() {
-  for (const auto &it : actor_scheduling_queues_) {
-    it.second->Stop();
+  for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
+    scheduling_queue->Stop();
   }
 }
 

@@ -1,10 +1,12 @@
 from typing import Dict, Optional
 
-from ray.tune import trial_runner
+from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+@DeveloperAPI
 class TrialScheduler:
     """Interface for implementing a Trial Scheduler class."""
 
@@ -38,8 +40,8 @@ class TrialScheduler:
         that react to metrics with their own `metric` and `mode` parameters.
 
         Args:
-            metric (str): Metric to optimize
-            mode (str): One of ["min", "max"]. Direction to optimize.
+            metric: Metric to optimize
+            mode: One of ["min", "max"]. Direction to optimize.
             **spec: Any kwargs for forward compatiblity.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
         """
@@ -121,6 +123,7 @@ class TrialScheduler:
         raise NotImplementedError
 
 
+@PublicAPI
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
 

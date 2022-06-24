@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import unittest
 
-from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
 
 
 class MLflowTest(unittest.TestCase):
@@ -14,7 +14,7 @@ class MLflowTest(unittest.TestCase):
         mlflow.set_tracking_uri(self.dirpath)
         mlflow.create_experiment(name="existing_experiment")
 
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
         self.tracking_uri = mlflow.get_tracking_uri()
 
     def tearDown(self):
@@ -35,6 +35,22 @@ class MLflowTest(unittest.TestCase):
             tracking_uri=self.tracking_uri, experiment_name="existing_experiment"
         )
         assert self.mlflow_util.experiment_id == "0"
+
+    def test_run_started_with_correct_experiment(self):
+        experiment_name = "my_experiment_name"
+        # Make sure run is started under the correct experiment.
+        self.mlflow_util.setup_mlflow(
+            tracking_uri=self.tracking_uri, experiment_name=experiment_name
+        )
+        run = self.mlflow_util.start_run(set_active=True)
+        assert (
+            run.info.experiment_id
+            == self.mlflow_util._mlflow.get_experiment_by_name(
+                experiment_name
+            ).experiment_id
+        )
+
+        self.mlflow_util.end_run()
 
     def test_experiment_name_env_var(self):
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "existing_experiment"
@@ -79,10 +95,12 @@ class MLflowTest(unittest.TestCase):
         params2 = {"b": "b"}
         self.mlflow_util.start_run(set_active=True)
         self.mlflow_util.log_params(params_to_log=params2, run_id=run_id)
-        assert self.mlflow_util._mlflow.get_run(run_id=run_id).data.params == {
+        run = self.mlflow_util._mlflow.get_run(run_id=run_id)
+        assert run.data.params == {
             **params,
             **params2,
         }
+
         self.mlflow_util.end_run()
 
     def test_log_metrics(self):
@@ -108,7 +126,8 @@ class MLflowTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

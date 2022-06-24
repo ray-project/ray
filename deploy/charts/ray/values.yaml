@@ -6,6 +6,13 @@
 # It's recommended to build custom dependencies for your workload into this image,
 # taking one of the offical `rayproject/ray` images as base.
 image: rayproject/ray:latest
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# If the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscalingSpeed: 1.0
+# If a node is idle for this many minutes, it will be removed.
+idleTimeoutMinutes: 5
 # headPodType is the podType used for the Ray head node (as configured below).
 headPodType: rayHeadType
 # podTypes is the list of pod configurations available for use as Ray nodes.
@@ -19,7 +26,7 @@ podTypes:
         CPU: 1
         # memory is the memory used by this Pod type.
         # (Used for both requests and limits.)
-        memory: 512Mi
+        memory: 1Gi
         # GPU is the number of NVIDIA GPUs used by this pod type.
         # (Optional, requires GPU nodes with appropriate setup. See https://docs.ray.io/en/master/cluster/kubernetes-gpu.html)
         GPU: 0
@@ -49,7 +56,7 @@ podTypes:
         maxWorkers: 3
         # memory is the memory used by this Pod type.
         # (Used for both requests and limits.)
-        memory: 512Mi
+        memory: 1Gi
         # CPU is the number of CPUs used by this pod type.
         # (Used for both requests and limits. Must be an integer, as Ray does not support fractional CPUs.)
         CPU: 1
@@ -79,7 +86,6 @@ podTypes:
     #   minWorkers: 0
     #   maxWorkers: 10
     #   memory: ...
-
 
 # Operator settings:
 

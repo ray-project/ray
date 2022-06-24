@@ -4,40 +4,42 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ray.tune import trial_runner
+from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class MedianStoppingRule(FIFOScheduler):
     """Implements the median stopping rule as described in the Vizier paper:
 
     https://research.google.com/pubs/pub46180.html
 
     Args:
-        time_attr (str): The training result attr to use for comparing time.
+        time_attr: The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        metric (str): The training result objective value attribute. Stopping
+        metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        grace_period (float): Only stop trials at least this old in time.
+        grace_period: Only stop trials at least this old in time.
             The mean will only be computed from this time onwards. The units
             are the same as the attribute named by `time_attr`.
-        min_samples_required (int): Minimum number of trials to compute median
+        min_samples_required: Minimum number of trials to compute median
             over.
-        min_time_slice (float): Each trial runs at least this long before
+        min_time_slice: Each trial runs at least this long before
             yielding (assuming it isn't stopped). Note: trials ONLY yield if
             there are not enough samples to evaluate performance for the
             current result AND there are other trials waiting to run.
             The units are the same as the attribute named by `time_attr`.
-        hard_stop (bool): If False, pauses trials instead of stopping
+        hard_stop: If False, pauses trials instead of stopping
             them. When all other trials are complete, paused trials will be
             resumed and allowed to run FIFO.
     """

@@ -1,32 +1,33 @@
-import jsonschema
+import copy
 import logging
 import os
 import sys
 import tempfile
 import unittest
 import urllib
-import yaml
-import copy
 from unittest.mock import MagicMock, Mock, patch
+
+import jsonschema
 import pytest
+import yaml
 from click.exceptions import ClickException
 
+import mock
+from ray._private.test_utils import load_test_config, recursive_fnmatch
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
 )
+from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler._private.gcp import config as gcp_config
+from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.util import (
+    _get_default_config,
+    fill_node_type_min_max_workers,
+    merge_setup_commands,
     prepare_config,
     validate_config,
-    _get_default_config,
-    merge_setup_commands,
-    fill_node_type_min_max_workers,
 )
-from ray.autoscaler._private.providers import _NODE_PROVIDERS
-from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
-
-from ray._private.test_utils import load_test_config, recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
@@ -260,6 +261,33 @@ class AutoscalingConfigTest(unittest.TestCase):
         prepared_config = prepare_config(too_many_workers_config)
 
         # Check that worker config numbers were clipped to 3.
+        assert prepared_config == expected_prepared
+
+        not_enough_workers_config = copy.deepcopy(base_config)
+
+        # Max workers is less than than the three available ips.
+        # The user is probably has probably made an error. Make sure we log a warning.
+        not_enough_workers_config["max_workers"] = 0
+        not_enough_workers_config["min_workers"] = 0
+        with mock.patch(
+            "ray.autoscaler._private.local.config.cli_logger.warning"
+        ) as warning:
+            prepared_config = prepare_config(not_enough_workers_config)
+            warning.assert_called_with(
+                "The value of `max_workers` supplied (0) is less"
+                " than the number of available worker ips (3)."
+                " At most 0 Ray worker nodes will connect to the cluster."
+            )
+        expected_prepared = yaml.safe_load(EXPECTED_LOCAL_CONFIG_STR)
+        # We logged a warning.
+        # However, prepare_config does not repair the strange config setting:
+        expected_prepared["max_workers"] = 0
+        expected_prepared["available_node_types"]["local.cluster.node"][
+            "max_workers"
+        ] = 0
+        expected_prepared["available_node_types"]["local.cluster.node"][
+            "min_workers"
+        ] = 0
         assert prepared_config == expected_prepared
 
     def testValidateNetworkConfig(self):
@@ -694,7 +722,9 @@ class AutoscalingConfigTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

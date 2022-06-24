@@ -1,7 +1,7 @@
 A Guide to Population Based Training
 ====================================
 
-Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__ as
+Tune includes a distributed implementation of `Population Based Training (PBT) <https://www.deepmind.com/blog/population-based-training-of-neural-networks>`__ as
 a :ref:`scheduler <tune-scheduler-pbt>`.
 
 .. image:: /images/tune_advanced_paper1.png
@@ -153,7 +153,7 @@ models via a training paradigm consisting of two competing modules – a generat
 discriminator. GAN training can be remarkably brittle and unstable in the face of suboptimal
 hyperparameter selection with generators often collapsing to a single mode or diverging entirely.
 
-As presented in `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__,
+As presented in `Population Based Training (PBT) <https://www.deepmind.com/blog/population-based-training-of-neural-networks>`__,
 PBT can help with the DCGAN training. We will now walk through how to do this in Tune.
 Complete code example at `github <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples/pbt_dcgan_mnist>`__
 

@@ -117,10 +117,11 @@ class CoreWorkerDirectTaskReceiver {
   std::shared_ptr<DependencyWaiter> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<WorkerID, std::unique_ptr<SchedulingQueue>> actor_scheduling_queues_;
+  absl::flat_hash_map<WorkerID, std::unique_ptr<SchedulingQueue>>
+      actor_scheduling_queues_;
   // Queue of pending normal (non-actor) tasks.
   std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
-      std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
+      std::make_unique<NormalSchedulingQueue>();
   /// The max number of concurrent calls to allow for fiber mode.
   /// 0 indicates that the value is not set yet.
   int fiber_max_concurrency_ = 0;

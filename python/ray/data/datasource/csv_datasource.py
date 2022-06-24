@@ -1,23 +1,30 @@
-from typing import TYPE_CHECKING, Any, Dict, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator
 
-if TYPE_CHECKING:
-    import pyarrow
-
-from ray.data.block import BlockAccessor, Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
 )
+from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
+@PublicAPI
 class CSVDatasource(FileBasedDatasource):
     """CSV datasource, for reading and writing CSV files.
 
     Examples:
-        >>> source = CSVDatasource()
-        >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... [{"a": 1, "b": "foo"}, ...]
+        >>> import ray
+        >>> from ray.data.datasource import CSVDatasource
+        >>> source = CSVDatasource() # doctest: +SKIP
+        >>> ray.data.read_datasource( # doctest: +SKIP
+        ...     source, paths="/path/to/dir").take()
+        [{"a": 1, "b": "foo"}, ...]
     """
+
+    _FILE_EXTENSION = "csv"
 
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
@@ -45,13 +52,10 @@ class CSVDatasource(FileBasedDatasource):
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args
+        **writer_args,
     ):
         from pyarrow import csv
 
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         write_options = writer_args.pop("write_options", None)
         csv.write_csv(block.to_arrow(), f, write_options, **writer_args)
-
-    def _file_format(self):
-        return "csv"

@@ -1,10 +1,5 @@
-from typing import Dict
-import tempfile
 import pytest
 import sys
-import os
-import yaml
-import requests
 
 import ray
 from ray import serve
@@ -12,7 +7,7 @@ from ray.serve.application import Application
 from ray._private.test_utils import wait_for_condition
 
 
-class TestAddDeployment:
+class TestApplicationConstruction:
     @serve.deployment
     def f(*args):
         return "got f"
@@ -22,26 +17,27 @@ class TestAddDeployment:
         def __call__(self, *args):
             return "got C"
 
-    def test_add_deployment_valid(self):
-        app = Application()
-        app.add_deployment(self.f)
-        app.add_deployment(self.C)
+    def test_valid_deployments(self):
+        app = Application([self.f, self.C])
 
-        assert len(app) == 2
-        assert "f" in app
-        assert "C" in app
+        assert len(app.deployments) == 2
+        app_deployment_names = {d.name for d in app.deployments.values()}
+        assert "f" in app_deployment_names
+        assert "C" in app_deployment_names
 
-    def test_add_deployment_repeat_name(self):
+    def test_repeated_deployment_names(self):
         with pytest.raises(ValueError):
-            app = Application()
-            app.add_deployment(self.f)
-            app.add_deployment(self.C.options(name="f"))
+            Application([self.f, self.C.options(name="f")])
 
         with pytest.raises(ValueError):
             Application([self.C, self.f.options(name="C")])
 
+    def test_non_deployments(self):
+        with pytest.raises(TypeError):
+            Application([self.f, 5, "hello"])
 
-class TestDeployGroup:
+
+class TestServeRun:
     @serve.deployment
     def f():
         return "f reached"
@@ -70,7 +66,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        Application(deployments).deploy(blocking=blocking)
+        serve.run(Application(deployments), _blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -89,7 +85,7 @@ class TestDeployGroup:
             # If non-blocking, this should pass eventually.
             wait_for_condition(check_all_deployed)
 
-    def test_basic_deploy_group(self, serve_instance):
+    def test_basic_run(self, serve_instance):
         """
         Atomically deploys a group of deployments, including both functions and
         classes. Checks whether they deploy correctly.
@@ -100,7 +96,7 @@ class TestDeployGroup:
 
         self.deploy_and_check_responses(deployments, responses)
 
-    def test_non_blocking_deploy_group(self, serve_instance):
+    def test_non_blocking_run(self, serve_instance):
         """Checks Application's deploy() behavior when blocking=False."""
 
         deployments = [self.f, self.g, self.C, self.D]
@@ -143,7 +139,7 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        Application(deployments).deploy(blocking=True)
+        serve.run(Application(deployments), _blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -271,101 +267,13 @@ class DecoratedClass:
         return "got decorated class"
 
 
-def compare_specified_options(deployments1: Dict, deployments2: Dict):
-    """
-    Helper method that takes 2 deployment dictionaries in the REST API
-    format and compares their specified settings. Assumes deployments2 may
-    have default values that deployments1 lacks. Does not compare
-    ray_actor_options.
-    """
+def test_immutable_deployment_list(serve_instance):
+    app = Application([DecoratedClass, decorated_func])
+    assert len(app.deployments.values()) == 2
 
-    deployments1 = deployments1["deployments"]
-    deployments2 = deployments2["deployments"]
-
-    for deployments in [deployments1, deployments2]:
-        deployments.sort(key=lambda d: d["name"])
-
-    for deployment1, deployment2 in zip(deployments1, deployments2):
-        for key, val in deployment1.items():
-            if val and key != "ray_actor_options":
-                assert deployment1[key] == deployment2[key]
-
-
-class TestDictTranslation:
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="File path incorrect on Windows."
-    )
-    def test_deploy_from_dict(self, serve_instance):
-        config_file_name = os.path.join(
-            os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-        )
-
-        with open(config_file_name, "r") as config_file:
-            config_dict = yaml.safe_load(config_file)
-
-        app = Application.from_dict(config_dict)
-        app_dict = app.to_dict()
-
-        compare_specified_options(config_dict, app_dict)
-
-        app.deploy()
-
-        assert (
-            requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
-        )
-        assert requests.get("http://localhost:8000/one").text == "2"
-
-
-class TestYAMLTranslation:
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="File path incorrect on Windows."
-    )
-    def test_deploy_from_yaml(self, serve_instance):
-        config_file_name = os.path.join(
-            os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-        )
-
-        # Check if yaml string and yaml file both produce the same Application
-        with open(config_file_name, "r") as f:
-            app1 = Application.from_yaml(f)
-        with open(config_file_name, "r") as f:
-            yaml_str = f.read()
-        app2 = Application.from_yaml(yaml_str)
-        compare_specified_options(app1.to_dict(), app2.to_dict())
-
-        # Check that deployment works
-        app1.deploy()
-        assert (
-            requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
-        )
-        assert requests.get("http://localhost:8000/one").text == "2"
-
-        # Check if yaml string output is same as the Application
-        recreated_app = Application.from_yaml(app1.to_yaml())
-        compare_specified_options(recreated_app.to_dict(), app1.to_dict())
-
-        # Check if yaml file output is same as the Application
-        with tempfile.TemporaryFile(mode="w+") as tmp:
-            app1.to_yaml(tmp)
-            tmp.seek(0)
-            compare_specified_options(
-                Application.from_yaml(tmp).to_dict(), app1.to_dict()
-            )
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_get_set_item(serve_instance):
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-    )
-
-    with open(config_file_name, "r") as f:
-        app = Application.from_yaml(f)
-    app["shallow"].deploy()
-    app["one"].deploy()
-
-    assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
-    assert requests.get("http://localhost:8000/one").text == "2"
+    for name in app.deployments.keys():
+        with pytest.raises(RuntimeError):
+            app.deployments[name] = app.deployments[name].options(name="sneaky")
 
 
 if __name__ == "__main__":

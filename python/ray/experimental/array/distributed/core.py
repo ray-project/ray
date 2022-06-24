@@ -142,7 +142,7 @@ def eye(dim1, dim2=-1, dtype_name="float"):
 def triu(a):
     if a.ndim != 2:
         raise Exception(
-            "Input must have 2 dimensions, but a.ndim is " "{}.".format(a.ndim)
+            "Input must have 2 dimensions, but a.ndim is {}.".format(a.ndim)
         )
     result = DistArray(a.shape)
     for (i, j) in np.ndindex(*result.num_blocks):
@@ -159,7 +159,7 @@ def triu(a):
 def tril(a):
     if a.ndim != 2:
         raise Exception(
-            "Input must have 2 dimensions, but a.ndim is " "{}.".format(a.ndim)
+            "Input must have 2 dimensions, but a.ndim is {}.".format(a.ndim)
         )
     result = DistArray(a.shape)
     for (i, j) in np.ndindex(*result.num_blocks):

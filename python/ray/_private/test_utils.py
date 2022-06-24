@@ -1,44 +1,39 @@
 import asyncio
-import io
 import fnmatch
+import functools
+import io
+import logging
+import math
 import os
-import json
 import pathlib
+import socket
 import subprocess
 import sys
+import tempfile
 import time
 import timeit
-import socket
-import math
 import traceback
-from typing import Optional, Any, List, Dict
-from contextlib import redirect_stdout, redirect_stderr, contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from typing import Any, Dict, List, Optional
 
-import yaml
-import logging
-import tempfile
 import grpc
-from grpc._channel import _InactiveRpcError
 import numpy as np
+import psutil  # We must import psutil after ray because we bundle it with ray.
+import yaml
+from grpc._channel import _InactiveRpcError
 
 import ray
-import ray._private.services
-import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
-from ray._raylet import GcsClientOptions, GlobalStateAccessor
-from ray.core.generated import gcs_pb2
-from ray.core.generated import node_manager_pb2
-from ray.core.generated import node_manager_pb2_grpc
-from ray._private.gcs_pubsub import (
-    gcs_pubsub_enabled,
-    GcsErrorSubscriber,
-    GcsLogSubscriber,
-)
+import ray._private.services
+import ray._private.utils
+from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
+from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
-from ray.util.queue import Queue, _QueueActor, Empty
+from ray._raylet import GcsClientOptions, GlobalStateAccessor
+from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.scripts.scripts import main as ray_main
-from ray.internal.internal_api import memory_summary
+from ray.util.queue import Empty, Queue, _QueueActor
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -48,25 +43,25 @@ except (ImportError, ModuleNotFoundError):
         raise ModuleNotFoundError("`prometheus_client` not found")
 
 
-import psutil  # We must import psutil after ray because we bundle it with ray.
-
-
 class RayTestTimeoutException(Exception):
     """Exception used to identify timeouts from test utilities."""
 
     pass
 
 
-def make_global_state_accessor(address_info):
-    if not gcs_utils.use_gcs_for_bootstrap():
-        gcs_options = GcsClientOptions.from_redis_address(
-            address_info["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD
-        )
-    else:
-        gcs_options = GcsClientOptions.from_gcs_address(address_info["gcs_address"])
+def make_global_state_accessor(ray_context):
+    gcs_options = GcsClientOptions.from_gcs_address(
+        ray_context.address_info["gcs_address"]
+    )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
     return global_state_accessor
+
+
+def test_external_redis():
+    import os
+
+    return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
 def _pid_alive(pid):
@@ -212,22 +207,12 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     """Run a driver as a separate process.
 
     Args:
-        driver_script (str): A string to run as a Python script.
-        env (dict): The environment variables for the driver.
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
 
     Returns:
         The script's output.
     """
-    if env is not None and gcs_utils.use_gcs_for_bootstrap():
-        env.update(
-            {
-                "RAY_bootstrap_with_gcs": "1",
-                "RAY_gcs_grpc_based_pubsub": "1",
-                "RAY_gcs_storage": "memory",
-                "RAY_bootstrap_with_gcs": "1",
-            }
-        )
-
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
@@ -290,7 +275,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
             len(
                 [
                     _
-                    for _ in ray.state.actors().values()
+                    for _ in ray._private.state.actors().values()
                     if state is None or _["State"] == state
                 ]
             )
@@ -336,11 +321,11 @@ def wait_for_num_nodes(num_nodes: int, timeout_s: int):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
+    current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray.state.actors(actor_id)
+        actor_status = ray._private.state.actors(actor_id)
         if (
             actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
             or actor_status["NumRestarts"] > current_num_restarts
@@ -404,6 +389,53 @@ async def async_wait_for_condition(
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
     raise RuntimeError(message)
+
+
+def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
+    """Returns a decorator which waits until the stdout emitted
+    by a function contains the provided list of strings.
+    Raises an exception if the stdout doesn't have the expected output in time.
+
+    Args:
+        strings_to_match: Wait until stdout contains all of these string.
+        timeout_s: Max time to wait, in seconds, before raising a RuntimeError.
+    """
+
+    def decorator(func):
+        @functools.wraps(func)
+        def decorated_func(*args, **kwargs):
+            success = False
+            try:
+                # Redirect stdout to an in-memory stream.
+                out_stream = io.StringIO()
+                sys.stdout = out_stream
+                # Execute the func.
+                out = func(*args, **kwargs)
+                # Check out_stream once a second until the timeout.
+                # Raise a RuntimeError if we timeout.
+                wait_for_condition(
+                    # Does redirected stdout contain all of the expected strings?
+                    lambda: all(
+                        string in out_stream.getvalue() for string in strings_to_match
+                    ),
+                    timeout=timeout_s,
+                    retry_interval_ms=1000,
+                )
+                # out_stream has the expected strings
+                success = True
+                return out
+            finally:
+                sys.stdout = sys.__stdout__
+                if success:
+                    print("Confirmed expected function stdout. Stdout follows:")
+                else:
+                    print("Did not confirm expected function stdout. Stdout follows:")
+                print(out_stream.getvalue())
+                out_stream.close()
+
+        return decorated_func
+
+    return decorator
 
 
 def wait_until_succeeded_without_exception(
@@ -578,7 +610,8 @@ def get_other_nodes(cluster, exclude_head=False):
     return [
         node
         for node in cluster.list_all_nodes()
-        if node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
+        if node._raylet_socket_name
+        != ray._private.worker._global_node._raylet_socket_name
         and (exclude_head is False or node.head is False)
     ]
 
@@ -589,18 +622,14 @@ def get_non_head_nodes(cluster):
 
 
 def init_error_pubsub():
-    """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.RAY_ERROR_PUBSUB_PATTERN)
+    """Initialize error info pub/sub"""
+    s = GcsErrorSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
 def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
-    """Gets errors from GCS / Redis subscriber.
+    """Gets errors from GCS subscriber.
 
     Returns maximum `num` error strings within `timeout`.
     Only returns errors of `error_type` if specified.
@@ -608,18 +637,10 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        if isinstance(subscriber, GcsErrorSubscriber):
-            _, error_data = subscriber.poll(timeout=deadline - time.time())
-            if not error_data:
-                # Timed out before any data is received.
-                break
-        else:
-            msg = subscriber.get_message()
-            if msg is None:
-                time.sleep(0.01)
-                continue
-            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+        _, error_data = subscriber.poll(timeout=deadline - time.time())
+        if not error_data:
+            # Timed out before any data is received.
+            break
         if error_type is None or error_type == error_data.type:
             msgs.append(error_data)
         else:
@@ -629,13 +650,9 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 
 def init_log_pubsub():
-    """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.LOG_FILE_CHANNEL)
+    """Initialize log pub/sub"""
+    s = GcsLogSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
@@ -649,18 +666,10 @@ def get_log_data(
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        if isinstance(subscriber, GcsLogSubscriber):
-            logs_data = subscriber.poll(timeout=deadline - time.time())
-            if not logs_data:
-                # Timed out before any data is received.
-                break
-        else:
-            msg = subscriber.get_message()
-            if msg is None:
-                time.sleep(0.01)
-                continue
-            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
-
+        logs_data = subscriber.poll(timeout=deadline - time.time())
+        if not logs_data:
+            # Timed out before any data is received.
+            break
         if job_id and job_id != logs_data["job"]:
             continue
         if matcher and all(not matcher(line) for line in logs_data["lines"]):
@@ -676,7 +685,7 @@ def get_log_message(
     job_id: Optional[str] = None,
     matcher=None,
 ) -> List[List[str]]:
-    """Gets log lines through GCS / Redis subscriber.
+    """Gets log lines through GCS subscriber.
 
     Returns maximum `num` of log messages, within `timeout`.
 
@@ -706,7 +715,7 @@ def get_log_batch(
     job_id: Optional[str] = None,
     matcher=None,
 ) -> List[str]:
-    """Gets log batches through GCS / Redis subscriber.
+    """Gets log batches through GCS subscriber.
 
     Returns maximum `num` batches of logs. Each batch is a dict that includes
     metadata such as `pid`, `job_id`, and `lines` of log messages.
@@ -717,18 +726,10 @@ def get_log_batch(
     deadline = time.time() + timeout
     batches = []
     while time.time() < deadline and len(batches) < num:
-        if isinstance(subscriber, GcsLogSubscriber):
-            logs_data = subscriber.poll(timeout=deadline - time.time())
-            if not logs_data:
-                # Timed out before any data is received.
-                break
-        else:
-            msg = subscriber.get_message()
-            if msg is None:
-                time.sleep(0.01)
-                continue
-            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
-
+        logs_data = subscriber.poll(timeout=deadline - time.time())
+        if not logs_data:
+            # Timed out before any data is received.
+            break
         if job_id and job_id != logs_data["job"]:
             continue
         if matcher and not matcher(logs_data):
@@ -907,8 +908,8 @@ def monitor_memory_usage(
     The monitor will run on the same node as this function is called.
 
     Params:
-        interval_s (int): The interval memory usage information is printed
-        warning_threshold (float): The threshold where the
+        interval_s: The interval memory usage information is printed
+        warning_threshold: The threshold where the
             memory usage warning is printed.
 
     Returns:
@@ -928,13 +929,13 @@ def monitor_memory_usage(
             """The actor that monitor the memory usage of the cluster.
 
             Params:
-                print_interval_s (float): The interval where
+                print_interval_s: The interval where
                     memory usage is printed.
-                record_interval_s (float): The interval where
+                record_interval_s: The interval where
                     memory usage is recorded.
-                warning_threshold (float): The threshold where
+                warning_threshold: The threshold where
                     memory warning is printed
-                n (int): When memory usage is printed,
+                n: When memory usage is printed,
                     top n entries are printed.
             """
             # -- Interval the monitor prints the memory usage information. --
@@ -1000,7 +1001,7 @@ def monitor_memory_usage(
             """
             return self.peak_memory_usage, self.peak_top_n_memory_usage
 
-    current_node_ip = ray.worker.global_worker.node_ip_address
+    current_node_ip = ray._private.worker.global_worker.node_ip_address
     # Schedule the actor on the current node.
     memory_monitor_actor = MemoryMonitorActor.options(
         resources={f"node:{current_node_ip}": 0.001}
@@ -1153,8 +1154,8 @@ def get_and_run_node_killer(
                     alive_nodes += 1
             return alive_nodes
 
-    head_node_ip = ray.worker.global_worker.node_ip_address
-    head_node_id = ray.worker.global_worker.current_node_id.hex()
+    head_node_ip = ray._private.worker.global_worker.node_ip_address
+    head_node_id = ray._private.worker.global_worker.current_node_id.hex()
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(
         resources={f"node:{head_node_ip}": 0.001},
@@ -1254,7 +1255,15 @@ def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
             if "Restored" in s:
                 return False
         if spilled:
-            if "Spilled {} MiB".format(spilled) not in s:
+            if not isinstance(spilled, list):
+                spilled_lst = [spilled]
+            else:
+                spilled_lst = spilled
+            found = False
+            for n in spilled_lst:
+                if "Spilled {} MiB".format(n) in s:
+                    found = True
+            if not found:
                 return False
         else:
             if "Spilled" in s:
@@ -1268,3 +1277,64 @@ def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
         return True
 
     wait_for_condition(ok, timeout=3, retry_interval_ms=1000)
+
+
+def no_resource_leaks_excluding_node_resources():
+    cluster_resources = ray.cluster_resources()
+    available_resources = ray.available_resources()
+    for r in ray.cluster_resources():
+        if "node" in r:
+            del cluster_resources[r]
+            del available_resources[r]
+
+    return cluster_resources == available_resources
+
+
+@contextmanager
+def simulate_storage(storage_type, root=None):
+    if storage_type == "fs":
+        if root is None:
+            with tempfile.TemporaryDirectory() as d:
+                yield "file://" + d
+        else:
+            yield "file://" + root
+    elif storage_type == "s3":
+        import uuid
+
+        from moto import mock_s3
+
+        from ray.tests.mock_s3_server import start_service, stop_process
+
+        @contextmanager
+        def aws_credentials():
+            old_env = os.environ
+            os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+            os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+            os.environ["AWS_SECURITY_TOKEN"] = "testing"
+            os.environ["AWS_SESSION_TOKEN"] = "testing"
+            yield
+            os.environ = old_env
+
+        @contextmanager
+        def moto_s3_server():
+            host = "localhost"
+            port = 5002
+            url = f"http://{host}:{port}"
+            process = start_service("s3", host, port)
+            yield url
+            stop_process(process)
+
+        if root is None:
+            root = uuid.uuid4().hex
+        with moto_s3_server() as s3_server, aws_credentials(), mock_s3():
+            url = f"s3://{root}?region=us-west-2&endpoint_override={s3_server}"
+            yield url
+    else:
+        raise ValueError(f"Unknown storage type: {storage_type}")
+
+
+def job_hook(**kwargs):
+    """Function called by reflection by test_cli_integration."""
+    cmd = " ".join(kwargs["entrypoint"])
+    print(f"hook intercepted: {cmd}")
+    sys.exit(0)

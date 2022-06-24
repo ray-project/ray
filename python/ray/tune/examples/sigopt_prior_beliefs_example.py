@@ -1,4 +1,8 @@
-""""Example using Sigopt's support for prior beliefs."""
+""""
+Example using Sigopt's support for prior beliefs.
+
+Requires the SigOpt library to be installed (`pip install sigopt`).
+"""
 import sys
 
 import numpy as np
@@ -85,7 +89,6 @@ if __name__ == "__main__":
         connection=conn,
         experiment_id=experiment.id,
         name="SigOpt Example Existing Experiment",
-        max_concurrent=1,
         metric=["average", "std"],
         mode=["obs", "min"],
     )

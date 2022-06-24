@@ -2,7 +2,6 @@
 Optional utils module contains utility methods
 that require optional dependencies.
 """
-from aiohttp.web import Response
 import asyncio
 import collections
 import functools
@@ -15,21 +14,23 @@ import traceback
 from collections import namedtuple
 from typing import Any, Callable
 
+from aiohttp.web import Response
+
 import ray
 import ray.dashboard.consts as dashboard_consts
-from ray.ray_constants import env_bool
-from ray import serve
+from ray._private.ray_constants import env_bool
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
+from ray.dashboard.utils import CustomEncoder, to_google_style
 
 try:
     create_task = asyncio.create_task
 except AttributeError:
     create_task = asyncio.ensure_future
 
-# All third-party dependencies that are not included in the minimal Ray
-# installation must be included in this file. This allows us to determine if
-# the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import aiohttp, hdrs, PathLike, RouteDef
-from ray.dashboard.utils import to_google_style, CustomEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -269,9 +270,10 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                         raise e from None
 
                 if connect_to_serve:
-                    # TODO(edoakes): this should probably run in the `serve`
-                    # namespace.
-                    serve.start(detached=True)
+                    from ray import serve
+
+                    serve.start(detached=True, http_options={"host": "0.0.0.0"})
+
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")

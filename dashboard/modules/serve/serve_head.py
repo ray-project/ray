@@ -1,16 +1,10 @@
-from aiohttp.web import Request, Response
+import json
 import logging
 
-import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.optional_utils as optional_utils
+from aiohttp.web import Request, Response
 
-from ray import serve
-from ray.serve.application import Application
-from ray.serve.schema import (
-    serve_application_to_schema,
-    serve_application_status_to_schema,
-)
-from ray.serve.api import get_deployment_statuses
+import ray.dashboard.optional_utils as optional_utils
+import ray.dashboard.utils as dashboard_utils
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -18,6 +12,9 @@ logger.setLevel(logging.INFO)
 routes = optional_utils.ClassMethodRouteTable
 
 
+# NOTE (shrekris-anyscale): This class uses delayed imports for all
+# Ray Serve-related modules. That way, users can use the Ray dashboard for
+# non-Serve purposes without downloading Serve dependencies.
 class ServeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -25,45 +22,45 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
-        deployments = list(serve.list_deployments().values())
-        serve_application_schema = serve_application_to_schema(deployments=deployments)
+        from ray.serve.context import get_global_client
+
+        client = get_global_client()
+
         return Response(
-            text=serve_application_schema.json(),
+            text=json.dumps(client.get_app_config()),
             content_type="application/json",
         )
 
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
-        serve_application_status_schema = serve_application_status_to_schema(
-            get_deployment_statuses()
-        )
+        from ray.serve.context import get_global_client
+        from ray.serve.schema import serve_status_to_schema
+
+        client = get_global_client()
+
+        serve_status_schema = serve_status_to_schema(client.get_serve_status())
         return Response(
-            text=serve_application_status_schema.json(),
+            text=serve_status_schema.json(),
             content_type="application/json",
         )
 
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def delete_serve_application(self, req: Request) -> Response:
+        from ray import serve
+
         serve.shutdown()
         return Response()
 
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        app = Application.from_dict(await req.json())
-        app.deploy(blocking=False)
+        from ray.serve.context import get_global_client
+        from ray.serve.schema import ServeApplicationSchema
 
-        new_names = set()
-        for deployment in app:
-            new_names.add(deployment.name)
-
-        all_deployments = serve.list_deployments()
-        all_names = set(all_deployments.keys())
-        names_to_delete = all_names.difference(new_names)
-        for name in names_to_delete:
-            all_deployments[name].delete()
+        config = ServeApplicationSchema.parse_obj(await req.json())
+        get_global_client().deploy_app(config)
 
         return Response()
 

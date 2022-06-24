@@ -9,7 +9,7 @@ This tutorial will walk you through the process of setting up a Tune experiment.
 We'll start with a PyTorch model and show you how to leverage Ray Tune to optimize the hyperparameters of this model.
 Specifically, we'll leverage early stopping and Bayesian Optimization via HyperOpt to do so.
 
-.. tip:: If you have sugges tions as to how to improve this tutorial,
+.. tip:: If you have suggestions on how to improve this tutorial,
     please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
 
 To run this example, you will need to install the following:
@@ -89,8 +89,7 @@ You can use this to plot the performance of this trial.
    :end-before: __plot_end__
 
 .. note:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster.
-    To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``.
-    If you're using a Search Algorithm like Bayesian Optimization, you'll want to use the :ref:`ConcurrencyLimiter <limiter>`.
+    To limit the number of concurrent trials, use the :ref:`ConcurrencyLimiter <limiter>`.
 
 
 Early Stopping with ASHA

@@ -6,12 +6,9 @@ import subprocess
 import sys
 
 import ray
-from ray.rllib import _register_all
 from ray.cluster_utils import Cluster
-from ray.tune import register_trainable
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
-from ray.tune.utils.mock import MockDurableTrainer, MockRemoteTrainer
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
 
@@ -24,10 +21,6 @@ def _start_new_cluster():
             "_system_config": {"num_heartbeats_timeout": 10},
         },
     )
-    # Pytest doesn't play nicely with imports
-    register_trainable("__fake_remote", MockRemoteTrainer)
-    register_trainable("__fake_durable", MockDurableTrainer)
-    _register_all()
     return cluster
 
 
@@ -76,7 +69,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
     trials = []
-    for i in range(50):
+    for i in range(100):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
             runner = TrialRunner(
@@ -105,7 +98,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
 
     register_trainable("trainable", MyTrainableClass)
     reached = False
-    for i in range(50):
+    for i in range(100):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
             runner = TrialRunner(

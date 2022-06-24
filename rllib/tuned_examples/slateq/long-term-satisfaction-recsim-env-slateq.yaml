@@ -8,10 +8,10 @@ long-term-satisfaction-recsim-env-slateq:
         evaluation/episode_reward_mean: 1000.0
         timesteps_total: 200000
     config:
-        # SlateQ only supported for torch so far.
-        framework: torch
+        # Works for both tf and torch.
+        framework: tf
 
-        metrics_num_episodes_for_smoothing: 1000
+        metrics_num_episodes_for_smoothing: 200
 
         # RLlib/RecSim wrapper specific settings:
         env_config:
@@ -31,23 +31,7 @@ long-term-satisfaction-recsim-env-slateq:
                 seed: 42
 
         exploration_config:
-            type: SlateSoftQ
-            temperature: 0.7
+            warmup_timesteps: 10000
+            epsilon_timesteps: 60000
 
-        hiddens: [256, 256]
-
-        num_workers: 0
-        num_gpus: 0
-
-        lr_choice_model: 0.002
-        lr_q_model: 0.001
-
-        target_network_update_freq: 800
-        tau: 1.0
-
-        # Evaluation settings.
-        evaluation_interval: 1
-        evaluation_num_workers: 4
-        evaluation_duration: 200
-        evaluation_duration_unit: episodes
-        evaluation_parallel_to_training: true
+        target_network_update_freq: 3200

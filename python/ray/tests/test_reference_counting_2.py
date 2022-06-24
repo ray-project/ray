@@ -8,12 +8,11 @@ import sys
 import time
 
 import numpy as np
-
 import pytest
 
 import ray
 import ray.cluster_utils
-from ray.internal.internal_api import memory_summary
+from ray._private.internal_api import memory_summary
 from ray._private.test_utils import SignalActor, put_object, wait_for_condition
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -43,11 +42,11 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
 
     if succeed:
         wait_for_condition(
-            lambda: ray.worker.global_worker.core_worker.object_exists(obj)
+            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
         )
     else:
         wait_for_condition(
-            lambda: not ray.worker.global_worker.core_worker.object_exists(obj)
+            lambda: not ray._private.worker.global_worker.core_worker.object_exists(obj)
         )
 
 
@@ -178,7 +177,7 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
         assert failure
 
     def ref_not_exists():
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         inner_oid = ray.ObjectRef(inner_oid_binary)
         return not worker.core_worker.object_exists(inner_oid)
 
@@ -404,7 +403,7 @@ def test_object_unpin(ray_start_cluster):
     ten_mb_arrays.append(ray.put(ten_mb_array))
 
     def check_memory(mb):
-        return f"Plasma memory usage {mb} " "MiB" in memory_summary(
+        return f"Plasma memory usage {mb} MiB" in memory_summary(
             address=head_node.address, stats_only=True
         )
 
@@ -539,8 +538,7 @@ def test_object_unpin_stress(ray_start_cluster):
 
     wait_for_condition(
         lambda: (
-            (f"Plasma memory usage {total_size}" " MiB")
-            in memory_summary(stats_only=True)
+            (f"Plasma memory usage {total_size} MiB") in memory_summary(stats_only=True)
         )
     )
 
@@ -704,4 +702,7 @@ def test_forward_nested_ref(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

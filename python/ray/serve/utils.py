@@ -1,33 +1,37 @@
-from functools import wraps
+import copy
 import importlib
-from itertools import groupby
-import json
-import logging
+import inspect
+import os
 import pickle
 import random
 import string
 import time
-from typing import Iterable, List, Tuple, Dict, Any
-import os
 import traceback
 from enum import Enum
-from ray.actor import ActorHandle
+from functools import wraps
+from itertools import groupby
+from typing import Dict, Iterable, List, Tuple
 
-import requests
+import fastapi.encoders
 import numpy as np
 import pydantic
+import pydantic.json
+import requests
 
 import ray
-import ray.serialization_addons
+import ray.util.serialization_addons
+from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
+from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.serve.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
-from ray.serve.constants import (
-    HTTP_PROXY_TIMEOUT,
-    SERVE_HANDLE_JSON_KEY,
-    ServeHandleType,
-)
-from ray import serve
+
+import __main__
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -49,120 +53,54 @@ def parse_request_item(request_item):
     return request_item.args, request_item.kwargs
 
 
-class LoggingContext:
-    """
-    Context manager to manage logging behaviors within a particular block, such as:
-    1) Overriding logging level
+class _ServeCustomEncoders:
+    """Group of custom encoders for common types that's not handled by FastAPI."""
 
-    Source (python3 official documentation)
-    https://docs.python.org/3/howto/logging-cookbook.html#using-a-context-manager-for-selective-logging # noqa: E501
-    """
+    @staticmethod
+    def encode_np_array(obj):
+        assert isinstance(obj, np.ndarray)
+        if obj.dtype.kind == "f":  # floats
+            obj = obj.astype(float)
+        if obj.dtype.kind in {"i", "u"}:  # signed and unsigned integers.
+            obj = obj.astype(int)
+        return obj.tolist()
 
-    def __init__(self, logger, level=None):
-        self.logger = logger
-        self.level = level
+    @staticmethod
+    def encode_np_scaler(obj):
+        assert isinstance(obj, np.generic)
+        return obj.item()
 
-    def __enter__(self):
-        if self.level is not None:
-            self.old_level = self.logger.level
-            self.logger.setLevel(self.level)
+    @staticmethod
+    def encode_exception(obj):
+        assert isinstance(obj, Exception)
+        return str(obj)
 
-    def __exit__(self, et, ev, tb):
-        if self.level is not None:
-            self.logger.setLevel(self.old_level)
-
-
-def _get_logger():
-    logger = logging.getLogger("ray.serve")
-    # TODO(simon): Make logging level configurable.
-    log_level = os.environ.get("SERVE_LOG_DEBUG")
-    if log_level and int(log_level):
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-    return logger
+    @staticmethod
+    def encode_pandas_dataframe(obj):
+        assert isinstance(obj, pd.DataFrame)
+        return obj.to_dict(orient="records")
 
 
-logger = _get_logger()
+serve_encoders = {
+    np.ndarray: _ServeCustomEncoders.encode_np_array,
+    np.generic: _ServeCustomEncoders.encode_np_scaler,
+    Exception: _ServeCustomEncoders.encode_exception,
+}
+
+if pd is not None:
+    serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
 
 
-class ServeEncoder(json.JSONEncoder):
-    """Ray.Serve's utility JSON encoder. Adds support for:
-    - bytes
-    - Pydantic types
-    - Exceptions
-    - numpy.ndarray
-    """
-
-    def default(self, o):  # pylint: disable=E0202
-        if isinstance(o, bytes):
-            return o.decode("utf-8")
-        if isinstance(o, pydantic.BaseModel):
-            return o.dict()
-        if isinstance(o, Exception):
-            return str(o)
-        if isinstance(o, np.ndarray):
-            if o.dtype.kind == "f":  # floats
-                o = o.astype(float)
-            if o.dtype.kind in {"i", "u"}:  # signed and unsigned integers.
-                o = o.astype(int)
-            return o.tolist()
-        return super().default(o)
-
-
-class ServeHandleEncoder(json.JSONEncoder):
-    """JSON encoder for RayServeHandle and RayServeSyncHandle. Use to enforce
-    JSON serialization of deployment init args & kwargs to faciliate serve
-    pipeline deployment as well as operationaling serve.
-    """
-
-    def default(self, obj):
-        # Import RayServeHandle in utils file lead to import errors
-        if type(obj).__name__ == "RayServeSyncHandle":
-            return {
-                SERVE_HANDLE_JSON_KEY: ServeHandleType.SYNC,
-                "deployment_name": obj.deployment_name,
-                "_internal_pickled_http_request": obj._pickled_http_request,
-            }
-        elif type(obj).__name__ == "RayServeHandle":
-            return {
-                SERVE_HANDLE_JSON_KEY: ServeHandleType.ASYNC,
-                "deployment_name": obj.deployment_name,
-                "_internal_pickled_http_request": obj._pickled_http_request,
-            }
-        else:
-            return super().default(obj)
-
-
-def serve_handle_object_hook(ray_serve_handle_json: Dict[str, Any]):
-    """Return RayServeHandle given a JSON serialized dict. Re-constructs the
-    object by fullfilling the following fieds that matches our signature of
-    `get_handle()`:
-        - controller handle
-        - deployment name
-        - _internal_pickled_http_request
-    """
-
-    if SERVE_HANDLE_JSON_KEY in ray_serve_handle_json:
-        is_sync = (
-            True
-            if ray_serve_handle_json[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC
-            else False
+def install_serve_encoders_to_fastapi():
+    """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
+    # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
+    pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
+    # FastAPI cache these encoders at import time, so we also needs to refresh it.
+    fastapi.encoders.encoders_by_class_tuples = (
+        fastapi.encoders.generate_encoders_by_class_tuples(
+            pydantic.json.ENCODERS_BY_TYPE
         )
-        return serve.api.internal_get_global_client().get_handle(
-            ray_serve_handle_json["deployment_name"],
-            sync=is_sync,
-            missing_ok=True,
-            _internal_pickled_http_request=ray_serve_handle_json[
-                "_internal_pickled_http_request"
-            ],
-        )
-    else:
-        # Not RayServeHandle type.
-        try:
-            return json.loads(ray_serve_handle_json)
-        except Exception:
-            return ray_serve_handle_json
+    )
 
 
 @ray.remote(num_cpus=0)
@@ -221,23 +159,37 @@ def get_all_node_ids():
     # We need to use the node_id and index here because we could
     # have multiple virtual nodes on the same host. In that case
     # they will have the same IP and therefore node_id.
-    for _, node_id_group in groupby(sorted(ray.state.node_ids())):
+    for _, node_id_group in groupby(sorted(ray._private.state.node_ids())):
         for index, node_id in enumerate(node_id_group):
             node_ids.append(("{}-{}".format(node_id, index), node_id))
 
     return node_ids
 
 
+def node_id_to_ip_addr(node_id: str):
+    """Recovers the IP address for an entry from get_all_node_ids."""
+    if ":" in node_id:
+        node_id = node_id.split(":")[1]
+
+    if "-" in node_id:
+        node_id = node_id.split("-")[0]
+
+    return node_id
+
+
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
-    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
+    return ray._private.state.actors()[actor_handle._actor_id.hex()]["Address"][
+        "NodeID"
+    ]
 
 
 def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_iterable_delta
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
         >>> compute_iterable_delta(old, new)
@@ -254,6 +206,7 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
     """Given two dicts, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_dict_delta
         >>> old = {"a": 1, "b": 2}
         >>> new = {"a": 3, "d": 4}
         >>> compute_dict_delta(old, new)
@@ -289,7 +242,7 @@ def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
-    ray.serialization_addons.apply(ctx)
+    ray.util.serialization_addons.apply(ctx)
 
 
 def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
@@ -304,10 +257,54 @@ def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
 
 
 def msgpack_serialize(obj):
-    ctx = ray.worker.global_worker.get_serialization_context()
+    ctx = ray._private.worker.global_worker.get_serialization_context()
     buffer = ctx.serialize(obj)
     serialized = buffer.to_bytes()
     return serialized
+
+
+def get_deployment_import_path(
+    deployment, replace_main=False, enforce_importable=False
+):
+    """
+    Gets the import path for deployment's func_or_class.
+
+    deployment: A deployment object whose import path should be returned
+    replace_main: If this is True, the function will try to replace __main__
+        with __main__'s file name if the deployment's module is __main__
+    """
+
+    body = deployment._func_or_class
+
+    if isinstance(body, str):
+        # deployment's func_or_class is already an import path
+        return body
+    elif hasattr(body, "__ray_actor_class__"):
+        # If ActorClass, get the class or function inside
+        body = body.__ray_actor_class__
+
+    import_path = f"{body.__module__}.{body.__qualname__}"
+
+    if enforce_importable and "<locals>" in body.__qualname__:
+        raise RuntimeError(
+            "Deployment definitions must be importable to build the Serve app, "
+            f"but deployment '{deployment.name}' is inline defined or returned "
+            "from another function. Please restructure your code so that "
+            f"'{import_path}' can be imported (i.e., put it in a module)."
+        )
+
+    if replace_main:
+        # Replaces __main__ with its file name. E.g. suppose the import path
+        # is __main__.classname and classname is defined in filename.py.
+        # Its import path becomes filename.classname.
+
+        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
+            file_name = os.path.basename(__main__.__file__)
+            extensionless_file_name = file_name.split(".")[0]
+            attribute_name = import_path.split(".")[-1]
+            import_path = f"{extensionless_file_name}.{attribute_name}"
+
+    return import_path
 
 
 def parse_import_path(import_path: str):
@@ -332,6 +329,53 @@ def parse_import_path(import_path: str):
     return ".".join(nodes[:-1]), nodes[-1]
 
 
+def override_runtime_envs_except_env_vars(parent_env: Dict, child_env: Dict) -> Dict:
+    """Creates a runtime_env dict by merging a parent and child environment.
+
+    This method is not destructive. It leaves the parent and child envs
+    the same.
+
+    The merge is a shallow update where the child environment inherits the
+    parent environment's settings. If the child environment specifies any
+    env settings, those settings take precdence over the parent.
+        - Note: env_vars are a special case. The child's env_vars are combined
+            with the parent.
+
+    Args:
+        parent_env: The environment to inherit settings from.
+        child_env: The environment with override settings.
+
+    Returns: A new dictionary containing the merged runtime_env settings.
+
+    Raises:
+        TypeError: If a dictionary is not passed in for parent_env or child_env.
+    """
+
+    if not isinstance(parent_env, Dict):
+        raise TypeError(
+            f'Got unexpected type "{type(parent_env)}" for parent_env. '
+            "parent_env must be a dictionary."
+        )
+    if not isinstance(child_env, Dict):
+        raise TypeError(
+            f'Got unexpected type "{type(child_env)}" for child_env. '
+            "child_env must be a dictionary."
+        )
+
+    defaults = copy.deepcopy(parent_env)
+    overrides = copy.deepcopy(child_env)
+
+    default_env_vars = defaults.get("env_vars", {})
+    override_env_vars = overrides.get("env_vars", {})
+
+    defaults.update(overrides)
+    default_env_vars.update(override_env_vars)
+
+    defaults["env_vars"] = default_env_vars
+
+    return defaults
+
+
 class JavaActorHandleProxy:
     """Wraps actor handle and translate snake_case to camelCase."""
 
@@ -352,17 +396,18 @@ def require_packages(packages: List[str]):
     """Decorator making sure function run in specified environments
 
     Examples:
-        >>> @require_packages(["numpy", "package_a"])
-            def func():
-                import numpy as np
-        >>> func()
-            ImportError: func requires ["numpy", "package_a"] but
-            ["package_a"] are not available, please pip install them.
+        >>> from ray.serve.utils import require_packages
+        >>> @require_packages(["numpy", "package_a"]) # doctest: +SKIP
+        ... def func(): # doctest: +SKIP
+        ...     import numpy as np # doctest: +SKIP
+        ...     ... # doctest: +SKIP
+        >>> func() # doctest: +SKIP
+        ImportError: func requires ["numpy", "package_a"] but
+        ["package_a"] are not available, please pip install them.
     """
 
     def decorator(func):
-        @wraps(func)
-        def wrapped(*args, **kwargs):
+        def check_import_once():
             if not hasattr(func, "_require_packages_checked"):
                 missing_packages = []
                 for package in packages:
@@ -378,8 +423,32 @@ def require_packages(packages: List[str]):
                         "`runtime_env`."
                     )
                 setattr(func, "_require_packages_checked", True)
-            return func(*args, **kwargs)
+
+        if inspect.iscoroutinefunction(func):
+
+            @wraps(func)
+            async def wrapped(*args, **kwargs):
+                check_import_once()
+                return await func(*args, **kwargs)
+
+        elif inspect.isroutine(func):
+
+            @wraps(func)
+            def wrapped(*args, **kwargs):
+                check_import_once()
+                return func(*args, **kwargs)
+
+        else:
+            raise ValueError("Decorator expect callable functions.")
 
         return wrapped
 
     return decorator
+
+
+def in_interactive_shell():
+    # Taken from:
+    # https://stackoverflow.com/questions/15411967/how-can-i-check-if-code-is-executed-in-the-ipython-notebook
+    import __main__ as main
+
+    return not hasattr(main, "__file__")

@@ -142,6 +142,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   void MarkDependenciesResolved(const TaskID &task_id) override {}
 
+  void MarkTaskWaitingForExecution(const TaskID &task_id) override {}
+
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
   int num_inlined_dependencies = 0;
@@ -733,6 +735,77 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST(DirectTaskTransportTest, TestHandleUnschedulableTask) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  CoreWorkerDirectTaskSubmitter submitter(address,
+                                          raylet_client,
+                                          client_pool,
+                                          nullptr,
+                                          lease_policy,
+                                          store,
+                                          task_finisher,
+                                          NodeID::Nil(),
+                                          WorkerType::WORKER,
+                                          kLongTimeout,
+                                          actor_creator,
+                                          JobID::Nil(),
+                                          absl::nullopt,
+                                          2);
+
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
+
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Fail task1 which will fail all the tasks
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "",
+      0,
+      NodeID::Nil(),
+      true,
+      "",
+      false,
+      /*failure_type=*/
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Fail task2
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "",
+      0,
+      NodeID::Nil(),
+      true,
+      "",
+      false,
+      /*failure_type=*/
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
@@ -1366,7 +1439,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
-  std::unordered_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
+  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   auto lease_client_factory = [&](const std::string &ip, int port) {
     // We should not create a connection to the same raylet more than once.
     RAY_CHECK(remote_lease_clients.count(port) == 0);
@@ -1438,7 +1511,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
-  std::unordered_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
+  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   auto lease_client_factory = [&](const std::string &ip, int port) {
     // We should not create a connection to the same raylet more than once.
     RAY_CHECK(remote_lease_clients.count(port) == 0);

@@ -1,30 +1,29 @@
-from distutils.version import StrictVersion
-from functools import lru_cache
-from functools import partial
 import copy
 import itertools
 import json
+import logging
 import os
 import time
-from typing import Any, Dict, List, Optional
-import logging
+from distutils.version import StrictVersion
+from functools import lru_cache, partial
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import boto3
 import botocore
 
-from ray.autoscaler._private.util import check_legacy_fields
-from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
-from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
+from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
+    CloudwatchHelper as cwh,
+)
 from ray.autoscaler._private.aws.utils import (
     LazyDefaultDict,
     handle_boto_error,
     resource_cache,
 )
-from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
-from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
-    CloudwatchHelper as cwh,
-)
+from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
+from ray.autoscaler._private.util import check_legacy_fields
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
 logger = logging.getLogger(__name__)
 
@@ -33,20 +32,21 @@ DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
 DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
-DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V30.0"
+# V61.0 has CUDA 11.2
+DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V61.0"
 
-# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 8/4/2020.
+# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 6/10/2022.
 DEFAULT_AMI = {
-    "us-east-1": "ami-029510cec6d69f121",  # US East (N. Virginia)
-    "us-east-2": "ami-08bf49c7b3a0c761e",  # US East (Ohio)
-    "us-west-1": "ami-0cc472544ce594a19",  # US West (N. California)
-    "us-west-2": "ami-0a2363a9cff180a64",  # US West (Oregon)
-    "ca-central-1": "ami-0a871851b2ab39f01",  # Canada (Central)
-    "eu-central-1": "ami-049fb1ea198d189d7",  # EU (Frankfurt)
-    "eu-west-1": "ami-0abcbc65f89fb220e",  # EU (Ireland)
-    "eu-west-2": "ami-0755b39fd4dab7cbe",  # EU (London)
-    "eu-west-3": "ami-020485d8df1d45530",  # EU (Paris)
-    "sa-east-1": "ami-058a6883cbdb4e599",  # SA (Sao Paulo)
+    "us-east-1": "ami-0dd6adfad4ad37eec",  # US East (N. Virginia)
+    "us-east-2": "ami-0c77cd5ca05bf1281",  # US East (Ohio)
+    "us-west-1": "ami-020ab1b368a5ed1db",  # US West (N. California)
+    "us-west-2": "ami-0387d929287ab193e",  # US West (Oregon)
+    "ca-central-1": "ami-07dbafdbd38f18d98",  # Canada (Central)
+    "eu-central-1": "ami-0383bd0c1fc4c63ec",  # EU (Frankfurt)
+    "eu-west-1": "ami-0a074b0a311a837ac",  # EU (Ireland)
+    "eu-west-2": "ami-094ba2b4651f761ca",  # EU (London)
+    "eu-west-3": "ami-031da10fbf225bf5f",  # EU (Paris)
+    "sa-east-1": "ami-0be7c1f1dd96d7337",  # SA (Sao Paulo)
 }
 
 # todo: cli_logger should handle this assert properly
@@ -290,7 +290,7 @@ def _configure_iam_role(config):
         role = _get_role(role_name, config)
         if role is None:
             cli_logger.verbose(
-                "Creating new IAM role {} for " "use as the default instance role.",
+                "Creating new IAM role {} for use as the default instance role.",
                 cf.bold(role_name),
             )
             iam = _resource("iam", config)
@@ -434,23 +434,43 @@ def _key_assert_msg(node_type: str) -> str:
         )
 
 
-def _configure_subnet(config):
-    ec2 = _resource("ec2", config)
-    use_internal_ips = config["provider"].get("use_internal_ips", False)
+def _usable_subnet_ids(
+    user_specified_subnets: Optional[List[Any]],
+    all_subnets: List[Any],
+    azs: Optional[str],
+    vpc_id_of_sg: Optional[str],
+    use_internal_ips: bool,
+    node_type_key: str,
+) -> Tuple[List[str], str]:
+    """Prunes subnets down to those that meet the following criteria.
 
-    # If head or worker security group is specified, filter down to subnets
-    # belonging to the same VPC as the security group.
-    sg_ids = []
-    for node_type in config["available_node_types"].values():
-        node_config = node_type["node_config"]
-        sg_ids.extend(node_config.get("SecurityGroupIds", []))
-    if sg_ids:
-        vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
-    else:
-        vpc_id_of_sg = None
+    Subnets must be:
+    * 'Available' according to AWS.
+    * Public, unless `use_internal_ips` is specified.
+    * In one of the AZs, if AZs are provided.
+    * In the given VPC, if a VPC is specified for Security Groups.
+
+    Returns:
+        List[str]: Subnets that are usable.
+        str: VPC ID of the first subnet.
+    """
+
+    def _are_user_subnets_pruned(current_subnets: List[Any]) -> bool:
+        return user_specified_subnets is not None and len(current_subnets) != len(
+            user_specified_subnets
+        )
+
+    def _get_pruned_subnets(current_subnets: List[Any]) -> Set[str]:
+        current_subnet_ids = {s.subnet_id for s in current_subnets}
+        user_specified_subnet_ids = {s.subnet_id for s in user_specified_subnets}
+        return user_specified_subnet_ids - current_subnet_ids
 
     try:
-        candidate_subnets = ec2.subnets.all()
+        candidate_subnets = (
+            user_specified_subnets
+            if user_specified_subnets is not None
+            else all_subnets
+        )
         if vpc_id_of_sg:
             candidate_subnets = [
                 s for s in candidate_subnets if s.vpc_id == vpc_id_of_sg
@@ -471,16 +491,21 @@ def _configure_subnet(config):
 
     if not subnets:
         cli_logger.abort(
-            "No usable subnets found, try manually creating an instance in "
-            "your specified region to populate the list of subnets "
-            "and trying this again.\n"
+            f"No usable subnets found for node type {node_type_key}, try "
+            "manually creating an instance in your specified region to "
+            "populate the list of subnets and trying this again.\n"
             "Note that the subnet must map public IPs "
             "on instance launch unless you set `use_internal_ips: true` in "
             "the `provider` config."
         )
+    elif _are_user_subnets_pruned(subnets):
+        cli_logger.abort(
+            f"The specified subnets for node type {node_type_key} are not "
+            f"usable: {_get_pruned_subnets(subnets)}"
+        )
 
-    if "availability_zone" in config["provider"]:
-        azs = config["provider"]["availability_zone"].split(",")
+    if azs is not None:
+        azs = [az.strip() for az in azs.split(",")]
         subnets = [
             s
             for az in azs  # Iterate over AZs first to maintain the ordering
@@ -489,11 +514,19 @@ def _configure_subnet(config):
         ]
         if not subnets:
             cli_logger.abort(
-                "No usable subnets matching availability zone {} found.\n"
-                "Choose a different availability zone or try "
-                "manually creating an instance in your specified region "
-                "to populate the list of subnets and trying this again.",
-                config["provider"]["availability_zone"],
+                f"No usable subnets matching availability zone {azs} found "
+                f"for node type {node_type_key}.\nChoose a different "
+                "availability zone or try manually creating an instance in "
+                "your specified region to populate the list of subnets and "
+                "trying this again."
+            )
+        elif _are_user_subnets_pruned(subnets):
+            cli_logger.abort(
+                f"MISMATCH between specified subnets and Availability Zones! "
+                "The following Availability Zones were specified in the "
+                f"`provider section`: {azs}.\n The following subnets for node "
+                f"type `{node_type_key}` have no matching availability zone: "
+                f"{list(_get_pruned_subnets(subnets))}."
             )
 
     # Use subnets in only one VPC, so that _configure_security_groups only
@@ -501,17 +534,79 @@ def _configure_subnet(config):
     # to set up security groups in all of the user's VPCs and set up networking
     # rules to allow traffic between these groups.
     # See https://github.com/ray-project/ray/pull/14868.
-    subnet_ids = [s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id]
+    first_subnet_vpc_id = subnets[0].vpc_id
+    subnets = [s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id]
+    if _are_user_subnets_pruned(subnets):
+        subnet_vpcs = {s.subnet_id: s.vpc_id for s in user_specified_subnets}
+        cli_logger.abort(
+            f"Subnets specified in more than one VPC for node type `{node_type_key}`! "
+            f"Please ensure that all subnets share the same VPC and retry your "
+            "request. Subnet VPCs: {}",
+            subnet_vpcs,
+        )
+    return subnets, first_subnet_vpc_id
+
+
+def _configure_subnet(config):
+    ec2 = _resource("ec2", config)
+
+    # If head or worker security group is specified, filter down to subnets
+    # belonging to the same VPC as the security group.
+    sg_ids = []
+    for node_type in config["available_node_types"].values():
+        node_config = node_type["node_config"]
+        sg_ids.extend(node_config.get("SecurityGroupIds", []))
+    if sg_ids:
+        vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
+    else:
+        vpc_id_of_sg = None
+
     # map from node type key -> source of SubnetIds field
     subnet_src_info = {}
     _set_config_info(subnet_src=subnet_src_info)
+    all_subnets = list(ec2.subnets.all())
+    # separate node types with and without user-specified subnets
+    node_types_subnets = []
+    node_types_no_subnets = []
     for key, node_type in config["available_node_types"].items():
-        node_config = node_type["node_config"]
-        if "SubnetIds" not in node_config:
-            subnet_src_info[key] = "default"
-            node_config["SubnetIds"] = subnet_ids
+        if "SubnetIds" in node_type["node_config"]:
+            node_types_subnets.append((key, node_type))
         else:
-            subnet_src_info[key] = "config"
+            node_types_no_subnets.append((key, node_type))
+
+    vpc_id = None
+
+    # iterate over node types with user-specified subnets first...
+    for key, node_type in node_types_subnets:
+        node_config = node_type["node_config"]
+        user_subnets = _get_subnets_or_die(ec2, tuple(node_config["SubnetIds"]))
+        subnet_ids, vpc_id = _usable_subnet_ids(
+            user_subnets,
+            all_subnets,
+            azs=config["provider"].get("availability_zone"),
+            vpc_id_of_sg=vpc_id_of_sg,
+            use_internal_ips=config["provider"].get("use_internal_ips", False),
+            node_type_key=key,
+        )
+        subnet_src_info[key] = "config"
+
+    # lock-in a good VPC shared by the last set of user-specified subnets...
+    if vpc_id and not vpc_id_of_sg:
+        vpc_id_of_sg = vpc_id
+
+    # iterate over node types without user-specified subnets last...
+    for key, node_type in node_types_no_subnets:
+        node_config = node_type["node_config"]
+        subnet_ids, vpc_id = _usable_subnet_ids(
+            None,
+            all_subnets,
+            azs=config["provider"].get("availability_zone"),
+            vpc_id_of_sg=vpc_id_of_sg,
+            use_internal_ips=config["provider"].get("use_internal_ips", False),
+            node_type_key=key,
+        )
+        subnet_src_info[key] = "default"
+        node_config["SubnetIds"] = subnet_ids
 
     return config
 
@@ -653,17 +748,27 @@ def _get_or_create_vpc_security_groups(conf, node_types):
     }
 
 
+def _get_vpc_id_or_die(ec2, subnet_id: str):
+    subnets = _get_subnets_or_die(ec2, (subnet_id,))
+    cli_logger.doassert(
+        len(subnets) == 1,
+        f"Expected 1 subnet with ID `{subnet_id}` but found {len(subnets)}",
+    )
+    return subnets[0].vpc_id
+
+
 @lru_cache()
-def _get_vpc_id_or_die(ec2, subnet_id):
-    subnet = list(
-        ec2.subnets.filter(Filters=[{"Name": "subnet-id", "Values": [subnet_id]}])
+def _get_subnets_or_die(ec2, subnet_ids: Tuple[str]):
+    subnets = list(
+        ec2.subnets.filter(Filters=[{"Name": "subnet-id", "Values": list(subnet_ids)}])
     )
 
     # TODO: better error message
-    cli_logger.doassert(len(subnet) == 1, "Subnet ID not found: {}", subnet_id)
-    assert len(subnet) == 1, "Subnet ID not found: {}".format(subnet_id)
-    subnet = subnet[0]
-    return subnet.vpc_id
+    cli_logger.doassert(
+        len(subnets) == len(subnet_ids), "Not all subnet IDs found: {}", subnet_ids
+    )
+    assert len(subnets) == len(subnet_ids), "Subnet ID not found: {}".format(subnet_ids)
+    return subnets
 
 
 def _get_security_group(config, vpc_id, group_name):

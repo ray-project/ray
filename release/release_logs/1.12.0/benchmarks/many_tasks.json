@@ -1,0 +1,8 @@
+{
+    "_peak_memory": 5.56,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n182\t1.51GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n1466\t0.7GiB\tpython distributed/test_many_tasks.py --num-tasks=10000\n207\t0.47GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/dash\n284\t0.13GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/agen\n69\t0.11GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session web_terminal_server --deploy\n441\t0.11GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session auth_start\n1509\t0.06GiB\tray::MemoryMonitorActor.run()\n70\t0.05GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-notebook --NotebookApp.token=616b31bc\n401\t0.05GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-notebook --NotebookApp.token=616b31bc\n200\t0.05GiB\t/home/ray/anaconda3/bin/python -m ray.util.client.server --address=172.31.84.178:9031 --host=0.0.0.0",
+    "num_tasks": 10000,
+    "success": "1",
+    "tasks_per_second": 28.467452565657783,
+    "time": 651.2783582210541
+},

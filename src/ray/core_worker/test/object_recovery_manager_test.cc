@@ -52,7 +52,7 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
     return true;
   }
 
-  std::unordered_map<TaskID, std::vector<ObjectID>> task_specs;
+  absl::flat_hash_map<TaskID, std::vector<ObjectID>> task_specs;
   int num_tasks_resubmitted = 0;
 };
 
@@ -66,12 +66,15 @@ class MockRayletClient : public PinObjectsInterface {
     callbacks.push_back(callback);
   }
 
-  size_t Flush() {
-    size_t flushed = callbacks.size();
-    for (const auto &callback : callbacks) {
-      callback(Status::OK(), rpc::PinObjectIDsReply());
+  size_t Flush(bool success = true) {
+    std::list<rpc::ClientCallback<rpc::PinObjectIDsReply>> callbacks_snapshot;
+    std::swap(callbacks_snapshot, callbacks);
+    size_t flushed = callbacks_snapshot.size();
+    for (const auto &callback : callbacks_snapshot) {
+      rpc::PinObjectIDsReply reply;
+      reply.add_successes(success);
+      callback(Status::OK(), reply);
     }
-    callbacks.clear();
     return flushed;
   }
 
@@ -102,7 +105,7 @@ class MockObjectDirectory {
   }
 
   std::vector<std::pair<ObjectID, ObjectLookupCallback>> callbacks = {};
-  std::unordered_map<ObjectID, std::vector<rpc::Address>> locations;
+  absl::flat_hash_map<ObjectID, std::vector<rpc::Address>> locations;
 };
 
 class ObjectRecoveryManagerTestBase : public ::testing::Test {
@@ -151,7 +154,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   }
 
   NodeID local_raylet_id_;
-  std::unordered_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
+  absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
@@ -230,12 +233,15 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
                                0,
                                true,
                                /*add_local_ref=*/true);
-  std::vector<rpc::Address> addresses({rpc::Address()});
+  std::vector<rpc::Address> addresses({rpc::Address(), rpc::Address()});
   object_directory_->SetLocations(object_id, addresses);
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(object_directory_->Flush() == 1);
-  ASSERT_TRUE(raylet_client_->Flush() == 1);
+  // First copy is evicted so pin fails.
+  ASSERT_TRUE(raylet_client_->Flush(false) == 1);
+  // Second copy is present so pin succeeds.
+  ASSERT_TRUE(raylet_client_->Flush(true) == 1);
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 }

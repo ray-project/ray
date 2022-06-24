@@ -7,7 +7,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.examples.env.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
 )
@@ -22,15 +22,15 @@ parser.add_argument(
 parser.add_argument("--stop-iters", type=int, default=200)
 
 
-def main(debug, stop_iters=200, tf=False):
+def main(debug, stop_iters=200, framework="tf"):
     train_n_replicates = 1 if debug else 1
     seeds = list(range(train_n_replicates))
 
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
-    rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, tf)
+    rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, framework)
     tune_analysis = tune.run(
-        PGTrainer,
+        PG,
         config=rllib_config,
         stop=stop_config,
         checkpoint_freq=0,
@@ -41,7 +41,7 @@ def main(debug, stop_iters=200, tf=False):
     return tune_analysis
 
 
-def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
+def get_rllib_config(seeds, debug=False, stop_iters=200, framework="tf"):
     stop_config = {
         "training_iteration": 2 if debug else stop_iters,
     }
@@ -74,7 +74,7 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
         },
         "seed": tune.grid_search(seeds),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
+        "framework": framework,
     }
 
     return rllib_config, stop_config
@@ -83,4 +83,4 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
 if __name__ == "__main__":
     debug_mode = True
     args = parser.parse_args()
-    main(debug_mode, args.stop_iters, args.tf)
+    main(debug_mode, args.stop_iters, args.framework)

@@ -7,25 +7,24 @@ import traceback
 from collections import namedtuple
 from typing import List
 
+from opencensus.metrics.export.value import ValueDouble
 from opencensus.stats import aggregation
 from opencensus.stats import measure as measure_module
 from opencensus.stats import stats as stats_module
-from opencensus.stats.view import View
-from opencensus.stats.view_data import ViewData
 from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
 )
-from opencensus.metrics.export.value import ValueDouble
+from opencensus.stats.view import View
+from opencensus.stats.view_data import ViewData
 from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 
 import ray
-from ray._private.gcs_utils import GcsClient
-
 import ray._private.prometheus_exporter as prometheus_exporter
+from ray._private.gcs_utils import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)
@@ -74,17 +73,29 @@ class MetricsAgent:
         self._lock = threading.Lock()
 
         # Configure exporter. (We currently only support prometheus).
-        self.view_manager.register_exporter(
-            prometheus_exporter.new_stats_exporter(
+        try:
+            stats_exporter = prometheus_exporter.new_stats_exporter(
                 prometheus_exporter.Options(
                     namespace="ray",
                     port=metrics_export_port,
                     address=metrics_export_address,
                 )
             )
-        )
+        except Exception:
+            # TODO(SongGuyang): Catch the exception here because there is
+            # port conflict issue which brought from static port. We should
+            # remove this after we find better port resolution.
+            logger.exception(
+                "Failed to start prometheus stats exporter. Agent will stay "
+                "alive but disable the stats."
+            )
+            self.view_manager = None
+        else:
+            self.view_manager.register_exporter(stats_exporter)
 
     def record_reporter_stats(self, records: List[Record]):
+        if not self.view_manager:
+            return
         with self._lock:
             for record in records:
                 gauge = record.gauge
@@ -111,6 +122,8 @@ class MetricsAgent:
 
     def record_metric_points_from_protobuf(self, metrics: List[Metric]):
         """Record metrics from Opencensus Protobuf"""
+        if not self.view_manager:
+            return
         with self._lock:
             self._record_metrics(metrics)
 
@@ -197,7 +210,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_address)
         self.gcs_address = gcs_address
 
-        ray.state.state._initialize_global_state(gcs_client_options)
+        ray._private.state.state._initialize_global_state(gcs_client_options)
         self.temp_dir = temp_dir
         self.default_service_discovery_flush_period = 5
         super().__init__()
@@ -233,13 +246,15 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
 
     def get_target_file_name(self):
         return os.path.join(
-            self.temp_dir, ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
+            self.temp_dir, ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
 
     def get_temp_file_name(self):
         return os.path.join(
             self.temp_dir,
-            "{}_{}".format("tmp", ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE),
+            "{}_{}".format(
+                "tmp", ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
+            ),
         )
 
     def run(self):

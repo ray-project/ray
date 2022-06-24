@@ -10,22 +10,22 @@ from collections import OrderedDict
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
-from ray.tune.ray_trial_executor import (
+from ray.tune.execution.ray_trial_executor import (
+    _ExecutorEvent,
+    _ExecutorEventType,
     RayTrialExecutor,
-    ExecutorEvent,
-    ExecutorEventType,
 )
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
 
 from ray.tune.callback import warnings
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune import Callback
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.experiment import Experiment
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
 class TestCallback(Callback):
@@ -110,8 +110,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         for t in trials:
             self.trial_runner.add_trial(t)
 
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.PG_READY
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.PG_READY
         )
         self.trial_runner.step()
 
@@ -134,8 +134,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
             )
         )
 
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.PG_READY
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.PG_READY
         )
         self.trial_runner.step()
 
@@ -149,21 +149,30 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(self.callback.state["trial_start"]["iteration"], 1)
         self.assertEqual(self.callback.state["trial_start"]["trial"].trial_id, "two")
 
-        cp = Checkpoint(Checkpoint.PERSISTENT, "__checkpoint", {TRAINING_ITERATION: 0})
-
-        # Let the first trial save a checkpoint
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.SAVING_RESULT, trial=trials[0]
+        # Just a placeholder object ref for cp.value.
+        cp = _TrackedCheckpoint(
+            dir_or_data=ray.put(1),
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics={TRAINING_ITERATION: 0},
         )
         trials[0].saving_to = cp
+
+        # Let the first trial save a checkpoint
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.SAVING_RESULT,
+            trial=trials[0],
+            result={_ExecutorEvent.KEY_FUTURE_RESULT: "__checkpoint"},
+        )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_save"]["iteration"], 2)
         self.assertEqual(self.callback.state["trial_save"]["trial"].trial_id, "one")
 
         # Let the second trial send a result
         result = {TRAINING_ITERATION: 1, "metric": 800, "done": False}
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.TRAINING_RESULT, trial=trials[1], result=result
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.TRAINING_RESULT,
+            trial=trials[1],
+            result={"future_result": result},
         )
         self.assertTrue(not trials[1].has_reported_at_least_once)
         self.trial_runner.step()
@@ -174,8 +183,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the second trial restore from a checkpoint
         trials[1].restoring_from = cp
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.RESTORING_RESULT, trial=trials[1]
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.RESTORING_RESULT, trial=trials[1]
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_restore"]["iteration"], 4)
@@ -183,20 +192,26 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the second trial finish
         trials[1].restoring_from = None
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.TRAINING_RESULT,
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[1],
-            result={TRAINING_ITERATION: 2, "metric": 900, "done": True},
+            result={
+                _ExecutorEvent.KEY_FUTURE_RESULT: {
+                    TRAINING_ITERATION: 2,
+                    "metric": 900,
+                    "done": True,
+                }
+            },
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_complete"]["iteration"], 5)
         self.assertEqual(self.callback.state["trial_complete"]["trial"].trial_id, "two")
 
         # Let the first trial error
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.ERROR,
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.ERROR,
             trial=trials[0],
-            result=(Exception(), "error"),
+            result={_ExecutorEvent.KEY_EXCEPTION: Exception()},
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_fail"]["iteration"], 6)
@@ -274,12 +289,6 @@ class TrialRunnerCallbacks(unittest.TestCase):
         callbacks = create_default_callbacks([LoggerCallback()], SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
-
-        # This should throw an error as the syncer comes before the logger
-        with self.assertRaises(ValueError):
-            callbacks = create_default_callbacks(
-                [SyncerCallback(None), LoggerCallback()], SyncConfig(), None
-            )
 
         # This should be reordered but preserve the regular callback order
         [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]

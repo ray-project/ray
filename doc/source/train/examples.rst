@@ -1,4 +1,4 @@
-.. _sgd-v2-examples:
+.. _train-examples:
 
 Ray Train Examples
 ==================
@@ -91,3 +91,10 @@ Ray Tune Integration Examples
     ------
 
     * Example training on Vision model.
+
+Benchmarks
+----------
+
+* :doc:`/train/examples/torch_data_prefetch_benchmark/benchmark_example`:
+  Benchmark example for the PyTorch data transfer auto pipeline.
+

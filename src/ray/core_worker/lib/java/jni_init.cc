@@ -27,6 +27,10 @@ jclass java_object_class;
 jmethodID java_object_equals;
 jmethodID java_object_hash_code;
 
+jclass java_weak_reference_class;
+jmethodID java_weak_reference_init;
+jmethodID java_weak_reference_get;
+
 jclass java_list_class;
 jmethodID java_list_size;
 jmethodID java_list_get;
@@ -64,7 +68,8 @@ jclass java_ray_timeout_exception_class;
 jclass java_ray_pending_calls_limit_exceeded_exception_class;
 
 jclass java_ray_actor_exception_class;
-jmethodID java_ray_exception_to_bytes;
+jclass java_ray_exception_serializer_class;
+jmethodID java_ray_exception_serializer_to_bytes;
 
 jclass java_jni_exception_util_class;
 jmethodID java_jni_exception_util_get_stack_trace;
@@ -95,6 +100,7 @@ jfieldID java_call_options_name;
 jfieldID java_task_creation_options_group;
 jfieldID java_task_creation_options_bundle_index;
 jfieldID java_call_options_concurrency_group_name;
+jfieldID java_call_options_serialized_runtime_env_info;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_name;
@@ -143,6 +149,9 @@ jmethodID java_native_task_executor_on_worker_shutdown;
 
 jclass java_placement_group_class;
 jfieldID java_placement_group_id;
+
+jclass java_object_ref_impl_class;
+jmethodID java_object_ref_impl_class_on_memory_store_object_allocated;
 
 jclass java_resource_value_class;
 jmethodID java_resource_value_init;
@@ -194,6 +203,12 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetMethodID(java_object_class, "equals", "(Ljava/lang/Object;)Z");
   java_object_hash_code = env->GetMethodID(java_object_class, "hashCode", "()I");
 
+  java_weak_reference_class = LoadClass(env, "java/lang/ref/WeakReference");
+  java_weak_reference_init =
+      env->GetMethodID(java_weak_reference_class, "<init>", "(Ljava/lang/Object;)V");
+  java_weak_reference_get =
+      env->GetMethodID(java_weak_reference_class, "get", "()Ljava/lang/Object;");
+
   java_list_class = LoadClass(env, "java/util/List");
   java_list_size = env->GetMethodID(java_list_class, "size", "()I");
   java_list_get = env->GetMethodID(java_list_class, "get", "(I)Ljava/lang/Object;");
@@ -230,21 +245,25 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_system_class = LoadClass(env, "java/lang/System");
   java_system_gc = env->GetStaticMethodID(java_system_class, "gc", "()V");
 
-  java_ray_exception_class = LoadClass(env, "io/ray/runtime/exception/RayException");
+  java_ray_exception_class = LoadClass(env, "io/ray/api/exception/RayException");
   java_ray_intentional_system_exit_exception_class =
-      LoadClass(env, "io/ray/runtime/exception/RayIntentionalSystemExitException");
+      LoadClass(env, "io/ray/api/exception/RayIntentionalSystemExitException");
 
   java_ray_timeout_exception_class =
-      LoadClass(env, "io/ray/runtime/exception/RayTimeoutException");
+      LoadClass(env, "io/ray/api/exception/RayTimeoutException");
 
   java_ray_actor_exception_class =
-      LoadClass(env, "io/ray/runtime/exception/RayActorException");
+      LoadClass(env, "io/ray/api/exception/RayActorException");
 
   java_ray_pending_calls_limit_exceeded_exception_class =
-      LoadClass(env, "io/ray/runtime/exception/PendingCallsLimitExceededException");
+      LoadClass(env, "io/ray/api/exception/PendingCallsLimitExceededException");
 
-  java_ray_exception_to_bytes =
-      env->GetMethodID(java_ray_exception_class, "toBytes", "()[B");
+  java_ray_exception_serializer_class =
+      LoadClass(env, "io/ray/runtime/serializer/RayExceptionSerializer");
+  java_ray_exception_serializer_to_bytes =
+      env->GetStaticMethodID(java_ray_exception_serializer_class,
+                             "toBytes",
+                             "(Lio/ray/api/exception/RayException;)[B");
 
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
@@ -296,6 +315,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_call_options_class, "bundleIndex", "I");
   java_call_options_concurrency_group_name = env->GetFieldID(
       java_call_options_class, "concurrencyGroupName", "Ljava/lang/String;");
+  java_call_options_serialized_runtime_env_info = env->GetFieldID(
+      java_call_options_class, "serializedRuntimeEnvInfo", "Ljava/lang/String;");
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
@@ -389,6 +410,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_native_task_executor_on_worker_shutdown =
       env->GetMethodID(java_native_task_executor_class, "onWorkerShutdown", "([B)V");
 
+  java_object_ref_impl_class = LoadClass(env, "io/ray/runtime/object/ObjectRefImpl");
+  java_object_ref_impl_class_on_memory_store_object_allocated = env->GetStaticMethodID(
+      java_object_ref_impl_class, "onMemoryStoreObjectAllocated", "([B[B)V");
+
   java_resource_value_class = LoadClass(env, "io/ray/api/runtimecontext/ResourceValue");
   java_resource_value_init =
       env->GetMethodID(java_resource_value_class, "<init>", "(JD)V");
@@ -403,6 +428,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_boolean_class);
   env->DeleteGlobalRef(java_double_class);
   env->DeleteGlobalRef(java_object_class);
+  env->DeleteGlobalRef(java_weak_reference_class);
   env->DeleteGlobalRef(java_long_class);
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
@@ -416,6 +442,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_ray_intentional_system_exit_exception_class);
   env->DeleteGlobalRef(java_ray_timeout_exception_class);
   env->DeleteGlobalRef(java_ray_actor_exception_class);
+  env->DeleteGlobalRef(java_ray_exception_serializer_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
   env->DeleteGlobalRef(java_abstract_message_lite_class);

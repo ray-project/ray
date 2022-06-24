@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
 import argparse
-from collections import defaultdict
-import numpy as np
 import json
 import logging
 import os
 import time
+from collections import defaultdict
+
+import numpy as np
 
 import ray
 
@@ -138,7 +139,7 @@ def stage4():
         start = time.perf_counter()
         time.sleep(1)
         end = time.perf_counter()
-        return start, end, ray.worker.global_worker.node.unique_id
+        return start, end, ray._private.worker.global_worker.node.unique_id
 
     results = ray.get([func.remote(i) for i in range(num_tasks)])
 
@@ -222,6 +223,40 @@ if __name__ == "__main__":
     # scheduler.
     result["stage_4_spread"] = stage_4_spread
     result["success"] = 1
+
+    if not is_smoke_test:
+        result["perf_metrics"] = [
+            {
+                "perf_metric_name": "stage_0_time",
+                "perf_metric_value": stage_0_time,
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "stage_1_avg_iteration_time",
+                "perf_metric_value": result["stage_1_avg_iteration_time"],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "stage_2_avg_iteration_time",
+                "perf_metric_value": result["stage_2_avg_iteration_time"],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "stage_3_creation_time",
+                "perf_metric_value": result["stage_3_creation_time"],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "stage_3_time",
+                "perf_metric_value": result["stage_3_time"],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "stage_4_spread",
+                "perf_metric_value": result["stage_4_spread"],
+                "perf_metric_type": "LATENCY",
+            },
+        ]
     print("PASSED.")
 
     # TODO(rkn): The test below is commented out because it currently

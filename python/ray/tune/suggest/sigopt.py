@@ -38,28 +38,28 @@ class SigOptSearch(Searcher):
     here.
 
     Parameters:
-        space (list of dict): SigOpt configuration. Parameters will be sampled
+        space: SigOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
             Not used if existing experiment_id is given
-        name (str): Name of experiment. Required by SigOpt.
-        max_concurrent (int): Number of maximum concurrent trials supported
+        name: Name of experiment. Required by SigOpt.
+        max_concurrent: Number of maximum concurrent trials supported
             based on the user's SigOpt plan. Defaults to 1.
             If this Searcher is used in a ``ConcurrencyLimiter``, the
             ``max_concurrent`` value passed to it will override the
             value passed here.
-        connection (Connection): An existing connection to SigOpt.
-        experiment_id (str): Optional, if given will connect to an existing
+        connection: An existing connection to SigOpt.
+        experiment_id: Optional, if given will connect to an existing
             experiment. This allows for a more interactive experience with
             SigOpt, such as prior beliefs and constraints.
-        observation_budget (int): Optional, can improve SigOpt performance.
-        project (str): Optional, Project name to assign this experiment to.
+        observation_budget: Optional, can improve SigOpt performance.
+        project: Optional, Project name to assign this experiment to.
             SigOpt can group experiments by project
         metric (str or list(str)): If str then the training result
             objective value attribute. If list(str) then a list of
             metrics that can be optimized together. SigOpt currently
             supports up to 2 metrics.
-        mode (str or list(str)): If experiment_id is given then this
+        mode: If experiment_id is given then this
             field is ignored, If str then must be one of {min, max}.
             If list then must be comprised of {min, max, obs}. Determines
             whether objective is minimizing or maximizing the metric
@@ -90,7 +90,7 @@ class SigOptSearch(Searcher):
         ]
         algo = SigOptSearch(
             space, name="SigOpt Example Experiment",
-            max_concurrent=1, metric="mean_loss", mode="min")
+            metric="mean_loss", mode="min")
 
 
         Example:
@@ -117,7 +117,7 @@ class SigOptSearch(Searcher):
         ]
         algo = SigOptSearch(
             space, name="SigOpt Multi Objective Example Experiment",
-            max_concurrent=1, metric=["average", "std"], mode=["max", "min"])
+            metric=["average", "std"], mode=["max", "min"])
     """
 
     OBJECTIVE_MAP = {
@@ -135,8 +135,8 @@ class SigOptSearch(Searcher):
         experiment_id: Optional[str] = None,
         observation_budget: Optional[int] = None,
         project: Optional[str] = None,
-        metric: Union[None, str, List[str]] = "episode_reward_mean",
-        mode: Union[None, str, List[str]] = "max",
+        metric: Optional[Union[str, List[str]]] = "episode_reward_mean",
+        mode: Optional[Union[str, List[str]]] = "max",
         points_to_evaluate: Optional[List[Dict]] = None,
         **kwargs,
     ):
@@ -184,9 +184,9 @@ class SigOptSearch(Searcher):
             ), """SigOpt must be installed!
                 You can install SigOpt with the command:
                 `pip install -U sigopt`."""
-            assert "SIGOPT_KEY" in os.environ, (
-                "SigOpt API key must be stored as " "environ variable at SIGOPT_KEY"
-            )
+            assert (
+                "SIGOPT_KEY" in os.environ
+            ), "SigOpt API key must be stored as environ variable at SIGOPT_KEY"
             # Create a connection with SigOpt API, requires API key
             self.conn = sgo.Connection(client_token=os.environ["SIGOPT_KEY"])
 

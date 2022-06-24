@@ -27,9 +27,9 @@ import os
 import shutil
 import subprocess
 import time
+from typing import Any, Dict, List, Optional
 
 import yaml
-from typing import Any, List, Dict, Optional
 
 
 def _read_yaml(path: str):
@@ -57,6 +57,14 @@ def _update_docker_compose(
         cmd = ["down"]
         shutdown = True
     try:
+        # Loop through parsed docker-compose and create node-specific
+        # host directories if needed
+        for node_id, node_conf in docker_compose_config["services"].items():
+            for volume_mount in node_conf["volumes"]:
+                host_dir, container_dir = volume_mount.split(":", maxsplit=1)
+                if container_dir == "/cluster/node" and not os.path.exists(host_dir):
+                    os.makedirs(host_dir, 0o755, exist_ok=True)
+
         subprocess.check_output(
             ["docker", "compose", "-f", docker_compose_path, "-p", project_name]
             + cmd

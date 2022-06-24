@@ -39,11 +39,16 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=90.0, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     ModelCatalog.register_custom_model(
         "rnn", TorchRNNModel if args.framework == "torch" else RNNModel
@@ -80,14 +85,14 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # To run the Trainer without tune.run, using our RNN model and
+    # To run the Algorithm without tune.run, using our RNN model and
     # manual state-in handling, do the following:
 
     # Example (use `config` from the above code):
     # >> import numpy as np
-    # >> from ray.rllib.agents.ppo import PPOTrainer
+    # >> from ray.rllib.algorithms.ppo import PPO
     # >>
-    # >> trainer = PPOTrainer(config)
+    # >> algo = PPO(config)
     # >> lstm_cell_size = config["model"]["custom_model_config"]["cell_size"]
     # >> env = RepeatAfterMeEnv({})
     # >> obs = env.reset()
@@ -98,7 +103,7 @@ if __name__ == "__main__":
     # .. ]
     # >>
     # >> while True:
-    # >>     a, state_out, _ = trainer.compute_single_action(obs, state)
+    # >>     a, state_out, _ = algo.compute_single_action(obs, state)
     # >>     obs, reward, done, _ = env.step(a)
     # >>     if done:
     # >>         obs = env.reset()

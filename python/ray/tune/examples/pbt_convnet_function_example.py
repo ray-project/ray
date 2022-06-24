@@ -10,7 +10,7 @@ from ray.tune.examples.mnist_pytorch import train, test, ConvNet, get_data_loade
 
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.trial import ExportFormat
+from ray.tune.experiment.trial import ExportFormat
 
 # __tutorial_imports_end__
 
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     args, _ = parser.parse_known_args()
 

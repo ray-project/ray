@@ -12,7 +12,7 @@ import yaml
 
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD
 from ray.autoscaler.node_provider import NodeProvider
-from ray.ray_constants import DEFAULT_PORT
+from ray._private.ray_constants import DEFAULT_PORT
 from ray.ray_operator.operator_utils import cr_to_config
 from ray.ray_operator.operator_utils import check_redis_password_not_specified
 from ray.ray_operator.operator_utils import get_head_service
@@ -188,7 +188,7 @@ class OperatorTest(unittest.TestCase):
         with pytest.raises(ValueError, match=exception_message):
             check_redis_password_not_specified(cluster_config, "name", "namespace")
         start_cmd = (
-            "ulimit -n 65536; ray start --head --no-monitor" " --dashboard-host 0.0.0.0"
+            "ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0"
         )
         cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
         check_redis_password_not_specified(cluster_config, "name", "namespace")
@@ -210,7 +210,7 @@ class OperatorTest(unittest.TestCase):
         assert infer_head_port(cluster_config) == "1234567"
         # Don't specify port
         start_cmd = (
-            "ulimit -n 65536; ray start --head --no-monitor" " --dashboard-host 0.0.0.0"
+            "ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0"
         )
         cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
         assert infer_head_port(cluster_config) == str(DEFAULT_PORT)
@@ -245,4 +245,7 @@ class OperatorTest(unittest.TestCase):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

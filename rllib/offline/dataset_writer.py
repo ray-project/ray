@@ -44,7 +44,7 @@ class DatasetWriter(OutputWriter):
         output_config: Dict = ioctx.output_config
         assert (
             "format" in output_config
-        ), "output_config.type must be specified when using Dataset output."
+        ), "output_config.format must be specified when using Dataset output."
         assert (
             "path" in output_config
         ), "output_config.path must be specified when using Dataset output."
@@ -68,6 +68,8 @@ class DatasetWriter(OutputWriter):
         d = _to_json_dict(sample_batch, self.compress_columns)
         self.samples.append(d)
 
+        # Todo: We should flush at the end of sampling even if this
+        # condition was not reached.
         if len(self.samples) >= self.max_num_samples_per_file:
             ds = data.from_items(self.samples).repartition(num_blocks=1, shuffle=False)
             if self.format == "json":

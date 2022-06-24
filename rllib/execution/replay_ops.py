@@ -4,8 +4,10 @@ import random
 from ray.actor import ActorHandle
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
-from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers.replay_buffer import warn_replay_capacity
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer,
+)
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.utils.typing import SampleBatchType
 
@@ -21,10 +23,15 @@ class StoreToReplayBuffer:
     The batch that was stored is returned.
 
     Examples:
-        >>> actors = [ReplayActor.remote() for _ in range(4)]
-        >>> rollouts = ParallelRollouts(...)
-        >>> store_op = rollouts.for_each(StoreToReplayActors(actors=actors))
-        >>> next(store_op)
+        >>> from ray.rllib.utils.replay_buffers import multi_agent_replay_buffer
+        >>> from ray.rllib.execution.replay_ops import StoreToReplayBuffer
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> actors = [ # doctest: +SKIP
+        ...     multi_agent_replay_buffer.ReplayActor.remote() for _ in range(4)]
+        >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
+        >>> store_op = rollouts.for_each( # doctest: +SKIP
+        ...     StoreToReplayBuffer(actors=actors))
+        >>> next(store_op) # doctest: +SKIP
         SampleBatch(...)
     """
 
@@ -42,7 +49,7 @@ class StoreToReplayBuffer:
         """
         if local_buffer is not None and actors is not None:
             raise ValueError(
-                "Either `local_buffer` or `replay_actors` must be given, " "not both!"
+                "Either `local_buffer` or `replay_actors` must be given, not both!"
             )
 
         if local_buffer is not None:
@@ -54,16 +61,17 @@ class StoreToReplayBuffer:
 
     def __call__(self, batch: SampleBatchType):
         if self.local_actor is not None:
-            self.local_actor.add_batch(batch)
+            self.local_actor.add(batch)
         else:
             actor = random.choice(self.replay_actors)
-            actor.add_batch.remote(batch)
+            actor.add.remote(batch)
         return batch
 
 
 def Replay(
     *,
     local_buffer: Optional[MultiAgentReplayBuffer] = None,
+    num_items_to_replay: int = 1,
     actors: Optional[List[ActorHandle]] = None,
     num_async: int = 4,
 ) -> LocalIterator[SampleBatchType]:
@@ -75,15 +83,19 @@ def Replay(
     Args:
         local_buffer: Local buffer to use. Only one of this and replay_actors
             can be specified.
+        num_items_to_replay: Number of items to sample from buffer
         actors: List of replay actors. Only one of this and local_buffer
             can be specified.
         num_async: In async mode, the max number of async requests in flight
             per actor.
 
     Examples:
-        >>> actors = [ReplayActor.remote() for _ in range(4)]
-        >>> replay_op = Replay(actors=actors)
-        >>> next(replay_op)
+        >>> from ray.rllib.utils.replay_buffers import multi_agent_replay_buffer
+        >>> actors = [ # doctest: +SKIP
+        ...     multi_agent_replay_buffer.ReplayActor.remote() for _ in range(4)]
+        >>> replay_op = Replay(actors=actors, # doctest: +SKIP
+        ...     num_items_to_replay=batch_size)
+        >>> next(replay_op) # doctest: +SKIP
         SampleBatch(...)
     """
 
@@ -91,12 +103,14 @@ def Replay(
         raise ValueError("Exactly one of local_buffer and replay_actors must be given.")
 
     if actors is not None:
+        for actor in actors:
+            actor.make_iterator.remote(num_items_to_replay=num_items_to_replay)
         replay = from_actors(actors)
         return replay.gather_async(num_async=num_async).filter(lambda x: x is not None)
 
     def gen_replay(_):
         while True:
-            item = local_buffer.replay()
+            item = local_buffer.sample(num_items_to_replay)
             if item is None:
                 yield _NextValueNotReady()
             else:
@@ -125,7 +139,7 @@ class SimpleReplayBuffer:
         """Initialize SimpleReplayBuffer.
 
         Args:
-            num_slots (int): Number of batches to store in total.
+            num_slots: Number of batches to store in total.
         """
         self.num_slots = num_slots
         self.replay_batches = []
@@ -161,20 +175,23 @@ class MixInReplay:
         """Initialize MixInReplay.
 
         Args:
-            num_slots (int): Number of batches to store in total.
-            replay_proportion (float): The input batch will be returned
+            num_slots: Number of batches to store in total.
+            replay_proportion: The input batch will be returned
                 and an additional number of batches proportional to this value
                 will be added as well.
 
         Examples:
             # replay proportion 2:1
-            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=2)
-            >>> print(next(replay_op))
+            >>> from ray.rllib.execution.replay_ops import MixInReplay
+            >>> rollouts = ... # doctest: +SKIP
+            >>> replay_op = MixInReplay( # doctest: +SKIP
+            ...     rollouts, 100, replay_proportion=2)
+            >>> print(next(replay_op)) # doctest: +SKIP
             [SampleBatch(<input>), SampleBatch(<replay>), SampleBatch(<rep.>)]
-
             # replay proportion 0:1, replay disabled
-            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=0)
-            >>> print(next(replay_op))
+            >>> replay_op = MixInReplay( # doctest: +SKIP
+            ...     rollouts, 100, replay_proportion=0)
+            >>> print(next(replay_op)) # doctest: +SKIP
             [SampleBatch(<input>)]
         """
         if replay_proportion > 0 and num_slots == 0:

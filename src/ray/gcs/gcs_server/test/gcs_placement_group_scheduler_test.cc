@@ -1,3 +1,4 @@
+
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,11 +15,15 @@
 
 #include <memory>
 
+// clang-format off
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "mock/ray/pubsub/publisher.h"
+// clang-format on
 
 namespace ray {
 
@@ -40,13 +45,21 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
-        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
+        std::make_unique<ray::pubsub::MockPublisher>());
+    auto local_node_id = NodeID::FromRandom();
+    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+        scheduling::NodeID(local_node_id.Binary()),
+        NodeResources(),
+        /*is_node_available_fn=*/
+        [](auto) { return true; },
+        /*is_local_node_with_raylet=*/false);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, nullptr, gcs_table_storage_);
-    ray_syncer_ = std::make_shared<ray::syncer::RaySyncer>(
+        io_service_,
+        gcs_table_storage_,
+        cluster_resource_scheduler_->GetClusterResourceManager(),
+        local_node_id);
+    ray_syncer_ = std::make_shared<ray::gcs_syncer::RaySyncer>(
         io_service_, nullptr, *gcs_resource_manager_);
-    gcs_resource_scheduler_ =
-        std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
@@ -57,9 +70,9 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         gcs_table_storage_,
         *gcs_node_manager_,
         *gcs_resource_manager_,
-        *gcs_resource_scheduler_,
+        *cluster_resource_scheduler_,
         raylet_client_pool_,
-        *ray_syncer_);
+        ray_syncer_.get());
   }
 
   void TearDown() override {
@@ -182,7 +195,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       if (ray_syncer_->resources_buffer_proto_.batch().size() == n) {
         break;
       }
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::microseconds(1));
     }
   }
 
@@ -263,7 +276,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
   std::vector<std::shared_ptr<GcsServerMocker::MockRayletClient>> raylet_clients_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
-  std::shared_ptr<gcs::GcsResourceScheduler> gcs_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> success_placement_groups_
@@ -272,9 +285,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       GUARDED_BY(placement_group_requests_mutex_);
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
-  std::shared_ptr<ray::syncer::RaySyncer> ray_syncer_;
+  std::shared_ptr<ray::gcs_syncer::RaySyncer> ray_syncer_;
 };
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadScheduleFailedWithZeroNode) {
@@ -752,7 +764,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
-  gcs::BundleLocationIndex bundle_location_index;
+  BundleLocationIndex bundle_location_index;
   /// Generate data.
   const auto node1 = NodeID::FromRandom();
   const auto node2 = NodeID::FromRandom();
@@ -766,8 +778,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
   const std::shared_ptr<BundleSpecification> bundle_node2_pg1 =
       std::make_shared<BundleSpecification>(
           BundleSpecification(request_pg1.placement_group_spec().bundles(1)));
-  std::shared_ptr<gcs::BundleLocations> bundle_locations_pg1 =
-      std::make_shared<gcs::BundleLocations>();
+  std::shared_ptr<BundleLocations> bundle_locations_pg1 =
+      std::make_shared<BundleLocations>();
   (*bundle_locations_pg1)
       .emplace(bundle_node1_pg1->BundleId(), std::make_pair(node1, bundle_node1_pg1));
   (*bundle_locations_pg1)
@@ -783,8 +795,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
   const std::shared_ptr<BundleSpecification> bundle_node2_pg2 =
       std::make_shared<BundleSpecification>(
           BundleSpecification(request_pg2.placement_group_spec().bundles(1)));
-  std::shared_ptr<gcs::BundleLocations> bundle_locations_pg2 =
-      std::make_shared<gcs::BundleLocations>();
+  std::shared_ptr<BundleLocations> bundle_locations_pg2 =
+      std::make_shared<BundleLocations>();
   (*bundle_locations_pg2)[bundle_node1_pg2->BundleId()] =
       std::make_pair(node1, bundle_node1_pg2);
   (*bundle_locations_pg2)[bundle_node2_pg2->BundleId()] =
@@ -1146,7 +1158,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()][0]);
 }
-
 }  // namespace ray
 
 int main(int argc, char **argv) {

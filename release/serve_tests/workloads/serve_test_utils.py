@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import logging
 import os
 import random
 import ray
@@ -8,9 +9,14 @@ import subprocess
 from collections import defaultdict
 
 from serve_test_cluster_utils import NUM_CPU_PER_NODE
-from ray.serve.utils import logger
 from subprocess import PIPE
 from typing import Dict, List, Union
+
+logger = logging.getLogger(__file__)
+
+
+def is_smoke_test():
+    return os.environ.get("IS_SMOKE_TEST", "0") == "1"
 
 
 def parse_time_to_ms(time_string: str) -> float:

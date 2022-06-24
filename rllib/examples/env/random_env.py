@@ -1,3 +1,4 @@
+import copy
 import gym
 from gym.spaces import Discrete, Tuple
 import numpy as np
@@ -26,6 +27,11 @@ class RandomEnv(gym.Env):
             "reward_space",
             gym.spaces.Box(low=-1.0, high=1.0, shape=(), dtype=np.float32),
         )
+        self.static_samples = config.get("static_samples", False)
+        if self.static_samples:
+            self.observation_sample = self.observation_space.sample()
+            self.reward_sample = self.reward_space.sample()
+
         # Chance that an episode ends at any step.
         # Note that a max episode length can be specified via
         # `max_episode_len`.
@@ -42,7 +48,10 @@ class RandomEnv(gym.Env):
 
     def reset(self):
         self.steps = 0
-        return self.observation_space.sample()
+        if not self.static_samples:
+            return self.observation_space.sample()
+        else:
+            return copy.deepcopy(self.observation_sample)
 
     def step(self, action):
         if self.check_action_bounds and not self.action_space.contains(action):
@@ -67,12 +76,20 @@ class RandomEnv(gym.Env):
                 np.random.choice([True, False], p=[self.p_done, 1.0 - self.p_done])
             )
 
-        return (
-            self.observation_space.sample(),
-            float(self.reward_space.sample()),
-            done,
-            {},
-        )
+        if not self.static_samples:
+            return (
+                self.observation_space.sample(),
+                self.reward_space.sample(),
+                done,
+                {},
+            )
+        else:
+            return (
+                copy.deepcopy(self.observation_sample),
+                copy.deepcopy(self.reward_sample),
+                done,
+                {},
+            )
 
 
 # Multi-agent version of the RandomEnv.

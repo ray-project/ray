@@ -126,7 +126,7 @@ class FilesystemStorageImpl(Storage):
         if self._workflow_root_dir.exists():
             if not self._workflow_root_dir.is_dir():
                 raise ValueError(
-                    f"storage path {workflow_root_dir} must be" " a directory."
+                    f"storage path {workflow_root_dir} must be a directory."
                 )
         else:
             self._workflow_root_dir.mkdir(parents=True)

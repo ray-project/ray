@@ -1,49 +1,45 @@
-import logging
-from concurrent import futures
-import gc
-import grpc
 import base64
-from collections import defaultdict
 import functools
-import queue
-import pickle
-
-import threading
-from typing import Any
-from typing import Dict
-from typing import Set
-from typing import Optional
-from typing import Callable
-from typing import Union
-from ray import cloudpickle
-from ray.job_config import JobConfig
-import ray
-import ray.state
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
-import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-import time
+import gc
 import inspect
 import json
-from ray.util.client.common import (
-    ClientServerHandle,
-    GRPC_OPTIONS,
-    CLIENT_SERVER_MAX_THREADS,
-    ResponseCache,
-)
-from ray import ray_constants
-from ray.util.client.server.proxier import serve_proxier
-from ray.util.client.server.server_pickler import convert_from_arg
-from ray.util.client.server.server_pickler import dumps_from_server
-from ray.util.client.server.server_pickler import loads_from_client
-from ray.util.client.server.dataservicer import DataServicer
-from ray.util.client.server.logservicer import LogstreamServicer
-from ray.util.client.server.server_stubs import current_server
-from ray.ray_constants import env_integer
+import logging
+import math
+import pickle
+import queue
+import threading
+import time
+from collections import defaultdict
+from concurrent import futures
+from typing import Any, Callable, Dict, List, Optional, Set, Union
+
+import grpc
+
+import ray
+import ray._private.state
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray import cloudpickle
+from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.gcs_utils import GcsClient
+from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.gcs_utils import use_gcs_for_bootstrap, GcsClient
+from ray.job_config import JobConfig
+from ray.util.client.common import (
+    CLIENT_SERVER_MAX_THREADS,
+    GRPC_OPTIONS,
+    OBJECT_TRANSFER_CHUNK_SIZE,
+    ClientServerHandle,
+    ResponseCache,
+)
+from ray.util.client.server.dataservicer import DataServicer
+from ray.util.client.server.logservicer import LogstreamServicer
+from ray.util.client.server.proxier import serve_proxier
+from ray.util.client.server.server_pickler import dumps_from_server, loads_from_client
+from ray.util.client.server.server_stubs import current_server
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +98,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         """Construct a raylet service
 
         Args:
-           ray_connect_handler (Callable): Function to connect to ray cluster
+           ray_connect_handler: Function to connect to ray cluster
         """
         # Stores client_id -> (ref_id -> ObjectRef)
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(dict)
@@ -128,7 +124,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         current_job_config = None
         with disable_client_hook():
             if ray.is_initialized():
-                worker = ray.worker.global_worker
+                worker = ray._private.worker.global_worker
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
@@ -379,20 +375,38 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             with disable_client_hook():
 
                 def send_get_response(result: Any) -> None:
-                    """Pushes a GetResponse to the main DataPath loop to send
+                    """Pushes GetResponses to the main DataPath loop to send
                     to the client. This is called when the object is ready
                     on the server side."""
                     try:
                         serialized = dumps_from_server(result, client_id, self)
-                        get_resp = ray_client_pb2.GetResponse(
-                            valid=True, data=serialized
+                        total_size = len(serialized)
+                        assert total_size > 0, "Serialized object cannot be zero bytes"
+                        total_chunks = math.ceil(
+                            total_size / OBJECT_TRANSFER_CHUNK_SIZE
                         )
+                        for chunk_id in range(request.start_chunk_id, total_chunks):
+                            start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
+                            end = min(
+                                total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE
+                            )
+                            get_resp = ray_client_pb2.GetResponse(
+                                valid=True,
+                                data=serialized[start:end],
+                                chunk_id=chunk_id,
+                                total_chunks=total_chunks,
+                                total_size=total_size,
+                            )
+                            chunk_resp = ray_client_pb2.DataResponse(
+                                get=get_resp, req_id=req_id
+                            )
+                            result_queue.put(chunk_resp)
                     except Exception as exc:
                         get_resp = ray_client_pb2.GetResponse(
                             valid=False, error=cloudpickle.dumps(exc)
                         )
-                    resp = ray_client_pb2.DataResponse(get=get_resp, req_id=req_id)
-                    result_queue.put(resp)
+                        resp = ray_client_pb2.DataResponse(get=get_resp, req_id=req_id)
+                        result_queue.put(resp)
 
                 ref._on_completed(send_get_response)
                 return None
@@ -404,13 +418,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata.get("client_id")
         if client_id is None:
-            return ray_client_pb2.GetResponse(
+            yield ray_client_pb2.GetResponse(
                 valid=False,
                 error=cloudpickle.dumps(
                     ValueError("client_id is not specified in request metadata")
                 ),
             )
-        return self._get_object(request, client_id)
+        else:
+            yield from self._get_object(request, client_id)
 
     def _get_object(self, request: ray_client_pb2.GetRequest, client_id: str):
         objectrefs = []
@@ -419,7 +434,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             if ref:
                 objectrefs.append(ref)
             else:
-                return ray_client_pb2.GetResponse(
+                yield ray_client_pb2.GetResponse(
                     valid=False,
                     error=cloudpickle.dumps(
                         ValueError(
@@ -428,14 +443,28 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         )
                     ),
                 )
+                return
         try:
             logger.debug("get: %s" % objectrefs)
             with disable_client_hook():
                 items = ray.get(objectrefs, timeout=request.timeout)
         except Exception as e:
-            return ray_client_pb2.GetResponse(valid=False, error=cloudpickle.dumps(e))
+            yield ray_client_pb2.GetResponse(valid=False, error=cloudpickle.dumps(e))
+            return
         serialized = dumps_from_server(items, client_id, self)
-        return ray_client_pb2.GetResponse(valid=True, data=serialized)
+        total_size = len(serialized)
+        assert total_size > 0, "Serialized object cannot be zero bytes"
+        total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
+        for chunk_id in range(request.start_chunk_id, total_chunks):
+            start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
+            end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
+            yield ray_client_pb2.GetResponse(
+                valid=True,
+                data=serialized[start:end],
+                chunk_id=chunk_id,
+                total_chunks=total_chunks,
+                total_size=total_size,
+            )
 
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None
@@ -513,9 +542,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             remaining_object_ids=remaining_object_ids,
         )
 
-    @_use_response_cache
     def Schedule(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
             "schedule: %s %s"
@@ -524,11 +556,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         try:
             with disable_client_hook():
                 if task.type == ray_client_pb2.ClientTask.FUNCTION:
-                    result = self._schedule_function(task, context)
+                    result = self._schedule_function(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.ACTOR:
-                    result = self._schedule_actor(task, context)
+                    result = self._schedule_actor(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.METHOD:
-                    result = self._schedule_method(task, context)
+                    result = self._schedule_method(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.NAMED_ACTOR:
                     result = self._schedule_named_actor(task, context)
                 else:
@@ -539,18 +571,21 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 result.valid = True
                 return result
         except Exception as e:
-            logger.exception("Caught schedule exception")
+            logger.debug("Caught schedule exception", exc_info=True)
             return ray_client_pb2.ClientTaskTicket(
                 valid=False, error=cloudpickle.dumps(e)
             )
 
     def _schedule_method(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception("Can't run an actor the server doesn't have a handle for")
-        arglist, kwargs = self._convert_args(task.args, task.kwargs)
         method = getattr(actor_handle, task.name)
         opts = decode_options(task.options)
         if opts is not None:
@@ -560,13 +595,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.ClientTaskTicket(return_ids=ids)
 
     def _schedule_actor(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         remote_class = self.lookup_or_register_actor(
             task.payload_id, task.client_id, decode_options(task.baseline_options)
         )
-
-        arglist, kwargs = self._convert_args(task.args, task.kwargs)
         opts = decode_options(task.options)
         if opts is not None:
             remote_class = remote_class.options(**opts)
@@ -577,12 +614,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.ClientTaskTicket(return_ids=[actor._actor_id.binary()])
 
     def _schedule_function(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         remote_func = self.lookup_or_register_func(
             task.payload_id, task.client_id, decode_options(task.baseline_options)
         )
-        arglist, kwargs = self._convert_args(task.args, task.kwargs)
         opts = decode_options(task.options)
         if opts is not None:
             remote_func = remote_func.options(**opts)
@@ -603,16 +643,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.named_actors.add(bin_actor_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=[actor._actor_id.binary()])
 
-    def _convert_args(self, arg_list, kwarg_map):
-        argout = []
-        for arg in arg_list:
-            t = convert_from_arg(arg, self)
-            argout.append(t)
-        kwargout = {}
-        for k in kwarg_map:
-            kwargout[k] = convert_from_arg(kwarg_map[k], self)
-        return argout, kwargout
-
     def lookup_or_register_func(
         self, id: bytes, client_id: str, options: Optional[Dict]
     ) -> ray.remote_function.RemoteFunction:
@@ -622,7 +652,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 func = ray.get(funcref)
                 if not inspect.isfunction(func):
                     raise Exception(
-                        "Attempting to register function that " "isn't a function."
+                        "Attempting to register function that isn't a function."
                     )
                 if options is None or len(options) == 0:
                     self.function_refs[id] = ray.remote(func)
@@ -638,9 +668,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 actor_class_ref = self.object_refs[client_id][id]
                 actor_class = ray.get(actor_class_ref)
                 if not inspect.isclass(actor_class):
-                    raise Exception(
-                        "Attempting to schedule actor that " "isn't a class."
-                    )
+                    raise Exception("Attempting to schedule actor that isn't a class.")
                 if options is None or len(options) == 0:
                     reg_class = ray.remote(actor_class)
                 else:
@@ -768,12 +796,7 @@ def try_create_gcs_client(
     autodetecting a running Ray cluster.
     """
     address = canonicalize_bootstrap_address(address)
-    if use_gcs_for_bootstrap():
-        return GcsClient(address=address)
-    else:
-        if redis_password is None:
-            redis_password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
-        return GcsClient.connect_to_gcs_by_redis_address(address, redis_password)
+    return GcsClient(address=address)
 
 
 def main():

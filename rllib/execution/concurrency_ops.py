@@ -16,14 +16,14 @@ def Concurrently(
     """Operator that runs the given parent iterators concurrently.
 
     Args:
-        mode (str): One of 'round_robin', 'async'. In 'round_robin' mode,
+        mode: One of 'round_robin', 'async'. In 'round_robin' mode,
             we alternate between pulling items from each parent iterator in
             order deterministically. In 'async' mode, we pull from each parent
             iterator as fast as they are produced. This is non-deterministic.
-        output_indexes (list): If specified, only output results from the
+        output_indexes: If specified, only output results from the
             given ops. For example, if ``output_indexes=[0]``, only results
             from the first op in ops will be returned.
-        round_robin_weights (list): List of weights to use for round robin
+        round_robin_weights: List of weights to use for round robin
             mode. For example, ``[2, 1]`` will cause the iterator to pull twice
             as many items from the first iterator as the second. ``[2, 1, *]``
             will cause as many items to be pulled as possible from the third
@@ -31,9 +31,11 @@ def Concurrently(
             mode.
 
     Examples:
-        >>> sim_op = ParallelRollouts(...).for_each(...)
-        >>> replay_op = LocalReplay(...).for_each(...)
-        >>> combined_op = Concurrently([sim_op, replay_op], mode="async")
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> sim_op = ParallelRollouts(...).for_each(...) # doctest: +SKIP
+        >>> replay_op = LocalReplay(...).for_each(...) # doctest: +SKIP
+        >>> combined_op = Concurrently( # doctest: +SKIP
+        ...     [sim_op, replay_op], mode="async")
     """
 
     if len(ops) < 2:
@@ -79,11 +81,14 @@ class Enqueue:
     Dequeue via the Concurrently() operator.
 
     Examples:
-        >>> queue = queue.Queue(100)
-        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue))
-        >>> read_op = Dequeue(queue)
-        >>> combined_op = Concurrently([write_op, read_op], mode="async")
-        >>> next(combined_op)
+        >>> import queue
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> queue = queue.Queue(100) # doctest: +SKIP
+        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue)) # doctest: +SKIP
+        >>> read_op = Dequeue(queue) # doctest: +SKIP
+        >>> combined_op = Concurrently( # doctest: +SKIP
+        ...     [write_op, read_op], mode="async")
+        >>> next(combined_op) # doctest: +SKIP
         SampleBatch(...)
     """
 
@@ -109,16 +114,20 @@ def Dequeue(
     Enqueue via the Concurrently() operator.
 
     Args:
-        input_queue (Queue): queue to pull items from.
-        check (fn): liveness check. When this function returns false,
+        input_queue: queue to pull items from.
+        check: liveness check. When this function returns false,
             Dequeue() will raise an error to halt execution.
 
     Examples:
-        >>> queue = queue.Queue(100)
-        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue))
-        >>> read_op = Dequeue(queue)
-        >>> combined_op = Concurrently([write_op, read_op], mode="async")
-        >>> next(combined_op)
+        >>> import queue
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> queue = queue.Queue(100) # doctest: +SKIP
+        >>> write_op = ParallelRollouts(...) # doctest: +SKIP
+        ...     .for_each(Enqueue(queue))
+        >>> read_op = Dequeue(queue) # doctest: +SKIP
+        >>> combined_op = Concurrently( # doctest: +SKIP
+        ...     [write_op, read_op], mode="async")
+        >>> next(combined_op) # doctest: +SKIP
         SampleBatch(...)
     """
     if not isinstance(input_queue, queue.Queue):

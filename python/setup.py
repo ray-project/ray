@@ -10,21 +10,20 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import zipfile
-
-from itertools import chain
-from enum import Enum
-
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
+from enum import Enum
+from itertools import chain
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
-SUPPORTED_BAZEL = (4, 2, 1)
+
+SUPPORTED_BAZEL = (4, 2, 2)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -202,7 +201,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "data": [
             "pandas",
-            "pyarrow >= 4.0.1, < 7.0.0",
+            "pyarrow >= 6.0.1, < 7.0.0",
             "fsspec",
         ],
         "default": [
@@ -213,7 +212,7 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
-            "prometheus_client >= 0.7.1",
+            "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
         "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
@@ -255,6 +254,18 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    setup_spec.extras["train"] = setup_spec.extras["tune"]
+
+    # Ray AI Runtime should encompass Data, Tune, and Serve.
+    setup_spec.extras["air"] = list(
+        set(
+            setup_spec.extras["tune"]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["train"]
+            + setup_spec.extras["serve"]
+        )
+    )
+
     setup_spec.extras["all"] = list(
         set(chain.from_iterable(setup_spec.extras.values()))
     )
@@ -265,7 +276,7 @@ if setup_spec.type == SetupType.RAY:
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "attrs",
-        "click >= 7.0",
+        "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.28.1, <= 1.43.0",
@@ -273,7 +284,7 @@ if setup_spec.type == SetupType.RAY:
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
-        "protobuf >= 3.15.3",
+        "protobuf >= 3.15.3, < 4.0.0",
         "pyyaml",
         "aiosignal",
         "frozenlist",
@@ -738,10 +749,13 @@ setuptools.setup(
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
-            "tune=ray.tune.scripts:cli",
+            "tune=ray.tune.cli.scripts:cli",
             "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]
+    },
+    package_data={
+        "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
     zip_safe=False,

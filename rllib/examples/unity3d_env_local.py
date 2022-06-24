@@ -40,6 +40,7 @@ parser.add_argument(
         "GridFoodCollector",
         "Pyramids",
         "SoccerStrikersVsGoalie",
+        "SoccerTwos",
         "Sorter",
         "Tennis",
         "VisualHallway",

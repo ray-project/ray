@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 
 from ray import tune
 
@@ -23,7 +23,7 @@ class TuneReportCallback(TuneCallback):
     This has to be passed to MXNet as the ``eval_end_callback``.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to MXNet,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
@@ -46,7 +46,7 @@ class TuneReportCallback(TuneCallback):
 
     """
 
-    def __init__(self, metrics: Union[None, str, List[str], Dict[str, str]] = None):
+    def __init__(self, metrics: Optional[Union[str, List[str], Dict[str, str]]] = None):
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
@@ -80,9 +80,9 @@ class TuneCheckpointCallback(TuneCallback):
     ``TuneReportCallback`` to work!
 
     Args:
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        frequency (int): Integer indicating how often checkpoints should be
+        frequency: Integer indicating how often checkpoints should be
             saved.
 
     Example:

@@ -65,7 +65,7 @@ def main(bucket):
     results_per_second = 10 / 60
     trial_length_s = 300
 
-    max_runtime = 500
+    max_runtime = 650
 
     timed_tune_run(
         name="durable trainable",

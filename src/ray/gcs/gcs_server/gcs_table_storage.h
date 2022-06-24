@@ -19,6 +19,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -37,6 +38,7 @@ using rpc::ResourceTableData;
 using rpc::ResourceUsageBatchData;
 using rpc::ScheduleData;
 using rpc::StoredConfig;
+using rpc::TaskSpec;
 using rpc::WorkerTableData;
 
 /// \class GcsTable
@@ -100,6 +102,9 @@ class GcsTable {
 /// specific jobs. This class is not meant to be used directly. All gcs table classes with
 /// job id should derive from this class and override the table_name_ member with a unique
 /// value for that table.
+///
+/// GcsTableWithJobId build index in memory. There is a known race condition
+/// that index could be stale if multiple writer change the same index at the same time.
 template <typename Key, typename Data>
 class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
@@ -144,8 +149,14 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   Status BatchDelete(const std::vector<Key> &keys,
                      const StatusCallback &callback) override;
 
+  /// Rebuild the index during startup.
+  Status AsyncRebuildIndexAndGetAll(const MapCallback<Key, Data> &callback);
+
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
+
+  absl::Mutex mutex_;
+  absl::flat_hash_map<JobID, absl::flat_hash_set<Key>> index_ GUARDED_BY(mutex_);
 };
 
 class GcsJobTable : public GcsTable<JobID, JobTableData> {
@@ -161,6 +172,17 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
   explicit GcsActorTable(std::shared_ptr<StoreClient> store_client)
       : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
+  }
+
+ private:
+  JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
+};
+
+class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
+ public:
+  explicit GcsActorTaskSpecTable(std::shared_ptr<StoreClient> &store_client)
+      : GcsTableWithJobId(store_client) {
+    table_name_ = TablePrefix_Name(TablePrefix::ACTOR_TASK_SPEC);
   }
 
  private:
@@ -242,6 +264,7 @@ class GcsTableStorage {
       : store_client_(std::move(store_client)) {
     job_table_ = std::make_unique<GcsJobTable>(store_client_);
     actor_table_ = std::make_unique<GcsActorTable>(store_client_);
+    actor_task_spec_table_ = std::make_unique<GcsActorTaskSpecTable>(store_client_);
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
     node_resource_table_ = std::make_unique<GcsNodeResourceTable>(store_client_);
@@ -262,6 +285,11 @@ class GcsTableStorage {
   GcsActorTable &ActorTable() {
     RAY_CHECK(actor_table_ != nullptr);
     return *actor_table_;
+  }
+
+  GcsActorTaskSpecTable &ActorTaskSpecTable() {
+    RAY_CHECK(actor_task_spec_table_ != nullptr);
+    return *actor_task_spec_table_;
   }
 
   GcsPlacementGroupTable &PlacementGroupTable() {
@@ -313,6 +341,7 @@ class GcsTableStorage {
   std::shared_ptr<StoreClient> store_client_;
   std::unique_ptr<GcsJobTable> job_table_;
   std::unique_ptr<GcsActorTable> actor_table_;
+  std::unique_ptr<GcsActorTaskSpecTable> actor_task_spec_table_;
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsNodeResourceTable> node_resource_table_;
@@ -338,7 +367,8 @@ class RedisGcsTableStorage : public GcsTableStorage {
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
   explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
-      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service)) {}
+      : GcsTableStorage(std::make_shared<ObservableStoreClient>(
+            std::make_unique<InMemoryStoreClient>(main_io_service))) {}
 };
 
 }  // namespace gcs

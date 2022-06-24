@@ -7,7 +7,7 @@ from ray.tune import register_trainable, run_experiments, run, choice
 from ray.tune.result import TIMESTEPS_TOTAL
 from ray.tune.experiment import Experiment
 from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
@@ -56,12 +56,14 @@ class RemoteTest(unittest.TestCase):
         self.assertFalse(args)
         kwargs.pop("run_or_experiment")
         kwargs.pop("_remote")
+        kwargs.pop("progress_reporter")  # gets autodetected and set
 
         default_kwargs = {
             k: v.default for k, v in inspect.signature(run).parameters.items()
         }
         default_kwargs.pop("run_or_experiment")
         default_kwargs.pop("_remote")
+        default_kwargs.pop("progress_reporter")
 
         self.assertDictEqual(kwargs, default_kwargs)
 

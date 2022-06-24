@@ -1,21 +1,31 @@
 import unittest
-from collections import namedtuple
 
 from ray.tune import PlacementGroupFactory
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.experiment import Trial
 from ray.tune.schedulers.resource_changing_scheduler import (
     ResourceChangingScheduler,
     DistributeResources,
     DistributeResourcesToTopJob,
 )
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
-avail_resources = namedtuple("avail_resources", ["cpu", "gpu"])
+
+class MockResourceUpdater:
+    def __init__(self, num_cpus, num_gpus):
+        self._num_cpus = num_cpus
+        self._num_gpus = num_gpus
+
+    def get_num_cpus(self) -> int:
+        return self._num_cpus
+
+    def get_num_gpus(self) -> int:
+        return self._num_gpus
 
 
 class MockTrialExecutor:
     def __init__(self, cpu: float, gpu: float) -> None:
-        self._avail_resources = avail_resources(cpu, gpu)
+        self._resource_updater = MockResourceUpdater(cpu, gpu)
 
     def force_reconcilation_on_next_step_end(self):
         return
@@ -39,7 +49,11 @@ class MockTrialRunner:
 class MockTrial(Trial):
     @property
     def checkpoint(self):
-        return Checkpoint(Checkpoint.MEMORY, "None", {})
+        return _TrackedCheckpoint(
+            dir_or_data="None",
+            storage_mode=CheckpointStorage.MEMORY,
+            metrics={},
+        )
 
 
 class TestUniformResourceAllocation(unittest.TestCase):
@@ -551,7 +565,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1,
             scheduler,
-            PlacementGroupFactory([{"CPU": 2, "GPU": 2}] * 4),
+            PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 4),
             metric=1.2,
         )
 
@@ -622,3 +636,10 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1, scheduler, PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
         )
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

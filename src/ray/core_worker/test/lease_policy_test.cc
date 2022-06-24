@@ -40,15 +40,15 @@ class MockLocalityDataProvider : public LocalityDataProviderInterface {
   MockLocalityDataProvider(absl::flat_hash_map<ObjectID, LocalityData> locality_data)
       : locality_data_(locality_data) {}
 
-  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) {
+  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const {
     num_locality_data_fetches++;
     return locality_data_[object_id];
   };
 
   ~MockLocalityDataProvider() {}
 
-  int num_locality_data_fetches = 0;
-  absl::flat_hash_map<ObjectID, LocalityData> locality_data_;
+  mutable int num_locality_data_fetches = 0;
+  mutable absl::flat_hash_map<ObjectID, LocalityData> locality_data_;
 };
 
 absl::optional<rpc::Address> MockNodeAddrFactory(const NodeID &node_id) {
@@ -102,6 +102,37 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackSpreadSchedulingStrat
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, 0);
   // Test that fallback node was chosen.
   ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
+  ASSERT_FALSE(is_selected_based_on_locality);
+}
+
+TEST(LocalityAwareLeasePolicyTest,
+     TestBestLocalityFallbackNodeAffinitySchedulingStrategy) {
+  absl::flat_hash_map<ObjectID, LocalityData> locality_data;
+  NodeID fallback_node = NodeID::FromRandom();
+  rpc::Address fallback_rpc_address = MockNodeAddrFactory(fallback_node).value();
+  NodeID best_node = NodeID::FromRandom();
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
+  // Both objects are local on best_node.
+  locality_data.emplace(obj1, LocalityData{8, {best_node}});
+  locality_data.emplace(obj2, LocalityData{16, {best_node}});
+  auto mock_locality_data_provider =
+      std::make_shared<MockLocalityDataProvider>(locality_data);
+  LocalityAwareLeasePolicy locality_lease_policy(
+      mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
+  std::vector<ObjectID> deps{obj1, obj2};
+  auto task_spec = CreateFakeTask(deps);
+  NodeID node_affinity_node = NodeID::FromRandom();
+  task_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_node_id(node_affinity_node.Binary());
+  auto [best_node_address, is_selected_based_on_locality] =
+      locality_lease_policy.GetBestNodeForTask(task_spec);
+  // Locality logic is not run since it's a node affinity scheduling strategy.
+  ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, 0);
+  // Test that node affinity node was chosen.
+  ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), node_affinity_node);
   ASSERT_FALSE(is_selected_based_on_locality);
 }
 

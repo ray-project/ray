@@ -1,25 +1,25 @@
 from ray.tests.conftest import *  # noqa
+
+import ray
 from ray import workflow
 import pytest
 
 
-@workflow.step
-def identity(x):
-    return x
-
-
-@workflow.step
-def projection(x, _):
-    return x
-
-
 @pytest.mark.skip(reason="Variable mutable is not supported right now.")
 def test_variable_mutable(workflow_start_regular):
+    @ray.remote
+    def identity(x):
+        return x
+
+    @ray.remote
+    def projection(x, _):
+        return x
+
     x = []
-    a = identity.step(x)
+    a = identity.bind(x)
     x.append(1)
-    b = identity.step(x)
-    assert projection.step(a, b).run() == []
+    b = identity.bind(x)
+    assert workflow.create(projection.bind(a, b)).run() == []
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@
     <!-- exclude the generated files from being parsed, which make checkstyle check more fast -->
     <module name="BeforeExecutionExclusionFileFilter">
         <property name="fileNamePattern"
-                  value="io[\\/]ray[\\/].*runtime[\\/]generated[\\/]|RayCall.java|ActorCall.java|io[\\/]ray[\\/].*serve[\\/]generated[\\/]"/>
+                  value="io[\\/]ray[\\/].*runtime[\\/]generated[\\/]|RayCall.java|ActorCall.java|io[\\/]ray[\\/].*serve[\\/]generated[\\/]|Call.java|ActorCall.java|"/>
     </module>
 
     <module name="TreeWalker">

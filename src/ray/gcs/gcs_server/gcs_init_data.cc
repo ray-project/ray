@@ -18,7 +18,7 @@ namespace ray {
 namespace gcs {
 void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   // There are 6 kinds of table data need to be loaded.
-  auto count_down = std::make_shared<int>(5);
+  auto count_down = std::make_shared<int>(6);
   auto on_load_finished = [count_down, on_done] {
     if (--(*count_down) == 0) {
       if (on_done) {
@@ -34,6 +34,8 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   AsyncLoadResourceTableData(on_load_finished);
 
   AsyncLoadActorTableData(on_load_finished);
+
+  AsyncLoadActorTaskSpecTableData(on_load_finished);
 
   AsyncLoadPlacementGroupTableData(on_load_finished);
 }
@@ -98,7 +100,21 @@ void GcsInitData::AsyncLoadActorTableData(const EmptyCallback &on_done) {
                       << actor_table_data_.size();
         on_done();
       };
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetAll(load_actor_table_data_callback));
+  RAY_CHECK_OK(gcs_table_storage_->ActorTable().AsyncRebuildIndexAndGetAll(
+      load_actor_table_data_callback));
+}
+
+void GcsInitData::AsyncLoadActorTaskSpecTableData(const EmptyCallback &on_done) {
+  RAY_LOG(INFO) << "Loading actor task spec table data.";
+  auto load_actor_task_spec_table_data_callback =
+      [this, on_done](const absl::flat_hash_map<ActorID, TaskSpec> &result) {
+        actor_task_spec_table_data_ = std::move(result);
+        RAY_LOG(INFO) << "Finished loading actor task spec table data, size = "
+                      << actor_task_spec_table_data_.size();
+        on_done();
+      };
+  RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().GetAll(
+      load_actor_task_spec_table_data_callback));
 }
 
 }  // namespace gcs

@@ -43,7 +43,10 @@ class InputReader(metaclass=ABCMeta):
             queue_size: Max elements to allow in the TF queue.
 
         Example:
-            >>> class MyModel(rllib.model.Model):
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> from ray.rllib.offline.json_reader import JsonReader
+            >>> imitation_loss = ... # doctest +SKIP
+            >>> class MyModel(ModelV2): # doctest +SKIP
             ...     def custom_loss(self, policy_loss, loss_inputs):
             ...         reader = JsonReader(...)
             ...         input_ops = reader.tf_input_ops()

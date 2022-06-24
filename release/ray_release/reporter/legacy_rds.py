@@ -10,7 +10,8 @@ from ray_release.aws import (
     RELEASE_AWS_DB_NAME,
     RELEASE_AWS_DB_TABLE,
 )
-from ray_release.config import Test, get_test_env_var
+from ray_release.config import Test
+from ray_release.template import get_test_env_var
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
@@ -41,8 +42,12 @@ class LegacyRDSReporter(Reporter):
         now = datetime.datetime.utcnow()
         rds_data_client = boto3.client("rds-data", region_name="us-west-2")
 
-        test_name = test["legacy"]["test_name"] or ""
-        test_suite = test["legacy"]["test_suite"] or ""
+        if "legacy" in test:
+            test_name = test["legacy"]["test_name"]
+            test_suite = test["legacy"]["test_suite"]
+        else:
+            test_name = test["name"]
+            test_suite = ""
 
         team = test["team"] or ""
 

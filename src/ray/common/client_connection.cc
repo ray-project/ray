@@ -360,14 +360,12 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
     local_stream_socket &&socket,
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names,
-    int64_t error_message_type,
-    const std::vector<uint8_t> &error_message_data) {
+    int64_t error_message_type) {
   std::shared_ptr<ClientConnection> self(new ClientConnection(message_handler,
                                                               std::move(socket),
                                                               debug_label,
                                                               message_type_enum_names,
-                                                              error_message_type,
-                                                              error_message_data));
+                                                              error_message_type));
   // Let our manager process our new connection.
   client_handler(*self);
   return self;
@@ -378,15 +376,13 @@ ClientConnection::ClientConnection(
     local_stream_socket &&socket,
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names,
-    int64_t error_message_type,
-    const std::vector<uint8_t> &error_message_data)
+    int64_t error_message_type)
     : ServerConnection(std::move(socket)),
       registered_(false),
       message_handler_(message_handler),
       debug_label_(debug_label),
       message_type_enum_names_(message_type_enum_names),
-      error_message_type_(error_message_type),
-      error_message_data_(error_message_data) {}
+      error_message_type_(error_message_type) {}
 
 void ClientConnection::Register() {
   RAY_CHECK(!registered_);
@@ -427,9 +423,6 @@ void ClientConnection::ProcessMessages() {
 
 void ClientConnection::ProcessMessageHeader(const boost::system::error_code &error) {
   if (error) {
-    // If there was an error, disconnect the client.
-    read_type_ = error_message_type_;
-    read_message_ = error_message_data_;
     read_length_ = 0;
     ProcessMessage(error);
     return;
@@ -502,7 +495,24 @@ std::string ClientConnection::RemoteEndpointInfo() {
 
 void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   if (error) {
+    flatbuffers::FlatBufferBuilder fbb;
+    const auto &disconnect_detail = fbb.CreateString(absl::StrCat(
+        "Worker unexpectedly exits with a connection error code ",
+        error.value(),
+        ". ",
+        error.message(),
+        ". There are some potential root causes. (1) The process is killed by "
+        "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
+        "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
+        "unexpected errors."));
+    protocol::DisconnectClientBuilder builder(fbb);
+    builder.add_disconnect_type(static_cast<int>(ray::rpc::WorkerExitType::SYSTEM_ERROR));
+    builder.add_disconnect_detail(disconnect_detail);
+    fbb.Finish(builder.Finish());
+    std::vector<uint8_t> error_data(fbb.GetBufferPointer(),
+                                    fbb.GetBufferPointer() + fbb.GetSize());
     read_type_ = error_message_type_;
+    read_message_ = error_data;
   }
 
   int64_t start_ms = current_time_ms();

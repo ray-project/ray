@@ -1,21 +1,26 @@
 import numpy as np
 from typing import Tuple, Any, Optional
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
 
+@DeveloperAPI
 def normc_initializer(std: float = 1.0) -> Any:
     def _initializer(shape, dtype=None, partition_info=None):
-        out = np.random.randn(*shape).astype(np.float32)
+        out = np.random.randn(*shape).astype(
+            dtype.name if hasattr(dtype, "name") else dtype or np.float32
+        )
         out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
         return tf.constant(out)
 
     return _initializer
 
 
+@DeveloperAPI
 def conv2d(
     x: TensorType,
     num_filters: int,
@@ -63,6 +68,7 @@ def conv2d(
         return tf1.nn.conv2d(x, w, stride_shape, pad) + b
 
 
+@DeveloperAPI
 def linear(
     x: TensorType,
     size: int,
@@ -77,5 +83,6 @@ def linear(
     return tf.matmul(x, w) + b
 
 
+@DeveloperAPI
 def flatten(x: TensorType) -> TensorType:
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])

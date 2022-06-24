@@ -1,6 +1,6 @@
 import gym
 import logging
-from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
+from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import (
@@ -17,6 +17,7 @@ from ray.rllib.utils.typing import (
     MultiAgentDict,
     MultiEnvDict,
 )
+from ray.util import log_once
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -29,7 +30,7 @@ class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
-    are not to be confused with RLlib Trainers, which are also sometimes
+    are not to be confused with RLlib Algorithms, which are also sometimes
     referred to as "agents" or "RL agents".
     """
 
@@ -41,7 +42,7 @@ class MultiAgentEnv(gym.Env):
         if not hasattr(self, "_agent_ids"):
             self._agent_ids = set()
 
-        # do the action and observation spaces map from agent ids to spaces
+        # Do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
         if not hasattr(self, "_spaces_in_preferred_format"):
             self._spaces_in_preferred_format = None
@@ -54,9 +55,13 @@ class MultiAgentEnv(gym.Env):
             New observations for each ready agent.
 
         Examples:
-            >>> env = MyMultiAgentEnv()
-            >>> obs = env.reset()
-            >>> print(obs)
+            >>> from ray.rllib.env.multi_agent_env import MultiAgentEnv
+            >>> class MyMultiAgentEnv(MultiAgentEnv): # doctest: +SKIP
+            ...     # Define your env here. # doctest: +SKIP
+            ...     ... # doctest: +SKIP
+            >>> env = MyMultiAgentEnv() # doctest: +SKIP
+            >>> obs = env.reset() # doctest: +SKIP
+            >>> print(obs) # doctest: +SKIP
             {
                 "car_0": [2.4, 1.6],
                 "car_1": [3.4, -3.2],
@@ -83,23 +88,24 @@ class MultiAgentEnv(gym.Env):
             4) Optional info values for each agent id.
 
         Examples:
-            >>> obs, rewards, dones, infos = env.step(
-            ...    action_dict={
-            ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2,
-            ...    })
-            >>> print(rewards)
+            >>> env = ... # doctest: +SKIP
+            >>> obs, rewards, dones, infos = env.step( # doctest: +SKIP
+            ...    action_dict={ # doctest: +SKIP
+            ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2, # doctest: +SKIP
+            ...    }) # doctest: +SKIP
+            >>> print(rewards) # doctest: +SKIP
             {
                 "car_0": 3,
                 "car_1": -1,
                 "traffic_light_1": 0,
             }
-            >>> print(dones)
+            >>> print(dones) # doctest: +SKIP
             {
                 "car_0": False,    # car_0 is still running
                 "car_1": True,     # car_1 is done
                 "__all__": False,  # the env is not done
             }
-            >>> print(infos)
+            >>> print(infos) # doctest: +SKIP
             {
                 "car_0": {},  # info for car_0
                 "car_1": {},  # info for car_1
@@ -126,7 +132,20 @@ class MultiAgentEnv(gym.Env):
                 self._check_if_space_maps_agent_id_to_sub_space()
             )
         if self._spaces_in_preferred_format:
-            return self.observation_space.contains(x)
+            for key, agent_obs in x.items():
+                if not self.observation_space[key].contains(agent_obs):
+                    return False
+            if not all(k in self.observation_space for k in x):
+                if log_once("possibly_bad_multi_agent_dict_missing_agent_observations"):
+                    logger.warning(
+                        "You environment returns observations that are "
+                        "MultiAgentDicts with incomplete information. "
+                        "Meaning that they only contain information on a subset of"
+                        " participating agents. Ignore this warning if this is "
+                        "intended, for example if your environment is a turn-based "
+                        "simulation."
+                    )
+            return True
 
         logger.warning("observation_space_contains() has not been implemented")
         return True
@@ -151,7 +170,8 @@ class MultiAgentEnv(gym.Env):
         if self._spaces_in_preferred_format:
             return self.action_space.contains(x)
 
-        logger.warning("action_space_contains() has not been implemented")
+        if log_once("action_space_contains"):
+            logger.warning("action_space_contains() has not been implemented")
         return True
 
     @ExperimentalAPI
@@ -184,7 +204,6 @@ class MultiAgentEnv(gym.Env):
                 if agent_id != "__all__"
             }
         logger.warning("action_space_sample() has not been implemented")
-        del agent_ids
         return {}
 
     @ExperimentalAPI
@@ -215,8 +234,8 @@ class MultiAgentEnv(gym.Env):
             samples = self.observation_space.sample()
             samples = {agent_id: samples[agent_id] for agent_id in agent_ids}
             return samples
-        logger.warning("observation_space_sample() has not been implemented")
-        del agent_ids
+        if log_once("observation_space_sample"):
+            logger.warning("observation_space_sample() has not been implemented")
         return {}
 
     @PublicAPI
@@ -239,7 +258,6 @@ class MultiAgentEnv(gym.Env):
 
     # fmt: off
     # __grouping_doc_begin__
-    @ExperimentalAPI
     def with_agent_groups(
         self,
         groups: Dict[str, List[AgentID]],
@@ -259,23 +277,28 @@ class MultiAgentEnv(gym.Env):
 
         Agent grouping is required to leverage algorithms such as Q-Mix.
 
-        This API is experimental.
-
         Args:
             groups: Mapping from group id to a list of the agent ids
                 of group members. If an agent id is not present in any group
-                value, it will be left ungrouped.
+                value, it will be left ungrouped. The group id becomes a new agent ID
+                in the final environment.
             obs_space: Optional observation space for the grouped
-                env. Must be a tuple space.
+                env. Must be a tuple space. If not provided, will infer this to be a
+                Tuple of n individual agents spaces (n=num agents in a group).
             act_space: Optional action space for the grouped env.
-                Must be a tuple space.
+                Must be a tuple space. If not provided, will infer this to be a Tuple
+                of n individual agents spaces (n=num agents in a group).
 
         Examples:
-            >>> env = YourMultiAgentEnv(...)
-            >>> grouped_env = env.with_agent_groups(env, {
-            ...   "group1": ["agent1", "agent2", "agent3"],
-            ...   "group2": ["agent4", "agent5"],
-            ... })
+            >>> from ray.rllib.env.multi_agent_env import MultiAgentEnv
+            >>> class MyMultiAgentEnv(MultiAgentEnv): # doctest: +SKIP
+            ...     # define your env here
+            ...     ... # doctest: +SKIP
+            >>> env = MyMultiAgentEnv(...) # doctest: +SKIP
+            >>> grouped_env = env.with_agent_groups(env, { # doctest: +SKIP
+            ...   "group1": ["agent1", "agent2", "agent3"], # doctest: +SKIP
+            ...   "group2": ["agent4", "agent5"], # doctest: +SKIP
+            ... }) # doctest: +SKIP
         """
 
         from ray.rllib.env.wrappers.group_agents_wrapper import \
@@ -352,6 +375,7 @@ class MultiAgentEnv(gym.Env):
         return obs_space_check and action_space_check
 
 
+@PublicAPI
 def make_multi_agent(
     env_name_or_creator: Union[str, EnvCreator],
 ) -> Type["MultiAgentEnv"]:
@@ -378,24 +402,24 @@ def make_multi_agent(
         underlying single-agent env's constructor.
 
     Examples:
+         >>> from ray.rllib.env.multi_agent_env import make_multi_agent
          >>> # By gym string:
-         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0")
+         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0") # doctest: +SKIP
          >>> # Create a 2 agent multi-agent cartpole.
-         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2})
-         >>> obs = ma_cartpole.reset()
-         >>> print(obs)
-         ... {0: [...], 1: [...]}
-
+         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2}) # doctest: +SKIP
+         >>> obs = ma_cartpole.reset() # doctest: +SKIP
+         >>> print(obs) # doctest: +SKIP
+         {0: [...], 1: [...]}
          >>> # By env-maker callable:
-         >>> from ray.rllib.examples.env.stateless_cartpole import \
-         ...    StatelessCartPole
-         >>> ma_stateless_cartpole_cls = make_multi_agent(
-         ...    lambda config: StatelessCartPole(config))
+         >>> from ray.rllib.examples.env.stateless_cartpole # doctest: +SKIP
+         ...    import StatelessCartPole
+         >>> ma_stateless_cartpole_cls = make_multi_agent( # doctest: +SKIP
+         ...    lambda config: StatelessCartPole(config)) # doctest: +SKIP
          >>> # Create a 3 agent multi-agent stateless cartpole.
-         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls(
-         ...    {"num_agents": 3})
-         >>> print(obs)
-         ... {0: [...], 1: [...], 2: [...]}
+         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls( # doctest: +SKIP
+         ...    {"num_agents": 3}) # doctest: +SKIP
+         >>> print(obs) # doctest: +SKIP
+         {0: [...], 1: [...], 2: [...]}
     """
 
     class MultiEnv(MultiAgentEnv):
@@ -462,6 +486,7 @@ def make_multi_agent(
     return MultiEnv
 
 
+@PublicAPI
 class MultiAgentEnvWrapper(BaseEnv):
     """Internal adapter of MultiAgentEnv to BaseEnv.
 
@@ -471,18 +496,17 @@ class MultiAgentEnvWrapper(BaseEnv):
     def __init__(
         self,
         make_env: Callable[[int], EnvType],
-        existing_envs: MultiAgentEnv,
+        existing_envs: List["MultiAgentEnv"],
         num_envs: int,
     ):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
-            make_env (Callable[[int], EnvType]): Factory that produces a new
-                MultiAgentEnv instance. Must be defined, if the number of
-                existing envs is less than num_envs.
-            existing_envs (List[MultiAgentEnv]): List of already existing
-                multi-agent envs.
-            num_envs (int): Desired num multiagent envs to have at the end in
+            make_env: Factory that produces a new MultiAgentEnv instance taking the
+                vector index as only call argument.
+                Must be defined, if the number of existing envs is less than num_envs.
+            existing_envs: List of already existing multi-agent envs.
+            num_envs: Desired num multiagent envs to have at the end in
                 total. This will include the given (already created)
                 `existing_envs`.
         """
@@ -494,9 +518,8 @@ class MultiAgentEnvWrapper(BaseEnv):
             self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
-        self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
+        self._init_env_state(idx=None)
         self._unwrapped_env = self.envs[0].unwrapped
-        self._agent_ids = self._unwrapped_env.get_agent_ids()
 
     @override(BaseEnv)
     def poll(
@@ -548,9 +571,26 @@ class MultiAgentEnvWrapper(BaseEnv):
         return ret
 
     @override(BaseEnv)
-    def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
+    def try_restart(self, env_id: Optional[EnvID] = None) -> None:
+        if isinstance(env_id, int):
+            env_id = [env_id]
+        if env_id is None:
+            env_id = list(range(len(self.envs)))
+        for idx in env_id:
+            # Recreate the sub-env.
+            self.envs[idx] = self.make_env(idx)
+            # Replace the multi-agent env state at the index.
+            self._init_env_state(idx)
+            # Remove done flag at index.
+            if idx in self.dones:
+                self.dones.remove(idx)
+
+    @override(BaseEnv)
+    def get_sub_environments(
+        self, as_dict: bool = False
+    ) -> Union[Dict[str, EnvType], List[EnvType]]:
         if as_dict:
-            return {_id: env_state for _id, env_state in enumerate(self.env_states)}
+            return {_id: env_state.env for _id, env_state in enumerate(self.env_states)}
         return [state.env for state in self.env_states]
 
     @override(BaseEnv)
@@ -564,7 +604,7 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
-        self.envs[0].observation_space
+        return self.envs[0].observation_space
 
     @property
     @override(BaseEnv)
@@ -590,7 +630,21 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def get_agent_ids(self) -> Set[AgentID]:
-        return self._agent_ids
+        return self.envs[0].get_agent_ids()
+
+    def _init_env_state(self, idx: Optional[int] = None) -> None:
+        """Resets all or one particular sub-environment's state (by index).
+
+        Args:
+            idx: The index to reset at. If None, reset all the sub-environments' states.
+        """
+        # If index is None, reset all sub-envs' states:
+        if idx is None:
+            self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
+        # Index provided, reset only the sub-env's state at the given index.
+        else:
+            assert isinstance(idx, int)
+            self.env_states[idx] = _MultiAgentEnvState(self.envs[idx])
 
 
 class _MultiAgentEnvState:

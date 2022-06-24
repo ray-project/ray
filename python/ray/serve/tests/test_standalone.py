@@ -2,35 +2,42 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+import logging
 import os
+import socket
 import subprocess
 import sys
-import socket
-from typing import Optional
 from tempfile import mkstemp
 
-import pytest
 import pydantic
+import pytest
 import requests
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 from ray import serve
-from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
-from ray.serve.exceptions import RayServeException
-from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
-from ray.serve.config import HTTPOptions
-from ray.serve.api import internal_get_global_client
+from ray._private.services import new_port
 from ray._private.test_utils import (
+    convert_actor_state,
     run_string_as_driver,
     wait_for_condition,
-    convert_actor_state,
 )
-from ray._private.services import new_port
-import ray._private.gcs_utils as gcs_utils
+from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.serve.config import HTTPOptions
+from ray.serve.constants import (
+    SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
+    SERVE_ROOT_URL_ENV_KEY,
+)
+from ray.serve.context import get_global_client
+from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import ActorNameList
+from ray.serve.http_util import set_socket_reuse_port
+from ray.serve.utils import block_until_http_ready, format_actor_name, get_all_node_ids
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
+from ray.tests.conftest import maybe_external_redis  # noqa: F401
 from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
 
 
@@ -55,12 +62,12 @@ def test_shutdown(ray_shutdown):
 
     f.deploy()
 
-    serve_controller_name = serve.api._global_client._controller_name
+    serve_controller_name = serve.context._global_client._controller_name
     actor_names = [
         serve_controller_name,
         format_actor_name(
             SERVE_PROXY_NAME,
-            serve.api._global_client._controller_name,
+            serve.context._global_client._controller_name,
             get_all_node_ids()[0][0],
         ),
     ]
@@ -69,12 +76,7 @@ def test_shutdown(ray_shutdown):
         alive = True
         for actor_name in actor_names:
             try:
-                if actor_name == serve_controller_name:
-                    ray.get_actor(
-                        actor_name, namespace=ray.get_runtime_context().namespace
-                    )
-                else:
-                    ray.get_actor(actor_name)
+                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
             except ValueError:
                 alive = False
         return alive
@@ -88,12 +90,7 @@ def test_shutdown(ray_shutdown):
     def check_dead():
         for actor_name in actor_names:
             try:
-                if actor_name == serve_controller_name:
-                    ray.get_actor(
-                        actor_name, namespace=ray.get_runtime_context().namespace
-                    )
-                else:
-                    ray.get_actor(actor_name)
+                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
                 return False
             except ValueError:
                 pass
@@ -109,7 +106,7 @@ def test_detached_deployment(ray_cluster):
     head_node = cluster.add_node(num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
-    ray.init(head_node.address, namespace="serve")
+    ray.init(head_node.address, namespace=SERVE_NAMESPACE)
     first_job_id = ray.get_runtime_context().job_id
     serve.start(detached=True)
 
@@ -121,7 +118,7 @@ def test_detached_deployment(ray_cluster):
     assert ray.get(f.get_handle().remote()) == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
-    serve.api._global_client = None
+    serve.context._global_client = None
     ray.shutdown()
 
     # Create the second job, make sure we can still create new deployments.
@@ -175,8 +172,27 @@ def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
     ray.shutdown()
 
 
+def test_set_socket_reuse_port():
+    sock = socket.socket()
+    if hasattr(socket, "SO_REUSEPORT"):
+        # If the flag exists, we should be able to to use it
+        assert set_socket_reuse_port(sock)
+    elif sys.platform == "linux":
+        # If the flag doesn't exist, but we are only mordern version
+        # of linux, we should be able to force set this flag.
+        assert set_socket_reuse_port(sock)
+    else:
+        # Otherwise, it should graceful fail without exception.
+        assert not set_socket_reuse_port(sock)
+
+
+def _reuse_port_is_available():
+    sock = socket.socket()
+    return set_socket_reuse_port(sock)
+
+
 @pytest.mark.skipif(
-    not hasattr(socket, "SO_REUSEPORT"),
+    not _reuse_port_is_available(),
     reason=(
         "Port sharing only works on newer verion of Linux. "
         "This test can only be ran when port sharing is supported."
@@ -188,7 +204,7 @@ def test_multiple_routers(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray.state.node_ids()
+    node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
 
@@ -197,7 +213,9 @@ def test_multiple_routers(ray_cluster):
         for node_id, _ in get_all_node_ids():
             proxy_names.append(
                 format_actor_name(
-                    SERVE_PROXY_NAME, serve.api._global_client._controller_name, node_id
+                    SERVE_PROXY_NAME,
+                    serve.context._global_client._controller_name,
+                    node_id,
                 )
             )
         return proxy_names
@@ -208,8 +226,8 @@ def test_multiple_routers(ray_cluster):
     # Two actors should be started.
     def get_first_two_actors():
         try:
-            ray.get_actor(proxy_names[0])
-            ray.get_actor(proxy_names[1])
+            ray.get_actor(proxy_names[0], namespace=SERVE_NAMESPACE)
+            ray.get_actor(proxy_names[1], namespace=SERVE_NAMESPACE)
             return True
         except ValueError:
             return False
@@ -220,7 +238,9 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # Kill one of the servers, the HTTP server should still function.
-    ray.kill(ray.get_actor(get_proxy_names()[0]), no_restart=True)
+    ray.kill(
+        ray.get_actor(get_proxy_names()[0], namespace=SERVE_NAMESPACE), no_restart=True
+    )
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # Add a new node to the cluster. This should trigger a new router to get
@@ -232,7 +252,7 @@ def test_multiple_routers(ray_cluster):
 
     def get_third_actor():
         try:
-            ray.get_actor(third_proxy)
+            ray.get_actor(third_proxy, namespace=SERVE_NAMESPACE)
             return True
         # IndexErrors covers when cluster resources aren't updated yet.
         except (IndexError, ValueError):
@@ -246,7 +266,7 @@ def test_multiple_routers(ray_cluster):
 
     def third_actor_removed():
         try:
-            ray.get_actor(third_proxy)
+            ray.get_actor(third_proxy, namespace=SERVE_NAMESPACE)
             return False
         except ValueError:
             return True
@@ -368,11 +388,11 @@ def test_no_http(ray_shutdown):
         # Only controller actor should exist
         live_actors = [
             actor
-            for actor in ray.state.actors().values()
+            for actor in ray._private.state.actors().values()
             if actor["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
         ]
         assert len(live_actors) == 1
-        controller = serve.api._global_client._controller
+        controller = serve.context._global_client._controller
         assert len(ray.get(controller.get_http_proxies.remote())) == 0
 
         # Test that the handle still works.
@@ -392,17 +412,18 @@ def test_http_head_only(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray.state.node_ids()
+    node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 2
 
     serve.start(http_options={"port": new_port(), "location": "HeadOnly"})
 
     # Only the controller and head node actor should be started
-    assert len(ray.state.actors()) == 2
+    assert len(ray._private.state.actors()) == 2
 
     # They should all be placed on the head node
     cpu_per_nodes = {
-        r["CPU"] for r in ray.state.state._available_resources_per_node().values()
+        r["CPU"]
+        for r in ray._private.state.state._available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
 
@@ -421,7 +442,7 @@ def test_fixed_number_proxies(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray.state.node_ids()
+    node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 3
 
     with pytest.raises(
@@ -443,9 +464,13 @@ def test_fixed_number_proxies(ray_cluster):
     )
 
     # Only the controller and two http proxy should be started.
-    controller_handle = internal_get_global_client()._controller
+    controller_handle = get_global_client()._controller
     node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
     assert len(node_to_http_actors) == 2
+
+    proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
+    proxy_names = ActorNameList.FromString(proxy_names_bytes)
+    assert len(proxy_names.names) == 2
 
     serve.shutdown()
     ray.shutdown()
@@ -484,31 +509,6 @@ def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
     # Can start detached instance in non-anonymous namespace.
     ray.init(namespace="foo")
     serve.start(detached=True)
-
-
-@pytest.mark.parametrize("namespace", [None, "test_namespace"])
-@pytest.mark.parametrize("detached", [True, False])
-def test_serve_controller_namespace(
-    ray_shutdown, namespace: Optional[str], detached: bool
-):
-    """
-    Tests the serve controller is started in the current namespace if not
-    anonymous or in the "serve" namespace if no namespace is specified.
-    When the controller is started in the "serve" namespace, this also tests
-    that we can get the serve controller from another namespace.
-    """
-
-    ray.init(namespace=namespace)
-    serve.start(detached=detached)
-    client = serve.api._global_client
-    if namespace:
-        controller_namespace = namespace
-    elif detached:
-        controller_namespace = "serve"
-    else:
-        controller_namespace = ray.get_runtime_context().namespace
-
-    assert ray.get_actor(client._controller_name, namespace=controller_namespace)
 
 
 def test_checkpoint_isolation_namespace(ray_shutdown):
@@ -550,12 +550,14 @@ def test_local_store_recovery(ray_shutdown):
     def world(_):
         return "world"
 
-    def check(name):
+    def check(name, raise_error=False):
         try:
             resp = requests.get(f"http://localhost:8000/{name}")
             assert resp.text == name
             return True
-        except Exception:
+        except Exception as e:
+            if raise_error:
+                raise e
             return False
 
     # https://github.com/ray-project/ray/issues/20159
@@ -581,8 +583,8 @@ def test_local_store_recovery(ray_shutdown):
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
     hello.deploy()
     world.deploy()
-    assert check("hello")
-    assert check("world")
+    assert check("hello", raise_error=True)
+    assert check("world", raise_error=True)
     crash()
 
     # Simulate a crash
@@ -639,11 +641,7 @@ def test_snapshot_always_written_to_internal_kv(
 
 
 def test_serve_start_different_http_checkpoint_options_warning(caplog):
-    import logging
-    from tempfile import mkstemp
-    from ray.serve.utils import logger
-    from ray._private.services import new_port
-
+    logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
     warning_msg = []
@@ -666,7 +664,38 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
 
     for test_config, msg in zip([[test_ckpt], ["host", "port"]], warning_msg):
         for test_msg in test_config:
+            if "Autoscaling metrics pusher thread" in msg:
+                continue
             assert test_msg in msg
+
+    serve.shutdown()
+    ray.shutdown()
+
+
+def test_recovering_controller_no_redeploy():
+    """Ensure controller doesn't redeploy running deployments when recovering."""
+    ray.init(namespace="x")
+    client = serve.start(detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    f.deploy()
+
+    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
+    pid = ray.get(client._controller.get_pid.remote())
+
+    ray.kill(client._controller, no_restart=False)
+
+    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+
+    # Confirm that no new deployment is deployed over the next 10 seconds
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: len(ray.util.list_named_actors(all_namespaces=True)) > num_actors,
+            timeout=5,
+        )
 
     serve.shutdown()
     ray.shutdown()

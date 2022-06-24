@@ -5,8 +5,8 @@ import unittest
 
 import ray
 from ray.tune.registry import register_env
-from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.examples.policy.random_policy import RandomPolicy
@@ -229,7 +229,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         register_env(
             "flex_agents_multi_agent_cartpole", lambda _: FlexAgentsMultiAgent()
         )
-        pg = PGTrainer(
+        pg = PG(
             env="flex_agents_multi_agent_cartpole",
             config={
                 "num_workers": 0,
@@ -381,7 +381,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         register_env(
             "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
         )
-        pg = PGTrainer(
+        pg = PG(
             env="multi_agent_cartpole",
             config={
                 "num_workers": 0,
@@ -412,7 +412,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             }
             return PolicySpec(config=config)
 
-        pg = PGTrainer(
+        pg = PG(
             env="multi_agent_cartpole",
             config={
                 "num_workers": 0,

@@ -1,4 +1,4 @@
-base_image: "anyscale/ray:nightly-py37"
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
 env_vars: { }
 debian_packages:
   - curl
@@ -15,6 +15,8 @@ python:
   conda_packages: [ ]
 
 post_build_cmds:
-  - pip uninstall -y ray || true
-  - pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip uninstall -y ray || true && pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  # Upgrade the XGBoost-Ray version in post build commands, otherwise it will be cached in the Anyscale Docker image.
+  - echo {{ env["TIMESTAMP"] }}
+  - pip install -U --force-reinstall --no-deps --no-cache-dir git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray xgboost
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

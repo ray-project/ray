@@ -59,7 +59,7 @@ def main(legacy_config: str, prefix: str, group: str, alert: str):
             test["cluster"]["cloud_name"] = old["cluster"]["cloud_name"]
 
         if "driver_setup" in old:
-            test["driver_setup"] = "driver_setup"
+            test["driver_setup"] = old["driver_setup"]
 
         use_connect = old["run"].pop("use_connect", False)
         autosuspend = old["run"].pop("autosuspend_mins", None)

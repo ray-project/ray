@@ -19,18 +19,12 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
-#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling/internal.h"
-#include "ray/raylet/scheduling/local_task_manager.h"
+#include "ray/raylet/scheduling/local_task_manager_interface.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
-#include "ray/raylet/worker.h"
-#include "ray/raylet/worker_pool.h"
-#include "ray/rpc/grpc_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_server.h"
 
 namespace ray {
 namespace raylet {
@@ -59,7 +53,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       internal::NodeInfoGetter get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
-      std::shared_ptr<LocalTaskManager> local_task_manager,
+      std::shared_ptr<ILocalTaskManager> local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
         return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
       });
@@ -105,9 +99,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in] last_reported_resources: The last reported resources. Used to check
   /// whether
   ///                                     resources have been changed.
-  void FillResourceUsage(rpc::ResourcesData &data,
-                         const std::shared_ptr<SchedulingResources>
-                             &last_reported_resources = nullptr) override;
+  void FillResourceUsage(
+      rpc::ResourcesData &data,
+      const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -129,6 +123,20 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
+
+  std::shared_ptr<ClusterResourceScheduler> GetClusterResourceScheduler() const;
+
+  /// Get the count of tasks in `infeasible_tasks_`.
+  size_t GetInfeasibleQueueSize() const;
+  /// Get the count of tasks in `tasks_to_schedule_`.
+  size_t GetPendingQueueSize() const;
+
+  /// Populate the info of pending and infeasible actors. This function
+  /// is only called by gcs node.
+  ///
+  /// \param[out] data: Output parameter. `resource_load_by_shape` is the only field
+  /// filled.
+  void FillPendingActorInfo(rpc::ResourcesData &data) const;
 
  private:
   void TryScheduleInfeasibleTask();
@@ -152,7 +160,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
-  std::shared_ptr<LocalTaskManager> local_task_manager_;
+  std::shared_ptr<ILocalTaskManager> local_task_manager_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.

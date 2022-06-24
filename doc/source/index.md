@@ -1,3 +1,6 @@
+```{include} /_includes/overview/announcement.md
+```
+
 # Welcome to the Ray documentation
 
 ```{image} https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
@@ -28,16 +31,16 @@
 :card:
 
 **Run machine learning workflows with**\
-**<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">ML**
+**<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">AIR**
 ^^^
-Ray ML is a toolkit for distributed machine learning. 
+Ray AI Runtime (AIR)  is an open-source toolkit for building end-to-end ML applications. 
 It provides libraries for distributed 
 [data processing](data/dataset.rst), 
 [model training](train/train.rst), 
 [tuning](tune/index.rst), 
 [reinforcement learning](rllib/index.rst), 
 [model serving](serve/index.rst), 
-and [more](workflows/concepts.rst). 
+and [more](ray-more-libs/index.rst). 
 +++
 ```{link-button} ray-overview/index
 :type: ref
@@ -100,7 +103,10 @@ Here's a list of tips for getting involved with the Ray community:
 ```{include} _includes/_contribute.md
 ```
 
-If you're interested in contributing to Ray, check out our [contributing guide](ray-contribute/getting-involved)
+If you're interested in contributing to Ray, check out our
+[contributing guide for this release](ray-contribute/getting-involved)
+or see the
+[latest version of our contributing guide](https://docs.ray.io/en/master/ray-contribute/getting-involved.html)
 to read about the contribution process and see what you can work on.
 
 ## What documentation resource is right for you?
@@ -135,8 +141,8 @@ Our user guides provide you with in-depth information about how to use Ray's lib
 You will learn about the key concepts and features of Ray and how to use them in practice.
 +++
 
-{link-badge}`ray-core/using-ray.html,"Core",cls=badge-light`
-{link-badge}`data/user-guide.html,"Core",cls=badge-light`
+{link-badge}`ray-core/user-guide.html,"Core",cls=badge-light`
+{link-badge}`data/user-guide.html,"Data",cls=badge-light`
 {link-badge}`train/user_guide.html,"Train",cls=badge-light`
 {link-badge}`tune/user-guide.html,"Tune",cls=badge-light`
 {link-badge}`serve/tutorial.html,"Serve",cls=badge-light`
@@ -167,6 +173,6 @@ Our developer guides will help you get started.
 
 +++
 
-{link-badge}`ray-contribute/getting-involved.html,"Developer Guides",cls=badge-light`
+{link-badge}`https://docs.ray.io/en/master/ray-contribute/getting-involved.html,"Developer Guides",cls=badge-light`
 
 ````

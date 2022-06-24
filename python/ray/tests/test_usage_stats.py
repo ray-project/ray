@@ -1,20 +1,25 @@
-import os
-import pytest
-import sys
-import ray
-import pathlib
 import json
+import os
+import pathlib
+import sys
 import time
-import subprocess
-
 from dataclasses import asdict
 from pathlib import Path
+
+import pytest
 from jsonschema import validate
 
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray
 import ray._private.usage.usage_constants as usage_constants
-
-from ray._private.test_utils import wait_for_condition
+import ray._private.usage.usage_lib as ray_usage_lib
+from ray._private.test_utils import (
+    format_web_url,
+    run_string_as_driver,
+    wait_for_condition,
+    wait_until_server_available,
+)
+from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
+from ray.autoscaler._private.cli_logger import cli_logger
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -29,6 +34,22 @@ schema = {
         "python_version": {"type": "string"},
         "collect_timestamp_ms": {"type": "integer"},
         "session_start_timestamp_ms": {"type": "integer"},
+        "cloud_provider": {"type": ["null", "string"]},
+        "min_workers": {"type": ["null", "integer"]},
+        "max_workers": {"type": ["null", "integer"]},
+        "head_node_instance_type": {"type": ["null", "string"]},
+        "worker_node_instance_types": {
+            "type": ["null", "array"],
+            "items": {"type": "string"},
+        },
+        "total_num_cpus": {"type": ["null", "integer"]},
+        "total_num_gpus": {"type": ["null", "integer"]},
+        "total_memory_gb": {"type": ["null", "number"]},
+        "total_object_store_memory_gb": {"type": ["null", "number"]},
+        "library_usages": {
+            "type": ["null", "array"],
+            "items": {"type": "string"},
+        },
         "total_success": {"type": "integer"},
         "total_failed": {"type": "integer"},
         "seq_number": {"type": "integer"},
@@ -51,7 +72,7 @@ def read_file(temp_dir: Path, column: str):
 
 
 def print_dashboard_log():
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -67,131 +88,244 @@ def print_dashboard_log():
     pprint(contents)
 
 
-def test_usage_stats_heads_up_message():
-    """
-    Test usage stats heads-up message is shown in the proper cases.
-    """
-    env = os.environ.copy()
-    env["RAY_USAGE_STATS_PROMPT_ENABLED"] = "0"
-    result = subprocess.run(
-        "ray start --head",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
-
-    subprocess.run("ray stop --force", shell=True)
-
-    result = subprocess.run(
-        "ray start --head",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert result.returncode == 0
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
-
-    result = subprocess.run(
-        'ray start --address="127.0.0.1:6379"',
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert result.returncode == 0
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
-
-    subprocess.run("ray stop --force", shell=True)
-
-    result = subprocess.run(
-        "ray up xxx.yml", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
-
-    result = subprocess.run(
-        "ray exec xxx.yml ls --start",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
-
-    result = subprocess.run(
-        "ray exec xxx.yml ls",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
-
-    result = subprocess.run(
-        "ray submit xxx.yml yyy.py --start",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
-
-    result = subprocess.run(
-        "ray submit xxx.yml yyy.py",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
-
-    result = subprocess.run(
-        'python -c "import ray; ray.init()"',
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
+@pytest.fixture
+def reset_lib_usage():
+    yield
+    # Remove the lib usage so that it will be reset for each test.
+    ray_usage_lib.LibUsageRecorder(
+        ray._private.utils.get_ray_temp_dir()
+    ).delete_lib_usages()
+    ray.experimental.internal_kv._internal_kv_reset()
+    ray_usage_lib._recorded_library_usages.clear()
 
 
-def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):
+def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_lib_usage):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        ray.init(num_cpus=0)
+        assert (
+            ray_usage_lib._usage_stats_enabledness()
+            is UsageStatsEnabledness.ENABLED_EXPLICITLY
+        )
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        assert (
+            ray_usage_lib._usage_stats_enabledness()
+            is UsageStatsEnabledness.DISABLED_EXPLICITLY
+        )
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "xxx")
+        with pytest.raises(ValueError):
+            ray_usage_lib._usage_stats_enabledness()
+
+    with monkeypatch.context() as m:
+        tmp_usage_stats_config_path = tmp_path / "config.json"
+        monkeypatch.setenv(
+            "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
+        )
+        tmp_usage_stats_config_path.write_text('{"usage_stats": true}')
+        assert (
+            ray_usage_lib._usage_stats_enabledness()
+            is UsageStatsEnabledness.ENABLED_EXPLICITLY
+        )
+        tmp_usage_stats_config_path.write_text('{"usage_stats": false}')
+        assert (
+            ray_usage_lib._usage_stats_enabledness()
+            is UsageStatsEnabledness.DISABLED_EXPLICITLY
+        )
+        tmp_usage_stats_config_path.write_text('{"usage_stats": "xxx"}')
+        with pytest.raises(ValueError):
+            ray_usage_lib._usage_stats_enabledness()
+        tmp_usage_stats_config_path.write_text("")
+        assert (
+            ray_usage_lib._usage_stats_enabledness()
+            is UsageStatsEnabledness.ENABLED_BY_DEFAULT
+        )
+        tmp_usage_stats_config_path.unlink()
+        assert (
+            ray_usage_lib._usage_stats_enabledness()
+            is UsageStatsEnabledness.ENABLED_BY_DEFAULT
+        )
+
+
+def test_set_usage_stats_enabled_via_config(monkeypatch, tmp_path, reset_lib_usage):
+    tmp_usage_stats_config_path = tmp_path / "config1.json"
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
+    ray_usage_lib.set_usage_stats_enabled_via_config(True)
+    assert '{"usage_stats": true}' == tmp_usage_stats_config_path.read_text()
+    ray_usage_lib.set_usage_stats_enabled_via_config(False)
+    assert '{"usage_stats": false}' == tmp_usage_stats_config_path.read_text()
+    tmp_usage_stats_config_path.write_text('"xxx"')
+    ray_usage_lib.set_usage_stats_enabled_via_config(True)
+    assert '{"usage_stats": true}' == tmp_usage_stats_config_path.read_text()
+    tmp_usage_stats_config_path.unlink()
+    os.makedirs(os.path.dirname(tmp_usage_stats_config_path / "xxx.txt"), exist_ok=True)
+    with pytest.raises(Exception, match="Failed to enable usage stats.*"):
+        ray_usage_lib.set_usage_stats_enabled_via_config(True)
+
+
+def test_lib_usage_recorder(tmp_path):
+    recorder = ray_usage_lib.LibUsageRecorder(tmp_path)
+    lib_tune = "tune"
+    lib_rllib = "rllib"
+
+    filename = recorder._lib_usage_filename(lib_tune)
+    assert recorder._get_lib_usage_from_filename(filename) == lib_tune
+
+    # Write tune.
+    assert recorder.read_lib_usages() == []
+    recorder.put_lib_usage(lib_tune)
+    assert recorder.read_lib_usages() == [lib_tune]
+    recorder.put_lib_usage(lib_tune)
+    assert recorder.read_lib_usages() == [lib_tune]
+
+    # Test write is idempotent
+    for _ in range(5):
+        recorder.put_lib_usage(lib_tune)
+    assert recorder.read_lib_usages() == [lib_tune]
+
+    # Write rllib.
+    recorder.put_lib_usage(lib_rllib)
+    assert set(recorder.read_lib_usages()) == {lib_tune, lib_rllib}
+
+    # Test idempotency when there is more than 1 lib.
+    recorder.put_lib_usage(lib_rllib)
+    recorder.put_lib_usage(lib_rllib)
+    recorder.put_lib_usage(lib_tune)
+    assert set(recorder.read_lib_usages()) == {lib_tune, lib_rllib}
+
+
+@pytest.fixture
+def clear_loggers():
+    """Remove handlers from all loggers"""
+    yield
+    import logging
+
+    loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
+    for logger in loggers:
+        handlers = getattr(logger, "handlers", [])
+        for handler in handlers:
+            logger.removeHandler(handler)
+
+
+# NOTE: We are clearing loggers because otherwise, the next test's
+# logger will access the capsys buffer that's already closed when this
+# test is terminated. It seems like loggers are shared across drivers
+# although we call ray.shutdown().
+def test_usage_stats_prompt(
+    monkeypatch, capsys, tmp_path, reset_lib_usage, shutdown_only, clear_loggers
+):
+    """
+    Test usage stats prompt is shown in the proper cases.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_PROMPT_ENABLED", "0")
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in captured.out
+        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in captured.err
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
+
+    with monkeypatch.context() as m:
+        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+        tmp_usage_stats_config_path = tmp_path / "config1.json"
+        monkeypatch.setenv(
+            "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
+        )
+        # Usage stats collection is enabled by default.
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE in captured.out
+
+    with monkeypatch.context() as m:
+        # Win impl relies on kbhit() instead of select()
+        # so the pipe trick won't work.
+        if sys.platform != "win32":
+            m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+            saved_interactive = cli_logger.interactive
+            saved_stdin = sys.stdin
+            tmp_usage_stats_config_path = tmp_path / "config2.json"
+            monkeypatch.setenv(
+                "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
+            )
+            cli_logger.interactive = True
+            (r_pipe, w_pipe) = os.pipe()
+            sys.stdin = open(r_pipe)
+            os.write(w_pipe, b"y\n")
+            ray_usage_lib.show_usage_stats_prompt()
+            captured = capsys.readouterr()
+            assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
+            assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in captured.out
+            cli_logger.interactive = saved_interactive
+            sys.stdin = saved_stdin
+
+    with monkeypatch.context() as m:
+        if sys.platform != "win32":
+            m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+            saved_interactive = cli_logger.interactive
+            saved_stdin = sys.stdin
+            tmp_usage_stats_config_path = tmp_path / "config3.json"
+            monkeypatch.setenv(
+                "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
+            )
+            cli_logger.interactive = True
+            (r_pipe, w_pipe) = os.pipe()
+            sys.stdin = open(r_pipe)
+            os.write(w_pipe, b"n\n")
+            ray_usage_lib.show_usage_stats_prompt()
+            captured = capsys.readouterr()
+            assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
+            assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
+            cli_logger.interactive = saved_interactive
+            sys.stdin = saved_stdin
+
+    with monkeypatch.context() as m:
+        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+        saved_interactive = cli_logger.interactive
+        saved_stdin = sys.stdin
+        tmp_usage_stats_config_path = tmp_path / "config4.json"
+        monkeypatch.setenv(
+            "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
+        )
+        cli_logger.interactive = True
+        (r_pipe, w_pipe) = os.pipe()
+        sys.stdin = open(r_pipe)
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
+        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in captured.out
+        cli_logger.interactive = saved_interactive
+        sys.stdin = saved_stdin
+
+    with monkeypatch.context() as m:
+        # Usage stats is not enabled for ray.init()
+        ray.init()
+        ray.shutdown()
+        captured = capsys.readouterr()
+        assert (
+            usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE not in captured.out
+        )
+        assert (
+            usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE not in captured.err
+        )
+
+
+def test_usage_lib_cluster_metadata_generation(
+    monkeypatch, ray_start_cluster, reset_lib_usage
+):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
         """
         Test metadata stored is equivalent to `_generate_cluster_metadata`.
         """
@@ -217,32 +351,243 @@ def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):
         )
 
 
-def test_usage_lib_cluster_metadata_generation_usage_disabled(shutdown_only):
+def test_usage_stats_enabled_endpoint(monkeypatch, ray_start_cluster, reset_lib_usage):
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # Doesn't work with minimal installation
+        # since we need http server.
+        return
+
+    import requests
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        m.setenv("RAY_USAGE_STATS_PROMPT_ENABLED", "0")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        context = ray.init(address=cluster.address)
+        webui_url = context["webui_url"]
+        assert wait_until_server_available(webui_url)
+        webui_url = format_web_url(webui_url)
+        response = requests.get(f"{webui_url}/usage_stats_enabled")
+        assert response.status_code == 200
+        assert response.json()["result"] is True
+        assert response.json()["data"]["usageStatsEnabled"] is False
+        assert response.json()["data"]["usageStatsPromptEnabled"] is False
+
+
+def test_library_usages(shutdown_only, reset_lib_usage):
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # Doesn't work with minimal installation
+        # since we import serve.
+        return
+
+    ray_usage_lib.record_library_usage("pre_init")
+    ray.init()
+
+    ray_usage_lib.record_library_usage("post_init")
+    ray.workflow.init()
+    ray.data.range(10)
+    from ray import serve
+
+    serve.start()
+    library_usages = ray_usage_lib.get_library_usages_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
+    )
+    tmp_path = ray._private.utils.get_ray_temp_dir()
+    lib_usages_from_home_folder = ray_usage_lib.LibUsageRecorder(
+        tmp_path
+    ).read_lib_usages()
+    expected = {
+        "pre_init",
+        "post_init",
+        "dataset",
+        "workflow",
+        "serve",
+    }
+    assert set(library_usages) == expected
+    assert set(lib_usages_from_home_folder) == expected
+
+    serve.shutdown()
+
+
+def test_usage_lib_cluster_metadata_generation_usage_disabled(
+    monkeypatch, shutdown_only, reset_lib_usage
+):
     """
     Make sure only version information is generated when usage stats are not enabled.
     """
-    meta = ray_usage_lib._generate_cluster_metadata()
-    assert "ray_version" in meta
-    assert "python_version" in meta
-    assert len(meta) == 2
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        meta = ray_usage_lib._generate_cluster_metadata()
+        assert "ray_version" in meta
+        assert "python_version" in meta
+        assert len(meta) == 2
+
+
+def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_lib_usage):
+    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2 ** 30)
+    # Wait for monitor.py to update cluster status
+    wait_for_condition(
+        lambda: ray_usage_lib.get_cluster_status_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+            num_retries=20,
+        ).total_num_cpus
+        == 3,
+        timeout=10,
+    )
+    cluster_status_to_report = ray_usage_lib.get_cluster_status_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+        num_retries=20,
+    )
+    assert cluster_status_to_report.total_num_cpus == 3
+    assert cluster_status_to_report.total_num_gpus == 1
+    assert cluster_status_to_report.total_memory_gb > 0
+    assert cluster_status_to_report.total_object_store_memory_gb == 1.0
+
+
+def test_usage_lib_get_cluster_config_to_report(monkeypatch, tmp_path, reset_lib_usage):
+    cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+    """ Test minimal cluster config"""
+    cluster_config_file_path.write_text(
+        """
+cluster_name: minimal
+max_workers: 1
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+"""
+    )
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report.cloud_provider == "aws"
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers == 1
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.worker_node_instance_types is None
+
+    cluster_config_file_path.write_text(
+        """
+cluster_name: full
+min_workers: 1
+provider:
+    type: gcp
+head_node_type: head_node
+available_node_types:
+    head_node:
+        node_config:
+            InstanceType: m5.large
+        min_workers: 0
+        max_workers: 0
+    aws_worker_node:
+        node_config:
+            InstanceType: m3.large
+        min_workers: 0
+        max_workers: 0
+    azure_worker_node:
+        node_config:
+            azure_arm_parameters:
+                vmSize: Standard_D2s_v3
+    gcp_worker_node:
+        node_config:
+            machineType: n1-standard-2
+"""
+    )
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report.cloud_provider == "gcp"
+    assert cluster_config_to_report.min_workers == 1
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.head_node_instance_type == "m5.large"
+    assert cluster_config_to_report.worker_node_instance_types == list(
+        {"m3.large", "Standard_D2s_v3", "n1-standard-2"}
+    )
+
+    cluster_config_file_path.write_text(
+        """
+cluster_name: full
+head_node_type: head_node
+available_node_types:
+    worker_node_1:
+        node_config:
+            ImageId: xyz
+    worker_node_2:
+        resources: {}
+    worker_node_3:
+        node_config:
+            InstanceType: m5.large
+"""
+    )
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report.cloud_provider is None
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.worker_node_instance_types == ["m5.large"]
+
+    cluster_config_file_path.write_text("[invalid")
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report == ClusterConfigToReport()
+
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report == ClusterConfigToReport()
+
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "localhost")
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report.cloud_provider == "kubernetes"
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.worker_node_instance_types is None
 
 
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
-def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
+def test_usage_lib_report_data(
+    monkeypatch, ray_start_cluster, tmp_path, reset_lib_usage
+):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
         # Runtime env is required to run this test in minimal installation test.
-        ray.init(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
+        ray.init(address=cluster.address, runtime_env={"pip": ["ray[serve]"]})
         """
         Make sure the generated data is following the schema.
         """
         cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
         )
-        d = ray_usage_lib.generate_report_data(cluster_metadata, 2, 2, 2)
+        cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+        cluster_config_file_path.write_text(
+            """
+cluster_name: minimal
+max_workers: 1
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+"""
+        )
+        cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+            cluster_config_file_path
+        )
+        d = ray_usage_lib.generate_report_data(
+            cluster_metadata, cluster_config_to_report, 2, 2, 2
+        )
         validate(instance=asdict(d), schema=schema)
 
         """
@@ -250,7 +595,7 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
         """
         client = ray_usage_lib.UsageReportClient()
         temp_dir = Path(tmp_path)
-        client._write_usage_data(d, temp_dir)
+        client.write_usage_data(d, temp_dir)
 
         wait_for_condition(lambda: file_exists(temp_dir))
 
@@ -258,7 +603,7 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
         Make sure report usage data works as expected
         """
 
-        @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
+        @ray.remote(num_cpus=0)
         class ServeInitator:
             def __init__(self):
                 # Start the ray serve server to verify requests are sent
@@ -286,7 +631,7 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
         ray.get(s.ready.remote())
 
         # Query our endpoint over HTTP.
-        r = client._report_usage_data("http://127.0.0.1:8000/usage", d)
+        r = client.report_usage_data("http://127.0.0.1:8000/usage", d)
         r.raise_for_status()
         assert json.loads(r.text) is True
 
@@ -295,15 +640,34 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
-def test_usage_report_e2e(monkeypatch, shutdown_only):
+def test_usage_report_e2e(monkeypatch, ray_start_cluster, tmp_path, reset_lib_usage):
     """
     Test usage report works e2e with env vars.
     """
+    cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+    cluster_config_file_path.write_text(
+        """
+cluster_name: minimal
+max_workers: 1
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+"""
+    )
     with monkeypatch.context() as m:
+        m.setenv("HOME", str(tmp_path))
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        ray.init(num_cpus=0)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=3)
+        if os.environ.get("RAY_MINIMAL") != "1":
+            from ray import train  # noqa: F401
+            from ray import tune  # noqa: F401
+            from ray.rllib.algorithms.ppo import PPO  # noqa: F401
+
+        ray.init(address=cluster.address)
 
         @ray.remote(num_cpus=0)
         class StatusReporter:
@@ -328,6 +692,8 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
         class ServeInitator:
             def __init__(self):
+                # This is used in the worker process
+                # so it won't be tracked as library usage.
                 from ray import serve
 
                 serve.start()
@@ -361,12 +727,34 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         except Exception:
             print_dashboard_log()
             raise
-        validate(instance=ray.get(reporter.get_payload.remote()), schema=schema)
+        payload = ray.get(reporter.get_payload.remote())
+        ray_version, python_version = ray._private.utils.compute_version_info()
+        assert payload["ray_version"] == ray_version
+        assert payload["python_version"] == python_version
+        assert payload["schema_version"] == "0.1"
+        assert payload["os"] == sys.platform
+        assert payload["source"] == "OSS"
+        assert payload["cloud_provider"] == "aws"
+        assert payload["min_workers"] is None
+        assert payload["max_workers"] == 1
+        assert payload["head_node_instance_type"] is None
+        assert payload["worker_node_instance_types"] is None
+        assert payload["total_num_cpus"] == 3
+        assert payload["total_num_gpus"] is None
+        assert payload["total_memory_gb"] > 0
+        assert payload["total_object_store_memory_gb"] > 0
+        if os.environ.get("RAY_MINIMAL") == "1":
+            # Since we start a serve actor for mocking a server using runtime env.
+            assert set(payload["library_usages"]) == {"serve"}
+        else:
+            # Serve is recorded due to our mock server.
+            assert set(payload["library_usages"]) == {"rllib", "train", "tune", "serve"}
+        validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.
         """
         print("Verifying usage stats write.")
-        global_node = ray.worker._global_node
+        global_node = ray._private.worker._global_node
         temp_dir = pathlib.Path(global_node.get_session_dir_path())
 
         wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
@@ -384,22 +772,42 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         assert read_file(temp_dir, "success")
 
 
-def test_usage_report_disabled(monkeypatch, shutdown_only):
+def test_first_usage_report_delayed(monkeypatch, ray_start_cluster, reset_lib_usage):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "10")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
+
+        # The first report should be delayed for 10s.
+        time.sleep(5)
+        session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+        session_path = Path(session_dir)
+        assert not (session_path / usage_constants.USAGE_STATS_FILE).exists()
+
+        time.sleep(10)
+        assert (session_path / usage_constants.USAGE_STATS_FILE).exists()
+
+
+def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_lib_usage):
     """
     Make sure usage report module is disabled when the env var is not set.
     It also verifies that the failure message is not printed (note that
     the invalid report url is given as an env var).
     """
     with monkeypatch.context() as m:
-        # It is disabled by default.
-        # m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        ray.init(num_cpus=0)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
         # Wait enough so that usage report should happen.
         time.sleep(5)
 
-        session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+        session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
         session_path = Path(session_dir)
         log_dir_path = session_path / "logs"
 
@@ -424,7 +832,7 @@ def test_usage_report_disabled(monkeypatch, shutdown_only):
             assert "Failed to report usage stats" not in c
 
 
-def test_usage_file_error_message(monkeypatch, shutdown_only):
+def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_lib_usage):
     """
     Make sure the usage report file is generated with a proper
     error message when the report is failed.
@@ -433,9 +841,11 @@ def test_usage_file_error_message(monkeypatch, shutdown_only):
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        ray.init(num_cpus=0)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
 
-        global_node = ray.worker._global_node
+        global_node = ray._private.worker._global_node
         temp_dir = pathlib.Path(global_node.get_session_dir_path())
         try:
             wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
@@ -463,5 +873,166 @@ def test_usage_file_error_message(monkeypatch, shutdown_only):
         assert read_file(temp_dir, "usage_stats")["total_success"] == 0
 
 
+def test_lib_used_from_driver(monkeypatch, ray_start_cluster, reset_lib_usage):
+    """
+    Test library usage is correctly reported when they are imported from
+    a driver.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=3)
+        ray.init(address=cluster.address)
+
+        script = """
+import ray
+import os
+if os.environ.get("RAY_MINIMAL") != "1":
+    from ray import train  # noqa: F401
+    from ray import tune  # noqa: F401
+    from ray.rllib.algorithms.ppo import PPO  # noqa: F401
+
+ray.init(address="{addr}")
+"""
+        # Run a script in a separate process. It is a workaround to
+        # reimport libraries. Without this, `import train`` will become
+        # no-op since we already imported this lib in previous tests.
+        run_string_as_driver(script.format(addr=cluster.address))
+
+        """
+        Verify the usage_stats.json is updated.
+        """
+        print("Verifying lib usage report.")
+        global_node = ray.worker._global_node
+        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify():
+            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
+            print(lib_usages)
+            if os.environ.get("RAY_MINIMAL") == "1":
+                return set(lib_usages) == set()
+            else:
+                return set(lib_usages) == {"rllib", "train", "tune"}
+
+        wait_for_condition(verify)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Test depends on runtime env feature not supported on Windows.",
+)
+def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_lib_usage):
+    """
+    Test library usage is correctly reported when they are imported from
+    workers.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=3)
+        ray_usage_lib._recorded_library_usages.clear()
+
+        ray.init(address=cluster.address)
+
+        @ray.remote
+        class ActorWithLibImport:
+            def __init__(self):
+                from ray import train  # noqa: F401
+                from ray import tune  # noqa: F401
+                from ray.rllib.algorithms.ppo import PPO  # noqa: F401
+
+            def ready(self):
+                pass
+
+        # Use a runtime env to run tests in minimal installation.
+        a = ActorWithLibImport.options(
+            runtime_env={"pip": ["ray[rllib]", "ray[tune]"]}
+        ).remote()
+        ray.get(a.ready.remote())
+
+        """
+        Verify the usage_stats.json contains the lib usage.
+        """
+        global_node = ray.worker._global_node
+        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify():
+            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
+            return set(lib_usages) == {"tune", "rllib", "train"}
+
+        wait_for_condition(verify)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="Test depends on library that's not downloaded from a minimal install.",
+)
+def test_lib_usage_record_from_init_session(
+    monkeypatch, ray_start_cluster, reset_lib_usage
+):
+    """
+    Make sure we store a lib usage to the /tmp/ray folder and report them
+    when any instance that has usage stats enabled.
+    """
+
+    # Start a driver without usage stats enabled. This will record
+    # lib_usage.txt.
+    script = """
+import ray
+import os
+from ray import train  # noqa: F401
+from ray import tune  # noqa: F401
+from ray.rllib.algorithms.ppo import PPO  # noqa: F401
+
+# Start a instance that disables usage stats.
+ray.init()
+"""
+
+    run_string_as_driver(script)
+
+    # Run the cluster that reports the usage stats. Make sure the lib usage is reported.
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=3)
+        ray.init(address=cluster.address)
+
+        """
+        Verify the library usage is recorded to the ray folder.
+        """
+        lib_usages = ray_usage_lib.LibUsageRecorder(
+            ray._private.utils.get_ray_temp_dir()
+        ).read_lib_usages()
+        assert set(lib_usages) == {"train", "rllib", "tune"}
+
+        """
+        Verify the library usage is reported from the current instance.
+        """
+        print("Verifying lib usage report.")
+        global_node = ray.worker._global_node
+        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify():
+            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
+            print(lib_usages)
+            return set(lib_usages) == {"rllib", "train", "tune"}
+
+        wait_for_condition(verify)
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

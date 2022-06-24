@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "ray/raylet/worker.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -35,7 +34,7 @@ class ClusterTaskManagerInterface {
   /// fields used.
   virtual void FillResourceUsage(
       rpc::ResourcesData &data,
-      const std::shared_ptr<SchedulingResources> &last_reported_resources = nullptr) = 0;
+      const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) = 0;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///

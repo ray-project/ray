@@ -1,10 +1,20 @@
+import os
 from enum import Enum
+
+#: Used for debugging to turn on DEBUG-level logs
+DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
+
+#: Logger used by serve components
+SERVE_LOGGER_NAME = "ray.serve"
 
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
+
+#: Ray namespace used for all Serve actors
+SERVE_NAMESPACE = "serve"
 
 #: HTTP Address
 DEFAULT_HTTP_ADDRESS = "http://127.0.0.1:8000"
@@ -79,6 +89,15 @@ REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 # Key used to idenfity given json represents a serialized RayServeHandle
 SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
+
+# The time in seconds that the Serve client waits before rechecking deployment state
+CLIENT_POLLING_INTERVAL_S: float = 1
+
+# Handle metric push interval. (This interval will affect the cold start time period)
+HANDLE_METRIC_PUSH_INTERVAL_S = 10
+
+# Timeout for GCS internal KV service
+RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
 
 
 class ServeHandleType(str, Enum):

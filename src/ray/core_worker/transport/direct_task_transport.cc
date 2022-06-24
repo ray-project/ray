@@ -51,8 +51,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               task_finisher_->CompletePendingTask(
                   task_id, push_task_reply, reply.actor_address());
             } else {
-              RAY_LOG(ERROR) << "Failed to create actor " << actor_id
-                             << " with status: " << status.ToString();
+              RAY_LOG(INFO) << "Failed to create actor " << actor_id
+                            << " with status: " << status.ToString();
               RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
                   task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
             }
@@ -381,7 +381,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                         SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED ||
                 reply.failure_type() ==
                     rpc::RequestWorkerLeaseReply::
-                        SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED) {
+                        SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED ||
+                reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE) {
               // We need to actively fail all of the pending tasks in the queue when the
               // placement group was removed or the runtime env failed to be set up. Such
               // an operation is straightforward for the scenario of placement group
@@ -401,6 +403,17 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                   RAY_UNUSED(task_finisher_->FailPendingTask(
                       task_spec.TaskId(),
                       rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
+                      /*status*/ nullptr,
+                      &error_info));
+                } else if (reply.failure_type() ==
+                           rpc::RequestWorkerLeaseReply::
+                               SCHEDULING_CANCELLED_UNSCHEDULABLE) {
+                  rpc::RayErrorInfo error_info;
+                  *(error_info.mutable_error_message()) =
+                      reply.scheduling_failure_message();
+                  RAY_UNUSED(task_finisher_->FailPendingTask(
+                      task_spec.TaskId(),
+                      rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR,
                       /*status*/ nullptr,
                       &error_info));
                 } else {
@@ -524,6 +537,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
+  task_finisher_->MarkTaskWaitingForExecution(task_id);
   client.PushNormalTask(
       std::move(request),
       [this,
@@ -599,15 +613,15 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
     }
 
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-    auto &scheduled_tasks = scheduling_key_entry.task_queue;
+    auto &scheduling_tasks = scheduling_key_entry.task_queue;
     // This cancels tasks that have completed dependencies and are awaiting
     // a worker lease.
-    if (!scheduled_tasks.empty()) {
-      for (auto spec = scheduled_tasks.begin(); spec != scheduled_tasks.end(); spec++) {
+    if (!scheduling_tasks.empty()) {
+      for (auto spec = scheduling_tasks.begin(); spec != scheduling_tasks.end(); spec++) {
         if (spec->TaskId() == task_spec.TaskId()) {
-          scheduled_tasks.erase(spec);
+          scheduling_tasks.erase(spec);
 
-          if (scheduled_tasks.empty()) {
+          if (scheduling_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
           RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
@@ -653,25 +667,41 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       [this, task_spec, scheduling_key, force_kill, recursive](
           const Status &status, const rpc::CancelTaskReply &reply) {
         absl::MutexLock lock(&mu_);
+        RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
+                       << " with status " << status.ToString();
         cancelled_tasks_.erase(task_spec.TaskId());
 
-        if (status.ok() && !reply.attempt_succeeded()) {
-          if (cancel_retry_timer_.has_value()) {
-            if (cancel_retry_timer_->expiry().time_since_epoch() <=
-                std::chrono::high_resolution_clock::now().time_since_epoch()) {
-              cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
-                  RayConfig::instance().cancellation_retry_ms()));
-            }
-            cancel_retry_timer_->async_wait(
-                boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask,
-                            this,
-                            task_spec,
-                            force_kill,
-                            recursive));
-          }
-        }
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to cancel a task due to " << status.ToString();
+          return;
+        }
+
+        if (!reply.attempt_succeeded()) {
+          if (reply.requested_task_running()) {
+            // Retry cancel request if failed.
+            if (cancel_retry_timer_.has_value()) {
+              if (cancel_retry_timer_->expiry().time_since_epoch() <=
+                  std::chrono::high_resolution_clock::now().time_since_epoch()) {
+                cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
+                    RayConfig::instance().cancellation_retry_ms()));
+              }
+              cancel_retry_timer_->async_wait(
+                  boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask,
+                              this,
+                              task_spec,
+                              force_kill,
+                              recursive));
+            } else {
+              RAY_LOG(ERROR)
+                  << "Failed to cancel a task which is running. Stop retrying.";
+            }
+          } else {
+            RAY_LOG(ERROR) << "Attempt to cancel task " << task_spec.TaskId()
+                           << " in a worker that doesn't have this task.";
+          }
+        }
       });
   return Status::OK();
 }

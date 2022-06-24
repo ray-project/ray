@@ -1,12 +1,13 @@
+import pytest
+
+import ray
+from ray import workflow
 from ray.tests.conftest import *  # noqa
 
-import pytest
-from ray import workflow
 
-
-@workflow.step
+@ray.remote
 def check_and_update(x, worker_id):
-    from ray.worker import global_worker
+    from ray._private.worker import global_worker
 
     _worker_id = global_worker.worker_id
     if worker_id == _worker_id:
@@ -14,20 +15,24 @@ def check_and_update(x, worker_id):
     return x + "1"
 
 
-@workflow.step
+@ray.remote
 def inplace_test():
-    from ray.worker import global_worker
+    from ray._private.worker import global_worker
 
     worker_id = global_worker.worker_id
-    x = check_and_update.options(allow_inplace=True).step("@", worker_id)
-    y = check_and_update.step(x, worker_id)
-    z = check_and_update.options(allow_inplace=True).step(y, worker_id)
-    return z
+    x = check_and_update.options(**workflow.options(allow_inplace=True)).bind(
+        "@", worker_id
+    )
+    y = check_and_update.bind(x, worker_id)
+    z = check_and_update.options(**workflow.options(allow_inplace=True)).bind(
+        y, worker_id
+    )
+    return workflow.continuation(z)
 
 
-@workflow.step
+@ray.remote
 def exp_inplace(k, n, worker_id=None):
-    from ray.worker import global_worker
+    from ray._private.worker import global_worker
 
     _worker_id = global_worker.worker_id
     if worker_id is not None:
@@ -37,12 +42,16 @@ def exp_inplace(k, n, worker_id=None):
 
     if n == 0:
         return k
-    return exp_inplace.options(allow_inplace=True).step(2 * k, n - 1, worker_id)
+    return workflow.continuation(
+        exp_inplace.options(**workflow.options(allow_inplace=True)).bind(
+            2 * k, n - 1, worker_id
+        )
+    )
 
 
-@workflow.step
+@ray.remote
 def exp_remote(k, n, worker_id=None):
-    from ray.worker import global_worker
+    from ray._private.worker import global_worker
 
     _worker_id = global_worker.worker_id
     if worker_id is not None:
@@ -52,15 +61,31 @@ def exp_remote(k, n, worker_id=None):
 
     if n == 0:
         return k
-    return exp_remote.step(2 * k, n - 1, worker_id)
+    return workflow.continuation(exp_remote.bind(2 * k, n - 1, worker_id))
 
 
 def test_inplace_workflows(workflow_start_regular_shared):
-    assert inplace_test.step().run() == "@010"
+    assert workflow.create(inplace_test.bind()).run() == "@010"
 
     k, n = 12, 10
-    assert exp_inplace.step(k, n).run() == k * 2 ** n
-    assert exp_remote.step(k, n).run() == k * 2 ** n
+    assert workflow.create(exp_inplace.bind(k, n)).run() == k * 2 ** n
+    assert workflow.create(exp_remote.bind(k, n)).run() == k * 2 ** n
+
+
+def test_tail_recursion_optimization(workflow_start_regular_shared):
+    @ray.remote
+    def tail_recursion(n):
+        import inspect
+
+        # check if the stack is growing
+        assert len(inspect.stack(0)) < 20
+        if n <= 0:
+            return "ok"
+        return workflow.continuation(
+            tail_recursion.options(**workflow.options(allow_inplace=True)).bind(n - 1)
+        )
+
+    workflow.create(tail_recursion.bind(30)).run()
 
 
 if __name__ == "__main__":

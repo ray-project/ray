@@ -1,13 +1,16 @@
 """Common pre-checks for all RLlib experiments."""
+from copy import copy
 import logging
+import gym
 import numpy as np
+import traceback
 from typing import TYPE_CHECKING, Set
 
-import gym
-
 from ray.actor import ActorHandle
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 from ray.rllib.utils.typing import EnvType
+from ray.util import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.env import BaseEnv, MultiAgentEnv
@@ -15,6 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 def check_env(env: EnvType) -> None:
     """Run pre-checks on env that uncover common errors in environments.
 
@@ -37,41 +41,57 @@ def check_env(env: EnvType) -> None:
     if hasattr(env, "_skip_env_checking") and env._skip_env_checking:
         # This is a work around for some environments that we already have in RLlb
         # that we want to skip checking for now until we have the time to fix them.
-        logger.warning("Skipping env checking for this experiment")
+        if log_once("skip_env_checking"):
+            logger.warning("Skipping env checking for this experiment")
         return
 
-    if not isinstance(
-        env,
-        (
-            BaseEnv,
-            gym.Env,
-            MultiAgentEnv,
-            RemoteBaseEnv,
-            VectorEnv,
-            ExternalMultiAgentEnv,
-            ExternalEnv,
-            ActorHandle,
-        ),
-    ):
+    try:
+        if not isinstance(
+            env,
+            (
+                BaseEnv,
+                gym.Env,
+                MultiAgentEnv,
+                RemoteBaseEnv,
+                VectorEnv,
+                ExternalMultiAgentEnv,
+                ExternalEnv,
+                ActorHandle,
+            ),
+        ):
+            raise ValueError(
+                "Env must be of one of the following supported types: BaseEnv, "
+                "gym.Env, "
+                "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
+                f"ExternalEnv, but instead is of type {type(env)}."
+            )
+        if isinstance(env, MultiAgentEnv):
+            check_multiagent_environments(env)
+        elif isinstance(env, gym.Env):
+            check_gym_environments(env)
+        elif isinstance(env, BaseEnv):
+            check_base_env(env)
+        else:
+            logger.warning(
+                "Env checking isn't implemented for VectorEnvs, RemoteBaseEnvs, "
+                "ExternalMultiAgentEnv, ExternalEnvs or environments that are "
+                "Ray actors."
+            )
+    except Exception:
+        actual_error = traceback.format_exc()
         raise ValueError(
-            "Env must be one of the supported types: BaseEnv, gym.Env, "
-            "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
-            f"ExternalEnv, but instead was a {type(env)}"
-        )
-
-    if isinstance(env, MultiAgentEnv):
-        check_multiagent_environments(env)
-    elif isinstance(env, gym.Env):
-        check_gym_environments(env)
-    elif isinstance(env, BaseEnv):
-        check_base_env(env)
-    else:
-        logger.warning(
-            "Env checking isn't implemented for VectorEnvs, RemoteBaseEnvs, "
-            "ExternalMultiAgentEnv,or ExternalEnvs or Environments that are Ray actors"
+            f"{actual_error}\n"
+            "The above error has been found in your environment! "
+            "We've added a module for checking your custom environments. It "
+            "may cause your experiment to fail if your environment is not set up"
+            "correctly. You can disable this behavior by setting "
+            "`disable_env_checking=True` in your environment config "
+            "dictionary. You can run the environment checking module "
+            "standalone by calling ray.rllib.utils.check_env([env])."
         )
 
 
+@DeveloperAPI
 def check_gym_environments(env: gym.Env) -> None:
     """Checking for common errors in gym environments.
 
@@ -115,16 +135,17 @@ def check_gym_environments(env: gym.Env) -> None:
     if not isinstance(env.action_space, gym.spaces.Space):
         raise ValueError("Action space must be a gym.space")
 
-    # raise a warning if there isn't a max_episode_steps attribute
+    # Raise a warning if there isn't a max_episode_steps attribute.
     if not hasattr(env, "spec") or not hasattr(env.spec, "max_episode_steps"):
-        logger.warning(
-            "Your env doesn't have a .spec.max_episode_steps "
-            "attribute. This is fine if you have set 'horizon' "
-            "in your config dictionary, or `soft_horizon`. "
-            "However, if you haven't, 'horizon' will default "
-            "to infinity, and your environment will not be "
-            "reset."
-        )
+        if log_once("max_episode_steps"):
+            logger.warning(
+                "Your env doesn't have a .spec.max_episode_steps "
+                "attribute. This is fine if you have set 'horizon' "
+                "in your config dictionary, or `soft_horizon`. "
+                "However, if you haven't, 'horizon' will default "
+                "to infinity, and your environment will not be "
+                "reset."
+            )
     # check if sampled actions and observations are contained within their
     # respective action and observation spaces.
 
@@ -180,6 +201,7 @@ def check_gym_environments(env: gym.Env) -> None:
     _check_info(info)
 
 
+@DeveloperAPI
 def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     """Checking for common errors in RLlib MultiAgentEnvs.
 
@@ -191,6 +213,20 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
 
     if not isinstance(env, MultiAgentEnv):
         raise ValueError("The passed env is not a MultiAgentEnv.")
+    elif not (
+        hasattr(env, "observation_space")
+        and hasattr(env, "action_space")
+        and hasattr(env, "_agent_ids")
+        and hasattr(env, "_spaces_in_preferred_format")
+    ):
+        if log_once("ma_env_super_ctor_called"):
+            logger.warning(
+                f"Your MultiAgentEnv {env} does not have some or all of the needed "
+                "base-class attributes! Make sure you call `super().__init__` from "
+                "within your MutiAgentEnv's constructor. "
+                "This will raise an error in the future."
+            )
+        return
 
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
@@ -203,7 +239,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         env.observation_space_contains(reset_obs)
     except Exception as e:
         raise ValueError(
-            "Your observation_space_contains function has some " "error "
+            "Your observation_space_contains function has some error "
         ) from e
 
     if not env.observation_space_contains(reset_obs):
@@ -227,14 +263,12 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     try:
         env.action_space_contains(sampled_action)
     except Exception as e:
-        raise ValueError(
-            "Your action_space_contains function has some " "error "
-        ) from e
+        raise ValueError("Your action_space_contains function has some error ") from e
 
     if not env.action_space_contains(sampled_action):
         error = (
             _not_contained_error("action_space_sample", "action")
-            + "\n\n sampled_action {sampled_action}\n\n"
+            + f"\n\n sampled_action {sampled_action}\n\n"
         )
         raise ValueError(error)
 
@@ -251,11 +285,12 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not env.observation_space_contains(next_obs):
         error = (
             _not_contained_error("env.step(sampled_action)", "observation")
-            + ":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
+            + f":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
         )
         raise ValueError(error)
 
 
+@DeveloperAPI
 def check_base_env(env: "BaseEnv") -> None:
     """Checking for common errors in RLlib BaseEnvs.
 
@@ -299,9 +334,7 @@ def check_base_env(env: "BaseEnv") -> None:
     try:
         env.action_space_contains(sampled_action)
     except Exception as e:
-        raise ValueError(
-            "Your action_space_contains function has some " "error "
-        ) from e
+        raise ValueError("Your action_space_contains function has some error ") from e
     if not env.action_space_contains(sampled_action):
         error = (
             _not_contained_error("action_space_sample", "action")
@@ -335,12 +368,17 @@ def _check_reward(reward, base_env=False, agent_ids=None):
         for _, multi_agent_dict in reward.items():
             for agent_id, rew in multi_agent_dict.items():
                 if not (
-                    np.isreal(rew) and not isinstance(rew, bool) and np.isscalar(rew)
+                    np.isreal(rew)
+                    and not isinstance(rew, bool)
+                    and (
+                        np.isscalar(rew)
+                        or (isinstance(rew, np.ndarray) and rew.shape == ())
+                    )
                 ):
                     error = (
                         "Your step function must return rewards that are"
                         f" integer or float. reward: {rew}. Instead it was a "
-                        f"{type(reward)}"
+                        f"{type(rew)}"
                     )
                     raise ValueError(error)
                 if not (agent_id in agent_ids or agent_id == "__all__"):
@@ -351,7 +389,12 @@ def _check_reward(reward, base_env=False, agent_ids=None):
                     )
                     raise ValueError(error)
     elif not (
-        np.isreal(reward) and not isinstance(reward, bool) and np.isscalar(reward)
+        np.isreal(reward)
+        and not isinstance(reward, bool)
+        and (
+            np.isscalar(reward)
+            or (isinstance(reward, np.ndarray) and reward.shape == ())
+        )
     ):
         error = (
             "Your step function must return a reward that is integer or float. "
@@ -376,7 +419,7 @@ def _check_done(done, base_env=False, agent_ids=None):
                         f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
-    elif not isinstance(done, (bool, np.bool, np.bool_)):
+    elif not isinstance(done, (bool, np.bool_)):
         error = (
             "Your step function must return a done that is a boolean. But instead "
             f"was a {type(done)}"
@@ -443,7 +486,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
     if not isinstance(element, dict):
         if base_env:
             error = (
-                f"The element returned by {function_string} has values "
+                f"The element returned by {function_string} contains values "
                 f"that are not MultiAgentDicts. Instead, they are of "
                 f"type: {type(element)}"
             )
@@ -454,7 +497,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
                 f" {type(element)}"
             )
         raise ValueError(error)
-    agent_ids: Set = env.get_agent_ids()
+    agent_ids: Set = copy(env.get_agent_ids())
     agent_ids.add("__all__")
 
     if not all(k in agent_ids for k in element):
@@ -472,7 +515,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
                 f" that are not the names of the agents in the env. "
                 f"\nAgent_ids in this MultiAgentDict: "
                 f"{list(element.keys())}\nAgent_ids in this env:"
-                f"{list(env.get_agent_ids())}. You likley need to add the private "
+                f"{list(env.get_agent_ids())}. You likely need to add the private "
                 f"attribute `_agent_ids` to your env, which is a set containing the "
                 f"ids of agents supported by your env."
             )

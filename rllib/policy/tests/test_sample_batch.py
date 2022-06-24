@@ -296,6 +296,22 @@ class TestSampleBatch(unittest.TestCase):
         self.assertEqual(s[SampleBatch.SEQ_LENS][1], s_copy[SampleBatch.SEQ_LENS][1])
         self.assertEqual(s["state_in_0"][0], s_copy["state_in_0"][0])
 
+    def test_shuffle_with_interceptor(self):
+        """Tests, whether `shuffle()` clears the `intercepted_values` cache."""
+        s = SampleBatch(
+            {
+                "a": np.array([1, 2, 3, 2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7]),
+            }
+        )
+        # Set a summy get-interceptor (returning all values, but plus 1).
+        s.set_get_interceptor(lambda v: v + 1)
+        # Make sure, interceptor works.
+        check(s["a"], [2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7, 6, 7, 8])
+        s.shuffle()
+        # Make sure, intercepted values are NOT the original ones (before the shuffle),
+        # but have also been shuffled.
+        check(s["a"], [2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7, 6, 7, 8], false=True)
+
 
 if __name__ == "__main__":
     import pytest

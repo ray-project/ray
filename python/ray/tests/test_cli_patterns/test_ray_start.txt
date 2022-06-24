@@ -1,4 +1,5 @@
-Usage stats collection will be enabled by default in the next release\. See https://github.com/ray-project/ray/issues/20857 for more details\.
+Usage stats collection is enabled by default without user confirmation because this stdin is detected to be non-interactively\..+
+
 Local node IP: .+
 
 --------------------
@@ -7,11 +8,11 @@ Ray runtime started.
 
 Next steps
   To connect to this Ray runtime from another node, run
-    ray start --address='.+' --redis-password='.+'
+    ray start --address='.+'
 
   Alternatively, use the following Python code:
     import ray
-    ray\.init\(address='auto', _redis_password='.+'\)
+    ray\.init\(address='auto'\)
 
   To connect to this Ray runtime from outside of the cluster, for example to
   connect to a remote cluster from your laptop directly, use the following

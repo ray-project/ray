@@ -1,4 +1,5 @@
 import os
+import sys
 import unittest
 
 from ray_release.config import (
@@ -24,6 +25,7 @@ class ConfigTest(unittest.TestCase):
                     "test_name": "validation_test",
                     "test_suite": "validation_suite",
                 },
+                "python": "3.7",
                 "frequency": "nightly",
                 "team": "release",
                 "cluster": {
@@ -37,7 +39,7 @@ class ConfigTest(unittest.TestCase):
                     "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
                     "type": "client",
                 },
-                "smoke_test": {"timeout": 20, "frequency": "multi"},
+                "smoke_test": {"run": {"timeout": 20}, "frequency": "multi"},
                 "alert": "default",
             }
         )
@@ -49,6 +51,7 @@ class ConfigTest(unittest.TestCase):
 
         # Remove some optional arguments
         del test["alert"]
+        del test["python"]
         del test["run"]["wait_for_nodes"]
         del test["cluster"]["autosuspend_mins"]
 
@@ -80,5 +83,17 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaises(ReleaseTestConfigError):
             validate_release_test_collection([invalid_test])
 
+        # Faulty Python version
+        invalid_test = test.copy()
+        invalid_test["python"] = "invalid"
+        with self.assertRaises(ReleaseTestConfigError):
+            validate_release_test_collection([invalid_test])
+
     def testLoadAndValidateTestCollectionFile(self):
         read_and_validate_release_test_collection(self.test_collection_file)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

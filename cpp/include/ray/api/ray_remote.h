@@ -75,7 +75,7 @@ inline static int RegisterRemoteFunctions(const T &t, U... u) {
 }  // namespace internal
 
 #define RAY_REMOTE(...)                 \
-  static auto ANONYMOUS_VARIABLE(var) = \
+  inline auto ANONYMOUS_VARIABLE(var) = \
       ray::internal::RegisterRemoteFunctions(#__VA_ARGS__, __VA_ARGS__);
 
 #define RAY_FUNC(f, ...) ray::internal::underload<__VA_ARGS__>(f)

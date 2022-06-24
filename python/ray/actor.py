@@ -1,38 +1,43 @@
 import inspect
 import logging
 import weakref
+from typing import Any, Dict, List, Optional
 
-import ray.ray_constants as ray_constants
-import ray._raylet
+import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
-from ray.utils import get_runtime_env_info, parse_runtime_env
-import ray.worker
-from ray.util.annotations import PublicAPI
-from ray.util.placement_group import configure_placement_group_based_on_context
+import ray._private.worker
+import ray._raylet
+from ray import ActorClassID, Language, cross_language
+from ray._private import ray_option_utils
+from ray._private.client_mode_hook import (
+    client_mode_convert_actor,
+    client_mode_hook,
+    client_mode_should_convert,
+)
+from ray._private.inspect_util import (
+    is_class_method,
+    is_function_or_method,
+    is_static_method,
+)
+from ray._private.utils import get_runtime_env_info, parse_runtime_env
+from ray._raylet import PythonFunctionDescriptor
+from ray.exceptions import AsyncioActorExit
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
-
-from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor
-from ray._private.client_mode_hook import client_mode_hook
-from ray._private.client_mode_hook import client_mode_should_convert
-from ray._private.client_mode_hook import client_mode_convert_actor
-from ray import cross_language
-from ray.util.inspect import (
-    is_function_or_method,
-    is_class_method,
-    is_static_method,
-)
-from ray.exceptions import AsyncioActorExit
 from ray.util.tracing.tracing_helper import (
+    _inject_tracing_into_class,
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
-    _inject_tracing_into_class,
 )
 
 logger = logging.getLogger(__name__)
+
+# Hook to call with (actor, resources, strategy) on each local actor creation.
+_actor_launch_hook = None
 
 
 @PublicAPI
@@ -56,10 +61,19 @@ def method(*args, **kwargs):
         num_returns: The number of object refs that should be returned by
             invocations of this actor method.
     """
-    assert len(args) == 0
-    assert len(kwargs) == 1
-
-    assert "num_returns" in kwargs or "concurrency_group" in kwargs
+    valid_kwargs = ["num_returns", "concurrency_group"]
+    error_string = (
+        "The @ray.method decorator must be applied using at least one of "
+        f"the arguments in the list {valid_kwargs}, for example "
+        "'@ray.method(num_returns=2)'."
+    )
+    assert len(args) == 0 and len(kwargs) > 0, error_string
+    for key in kwargs:
+        key_error_string = (
+            f"Unexpected keyword argument to @ray.method: '{key}'. The "
+            f"supported keyword arguments are {valid_kwargs}"
+        )
+        assert key in valid_kwargs, key_error_string
 
     def annotate_method(method):
         if "num_returns" in kwargs:
@@ -73,6 +87,7 @@ def method(*args, **kwargs):
 
 # Create objects to wrap method invocations. This is done so that we can
 # invoke methods with actor.method.remote() instead of actor.method().
+@PublicAPI
 class ActorMethod:
     """A class used to invoke an actor method.
 
@@ -185,7 +200,7 @@ class ActorMethod:
         )
 
 
-class ActorClassMethodMetadata(object):
+class _ActorClassMethodMetadata(object):
     """Metadata for all methods in an actor class. This data can be cached.
 
     Attributes:
@@ -199,7 +214,7 @@ class ActorClassMethodMetadata(object):
             each actor method.
     """
 
-    _cache = {}  # This cache will be cleared in ray.worker.disconnect()
+    _cache = {}  # This cache will be cleared in ray._private.worker.disconnect()
 
     def __init__(self):
         class_name = type(self).__name__
@@ -271,7 +286,7 @@ class ActorClassMethodMetadata(object):
         return self
 
 
-class ActorClassMetadata:
+class _ActorClassMetadata:
     """Metadata for an actor class.
 
     Attributes:
@@ -338,15 +353,27 @@ class ActorClassMetadata:
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
         self.last_export_session_and_job = None
-        self.method_meta = ActorClassMethodMetadata.create(
+        self.method_meta = _ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor
         )
 
 
+@PublicAPI
 class ActorClassInheritanceException(TypeError):
     pass
 
 
+def _process_option_dict(actor_options):
+    _filled_options = {}
+    arg_names = set(inspect.getfullargspec(_ActorClassMetadata.__init__)[0])
+    for k, v in ray_option_utils.actor_options.items():
+        if k in arg_names:
+            _filled_options[k] = actor_options.get(k, v.default_value)
+    _filled_options["runtime_env"] = parse_runtime_env(_filled_options["runtime_env"])
+    return _filled_options
+
+
+@PublicAPI
 class ActorClass:
     """An actor class.
 
@@ -410,17 +437,7 @@ class ActorClass:
         cls,
         modified_class,
         class_id,
-        max_restarts,
-        max_task_retries,
-        num_cpus,
-        num_gpus,
-        memory,
-        object_store_memory,
-        resources,
-        accelerator_type,
-        runtime_env,
-        concurrency_groups,
-        scheduling_strategy: SchedulingStrategyT,
+        actor_options,
     ):
         for attribute in [
             "remote",
@@ -464,25 +481,16 @@ class ActorClass:
             modified_class.__ray_actor_class__
         )
 
-        new_runtime_env = parse_runtime_env(runtime_env)
-
-        self.__ray_metadata__ = ActorClassMetadata(
+        self.__ray_metadata__ = _ActorClassMetadata(
             Language.PYTHON,
             modified_class,
             actor_creation_function_descriptor,
             class_id,
-            max_restarts,
-            max_task_retries,
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            accelerator_type,
-            new_runtime_env,
-            concurrency_groups,
-            scheduling_strategy,
+            **_process_option_dict(actor_options),
         )
+        self._default_options = actor_options
+        if "runtime_env" in self._default_options:
+            self._default_options["runtime_env"] = self.__ray_metadata__.runtime_env
 
         return self
 
@@ -491,38 +499,19 @@ class ActorClass:
         cls,
         language,
         actor_creation_function_descriptor,
-        max_restarts,
-        max_task_retries,
-        num_cpus,
-        num_gpus,
-        memory,
-        object_store_memory,
-        resources,
-        accelerator_type,
-        runtime_env,
+        actor_options,
     ):
         self = ActorClass.__new__(ActorClass)
-
-        new_runtime_env = parse_runtime_env(runtime_env)
-
-        self.__ray_metadata__ = ActorClassMetadata(
+        self.__ray_metadata__ = _ActorClassMetadata(
             language,
             None,
             actor_creation_function_descriptor,
             None,
-            max_restarts,
-            max_task_retries,
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            accelerator_type,
-            new_runtime_env,
-            [],
-            None,
+            **_process_option_dict(actor_options),
         )
-
+        self._default_options = actor_options
+        if "runtime_env" in self._default_options:
+            self._default_options["runtime_env"] = self.__ray_metadata__.runtime_env
         return self
 
     def remote(self, *args, **kwargs):
@@ -537,31 +526,9 @@ class ActorClass:
         Returns:
             A handle to the newly created actor.
         """
-        return self._remote(args=args, kwargs=kwargs)
+        return self._remote(args=args, kwargs=kwargs, **self._default_options)
 
-    def options(
-        self,
-        args=None,
-        kwargs=None,
-        num_cpus=None,
-        num_gpus=None,
-        memory=None,
-        object_store_memory=None,
-        resources=None,
-        accelerator_type=None,
-        max_concurrency=None,
-        max_restarts=None,
-        max_task_retries=None,
-        name=None,
-        namespace=None,
-        lifetime=None,
-        placement_group="default",
-        placement_group_bundle_index=-1,
-        placement_group_capture_child_tasks=None,
-        runtime_env=None,
-        max_pending_calls=-1,
-        scheduling_strategy: SchedulingStrategyT = None,
-    ):
+    def options(self, **actor_options):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -582,79 +549,45 @@ class ActorClass:
 
         actor_cls = self
 
-        new_runtime_env = parse_runtime_env(runtime_env)
-
-        cls_options = dict(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            memory=memory,
-            object_store_memory=object_store_memory,
-            resources=resources,
-            accelerator_type=accelerator_type,
-            max_concurrency=max_concurrency,
-            max_restarts=max_restarts,
-            max_task_retries=max_task_retries,
-            name=name,
-            namespace=namespace,
-            lifetime=lifetime,
-            placement_group=placement_group,
-            placement_group_bundle_index=placement_group_bundle_index,
-            placement_group_capture_child_tasks=(placement_group_capture_child_tasks),
-            runtime_env=new_runtime_env,
-            max_pending_calls=max_pending_calls,
-            scheduling_strategy=scheduling_strategy,
+        # override original options
+        default_options = self._default_options.copy()
+        # "concurrency_groups" could not be used in ".options()",
+        # we should remove it before merging options from '@ray.remote'.
+        default_options.pop("concurrency_groups", None)
+        updated_options = ray_option_utils.update_options(
+            default_options, actor_options
         )
+        ray_option_utils.validate_actor_options(updated_options, in_options=True)
+
+        # only update runtime_env when ".options()" specifies new runtime_env
+        if "runtime_env" in actor_options:
+            updated_options["runtime_env"] = parse_runtime_env(
+                updated_options["runtime_env"]
+            )
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
-                return actor_cls._remote(
-                    args=args,
-                    kwargs=kwargs,
-                    **cls_options,
-                )
+                return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
+            @DeveloperAPI
             def bind(self, *args, **kwargs):
                 """
-                **Experimental**
-
-                For ray DAG building. Implementation and interface subject
-                to changes.
+                For Ray DAG building that creates static graph from decorated
+                class or functions.
                 """
-                from ray.experimental.dag.class_node import ClassNode
+                from ray.dag.class_node import ClassNode
 
                 return ClassNode(
                     actor_cls.__ray_metadata__.modified_class,
                     args,
                     kwargs,
-                    cls_options,
+                    updated_options,
                 )
 
         return ActorOptionWrapper()
 
     @_tracing_actor_creation
-    def _remote(
-        self,
-        args=None,
-        kwargs=None,
-        num_cpus=None,
-        num_gpus=None,
-        memory=None,
-        object_store_memory=None,
-        resources=None,
-        accelerator_type=None,
-        max_concurrency=None,
-        max_restarts=None,
-        max_task_retries=None,
-        name=None,
-        namespace=None,
-        lifetime=None,
-        placement_group="default",
-        placement_group_bundle_index=-1,
-        placement_group_capture_child_tasks=None,
-        runtime_env=None,
-        max_pending_calls=-1,
-        scheduling_strategy: SchedulingStrategyT = None,
-    ):
+    def _remote(self, args=None, kwargs=None, **actor_options):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -706,7 +639,7 @@ class ActorClass:
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).
-            max_pending_calls (int): Set the max number of pending calls
+            max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
                 Note that this limit is counted per handle. -1 means that the
@@ -716,6 +649,35 @@ class ActorClass:
         Returns:
             A handle to the newly created actor.
         """
+        name = actor_options.get("name")
+        namespace = actor_options.get("namespace")
+        if name is not None:
+            if not isinstance(name, str):
+                raise TypeError(f"name must be None or a string, got: '{type(name)}'.")
+            elif name == "":
+                raise ValueError("Actor name cannot be an empty string.")
+        if namespace is not None:
+            ray._private.utils.validate_namespace(namespace)
+
+        # Handle the get-or-create case.
+        if actor_options.get("get_if_exists"):
+            try:
+                return ray.get_actor(name, namespace=namespace)
+            except ValueError:
+                # Attempt to create it (may race with other attempts).
+                updated_options = actor_options.copy()
+                updated_options["get_if_exists"] = False  # prevent infinite loop
+                try:
+                    return self._remote(args, kwargs, **updated_options)
+                except ValueError:
+                    # We lost the creation race, ignore.
+                    pass
+                return ray.get_actor(name, namespace=namespace)
+
+        # We pop the "concurrency_groups" coming from "@ray.remote" here. We no longer
+        # need it in "_remote()".
+        actor_options.pop("concurrency_groups", None)
+
         if args is None:
             args = []
         if kwargs is None:
@@ -731,52 +693,35 @@ class ActorClass:
         )
         is_asyncio = actor_has_async_methods
 
-        if max_concurrency is None:
-            if is_asyncio:
-                max_concurrency = 1000
-            else:
-                max_concurrency = 1
-
-        if max_concurrency < 1:
-            raise ValueError("max_concurrency must be >= 1")
+        if actor_options.get("max_concurrency") is None:
+            actor_options["max_concurrency"] = 1000 if is_asyncio else 1
 
         if client_mode_should_convert(auto_init=True):
-            return client_mode_convert_actor(
-                self,
-                args,
-                kwargs,
-                num_cpus=num_cpus,
-                num_gpus=num_gpus,
-                memory=memory,
-                object_store_memory=object_store_memory,
-                resources=resources,
-                accelerator_type=accelerator_type,
-                max_concurrency=max_concurrency,
-                max_restarts=max_restarts,
-                max_task_retries=max_task_retries,
-                name=name,
-                namespace=namespace,
-                lifetime=lifetime,
-                placement_group=placement_group,
-                placement_group_bundle_index=placement_group_bundle_index,
-                placement_group_capture_child_tasks=(
-                    placement_group_capture_child_tasks
-                ),
-                runtime_env=runtime_env,
-                max_pending_calls=max_pending_calls,
-                scheduling_strategy=scheduling_strategy,
-            )
+            return client_mode_convert_actor(self, args, kwargs, **actor_options)
 
-        worker = ray.worker.global_worker
+        # fill actor required options
+        for k, v in ray_option_utils.actor_options.items():
+            actor_options[k] = actor_options.get(k, v.default_value)
+        # "concurrency_groups" already takes effects and should not apply again.
+        # Remove the default value here.
+        actor_options.pop("concurrency_groups", None)
+
+        # TODO(suquark): cleanup these fields
+        max_concurrency = actor_options["max_concurrency"]
+        lifetime = actor_options["lifetime"]
+        runtime_env = actor_options["runtime_env"]
+        placement_group = actor_options["placement_group"]
+        placement_group_bundle_index = actor_options["placement_group_bundle_index"]
+        placement_group_capture_child_tasks = actor_options[
+            "placement_group_capture_child_tasks"
+        ]
+        scheduling_strategy = actor_options["scheduling_strategy"]
+        max_restarts = actor_options["max_restarts"]
+        max_task_retries = actor_options["max_task_retries"]
+        max_pending_calls = actor_options["max_pending_calls"]
+
+        worker = ray._private.worker.global_worker
         worker.check_connected()
-
-        if name is not None:
-            if not isinstance(name, str):
-                raise TypeError(f"name must be None or a string, got: '{type(name)}'.")
-            elif name == "":
-                raise ValueError("Actor name cannot be an empty string.")
-        if namespace is not None:
-            ray._private.utils.validate_namespace(namespace)
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -808,35 +753,6 @@ class ActorClass:
                 "'non_detached' and 'None'."
             )
 
-        # Set the actor's default resources if not already set. First three
-        # conditions are to check that no resources were specified in the
-        # decorator. Last three conditions are to check that no resources were
-        # specified when _remote() was called.
-        if (
-            meta.num_cpus is None
-            and meta.num_gpus is None
-            and meta.resources is None
-            and meta.accelerator_type is None
-            and num_cpus is None
-            and num_gpus is None
-            and resources is None
-            and accelerator_type is None
-        ):
-            # In the default case, actors acquire no resources for
-            # their lifetime, and actor methods will require 1 CPU.
-            cpus_to_use = ray_constants.DEFAULT_ACTOR_CREATION_CPU_SIMPLE
-            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SIMPLE
-        else:
-            # If any resources are specified (here or in decorator), then
-            # all resources are acquired for the actor's lifetime and no
-            # resources are associated with methods.
-            cpus_to_use = (
-                ray_constants.DEFAULT_ACTOR_CREATION_CPU_SPECIFIED
-                if meta.num_cpus is None
-                else meta.num_cpus
-            )
-            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
-
         # LOCAL_MODE cannot handle cross_language
         if worker.mode == ray.LOCAL_MODE:
             assert (
@@ -861,20 +777,27 @@ class ActorClass:
                 meta.method_meta.methods.keys(),
             )
 
-        resources = ray._private.utils.resources_from_resource_arguments(
-            cpus_to_use,
-            meta.num_gpus,
-            meta.memory,
-            meta.object_store_memory,
-            meta.resources,
-            meta.accelerator_type,
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            accelerator_type,
-        )
+        resources = ray._private.utils.resources_from_ray_options(actor_options)
+        # Set the actor's default resources if not already set. First three
+        # conditions are to check that no resources were specified in the
+        # decorator. Last three conditions are to check that no resources were
+        # specified when _remote() was called.
+        # TODO(suquark): In the original code, memory is not considered as resources,
+        # when deciding the default CPUs. It is strange, but we keep the original
+        # semantics in case that it breaks user applications & tests.
+        if not set(resources.keys()).difference({"memory", "object_store_memory"}):
+            # In the default case, actors acquire no resources for
+            # their lifetime, and actor methods will require 1 CPU.
+            resources.setdefault("CPU", ray_constants.DEFAULT_ACTOR_CREATION_CPU_SIMPLE)
+            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SIMPLE
+        else:
+            # If any resources are specified (here or in decorator), then
+            # all resources are acquired for the actor's lifetime and no
+            # resources are associated with methods.
+            resources.setdefault(
+                "CPU", ray_constants.DEFAULT_ACTOR_CREATION_CPU_SPECIFIED
+            )
+            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
         # If the actor methods require CPU resources, then set the required
         # placement resources. If actor_placement_resources is empty, then
@@ -885,18 +808,10 @@ class ActorClass:
             actor_placement_resources = resources.copy()
             actor_placement_resources["CPU"] += 1
         if meta.is_cross_language:
-            creation_args = cross_language.format_args(worker, args, kwargs)
+            creation_args = cross_language._format_args(worker, args, kwargs)
         else:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args, kwargs)
-
-        scheduling_strategy = scheduling_strategy or meta.scheduling_strategy
-        if (placement_group != "default") and (scheduling_strategy is not None):
-            raise ValueError(
-                "Placement groups should be specified via the "
-                "scheduling_strategy option. "
-                "The placement_group option is deprecated."
-            )
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -918,7 +833,7 @@ class ActorClass:
                 placement_group_capture_child_tasks = (
                     worker.should_capture_child_tasks_in_placement_group
                 )
-            placement_group = configure_placement_group_based_on_context(
+            placement_group = _configure_placement_group_based_on_context(
                 placement_group_capture_child_tasks,
                 placement_group_bundle_index,
                 resources,
@@ -935,19 +850,17 @@ class ActorClass:
             else:
                 scheduling_strategy = "DEFAULT"
 
-        if runtime_env:
-            new_runtime_env = parse_runtime_env(runtime_env)
-        else:
-            new_runtime_env = meta.runtime_env
         serialized_runtime_env_info = None
-        if new_runtime_env is not None:
+        if runtime_env is not None:
             serialized_runtime_env_info = get_runtime_env_info(
-                new_runtime_env,
+                runtime_env,
                 is_job_runtime_env=False,
                 serialize=True,
             )
 
         concurrency_groups_dict = {}
+        if meta.concurrency_groups is None:
+            meta.concurrency_groups = []
         for cg_name in meta.concurrency_groups:
             concurrency_groups_dict[cg_name] = {
                 "name": cg_name,
@@ -968,11 +881,14 @@ class ActorClass:
 
         # Update the creation descriptor based on number of arguments
         if meta.is_cross_language:
+            func_name = "<init>"
+            if meta.language == Language.CPP:
+                func_name = meta.actor_creation_function_descriptor.function_name
             meta.actor_creation_function_descriptor = (
-                cross_language.get_function_descriptor_for_actor_method(
+                cross_language._get_function_descriptor_for_actor_method(
                     meta.language,
                     meta.actor_creation_function_descriptor,
-                    "<init>",
+                    func_name,
                     str(len(args) + len(kwargs)),
                 )
             )
@@ -981,8 +897,8 @@ class ActorClass:
             meta.language,
             meta.actor_creation_function_descriptor,
             creation_args,
-            max_restarts or meta.max_restarts,
-            max_task_retries or meta.max_task_retries,
+            max_restarts,
+            max_task_retries,
             resources,
             actor_placement_resources,
             max_concurrency,
@@ -998,6 +914,11 @@ class ActorClass:
             scheduling_strategy=scheduling_strategy,
         )
 
+        if _actor_launch_hook:
+            _actor_launch_hook(
+                meta.actor_creation_function_descriptor, resources, scheduling_strategy
+            )
+
         actor_handle = ActorHandle(
             meta.language,
             actor_id,
@@ -1012,18 +933,20 @@ class ActorClass:
 
         return actor_handle
 
+    @DeveloperAPI
     def bind(self, *args, **kwargs):
         """
-        **Experimental**
-
-        For ray DAG building. Implementation and interface subject
-        to changes.
+        For Ray DAG building that creates static graph from decorated
+        class or functions.
         """
-        from ray.experimental.dag.class_node import ClassNode
+        from ray.dag.class_node import ClassNode
 
-        return ClassNode(self.__ray_metadata__.modified_class, args, kwargs, {})
+        return ClassNode(
+            self.__ray_metadata__.modified_class, args, kwargs, self._default_options
+        )
 
 
+@PublicAPI
 class ActorHandle:
     """A handle to an actor.
 
@@ -1102,19 +1025,19 @@ class ActorHandle:
     def __del__(self):
         # Mark that this actor handle has gone out of scope. Once all actor
         # handles are out of scope, the actor will exit.
-        if ray.worker:
-            worker = ray.worker.global_worker
+        if ray._private.worker:
+            worker = ray._private.worker.global_worker
             if worker.connected and hasattr(worker, "core_worker"):
                 worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
 
     def _actor_method_call(
         self,
-        method_name,
-        args=None,
-        kwargs=None,
-        name="",
-        num_returns=None,
-        concurrency_group_name=None,
+        method_name: str,
+        args: List[Any] = None,
+        kwargs: Dict[str, Any] = None,
+        name: str = "",
+        num_returns: Optional[int] = None,
+        concurrency_group_name: Optional[str] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1127,20 +1050,20 @@ class ActorHandle:
             method_name: The name of the actor method to execute.
             args: A list of arguments for the actor method.
             kwargs: A dictionary of keyword arguments for the actor method.
-            name (str): The name to give the actor method call task.
-            num_returns (int): The number of return values for the method.
+            name: The name to give the actor method call task.
+            num_returns: The number of return values for the method.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
                 method.
         """
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
 
         args = args or []
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
-            list_args = cross_language.format_args(worker, args, kwargs)
-            function_descriptor = cross_language.get_function_descriptor_for_actor_method(  # noqa: E501
+            list_args = cross_language._format_args(worker, args, kwargs)
+            function_descriptor = cross_language._get_function_descriptor_for_actor_method(  # noqa: E501
                 self._ray_actor_language,
                 self._ray_actor_creation_function_descriptor,
                 method_name,
@@ -1158,9 +1081,9 @@ class ActorHandle:
             function_descriptor = self._ray_function_descriptor[method_name]
 
         if worker.mode == ray.LOCAL_MODE:
-            assert not self._ray_is_cross_language, (
-                "Cross language remote actor method " "cannot be executed locally."
-            )
+            assert (
+                not self._ray_is_cross_language
+            ), "Cross language remote actor method cannot be executed locally."
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
@@ -1198,7 +1121,7 @@ class ActorHandle:
 
                 def remote(self, *args, **kwargs):
                     logger.warning(
-                        f"Actor method {item} is not " "supported by cross language."
+                        f"Actor method {item} is not supported by cross language."
                     )
 
             return FakeActorMethod()
@@ -1234,7 +1157,7 @@ class ActorHandle:
         Returns:
             A dictionary of the information needed to reconstruct the object.
         """
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
@@ -1268,7 +1191,7 @@ class ActorHandle:
                 to the actor handle.
 
         """
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
@@ -1297,7 +1220,7 @@ class ActorHandle:
         return ActorHandle._deserialization_helper, state
 
 
-def modify_class(cls):
+def _modify_class(cls):
     # cls has been modified.
     if hasattr(cls, "__ray_actor_class__"):
         return cls
@@ -1316,7 +1239,7 @@ def modify_class(cls):
         __ray_actor_class__ = cls  # The original actor class
 
         def __ray_terminate__(self):
-            worker = ray.worker.global_worker
+            worker = ray._private.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
 
@@ -1336,62 +1259,26 @@ def modify_class(cls):
     return Class
 
 
-def make_actor(
-    cls,
-    num_cpus,
-    num_gpus,
-    memory,
-    object_store_memory,
-    resources,
-    accelerator_type,
-    max_restarts,
-    max_task_retries,
-    runtime_env,
-    concurrency_groups,
-    scheduling_strategy: SchedulingStrategyT,
-):
-    Class = modify_class(cls)
+def _make_actor(cls, actor_options):
+    Class = _modify_class(cls)
     _inject_tracing_into_class(Class)
 
-    if max_restarts is None:
-        max_restarts = 0
-    if max_task_retries is None:
-        max_task_retries = 0
-    if concurrency_groups is None:
-        concurrency_groups = []
-
-    infinite_restart = max_restarts == -1
-    if not infinite_restart:
-        if max_restarts < 0:
-            raise ValueError(
-                "max_restarts must be an integer >= -1 "
-                "-1 indicates infinite restarts"
-            )
-        else:
+    if "max_restarts" in actor_options:
+        if actor_options["max_restarts"] != -1:  # -1 represents infinite restart
             # Make sure we don't pass too big of an int to C++, causing
             # an overflow.
-            max_restarts = min(max_restarts, ray_constants.MAX_INT64_VALUE)
-
-    if max_restarts == 0 and max_task_retries != 0:
-        raise ValueError("max_task_retries cannot be set if max_restarts is 0.")
+            actor_options["max_restarts"] = min(
+                actor_options["max_restarts"], ray_constants.MAX_INT64_VALUE
+            )
 
     return ActorClass._ray_from_modified_class(
         Class,
         ActorClassID.from_random(),
-        max_restarts,
-        max_task_retries,
-        num_cpus,
-        num_gpus,
-        memory,
-        object_store_memory,
-        resources,
-        accelerator_type,
-        runtime_env,
-        concurrency_groups,
-        scheduling_strategy,
+        actor_options,
     )
 
 
+@PublicAPI
 def exit_actor():
     """Intentionally exit the current actor.
 
@@ -1402,13 +1289,13 @@ def exit_actor():
         Exception: An exception is raised if this is a driver or this
             worker is not an actor.
     """
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
         # Intentionally disconnect the core worker from the raylet so the
         # raylet won't push an error message to the driver.
-        ray.worker.disconnect()
+        ray._private.worker.disconnect()
         # Disconnect global state from GCS.
-        ray.state.state.disconnect()
+        ray._private.state.state.disconnect()
 
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
@@ -1420,6 +1307,7 @@ def exit_actor():
         # reduces log verbosity.
         exit = SystemExit(0)
         exit.is_ray_terminate = True
+        exit.ray_terminate_msg = "exit_actor() is called."
         raise exit
         assert False, "This process should have terminated."
     else:

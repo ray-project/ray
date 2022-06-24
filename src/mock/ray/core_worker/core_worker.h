@@ -142,12 +142,6 @@ class MockCoreWorker : public CoreWorker {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandleAddSpilledUrl,
-              (const rpc::AddSpilledUrlRequest &request,
-               rpc::AddSpilledUrlReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
               HandleRestoreSpilledObjects,
               (const rpc::RestoreSpilledObjectsRequest &request,
                rpc::RestoreSpilledObjectsReply *reply,

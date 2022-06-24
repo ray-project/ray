@@ -39,18 +39,16 @@ enum ChannelType {
   GCS_JOB_CHANNEL = 4;
   /// A channel for node info.
   GCS_NODE_INFO_CHANNEL = 5;
-  /// A channel for node resources.
-  GCS_NODE_RESOURCE_CHANNEL = 6;
   /// A channel for worker changes, currently only for worker failures.
-  GCS_WORKER_DELTA_CHANNEL = 7;
+  GCS_WORKER_DELTA_CHANNEL = 6;
   /// A channel for errors from various Ray components.
-  RAY_ERROR_INFO_CHANNEL = 8;
+  RAY_ERROR_INFO_CHANNEL = 7;
   /// A channel for logs from various Ray components.
-  RAY_LOG_CHANNEL = 9;
+  RAY_LOG_CHANNEL = 8;
   /// A channel for keys to pickled python functions and actor classes.
-  RAY_PYTHON_FUNCTION_CHANNEL = 10;
+  RAY_PYTHON_FUNCTION_CHANNEL = 9;
   /// A channel for reporting node resource usage stats.
-  RAY_NODE_RESOURCE_USAGE_CHANNEL = 11;
+  RAY_NODE_RESOURCE_USAGE_CHANNEL = 10;
 }
 
 ///
@@ -62,8 +60,8 @@ message PubMessage {
   ChannelType channel_type = 1;
   /// The key id (e.g., object id) in bytes.
   bytes key_id = 2;
-  /// A message for the publish message.
-  oneof pub_message_one_of {
+  /// At least one message must be set.
+  oneof inner_message {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
     WorkerObjectLocationsPubMessage worker_object_locations_message = 5;

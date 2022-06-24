@@ -1,8 +1,10 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import os
+import logging
+import pickle
 import socket
 import time
-import pickle
 from typing import Callable, List, Dict, Optional, Tuple
 
 import uvicorn
@@ -10,23 +12,31 @@ import starlette.responses
 import starlette.routing
 
 import ray
-from ray import serve
 from ray.exceptions import RayActorError, RayTaskError
-from ray.serve.common import EndpointInfo, EndpointTag
-from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
-from ray.serve.utils import logger
+
+from ray import serve
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import (
     HTTPRequestWrapper,
     RawASGIResponse,
     receive_http_body,
     Response,
+    set_socket_reuse_port,
 )
-from ray.serve.long_poll import LongPollClient
+from ray.serve.common import EndpointInfo, EndpointTag
+from ray.serve.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
+from ray.serve.logging_utils import access_log_msg, configure_component_logger
+from ray.serve.utils import node_id_to_ip_addr
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 MAX_REPLICA_FAILURE_RETRIES = 10
 DISCONNECT_ERROR_CODE = "disconnection"
+SOCKET_REUSE_PORT_ENABLED = (
+    os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
+)
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -147,7 +157,7 @@ class LongestPrefixRouter:
         """Return the longest prefix match among existing routes for the route.
 
         Args:
-            target_route (str): route to match against.
+            target_route: route to match against.
 
         Returns:
             (matched_route (str), serve_handle (RayServeHandle)) if found,
@@ -181,21 +191,22 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace))
+    >>> controller_name = ... # doctest: +SKIP
+    >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str, controller_namespace: str):
+    def __init__(self, controller_name: str):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
-        ray.serve.api._set_internal_replica_context(
-            None, None, controller_name, controller_namespace, None
+        ray.serve.context.set_internal_replica_context(
+            None, None, controller_name, None
         )
 
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
-            return serve.api.internal_get_global_client().get_handle(
+            return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
@@ -204,7 +215,7 @@ class HTTPProxy:
 
         self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
-            ray.get_actor(controller_name, namespace=controller_namespace),
+            ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
@@ -225,7 +236,7 @@ class HTTPProxy:
         self.deployment_request_error_counter = metrics.Counter(
             "serve_num_deployment_http_error_requests",
             description=(
-                "The number of non-200 HTTP responses returned by each " "deployment."
+                "The number of non-200 HTTP responses returned by each deployment."
             ),
             tag_keys=("deployment",),
         )
@@ -294,7 +305,17 @@ class HTTPProxy:
             scope["path"] = route_path.replace(route_prefix, "", 1)
             scope["root_path"] = root_path + route_prefix
 
+        start_time = time.time()
         status_code = await _send_request_to_handle(handle, scope, receive, send)
+        latency_ms = (time.time() - start_time) * 1000.0
+        logger.info(
+            access_log_msg(
+                method=scope["method"],
+                route=route_prefix,
+                status=str(status_code),
+                latency_ms=latency_ms,
+            )
+        )
         if status_code != "200":
             self.request_error_counter.inc(
                 tags={"route": route_path, "error_code": status_code}
@@ -312,9 +333,13 @@ class HTTPProxyActor:
         port: int,
         root_path: str,
         controller_name: str,
-        controller_namespace: str,
+        node_id: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
+        configure_component_logger(
+            component_name="http_proxy", component_id=node_id_to_ip_addr(node_id)
+        )
+
         if http_middlewares is None:
             http_middlewares = []
 
@@ -324,7 +349,7 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name, controller_namespace)
+        self.app = HTTPProxy(controller_name)
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:
@@ -359,13 +384,8 @@ class HTTPProxyActor:
 
     async def run(self):
         sock = socket.socket()
-        # These two socket options will allow multiple process to bind the the
-        # same port. Kernel will evenly load balance among the port listeners.
-        # Note: this will only work on Linux.
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-
+        if SOCKET_REUSE_PORT_ENABLED:
+            set_socket_reuse_port(sock)
         try:
             sock.bind((self.host, self.port))
         except OSError:

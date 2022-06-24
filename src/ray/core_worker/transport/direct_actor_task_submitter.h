@@ -47,7 +47,8 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
  public:
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id,
                                         int32_t max_pending_calls,
-                                        bool execute_out_of_order = false) = 0;
+                                        bool execute_out_of_order = false,
+                                        bool fail_if_actor_unreachable = true) = 0;
   virtual void ConnectActor(const ActorID &actor_id,
                             const rpc::Address &address,
                             int64_t num_restarts) = 0;
@@ -89,9 +90,12 @@ class CoreWorkerDirectActorTaskSubmitter
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
+  /// \param[in] fail_if_actor_unreachable Whether to fail newly submitted tasks
+  /// immediately when the actor is unreachable.
   void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 int32_t max_pending_calls,
-                                bool execute_out_of_order = false);
+                                bool execute_out_of_order = false,
+                                bool fail_if_actor_unreachable = true);
 
   /// Submit a task to an actor for execution.
   ///
@@ -155,8 +159,12 @@ class CoreWorkerDirectActorTaskSubmitter
 
  private:
   struct ClientQueue {
-    ClientQueue(ActorID actor_id, bool execute_out_of_order, int32_t max_pending_calls)
-        : max_pending_calls(max_pending_calls) {
+    ClientQueue(ActorID actor_id,
+                bool execute_out_of_order,
+                int32_t max_pending_calls,
+                bool fail_if_actor_unreachable)
+        : max_pending_calls(max_pending_calls),
+          fail_if_actor_unreachable(fail_if_actor_unreachable) {
       if (execute_out_of_order) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
       } else {
@@ -199,7 +207,7 @@ class CoreWorkerDirectActorTaskSubmitter
 
     /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
     /// without replies.
-    std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+    absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks;
 
     /// The max number limit of task capacity used for back pressure.
@@ -209,6 +217,9 @@ class CoreWorkerDirectActorTaskSubmitter
 
     /// The current task number in this client queue.
     int32_t cur_pending_calls = 0;
+
+    /// Whether to fail newly submitted tasks immediately when the actor is unreachable.
+    bool fail_if_actor_unreachable = true;
 
     /// Returns debug string for class.
     ///
@@ -234,6 +245,11 @@ class CoreWorkerDirectActorTaskSubmitter
                      const TaskSpecification &task_spec,
                      bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  void HandlePushTaskReply(const Status &status,
+                           const rpc::PushTaskReply &reply,
+                           const rpc::Address &addr,
+                           const TaskSpecification &task_spec) LOCKS_EXCLUDED(mu_);
+
   /// Send all pending tasks for an actor.
   ///
   /// \param[in] actor_id Actor ID.
@@ -252,7 +268,7 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Fail all in-flight tasks.
   void FailInflightTasks(
-      const std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
 
   /// Whether the specified actor is alive.
@@ -276,11 +292,11 @@ class CoreWorkerDirectActorTaskSubmitter
   TaskFinisherInterface &task_finisher_;
 
   /// Used to warn of excessive queueing.
-  std::function<void(const ActorID &, int64_t num_queued)> warn_excess_queueing_;
+  std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;
 
   /// Warn the next time the number of queued task submissions to an actor
   /// exceeds this quantity. This threshold is doubled each time it is hit.
-  int64_t next_queueing_warn_threshold_;
+  uint64_t next_queueing_warn_threshold_;
 
   /// The event loop where the actor task events are handled.
   instrumented_io_context &io_service_;

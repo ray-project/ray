@@ -2,11 +2,11 @@ import time
 import copy
 import logging
 
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.suggest import SearchAlgorithm
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.suggest.variant_generator import generate_variants
-from ray.tune.config_parser import make_parser, create_trial_from_spec
+from ray.tune.experiment.config_parser import make_parser, create_trial_from_spec
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,9 @@ def deep_insert(path_list, value, config):
     """Inserts value into config by path, generating intermediate dictionaries.
 
     Example:
-        >>> deep_insert(path.split("."), value, {})
+        >>> from os import path
+        >>> from ray.tune.automl.search_policy import deep_insert
+        >>> deep_insert(path.split("."), value, {}) # doctest: +SKIP
     """
     if len(path_list) > 1:
         inside_config = config.setdefault(path_list[0], {})
@@ -40,7 +42,7 @@ class AutoMLSearcher(SearchAlgorithm):
         """Initialize AutoMLSearcher.
 
         Arguments:
-            search_space (SearchSpace): The space to search.
+            search_space: The space to search.
             reward_attr: The attribute name of the reward in the result.
         """
         # Pass experiment later to allow construction without this parameter
@@ -216,7 +218,7 @@ class AutoMLSearcher(SearchAlgorithm):
         parameter permutations
 
         Arguments:
-            trials (list): A list of Trial object, where user can fetch the
+            trials: A list of Trial object, where user can fetch the
                 result attribute, etc.
 
         Returns:

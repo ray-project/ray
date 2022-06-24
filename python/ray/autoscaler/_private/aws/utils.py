@@ -1,11 +1,13 @@
 from collections import defaultdict
 from functools import lru_cache
 
-from boto3.exceptions import ResourceNotExistsError
-from botocore.config import Config
 import boto3
+from boto3.exceptions import ResourceNotExistsError
+from boto3.resources.base import ServiceResource
+from botocore.client import BaseClient
+from botocore.config import Config
 
-from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 
 
@@ -41,7 +43,7 @@ def handle_boto_error(exc, msg, *args, **kwargs):
         error_code = error_info.get("Code", None)
 
     generic_message_args = [
-        "{}\n" "Error code: {}",
+        "{}\nError code: {}",
         msg.format(*args, **kwargs),
         cf.bold(error_code),
     ]
@@ -94,7 +96,7 @@ def handle_boto_error(exc, msg, *args, **kwargs):
         # fixme: replace with a Github URL that points
         # to our repo
         aws_session_script_url = (
-            "https://gist.github.com/maximsmol/" "a0284e1d97b25d417bd9ae02e5f450cf"
+            "https://gist.github.com/maximsmol/a0284e1d97b25d417bd9ae02e5f450cf"
         )
 
         cli_logger.verbose_error(*generic_message_args)
@@ -141,7 +143,9 @@ def boto_exception_handler(msg, *args, **kwargs):
 
 
 @lru_cache()
-def resource_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
+def resource_cache(
+    name, region, max_retries=BOTO_MAX_RETRIES, **kwargs
+) -> ServiceResource:
     cli_logger.verbose(
         "Creating AWS resource `{}` in `{}`", cf.bold(name), cf.bold(region)
     )
@@ -157,7 +161,7 @@ def resource_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
 
 
 @lru_cache()
-def client_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
+def client_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs) -> BaseClient:
     try:
         # try to re-use a client from the resource cache first
         return resource_cache(name, region, max_retries, **kwargs).meta.client

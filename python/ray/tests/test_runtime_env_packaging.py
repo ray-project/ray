@@ -1,26 +1,41 @@
 import os
-from pathlib import Path
 import random
-from shutil import copytree, rmtree, make_archive
+import shutil
+import socket
 import string
 import sys
-from filecmp import dircmp
 import uuid
+from filecmp import dircmp
+from pathlib import Path
+from shutil import copytree, make_archive, rmtree
 
 import pytest
-from ray.ray_constants import KV_NAMESPACE_PACKAGE
-from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_exists
+
+from ray._private.gcs_utils import GcsClient
+from ray._private.ray_constants import KV_NAMESPACE_PACKAGE
 from ray._private.runtime_env.packaging import (
-    _dir_travel,
-    get_local_dir_from_uri,
-    get_uri_for_directory,
-    _get_excludes,
-    upload_package_if_needed,
-    parse_uri,
+    GCS_STORAGE_MAX_SIZE,
     Protocol,
+    _dir_travel,
+    _get_excludes,
+    _store_package_in_gcs,
+    get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
+    get_uri_for_directory,
+    get_uri_for_package,
+    is_whl_uri,
+    is_zip_uri,
+    parse_uri,
     remove_dir_from_filepaths,
     unzip_package,
+    upload_package_if_needed,
+)
+from ray.experimental.internal_kv import (
+    _initialize_internal_kv,
+    _internal_kv_del,
+    _internal_kv_exists,
+    _internal_kv_get,
+    _internal_kv_reset,
 )
 
 TOP_LEVEL_DIR_NAME = "top_level"
@@ -43,6 +58,20 @@ def random_dir(tmp_path):
         with p2.open("w") as f2:
             f2.write(random_string(200))
     yield tmp_path
+
+
+@pytest.fixture
+def short_path_dir():
+    """A directory with a short path.
+
+    This directory is used to test the case where a socket file is in the
+    directory.  Socket files have a maximum length of 108 characters, so the
+    path from the built-in pytest fixture tmp_path is too long.
+    """
+    dir = Path("short_path")
+    dir.mkdir()
+    yield dir
+    shutil.rmtree(str(dir))
 
 
 @pytest.fixture
@@ -131,6 +160,29 @@ class TestGetURIForDirectory:
         hex_hash = uri.split("_")[-1][: -len(".zip")]
         assert len(hex_hash) == 16
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Unix sockets not available on windows",
+    )
+    def test_unopenable_files_skipped(self, random_dir, short_path_dir):
+        """Test that unopenable files can be present in the working_dir.
+
+        Some files such as `.sock` files are unopenable. This test ensures that
+        we skip those files when generating the content hash. Previously this
+        would raise an exception, see #25411.
+        """
+
+        # Create a socket file.
+        sock = socket.socket(socket.AF_UNIX)
+        sock.bind(str(short_path_dir / "test_socket"))
+
+        # Check that opening the socket raises an exception.
+        with pytest.raises(OSError):
+            (short_path_dir / "test_socket").open()
+
+        # Check that the hash can still be generated without errors.
+        get_uri_for_directory(short_path_dir)
+
 
 class TestUploadPackageIfNeeded:
     def test_create_upload_once(self, tmp_path, random_dir, ray_start_regular):
@@ -148,6 +200,53 @@ class TestUploadPackageIfNeeded:
         assert not _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
         uploaded = upload_package_if_needed(uri, tmp_path, random_dir)
         assert uploaded
+
+
+class TestStorePackageInGcs:
+    class DisconnectedClient(GcsClient):
+        """Mock GcsClient that fails cannot put in the GCS."""
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def internal_kv_put(self, *args, **kwargs):
+            raise RuntimeError("Cannot reach GCS!")
+
+    def raise_runtime_error(self, *args, **kwargs):
+        raise RuntimeError("Raised a runtime error!")
+
+    def test_upload_succeeds(self, ray_start_regular):
+        """Check function behavior when upload succeeds."""
+
+        uri = "gcs://test.zip"
+        bytes = b"test"
+
+        assert len(bytes) < GCS_STORAGE_MAX_SIZE
+        assert not _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
+        assert _store_package_in_gcs(uri, bytes) == len(bytes)
+        assert bytes == _internal_kv_get(uri, namespace=KV_NAMESPACE_PACKAGE)
+
+    def test_upload_fails(self):
+        """Check that function throws useful error when upload fails."""
+
+        uri = "gcs://test.zip"
+        bytes = b"test"
+
+        assert len(bytes) < GCS_STORAGE_MAX_SIZE
+
+        _internal_kv_reset()
+        _initialize_internal_kv(self.DisconnectedClient())
+        with pytest.raises(RuntimeError, match="Failed to store package in the GCS"):
+            _store_package_in_gcs(uri, bytes)
+
+    def test_package_size_too_large(self):
+        """Check that function throws useful error when package is too large."""
+
+        uri = "gcs://test.zip"
+        bytes = b"a" * (GCS_STORAGE_MAX_SIZE + 1)
+
+        with pytest.raises(ValueError, match="Package size"):
+            _store_package_in_gcs(uri, bytes)
 
 
 class TestGetTopLevelDirFromCompressedPackage:
@@ -351,6 +450,23 @@ def test_parsing(parsing_tuple):
     assert package_name == parsed_package_name
 
 
+def test_is_whl_uri():
+    assert is_whl_uri("gcs://my-package.whl")
+    assert not is_whl_uri("gcs://asdf.zip")
+    assert not is_whl_uri("invalid_format")
+
+
+def test_is_zip_uri():
+    assert is_zip_uri("s3://my-package.zip")
+    assert is_zip_uri("gcs://asdf.zip")
+    assert not is_zip_uri("invalid_format")
+    assert not is_zip_uri("gcs://a.whl")
+
+
+def test_get_uri_for_package():
+    assert get_uri_for_package(Path("/tmp/my-pkg.whl")) == "gcs://my-pkg.whl"
+
+
 def test_get_local_dir_from_uri():
     uri = "gcs://<working_dir_content_hash>.zip"
     assert get_local_dir_from_uri(uri, "base_dir") == Path(
@@ -359,4 +475,7 @@ def test_get_local_dir_from_uri():
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

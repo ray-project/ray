@@ -24,33 +24,39 @@ def StandardMetricsReporting(
     """Operator to periodically collect and report metrics.
 
     Args:
-        train_op (LocalIterator): Operator for executing training steps.
+        train_op: Operator for executing training steps.
             We ignore the output values.
-        workers (WorkerSet): Rollout workers to collect metrics from.
-        config (dict): Trainer configuration, used to determine the frequency
+        workers: Rollout workers to collect metrics from.
+        config: Algorithm configuration, used to determine the frequency
             of stats reporting.
-        selected_workers (list): Override the list of remote workers
+        selected_workers: Override the list of remote workers
             to collect metrics from.
-        by_steps_trained (bool): If True, uses the `STEPS_TRAINED_COUNTER`
+        by_steps_trained: If True, uses the `STEPS_TRAINED_COUNTER`
             instead of the `STEPS_SAMPLED_COUNTER` in metrics.
 
     Returns:
         LocalIterator[dict]: A local iterator over training results.
 
     Examples:
-        >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
-        >>> metrics_op = StandardMetricsReporting(train_op, workers, config)
-        >>> next(metrics_op)
+        >>> from ray.rllib.execution import ParallelRollouts, TrainOneStep
+        >>> train_op = ParallelRollouts(...) # doctest: +SKIP
+        ...     .for_each(TrainOneStep(...))
+        >>> metrics_op = StandardMetricsReporting( # doctest: +SKIP
+        ...     train_op, workers, config)
+        >>> next(metrics_op) # doctest: +SKIP
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
     output_op = (
         train_op.filter(
             OncePerTimestepsElapsed(
-                config["timesteps_per_iteration"], by_steps_trained=by_steps_trained
+                config["min_train_timesteps_per_iteration"] or 0
+                if by_steps_trained
+                else config["min_sample_timesteps_per_iteration"] or 0,
+                by_steps_trained=by_steps_trained,
             )
         )
-        .filter(OncePerTimeInterval(config["min_time_s_per_reporting"]))
+        .filter(OncePerTimeInterval(config["min_time_s_per_iteration"]))
         .for_each(
             CollectMetrics(
                 workers,
@@ -76,8 +82,10 @@ class CollectMetrics:
     API, consider using StandardMetricsReporting instead.
 
     Examples:
-        >>> output_op = train_op.for_each(CollectMetrics(workers))
-        >>> print(next(output_op))
+        >>> from ray.rllib.execution.metric_ops import CollectMetrics
+        >>> train_op, workers = ... # doctest: +SKIP
+        >>> output_op = train_op.for_each(CollectMetrics(workers)) # doctest: +SKIP
+        >>> print(next(output_op)) # doctest: +SKIP
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
@@ -164,10 +172,13 @@ class OncePerTimeInterval:
     StandardMetricsReporting instead.
 
     Examples:
-        >>> throttled_op = train_op.filter(OncePerTimeInterval(5))
-        >>> start = time.time()
-        >>> next(throttled_op)
-        >>> print(time.time() - start)
+        >>> import time
+        >>> from ray.rllib.execution.metric_ops import OncePerTimeInterval
+        >>> train_op = ... # doctest: +SKIP
+        >>> throttled_op = train_op.filter(OncePerTimeInterval(5)) # doctest: +SKIP
+        >>> start = time.time() # doctest: +SKIP
+        >>> next(throttled_op) # doctest: +SKIP
+        >>> print(time.time() - start) # doctest: +SKIP
         5.00001  # will be greater than 5 seconds
     """
 
@@ -196,17 +207,20 @@ class OncePerTimestepsElapsed:
     StandardMetricsReporting instead.
 
     Examples:
-        >>> throttled_op = train_op.filter(OncePerTimestepsElapsed(1000))
-        >>> next(throttled_op)
+        >>> from ray.rllib.execution.metric_ops import OncePerTimestepsElapsed
+        >>> train_op = ... # doctest: +SKIP
+        >>> throttled_op = train_op.filter( # doctest: +SKIP
+        ...     OncePerTimestepsElapsed(1000))
+        >>> next(throttled_op) # doctest: +SKIP
         # will only return after 1000 steps have elapsed
     """
 
     def __init__(self, delay_steps: int, by_steps_trained: bool = False):
         """
         Args:
-            delay_steps (int): The number of steps (sampled or trained) every
+            delay_steps: The number of steps (sampled or trained) every
                 which this op returns True.
-            by_steps_trained (bool): If True, uses the `STEPS_TRAINED_COUNTER`
+            by_steps_trained: If True, uses the `STEPS_TRAINED_COUNTER`
                 instead of the `STEPS_SAMPLED_COUNTER` in metrics.
         """
         self.delay_steps = delay_steps

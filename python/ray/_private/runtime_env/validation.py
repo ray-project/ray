@@ -73,14 +73,15 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     """
     assert conda is not None
 
-    result = None
     if sys.platform == "win32":
-        raise NotImplementedError(
-            "The 'conda' field in runtime_env "
-            "is not currently supported on "
-            "Windows."
+        logger.warning(
+            "runtime environment support is experimental on Windows. "
+            "If you run into issues please file a report at "
+            "https://github.com/ray-project/ray/issues."
         )
-    elif isinstance(conda, str):
+
+    result = None
+    if isinstance(conda, str):
         yaml_file = Path(conda)
         if yaml_file.suffix in (".yaml", ".yml"):
             if not yaml_file.is_file():
@@ -102,13 +103,21 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
-def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
+def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     """Parses and validates a user-provided 'pip' option.
 
     The value of the input 'pip' field can be one of two cases:
         1) A List[str] describing the requirements. This is passed through.
         2) A string pointing to a local requirements file. In this case, the
            file contents will be read split into a list.
+        3) A python dictionary that has three fields:
+            a) packages (required, List[str]): a list of pip packages, it same as 1).
+            b) pip_check (optional, bool): whether to enable pip check at the end of pip
+               install, default to False.
+            c) pip_version (optional, str): the version of pip, ray will spell
+               the package name 'pip' in front of the `pip_version` to form the final
+               requirement string, the syntax of a requirement specifier is defined in
+               full in PEP 508.
 
     The returned parsed value will be a list of pip packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
@@ -116,21 +125,57 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """
     assert pip is not None
 
-    pip_list = None
+    def _handle_local_pip_requirement_file(pip_file: str):
+        pip_path = Path(pip_file)
+        if not pip_path.is_file():
+            raise ValueError(f"{pip_path} is not a valid file")
+        return pip_path.read_text().strip().split("\n")
+
+    result = None
     if sys.platform == "win32":
-        raise NotImplementedError(
-            "The 'pip' field in runtime_env "
-            "is not currently supported on "
-            "Windows."
+        logger.warning(
+            "runtime environment support is experimental on Windows. "
+            "If you run into issues please file a report at "
+            "https://github.com/ray-project/ray/issues."
         )
-    elif isinstance(pip, str):
+    if isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
-        pip_file = Path(pip)
-        if not pip_file.is_file():
-            raise ValueError(f"{pip_file} is not a valid file")
-        pip_list = pip_file.read_text().strip().split("\n")
+        pip_list = _handle_local_pip_requirement_file(pip)
+        result = dict(packages=pip_list, pip_check=False)
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
-        pip_list = pip
+        result = dict(packages=pip, pip_check=False)
+    elif isinstance(pip, dict):
+        if set(pip.keys()) - {"packages", "pip_check", "pip_version"}:
+            raise ValueError(
+                "runtime_env['pip'] can only have these fields: "
+                "packages, pip_check and pip_check, but got: "
+                f"{list(pip.keys())}"
+            )
+
+        if "pip_check" in pip and not isinstance(pip["pip_check"], bool):
+            raise TypeError(
+                "runtime_env['pip']['pip_check'] must be of type bool, "
+                f"got {type(pip['pip_check'])}"
+            )
+        if "pip_version" in pip:
+            if not isinstance(pip["pip_version"], str):
+                raise TypeError(
+                    "runtime_env['pip']['pip_version'] must be of type str, "
+                    f"got {type(pip['pip_version'])}"
+                )
+        result = pip.copy()
+        result["pip_check"] = pip.get("pip_check", False)
+        if "packages" not in pip:
+            raise ValueError(
+                f"runtime_env['pip'] must include field 'packages', but got {pip}"
+            )
+        elif isinstance(pip["packages"], str):
+            result["packages"] = _handle_local_pip_requirement_file(pip["packages"])
+        elif not isinstance(pip["packages"], list):
+            raise ValueError(
+                "runtime_env['pip']['packages'] must be of type str of list, "
+                f"got: {type(pip['packages'])}"
+            )
     else:
         raise TypeError(
             "runtime_env['pip'] must be of type str or " f"List[str], got {type(pip)}"
@@ -140,9 +185,9 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     # OrderedDict to preserve the order of the list.  This makes the output
     # deterministic and easier to debug, because pip install can have
     # different behavior depending on the order of the input.
-    result = list(OrderedDict.fromkeys(pip_list))
+    result["packages"] = list(OrderedDict.fromkeys(result["packages"]))
 
-    if len(result) == 0:
+    if len(result["packages"]) == 0:
         result = None
 
     logger.debug(f"Rewrote runtime_env `pip` field from {pip} to {result}.")
@@ -197,16 +242,9 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, 
             isinstance(k, str) and isinstance(v, str) for (k, v) in env_vars.items()
         )
     ):
-        raise TypeError("runtime_env['env_vars'] must be of type " "Dict[str, str]")
+        raise TypeError("runtime_env['env_vars'] must be of type Dict[str, str]")
 
     return env_vars
-
-
-def parse_and_validate_eager_install(eager_install: bool) -> bool:
-    assert eager_install is not None
-    if not isinstance(eager_install, bool):
-        raise TypeError(f"eager_install must be a boolean. got {type(eager_install)}")
-    return eager_install
 
 
 # Dictionary mapping runtime_env options with the function to parse and
@@ -219,5 +257,4 @@ OPTION_TO_VALIDATION_FN = {
     "pip": parse_and_validate_pip,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
-    "eager_install": parse_and_validate_eager_install,
 }

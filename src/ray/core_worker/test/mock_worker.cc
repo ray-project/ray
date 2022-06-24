@@ -51,7 +51,6 @@ class MockWorker {
     options.raylet_ip_address = "127.0.0.1";
     options.task_execution_callback =
         std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9);
-    options.num_workers = 1;
     options.metrics_agent_port = -1;
     options.startup_token = startup_token;
     CoreWorkerProcess::Initialize(options);
@@ -150,7 +149,7 @@ class MockWorker {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc >= 4);
+  RAY_CHECK(argc >= 5);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));
@@ -158,7 +157,7 @@ int main(int argc, char **argv) {
   auto start = startup_token_str.find(std::string("=")) + 1;
   auto startup_token = std::stoi(startup_token_str.substr(start));
 
-  ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
+  ray::gcs::GcsClientOptions gcs_options("127.0.0.1:6379");
   ray::core::MockWorker worker(
       store_socket, raylet_socket, node_manager_port, gcs_options, startup_token);
   worker.RunTaskExecutionLoop();

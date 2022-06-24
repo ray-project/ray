@@ -1,23 +1,26 @@
 import os
+import time
+
 import pytest
+
+import ray
+import ray._private.gcs_utils as gcs_utils
+import ray._private.ray_constants
+from ray._private.test_utils import (
+    convert_actor_state,
+    make_global_state_accessor,
+    wait_for_condition,
+)
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import time
-
-import ray
-import ray.ray_constants
-import ray._private.gcs_utils as gcs_utils
-from ray._private.test_utils import (
-    wait_for_condition,
-    convert_actor_state,
-    make_global_state_accessor,
-)
 
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
+
+
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.",
@@ -96,15 +99,15 @@ def test_global_state_actor_table(ray_start_regular):
             return os.getpid()
 
     # actor table should be empty at first
-    assert len(ray.state.actors()) == 0
+    assert len(ray._private.state.actors()) == 0
 
     # actor table should contain only one entry
     def get_actor_table_data(field):
-        return list(ray.state.actors().values())[0][field]
+        return list(ray._private.state.actors().values())[0][field]
 
     a = Actor.remote()
     pid = ray.get(a.ready.remote())
-    assert len(ray.state.actors()) == 1
+    assert len(ray._private.state.actors()) == 1
     assert get_actor_table_data("Pid") == pid
 
     # actor table should contain only this entry
@@ -123,7 +126,7 @@ def test_global_state_actor_table(ray_start_regular):
 def test_global_state_worker_table(ray_start_regular):
 
     # Get worker table from gcs.
-    workers_data = ray.state.workers()
+    workers_data = ray._private.state.workers()
 
     assert len(workers_data) == 1
 
@@ -135,23 +138,69 @@ def test_global_state_actor_entry(ray_start_regular):
             pass
 
     # actor table should be empty at first
-    assert len(ray.state.actors()) == 0
+    assert len(ray._private.state.actors()) == 0
 
     a = Actor.remote()
     b = Actor.remote()
     ray.get(a.ready.remote())
     ray.get(b.ready.remote())
-    assert len(ray.state.actors()) == 2
+    assert len(ray._private.state.actors()) == 2
     a_actor_id = a._actor_id.hex()
     b_actor_id = b._actor_id.hex()
-    assert ray.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
-    assert ray.state.actors(actor_id=a_actor_id)["State"] == convert_actor_state(
-        gcs_utils.ActorTableData.ALIVE
-    )
-    assert ray.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
-    assert ray.state.actors(actor_id=b_actor_id)["State"] == convert_actor_state(
-        gcs_utils.ActorTableData.ALIVE
-    )
+    assert ray._private.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
+    assert ray._private.state.actors(actor_id=a_actor_id)[
+        "State"
+    ] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
+    assert ray._private.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
+    assert ray._private.state.actors(actor_id=b_actor_id)[
+        "State"
+    ] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
+
+
+def test_node_name_cluster(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(node_name="head_node", include_dashboard=False)
+    head_context = ray.init(address=cluster.address, include_dashboard=False)
+    cluster.add_node(node_name="worker_node", include_dashboard=False)
+    cluster.wait_for_nodes()
+
+    global_state_accessor = make_global_state_accessor(head_context)
+    node_table = global_state_accessor.get_node_table()
+    assert len(node_table) == 2
+    for node_data in node_table:
+        node = gcs_utils.GcsNodeInfo.FromString(node_data)
+        if (
+            ray._private.utils.binary_to_hex(node.node_id)
+            == head_context.address_info["node_id"]
+        ):
+            assert node.node_name == "head_node"
+        else:
+            assert node.node_name == "worker_node"
+
+    global_state_accessor.disconnect()
+    ray.shutdown()
+    cluster.shutdown()
+
+
+def test_node_name_init():
+    # Test ray.init with _node_name directly
+    new_head_context = ray.init(_node_name="new_head_node", include_dashboard=False)
+
+    global_state_accessor = make_global_state_accessor(new_head_context)
+    node_data = global_state_accessor.get_node_table()[0]
+    node = gcs_utils.GcsNodeInfo.FromString(node_data)
+    assert node.node_name == "new_head_node"
+    ray.shutdown()
+
+
+def test_no_node_name():
+    # Test that starting ray with no node name will result in a node_name=ip_address
+    new_head_context = ray.init(include_dashboard=False)
+    global_state_accessor = make_global_state_accessor(new_head_context)
+    node_data = global_state_accessor.get_node_table()[0]
+    node = gcs_utils.GcsNodeInfo.FromString(node_data)
+    assert node.node_name == ray.util.get_node_ip_address()
+    ray.shutdown()
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])
@@ -348,13 +397,15 @@ def test_heartbeat_ip(shutdown_only):
 
 
 def test_next_job_id(ray_start_regular):
-    job_id_1 = ray.state.next_job_id()
-    job_id_2 = ray.state.next_job_id()
+    job_id_1 = ray._private.state.next_job_id()
+    job_id_2 = ray._private.state.next_job_id()
     assert job_id_1.int() + 1 == job_id_2.int()
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

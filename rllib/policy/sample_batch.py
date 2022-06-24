@@ -11,7 +11,13 @@ from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import concat_aligned
-from ray.rllib.utils.typing import PolicyID, TensorType, ViewRequirementsDict
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import (
+    PolicyID,
+    TensorType,
+    SampleBatchType,
+    ViewRequirementsDict,
+)
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -138,13 +144,12 @@ class SampleBatch(dict):
             # value that is actually a ndarray/tensor. This would fail if
             # all values are nested dicts/tuples of more complex underlying
             # structures.
-            len_ = (
-                len(v)
-                if isinstance(v, (list, np.ndarray)) or (torch and torch.is_tensor(v))
-                else None
-            )
-            if len_:
-                lengths.append(len_)
+            try:
+                len_ = len(v) if not isinstance(v, (dict, tuple)) else None
+                if len_:
+                    lengths.append(len_)
+            except Exception:
+                pass
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None
@@ -184,87 +189,11 @@ class SampleBatch(dict):
 
     @staticmethod
     @PublicAPI
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
     def concat_samples(
         samples: Union[List["SampleBatch"], List["MultiAgentBatch"]],
     ) -> Union["SampleBatch", "MultiAgentBatch"]:
-        """Concatenates n SampleBatches or MultiAgentBatches.
-
-        Args:
-            samples: List of SampleBatches or MultiAgentBatches to be
-                concatenated.
-
-        Returns:
-            A new (concatenated) SampleBatch or MultiAgentBatch.
-
-        Examples:
-            >>> b1 = SampleBatch({"a": np.array([1, 2]),
-            ...                   "b": np.array([10, 11])})
-            >>> b2 = SampleBatch({"a": np.array([3]),
-            ...                   "b": np.array([12])})
-            >>> print(SampleBatch.concat_samples([b1, b2]))
-            {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
-        """
-        if any(isinstance(s, MultiAgentBatch) for s in samples):
-            return MultiAgentBatch.concat_samples(samples)
-        concatd_seq_lens = []
-        concat_samples = []
-        zero_padded = samples[0].zero_padded
-        max_seq_len = samples[0].max_seq_len
-        time_major = samples[0].time_major
-        for s in samples:
-            if s.count > 0:
-                assert s.zero_padded == zero_padded
-                assert s.time_major == time_major
-                if (
-                    s.max_seq_len is None or max_seq_len is None
-                ) and s.max_seq_len != max_seq_len:
-                    raise ValueError(
-                        "Samples must consistently provide or omit max_seq_len"
-                    )
-                if zero_padded:
-                    assert s.max_seq_len == max_seq_len
-                if max_seq_len is not None:
-                    max_seq_len = max(max_seq_len, s.max_seq_len)
-                concat_samples.append(s)
-                if s.get(SampleBatch.SEQ_LENS) is not None:
-                    concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
-
-        # If we don't have any samples (0 or only empty SampleBatches),
-        # return an empty SampleBatch here.
-        if len(concat_samples) == 0:
-            return SampleBatch()
-
-        # Collect the concat'd data.
-        concatd_data = {}
-
-        def concat_key(*values):
-            return concat_aligned(values, time_major)
-
-        try:
-            for k in concat_samples[0].keys():
-                if k == "infos":
-                    concatd_data[k] = concat_aligned(
-                        [s[k] for s in concat_samples], time_major=time_major
-                    )
-                else:
-                    concatd_data[k] = tree.map_structure(
-                        concat_key, *[c[k] for c in concat_samples]
-                    )
-        except Exception:
-            raise ValueError(
-                f"Cannot concat data under key '{k}', b/c "
-                "sub-structures under that key don't match. "
-                f"`samples`={samples}"
-            )
-
-        # Return a new (concat'd) SampleBatch.
-        return SampleBatch(
-            concatd_data,
-            seq_lens=concatd_seq_lens,
-            _time_major=time_major,
-            _zero_padded=zero_padded,
-            _max_seq_len=max_seq_len,
-        )
+        return concat_samples(samples)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -277,9 +206,11 @@ class SampleBatch(dict):
             The new SampleBatch, resulting from concating `other` to `self`.
 
         Examples:
-            >>> b1 = SampleBatch({"a": np.array([1, 2])})
-            >>> b2 = SampleBatch({"a": np.array([3, 4, 5])})
-            >>> print(b1.concat(b2))
+            >>> import numpy as np
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> b1 = SampleBatch({"a": np.array([1, 2])}) # doctest: +SKIP
+            >>> b2 = SampleBatch({"a": np.array([3, 4, 5])}) # doctest: +SKIP
+            >>> print(b1.concat(b2)) # doctest: +SKIP
             {"a": np.array([1, 2, 3, 4, 5])}
         """
         return self.concat_samples([self, other])
@@ -318,13 +249,14 @@ class SampleBatch(dict):
             The column values of the row in this iteration.
 
         Examples:
-            >>> batch = SampleBatch({
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({ # doctest: +SKIP
             ...    "a": [1, 2, 3],
             ...    "b": [4, 5, 6],
             ...    "seq_lens": [1, 2]
             ... })
-            >>> for row in batch.rows():
-                   print(row)
+            >>> for row in batch.rows(): # doctest: +SKIP
+            ...    print(row) # doctest: +SKIP
             {"a": 1, "b": 4, "seq_lens": 1}
             {"a": 2, "b": 5, "seq_lens": 1}
             {"a": 3, "b": 6, "seq_lens": 1}
@@ -352,8 +284,9 @@ class SampleBatch(dict):
             names in `keys`.
 
         Examples:
-            >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
-            >>> print(batch.columns(["a", "b"]))
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]}) # doctest: +SKIP
+            >>> print(batch.columns(["a", "b"])) # doctest: +SKIP
             [[1], [2]]
         """
 
@@ -374,8 +307,9 @@ class SampleBatch(dict):
             ValueError: If self[SampleBatch.SEQ_LENS] is defined.
 
         Examples:
-            >>> batch = SampleBatch({"a": [1, 2, 3, 4]})
-            >>> print(batch.shuffle())
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({"a": [1, 2, 3, 4]})  # doctest: +SKIP
+            >>> print(batch.shuffle()) # doctest: +SKIP
             {"a": [4, 1, 3, 2]}
         """
 
@@ -395,7 +329,9 @@ class SampleBatch(dict):
         self_as_dict = {k: v for k, v in self.items()}
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
         self.update(shuffled)
-
+        # Flush cache such that intercepted values are recalculated after the
+        # shuffling.
+        self.intercepted_values = {}
         return self
 
     @PublicAPI
@@ -409,8 +345,10 @@ class SampleBatch(dict):
             KeyError: If the `eps_id` AND `dones` columns are not present.
 
         Examples:
-            >>> batch = SampleBatch({"a": [1, 2, 3], "eps_id": [0, 0, 1]})
-            >>> print(batch.split_by_episode())
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
+            >>> print(batch.split_by_episode()) # doctest: +SKIP
             [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
         """
 
@@ -614,14 +552,16 @@ class SampleBatch(dict):
             ValueError: If self[SampleBatch.SEQ_LENS] is None (not defined).
 
         Examples:
-            >>> batch = SampleBatch({"a": [1, 2, 3], "seq_lens": [1, 2]})
-            >>> print(batch.right_zero_pad(max_seq_len=4))
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3], "seq_lens": [1, 2]})
+            >>> print(batch.right_zero_pad(max_seq_len=4)) # doctest: +SKIP
             {"a": [1, 0, 0, 0, 2, 3, 0, 0], "seq_lens": [1, 2]}
 
-            >>> batch = SampleBatch({"a": [1, 2, 3],
+            >>> batch = SampleBatch({"a": [1, 2, 3], # doctest: +SKIP
             ...                      "state_in_0": [1.0, 3.0],
             ...                      "seq_lens": [1, 2]})
-            >>> print(batch.right_zero_pad(max_seq_len=5))
+            >>> print(batch.right_zero_pad(max_seq_len=5)) # doctest: +SKIP
             {"a": [1, 0, 0, 0, 0, 2, 3, 0, 0, 0],
              "state_in_0": [1.0, 3.0],  # <- all state-ins remain as-is
              "seq_lens": [1, 2]}
@@ -630,7 +570,7 @@ class SampleBatch(dict):
         if seq_lens is None:
             raise ValueError(
                 "Cannot right-zero-pad SampleBatch if no `seq_lens` field "
-                "present! SampleBatch={self}"
+                f"present! SampleBatch={self}"
             )
 
         length = len(seq_lens) * max_seq_len
@@ -678,7 +618,7 @@ class SampleBatch(dict):
             assert torch is not None
             for k, v in self.items():
                 if isinstance(v, np.ndarray) and v.dtype != object:
-                    self[k] = torch.from_numpy(v).to(device)
+                    self[k] = convert_to_torch_tensor(v, device)
         else:
             raise NotImplementedError
         return self
@@ -913,26 +853,30 @@ class SampleBatch(dict):
             # Build our slice-map, if not done already.
             if not self._slice_map:
                 sum_ = 0
-                for i, l in enumerate(self[SampleBatch.SEQ_LENS]):
-                    for _ in range(l):
-                        self._slice_map.append((i, sum_))
-                    sum_ += l
+                for i, l in enumerate(map(int, self[SampleBatch.SEQ_LENS])):
+                    self._slice_map.extend([(i, sum_)] * l)
+                    sum_ = sum_ + l
                 # In case `stop` points to the very end (lengths of this
                 # batch), return the last sequence (the -1 here makes sure we
                 # never go beyond it; would result in an index error below).
                 self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
 
-            start_seq_len, start = self._slice_map[start]
-            stop_seq_len, stop = self._slice_map[stop]
+            start_seq_len, start_unpadded = self._slice_map[start]
+            stop_seq_len, stop_unpadded = self._slice_map[stop]
+            start_padded = start_unpadded
+            stop_padded = stop_unpadded
             if self.zero_padded:
-                start = start_seq_len * self.max_seq_len
-                stop = stop_seq_len * self.max_seq_len
+                start_padded = start_seq_len * self.max_seq_len
+                stop_padded = stop_seq_len * self.max_seq_len
 
             def map_(path, value):
                 if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
                     "state_in_"
                 ):
-                    return value[start:stop]
+                    if path[0] != SampleBatch.INFOS:
+                        return value[start_padded:stop_padded]
+                    else:
+                        return value[start_unpadded:stop_unpadded]
                 else:
                     return value[start_seq_len:stop_seq_len]
 
@@ -1087,7 +1031,7 @@ class MultiAgentBatch:
     Attributes:
         policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
             ids to SampleBatches of experiences.
-        count (int): The number of env steps in this batch.
+        count: The number of env steps in this batch.
     """
 
     @PublicAPI
@@ -1207,6 +1151,7 @@ class MultiAgentBatch:
         policy_batches: Dict[PolicyID, SampleBatch], env_steps: int
     ) -> Union[SampleBatch, "MultiAgentBatch"]:
         """Returns SampleBatch or MultiAgentBatch, depending on given policies.
+        If policy_batches is empty (i.e. {}) it returns an empty MultiAgentBatch.
 
         Args:
             policy_batches: Mapping from policy ids to SampleBatch.
@@ -1222,35 +1167,9 @@ class MultiAgentBatch:
 
     @staticmethod
     @PublicAPI
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
     def concat_samples(samples: List["MultiAgentBatch"]) -> "MultiAgentBatch":
-        """Concatenates a list of MultiAgentBatches into a new MultiAgentBatch.
-
-        Args:
-            samples: List of MultiagentBatch objects to concatenate.
-
-        Returns:
-            A new MultiAgentBatch consisting of the concatenated inputs.
-        """
-        policy_batches = collections.defaultdict(list)
-        env_steps = 0
-        for s in samples:
-            # Some batches in `samples` are not MultiAgentBatch.
-            if not isinstance(s, MultiAgentBatch):
-                # If empty SampleBatch: ok (just ignore).
-                if isinstance(s, SampleBatch) and len(s) <= 0:
-                    continue
-                # Otherwise: Error.
-                raise ValueError(
-                    "`MultiAgentBatch.concat_samples()` can only concat "
-                    "MultiAgentBatch types, not {}!".format(type(s).__name__)
-                )
-            for key, batch in s.policy_batches.items():
-                policy_batches[key].append(batch)
-            env_steps += s.env_steps()
-        out = {}
-        for key, batches in policy_batches.items():
-            out[key] = SampleBatch.concat_samples(batches)
-        return MultiAgentBatch(out, env_steps)
+        return concat_samples_into_ma_batch(samples)
 
     @PublicAPI
     def copy(self) -> "MultiAgentBatch":
@@ -1320,3 +1239,178 @@ class MultiAgentBatch:
         return "MultiAgentBatch({}, env_steps={})".format(
             str(self.policy_batches), self.count
         )
+
+
+@PublicAPI
+def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
+    """Concatenates a list of  SampleBatches or MultiAgentBatches.
+
+    If all items in the list are or SampleBatch typ4, the output will be
+    a SampleBatch type. Otherwise, the output will be a MultiAgentBatch type.
+    If input is a mixture of SampleBatch and MultiAgentBatch types, it will treat
+    SampleBatch objects as MultiAgentBatch types with 'default_policy' key and
+    concatenate it with th rest of MultiAgentBatch objects.
+    Empty samples are simply ignored.
+
+    Args:
+        samples: List of SampleBatches or MultiAgentBatches to be
+            concatenated.
+
+    Returns:
+        A new (concatenated) SampleBatch or MultiAgentBatch.
+
+    Examples:
+        >>> import numpy as np
+        >>> from ray.rllib.policy.sample_batch import SampleBatch
+        >>> b1 = SampleBatch({"a": np.array([1, 2]), # doctest: +SKIP
+        ...                   "b": np.array([10, 11])})
+        >>> b2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
+        ...                   "b": np.array([12])})
+        >>> print(concat_samples([b1, b2])) # doctest: +SKIP
+        {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
+
+        >>> c1 = MultiAgentBatch({'default_policy': { # doctest: +SKIP
+        ...                                 "a": np.array([1, 2]),
+        ...                                 "b": np.array([10, 11])
+        ...                                 }}, env_steps=2)
+        >>> c2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
+        ...                   "b": np.array([12])})
+        >>> print(concat_samples([b1, b2])) # doctest: +SKIP
+        MultiAgentBatch = {'default_policy': {"a": np.array([1, 2, 3]),
+                                              "b": np.array([10, 11, 12])}}
+    """
+
+    if any([isinstance(s, MultiAgentBatch) for s in samples]):
+        return concat_samples_into_ma_batch(samples)
+
+    # the output is a SampleBatch type
+    concatd_seq_lens = []
+    concated_samples = []
+    # Make sure these settings are consistent amongst all batches.
+    zero_padded = max_seq_len = time_major = None
+    for s in samples:
+        if s.count > 0:
+            if max_seq_len is None:
+                zero_padded = s.zero_padded
+                max_seq_len = s.max_seq_len
+                time_major = s.time_major
+
+            # Make sure these settings are consistent amongst all batches.
+            if s.zero_padded != zero_padded or s.time_major != time_major:
+                raise ValueError(
+                    "All SampleBatches' `zero_padded` and `time_major` settings "
+                    "must be consistent!"
+                )
+            if (
+                s.max_seq_len is None or max_seq_len is None
+            ) and s.max_seq_len != max_seq_len:
+                raise ValueError(
+                    "Samples must consistently either provide or omit " "`max_seq_len`!"
+                )
+            elif zero_padded and s.max_seq_len != max_seq_len:
+                raise ValueError(
+                    "For `zero_padded` SampleBatches, the values of `max_seq_len` "
+                    "must be consistent!"
+                )
+
+            if max_seq_len is not None:
+                max_seq_len = max(max_seq_len, s.max_seq_len)
+            concated_samples.append(s)
+            if s.get(SampleBatch.SEQ_LENS) is not None:
+                concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
+
+    # If we don't have any samples (0 or only empty SampleBatches),
+    # return an empty SampleBatch here.
+    if len(concated_samples) == 0:
+        return SampleBatch()
+
+    # Collect the concat'd data.
+    concatd_data = {}
+
+    for k in concated_samples[0].keys():
+        try:
+            if k == "infos":
+                concatd_data[k] = concat_aligned(
+                    [s[k] for s in concated_samples], time_major=time_major
+                )
+            else:
+                concatd_data[k] = tree.map_structure(
+                    _concat_key, *[c[k] for c in concated_samples]
+                )
+        except Exception:
+            raise ValueError(
+                f"Cannot concat data under key '{k}', b/c "
+                "sub-structures under that key don't match. "
+                f"`samples`={samples}"
+            )
+
+    # Return a new (concat'd) SampleBatch.
+    return SampleBatch(
+        concatd_data,
+        seq_lens=concatd_seq_lens,
+        _time_major=time_major,
+        _zero_padded=zero_padded,
+        _max_seq_len=max_seq_len,
+    )
+
+
+@PublicAPI
+def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentBatch":
+    """Concatenates a list of SampleBatchTypes to a single MultiAgentBatch type.
+
+    This function, as opposed to concat_samples() forces the output to always be
+    MultiAgentBatch which is more generic than SampleBatch.
+
+    Args:
+        samples: List of SampleBatches or MultiAgentBatches to be
+            concatenated.
+
+    Returns:
+        A new (concatenated) MultiAgentBatch.
+
+    Examples:
+        >>> import numpy as np
+        >>> from ray.rllib.policy.sample_batch import SampleBatch
+        >>> b1 = MultiAgentBatch({'default_policy': { # doctest: +SKIP
+        ...                                 "a": np.array([1, 2]),
+        ...                                 "b": np.array([10, 11])
+        ...                                 }}, env_steps=2)
+        >>> b2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
+        ...                   "b": np.array([12])})
+        >>> print(concat_samples([b1, b2])) # doctest: +SKIP
+        MultiAgentBatch = {'default_policy': {"a": np.array([1, 2, 3]),
+                                              "b": np.array([10, 11, 12])}}
+
+    """
+
+    policy_batches = collections.defaultdict(list)
+    env_steps = 0
+    for s in samples:
+        # Some batches in `samples` may be SampleBatch.
+        if isinstance(s, SampleBatch):
+            # If empty SampleBatch: ok (just ignore).
+            if len(s) <= 0:
+                continue
+            else:
+                # if non-empty: just convert to MA-batch and move forward
+                s = s.as_multi_agent()
+        elif not isinstance(s, MultiAgentBatch):
+            # Otherwise: Error.
+            raise ValueError(
+                "`concat_samples_into_ma_batch` can only concat "
+                "SampleBatch|MultiAgentBatch objects, not {}!".format(type(s).__name__)
+            )
+
+        for key, batch in s.policy_batches.items():
+            policy_batches[key].append(batch)
+        env_steps += s.env_steps()
+
+    out = {}
+    for key, batches in policy_batches.items():
+        out[key] = concat_samples(batches)
+
+    return MultiAgentBatch(out, env_steps)
+
+
+def _concat_key(*values, time_major=None):
+    return concat_aligned(list(values), time_major)

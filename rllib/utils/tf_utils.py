@@ -4,13 +4,13 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     SpaceStruct,
     TensorStructType,
     TensorType,
@@ -22,30 +22,7 @@ if TYPE_CHECKING:
 tf1, tf, tfv = try_import_tf()
 
 
-@Deprecated(new="ray.rllib.utils.numpy.convert_to_numpy()", error=True)
-def convert_to_non_tf_type(x: TensorStructType) -> TensorStructType:
-    """Converts values in `stats` to non-Tensor numpy or python types.
-
-    Args:
-        x: Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all tf (eager) tensors
-            being converted to numpy types.
-
-    Returns:
-        A new struct with the same structure as `x`, but with all
-        values converted to non-tf Tensor types.
-    """
-
-    # The mapping function used to numpyize torch Tensors.
-    def mapping(item):
-        if isinstance(item, (tf.Tensor, tf.Variable)):
-            return item.numpy()
-        else:
-            return item
-
-    return tree.map_structure(mapping, x)
-
-
+@PublicAPI
 def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     """Computes the explained variance for a pair of labels and predictions.
 
@@ -64,6 +41,7 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
+@PublicAPI
 def flatten_inputs_to_1d_tensor(
     inputs: TensorStructType,
     spaces_struct: Optional[SpaceStruct] = None,
@@ -98,23 +76,25 @@ def flatten_inputs_to_1d_tensor(
 
     Examples:
         >>> # B=2
-        >>> out = flatten_inputs_to_1d_tensor(
+        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
+        >>> from gym.spaces import Discrete, Box
+        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
-        ... )
-        >>> print(out)
-        ... [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+        ... ) # doctest: +SKIP
+        >>> print(out) # doctest: +SKIP
+        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
 
         >>> # B=2; T=2
-        >>> out = flatten_inputs_to_1d_tensor(
+        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     ([[1, 0], [0, 1]],
         ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
         ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
         ...     time_axis=True
-        ... )
-        >>> print(out)
-        ... [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
-        ...  [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
+        ... ) # doctest: +SKIP
+        >>> print(out) # doctest: +SKIP
+        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],\
+        [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
 
     flat_inputs = tree.flatten(inputs)
@@ -161,6 +141,7 @@ def flatten_inputs_to_1d_tensor(
     return merged
 
 
+@PublicAPI
 def get_gpu_devices() -> List[str]:
     """Returns a list of GPU device names, e.g. ["/gpu:0", "/gpu:1"].
 
@@ -183,6 +164,7 @@ def get_gpu_devices() -> List[str]:
     return [d.name for d in devices if "GPU" in d.device_type]
 
 
+@PublicAPI
 def get_placeholder(
     *,
     space: Optional[gym.Space] = None,
@@ -241,46 +223,54 @@ def get_placeholder(
         )
 
 
+@PublicAPI
 def get_tf_eager_cls_if_necessary(
-    orig_cls: Type["TFPolicy"], config: PartialTrainerConfigDict
+    orig_cls: Type["TFPolicy"], config: PartialAlgorithmConfigDict
 ) -> Type["TFPolicy"]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
         orig_cls: The original TFPolicy class to get the corresponding tf-eager
             class for.
-        config: The Trainer config dict.
+        config: The Algorithm config dict.
 
     Returns:
         The tf eager policy class corresponding to the given TFPolicy class.
     """
     cls = orig_cls
     framework = config.get("framework", "tf")
-    if framework in ["tf2", "tf", "tfe"]:
-        if not tf1:
-            raise ImportError("Could not import tensorflow!")
-        if framework in ["tf2", "tfe"]:
-            assert tf1.executing_eagerly()
 
-            from ray.rllib.policy.tf_policy import TFPolicy
+    if framework in ["tf2", "tf", "tfe"] and not tf1:
+        raise ImportError("Could not import tensorflow!")
 
-            # Create eager-class.
-            if hasattr(orig_cls, "as_eager"):
-                cls = orig_cls.as_eager()
-                if config.get("eager_tracing"):
-                    cls = cls.with_tracing()
-            # Could be some other type of policy or already
-            # eager-ized.
-            elif not issubclass(orig_cls, TFPolicy):
-                pass
-            else:
-                raise ValueError(
-                    "This policy does not support eager "
-                    "execution: {}".format(orig_cls)
-                )
+    if framework in ["tf2", "tfe"]:
+        assert tf1.executing_eagerly()
+
+        from ray.rllib.policy.tf_policy import TFPolicy
+        from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+        from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+
+        # Create eager-class (if not already one).
+        if hasattr(orig_cls, "as_eager") and not issubclass(orig_cls, EagerTFPolicy):
+            cls = orig_cls.as_eager()
+        # Could be some other type of policy or already
+        # eager-ized.
+        elif not issubclass(orig_cls, TFPolicy):
+            pass
+        else:
+            raise ValueError(
+                "This policy does not support eager " "execution: {}".format(orig_cls)
+            )
+
+        # Now that we know, policy is an eager one, add tracing, if necessary.
+        if config.get("eager_tracing") and issubclass(
+            cls, (EagerTFPolicy, EagerTFPolicyV2)
+        ):
+            cls = cls.with_tracing()
     return cls
 
 
+@PublicAPI
 def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     """Computes the huber loss for a given term and delta parameter.
 
@@ -305,6 +295,7 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     )
 
 
+@PublicAPI
 def make_tf_callable(
     session_or_none: Optional["tf1.Session"], dynamic_shape: bool = False
 ) -> Callable:
@@ -399,6 +390,7 @@ def make_tf_callable(
     return make_wrapper
 
 
+@PublicAPI
 def minimize_and_clip(
     optimizer: LocalOptimizer,
     objective: TensorType,
@@ -439,6 +431,7 @@ def minimize_and_clip(
     ]
 
 
+@PublicAPI
 def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     """Returns a one-hot tensor, given and int tensor and a space.
 
@@ -455,17 +448,19 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         ValueError: If the given space is not a discrete one.
 
     Examples:
+        >>> import gym
+        >>> import tensorflow as tf
+        >>> from ray.rllib.utils.tf_utils import one_hot
         >>> x = tf.Variable([0, 3], dtype=tf.int32)  # batch-dim=2
         >>> # Discrete space with 4 (one-hot) slots per batch item.
         >>> s = gym.spaces.Discrete(4)
-        >>> one_hot(x, s)
+        >>> one_hot(x, s) # doctest: +SKIP
         <tf.Tensor 'one_hot:0' shape=(2, 4) dtype=float32>
-
         >>> x = tf.Variable([[0, 1, 2, 3]], dtype=tf.int32)  # batch-dim=1
         >>> # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
         >>> # per batch item.
         >>> s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
-        >>> one_hot(x, s)
+        >>> one_hot(x, s) # doctest: +SKIP
         <tf.Tensor 'concat:0' shape=(1, 20) dtype=float32>
     """
     if isinstance(space, Discrete):
@@ -482,6 +477,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
+@PublicAPI
 def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorType:
     """Same as tf.reduce_mean() but ignores -inf values.
 
@@ -499,6 +495,7 @@ def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorT
     )
 
 
+@PublicAPI
 def scope_vars(
     scope: Union[str, "tf1.VariableScope"], trainable_only: bool = False
 ) -> List["tf.Variable"]:
@@ -520,6 +517,7 @@ def scope_vars(
     )
 
 
+@PublicAPI
 def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
     """Helper function useful for returning dummy logp's (0) for some actions.
 

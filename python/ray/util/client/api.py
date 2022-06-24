@@ -1,31 +1,30 @@
 """This file defines the interface between the ray client worker
 and the overall ray module API.
 """
-from concurrent.futures import Future
 import json
 import logging
+from concurrent.futures import Future
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
-from ray.util.client.runtime_context import ClientWorkerPropertyAPI
-from typing import Any, Callable, List, Optional, TYPE_CHECKING
+from ray._private import ray_option_utils
+from ray.util.client.runtime_context import _ClientWorkerPropertyAPI
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
-    from ray.remote_function import RemoteFunction
-    from ray.util.client.common import ClientStub
-    from ray.util.client.common import ClientActorHandle
-    from ray.util.client.common import ClientObjectRef
     from ray.core.generated.ray_client_pb2 import DataResponse
+    from ray.remote_function import RemoteFunction
+    from ray.util.client.common import ClientActorHandle, ClientObjectRef, ClientStub
 
 logger = logging.getLogger(__name__)
 
 
-def as_bytes(value):
+def _as_bytes(value):
     if isinstance(value, str):
         return value.encode("utf-8")
     return value
 
 
-class ClientAPI:
+class _ClientAPI:
     """The Client-side methods corresponding to the ray API. Delegates
     to the Client Worker that contains the connection to the ClientServer.
     """
@@ -77,17 +76,9 @@ class ClientAPI:
         if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
             # This is the case where the decorator is just @ray.remote.
             return remote_decorator(options=None)(args[0])
-        error_string = (
-            "The @ray.remote decorator must be applied either "
-            "with no arguments and no parentheses, for example "
-            "'@ray.remote', or it must be applied using some of "
-            "the arguments 'num_returns', 'num_cpus', 'num_gpus', "
-            "'memory', 'object_store_memory', 'resources', "
-            "'max_calls', or 'max_restarts', like "
-            "'@ray.remote(num_returns=2, "
-            'resources={"CustomResource": 1})\'.'
-        )
-        assert len(args) == 0 and len(kwargs) > 0, error_string
+        assert (
+            len(args) == 0 and len(kwargs) > 0
+        ), ray_option_utils.remote_args_error_string
         return remote_decorator(options=kwargs)
 
     # TODO(mwtian): consider adding _internal_ prefix to call_remote /
@@ -183,11 +174,11 @@ class ClientAPI:
         retried (max_retries will not be respected).
 
         Args:
-            object_ref (ObjectRef): ObjectRef returned by the task
+            object_ref: ObjectRef returned by the task
                 that should be canceled.
-            force (boolean): Whether to force-kill a running task by killing
+            force: Whether to force-kill a running task by killing
                 the worker that is running the task.
-            recursive (boolean): Whether to try to cancel tasks submitted by
+            recursive: Whether to try to cancel tasks submitted by
                 the task specified.
         """
         return self.worker.terminate_task(obj, force, recursive)
@@ -227,10 +218,19 @@ class ClientAPI:
         # activates the same logic on the server side; so there's no need to
         # pass anything else. It's inside the class definition that becomes an
         # actor. Similar annotations would follow the same way.
-        assert len(args) == 0
-        assert len(kwargs) == 1
-
-        assert "num_returns" in kwargs or "concurrency_group" in kwargs
+        valid_kwargs = ["num_returns", "concurrency_group"]
+        error_string = (
+            "The @ray.method decorator must be applied using at least one of "
+            f"the arguments in the list {valid_kwargs}, for example "
+            "'@ray.method(num_returns=2)'."
+        )
+        assert len(args) == 0 and len(kwargs) > 0, error_string
+        for key in kwargs:
+            key_error_string = (
+                f'Unexpected keyword argument to @ray.method: "{key}". The '
+                f"supported keyword arguments are {valid_kwargs}"
+            )
+            assert key in valid_kwargs, key_error_string
 
         def annotate_method(method):
             if "num_returns" in kwargs:
@@ -283,7 +283,7 @@ class ClientAPI:
         Returns:
             A RuntimeContext wrapping a client making get_cluster_info calls.
         """
-        return ClientWorkerPropertyAPI(self.worker).build_runtime_context()
+        return _ClientWorkerPropertyAPI(self.worker).build_runtime_context()
 
     # Client process isn't assigned any GPUs.
     def get_gpu_ids(self) -> list:
@@ -291,7 +291,7 @@ class ClientAPI:
 
     def timeline(self, filename: Optional[str] = None) -> Optional[List[Any]]:
         logger.warning(
-            "Timeline will include events from other clients using " "this server."
+            "Timeline will include events from other clients using this server."
         )
         # This should be imported here, otherwise, it will error doc build.
         import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -314,25 +314,29 @@ class ClientAPI:
 
     def _internal_kv_exists(self, key: bytes) -> bool:
         """Hook for internal_kv._internal_kv_exists."""
-        return self.worker.internal_kv_exists(as_bytes(key))
+        return self.worker.internal_kv_exists(_as_bytes(key))
 
     def _internal_kv_get(self, key: bytes) -> bytes:
         """Hook for internal_kv._internal_kv_get."""
-        return self.worker.internal_kv_get(as_bytes(key))
+        return self.worker.internal_kv_get(_as_bytes(key))
 
     def _internal_kv_put(
         self, key: bytes, value: bytes, overwrite: bool = False
     ) -> bool:
         """Hook for internal_kv._internal_kv_put."""
-        return self.worker.internal_kv_put(as_bytes(key), as_bytes(value), overwrite)
+        return self.worker.internal_kv_put(_as_bytes(key), _as_bytes(value), overwrite)
 
     def _internal_kv_del(self, key: bytes) -> None:
         """Hook for internal_kv._internal_kv_del."""
-        return self.worker.internal_kv_del(as_bytes(key))
+        return self.worker.internal_kv_del(_as_bytes(key))
 
     def _internal_kv_list(self, prefix: bytes) -> bytes:
         """Hook for internal_kv._internal_kv_list."""
-        return self.worker.internal_kv_list(as_bytes(prefix))
+        return self.worker.internal_kv_list(_as_bytes(prefix))
+
+    def _pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
+        """Hook for internal_kv._pin_runtime_env_uri."""
+        return self.worker.pin_runtime_env_uri(uri, expiration_s)
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
