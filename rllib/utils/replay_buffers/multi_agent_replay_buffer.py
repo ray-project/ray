@@ -3,6 +3,7 @@ import logging
 from enum import Enum
 from typing import Any, Dict, Optional
 
+from ray.util.timer import _Timer
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
@@ -13,7 +14,6 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
     ReplayBuffer,
     StorageUnit,
 )
-from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -184,8 +184,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self.replay_buffers = collections.defaultdict(new_buffer)
 
         # Metrics.
-        self.add_batch_timer = TimerStat()
-        self.replay_timer = TimerStat()
+        self.add_batch_timer = _Timer()
+        self.replay_timer = _Timer()
         self._num_added = 0
 
     def __len__(self) -> int:

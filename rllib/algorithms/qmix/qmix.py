@@ -2,6 +2,7 @@ from typing import Optional, Type
 
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
+from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -79,16 +80,19 @@ class QMixConfig(SimpleQConfig):
         self.train_batch_size = 32
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
-            "type": "SimpleReplayBuffer",
+            "type": "ReplayBuffer",
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
-            # Size of the replay buffer in items (not timesteps!).
+            # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
             # Number of timesteps in the replay buffer(s) to reach before sample()
             # returns a batch. Before num_ts_added_before_sampling_starts is reached,
             # sample() will return an empty batch and no learning will happen.
             "num_ts_added_before_sampling_starts": 1000,
+            # Choosing `fragments` here makes it so that the buffer stores entire
+            # batches, instead of sequences, episodes or timesteps.
+            "storage_unit": "fragments",
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }
@@ -289,6 +293,10 @@ class QMix(SimpleQ):
             )
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+        update_priorities_in_replay_buffer(
+            self.local_replay_buffer, self.config, train_batch, train_results
+        )
 
         # Update weights and global_vars - after learning on the local worker - on all
         # remote workers.
