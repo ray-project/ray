@@ -112,12 +112,6 @@ TorchTensorboardProfilerCallback
 
 .. autoclass:: ray.train.callbacks.TorchTensorboardProfilerCallback
 
-Checkpointing
--------------
-
-.. _train-api-checkpoint-strategy:
-
-
 .. _train-api-func-utils:
 
 Training Function Utilities

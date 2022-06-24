@@ -6,7 +6,7 @@ from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
 
-# Move here later when ml_utils is deprecated
+# Move here later when ml_utils is deprecated. Doing it now causes a circular import.
 from ray.util.ml_utils.checkpoint_manager import CheckpointConfig
 
 if TYPE_CHECKING:
