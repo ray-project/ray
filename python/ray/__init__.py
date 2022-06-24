@@ -198,6 +198,7 @@ class _DeprecationWrapper(object):
 worker = _DeprecationWrapper("worker", ray._private.worker)
 ray_constants = _DeprecationWrapper("ray_constants", ray._private.ray_constants)
 serialization = _DeprecationWrapper("serialization", ray._private.serialization)
+state = _DeprecationWrapper("state", ray._private.state)
 
 __all__ = [
     "__version__",
