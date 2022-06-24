@@ -106,14 +106,18 @@ def conda_envs(tmp_path_factory):
             assert False
 
     for package_version in REQUEST_VERSIONS:
-        create_package_env(
-            env_name=f"package-{package_version}", package_version=package_version
-        )
+        from filelock import FileLock
+        with FileLock(f"/tmp/package-{package_version}"):
+            create_package_env(
+                env_name=f"package-{package_version}", package_version=package_version
+            )
 
     yield
-
-    for package_version in REQUEST_VERSIONS:
-        delete_env(env_name=f"package-{package_version}")
+    # Don't delete the env in parallel ci env since other worker
+    # might use this
+    if "PARALLEL_CI" not in os.environ:
+        for package_version in REQUEST_VERSIONS:
+            delete_env(env_name=f"package-{package_version}")
 
 
 @ray.remote

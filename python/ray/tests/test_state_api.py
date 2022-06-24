@@ -897,14 +897,12 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     """Test all of CLI APIs work as expected."""
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
-    ray.init(address=cluster.address)
+    webui_url = f"http://{ray.init(address=cluster.address).dashboard_url}"
     for _ in range(3):
         cluster.add_node(num_cpus=2)
     runner = CliRunner()
 
-    client = JobSubmissionClient(
-        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
-    )
+    client = JobSubmissionClient(webui_url)
 
     @ray.remote
     def f():
@@ -929,7 +927,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
     def verify_output(resource_name, necessary_substrings: List[str]):
-        result = runner.invoke(cli_list, [resource_name])
+        result = runner.invoke(cli_list, [resource_name, "--address", webui_url])
         exit_code_correct = result.exit_code == 0
         substring_matched = all(
             substr in result.output for substr in necessary_substrings
@@ -1366,7 +1364,7 @@ async def test_cli_format_print(state_api_manager):
 
 
 def test_filter(shutdown_only):
-    ray.init()
+    address = f"http://{ray.init(dashboard_port=0).dashboard_url}"
 
     @ray.remote
     class Actor:
@@ -1421,10 +1419,10 @@ def test_filter(shutdown_only):
     dead_actor_id = list_actors(filters=[("state", "DEAD")])[0]["actor_id"]
     alive_actor_id = list_actors(filters=[("state", "ALIVE")])[0]["actor_id"]
     runner = CliRunner()
-    result = runner.invoke(cli_list, ["actors", "--filter", "state", "DEAD"])
-    assert result.exit_code == 0
+    result = runner.invoke(cli_list, ["actors", "--address", address, "--filter", "state", "DEAD"])
     assert dead_actor_id in result.output
     assert alive_actor_id not in result.output
+    assert result.exit_code == 0
 
 
 if __name__ == "__main__":
