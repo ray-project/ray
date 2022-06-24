@@ -1,7 +1,10 @@
 import pathlib
 from typing import List
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 class Template:
     """Class which provides basic HTML templating."""
 
@@ -21,7 +24,7 @@ class Template:
         """
         rendered = self.template
         for key, value in kwargs.items():
-            rendered.replace("{{ " + key + " }}", value)
+            rendered = rendered.replace("{{ " + key + " }}", value if value else "")
         return rendered
 
     @staticmethod
