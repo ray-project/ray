@@ -8,7 +8,7 @@ from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 
 
@@ -181,7 +181,9 @@ class ResultGrid:
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
             log_dir=trial.local_dir,
-            dataframe=self._experiment_analysis.trial_dataframes.get(trial.logdir)
+            metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
+                trial.logdir
+            )
             if self._experiment_analysis
             else None,
             best_checkpoints=best_checkpoints,

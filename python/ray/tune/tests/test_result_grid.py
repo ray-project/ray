@@ -10,7 +10,7 @@ from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 

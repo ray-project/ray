@@ -152,12 +152,6 @@ message RuntimeEnvUris {
   string working_dir_uri = 1;
   /// python modules uris
   repeated string py_modules_uris = 2;
-  /// conda uri
-  string conda_uri = 3;
-  /// pip uri
-  string pip_uri = 4;
-  /// plugin uris
-  repeated string plugin_uris = 5;
 }
 
 /// The runtime environment describes all the runtime packages needed to
@@ -186,6 +180,8 @@ message RuntimeEnv {
 message RuntimeEnvConfig {
   /// The timeout of runtime env creation.
   int32 setup_timeout_seconds = 1;
+  /// Indicates whether to install runtime env eagerly before the workers are leased.
+  bool eager_install = 2;
 }
 
 /// The runtime env information which is transfered between ray core processes.
@@ -194,10 +190,8 @@ message RuntimeEnvInfo {
   string serialized_runtime_env = 1;
   /// URIs used in this runtime env. These will be used for reference counting.
   repeated string uris = 2;
-  /// Indicates whether to install runtime env eagerly before the workers are leased.
-  bool runtime_env_eager_install = 3;
   /// The serialized runtime env config passed from the user.
-  RuntimeEnvConfig runtime_env_config = 4;
+  RuntimeEnvConfig runtime_env_config = 3;
 }
 
 message RuntimeEnvState {

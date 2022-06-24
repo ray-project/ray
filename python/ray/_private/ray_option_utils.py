@@ -1,12 +1,13 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
-from typing import Dict, Any, Callable, Tuple, Union, Optional
 from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional, Tuple, Union
+
+import ray._private.ray_constants as ray_constants
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
 )
-import ray.ray_constants as ray_constants
 
 
 @dataclass

@@ -25,7 +25,7 @@ class Result:
         checkpoint: The final checkpoint of the Trainable.
         error: The execution error of the Trainable run, if the trial finishes in error.
         log_dir: Directory where the trial logs are saved.
-        dataframe: The full result dataframe of the Trainable.
+        metrics_dataframe: The full result dataframe of the Trainable.
             The dataframe is indexed by iterations and contains reported
             metrics.
         best_checkpoints: A list of tuples of the best checkpoints saved
@@ -39,7 +39,7 @@ class Result:
     checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
     log_dir: Optional[str]
-    dataframe: Optional[pd.DataFrame]
+    metrics_dataframe: Optional[pd.DataFrame]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
 
     @property
