@@ -1633,6 +1633,21 @@ py_test(
     srcs = ["offline/estimators/tests/test_ope.py"]
 )
 
+py_test(
+    name = "test_json_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_json_reader.py"]
+)
+
+py_test(
+    name = "test_dataset_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_dataset_reader.py"]
+)
+
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
