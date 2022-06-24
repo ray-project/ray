@@ -317,6 +317,11 @@ class RuntimeEnv(dict):
         "_ray_commit",
         "_inject_current_ray",
         "config",
+        # TODO(SongGuyang): We add this because the test
+        # `test_experimental_package_github` set a `docker`
+        # field which is not supported. We should remove it
+        # with the test.
+        "docker",
     }
 
     extensions_fields: Set[str] = {
@@ -367,12 +372,12 @@ class RuntimeEnv(dict):
         if not _validate:
             return
 
-        if runtime_env.get("conda") and runtime_env.get("pip"):
+        if self.get("conda") and self.get("pip"):
             raise ValueError(
                 "The 'pip' field and 'conda' field of "
                 "runtime_env cannot both be specified.\n"
-                f"specified pip field: {runtime_env['pip']}\n"
-                f"specified conda field: {runtime_env['conda']}\n"
+                f"specified pip field: {self['pip']}\n"
+                f"specified conda field: {self['conda']}\n"
                 "To use pip with conda, please only set the 'conda' "
                 "field, and specify your pip dependencies "
                 "within the conda YAML config dict: see "
@@ -382,26 +387,21 @@ class RuntimeEnv(dict):
             )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
-            option_val = runtime_env.get(option)
+            option_val = self.get(option)
             if option_val is not None:
+                del self[option]
                 self[option] = option_val
 
-        if "_ray_release" in runtime_env:
-            self["_ray_release"] = runtime_env["_ray_release"]
-
-        if "_ray_commit" in runtime_env:
-            self["_ray_commit"] = runtime_env["_ray_commit"]
-        else:
+        if "_ray_commit" not in self:
             if self.get("pip") or self.get("conda"):
                 self["_ray_commit"] = ray.__commit__
 
         # Used for testing wheels that have not yet been merged into master.
         # If this is set to True, then we do not inject Ray into the conda
         # or pip dependencies.
-        if "_inject_current_ray" in runtime_env:
-            self["_inject_current_ray"] = runtime_env["_inject_current_ray"]
-        elif "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
-            self["_inject_current_ray"] = True
+        if "_inject_current_ray" not in self:
+            if "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
+                self["_inject_current_ray"] = True
 
         # NOTE(architkulkarni): This allows worker caching code in C++ to check
         # if a runtime env is empty without deserializing it.  This is a catch-
