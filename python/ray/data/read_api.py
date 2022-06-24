@@ -12,8 +12,10 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import _lazy_import_pyarrow_dataset, \
-    _estimate_available_parallelism
+from ray.data._internal.util import (
+    _lazy_import_pyarrow_dataset,
+    _estimate_available_parallelism,
+)
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
 from ray.data.dataset import Dataset
