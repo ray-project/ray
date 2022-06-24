@@ -182,7 +182,7 @@ and also are given the ability to reorder/prioritize incoming trials.
 
 Trainables
 ~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable.py>`__]
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable/trainable.py>`__]
 These are user-provided objects that are used for
 the training process. If a class is provided, it is expected to conform to the
 Trainable interface. If a function is provided. it is wrapped into a
