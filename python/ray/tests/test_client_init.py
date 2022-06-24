@@ -52,7 +52,7 @@ def init_and_serve_lazy():
     def connect(job_config=None):
         ray.init(address=address, job_config=job_config)
 
-    server_handle = ray_client_server.serve("localhost:50051", connect)
+    server_handle = ray_client_server.serve("localhost:0", connect)
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
     time.sleep(2)
@@ -87,7 +87,7 @@ def test_basic_preregister(init_and_serve):
     from ray.util.client import ray
 
     for _ in range(2):
-        ray.connect("localhost:50051")
+        ray.connect(f"localhost:{init_and_serve.port}")
         val = ray.get(hello_world.remote())
         print(val)
         assert val >= 20
@@ -106,7 +106,7 @@ def test_idempotent_disconnect(init_and_serve):
 
     ray.disconnect()
     ray.disconnect()
-    ray.connect("localhost:50051")
+    ray.connect(f"localhost:{init_and_serve.port}")
     ray.disconnect()
     ray.disconnect()
 
@@ -119,11 +119,11 @@ def test_num_clients(init_and_serve_lazy):
         return api.get_runtime_context().worker.current_job_id
 
     api1 = _ClientContext()
-    info1 = api1.connect("localhost:50051")
+    info1 = api1.connect(f"localhost:{init_and_serve_lazy.port}")
     job_id_1 = get_job_id(api1)
     assert info1["num_clients"] == 1, info1
     api2 = _ClientContext()
-    info2 = api2.connect("localhost:50051")
+    info2 = api2.connect(f"localhost:{init_and_serve_lazy.port}")
     job_id_2 = get_job_id(api2)
     assert info2["num_clients"] == 2, info2
 
@@ -135,7 +135,7 @@ def test_num_clients(init_and_serve_lazy):
     time.sleep(1)
 
     api3 = _ClientContext()
-    info3 = api3.connect("localhost:50051")
+    info3 = api3.connect(f"localhost:{init_and_serve_lazy.port}")
     job_id_3 = get_job_id(api3)
     assert info3["num_clients"] == 1, info3
     assert job_id_1 != job_id_3
@@ -151,7 +151,7 @@ def test_num_clients(init_and_serve_lazy):
 def test_python_version(init_and_serve):
     server_handle = init_and_serve
     ray = _ClientContext()
-    info1 = ray.connect("localhost:50051")
+    info1 = ray.connect(f"localhost:{init_and_serve.port}")
     assert info1["python_version"] == ".".join(
         [str(x) for x in list(sys.version_info)[:3]]
     )
@@ -172,10 +172,10 @@ def test_python_version(init_and_serve):
 
     ray = _ClientContext()
     with pytest.raises(RuntimeError):
-        _ = ray.connect("localhost:50051")
+        _ = ray.connect(f"localhost:{init_and_serve.port}")
 
     ray = _ClientContext()
-    info3 = ray.connect("localhost:50051", ignore_version=True)
+    info3 = ray.connect(f"localhost:{init_and_serve.port}", ignore_version=True)
     assert info3["num_clients"] == 1, info3
     ray.disconnect()
 
@@ -183,7 +183,7 @@ def test_python_version(init_and_serve):
 def test_protocol_version(init_and_serve):
     server_handle = init_and_serve
     ray = _ClientContext()
-    info1 = ray.connect("localhost:50051")
+    info1 = ray.connect(f"localhost:{server_handle.port}")
     local_py_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
     assert info1["protocol_version"] == CURRENT_PROTOCOL_VERSION, info1
     ray.disconnect()
@@ -203,10 +203,10 @@ def test_protocol_version(init_and_serve):
 
     ray = _ClientContext()
     with pytest.raises(RuntimeError):
-        _ = ray.connect("localhost:50051")
+        _ = ray.connect(f"localhost:{server_handle.port}")
 
     ray = _ClientContext()
-    info3 = ray.connect("localhost:50051", ignore_version=True)
+    info3 = ray.connect(f"localhost:{server_handle.port}", ignore_version=True)
     assert info3["num_clients"] == 1, info3
     ray.disconnect()
 
@@ -220,13 +220,13 @@ def test_max_clients(init_and_serve):
 
     for i in range(3):
         api1 = _ClientContext()
-        info1 = api1.connect("localhost:50051")
+        info1 = api1.connect(f"localhost:{init_and_serve.port}")
 
         assert info1["num_clients"] == i + 1, info1
 
     with pytest.raises(ConnectionError):
         api = _ClientContext()
-        _ = api.connect("localhost:50051")
+        _ = api.connect(f"localhost:{init_and_serve.port}")
 
 
 if __name__ == "__main__":

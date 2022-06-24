@@ -17,6 +17,7 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS
+from ray._private.test_utils import find_free_port
 import ray.util.client.server.server as ray_client_server
 from ray._private.client_mode_hook import disable_client_hook
 
@@ -277,16 +278,18 @@ def start_middleman_server(
     on_task_response=None,
 ):
     """
-    Helper context that starts a middleman server listening on port 10011,
-    and a ray client server on port 50051.
+    Helper context that starts a middleman server listening on one port,
+    and a ray client server on another port.
     """
     ray._inside_client_test = True
-    server = ray_client_server.serve("localhost:50051")
+    listen_port = find_free_port()
+    server_port = find_free_port()
+    server = ray_client_server.serve(f"localhost:{server_port}")
     middleman = None
     try:
         middleman = MiddlemanServer(
-            listen_addr="localhost:10011",
-            real_addr="localhost:50051",
+            listen_addr=f"localhost:{listen_port}",
+            real_addr=f"localhost:{server_port}",
             on_log_response=on_log_response,
             on_data_request=on_data_request,
             on_data_response=on_data_response,
@@ -294,7 +297,7 @@ def start_middleman_server(
             on_task_response=on_task_response,
         )
         middleman.start()
-        ray.init("ray://localhost:10011")
+        ray.init(f"ray://localhost:{listen_port}")
         yield middleman, server
     finally:
         ray._inside_client_test = False

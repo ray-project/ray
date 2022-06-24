@@ -9,13 +9,13 @@ import ray
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25001 --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_multi_cli_basic(call_ray_start):
-    ray.init("ray://localhost:25001")
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
-    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
+    ray.init(call_ray_start)
+    cli1 = ray.init(call_ray_start, allow_multiple=True)
+    cli2 = ray.init(call_ray_start, allow_multiple=True)
     with cli1:
         a = ray.put(10)
 
@@ -53,25 +53,25 @@ def test_multi_cli_basic(call_ray_start):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25001 --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_multi_cli_init(call_ray_start):
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
+    cli1 = ray.init(call_ray_start, allow_multiple=True)  # noqa
     with pytest.raises(
         ValueError,
         match="The client has already connected to the cluster "
         "with allow_multiple=True. Please set allow_multiple=True"
         " to proceed",
     ):
-        ray.init("ray://localhost:25001")
-    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
+        ray.init(call_ray_start)
+    cli2 = ray.init(call_ray_start, allow_multiple=True)  # noqa
 
     cli1.disconnect()
     cli2.disconnect()
 
-    ray.init("ray://localhost:25001")
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
+    ray.init(call_ray_start)
+    cli1 = ray.init(call_ray_start, allow_multiple=True)  # noqa
 
 
 @pytest.mark.skipif(
@@ -79,7 +79,7 @@ def test_multi_cli_init(call_ray_start):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25001 --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_multi_cli_func(call_ray_start):
@@ -87,8 +87,8 @@ def test_multi_cli_func(call_ray_start):
     def hello():
         return "world"
 
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
-    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
+    cli1 = ray.init(call_ray_start, allow_multiple=True)
+    cli2 = ray.init(call_ray_start, allow_multiple=True)
 
     # TODO better error message.
     # Right now, it's EOFError actually
@@ -115,7 +115,7 @@ def test_multi_cli_func(call_ray_start):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25001 --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_multi_cli_actor(call_ray_start):
@@ -127,8 +127,8 @@ def test_multi_cli_actor(call_ray_start):
         def double(self):
             return self.v * 2
 
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
-    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
+    cli1 = ray.init(call_ray_start, allow_multiple=True)
+    cli2 = ray.init(call_ray_start, allow_multiple=True)
 
     # TODO better error message.
     # Right now, it's EOFError actually
@@ -164,7 +164,7 @@ def test_multi_cli_actor(call_ray_start):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25001 --port 0"],
+    ["ray start --head --ray-client-server-port 0"],
     indirect=True,
 )
 def test_multi_cli_threading(call_ray_start):
@@ -174,7 +174,7 @@ def test_multi_cli_threading(call_ray_start):
     ret = [None, None]
 
     def get(idx):
-        cli = ray.init("ray://localhost:25001", allow_multiple=True)
+        cli = ray.init(call_ray_start, allow_multiple=True)
         with cli:
             a = ray.put(idx)
             b.wait()

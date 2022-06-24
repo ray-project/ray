@@ -140,14 +140,16 @@ def external_redis(request):
 @pytest.fixture
 def shutdown_only(maybe_external_redis):
     # Avoid dashboard port conflict
-    (old, ray_constants.DEFAULT_DASHBOARD_PORT) = (
-        ray_constants.DEFAULT_DASHBOARD_PORT,
-        0,
-    )
+    if "PARALLEL_CI" in os.environ:
+        (old, ray_constants.DEFAULT_DASHBOARD_PORT) = (
+            ray_constants.DEFAULT_DASHBOARD_PORT,
+            0,
+        )
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    ray_constants.DEFAULT_DASHBOARD_PORT = old
+    if "PARALLEL_CI" in os.environ:
+        ray_constants.DEFAULT_DASHBOARD_PORT = old
 
 
 @contextmanager
@@ -396,7 +398,7 @@ def call_ray_start_with_external_redis(request):
 
 @pytest.fixture
 def init_and_serve():
-    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
+    server_handle, _ = ray_client_server.init_and_serve("localhost:0")
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
     time.sleep(2)

@@ -156,7 +156,7 @@ def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bo
     return True
 
 
-def get_conda_env_list() -> list:
+def get_conda_env_list(prefix=None) -> list:
     """
     Get conda env list.
     """
@@ -166,7 +166,9 @@ def get_conda_env_list() -> list:
     except EnvironmentError:
         raise ValueError(f"Could not find Conda executable at {conda_path}.")
     _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
-    envs = json.loads(stdout)["envs"]
+    envs = [
+        env for env in json.loads(stdout)["envs"] if prefix is None or prefix in env
+    ]
     return envs
 
 

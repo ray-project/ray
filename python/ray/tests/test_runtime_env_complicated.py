@@ -242,25 +242,29 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
     reason="This test is only run on linux CI machines.",
 )
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_job_eager_install(shutdown_only, runtime_env_class):
+def test_job_eager_install(call_ray_start, runtime_env_class):
     # Test enable eager install. This flag is set to True by default.
+    session_dir = ray.init("auto").address_info["session_dir"]
+    ray.shutdown()
     runtime_env = {"conda": {"dependencies": ["toolz"]}}
-    env_count = len(get_conda_env_list())
-    ray.init(runtime_env=runtime_env_class(**runtime_env))
-    wait_for_condition(lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
+    env_count = len(get_conda_env_list(session_dir))
+    ray.init("auto", runtime_env=runtime_env_class(**runtime_env))
+    wait_for_condition(
+        lambda: len(get_conda_env_list(session_dir)) == env_count + 1, timeout=60
+    )
     ray.shutdown()
     # Test disable eager install
     runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": False}
-    ray.init(runtime_env=runtime_env_class(**runtime_env))
+    ray.init("auto", runtime_env=runtime_env_class(**runtime_env))
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: len(get_conda_env_list()) == env_count + 2, timeout=5
+            lambda: len(get_conda_env_list(session_dir)) == env_count + 2, timeout=10
         )
     ray.shutdown()
     # Test unavailable type
     runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
     with pytest.raises(TypeError):
-        ray.init(runtime_env=runtime_env_class(**runtime_env))
+        ray.init("auto", runtime_env=runtime_env_class(**runtime_env))
     ray.shutdown()
 
 

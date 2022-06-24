@@ -517,9 +517,5 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
 
 if __name__ == "__main__":
     import pytest
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
