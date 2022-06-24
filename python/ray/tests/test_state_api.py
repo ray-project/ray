@@ -1,6 +1,6 @@
 import json
 import sys
-from dataclasses import fields
+from dataclasses import dataclass
 from typing import List, Tuple
 from unittest.mock import MagicMock
 
@@ -68,6 +68,8 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
+    StateSchema,
+    state_column,
 )
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.experimental.state.state_cli import (
@@ -97,13 +99,15 @@ def state_api_manager():
     yield manager
 
 
-def verify_schema(state, result_dict: dict):
+def verify_schema(state, result_dict: dict, detail: bool = False):
     state_fields_columns = set()
-    for field in fields(state):
-        state_fields_columns.add(field.name)
+    if detail:
+        state_fields_columns = state.columns()
+    else:
+        state_fields_columns = state.min_columns()
 
-    for k in result_dict.keys():
-        assert k in state_fields_columns
+    for k in state_fields_columns:
+        assert k in result_dict
 
 
 def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
@@ -226,12 +230,76 @@ def create_api_options(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     limit: int = DEFAULT_LIMIT,
     filters: List[Tuple[str, SupportedFilterType]] = None,
+    detail: bool = False,
 ):
     if not filters:
         filters = []
     return ListApiOptions(
-        limit=limit, timeout=timeout, filters=filters, _server_timeout_multiplier=1.0
+        limit=limit,
+        timeout=timeout,
+        filters=filters,
+        _server_timeout_multiplier=1.0,
+        detail=detail,
     )
+
+
+def test_state_schema():
+    @dataclass
+    class TestSchema(StateSchema):
+        column_a: int
+        column_b: int = state_column(filterable=False)
+        column_c: int = state_column(filterable=True)
+        column_d: int = state_column(filterable=False, detail=False)
+        column_e: int = state_column(filterable=False, detail=True)
+        column_f: int = state_column(filterable=True, detail=False)
+        column_g: int = state_column(filterable=True, detail=True)
+
+    # Correct input validation should work without an exception.
+    TestSchema(
+        column_a=1,
+        column_b=1,
+        column_c=1,
+        column_d=1,
+        column_e=1,
+        column_f=1,
+        column_g=1,
+    )
+
+    # Incorrect input type.
+    with pytest.raises(AssertionError):
+        TestSchema(
+            column_a=1,
+            column_b=1,
+            column_c=1,
+            column_d=1,
+            column_e=1,
+            column_f=1,
+            column_g="a",
+        )
+
+    assert TestSchema.filterable_columns() == {
+        "column_c",
+        "column_f",
+        "column_g",
+    }
+
+    assert TestSchema.min_columns() == {
+        "column_a",
+        "column_b",
+        "column_c",
+        "column_d",
+        "column_f",
+    }
+
+    assert TestSchema.columns() == {
+        "column_a",
+        "column_b",
+        "column_c",
+        "column_d",
+        "column_e",
+        "column_f",
+        "column_g",
+    }
 
 
 def test_id_to_ip_map():
@@ -264,6 +332,14 @@ async def test_api_manager_list_actors(state_api_manager):
     data = result.result
     actor_data = data[0]
     verify_schema(ActorState, actor_data)
+
+    """
+    Test detail
+    """
+    result = await state_api_manager.list_actors(option=create_api_options(detail=True))
+    data = result.result
+    actor_data = data[0]
+    verify_schema(ActorState, actor_data, detail=True)
 
     """
     Test limit
@@ -311,6 +387,16 @@ async def test_api_manager_list_pgs(state_api_manager):
     data = result.result
     data = data[0]
     verify_schema(PlacementGroupState, data)
+
+    """
+    Test detail
+    """
+    result = await state_api_manager.list_placement_groups(
+        option=create_api_options(detail=True)
+    )
+    data = result.result
+    data = data[0]
+    verify_schema(PlacementGroupState, data, detail=True)
 
     """
     Test limit
@@ -361,6 +447,14 @@ async def test_api_manager_list_nodes(state_api_manager):
     verify_schema(NodeState, data)
 
     """
+    Test detail
+    """
+    result = await state_api_manager.list_nodes(option=create_api_options(detail=True))
+    data = result.result
+    data = data[0]
+    verify_schema(NodeState, data, detail=True)
+
+    """
     Test limit
     """
     assert len(result.result) == 2
@@ -404,6 +498,16 @@ async def test_api_manager_list_workers(state_api_manager):
     data = result.result
     data = data[0]
     verify_schema(WorkerState, data)
+
+    """
+    Test detail
+    """
+    result = await state_api_manager.list_workers(
+        option=create_api_options(detail=True)
+    )
+    data = result.result
+    data = data[0]
+    verify_schema(WorkerState, data, detail=True)
 
     """
     Test limit
@@ -468,6 +572,19 @@ async def test_api_manager_list_tasks(state_api_manager):
     assert len(data) == 2
     verify_schema(TaskState, data[0])
     verify_schema(TaskState, data[1])
+
+    """
+    Test detail
+    """
+    data_source_client.get_task_info.side_effect = [
+        generate_task_data(id, first_task_name),
+        generate_task_data(b"2345", second_task_name),
+    ]
+    result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
+    data = result.result
+    data = data
+    verify_schema(TaskState, data[0], detail=True)
+    verify_schema(TaskState, data[1], detail=True)
 
     """
     Test limit
@@ -547,6 +664,21 @@ async def test_api_manager_list_objects(state_api_manager):
     assert len(data) == 2
     verify_schema(ObjectState, data[0])
     verify_schema(ObjectState, data[1])
+
+    """
+    Test detail
+    """
+    data_source_client.get_object_info.side_effect = [
+        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
+        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
+    ]
+    result = await state_api_manager.list_objects(
+        option=create_api_options(detail=True)
+    )
+    data = result.result
+    data = data
+    verify_schema(ObjectState, data[0], detail=True)
+    verify_schema(ObjectState, data[1], detail=True)
 
     """
     Test limit
@@ -636,8 +768,25 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     verify_schema(RuntimeEnvState, data[2])
 
     # Make sure the higher creation time is sorted first.
-    assert "creation_time_ms" not in data[0]
     data[1]["creation_time_ms"] > data[2]["creation_time_ms"]
+
+    """
+    Test detail
+    """
+    data_source_client.get_runtime_envs_info.side_effect = [
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["requests"]})),
+        generate_runtime_env_info(
+            RuntimeEnv(**{"pip": ["tensorflow"]}), creation_time=15
+        ),
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]}), creation_time=10),
+    ]
+    result = await state_api_manager.list_runtime_envs(
+        option=create_api_options(detail=True)
+    )
+    data = result.result
+    verify_schema(RuntimeEnvState, data[0], detail=True)
+    verify_schema(RuntimeEnvState, data[1], detail=True)
+    verify_schema(RuntimeEnvState, data[2], detail=True)
 
     """
     Test limit
@@ -1245,7 +1394,7 @@ def test_list_runtime_envs(shutdown_only):
         ray.get(b.ready.remote())
 
     def verify():
-        result = list_runtime_envs()
+        result = list_runtime_envs(detail=True)
         correct_num = len(result) == 2
 
         failed_runtime_env = result[0]
@@ -1452,6 +1601,24 @@ def test_filter(shutdown_only):
     assert result.exit_code == 0
     assert dead_actor_id in result.output
     assert alive_actor_id not in result.output
+
+
+def test_detail(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+
+    actor_state = list_actors()[0]
+    actor_state_in_detail = list_actors(detail=True)[0]
+
+    assert set(actor_state.keys()) == ActorState.min_columns()
+    assert set(actor_state_in_detail.keys()) == ActorState.columns()
 
 
 if __name__ == "__main__":

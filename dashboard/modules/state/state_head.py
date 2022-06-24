@@ -21,6 +21,7 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.experimental.state.util import convert_string_to_type
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -43,15 +44,20 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
     def _options_from_req(self, req: aiohttp.web.Request) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
-        limit = int(req.query.get("limit"))
-        timeout = int(req.query.get("timeout"))
+        # limit = convert_string_to_type(req.query.get("limit"), int)
+        limit = convert_string_to_type(req.query.get("limit"), int)
+        timeout = convert_string_to_type(req.query.get("timeout"), int)
         filter_keys = req.query.getall("filter_keys", [])
         filter_values = req.query.getall("filter_values", [])
         assert len(filter_keys) == len(filter_values)
         filters = []
         for key, val in zip(filter_keys, filter_values):
             filters.append((key, val))
-        return ListApiOptions(limit=limit, timeout=timeout, filters=filters)
+        detail = convert_string_to_type(req.query.get("detail", False), bool)
+
+        return ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        )
 
     def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:
         timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))

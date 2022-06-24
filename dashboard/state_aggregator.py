@@ -25,16 +25,17 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
-    filter_fields,
     StateSummary,
     ActorSummaries,
     ObjectSummaries,
+    filter_fields,
 )
 from ray.experimental.state.state_manager import (
     DataSourceUnavailable,
     StateDataSourceClient,
 )
 from ray.runtime_env import RuntimeEnv
+from ray.experimental.state.util import convert_string_to_type
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def _convert_filters_type(
                 pass
             elif column_type is int:
                 try:
-                    val = int(val)
+                    val = convert_string_to_type(val, int)
                 except ValueError:
                     raise ValueError(
                         f"Invalid filter `--filter {col} {val}` for a int type "
@@ -91,7 +92,7 @@ def _convert_filters_type(
                     )
             elif column_type is float:
                 try:
-                    val = float(val)
+                    val = convert_string_to_type(val, float)
                 except ValueError:
                     raise ValueError(
                         f"Invalid filter `--filter {col} {val}` for a float "
@@ -99,12 +100,9 @@ def _convert_filters_type(
                         f"`--filter {col} [float]`"
                     )
             elif column_type is bool:
-                # Without this, "False" will become True.
-                if val == "False" or val == "false" or val == "0":
-                    val = False
-                elif val == "True" or val == "true" or val == "1":
-                    val = True
-                else:
+                try:
+                    val = convert_string_to_type(val, bool)
+                except ValueError:
                     raise ValueError(
                         f"Invalid filter `--filter {col} {val}` for a boolean "
                         "type column. Please provide "
@@ -135,6 +133,7 @@ class StateAPIManager:
         data: List[dict],
         filters: List[Tuple[str, SupportedFilterType]],
         state_dataclass: StateSchema,
+        detail: bool,
     ) -> List[dict]:
         """Return the filtered data given filters.
 
@@ -165,7 +164,7 @@ class StateAPIManager:
                     break
 
             if match:
-                result.append(filter_fields(datum, state_dataclass))
+                result.append(filter_fields(datum, state_dataclass, detail))
         return result
 
     async def list_actors(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -186,7 +185,7 @@ class StateAPIManager:
             data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
             result.append(data)
 
-        result = self._filter(result, option.filters, ActorState)
+        result = self._filter(result, option.filters, ActorState, option.detail)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
         return ListApiResponse(result=list(islice(result, option.limit)))
@@ -214,7 +213,9 @@ class StateAPIManager:
             )
             result.append(data)
 
-        result = self._filter(result, option.filters, PlacementGroupState)
+        result = self._filter(
+            result, option.filters, PlacementGroupState, option.detail
+        )
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
         return ListApiResponse(result=list(islice(result, option.limit)))
@@ -235,10 +236,9 @@ class StateAPIManager:
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
             data["node_ip"] = data["node_manager_address"]
-            data = filter_fields(data, NodeState)
             result.append(data)
 
-        result = self._filter(result, option.filters, NodeState)
+        result = self._filter(result, option.filters, NodeState, option.detail)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
         return ListApiResponse(result=list(islice(result, option.limit)))
@@ -258,12 +258,14 @@ class StateAPIManager:
         result = []
         for message in reply.worker_table_data:
             data = self._message_to_dict(
-                message=message, fields_to_decode=["worker_id"]
+                message=message, fields_to_decode=["worker_id", "raylet_id"]
             )
             data["worker_id"] = data["worker_address"]["worker_id"]
+            data["node_id"] = data["worker_address"]["raylet_id"]
+            data["ip"] = data["worker_address"]["ip_address"]
             result.append(data)
 
-        result = self._filter(result, option.filters, WorkerState)
+        result = self._filter(result, option.filters, WorkerState, option.detail)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
         return ListApiResponse(result=list(islice(result, option.limit)))
@@ -340,7 +342,7 @@ class StateAPIManager:
                     ].name
                 result.append(data)
 
-        result = self._filter(result, option.filters, TaskState)
+        result = self._filter(result, option.filters, TaskState, option.detail)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
         return ListApiResponse(
@@ -411,7 +413,7 @@ class StateAPIManager:
             del data["object_ref"]
             result.append(data)
 
-        result = self._filter(result, option.filters, ObjectState)
+        result = self._filter(result, option.filters, ObjectState, option.detail)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
         return ListApiResponse(
@@ -471,7 +473,7 @@ class StateAPIManager:
                 f"The returned data may contain incomplete result. {warning_msg}"
             )
 
-        result = self._filter(result, option.filters, RuntimeEnvState)
+        result = self._filter(result, option.filters, RuntimeEnvState, option.detail)
 
         # Sort to make the output deterministic.
         def sort_func(entry):
