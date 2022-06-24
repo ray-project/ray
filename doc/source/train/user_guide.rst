@@ -296,7 +296,7 @@ Then, you can pass in the config dictionary as an argument to ``Trainer``:
     trainer = TorchTrainer(
         train_func,
     +   train_loop_config=config,
-        scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+        scaling_config=dict(num_workers=2)
     )
 
 Putting this all together, you can run your training function with different
@@ -315,7 +315,7 @@ configurations. As an example:
     trainer = TorchTrainer(
         train_func,
         train_loop_config={"num_epochs": 2},
-        scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+        scaling_config=dict(num_workers=2)
     )
     results = trainer.fit()
     print(results.metrics["num_epochs"])
@@ -592,12 +592,13 @@ useful for:
 Saving checkpoints
 ~~~~~~~~~~~~~~~~~~
 
-Checkpoints can be saved by calling ``train.save_checkpoint(**kwargs)`` in the
+Checkpoints can be saved by calling ``session.report(checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 
-The latest saved checkpoint can be accessed through the ``Trainer``'s
-``latest_checkpoint`` attribute.
+The latest saved checkpoint can be accessed through the ``checkpoint`` attribute of 
+the :class:`Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
+attribute.
 
 Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
 appropriately in distributed training.
@@ -605,18 +606,17 @@ appropriately in distributed training.
 .. tabbed:: PyTorch
 
     .. code-block:: python
-        :emphasize-lines: 37, 38, 39
+        :emphasize-lines: 36, 37, 38, 39, 40, 41
 
         import ray.train.torch
-        from ray import train
-        from ray.train import Trainer
+        from ray.air import session, Checkpoint
+        from ray.train.torch import TorchTrainer
 
         import torch
         import torch.nn as nn
         from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         from torch.optim import Adam
         import numpy as np
-
 
         def train_func(config):
             n = 100
@@ -645,28 +645,31 @@ appropriately in distributed training.
                 # See: https://github.com/ray-project/ray/issues/20915
                 state_dict = model.state_dict()
                 consume_prefix_in_state_dict_if_present(state_dict, "module.")
-                train.save_checkpoint(epoch=epoch, model_weights=state_dict)
+                checkpoint = Checkpoint.from_dict(
+                    dict(epoch=epoch, model_weights=state_dict)
+                )
+                session.report({}, checkpoint=checkpoint)
 
+        trainer = TorchTrainer(
+            train_func,
+            train_loop_config={"num_epochs": 5},
+            scaling_config=dict(num_workers=2),
+        )
+        results = trainer.fit()
 
-        trainer = Trainer(backend="torch", num_workers=2)
-        trainer.start()
-        trainer.run(train_func, config={"num_epochs": 5})
-        trainer.shutdown()
-
-        print(trainer.latest_checkpoint)
-        # {'epoch': 4, 'model_weights': OrderedDict([('bias', tensor([0.1533])), ('weight', tensor([[0.4529, 0.4618, 0.2730, 0.0190]]))]), '_timestamp': 1639117274}
+        print(results.checkpoint.to_dict())
+        # {'epoch': 4, 'model_weights': OrderedDict([('bias', tensor([-0.1215])), ('weight', tensor([[0.3253, 0.1979, 0.4525, 0.2850]]))]), '_timestamp': 1656107095, '_preprocessor': None, '_current_checkpoint_id': 4}
 
 
 .. tabbed:: TensorFlow
 
     .. code-block:: python
-        :emphasize-lines: 24
+        :emphasize-lines: 23
 
-        from ray import train
-        from ray.train import Trainer
+        from ray.air import session, Checkpoint
+        from ray.train.tensorflow import TensorflowTrainer
 
         import numpy as np
-
 
         def train_func(config):
             import tensorflow as tf
@@ -685,16 +688,23 @@ appropriately in distributed training.
 
             for epoch in range(config["num_epochs"]):
                 model.fit(X, Y, batch_size=20)
-                train.save_checkpoint(epoch=epoch, model=model.get_weights())
+                checkpoint = Checkpoint.from_dict(
+                    dict(epoch=epoch, model_weights=model.get_weights())
+                )
+                session.report({}, checkpoint=checkpoint)
 
+        trainer = TensorflowTrainer(
+            train_func,
+            train_loop_config={"num_epochs": 5},
+            scaling_config=dict(num_workers=2),
+        )
+        results = trainer.fit()
 
-        trainer = Trainer(backend="tensorflow", num_workers=2)
-        trainer.start()
-        trainer.run(train_func, config={"num_epochs": 5})
-        trainer.shutdown()
-
-        print(trainer.latest_checkpoint)
-        # {'epoch': 4, 'model_weights': [array([[-0.03075046], [-0.8020745 ], [-0.13172336], [ 0.6760253 ]], dtype=float32), array([0.02125629], dtype=float32)], '_timestamp': 1639117674}
+        print(results.checkpoint.to_dict())
+        # {'epoch': 4, 'model_weights': [array([[-0.31858477],
+        #    [ 0.03747174],
+        #    [ 0.28266194],
+        #    [ 0.8626015 ]], dtype=float32), array([0.02230084], dtype=float32)], '_timestamp': 1656107383, '_preprocessor': None, '_current_checkpoint_id': 4}
 
 
 By default, checkpoints will be persisted to local disk in the :ref:`log
@@ -702,105 +712,97 @@ directory <train-log-dir>` of each run.
 
 .. code-block:: python
 
-    print(trainer.latest_checkpoint_dir)
-    # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints
-
-    # By default, the "best" checkpoint path will refer to the most recent one.
-    # This can be configured by defining a CheckpointConfig.
-    print(trainer.best_checkpoint_path)
-    # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000005
-
-
-.. note:: Persisting checkpoints to durable storage (e.g. S3) is not yet supported.
+    print(results.checkpoint.get_internal_representation())
+    # ('local_path', '/home/ubuntu/ray_results/TorchTrainer_2022-06-24_21-34-49/TorchTrainer_7988b_00000_0_2022-06-24_21-34-49/checkpoint_000003')
 
 Configuring checkpoints
 +++++++++++++++++++++++
 
 For more configurability of checkpointing behavior (specifically saving
-checkpoints to disk), a :ref:`train-api-checkpoint-config` can be passed into
-``Trainer.run``.
+checkpoints to disk), a :class:`CheckpointConfig` can be passed into
+``Trainer``.
 
 As an example, to completely disable writing checkpoints to disk:
 
 .. code-block:: python
-    :emphasize-lines: 8,12
+    :emphasize-lines: 9,14
 
     from ray import train
-    from ray.train import CheckpointConfig, Trainer
+    from ray.air import RunConfig, CheckpointConfig
+    from ray.train.torch import TorchTrainer
 
     def train_func():
         for epoch in range(3):
             train.save_checkpoint(epoch=epoch)
 
-    checkpoint_strategy = CheckpointConfig(num_to_keep=0)
+    checkpoint_config = CheckpointConfig(num_to_keep=0)
 
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
-    trainer.run(train_func, checkpoint_strategy=checkpoint_strategy)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config=dict(num_workers=2),
+        run_config=RunConfig(checkpoint_config=checkpoint_config)
+    )
+    trainer.fit()
 
 
 You may also config ``CheckpointConfig`` to keep the "N best" checkpoints persisted to disk. The following example shows how you could keep the 2 checkpoints with the lowest "loss" value:
 
 .. code-block:: python
 
-    from ray import train
-    from ray.train import CheckpointConfig, Trainer
-
+    from ray.air import session, Checkpoint, RunConfig, CheckpointConfig
+    from ray.train.torch import TorchTrainer
 
     def train_func():
         # first checkpoint
-        train.save_checkpoint(loss=2)
+        session.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=2)))
         # second checkpoint
-        train.save_checkpoint(loss=4)
+        session.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=4)))
         # third checkpoint
-        train.save_checkpoint(loss=1)
+        session.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=1)))
         # fourth checkpoint
-        train.save_checkpoint(loss=3)
+        session.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=3)))
 
     # Keep the 2 checkpoints with the smallest "loss" value.
-    checkpoint_strategy = CheckpointConfig(num_to_keep=2,
-                                             checkpoint_score_attribute="loss",
-                                             checkpoint_score_order="min")
+    checkpoint_config = CheckpointConfig(
+        num_to_keep=2, checkpoint_score_attribute="loss", checkpoint_score_order="min"
+    )
 
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
-    trainer.run(train_func, checkpoint_strategy=checkpoint_strategy)
-    print(trainer.best_checkpoint_path)
-    # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000003
-    print(trainer.latest_checkpoint_dir)
-    # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints
-    print([checkpoint_path for checkpoint_path in trainer.latest_checkpoint_dir.iterdir()])
-    # [PosixPath('/home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000003'),
-    # PosixPath('/home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000001')]
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config=dict(num_workers=2),
+        run_config=RunConfig(checkpoint_config=checkpoint_config),
+    )
+    results = trainer.fit()
+    print(results.best_checkpoints[0][0].get_internal_representation())
+    # ('local_path', '/home/ubuntu/ray_results/TorchTrainer_2022-06-24_21-34-49/TorchTrainer_7988b_00000_0_2022-06-24_21-34-49/checkpoint_000000')
+    print(results.best_checkpoints[1][0].get_internal_representation())
+    # ('local_path', '/home/ubuntu/ray_results/TorchTrainer_2022-06-24_21-34-49/TorchTrainer_7988b_00000_0_2022-06-24_21-34-49/checkpoint_000002')
 
 Loading checkpoints
 ~~~~~~~~~~~~~~~~~~~
 
 Checkpoints can be loaded into the training function in 2 steps:
 
-1. From the training function, ``train.load_checkpoint()`` can be used to access
-   the most recently saved checkpoint. This is useful to continue training even
+1. From the training function, ``session.get_checkpoint()`` can be used to access
+   the most recently saved :class:`Checkpoint`. This is useful to continue training even
    if there's a worker failure.
 2. The checkpoint to start training with can be bootstrapped by passing in a
-   ``checkpoint`` to ``trainer.run()``.
+   :class:`Checkpoint` to ``Trainer`` as the ``resume_from_checkpoint`` argument.
 
 .. tabbed:: PyTorch
 
     .. code-block:: python
-        :emphasize-lines: 24, 26, 27, 30, 31, 35
+        :emphasize-lines: 23, 25, 26, 29, 30, 31, 35
 
         import ray.train.torch
-        from ray import train
-        from ray.train import Trainer
+        from ray.air import session, Checkpoint
+        from ray.train.torch import TorchTrainer
 
         import torch
         import torch.nn as nn
         from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         from torch.optim import Adam
         import numpy as np
-
 
         def train_func(config):
             n = 100
@@ -816,12 +818,13 @@ Checkpoints can be loaded into the training function in 2 steps:
             optimizer = Adam(model.parameters(), lr=3e-4)
             start_epoch = 0
 
-            checkpoint = train.load_checkpoint()
+            checkpoint = session.get_checkpoint()
             if checkpoint:
-                # assume that we have run the train.save_checkpoint() example
+                # assume that we have run the session.report() example
                 # and successfully save some model weights
-                model.load_state_dict(checkpoint.get("model_weights"))
-                start_epoch = checkpoint.get("epoch", -1) + 1
+                checkpoint_dict = checkpoint.to_dict()
+                model.load_state_dict(checkpoint_dict.get("model_weights"))
+                start_epoch = checkpoint_dict.get("epoch", -1) + 1
 
             # wrap the model in DDP
             model = ray.train.torch.prepare_model(model)
@@ -835,32 +838,40 @@ Checkpoints can be loaded into the training function in 2 steps:
                 optimizer.step()
                 state_dict = model.state_dict()
                 consume_prefix_in_state_dict_if_present(state_dict, "module.")
-                train.save_checkpoint(epoch=epoch, model_weights=state_dict)
+                checkpoint = Checkpoint.from_dict(
+                    dict(epoch=epoch, model_weights=state_dict)
+                )
+                session.report({}, checkpoint=checkpoint)
 
-
-        trainer = Trainer(backend="torch", num_workers=2)
-        trainer.start()
+        trainer = TorchTrainer(
+            train_func,
+            train_loop_config={"num_epochs": 2},
+            scaling_config=dict(num_workers=2),
+        )
         # save a checkpoint
-        trainer.run(train_func, config={"num_epochs": 2})
-        # load a checkpoint
-        trainer.run(train_func, config={"num_epochs": 4},
-                    checkpoint=trainer.latest_checkpoint)
+        results = trainer.fit()
 
-        trainer.shutdown()
+        # load checkpoint
+        trainer = TorchTrainer(
+            train_func,
+            train_loop_config={"num_epochs": 4},
+            scaling_config=dict(num_workers=2),
+            resume_from_checkpoint=results.checkpoint,
+        )
+        results = trainer.fit()
 
-        print(trainer.latest_checkpoint)
-        # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([-0.3304])), ('weight', tensor([[-0.0197, -0.3704,  0.2944,  0.3117]]))]), '_timestamp': 1639117865}
+        print(results.checkpoint.to_dict())
+        # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([0.0902])), ('weight', tensor([[-0.1549, -0.0861,  0.4353, -0.4116]]))]), '_timestamp': 1656108265, '_preprocessor': None, '_current_checkpoint_id': 2}
 
 .. tabbed:: TensorFlow
 
     .. code-block:: python
-        :emphasize-lines: 16, 22, 23, 26, 27, 30
+        :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
 
-        from ray import train
-        from ray.train import Trainer
+        from ray.air import session, Checkpoint
+        from ray.train.tensorflow import TensorflowTrainer
 
         import numpy as np
-
 
         def train_func(config):
             import tensorflow as tf
@@ -877,37 +888,44 @@ Checkpoints can be loaded into the training function in 2 steps:
             with strategy.scope():
                 # toy neural network : 1-layer
                 model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
-                checkpoint = train.load_checkpoint()
+                checkpoint = session.get_checkpoint()
                 if checkpoint:
-                    # assume that we have run the train.save_checkpoint() example
+                    # assume that we have run the session.report() example
                     # and successfully save some model weights
-                    model.set_weights(checkpoint.get("model_weights"))
-                    start_epoch = checkpoint.get("epoch", -1) + 1
+                    checkpoint_dict = checkpoint.to_dict()
+                    model.set_weights(checkpoint_dict.get("model_weights"))
+                    start_epoch = checkpoint_dict.get("epoch", -1) + 1
                 model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
             for epoch in range(start_epoch, config["num_epochs"]):
                 model.fit(X, Y, batch_size=20)
-                train.save_checkpoint(epoch=epoch, model=model.get_weights())
+                checkpoint = Checkpoint.from_dict(
+                    dict(epoch=epoch, model_weights=model.get_weights())
+                )
+                session.report({}, checkpoint=checkpoint)
 
-
-        trainer = Trainer(backend="tensorflow", num_workers=2)
-        trainer.start()
+        trainer = TensorflowTrainer(
+            train_func,
+            train_loop_config={"num_epochs": 2},
+            scaling_config=dict(num_workers=2),
+        )
         # save a checkpoint
-        trainer.run(train_func, config={"num_epochs": 2})
-        trainer.shutdown()
+        results = trainer.fit()
 
-        # restart the trainer for the loading checkpoint example
-        # TensorFlow ops need to be created after a MultiWorkerMirroredStrategy instance is created.
-        # See: https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#train_the_model_with_multiworkermirroredstrategy
-        trainer.start()
         # load a checkpoint
-        trainer.run(train_func, config={"num_epochs": 5},
-                    checkpoint=trainer.latest_checkpoint)
-        trainer.shutdown()
+        trainer = TensorflowTrainer(
+            train_func,
+            train_loop_config={"num_epochs": 5},
+            scaling_config=dict(num_workers=2),
+            resume_from_checkpoint=results.checkpoint,
+        )
+        results = trainer.fit()
 
-        print(trainer.latest_checkpoint)
-        # {'epoch': 4, 'model_weights': [array([[ 0.06892418], [-0.73326826], [ 0.76637405], [ 0.06124062]], dtype=float32), array([0.05737507], dtype=float32)], '_timestamp': 1639117991}
-
+        print(results.checkpoint.to_dict())
+        # {'epoch': 4, 'model_weights': [array([[-0.70056134],
+        #    [-0.8839263 ],
+        #    [-1.0043601 ],
+        #    [-0.61634773]], dtype=float32), array([0.01889327], dtype=float32)], '_timestamp': 1656108446, '_preprocessor': None, '_current_checkpoint_id': 3}
 
 
 .. Running on the cloud
@@ -1116,19 +1134,26 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 
 .. code-block:: python
 
+    import ray
+    from ray import train
+    from ray.air import train_test_split
+    from ray.train.torch import TorchTrainer
+
     def train_func(config):
         # Create your model here.
         model = NeuralNetwork()
 
         batch_size = config["worker_batch_size"]
 
-        train_data_shard = ray.train.get_dataset_shard("train")
-        train_torch_dataset = train_data_shard.to_torch(label_column="label",
-                                                  batch_size=batch_size)
+        train_data_shard = train.get_dataset_shard("train")
+        train_torch_dataset = train_data_shard.to_torch(
+            label_column="label", batch_size=batch_size
+        )
 
-        validation_data_shard = ray.train.get_dataset_shard("validation")
-        validation_torch_dataset = validation_data_shard.to_torch(label_column="label",
-                                                                  batch_size=batch_size)
+        validation_data_shard = train.get_dataset_shard("validation")
+        validation_torch_dataset = validation_data_shard.to_torch(
+            label_column="label", batch_size=batch_size
+        )
 
         for epoch in config["num_epochs"]:
             for X, y in train_torch_dataset:
@@ -1141,83 +1166,26 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
                 # Validate one batch.
         return model
 
-    trainer = Trainer(num_workers=8, backend="torch")
+    # Random split dataset into 80% training data and 20% validation data.
+    train_dataset, validation_dataset = train_test_split(
+        dataset, test_size=0.2, shuffle=True
+    )
+
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config={"worker_batch_size": 64, "num_epochs": 2},
+        datasets={"train": train_dataset, "validation": validation_dataset},
+        scaling_config=dict(num_workers=8),
+    )
     dataset = ray.data.read_csv("...")
 
-    # Random split dataset into 80% training data and 20% validation data.
-    split_index = int(dataset.count() * 0.8)
-    train_dataset, validation_dataset = \
-        dataset.random_shuffle().split_at_indices([split_index])
-
-    result = trainer.run(
-        train_func,
-        config={"worker_batch_size": 64, "num_epochs": 2},
-        dataset={
-            "train": train_dataset,
-            "validation": validation_dataset
-        })
+    results = trainer.fit()
 
 .. _train-dataset-pipeline:
 
 Pipelined Execution
 ~~~~~~~~~~~~~~~~~~~
-For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline-api>`.
-All operations after this conversion will be executed in a pipelined fashion.
-
-See :ref:`dataset-pipeline-api` for more semantics on pipelining.
-
-Example: Per-Epoch Shuffle Pipeline
-+++++++++++++++++++++++++++++++++++
-A common use case is to have a training pipeline that globally shuffles the dataset before every epoch.
-
-This is very simple to do with Ray Datasets + Ray Train.
-
-.. code-block:: python
-
-    def train_func():
-        # This is a dummy train function just iterating over the dataset.
-        # You should replace this with your training logic.
-        dataset_pipeline_shard = ray.train.get_dataset_shard()
-        # Infinitely long iterator of randomly shuffled dataset shards.
-        dataset_iterator = train_dataset_pipeline_shard.iter_epochs()
-        for _ in range(config["num_epochs"]):
-            # Single randomly shuffled dataset shard.
-            train_dataset = next(dataset_iterator)
-            # Convert shard to native Torch Dataset.
-            train_torch_dataset = train_dataset.to_torch(label_column="label",
-                                                         batch_size=batch_size)
-            # Train on your Torch Dataset here!
-
-    # Create a pipeline that loops over its source dataset indefinitely,
-    # with each repeat of the dataset randomly shuffled.
-    dataset_pipeline: DatasetPipeline = ray.data \
-        .read_parquet(...) \
-        .repeat() \
-        .random_shuffle_each_window()
-
-    # Pass in the pipeline to the Trainer.
-    # The Trainer will automatically split the DatasetPipeline for you.
-    trainer = Trainer(num_workers=8, backend="torch")
-    result = trainer.run(
-        train_func,
-        config={"worker_batch_size": 64, "num_epochs": 2},
-        dataset=dataset_pipeline)
-
-
-You can easily set the working set size for the global shuffle by specifying the window size of the ``DatasetPipeline``.
-
-.. code-block:: python
-
-    # Create a pipeline that loops over its source dataset indefinitely.
-    pipe: DatasetPipeline = ray.data \
-        .read_parquet(...) \
-        .window(blocks_per_window=10) \
-        .repeat() \
-        .random_shuffle_each_window()
-
-
-See :ref:`dataset-pipeline-per-epoch-shuffle` for more info.
-
+For details on how to enable pipelined execution, please refer to :ref:`air-ingest`.
 
 .. _train-tune:
 
@@ -1225,75 +1193,36 @@ Hyperparameter tuning (Ray Tune)
 --------------------------------
 
 Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported
-with Ray Train. Specifically, you can take an existing training function and
-follow these steps:
-
-**Step 1: Convert to Tune Trainable**
-
-Instantiate your Trainer and call ``trainer.to_tune_trainable``, which will
-produce an object ("Trainable") that will be passed to Ray Tune.
-
-.. code-block:: python
-
-    from ray import train
-    from ray.train import Trainer
-
-    def train_func(config):
-        # In this example, nothing is expected to change over epochs,
-        # and the output metric is equivalent to the input value.
-        for _ in range(config["num_epochs"]):
-            train.report(output=config["input"])
-
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainable = trainer.to_tune_trainable(train_func)
-
-**Step 2: Call tune.run**
-
-Call ``tune.run`` on the created ``Trainable`` to start multiple ``Tune``
-"trials", each running a Ray Train job and each with a unique hyperparameter
-configuration.
+with Ray Train. Specifically, you can take an existing ``Trainer`` and simply
+pass it into a :class:`Tuner`.
 
 .. code-block:: python
 
     from ray import tune
-    analysis = tune.run(trainable, config={
-        "num_epochs": 2,
-        "input": tune.grid_search([1, 2, 3])
-    })
-    print(analysis.get_best_config(metric="output", mode="max"))
-    # {'num_epochs': 2, 'input': 3}
-
-A couple caveats:
-
-* Tune will ignore the return value of ``train_func``. To save your best
-  trained model, you will need to use the ``train.save_checkpoint`` API.
-* You should **not** call ``tune.report`` or ``tune.checkpoint_dir`` in your
-  training function. Functional parity is achieved through ``train.report``,
-  ``train.save_checkpoint``, and ``train.load_checkpoint``. This allows you to go
-  from Ray Train to Ray Train + Ray Tune without changing any code in the training
-  function.
-
-
-.. code-block:: python
-
-    from ray import train, tune
-    from ray.train import Trainer
+    from ray.air import session
+    from ray.train.torch import TorchTrainer
+    from ray.tune.tuner import Tuner, TuneConfig
 
     def train_func(config):
         # In this example, nothing is expected to change over epochs,
         # and the output metric is equivalent to the input value.
         for _ in range(config["num_epochs"]):
-            train.report(output=config["input"])
+            session.report(dict(output=config["input"]))
 
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainable = trainer.to_tune_trainable(train_func)
-    analysis = tune.run(trainable, config={
-        "num_epochs": 2,
-        "input": tune.grid_search([1, 2, 3])
-    })
-    print(analysis.get_best_config(metric="output", mode="max"))
-    # {'num_epochs': 2, 'input': 3}
-
+    trainer = TorchTrainer(train_func, scaling_config=dict(num_workers=2))
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "num_epochs": 2,
+                "input": tune.grid_search([1, 2, 3]),
+            }
+        },
+        tune_config=TuneConfig(num_samples=5, metric="output", mode="max"),
+    )
+    result_grid = tuner.fit()
+    print(result_grid.get_best_result().metrics["output"])
+    # 3
 
 ..
     import ray
