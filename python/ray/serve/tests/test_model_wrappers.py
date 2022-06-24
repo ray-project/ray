@@ -224,7 +224,7 @@ def test_model_wrapper_reconfigure(serve_instance):
 
         m2 = ModelWrapperDeployment.bind(
             predictor_cls=new_predictor_cls,
-            checkpoint=uri
+            checkpoint=uri,
         )
 
         dag = m2.predict.bind(dag_input)
