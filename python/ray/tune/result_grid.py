@@ -180,7 +180,9 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            dataframe=self._experiment_analysis.trial_dataframes.get(trial.logdir)
+            metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
+                trial.logdir
+            )
             if self._experiment_analysis
             else None,
             best_checkpoints=best_checkpoints,
