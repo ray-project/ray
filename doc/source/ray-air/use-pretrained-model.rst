@@ -1,4 +1,4 @@
-.. _use-pretrained-model:
+.. _use-pretrained-model-ref:
 
 Use a pretrained model for batch or online inference
 =====================================================
