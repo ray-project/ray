@@ -208,6 +208,36 @@ def test_model_wrappers_in_pipeline(serve_instance):
     return resp.json() == {"value": [42], "batch_size": 1}
 
 
+def test_model_wrapper_reconfigure(serve_instance):
+    path = tempfile.mkdtemp()
+    uri = f"file://{path}/test_uri"
+    Checkpoint.from_dict({"increment": 2}).to_uri(uri)
+
+    predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
+
+    with InputNode() as dag_input:
+        m1 = ModelWrapperDeployment.bind(
+            predictor_cls=predictor_cls,
+            checkpoint=uri,
+        )
+        new_predictor_cls = m1.reconfigure(uri, predictor_cls)
+
+        m2 = ModelWrapperDeployment.bind(
+            predictor_cls=new_predictor_cls,
+            checkpoint=uri
+        )
+
+        dag = m2.predict.bind(dag_input)
+    deployments = build(Ingress.bind(dag))
+    for d in deployments:
+        d.deploy()
+
+    resp = requests.post("http://127.0.0.1:8000/ingress", json={"array": [40]})
+    print(resp.text)
+    resp.raise_for_status()
+    return resp.json() == {"value": [44], "batch_size": 1}
+
+
 if __name__ == "__main__":
     import sys
 
