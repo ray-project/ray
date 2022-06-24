@@ -94,7 +94,7 @@ if __name__ == "__main__":
     bohb_search = TuneBOHB(
         # space=config_space,  # If you want to set the space manually
     )
-    bohb_search = tune.suggest.ConcurrencyLimiter(bohb_search, max_concurrent=4)
+    bohb_search = tune.search.ConcurrencyLimiter(bohb_search, max_concurrent=4)
 
     analysis = tune.run(
         MyTrainableClass,

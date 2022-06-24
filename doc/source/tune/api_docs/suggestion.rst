@@ -1,7 +1,7 @@
 .. _tune-search-alg:
 
-Search Algorithms (tune.suggest)
-================================
+Search Algorithms (tune.search)
+===============================
 
 Tune's Search Algorithms are wrappers around open-source optimization libraries for efficient hyperparameter selection.
 Each library has a specific way of defining the search space - please refer to their documentation for more details.
@@ -67,8 +67,8 @@ identifier.
 
 .. _tune-basicvariant:
 
-Random search and grid search (tune.suggest.basic_variant.BasicVariantGenerator)
---------------------------------------------------------------------------------
+Random search and grid search (tune.search.basic_variant.BasicVariantGenerator)
+-------------------------------------------------------------------------------
 
 The default and most basic way to do hyperparameter search is via random and grid search.
 Ray Tune does this through the :class:`BasicVariantGenerator <ray.tune.search.basic_variant.BasicVariantGenerator>`
@@ -82,15 +82,15 @@ default if no search algorithm is passed to
 
 .. _tune-ax:
 
-Ax (tune.suggest.ax.AxSearch)
------------------------------
+Ax (tune.search.ax.AxSearch)
+----------------------------
 
 .. autoclass:: ray.tune.search.ax.AxSearch
 
 .. _bayesopt:
 
-Bayesian Optimization (tune.suggest.bayesopt.BayesOptSearch)
-------------------------------------------------------------
+Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
+-----------------------------------------------------------
 
 
 .. autoclass:: ray.tune.search.bayesopt.BayesOptSearch
@@ -100,8 +100,8 @@ Bayesian Optimization (tune.suggest.bayesopt.BayesOptSearch)
 
 .. _suggest-TuneBOHB:
 
-BOHB (tune.suggest.bohb.TuneBOHB)
----------------------------------
+BOHB (tune.search.bohb.TuneBOHB)
+--------------------------------
 
 BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials
 and also uses Bayesian Optimization to improve the hyperparameter search.
@@ -121,8 +121,8 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. _BlendSearch:
 
-BlendSearch (tune.suggest.flaml.BlendSearch)
---------------------------------------------
+BlendSearch (tune.search.flaml.BlendSearch)
+-------------------------------------------
 
 BlendSearch is an economical hyperparameter optimization algorithm that combines combines local search with global search.
 It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
@@ -140,8 +140,8 @@ See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and docu
 
 .. _CFO:
 
-CFO (tune.suggest.flaml.CFO)
-----------------------------
+CFO (tune.search.flaml.CFO)
+---------------------------
 
 CFO (Cost-Frugal hyperparameter Optimization) is a hyperparameter search algorithm based on randomized local search.
 It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
@@ -160,32 +160,32 @@ FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tun
 
 .. _Dragonfly:
 
-Dragonfly (tune.suggest.dragonfly.DragonflySearch)
---------------------------------------------------
+Dragonfly (tune.search.dragonfly.DragonflySearch)
+-------------------------------------------------
 
 .. autoclass:: ray.tune.search.dragonfly.DragonflySearch
   :members: save, restore
 
 .. _tune-hebo:
 
-HEBO (tune.suggest.hebo.HEBOSearch)
------------------------------------------------
+HEBO (tune.search.hebo.HEBOSearch)
+----------------------------------
 
 .. autoclass:: ray.tune.search.hebo.HEBOSearch
   :members: save, restore
 
 .. _tune-hyperopt:
 
-HyperOpt (tune.suggest.hyperopt.HyperOptSearch)
------------------------------------------------
+HyperOpt (tune.search.hyperopt.HyperOptSearch)
+----------------------------------------------
 
 .. autoclass:: ray.tune.search.hyperopt.HyperOptSearch
   :members: save, restore
 
 .. _nevergrad:
 
-Nevergrad (tune.suggest.nevergrad.NevergradSearch)
---------------------------------------------------
+Nevergrad (tune.search.nevergrad.NevergradSearch)
+-------------------------------------------------
 
 .. autoclass:: ray.tune.search.nevergrad.NevergradSearch
   :members: save, restore
@@ -194,8 +194,8 @@ Nevergrad (tune.suggest.nevergrad.NevergradSearch)
 
 .. _tune-optuna:
 
-Optuna (tune.suggest.optuna.OptunaSearch)
------------------------------------------
+Optuna (tune.search.optuna.OptunaSearch)
+----------------------------------------
 
 .. autoclass:: ray.tune.search.optuna.OptunaSearch
 
@@ -203,8 +203,8 @@ Optuna (tune.suggest.optuna.OptunaSearch)
 
 .. _sigopt:
 
-SigOpt (tune.suggest.sigopt.SigOptSearch)
------------------------------------------
+SigOpt (tune.search.sigopt.SigOptSearch)
+----------------------------------------
 
 You will need to use the `SigOpt experiment and space specification <https://app.sigopt.com/docs/overview/create>`__
 to specify your search space.
@@ -213,8 +213,8 @@ to specify your search space.
 
 .. _skopt:
 
-Scikit-Optimize (tune.suggest.skopt.SkOptSearch)
-------------------------------------------------
+Scikit-Optimize (tune.search.skopt.SkOptSearch)
+-----------------------------------------------
 
 .. autoclass:: ray.tune.search.skopt.SkOptSearch
   :members: save, restore
@@ -223,16 +223,16 @@ Scikit-Optimize (tune.suggest.skopt.SkOptSearch)
 
 .. _zoopt:
 
-ZOOpt (tune.suggest.zoopt.ZOOptSearch)
---------------------------------------
+ZOOpt (tune.search.zoopt.ZOOptSearch)
+-------------------------------------
 
 .. autoclass:: ray.tune.search.zoopt.ZOOptSearch
   :members: save, restore
 
 .. _repeater:
 
-Repeated Evaluations (tune.suggest.Repeater)
---------------------------------------------
+Repeated Evaluations (tune.search.Repeater)
+-------------------------------------------
 
 Use ``ray.tune.search.Repeater`` to average over multiple evaluations of the same
 hyperparameter configurations. This is useful in cases where the evaluated
@@ -251,8 +251,8 @@ will run ``repeat`` trials of the configuration. It will then average the
 
 .. _limiter:
 
-ConcurrencyLimiter (tune.suggest.ConcurrencyLimiter)
-----------------------------------------------------
+ConcurrencyLimiter (tune.search.ConcurrencyLimiter)
+---------------------------------------------------
 
 Use ``ray.tune.search.ConcurrencyLimiter`` to limit the amount of concurrency when using a search algorithm.
 This is useful when a given optimization algorithm does not parallelize very well (like a naive Bayesian Optimization).
@@ -261,8 +261,8 @@ This is useful when a given optimization algorithm does not parallelize very wel
 
 .. _byo-algo:
 
-Custom Search Algorithms (tune.suggest.Searcher)
-------------------------------------------------
+Custom Search Algorithms (tune.search.Searcher)
+-----------------------------------------------
 
 If you are interested in implementing or contributing a new Search Algorithm, provide the following interface:
 
