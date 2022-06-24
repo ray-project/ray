@@ -186,6 +186,7 @@ class _HeapCheckpointWrapper:
 
 
 # Move to ray.air.config when ml_utils is deprecated.
+# Doing it now causes a circular import.
 @dataclass
 @PublicAPI(stability="alpha")
 class CheckpointConfig:

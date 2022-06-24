@@ -717,7 +717,7 @@ Configuring checkpoints
 +++++++++++++++++++++++
 
 For more configurability of checkpointing behavior (specifically saving
-checkpoints to disk), a :ref:`train-api-checkpoint-strategy` can be passed into
+checkpoints to disk), a :ref:`train-api-checkpoint-config` can be passed into
 ``Trainer.run``.
 
 As an example, to completely disable writing checkpoints to disk:
