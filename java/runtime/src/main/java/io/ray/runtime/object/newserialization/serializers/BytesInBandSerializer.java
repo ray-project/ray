@@ -5,7 +5,7 @@ import io.ray.runtime.object.newserialization.RaySerializer;
 import java.nio.ByteBuffer;
 import java.util.Map;
 
-public class ByteArraySerializer implements RaySerializer<byte[]> {
+public class BytesInBandSerializer implements RaySerializer<byte[]> {
 
   public static final ByteBuffer TYPE_ID;
 

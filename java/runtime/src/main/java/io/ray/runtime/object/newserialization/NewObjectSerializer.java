@@ -1,6 +1,6 @@
 package io.ray.runtime.object.newserialization;
 
-import io.ray.runtime.object.newserialization.serializers.ByteArraySerializer;
+import io.ray.runtime.object.newserialization.serializers.BytesInBandSerializer;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,7 +15,7 @@ public class NewObjectSerializer {
   private static final Logger LOG = LoggerFactory.getLogger(NewObjectSerializer.class);
 
   static {
-    registerSerializer(byte[].class, ByteArraySerializer.TYPE_ID, new ByteArraySerializer());
+    registerSerializer(byte[].class, BytesInBandSerializer.TYPE_ID, new BytesInBandSerializer());
   }
 
   public static void registerSerializer(Class<?> cls, ByteBuffer typeId, RaySerializer serializer) {
