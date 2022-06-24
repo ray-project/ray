@@ -793,7 +793,7 @@ class Dataset(Generic[T]):
         *,
         seed: Optional[int] = None,
     ) -> "Dataset[T]":
-        """Randomly shuffle the blocks of this dataset.
+        """Randomly shuffle the blocks of this dataset (EXPERIMENTAL).
 
         Examples:
             >>> import ray
