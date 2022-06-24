@@ -33,7 +33,7 @@ if __name__ == "__main__":
         df = df.drop(columns=["col2"])
         return df    
     while True:
-        ds.map(udf, compute=ActorPoolStrategy(concurrent_mapper, concurrent_mapper), num_cpus=estimated_cpu)
+        ds.map(udf, compute=ActorPoolStrategy(concurrent_mapper, concurrent_mapper), num_cpus=estimated_cpu, memory=estimated_heap)
         # ds.map_batches(batch_udf, compute=ActorPoolStrategy(concurrent_mapper, concurrent_mapper), num_cpus=estimated_cpu)
         
     # counter = Counter.remote()

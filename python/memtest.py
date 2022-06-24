@@ -29,7 +29,7 @@ class Actor:
 
     def compute(self):
         if self.index % 100 == 0:
-            print(f'memory @{self.index} rss {self.process.memory_full_info().rss / 1024**2 - self.baseline} uss {self.process.memory_full_info().uss / 1024**2 - self.baseline_uss}')
+            print(f'memory @{self.index} rss {self.process.memory_full_info().rss / 1024**2} uss {self.process.memory_full_info().uss / 1024**2}')
         self.index = self.index + 1
         return 1
 
@@ -43,23 +43,30 @@ def simulate_call(workers, pass_object):
 if __name__ == "__main__":
     results = defaultdict(list)
     process = psutil.Process(os.getpid())
-    num_samples = 200000
+    num_samples = 1000000
     scale = 1024**2
     something_to_store = {"data": np.random.random((100000, 2)).tolist()}
     
-    num_cpu = 1
+    num_cpu = 5
+    resources = {}
+
     local_mode = False
     if ray.is_initialized():
         ray.shutdown()
-    ray.init(num_cpus=num_cpu, num_gpus=0, include_dashboard=False, local_mode=local_mode)
+    ray.init(num_cpus=num_cpu, num_gpus=0, _memory=4*1024*1024*1024, include_dashboard=True, local_mode=local_mode)
+    # ray.init(address = 'auto')
     
-    workers = [Actor.remote() for _ in range(num_cpu)]
-    baseline = process.memory_full_info().rss / scale
-    baseline_uss = process.memory_full_info().uss / scale
+    # workers = [Actor.remote() for _ in range(num_cpu)]
+    # baseline = process.memory_full_info().rss / scale
+    # baseline_uss = process.memory_full_info().uss / scale
     
-    for v in range(num_samples):
-        simulate_call(workers, True)
-        if v % 100 == 0:
-            print(f'memory @{v} rss {process.memory_full_info().rss / scale - baseline} uss {process.memory_full_info().uss / scale - baseline_uss}')
+    # for v in range(num_samples):
+    v = 0
+    while True:
+        pass
+        # simulate_call(workers, True)
+        # if v % 100 == 0:
+        #     print(f'memory @{v} rss {process.memory_full_info().rss / scale - baseline} uss {process.memory_full_info().uss / scale - baseline_uss}')
+        # v = v + 1
         
     print("done")
