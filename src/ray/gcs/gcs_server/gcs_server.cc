@@ -398,7 +398,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
             RAY_LOG(WARNING)
                 << "The GCS actor metadata garbage collector timer failed to fire. This "
                    "could old actor metadata not being properly cleaned up. For more "
-                   "information, check logs/gcs_server.err and logs/gcs_server.out";
+                   "information, check logs/gcs_server*.log";
           }
         });
       },

@@ -160,9 +160,9 @@ def test_periodic_event_stats(shutdown_only):
         # Need to remove suffix to avoid reading log rotated files.
         if "python-core-driver" in str(path):
             wait_for_condition(lambda: is_event_loop_stats_found(path))
-        if "raylet.out" in str(path):
+        if "raylet" in str(path):
             wait_for_condition(lambda: is_event_loop_stats_found(path))
-        if "gcs_server.out" in str(path):
+        if "gcs_server" in str(path):
             wait_for_condition(lambda: is_event_loop_stats_found(path))
 
 

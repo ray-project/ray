@@ -2,6 +2,7 @@ import os
 import shutil
 import sys
 import time
+import psutil
 
 import pytest
 
@@ -41,6 +42,15 @@ def test_tempdir(shutdown_only):
         os.path.join(ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir"),
         ignore_errors=True,
     )
+
+
+def get_pid(name):
+    pids = psutil.process_iter()
+    for pid in pids:
+        if name in pid.name():
+            return pid.pid
+
+    return -1
 
 
 def test_tempdir_commandline():
@@ -86,16 +96,24 @@ def test_raylet_tempfiles(shutdown_only):
     node = ray._private.worker._global_node
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
-    log_files_expected = {
-        "log_monitor.log",
-        "monitor.log",
-        "raylet.out",
-        "raylet.err",
-        "gcs_server.out",
-        "gcs_server.err",
-        "dashboard.log",
-        "dashboard_agent.log",
-    }
+
+    def get_log_files_expected():
+        raylet_pid = get_pid("raylet")
+        gcs_server_pid = get_pid("gcs_server")
+        return {
+            "log_monitor.log",
+            "monitor.log",
+            "raylet.out",
+            "raylet.err",
+            f"raylet_{raylet_pid}.log",
+            "gcs_server.out",
+            "gcs_server.err",
+            f"gcs_server_{gcs_server_pid}.log",
+            "dashboard.log",
+            "dashboard_agent.log",
+        }
+
+    log_files_expected = get_log_files_expected()
 
     def check_all_log_file_exists():
         for expected in log_files_expected:
@@ -122,6 +140,7 @@ def test_raylet_tempfiles(shutdown_only):
     time.sleep(3)  # wait workers to start
     log_files = set(os.listdir(node.get_logs_dir_path()))
 
+    log_files_expected = get_log_files_expected()
     assert log_files.issuperset(log_files_expected)
 
     # Check numbers of worker log file.

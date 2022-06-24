@@ -77,14 +77,16 @@ DEFINE_bool(huge_pages, false, "Enable huge pages.");
 #ifndef RAYLET_TEST
 
 int main(int argc, char *argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  const std::string log_dir = FLAGS_log_dir;
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+                                         log_dir);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
 
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
   const std::string store_socket_name = FLAGS_store_socket_name;
   const std::string node_name =
@@ -110,7 +112,6 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
-  const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
   const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
