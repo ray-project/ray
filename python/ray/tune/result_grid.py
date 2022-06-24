@@ -8,7 +8,7 @@ from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 
 

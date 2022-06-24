@@ -1,7 +1,7 @@
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.xgboost import RayDMatrix, RayParams, train
 
 # __train_begin__

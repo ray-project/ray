@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.tune.callback import Callback
     from ray.tune.stopper import Stopper
-    from ray.tune.trainable import PlacementGroupFactory
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 ScalingConfig = Dict[str, Any]
 
@@ -90,7 +90,7 @@ class ScalingConfigDataClass:
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
         """Returns a PlacementGroupFactory to specify resources for Tune."""
-        from ray.tune.trainable import PlacementGroupFactory
+        from ray.tune.execution.placement_groups import PlacementGroupFactory
 
         trainer_resources = (
             self.trainer_resources if self.trainer_resources else {"CPU": 1}
