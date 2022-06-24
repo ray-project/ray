@@ -17,7 +17,7 @@ import ray
 from ray import tune
 from ray.tune import Trainable
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
-from ray.tune.search.bohb.bohb_search import TuneBOHB
+from ray.tune.search.bohb import TuneBOHB
 
 
 class MyTrainableClass(Trainable):

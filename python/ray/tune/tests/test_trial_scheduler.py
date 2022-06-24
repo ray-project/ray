@@ -790,7 +790,7 @@ class BOHBSuite(unittest.TestCase):
         )
 
     def testNonstopBOHB(self):
-        from ray.tune.search.bohb.bohb_search import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         def train(cfg, checkpoint_dir=None):
             start = 0
@@ -2311,7 +2311,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
 
     def testAnonymousMetricEndToEndBOHB(self):
-        from ray.tune.search.bohb.bohb_search import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         self._testAnonymousMetricEndToEnd(HyperBandForBOHB, TuneBOHB())
 

@@ -14,7 +14,7 @@ import time
 from ray import tune
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.search.dragonfly.dragonfly_search import DragonflySearch
+from ray.tune.search.dragonfly import DragonflySearch
 
 
 def objective(config):

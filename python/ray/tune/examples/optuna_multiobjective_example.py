@@ -11,7 +11,7 @@ import time
 import ray
 from ray import tune
 from ray.tune.search import ConcurrencyLimiter
-from ray.tune.search.optuna.optuna_search import OptunaSearch
+from ray.tune.search.optuna import OptunaSearch
 
 
 def evaluation_fn(step, width, height):

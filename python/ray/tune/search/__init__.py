@@ -51,7 +51,7 @@ def _import_hyperopt_search():
 
 
 def _import_bayesopt_search():
-    from ray.tune.search.bayesopt.bayesopt import BayesOptSearch
+    from ray.tune.search.bayesopt.bayesopt_search import BayesOptSearch
 
     return BayesOptSearch
 

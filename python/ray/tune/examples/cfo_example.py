@@ -10,7 +10,7 @@ import ray
 from ray import tune
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.search.flaml.flaml_search import CFO
+from ray.tune.search.flaml import CFO
 
 
 def evaluation_fn(step, width, height):
