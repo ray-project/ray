@@ -5,7 +5,7 @@ import pickle
 from typing import Dict, List, Optional, Union
 
 try:
-    import sigopt_search as sgo
+    import sigopt as sgo
 
     Connection = sgo.Connection
 except ImportError:

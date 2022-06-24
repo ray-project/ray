@@ -24,7 +24,7 @@ from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import is_nan_or_inf, unflatten_dict, validate_warmstart
 
 try:
-    import skopt_search as sko
+    import skopt as sko
 except ImportError:
     sko = None
 

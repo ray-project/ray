@@ -22,9 +22,9 @@ from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:
-    import nevergrad_search as ng
-    from nevergrad_search.optimization import Optimizer
-    from nevergrad_search.optimization.base import ConfiguredOptimizer
+    import nevergrad as ng
+    from nevergrad.optimization import Optimizer
+    from nevergrad.optimization.base import ConfiguredOptimizer
 
     Parameter = ng.p.Parameter
 except ImportError:

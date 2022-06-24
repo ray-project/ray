@@ -209,18 +209,18 @@ class DragonflySearch(Searcher):
         """Setup dragonfly when no optimizer has been passed."""
         assert not self._opt, "Optimizer already set."
 
-        from dragonfly_search import load_config
-        from dragonfly_search.exd.experiment_caller import (
+        from dragonfly import load_config
+        from dragonfly.exd.experiment_caller import (
             CPFunctionCaller,
             EuclideanFunctionCaller,
         )
-        from dragonfly_search.opt.blackbox_optimiser import BlackboxOptimiser
-        from dragonfly_search.opt.random_optimiser import (
+        from dragonfly.opt.blackbox_optimiser import BlackboxOptimiser
+        from dragonfly.opt.random_optimiser import (
             CPRandomOptimiser,
             EuclideanRandomOptimiser,
         )
-        from dragonfly_search.opt.cp_ga_optimiser import CPGAOptimiser
-        from dragonfly_search.opt.gp_bandit import CPGPBandit, EuclideanGPBandit
+        from dragonfly.opt.cp_ga_optimiser import CPGAOptimiser
+        from dragonfly.opt.gp_bandit import CPGPBandit, EuclideanGPBandit
 
         if not self._space:
             raise ValueError(
