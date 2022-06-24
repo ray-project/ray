@@ -54,36 +54,28 @@ def ray_cluster():
 
 @pytest.fixture()
 def lower_slow_startup_threshold_and_reset():
+    original_slow_startup_warning_s = os.getenv("SERVE_SLOW_STARTUP_WARNING_S", "30")
+    original_slow_startup_warning_period_s = os.getenv(
+        "SERVE_SLOW_STARTUP_WARNING_PERIOD_S", "30"
+    )
+    # Lower slow startup warning threshold to 1 second to reduce test duration
+    os.environ["SERVE_SLOW_STARTUP_WARNING_S"] = "1"
+    os.environ["SERVE_SLOW_STARTUP_WARNING_PERIOD_S"] = "1"
+
     ray.init(num_cpus=2)
     client = serve.start(detached=True)
 
-    original_slow_startup_warning_period_s = ray.get(
-        client._controller._get_slow_startup_warning_period_s.remote()
-    )
-    original_slow_startup_warning_s = ray.get(
-        client._controller._get_slow_startup_warning_s.remote()
-    )
-    # Lower slow startup warning threshold to 1 second to reduce test duration
-    ray.get(client._controller._set_slow_startup_warning_period_s.remote(1))
-    ray.get(client._controller._set_slow_startup_warning_s.remote(1))
-
     yield client
-
-    # Reset slow startup warning threshold to prevent state sharing across unit
-    # tests
-    ray.get(
-        client._controller._set_slow_startup_warning_period_s.remote(
-            original_slow_startup_warning_period_s
-        )
-    )
-    ray.get(
-        client._controller._set_slow_startup_warning_s.remote(
-            original_slow_startup_warning_s
-        )
-    )
 
     serve.shutdown()
     ray.shutdown()
+
+    # Reset slow startup warning threshold to prevent state sharing across unit
+    # tests
+    os.environ["SERVE_SLOW_STARTUP_WARNING_S"] = original_slow_startup_warning_s
+    os.environ[
+        "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
+    ] = original_slow_startup_warning_period_s
 
 
 def test_shutdown(ray_shutdown):
@@ -770,7 +762,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     @serve.deployment
     class f:
         def __init__(self):
-            self.num = 5 / 0
+            self.num = 1 / 0
 
         def __call__(self, request):
             pass

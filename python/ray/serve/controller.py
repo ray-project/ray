@@ -165,18 +165,6 @@ class ServeController:
             deployment_name
         ]._stop_one_running_replica_for_testing()
 
-    def _get_slow_startup_warning_period_s(self) -> float:
-        return ray.serve.deployment_state.SLOW_STARTUP_WARNING_PERIOD_S
-
-    def _get_slow_startup_warning_s(self) -> float:
-        return ray.serve.deployment_state.SLOW_STARTUP_WARNING_S
-
-    def _set_slow_startup_warning_period_s(self, period: float) -> None:
-        ray.serve.deployment_state.SLOW_STARTUP_WARNING_PERIOD_S = period
-
-    def _set_slow_startup_warning_s(self, time_limit: float) -> None:
-        ray.serve.deployment_state.SLOW_STARTUP_WARNING_S = time_limit
-
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
 
