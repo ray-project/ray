@@ -1283,6 +1283,9 @@ def init(
 
     if local_mode:
         driver_mode = LOCAL_MODE
+        logger.warning(
+            "DeprecationWarning: local mode is deprecated and will be removed in the future. It causes memory leak and should not be used."
+        )
     else:
         driver_mode = SCRIPT_MODE
 
