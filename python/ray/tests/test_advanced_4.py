@@ -35,6 +35,7 @@ def test_ray_start_and_stop():
         subprocess.check_call(["ray", "start", "--head"])
         subprocess.check_call(["ray", "stop"])
 
+
 @pytest.mark.exclusive
 def test_ray_memory(shutdown_only):
     ray.init(num_cpus=1)
