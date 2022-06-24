@@ -80,6 +80,10 @@ def get_default_fixture_ray_kwargs():
     }
     return ray_kwargs
 
+@pytest.fixture
+def user_temp_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAY_TMPDIR", str(tmp_path))
+    yield
 
 @contextmanager
 def _setup_redis(request):

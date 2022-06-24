@@ -13,6 +13,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
+    find_free_port,
 )
 
 
@@ -69,12 +70,13 @@ def test_namespace(ray_start_cluster):
     * The namespace name (as provided by the runtime context) is correct.
     """
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4, ray_client_server_port=50055)
+    port = find_free_port()
+    cluster.add_node(num_cpus=4, ray_client_server_port=port)
     cluster.wait_for_nodes(1)
 
     template = """
 import ray
-ray.client("localhost:50055").namespace({namespace}).connect()
+ray.client("localhost:{port}").namespace({namespace}).connect()
 
 @ray.remote
 class Foo:
@@ -86,25 +88,25 @@ ray.get(a.ping.remote())
 print("Current namespace:", ray.get_runtime_context().namespace)
     """
 
-    anon_driver = template.format(namespace="None")
+    anon_driver = template.format(namespace="None", port=port)
     run_string_as_driver(anon_driver)
     # This second run will fail if the actors don't run in separate anonymous
     # namespaces.
     run_string_as_driver(anon_driver)
 
-    run_in_namespace = template.format(namespace="'namespace'")
+    run_in_namespace = template.format(namespace="'namespace'", port=port)
     script_output = run_string_as_driver(run_in_namespace)
     # The second run fails because the actors are run in the same namespace.
     with pytest.raises(subprocess.CalledProcessError):
         run_string_as_driver(run_in_namespace)
 
     assert "Current namespace: namespace" in script_output
-    subprocess.check_output("ray stop --force", shell=True)
 
 
-def test_connect_to_cluster(ray_start_regular_shared):
-    server = ray_client_server.serve("localhost:50055")
-    with ray.client("localhost:50055").connect() as client_context:
+def test_connect_to_cluster(ray_start_regular):
+    port = find_free_port()
+    server = ray_client_server.serve(f"localhost:{port}")
+    with ray.client(f"localhost:{port}").connect() as client_context:
         assert client_context.dashboard_url == ray._private.worker.get_dashboard_url()
         python_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
         assert client_context.python_version == python_version
@@ -114,10 +116,10 @@ def test_connect_to_cluster(ray_start_regular_shared):
         assert client_context.protocol_version == protocol_version
 
     server.stop(0)
-    subprocess.check_output("ray stop --force", shell=True)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+@pytest.mark.exclusive
 def test_local_clusters():
     """
     This tests the various behaviors of connecting to local clusters:
@@ -236,11 +238,13 @@ def test_module_lacks_client_builder():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
-def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
-    subprocess.check_output(
-        "ray start --head --ray-client-server-port=25555", shell=True
-    )
-    with ray.client("localhost:25555").namespace("n1").connect():
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 0"],
+    indirect=True,
+)
+def test_disconnect(user_temp_dir, call_ray_start, set_enable_auto_connect):
+    with ray.client(call_ray_start).namespace("n1").connect():
         # Connect via Ray Client
         namespace = ray.get_runtime_context().namespace
         assert namespace == "n1"
@@ -258,7 +262,7 @@ def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
     with pytest.raises(ray.exceptions.RaySystemError):
         ray.put(300)
 
-    ctx = ray.client("localhost:25555").namespace("n1").connect()
+    ctx = ray.client(call_ray_start).namespace("n1").connect()
     # Connect via Ray Client
     namespace = ray.get_runtime_context().namespace
     assert namespace == "n1"
@@ -271,17 +275,18 @@ def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
-def test_address_resolution(call_ray_stop_only):
-    subprocess.check_output(
-        "ray start --head --ray-client-server-port=50055", shell=True
-    )
-
-    with ray.client("localhost:50055").connect():
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 0"],
+    indirect=True,
+)
+def test_address_resolution(user_temp_dir, call_ray_start):
+    with ray.client(call_ray_start).connect():
         assert ray.util.client.ray.is_connected()
 
     try:
         os.environ["RAY_ADDRESS"] = "local"
-        with ray.client("localhost:50055").connect():
+        with ray.client(call_ray_start).connect():
             # client(...) takes precedence of RAY_ADDRESS=local
             assert ray.util.client.ray.is_connected()
 
@@ -341,24 +346,25 @@ def test_client_deprecation_warn():
     )
     ray.shutdown()
 
-    server = ray_client_server.serve("localhost:50055")
+    port = find_free_port()
+    server = ray_client_server.serve(f"localhost:{port}")
 
     # Test warning when namespace and runtime env aren't specified
     with warnings.catch_warnings(record=True) as w:
-        with ray.client("localhost:50055").connect():
+        with ray.client(f"localhost:{port}").connect():
             pass
     assert any(
-        has_client_deprecation_warn(warning, 'ray.init("ray://localhost:50055")')
+        has_client_deprecation_warn(warning, f'ray.init("ray://localhost:{port}")')
         for warning in w
     )
 
     # Test warning when just namespace specified
     with warnings.catch_warnings(record=True) as w:
-        with ray.client("localhost:50055").namespace("nmspc").connect():
+        with ray.client(f"localhost:{port}").namespace("nmspc").connect():
             pass
     assert any(
         has_client_deprecation_warn(
-            warning, 'ray.init("ray://localhost:50055", namespace="nmspc")'
+            warning, f'ray.init("ray://localhost:{port}", namespace="nmspc")'
         )
         for warning in w
     )
@@ -368,10 +374,10 @@ def test_client_deprecation_warn():
     with warnings.catch_warnings(record=True) as w, patch.dict(
         os.environ, {"RAY_NAMESPACE": "aksdj"}
     ):
-        with ray.client("localhost:50055").connect():
+        with ray.client(f"localhost:{port}").connect():
             pass
     assert any(
-        has_client_deprecation_warn(warning, 'ray.init("ray://localhost:50055")')
+        has_client_deprecation_warn(warning, f'ray.init("ray://localhost:{port}")')
         for warning in w
     )
 
@@ -381,21 +387,21 @@ def test_client_deprecation_warn():
         # Test warning when just runtime_env specified
         with warnings.catch_warnings(record=True) as w:
             try:
-                ray.client("localhost:50055").env({"pip": ["requests"]}).connect()
+                ray.client(f"localhost:{port}").env({"pip": ["requests"]}).connect()
             except ConnectionError:
                 pass
-        expected = 'ray.init("ray://localhost:50055", runtime_env=<your_runtime_env>)'  # noqa E501
+        expected = f'ray.init("ray://localhost:{port}", runtime_env=<your_runtime_env>)'  # noqa E501
         assert any(has_client_deprecation_warn(warning, expected) for warning in w)
 
         # Test warning works if both runtime env and namespace specified
         with warnings.catch_warnings(record=True) as w:
             try:
-                ray.client("localhost:50055").namespace("nmspc").env(
+                ray.client(f"localhost:{port}").namespace("nmspc").env(
                     {"pip": ["requests"]}
                 ).connect()
             except ConnectionError:
                 pass
-        expected = 'ray.init("ray://localhost:50055", namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+        expected = f'ray.init("ray://localhost:{port}", namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
         assert any(has_client_deprecation_warn(warning, expected) for warning in w)
 
         # We don't expect namespace to appear in the warning message, since
@@ -404,19 +410,22 @@ def test_client_deprecation_warn():
             os.environ, {"RAY_NAMESPACE": "abcdef"}
         ):
             try:
-                ray.client("localhost:50055").env({"pip": ["requests"]}).connect()
+                ray.client(f"localhost:{port}").env({"pip": ["requests"]}).connect()
             except ConnectionError:
                 pass
-        expected = 'ray.init("ray://localhost:50055", runtime_env=<your_runtime_env>)'  # noqa E501
+        expected = f'ray.init("ray://localhost:{port}", runtime_env=<your_runtime_env>)'  # noqa E501
         assert any(has_client_deprecation_warn(warning, expected) for warning in w)
 
     # cleanup
     server.stop(0)
-    subprocess.check_output("ray stop --force", shell=True)
 
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        ret1 = pytest.main(
+            ["-n", "auto", "--boxed", "-m", "not exclusive", "-vs", __file__]
+        )
+        ret2 = pytest.main(["--boxed", "-m", "exclusive", "-vs", __file__])
+        sys.exit(0 if ret1 + ret2 == 0 else 1)
     else:
         sys.exit(pytest.main(["-sv", __file__]))

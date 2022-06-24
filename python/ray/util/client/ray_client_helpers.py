@@ -50,9 +50,9 @@ def ray_start_cluster_client_server_pair(address):
         real_ray.init(address=address)
 
     server = ray_client_server.serve(
-        "127.0.0.1:50051", ray_connect_handler=ray_connect_handler
+        "127.0.0.1:0", ray_connect_handler=ray_connect_handler
     )
-    ray.connect("127.0.0.1:50051")
+    ray.connect(f"127.0.0.1:{server.port}")
     try:
         yield ray, server
     finally:

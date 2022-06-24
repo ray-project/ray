@@ -282,7 +282,6 @@ class _LocalClientBuilder(ClientBuilder):
         # Should be done *after* the deprecation warning, since warning will
         # check if those values are already set.
         self._fill_defaults_from_env()
-
         connection_dict = ray.init(address=self.address, job_config=self._job_config)
         return ClientContext(
             dashboard_url=connection_dict["webui_url"],
@@ -322,6 +321,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             )
             with open(cluster_file, "r") as f:
                 address = f.read().strip()
+
         except FileNotFoundError:
             # `address` won't be set and we'll create a new cluster.
             pass
