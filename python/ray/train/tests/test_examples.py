@@ -51,7 +51,7 @@ def test_tensorflow_mnist(ray_start_4_cpus, num_workers):
 
     assert result[TRAINING_ITERATION] == epochs
 
-    loss = list(results.dataframe["loss"])
+    loss = list(results.metrics_dataframe["loss"])
     assert len(loss) == epochs
     assert loss[-1] < loss[0]
 
@@ -107,7 +107,7 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     result = results.metrics
     assert result[TRAINING_ITERATION] == epochs
 
-    loss = list(results.dataframe["loss"])
+    loss = list(results.metrics_dataframe["loss"])
     assert len(loss) == epochs
     assert loss[-1] < loss[0]
 
@@ -146,7 +146,7 @@ def test_torch_fashion_mnist(ray_start_4_cpus):
     result = results.metrics
     assert result[TRAINING_ITERATION] == epochs
 
-    loss = list(results.dataframe["loss"])
+    loss = list(results.metrics_dataframe["loss"])
     assert len(loss) == epochs
     assert loss[-1] < loss[0]
 
