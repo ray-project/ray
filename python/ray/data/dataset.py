@@ -2893,7 +2893,7 @@ class Dataset(Generic[T]):
         count = self.count()
         if count > limit:
             raise ValueError(
-                f"The dataset has more than the default limit of {limit} "
+                f"The dataset has more than the given limit of {limit} "
                 f"records: {count}. If you are sure that a DataFrame with "
                 f"{count} rows will fit in local memory, use "
                 f"ds.to_pandas(limit={count})."
