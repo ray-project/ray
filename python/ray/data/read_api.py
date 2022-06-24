@@ -248,15 +248,16 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        read_tasks = _prepare_read(datasource, ctx, cur_pg, parallelism, read_args)
+        requested_parallelism, read_tasks = _get_read_tasks(
+            datasource, ctx, cur_pg, parallelism, read_args)
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
-        prepare_read = cached_remote_fn(
-            _prepare_read, retry_exceptions=False, num_cpus=0
+        get_read_tasks = cached_remote_fn(
+            _get_read_tasks, retry_exceptions=False, num_cpus=0
         )
-        read_tasks = ray.get(
-            prepare_read.remote(
+        requested_parallelism, read_tasks = ray.get(
+            get_read_tasks.remote(
                 datasource,
                 ctx,
                 cur_pg,
@@ -265,7 +266,7 @@ def read_datasource(
             )
         )
 
-    if len(read_tasks) < parallelism and (
+    if len(read_tasks) < requested_parallelism and (
         len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
@@ -1083,18 +1084,30 @@ def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMet
     )
 
 
-def _prepare_read(
+def _get_read_tasks(
     ds: Datasource,
     ctx: DatasetContext,
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     kwargs: dict,
-) -> List[ReadTask]:
+) -> (int, List[ReadTask]):
+    """Generates read tasks.
+
+    Args:
+        ds: Datasource to read from.
+        ctx: Dataset config to use.
+        cur_pg: The current placement group, if any.
+        parallelism: The user-requested parallelism, or -1 for autodetection.
+        kwargs: Additional kwargs to pass to the reader.
+
+    Returns:
+        Request parallelism from the datasource, and the list of read tasks generated.
+    """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
-    parallelism = _autodetect_parallelism(parallelism, cur_pg, reader)
-    return reader.prepare_read(parallelism)
+    requested_parallelism = _autodetect_parallelism(parallelism, cur_pg, reader)
+    return requested_parallelism, reader.get_read_tasks(requested_parallelism)
 
 
 def _autodetect_parallelism(

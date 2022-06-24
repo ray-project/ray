@@ -208,7 +208,7 @@ class _ParquetDatasourceReader(Reader):
             total_size += meta.serialized_size
         return total_size * PARQUET_DECOMPRESSION_MULTIPLIER
 
-    def prepare_read(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import pyarrow as pa
 
         from ray import cloudpickle
