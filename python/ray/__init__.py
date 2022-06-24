@@ -191,7 +191,6 @@ class _DeprecationWrapper(object):
                 f"DeprecationWarning: `ray.{self._name}.{attr}` is a private "
                 "attribute and access will be removed in a future Ray version."
             )
-            assert False
         return value
 
 
