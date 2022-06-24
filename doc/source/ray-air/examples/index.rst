@@ -28,6 +28,14 @@ Image/CV
 
 - :doc:`/ray-air/examples/torch_image_example`
 
+Logging & Observability
+-----------------------
+
+- :doc:`/ray-air/examples/upload_to_comet_ml`: How to log results and upload models to Comet ML.
+- :doc:`/ray-air/examples/upload_to_wandb`: How to log results and upload models to Weights and Biases.
+
+.. _air-rl-examples-ref:
+
 RL (RLlib)
 ----------
 

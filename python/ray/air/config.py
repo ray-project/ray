@@ -6,11 +6,14 @@ from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
 
+# Move here later when ml_utils is deprecated
+from ray.util.ml_utils.checkpoint_manager import CheckpointConfig
+
 if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.tune.callback import Callback
     from ray.tune.stopper import Stopper
-    from ray.tune.trainable import PlacementGroupFactory
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 ScalingConfig = Dict[str, Any]
 
@@ -89,7 +92,7 @@ class ScalingConfigDataClass:
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
         """Returns a PlacementGroupFactory to specify resources for Tune."""
-        from ray.tune.trainable import PlacementGroupFactory
+        from ray.tune.execution.placement_groups import PlacementGroupFactory
 
         trainer_resources = (
             self.trainer_resources if self.trainer_resources else {"CPU": 1}
@@ -275,58 +278,6 @@ class FailureConfig:
 
 @dataclass
 @PublicAPI(stability="alpha")
-class CheckpointConfig:
-    """Configuration related to checkpointing of each run/trial.
-
-    Args:
-        keep_checkpoints_num: Number of checkpoints to keep. A value of
-            `None` keeps all checkpoints. Defaults to `None`. If set, need
-            to provide `checkpoint_score_attr`.
-        checkpoint_score_metric: Specifies by which metric to rank the
-            best checkpoint. Defaults to training iteration.
-        checkpoint_score_mode: Must be one of [min, max]. Determines
-            whether ``checkpoint_score_metric`` should be minimized or maximized.
-            If not set, will be the same as 'max'. Cannot be set if
-            ``checkpoint_score_metric`` is not set.
-    """
-
-    keep_checkpoints_num: Optional[int] = None
-    checkpoint_score_metric: Optional[str] = None
-    checkpoint_score_mode: Optional[str] = None
-
-    def __post_init__(self):
-        if self.checkpoint_score_mode not in (None, "min", "max"):
-            raise ValueError(
-                "The `checkpoint_score_mode` parameter can only be "
-                f"either None, 'min' or 'max', got {self.checkpoint_score_mode}."
-            )
-        if (
-            self.checkpoint_score_metric is None
-            and self.checkpoint_score_mode is not None
-        ):
-            raise ValueError(
-                "`checkpoint_score_mode` cannot be set if "
-                "`checkpoint_score_metric` is not set."
-            )
-
-    @property
-    def checkpoint_score_attr(self) -> Optional[str]:
-        """Same as ``checkpoint_score_attr`` in ``tune.run``."""
-        if self.checkpoint_score_metric is None:
-            return self.checkpoint_score_metric
-        prefix = ""
-        if self.checkpoint_score_mode == "min":
-            prefix = "min-"
-        return f"{prefix}{self.checkpoint_score_metric}"
-
-    @property
-    def checkpoint_score_mode_not_none(self) -> str:
-        """``checkpoint_score_mode`` but None -> 'max'"""
-        return self.checkpoint_score_mode or "max"
-
-
-@dataclass
-@PublicAPI(stability="alpha")
 class RunConfig:
     """Runtime configuration for individual trials that are run.
 
@@ -350,7 +301,7 @@ class RunConfig:
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
-        failure: Failure mode configuration.
+        failure_config: Failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
         checkpoint_config: Checkpointing configuration.
         verbose: 0, 1, 2, or 3. Verbosity mode.
@@ -363,7 +314,7 @@ class RunConfig:
     local_dir: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
-    failure: Optional[FailureConfig] = None
+    failure_config: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
     checkpoint_config: Optional[CheckpointConfig] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS

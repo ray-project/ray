@@ -4,10 +4,6 @@ from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_COUNTER,
-    STEPS_TRAINED_THIS_ITER_COUNTER,
-)
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -18,8 +14,10 @@ from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     COMPUTE_GRADS_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    NUM_ENV_STEPS_TRAINED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
@@ -188,8 +186,8 @@ class A2C(A3C):
         )
         if self._num_microbatches >= num_microbatches:
             # Update counters.
-            self._counters[STEPS_TRAINED_COUNTER] += self._microbatches_counts
-            self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = self._microbatches_counts
+            self._counters[NUM_ENV_STEPS_TRAINED] += self._microbatches_counts
+            self._counters[NUM_AGENT_STEPS_TRAINED] += self._microbatches_counts
 
             # Apply gradients.
             apply_timer = self._timers[APPLY_GRADS_TIMER]
@@ -206,7 +204,7 @@ class A2C(A3C):
             global_vars = {
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             }
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
                     policies=self.workers.local_worker().get_policies_to_train(),
                     global_vars=global_vars,
