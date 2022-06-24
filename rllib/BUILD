@@ -1807,6 +1807,20 @@ py_test(
     srcs = ["utils/replay_buffers/tests/test_segment_tree_replay_buffer_api.py"]
 )
 
+py_test(
+    name = "test_check_env",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_check_env.py"]
+)
+
+py_test(
+    name = "test_check_multi_agent",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_check_multi_agent.py"]
+)
+
 # --------------------------------------------------------------------
 # rllib/tests/ directory
 #
@@ -3285,8 +3299,6 @@ py_test_module_list(
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
     "execution/tests/test_mixin_multi_agent_replay_buffer.py",
-    "utils/tests/test_check_env.py",
-    "utils/tests/test_check_multi_agent.py",
     "utils/tests/test_errors.py",
     "utils/tests/test_utils.py",
   ],
