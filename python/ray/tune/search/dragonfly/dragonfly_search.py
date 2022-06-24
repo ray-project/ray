@@ -17,6 +17,7 @@ from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_dict
@@ -27,8 +28,6 @@ try:  # Python 3 only -- needed for lint test.
 except ImportError:
     dragonfly = None
     BlackboxOptimiser = None
-
-from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)
 

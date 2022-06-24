@@ -13,11 +13,11 @@ from ray.tune.search.sample import (
     Quantized,
     LogUniform,
 )
-from ray.tune.search import Searcher
 from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict

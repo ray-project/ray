@@ -179,7 +179,7 @@ class SearchSpaceTest(unittest.TestCase):
             ):
                 yield generated["config"]
 
-        with patch("ray.tune.sample.LEGACY_RNG", True):
+        with patch("ray.tune.search.sample.LEGACY_RNG", True):
             global_seed_legacy = [
                 next(config_generator(random_state=None)) for _ in range(100)
             ]
@@ -220,7 +220,7 @@ class SearchSpaceTest(unittest.TestCase):
             mode="max",
             num_samples=num_samples,
         )
-        with patch("ray.tune.sample.LEGACY_RNG", True):
+        with patch("ray.tune.search.sample.LEGACY_RNG", True):
             np.random.seed(1000)
             analysis_global_seed = tune.run(
                 search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed

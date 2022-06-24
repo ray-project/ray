@@ -3,12 +3,11 @@ import glob
 import itertools
 import os
 import uuid
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, TYPE_CHECKING
 import warnings
 import numpy as np
 
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.experiment.config_parser import make_parser, create_trial_from_spec
 from ray.tune.search.sample import np_random_generator, _BackwardsCompatibleNumpyRng
 from ray.tune.search.variant_generator import (
@@ -22,6 +21,9 @@ from ray.tune.search.variant_generator import (
 from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.utils.util import atomic_save, load_newest_checkpoint
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.tune.experiment import Experiment
 
 SERIALIZATION_THRESHOLD = 1e6
 
@@ -311,14 +313,17 @@ class BasicVariantGenerator(SearchAlgorithm):
         return self._total_samples
 
     def add_configurations(
-        self, experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]
+        self, experiments: Union["Experiment", List["Experiment"], Dict[str, Dict]]
     ):
         """Chains generator given experiment specifications.
 
         Arguments:
             experiments: Experiments to run.
         """
+        from ray.tune.experiment import convert_to_experiment_list
+
         experiment_list = convert_to_experiment_list(experiments)
+
         for experiment in experiment_list:
             grid_vals = count_spec_samples(experiment.spec, num_samples=1)
             lazy_eval = grid_vals > SERIALIZATION_THRESHOLD

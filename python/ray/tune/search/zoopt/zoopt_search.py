@@ -17,6 +17,7 @@ from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
@@ -27,8 +28,6 @@ try:
 except ImportError:
     zoopt = None
     Solution = ValueType = None
-
-from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)
 
