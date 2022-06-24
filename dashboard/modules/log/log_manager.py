@@ -88,7 +88,10 @@ class LogsManager:
             keep_alive=keep_alive,
             lines=options.lines,
             interval=options.interval,
-            timeout=options.timeout,
+            # If we keepalive logs connection, we shouldn't have timeout
+            # otherwise the stream will be terminated forcefully
+            # after the deadline is expired.
+            timeout=options.timeout if not keep_alive else None,
         )
 
         async for streamed_log in stream:
