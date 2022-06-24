@@ -78,7 +78,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testBayesOpt(self):
-        from ray.tune.search.bayesopy.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt.bayesopt import BayesOptSearch
 
         out = tune.run(
             _invalid_objective,
@@ -568,7 +568,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testBayesOpt(self):
-        from ray.tune.search.bayesopy.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt.bayesopt import BayesOptSearch
 
         searcher = BayesOptSearch(
             space=self.config, metric=self.metric_name, mode="max"

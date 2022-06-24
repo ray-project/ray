@@ -63,7 +63,7 @@ class ConvergenceTest(unittest.TestCase):
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
 
     def testConvergenceBayesOpt(self):
-        from ray.tune.search.bayesopy.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt.bayesopt import BayesOptSearch
 
         np.random.seed(0)
 

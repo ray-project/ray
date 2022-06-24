@@ -17,7 +17,7 @@ from ray.rllib import _register_all
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt.hyperopt_search import HyperOptSearch
 from ray.tune.search.dragonfly.dragonfly_search import DragonflySearch
-from ray.tune.search.bayesopy.bayesopt import BayesOptSearch
+from ray.tune.search.bayesopt.bayesopt import BayesOptSearch
 from ray.tune.search.flaml.flaml_search import CFO, BlendSearch
 from ray.tune.search.skopt.skopt_search import SkOptSearch
 from ray.tune.search.nevergrad.nevergrad_search import NevergradSearch

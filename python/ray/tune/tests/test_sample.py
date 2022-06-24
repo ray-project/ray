@@ -569,7 +569,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore, check_stats=False)
 
     def testConvertBayesOpt(self):
-        from ray.tune.search.bayesopy.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt.bayesopt import BayesOptSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -626,7 +626,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsBayesOpt(self):
-        from ray.tune.search.bayesopy.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt.bayesopt import BayesOptSearch
 
         ignore = [
             "func",
@@ -1644,7 +1644,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.search.bayesopy.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt.bayesopt import BayesOptSearch
 
         return self._testPointsToEvaluate(BayesOptSearch, config)
 
