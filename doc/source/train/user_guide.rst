@@ -1,18 +1,20 @@
 .. _train-user-guide:
 
-Ray Train User Guide
-====================
+Ray Train Deep Learning User Guide
+==================================
 
 .. tip:: Get in touch with us if you're using or considering using `Ray Train <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 
 Ray Train provides solutions for training machine learning models in a distributed manner on Ray.
-Support for Deep Learning is available in ``ray.train``.
-For other model types, distributed training support is available through other libraries:
+This guide focuses on deep learning with PyTorch, TensorFlow and Horovod.
+For other model types, distributed training support is available through other Trainers & libraries:
 
-* **Reinforcement Learning:** :ref:`rllib-index`
-* **XGBoost:** :ref:`xgboost-ray`
-* **LightGBM:** :ref:`lightgbm-ray`
-* **Pytorch Lightning:** :ref:`ray-lightning`
+* **Reinforcement Learning with :ref:`RLLib <rllib-index>`:** :ref:`air-rl-examples-ref`
+* **XGBoost:** :doc:`/ray-air/examples/xgboost_example`
+* **LightGBM:** :doc:`/ray-air/examples/lightgbm_example`
+* **Scikit-Learn** :doc:`/ray-air/examples/sklearn_example`
+* **Hugging Face** :doc:`/ray-air/examples/huggingface_text_classification`
+* **PyTorch Lightning:** :ref:`ray-lightning`
 
 In this guide, we cover examples for the following use cases:
 
@@ -20,7 +22,6 @@ In this guide, we cover examples for the following use cases:
 * How do I :ref:`monitor <train-monitoring>` my training?
 * How do I run my training on pre-emptible instances
   (:ref:`fault tolerance <train-fault-tolerance>`)?
-* How do I :ref:`profile <train-profiling>` my training?
 * How do I use Ray Train to :ref:`train with a large dataset <train-datasets>`?
 * How do I :ref:`tune <train-tune>` my Ray Train model?
 
@@ -182,7 +183,7 @@ training.
 Create Ray Train Trainer
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``Trainer`` is the primary Ray Train class that is used to manage state and
+``Trainer``s are the primary Ray Train classes that are used to manage state and
 execute training. You can create a simple ``Trainer`` for the backend of choice
 with one of the following:
 
@@ -190,32 +191,38 @@ with one of the following:
 
     .. code-block:: python
 
-        from ray.train import Trainer
-        trainer = Trainer(backend="torch", num_workers=2)
-
+        from ray.train.torch import TorchTrainer
         # For GPU Training, set `use_gpu` to True.
-        # trainer = Trainer(backend="torch", num_workers=2, use_gpu=True)
+        use_gpu = False
+        trainer = TorchTrainer(
+            train_func,
+            scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+        )
 
 
 .. tabbed:: TensorFlow
 
     .. code-block:: python
 
-        from ray.train import Trainer
-        trainer = Trainer(backend="tensorflow", num_workers=2)
-
+        from ray.train.tensorflow import TensorflowTrainer
         # For GPU Training, set `use_gpu` to True.
-        # trainer = Trainer(backend="tensorflow", num_workers=2, use_gpu=True)
+        use_gpu = False
+        trainer = TensorflowTrainer(
+            train_func,
+            scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+        )
 
 .. tabbed:: Horovod
 
     .. code-block:: python
 
-        from ray.train import Trainer
-        trainer = Trainer(backend="horovod", num_workers=2)
-
+        from ray.train.horovod import HorovodTrainer
         # For GPU Training, set `use_gpu` to True.
-        # trainer = Trainer(backend="horovod", num_workers=2, use_gpu=True)
+        use_gpu = False
+        trainer = HorovodTrainer(
+            train_func,
+            scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+        )
 
 To customize the ``backend`` setup, you can replace the string argument with a
 :ref:`train-api-backend-config` object.
@@ -224,29 +231,38 @@ To customize the ``backend`` setup, you can replace the string argument with a
 
     .. code-block:: python
 
-        from ray.train import Trainer
-        from ray.train.torch import TorchConfig
+        from ray.train.torch import TorchTrainer, TorchConfig
 
-        trainer = Trainer(backend=TorchConfig(...), num_workers=2)
+        trainer = TorchTrainer(
+            train_func,
+            torch_backend=TorchConfig(...),
+            scaling_config=dict(num_workers=2),
+        )
 
 
 .. tabbed:: TensorFlow
 
     .. code-block:: python
 
-        from ray.train import Trainer
-        from ray.train.tensorflow import TensorflowConfig
+        from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
 
-        trainer = Trainer(backend=TensorflowConfig(...), num_workers=2)
+        trainer = TensorflowTrainer(
+            train_func,
+            tensorflow_backend=TensorflowConfig(...),
+            scaling_config=dict(num_workers=2),
+        )
 
 .. tabbed:: Horovod
 
     .. code-block:: python
 
-        from ray.train import Trainer
-        from ray.train.horovod import HorovodConfig
+        from ray.train.horovod import HorovodTrainer, HorovodConfig
 
-        trainer = Trainer(backend=HorovodConfig(...), num_workers=2)
+        trainer = HorovodTrainer(
+            train_func,
+            tensorflow_backend=HorovodConfig(...),
+            scaling_config=dict(num_workers=2),
+        )
 
 For more configurability, please reference the :ref:`train-api-trainer` API.
 
@@ -258,15 +274,13 @@ ready to start training!
 
 .. code-block:: python
 
-    trainer.start() # set up resources
-    trainer.run(train_func)
-    trainer.shutdown() # clean up resources
+    trainer.fit()
 
 Configuring Training
 --------------------
 
 With Ray Train, you can execute a training function (``train_func``) in a
-distributed manner by calling ``trainer.run(train_func)``. To pass arguments
+distributed manner by calling ``trainer.fit()``. To pass arguments
 into the training function, you can expose a single ``config`` dictionary parameter:
 
 .. code-block:: diff
@@ -274,34 +288,38 @@ into the training function, you can expose a single ``config`` dictionary parame
     -def train_func():
     +def train_func(config):
 
-Then, you can pass in the config dictionary as an argument to ``Trainer.run``:
+Then, you can pass in the config dictionary as an argument to ``Trainer``:
 
 .. code-block:: diff
 
-    -trainer.run(train_func)
     +config = {} # This should be populated.
-    +trainer.run(train_func, config=config)
+    trainer = TorchTrainer(
+        train_func,
+    +   train_loop_config=config,
+        scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+    )
 
 Putting this all together, you can run your training function with different
 configurations. As an example:
 
 .. code-block:: python
 
-    from ray.train import Trainer
+    from ray.air import session
+    from ray.train.torch import TorchTrainer
 
     def train_func(config):
         results = []
         for i in range(config["num_epochs"]):
-            results.append(i)
-        return results
+            session.report(epoch=i)
 
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
-    print(trainer.run(train_func, config={"num_epochs": 2}))
-    # [[0, 1], [0, 1]]
-    print(trainer.run(train_func, config={"num_epochs": 5}))
-    # [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config={"num_epochs": 2},
+        scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+    )
+    results = trainer.fit()
+    print(results.metrics["num_epochs"])
+    # 1
 
 A primary use-case for ``config`` is to try different hyperparameters. To
 perform hyperparameter tuning with Ray Train, please refer to the
@@ -309,6 +327,14 @@ perform hyperparameter tuning with Ray Train, please refer to the
 
 .. TODO add support for with_parameters
 
+.. _train-result-object:
+
+The Result Object
+-----------------
+
+The return of a ``Trainer.fit()`` is a :class:`Result` object, containing
+information about the training run. You can access it to obtain saved checkpoints,
+metrics and other relevant data.
 
 .. _train-log-dir:
 
@@ -923,59 +949,59 @@ number of retries is configurable through the ``max_retries`` argument of the
 
 .. TODO.
 
-.. _train-profiling:
+.. .. _train-profiling:
 
-Profiling
----------
+.. Profiling
+.. ---------
 
-Ray Train comes with an integration with `PyTorch Profiler <https://pytorch.org/blog/introducing-pytorch-profiler-the-new-and-improved-performance-tool/>`_.
-Specifically, it comes with a :ref:`TorchWorkerProfiler <train-api-torch-worker-profiler>` utility class and :ref:`train-api-torch-tensorboard-profiler-callback`  callback
-that allow you to use the PyTorch Profiler as you would in a non-distributed PyTorch script, and synchronize the generated Tensorboard traces onto
-the disk that from which your script was executed from.
+.. Ray Train comes with an integration with `PyTorch Profiler <https://pytorch.org/blog/introducing-pytorch-profiler-the-new-and-improved-performance-tool/>`_.
+.. Specifically, it comes with a :ref:`TorchWorkerProfiler <train-api-torch-worker-profiler>` utility class and :ref:`train-api-torch-tensorboard-profiler-callback`  callback
+.. that allow you to use the PyTorch Profiler as you would in a non-distributed PyTorch script, and synchronize the generated Tensorboard traces onto
+.. the disk that from which your script was executed from.
 
-**Step 1: Update training function with** ``TorchWorkerProfiler``
+.. **Step 1: Update training function with** ``TorchWorkerProfiler``
 
-.. code-block:: bash
+.. .. code-block:: bash
 
-    from ray.train.torch import TorchWorkerProfiler
+..     from ray.train.torch import TorchWorkerProfiler
 
-    def train_func():
-        twp = TorchWorkerProfiler()
-        with profile(..., on_trace_ready=twp.trace_handler) as p:
-            ...
-            profile_results = twp.get_and_clear_profile_traces()
-            train.report(..., **profile_results)
-        ...
+..     def train_func():
+..         twp = TorchWorkerProfiler()
+..         with profile(..., on_trace_ready=twp.trace_handler) as p:
+..             ...
+..             profile_results = twp.get_and_clear_profile_traces()
+..             train.report(..., **profile_results)
+..         ...
 
-**Step 2: Run training function with** ``TorchTensorboardProfilerCallback``
+.. **Step 2: Run training function with** ``TorchTensorboardProfilerCallback``
 
-.. code-block:: python
+.. .. code-block:: python
 
-    from ray.train import Trainer
-    from ray.train.callbacks import TorchTensorboardProfilerCallback
+..     from ray.train import Trainer
+..     from ray.train.callbacks import TorchTensorboardProfilerCallback
 
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
-    trainer.run(train_func, callbacks=[TorchTensorboardProfilerCallback()])
-    trainer.shutdown()
+..     trainer = Trainer(backend="torch", num_workers=2)
+..     trainer.start()
+..     trainer.run(train_func, callbacks=[TorchTensorboardProfilerCallback()])
+..     trainer.shutdown()
 
 
-**Step 3: Visualize the logs**
+.. **Step 3: Visualize the logs**
 
-.. code-block:: bash
+.. .. code-block:: bash
 
-    # Navigate to the run directory of the trainer.
-    # For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001/pytorch_profiler`
-    $ cd <TRAINER_RUN_DIR>/pytorch_profiler
+..     # Navigate to the run directory of the trainer.
+..     # For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001/pytorch_profiler`
+..     $ cd <TRAINER_RUN_DIR>/pytorch_profiler
 
-    # Install the PyTorch Profiler TensorBoard Plugin.
-    $ pip install torch_tb_profiler
+..     # Install the PyTorch Profiler TensorBoard Plugin.
+..     $ pip install torch_tb_profiler
 
-    # Star the TensorBoard UI.
-    $ tensorboard --logdir .
+..     # Star the TensorBoard UI.
+..     $ tensorboard --logdir .
 
-    # View the PyTorch Profiler traces.
-    $ open http://localhost:6006/#pytorch_profiler
+..     # View the PyTorch Profiler traces.
+..     $ open http://localhost:6006/#pytorch_profiler
 
 .. _torch-amp:
 
