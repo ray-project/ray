@@ -118,6 +118,36 @@ def test_import_search_zoopt(logging_setup):
         import ray.tune.suggest.zoopt  # noqa: F401
 
 
+def test_import_search_basic_variant(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.basic_variant  # noqa: F401
+
+
+def test_import_search_search(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.search  # noqa: F401
+
+
+def test_import_search_search_generator(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.search_generator  # noqa: F401
+
+
+def test_import_search_suggestion(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.suggestion  # noqa: F401
+
+
+def test_import_search_util(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.util  # noqa: F401
+
+
+def test_import_search_variant_generator(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.variant_generator  # noqa: F401
+
+
 def test_import_trainable_function_trainable(logging_setup):
     with pytest.warns(DeprecationWarning):
         import ray.tune.function_runner  # noqa: F401
