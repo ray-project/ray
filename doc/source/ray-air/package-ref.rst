@@ -124,6 +124,4 @@ Configs
 .. automodule:: ray.air.config
     :members:
 
-.. _train-api-checkpoint-config:
-
 .. autoclass:: ray.air.config.CheckpointConfig
