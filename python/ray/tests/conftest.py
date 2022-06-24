@@ -56,7 +56,7 @@ class TestingCluster(Cluster):
                 os.environ["RAY_ADDRESS"] = self._prev_ray_address
                 self._prev_ray_address = None
             else:
-                del os.environ["RAY_ADDRESS"]
+                os.environ.pop("RAY_ADDRESS", None)
         return super().remove_node(node, allow_graceful)
 
 
@@ -111,7 +111,7 @@ def _setup_redis(request):
     if old_addr is not None:
         os.environ["RAY_REDIS_ADDRESS"] = old_addr
     else:
-        del os.environ["RAY_REDIS_ADDRESS"]
+        os.environ.pop("RAY_REDIS_ADDRESS", None)
     for proc in processes:
         proc.process.terminate()
 
@@ -158,7 +158,7 @@ def _ray_start(**kwargs):
     if prev_ray_address is not None:
         os.environ["RAY_ADDRESS"] = prev_ray_address
     else:
-        del os.environ["RAY_ADDRESS"]
+        os.environ.pop("RAY_ADDRESS", None)
 
 
 @pytest.fixture

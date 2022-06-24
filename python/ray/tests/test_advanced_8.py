@@ -25,7 +25,8 @@ from ray.runtime_env import RuntimeEnv
 logger = logging.getLogger(__name__)
 
 
-def test_export_after_shutdown(ray_start_regular):
+def test_export_after_shutdown(shutdown_only):
+    ray.init()
     # This test checks that we can use actor and remote function definitions
     # across multiple Ray sessions.
 
@@ -135,6 +136,7 @@ def test_move_log_files_to_old(shutdown_only):
     ],
     indirect=True,
 )
+@pytest.mark.exclusive
 def test_ray_address_environment_variable(ray_start_cluster):
     address = ray_start_cluster.address
     # In this test we use zero CPUs to distinguish between starting a local
@@ -620,6 +622,11 @@ if __name__ == "__main__":
     import pytest
 
     if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        ret2 = pytest.main(["--boxed", "-m", "exclusive", "-vs", __file__])
+
+        ret1 = pytest.main(
+            ["-n", "auto", "--boxed", "-m", "not exclusive", "-vs", __file__]
+        )
+        sys.exit(0 if ret1 + ret2 == 0 else 1)
     else:
         sys.exit(pytest.main(["-sv", __file__]))

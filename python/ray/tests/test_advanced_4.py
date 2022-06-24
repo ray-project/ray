@@ -29,12 +29,13 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
     assert ray.is_initialized()
 
 
+@pytest.mark.exclusive
 def test_ray_start_and_stop():
     for i in range(10):
         subprocess.check_call(["ray", "start", "--head"])
         subprocess.check_call(["ray", "stop"])
 
-
+@pytest.mark.exclusive
 def test_ray_memory(shutdown_only):
     ray.init(num_cpus=1)
     subprocess.check_call(["ray", "memory"])
@@ -289,6 +290,10 @@ if __name__ == "__main__":
     import pytest
 
     if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        ret2 = pytest.main(["-m", "exclusive", "-vs", __file__])
+        ret1 = pytest.main(
+            ["-n", "auto", "--boxed", "-m", "not exclusive", "-vs", __file__]
+        )
+        sys.exit(0 if ret1 + ret2 == 0 else 1)
     else:
         sys.exit(pytest.main(["-sv", __file__]))
