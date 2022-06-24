@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray.tune.config_parser import make_parser
+from ray.tune.experiment.config_parser import make_parser
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
@@ -40,7 +40,7 @@ def create_parser(parser_creator=None):
         epilog=EXAMPLE_USAGE,
     )
 
-    # See also the base parser definition in ray/tune/config_parser.py
+    # See also the base parser definition in ray/tune/experiment/__config_parser.py
     parser.add_argument(
         "--ray-address",
         default=None,
@@ -162,7 +162,7 @@ def run(args, parser):
         with open(args.config_file) as f:
             experiments = yaml.safe_load(f)
     else:
-        # Note: keep this in sync with tune/config_parser.py
+        # Note: keep this in sync with tune/experiment/__config_parser.py
         experiments = {
             args.experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": args.run,
