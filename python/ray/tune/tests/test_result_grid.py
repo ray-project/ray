@@ -58,7 +58,7 @@ def test_result_grid_metric_mode(ray_start_2_cpus):
     assert isinstance(result.best_checkpoints, list)
     assert isinstance(result.metrics, dict)
     assert isinstance(result.config, dict)
-    assert isinstance(result.dataframe, pd.DataFrame)
+    assert isinstance(result.metrics_dataframe, pd.DataFrame)
     assert os.path.normpath(
         result.checkpoint.get_internal_representation()[1]
     ) != os.path.normpath(
@@ -68,7 +68,7 @@ def test_result_grid_metric_mode(ray_start_2_cpus):
     )
     assert result.config == {"a": 1}
     assert result.metrics["config"] == result.config
-    assert len(result.dataframe) == 2
+    assert len(result.metrics_dataframe) == 2
 
 
 def test_result_grid_metric_mode_unset(ray_start_2_cpus):
@@ -87,10 +87,10 @@ def test_result_grid_metric_mode_unset(ray_start_2_cpus):
     assert isinstance(result.checkpoint, Checkpoint)
     assert isinstance(result.metrics, dict)
     assert isinstance(result.config, dict)
-    assert isinstance(result.dataframe, pd.DataFrame)
+    assert isinstance(result.metrics_dataframe, pd.DataFrame)
     assert result.config == {"a": 1}
     assert result.metrics["config"] == result.config
-    assert len(result.dataframe) == 2
+    assert len(result.metrics_dataframe) == 2
 
 
 def test_result_grid_no_checkpoint(ray_start_2_cpus):
@@ -131,7 +131,7 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     assert isinstance(result.checkpoint, Checkpoint)
     assert isinstance(result.metrics, dict)
     assert isinstance(result.config, dict)
-    assert result.dataframe is None
+    assert result.metrics_dataframe is None
     assert result.config == {"some_config": 1}
     assert result.metrics["config"] == result.config
 
