@@ -188,7 +188,14 @@ class SubmissionClient:
         cluster_info = parse_cluster_info(
             address, create_cluster_if_needed, cookies, metadata, headers
         )
-        self._address = cluster_info.address
+
+        # Remove any trailing slashes
+        self._address = cluster_info.address.rstrip("/")
+        logger.debug(
+            "The submission address cannot contain trailing slashes. Removing "
+            f'them from the requested submission address of "{address}".'
+        )
+
         self._cookies = cluster_info.cookies
         self._default_metadata = cluster_info.metadata or {}
         # Headers used for all requests sent to job server, optional and only
