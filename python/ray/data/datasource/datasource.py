@@ -123,7 +123,7 @@ class Reader(Generic[T]):
 
         Args:
             parallelism: The requested read parallelism. The number of read
-                tasks should be as close to this value as possible.
+                tasks should equal to this value if possible.
             read_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
