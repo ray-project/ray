@@ -607,7 +607,7 @@ RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
 
 /// The ray cluster id. Different cluster should have unique ID.
 /// This fields is used to isolate data stored in DB.
-RAY_CONFIG(std::string, cluster_id, "")
+RAY_CONFIG(std::string, cluster_id, "default")
 
 /// Whether or not use TLS.
 RAY_CONFIG(bool, USE_TLS, false)
