@@ -35,7 +35,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage
+from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage, Stage
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import (
@@ -44,7 +44,6 @@ from ray.data._internal.shuffle_and_partition import (
 )
 from ray.data._internal.sort import sort_impl
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -79,35 +78,6 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data._internal.table_block import VALUE_COL_NAME
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.block_batching import batch_blocks, BatchType
-from ray.data._internal.plan import (
-    ExecutionPlan,
-    Stage,
-    GenerateStage,
-    OneToOneStage,
-    AllToAllStage,
-)
-from ray.data._internal.stats import DatasetStats
-from ray.data._internal.compute import (
-    cache_wrapper,
-    CallableClass,
-    ComputeStrategy,
-    ActorPoolStrategy,
-)
-from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.shuffle_and_partition import (
-    SimpleShufflePartitionOp,
-    PushBasedShufflePartitionOp,
-)
-from ray.data._internal.fast_repartition import fast_repartition
-from ray.data._internal.sort import sort_impl
-from ray.data._internal.util import estimate_available_parallelism
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray._private.usage import usage_lib
 from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI

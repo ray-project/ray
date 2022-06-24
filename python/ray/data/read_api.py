@@ -37,17 +37,6 @@ from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_and_register_arrow_serialization_workaround,
 )
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.arrow_block import ArrowRow
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import (
-    _lazy_import_pyarrow_dataset,
-    estimate_available_parallelism,
-)
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
