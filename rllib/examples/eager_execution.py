@@ -3,7 +3,7 @@ import os
 import random
 
 import ray
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.models.eager_model import EagerModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -92,8 +92,8 @@ MyTFPolicy = build_tf_policy(
 )
 
 
-# Create a new Trainer using the Policy defined above.
-class MyTrainer(Trainer):
+# Create a new Algorithm using the Policy defined above.
+class MyAlgo(Algorithm):
     def get_default_policy_class(self, config):
         return MyTFPolicy
 
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, stop=stop, config=config, verbose=1)
+    results = tune.run(MyAlgo, stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

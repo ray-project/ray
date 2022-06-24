@@ -6,8 +6,8 @@ import re
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 
+import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private._kubernetes import auth_api, core_api, log_prefix
-import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -153,9 +153,9 @@ def _get_resource(container_resources, resource_name, field_name):
     Returns float("inf") if the resource is not present.
 
     Args:
-        container_resources (dict): Container's resource field.
-        resource_name (str): One of 'cpu', 'gpu' or memory.
-        field_name (str): One of 'requests' or 'limits'.
+        container_resources: Container's resource field.
+        resource_name: One of 'cpu', 'gpu' or memory.
+        field_name: One of 'requests' or 'limits'.
 
     Returns:
         Union[int, float]: Detected resource quantity.

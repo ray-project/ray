@@ -1,7 +1,8 @@
-import pytest
 import platform
-import numpy as np
 import re
+
+import numpy as np
+import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -70,7 +71,7 @@ def test_scaledown_shared_objects(shutdown_only):
 
 def check_memory(local_objs, num_spilled_objects=None, num_plasma_objects=None):
     def ok():
-        s = ray.internal.internal_api.memory_summary()
+        s = ray._private.internal_api.memory_summary()
         print(f"\n\nMemory Summary:\n{s}\n")
 
         actual_objs = re.findall(r"LOCAL_REFERENCE[\s|\|]+([0-9a-f]+)", s)
@@ -183,6 +184,10 @@ def test_no_scaledown_with_spilled_objects(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -1,36 +1,47 @@
-import os
-import sys
-import copy
-import json
-import time
-import logging
 import asyncio
-import ipaddress
-import subprocess
 import collections
+import copy
+import ipaddress
+import json
+import logging
+import os
+import subprocess
+import sys
+import time
 
 import numpy as np
-import ray
-import psutil
 import pytest
 import requests
 
-from ray import ray_constants
+import ray
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.modules
+import ray.dashboard.utils as dashboard_utils
+from ray._private import ray_constants
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS_LEGACY,
+)
 from ray._private.test_utils import (
     format_web_url,
+    get_error_message,
+    init_error_pubsub,
+    run_string_as_driver,
     wait_for_condition,
     wait_until_server_available,
-    run_string_as_driver,
     wait_until_succeeded_without_exception,
 )
-from ray.ray_constants import DEBUG_AUTOSCALING_STATUS_LEGACY, DEBUG_AUTOSCALING_ERROR
 from ray.dashboard import dashboard
-import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.modules
+from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
+from ray.experimental.state.api import StateApiClient
+from ray.experimental.state.common import ListApiOptions, StateResource
+from ray.experimental.state.exception import ServerUnavailable
+
+import psutil
 
 try:
     import aiohttp.web
+
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
     routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -99,7 +110,7 @@ def test_basic(ray_start_with_dashboard):
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
     assert ray_constants.PROCESS_TYPE_REPORTER not in all_processes
     dashboard_proc_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
@@ -142,8 +153,54 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and agent share fate."""
 
     ray.init(include_dashboard=True)
+    p = init_error_pubsub()
 
-    all_processes = ray.worker._global_node.all_processes
+    node = ray._private.worker._global_node
+    all_processes = node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
+
+    check_agent_register(raylet_proc, agent_pid)
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.terminate()
+    raylet_proc.wait()
+    agent_proc.wait(5)
+
+    # No error should be reported for graceful termination.
+    errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
+    assert len(errors) == 0, errors
+
+    ray.shutdown()
+
+    ray.init(include_dashboard=True)
+    all_processes = ray._private.worker._global_node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
+
+    check_agent_register(raylet_proc, agent_pid)
+
+    # The raylet should be dead if agent exits.
+    agent_proc.kill()
+    agent_proc.wait()
+    raylet_proc.wait(5)
+
+
+def test_agent_report_unexpected_raylet_death(shutdown_only):
+    """Test agent reports Raylet death if it is not SIGTERM."""
+
+    ray.init(include_dashboard=True)
+    p = init_error_pubsub()
+
+    node = ray._private.worker._global_node
+    all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
@@ -158,22 +215,53 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     raylet_proc.wait()
     agent_proc.wait(5)
 
-    ray.shutdown()
+    errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
+    assert len(errors) == 1, errors
+    err = errors[0]
+    assert err.type == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err.error_message, err.error_message
+    assert "Raylet logs:" in err.error_message, err.error_message
+    assert (
+        os.path.getsize(os.path.join(node.get_session_dir_path(), "logs", "raylet.out"))
+        < 1 * 1024 ** 2
+    )
+
+
+def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
+    """Test agent reports Raylet death if it is not SIGTERM."""
 
     ray.init(include_dashboard=True)
-    all_processes = ray.worker._global_node.all_processes
+    p = init_error_pubsub()
+
+    node = ray._private.worker._global_node
+    all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+
     wait_for_condition(lambda: search_agent(raylet_proc.children()))
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
     check_agent_register(raylet_proc, agent_pid)
 
-    # The raylet should be dead if agent exits.
-    agent_proc.kill()
-    agent_proc.wait()
-    raylet_proc.wait(5)
+    # Append to the Raylet log file with data >> 1 MB.
+    with open(
+        os.path.join(node.get_session_dir_path(), "logs", "raylet.out"), "a"
+    ) as f:
+        f.write("test data\n" * 1024 ** 2)
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
+
+    # Reading and publishing logs should still work.
+    errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
+    assert len(errors) == 1, errors
+    err = errors[0]
+    assert err.type == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err.error_message, err.error_message
+    assert "Raylet logs:" in err.error_message, err.error_message
 
 
 @pytest.mark.parametrize(
@@ -704,7 +792,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
 
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
     dashboard_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
     dashboard_proc = psutil.Process(dashboard_info.process.pid)
     gcs_server_info = all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
@@ -745,6 +833,22 @@ def test_dashboard_does_not_depend_on_serve():
     response = requests.get(f"http://{ctx.dashboard_url}/api/serve/deployments/")
     assert response.status_code == 500
     assert "ModuleNotFoundError" in response.text
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test only works for minimal installation.",
+)
+def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
+    """Check that requests from client fail with minimal installation"""
+    response = None
+
+    with pytest.raises(ServerUnavailable):
+        client = StateApiClient(api_server_address=DEFAULT_DASHBOARD_ADDRESS)
+        response = client.list(StateResource.NODES, options=ListApiOptions())
+
+    # Response should not be populated
+    assert response is None
 
 
 if __name__ == "__main__":

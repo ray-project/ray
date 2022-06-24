@@ -11,7 +11,7 @@ from ray import serve
 from ray.serve.application import Application
 from ray.serve.api import build as build_app
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.pipeline.api import build as pipeline_build
+from ray.serve.deployment_graph_build import build as pipeline_build
 from ray.serve.deployment_graph import ClassNode, InputNode
 from ray.serve.drivers import DAGDriver
 import starlette.requests
@@ -23,7 +23,7 @@ NESTED_HANDLE_KEY = "nested_handle"
 
 def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNode]:
     if use_build:
-        return Application.from_dict(build_app(node).to_dict())
+        return build_app(node)
     else:
         return node
 
@@ -122,7 +122,8 @@ class NoargDriver:
         return await self.dag.remote()
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_single_func_no_input(serve_instance, use_build):
     dag = fn_hello.bind()
     serve_dag = NoargDriver.bind(dag)
@@ -262,7 +263,8 @@ class Echo:
         return self._s
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_single_node_deploy_success(serve_instance, use_build):
     m1 = Adder.bind(1)
     handle = serve.run(maybe_build(m1, use_build))
@@ -325,9 +327,9 @@ class DictParent:
         return await self._d[key].remote()
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_passing_handle_in_obj(serve_instance, use_build):
-
     child1 = Echo.bind("ed")
     child2 = Echo.bind("simon")
     parent = maybe_build(
@@ -366,9 +368,9 @@ class GrandParent:
         return "ok"
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_pass_handle_to_multiple(serve_instance, use_build):
-
     child = Child.bind()
     parent = Parent.bind(child)
     grandparent = maybe_build(GrandParent.bind(child, parent), use_build)

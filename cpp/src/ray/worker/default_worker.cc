@@ -13,17 +13,12 @@
 // limitations under the License.
 
 #include <ray/api.h>
-#include <ray/util/logging.h>
-
-#include "../config_internal.h"
-#include "ray/core_worker/common.h"
-#include "ray/core_worker/core_worker.h"
+#include <ray/api/internal_api.h>
 
 int main(int argc, char **argv) {
-  RAY_LOG(INFO) << "CPP default worker started.";
-  ray::internal::ConfigInternal::Instance().worker_type = ray::core::WorkerType::WORKER;
   ray::RayConfig config;
+  config.is_worker_ = true;
   ray::Init(config, argc, argv);
-  ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
+  ray::RunTaskExecutionLoop();
   return 0;
 }

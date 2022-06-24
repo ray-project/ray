@@ -52,16 +52,16 @@ class DistributionalQTFModel(TFModelV2):
                 branches will have this structure of Dense layers. To define
                 the NN before this A/V-split, use - as always -
                 config["model"]["fcnet_hiddens"].
-            dueling (bool): Whether to build the advantage(A)/value(V) heads
+            dueling: Whether to build the advantage(A)/value(V) heads
                 for DDQN. If True, Q-values are calculated as:
                 Q = (A - mean[A]) + V. If False, raw NN output is interpreted
                 as Q-values.
-            num_atoms (int): If >1, enables distributional DQN.
-            use_noisy (bool): Use noisy nets.
-            v_min (float): Min value support for distributional DQN.
-            v_max (float): Max value support for distributional DQN.
+            num_atoms: If >1, enables distributional DQN.
+            use_noisy: Use noisy nets.
+            v_min: Min value support for distributional DQN.
+            v_max: Max value support for distributional DQN.
             sigma0 (float): Initial value of noisy layers.
-            add_layer_norm (bool): Enable layer norm (for param noise).
+            add_layer_norm: Enable layer norm (for param noise).
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the Q head. Those layers for forward()
@@ -175,7 +175,7 @@ class DistributionalQTFModel(TFModelV2):
         Override this in your custom model to customize the Q output head.
 
         Args:
-            model_out (Tensor): embedding from the model layers
+            model_out: embedding from the model layers
 
         Returns:
             (action_scores, logits, dist) if num_atoms == 1, otherwise

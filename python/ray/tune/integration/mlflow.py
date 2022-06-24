@@ -1,12 +1,12 @@
-from typing import Dict, Callable, Optional
 import logging
+from typing import Callable, Dict, Optional
 
 import ray
-from ray.tune.trainable import Trainable
 from ray.tune.logger import LoggerCallback
-from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
-from ray.tune.trial import Trial
-from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray.tune.result import TIMESTEPS_TOTAL, TRAINING_ITERATION
+from ray.tune.trainable import Trainable
+from ray.tune.experiment import Trial
+from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class MLflowLoggerCallback(LoggerCallback):
         self.tags = tags
         self.should_save_artifact = save_artifact
 
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
 
         if ray.util.client.ray.is_connected():
             logger.warning(
@@ -179,19 +179,19 @@ def mlflow_mixin(func: Callable):
     configure MlFlow. Here are the keys you can pass in to this config entry:
 
     Args:
-        tracking_uri (str): The tracking URI for MLflow tracking. If using
+        tracking_uri: The tracking URI for MLflow tracking. If using
             Tune in a multi-node setting, make sure to use a remote server for
             tracking.
-        experiment_id (str): The id of an already created MLflow experiment.
+        experiment_id: The id of an already created MLflow experiment.
             All logs from all trials in ``tune.run`` will be reported to this
             experiment. If this is not provided or the experiment with this
             id does not exist, you must provide an``experiment_name``. This
             parameter takes precedence over ``experiment_name``.
-        experiment_name (str): The name of an already existing MLflow
+        experiment_name: The name of an already existing MLflow
             experiment. All logs from all trials in ``tune.run`` will be
             reported to this experiment. If this is not provided, you must
             provide a valid ``experiment_id``.
-        token (optional, str): A token to use for HTTP authentication when
+        token: A token to use for HTTP authentication when
             logging to a remote tracking server. This is useful when you
             want to log to a Databricks server, for example. This value will
             be used to set the MLFLOW_TRACKING_TOKEN environment variable on
@@ -247,7 +247,7 @@ def mlflow_mixin(func: Callable):
 
 class MLflowTrainableMixin:
     def __init__(self, config: Dict, *args, **kwargs):
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
 
         if not isinstance(self, Trainable):
             raise ValueError(

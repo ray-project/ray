@@ -1,12 +1,9 @@
 import copy
-import gym
-from gym.spaces import Discrete, MultiDiscrete, Space
 import logging
-import numpy as np
-import platform
 import os
-import tree  # pip install dm_tree
+import platform
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Container,
@@ -16,40 +13,50 @@ from typing import (
     Set,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Discrete, MultiDiscrete, Space
 
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
-from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.evaluation.metrics import RolloutMetrics
+from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
-from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
-from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
-from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.offline import InputReader, IOContext, NoopOutput, OutputWriter
+from ray.rllib.offline.estimators import (
+    DirectMethod,
+    DoublyRobust,
+    ImportanceSampling,
+    OffPolicyEstimate,
+    OffPolicyEstimator,
+    WeightedImportanceSampling,
+)
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-from ray.rllib.utils import force_list, merge_dicts, check_env
+from ray.rllib.utils import check_env, force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
-from ray.rllib.utils.filter import get_filter, Filter
+from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
+from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.typing import (
     AgentID,
     EnvConfigDict,
@@ -59,19 +66,19 @@ from ray.rllib.utils.typing import (
     ModelGradients,
     ModelWeights,
     MultiAgentPolicyConfigDict,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
     SampleBatchType,
     T,
 )
-from ray.util.debug import log_once, disable_log_once_globally, enable_periodic_logging
+from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
     from ray.rllib.evaluation.episode import Episode
     from ray.rllib.evaluation.observation_function import ObservationFunction
-    from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -134,10 +141,10 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> # Create a rollout worker and using it to collect experiences.
         >>> import gym
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
         >>> worker = RolloutWorker( # doctest: +SKIP
         ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-        ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+        ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
@@ -229,7 +236,7 @@ class RolloutWorker(ParallelIteratorWorker):
         clip_actions: bool = False,
         env_config: Optional[EnvConfigDict] = None,
         model_config: Optional[ModelConfigDict] = None,
-        policy_config: Optional[PartialTrainerConfigDict] = None,
+        policy_config: Optional[PartialAlgorithmConfigDict] = None,
         worker_index: int = 0,
         num_workers: int = 0,
         recreated_worker: bool = False,
@@ -239,7 +246,7 @@ class RolloutWorker(ParallelIteratorWorker):
         input_creator: Callable[
             [IOContext], InputReader
         ] = lambda ioctx: ioctx.default_sampler_input(),
-        input_evaluation: List[str] = frozenset([]),
+        off_policy_estimation_methods: Optional[Dict[str, Dict]] = None,
         output_creator: Callable[
             [IOContext], OutputWriter
         ] = lambda ioctx: NoopOutput(),
@@ -277,7 +284,7 @@ class RolloutWorker(ParallelIteratorWorker):
             tf_session_creator: A function that returns a TF session.
                 This is optional and only useful with TFPolicy.
             rollout_fragment_length: The target number of steps
-                (maesured in `count_steps_by`) to include in each sample
+                (measured in `count_steps_by`) to include in each sample
                 batch returned from this worker.
             count_steps_by: The unit in which to count fragment
                 lengths. One of env_steps or agent_steps.
@@ -295,7 +302,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 until the episode completes, and hence batches may contain
                 significant amounts of off-policy data.
             episode_horizon: Horizon at which to stop episodes (even if the
-                environment itself has not retured a "done" signal).
+                environment itself has not returned a "done" signal).
             preprocessor_pref: Whether to use RLlib preprocessors
                 ("rllib") or deepmind ("deepmind"), when applicable.
             sample_async: Whether to compute samples asynchronously in
@@ -326,7 +333,7 @@ class RolloutWorker(ParallelIteratorWorker):
             num_workers: For remote workers, how many workers altogether
                 have been created?
             recreated_worker: Whether this worker is a recreated one. Workers are
-                recreated by a Trainer (via WorkerSet) in case
+                recreated by an Algorithm (via WorkerSet) in case
                 `recreate_failed_workers=True` and one of the original workers (or an
                 already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
@@ -336,14 +343,25 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            input_evaluation: How to evaluate the policy performance. Setting this only
-                makes sense when the input is reading offline data.
-                Available options:
-                - "simulation" (str): Run the environment in the background, but use
+            off_policy_estimation_methods: A dict that specifies how to
+                evaluate the current policy.
+                This only has an effect when reading offline experiences
+                ("input" is not "sampler").
+                Available key-value pairs:
+                - {"simulation": None}: Run the environment in the background, but use
                 this data for evaluation only and not for learning.
-                - Any subclass (type) of the OffPolicyEstimator API class, e.g.
-                `ray.rllib.offline.estimators.importance_sampling::ImportanceSampling`
+                - {ope_name: {"type": ope_type, args}}. where `ope_name` is an arbitrary
+                string under which the metrics for this OPE estimator are saved,
+                and `ope_type` can be any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.estimators::ImportanceSampling
                 or your own custom subclass.
+                You can also add additional config arguments to be passed to the
+                OffPolicyEstimator e.g.
+                off_policy_estimation_methods = {
+                "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
+                "dm_64": {"type": DirectMethod, "batch_size": 64},
+                }
+                See ray/rllib/offline/estimators for more information.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
             remote_worker_envs: If using num_envs_per_worker > 1,
@@ -432,11 +450,11 @@ class RolloutWorker(ParallelIteratorWorker):
             recreated_worker=recreated_worker,
         )
         self.env_context = env_context
-        self.policy_config: PartialTrainerConfigDict = policy_config
+        self.policy_config: PartialAlgorithmConfigDict = policy_config
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
-            from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
 
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
@@ -585,7 +603,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Error if we don't find enough GPUs.
         if (
             ray.is_initialized()
-            and ray.worker._mode() != ray.worker.LOCAL_MODE
+            and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
             and not policy_config.get("_fake_gpus")
         ):
 
@@ -603,7 +621,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # requested.
         elif (
             ray.is_initialized()
-            and ray.worker._mode() == ray.worker.LOCAL_MODE
+            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
             and num_gpus > 0
             and not policy_config.get("_fake_gpus")
         ):
@@ -676,6 +694,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 remote_envs=remote_worker_envs,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
                 worker=self,
+                restart_failed_sub_environments=self.policy_config.get(
+                    "restart_failed_sub_environments", False
+                ),
             )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
@@ -696,41 +717,50 @@ class RolloutWorker(ParallelIteratorWorker):
             log_dir, policy_config, worker_index, self
         )
         self.reward_estimators: List[OffPolicyEstimator] = []
-        for method in input_evaluation:
-            if method == "is":
-                method = ImportanceSampling
+        ope_types = {
+            "is": ImportanceSampling,
+            "wis": WeightedImportanceSampling,
+            "dm": DirectMethod,
+            "dr": DoublyRobust,
+        }
+        off_policy_estimation_methods = off_policy_estimation_methods or {}
+        for name, method_config in off_policy_estimation_methods.items():
+            method_type = method_config.pop("type")
+            if method_type in ope_types:
                 deprecation_warning(
-                    old="config.input_evaluation=[is]",
-                    new="from ray.rllib.offline.estimators import "
-                    f"{method.__name__}; config.input_evaluation="
-                    f"[{method.__name__}]",
+                    old=method_type,
+                    new=str(ope_types[method_type]),
                     error=False,
                 )
-            elif method == "wis":
-                method = WeightedImportanceSampling
-                deprecation_warning(
-                    old="config.input_evaluation=[wis]",
-                    new="from ray.rllib.offline.estimators import "
-                    f"{method.__name__}; config.input_evaluation="
-                    f"[{method.__name__}]",
-                    error=False,
-                )
-
-            if method == "simulation":
+                method_type = ope_types[method_type]
+            if name == "simulation":
                 logger.warning(
                     "Requested 'simulation' input evaluation method: "
                     "will discard all sampler outputs and keep only metrics."
                 )
                 sample_async = True
-            elif isinstance(method, type) and issubclass(method, OffPolicyEstimator):
+            # TODO: Allow for this to be a full classpath string as well, then construct
+            #  this with our `from_config` util.
+            elif isinstance(method_type, type) and issubclass(
+                method_type, OffPolicyEstimator
+            ):
+                gamma = self.io_context.worker.policy_config["gamma"]
+                # Grab a reference to the current model
+                keys = list(self.io_context.worker.policy_map.keys())
+                if len(keys) > 1:
+                    raise NotImplementedError(
+                        "Off-policy estimation is not implemented for multi-agent. "
+                        "You can set `input_evaluation: []` to resolve this."
+                    )
+                policy = self.io_context.worker.get_policy(keys[0])
                 self.reward_estimators.append(
-                    method.create_from_io_context(self.io_context)
+                    method_type(name=name, policy=policy, gamma=gamma, **method_config)
                 )
             else:
                 raise ValueError(
-                    f"Unknown evaluation method: {method}! Must be "
-                    "either `simulation` or a sub-class of ray.rllib.offline."
-                    "off_policy_estimator::OffPolicyEstimator"
+                    f"Unknown off_policy_estimation type: {method_type}! Must be "
+                    "either `simulation|is|wis|dm|dr` or a sub-class of ray.rllib."
+                    "offline.estimators.off_policy_estimator::OffPolicyEstimator"
                 )
 
         render = False
@@ -753,7 +783,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
-                blackhole_outputs="simulation" in input_evaluation,
+                blackhole_outputs="simulation" in off_policy_estimation_methods,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
@@ -802,10 +832,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
             >>> print(worker.sample()) # doctest: +SKIP
             SampleBatch({"obs": [...], "action": [...], ...})
         """
@@ -860,9 +890,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Do off-policy estimation, if needed.
         if self.reward_estimators:
-            for sub_batch in batch.split_by_episode():
-                for estimator in self.reward_estimators:
-                    estimator.process(sub_batch)
+            for estimator in self.reward_estimators:
+                estimator.process(batch)
 
         if log_once("sample_end"):
             logger.info("Completed sample batch:\n\n{}\n".format(summarize(batch)))
@@ -886,7 +915,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
             ...   policy_spec=PGTFPolicy) # doctest: +SKIP
@@ -912,10 +941,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
         """
@@ -1029,10 +1058,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
         """
@@ -1098,10 +1127,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
             >>> samples = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
             >>> worker.apply_gradients(grads) # doctest: +SKIP
@@ -1132,7 +1161,7 @@ class RolloutWorker(ParallelIteratorWorker):
             out = self.sampler.get_metrics()
         else:
             out = []
-        # Get metrics from our reward-estimators (if any).
+        # Get metrics from our reward estimators (if any).
         for m in self.reward_estimators:
             out.extend(m.get_metrics())
 
@@ -1213,7 +1242,7 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_cls: Type[Policy],
         observation_space: Optional[Space] = None,
         action_space: Optional[Space] = None,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
         policies_to_train: Optional[
@@ -1737,7 +1766,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def _build_policy_map(
         self,
         policy_dict: MultiAgentPolicyConfigDict,
-        policy_config: PartialTrainerConfigDict,
+        policy_config: PartialAlgorithmConfigDict,
         session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -1747,7 +1776,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_dict: The MultiAgentPolicyConfigDict to be added to this
                 worker's PolicyMap.
             policy_config: The general policy config to use. May be updated
-                by individual policy condig overrides in the given
+                by individual policy config overrides in the given
                 multi-agent `policy_dict`.
             session_creator: A callable that creates a tf session
                 (if applicable).
@@ -1895,12 +1924,29 @@ class RolloutWorker(ParallelIteratorWorker):
 
 
 def _determine_spaces_for_multi_agent_dict(
-    multi_agent_dict: MultiAgentPolicyConfigDict,
+    multi_agent_policies_dict: MultiAgentPolicyConfigDict,
     env: Optional[EnvType] = None,
     spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
-    policy_config: Optional[PartialTrainerConfigDict] = None,
+    policy_config: Optional[PartialAlgorithmConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
+    """Infers the observation- and action spaces in a multi-agent policy dict.
 
+    Args:
+        multi_agent_policies_dict: The multi-agent `policies` dict mapping policy IDs
+            to PolicySpec objects. Note that the `observation_space` and `action_space`
+            properties in these PolicySpecs may be None and must therefore be inferred
+            here.
+        env: An optional env instance, from which to infer the different spaces for
+            the different policies.
+        spaces: Optional dict mapping policy IDs to tuples of 1) observation space
+            and 2) action space that should be used for the respective policy.
+            These spaces were usually provided by an already instantiated remote worker.
+        policy_config: Optional partial config dict of the Trainer.
+
+    Returns:
+        The updated MultiAgentPolicyConfigDict (changed in-place from the incoming
+        `multi_agent_policies_dict` arg).
+    """
     policy_config = policy_config or {}
 
     # Try extracting spaces from env or from given spaces dict.
@@ -1929,12 +1975,40 @@ def _determine_spaces_for_multi_agent_dict(
         if env_act_space is None:
             env_act_space = spaces.get("__env__", [None, None])[1]
 
-    for pid, policy_spec in multi_agent_dict.copy().items():
+    for pid, policy_spec in multi_agent_policies_dict.copy().items():
         if policy_spec.observation_space is None:
             if spaces is not None and pid in spaces:
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
-                obs_space = env_obs_space
+                # Multi-agent case AND different agents have different spaces:
+                # Need to reverse map spaces (for the different agents) to certain
+                # policy IDs.
+                if isinstance(env, MultiAgentEnv) and env._spaces_in_preferred_format:
+                    obs_space = None
+                    mapping_fn = policy_config.get("multiagent", {}).get(
+                        "policy_mapping_fn", None
+                    )
+                    if mapping_fn:
+                        for aid in env.get_agent_ids():
+                            # Match: Assign spaces for this agentID to the policy ID.
+                            if mapping_fn(aid, None, None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    obs_space is not None
+                                    and env_obs_space[aid] != obs_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the same"
+                                        " policyID (as per your `policy_mapping_fn`), "
+                                        "however, these agents also have different "
+                                        "observation spaces!"
+                                    )
+                                obs_space = env_obs_space[aid]
+                # Otherwise, just use env's obs space as-is.
+                else:
+                    obs_space = env_obs_space
+            # Space given directly in config.
             elif policy_config.get("observation_space"):
                 obs_space = policy_config["observation_space"]
             else:
@@ -1945,7 +2019,7 @@ def _determine_spaces_for_multi_agent_dict(
                     "`observation_space` specified in config!"
                 )
 
-            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+            multi_agent_policies_dict[pid] = multi_agent_policies_dict[pid]._replace(
                 observation_space=obs_space
             )
 
@@ -1953,7 +2027,34 @@ def _determine_spaces_for_multi_agent_dict(
             if spaces is not None and pid in spaces:
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
-                act_space = env_act_space
+                # Multi-agent case AND different agents have different spaces:
+                # Need to reverse map spaces (for the different agents) to certain
+                # policy IDs.
+                if isinstance(env, MultiAgentEnv) and env._spaces_in_preferred_format:
+                    act_space = None
+                    mapping_fn = policy_config.get("multiagent", {}).get(
+                        "policy_mapping_fn", None
+                    )
+                    if mapping_fn:
+                        for aid in env.get_agent_ids():
+                            # Match: Assign spaces for this agentID to the policy ID.
+                            if mapping_fn(aid, None, None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    act_space is not None
+                                    and env_act_space[aid] != act_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the same"
+                                        " policyID (as per your `policy_mapping_fn`), "
+                                        "however, these agents also have different "
+                                        "action spaces!"
+                                    )
+                                act_space = env_act_space[aid]
+                # Otherwise, just use env's action space as-is.
+                else:
+                    act_space = env_act_space
             elif policy_config.get("action_space"):
                 act_space = policy_config["action_space"]
             else:
@@ -1963,7 +2064,7 @@ def _determine_spaces_for_multi_agent_dict(
                     "no spaces received from other workers' env(s) OR no "
                     "`action_space` specified in config!"
                 )
-            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+            multi_agent_policies_dict[pid] = multi_agent_policies_dict[pid]._replace(
                 action_space=act_space
             )
-    return multi_agent_dict
+    return multi_agent_policies_dict
