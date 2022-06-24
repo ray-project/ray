@@ -6,7 +6,7 @@ This section should help you:
 
 - develop and test your Serve deployment graph locally
 - understand the Serve config file format
-- deploy, monitor, and update your Serve application in production
+- deploy, inspect, and update your Serve application in production
 
 ```{contents}
 ```
@@ -281,7 +281,7 @@ The message `Sent deploy request successfully!` means:
 * It will start a new Serve application if one hasn't already started.
 * The Serve application will deploy the deployments from your deployment graph, updated with the configurations from your config file.
 
-It does **not** mean that your Serve application, including your deployments, has already started running successfully. This happens asynchronously as the Ray cluster attempts to update itself to match the settings from your config file. Check out the [next section](serve-in-production-monitoring) to learn more about how to monitor your deployments.
+It does **not** mean that your Serve application, including your deployments, has already started running successfully. This happens asynchronously as the Ray cluster attempts to update itself to match the settings from your config file. Check out the [next section](serve-in-production-inspecting) to learn more about how to inspect your deployments.
 
 ### Adding a Runtime Environment
 
@@ -346,11 +346,11 @@ $ unset RAY_ADDRESS
 Check for this variable in your environment to make sure you're using your desired Ray address.
 :::
 
-(serve-in-production-monitoring)=
+(serve-in-production-inspecting)=
 
-## Monitoring Your Serve Application in Production with `serve config` and `serve status`
+## Inspecting Your Serve Application in Production with `serve config` and `serve status`
 
-The Serve CLI offers two commands to help you monitor your Serve application in production: `serve config` and `serve status`.
+The Serve CLI offers two commands to help you inspect your Serve application in production: `serve config` and `serve status`.
 
 If you're working with a remote cluster, `serve config` and `serve status` also offer an `--address/-a` argument to access your cluster. Check out [the previous section](serve-in-production-remote-cluster) for more info on this argument.
 
@@ -402,7 +402,7 @@ The `deployment_statuses` contains a list of dictionaries representing each depl
     * `"UNHEALTHY"`: the deployment has either failed to update, or it has updated and has become unhealthy afterwards. This may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
 * `message`: provides context on the current status.
 
-You can use the `serve status` command to monitor your deployments after they are deployed and throughout their lifetime.
+You can use the `serve status` command to inspect your deployments after they are deployed and throughout their lifetime.
 
 Using the `fruit_config.yaml` example from [an earlier section](fruit-config-yaml):
 
@@ -492,7 +492,7 @@ $ serve deploy fruit_config.yaml
 ...
 ```
 
-We can monitor our deployments with `serve status`. Once the `app_status`'s `status` returns to `"RUNNING"`, we can try our requests one more time:
+We can inspect our deployments with `serve status`. Once the `app_status`'s `status` returns to `"RUNNING"`, we can try our requests one more time:
 
 ```console
 $ serve status
