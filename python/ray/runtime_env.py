@@ -10,9 +10,7 @@ import ray
 from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 from ray._private.runtime_env.conda import get_uri as get_conda_uri
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
-from ray._private.utils import import_attr
 from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
@@ -85,9 +83,8 @@ def _parse_proto_plugin_runtime_env(
 ):
     """Parse plugin runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("plugin_runtime_env"):
-        runtime_env_dict["plugins"] = dict()
         for plugin in runtime_env.python_runtime_env.plugin_runtime_env.plugins:
-            runtime_env_dict["plugins"][plugin.class_path] = json.loads(plugin.config)
+            runtime_env_dict[plugin.class_path] = json.loads(plugin.config)
 
 
 @PublicAPI(stability="beta")
@@ -319,7 +316,6 @@ class RuntimeEnv(dict):
         "_ray_release",
         "_ray_commit",
         "_inject_current_ray",
-        "plugins",
         "config",
     }
 
@@ -363,11 +359,12 @@ class RuntimeEnv(dict):
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")
 
+        self.update(runtime_env)
+
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the
         # deserialization codepath.
         if not _validate:
-            self.update(runtime_env)
             return
 
         if runtime_env.get("conda") and runtime_env.get("pip"):
@@ -405,28 +402,6 @@ class RuntimeEnv(dict):
             self["_inject_current_ray"] = runtime_env["_inject_current_ray"]
         elif "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
             self["_inject_current_ray"] = True
-        if "plugins" in runtime_env:
-            self["plugins"] = dict()
-            for class_path, plugin_field in runtime_env["plugins"].items():
-                plugin_class: RuntimeEnvPlugin = import_attr(class_path)
-                if not issubclass(plugin_class, RuntimeEnvPlugin):
-                    # TODO(simon): move the inferface to public once ready.
-                    raise TypeError(
-                        f"{class_path} must be inherit from "
-                        "ray._private.runtime_env.plugin.RuntimeEnvPlugin."
-                    )
-                # TODO(simon): implement uri support.
-                _ = plugin_class.validate(runtime_env)
-                # Validation passed, add the entry to parsed runtime env.
-                self["plugins"][class_path] = plugin_field
-
-        unknown_fields = set(runtime_env.keys()) - RuntimeEnv.known_fields
-        if len(unknown_fields):
-            logger.warning(
-                "The following unknown entries in the runtime_env dictionary "
-                f"will be ignored: {unknown_fields}. If you intended to use "
-                "them as plugins, they must be nested in the `plugins` field."
-            )
 
         # NOTE(architkulkarni): This allows worker caching code in C++ to check
         # if a runtime env is empty without deserializing it.  This is a catch-
@@ -455,19 +430,16 @@ class RuntimeEnv(dict):
         return plugin_uris
 
     def __setitem__(self, key: str, value: Any) -> None:
-        if key not in RuntimeEnv.known_fields:
-            logger.warning(
-                "The following unknown entries in the runtime_env dictionary "
-                f"will be ignored: {key}. If you intended to use "
-                "them as plugins, they must be nested in the `plugins` field."
-            )
-            return
+        # TODO(SongGuyang): Validate the schemas of plugins by json schema.
         res_value = value
-        if key in OPTION_TO_VALIDATION_FN:
+        if key in RuntimeEnv.known_fields and key in OPTION_TO_VALIDATION_FN:
             res_value = OPTION_TO_VALIDATION_FN[key](value)
             if res_value is None:
                 return
         return super().__setitem__(key, res_value)
+
+    def set(self, name: str, value: Any) -> None:
+        self.__setitem__(name, value)
 
     @classmethod
     def deserialize(cls, serialized_runtime_env: str) -> "RuntimeEnv":  # noqa: F821
@@ -655,16 +627,11 @@ class RuntimeEnv(dict):
             return None
         return self["container"].get("run_options", [])
 
-    def has_plugins(self) -> bool:
-        if self.get("plugins"):
-            return True
-        return False
-
     def plugins(self) -> List[Tuple[str, str]]:
         result = list()
-        if self.has_plugins():
-            for class_path, plugin_field in self["plugins"].items():
-                result.append((class_path, json.dumps(plugin_field, sort_keys=True)))
+        for key, value in self.items():
+            if key not in self.known_fields:
+                result.append((key, json.dumps(value, sort_keys=True)))
         return result
 
     def _build_proto_pip_runtime_env(self, runtime_env: ProtoRuntimeEnv):
@@ -720,8 +687,7 @@ class RuntimeEnv(dict):
 
     def _build_proto_plugin_runtime_env(self, runtime_env: ProtoRuntimeEnv):
         """Construct plugin runtime env protobuf from runtime env dict."""
-        if self.has_plugins():
-            for class_path, plugin_field in self.plugins():
-                plugin = runtime_env.python_runtime_env.plugin_runtime_env.plugins.add()
-                plugin.class_path = class_path
-                plugin.config = plugin_field
+        for class_path, plugin_field in self.plugins():
+            plugin = runtime_env.python_runtime_env.plugin_runtime_env.plugins.add()
+            plugin.class_path = class_path
+            plugin.config = plugin_field
