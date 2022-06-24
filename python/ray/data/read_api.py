@@ -249,7 +249,8 @@ def read_datasource(
 
     if force_local:
         requested_parallelism, read_tasks = _get_read_tasks(
-            datasource, ctx, cur_pg, parallelism, read_args)
+            datasource, ctx, cur_pg, parallelism, read_args
+        )
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
