@@ -23,6 +23,7 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
     SampleBatch,
+    concat_samples,
 )
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import unpack_if_needed
@@ -149,6 +150,8 @@ class JsonReader(InputReader):
             self.policy_map = self.ioctx.worker.policy_map
             self.default_policy = self.policy_map.get(DEFAULT_POLICY_ID)
 
+        self.batch_size = ioctx.config.get("train_batch_size", 1)
+
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):
@@ -180,20 +183,24 @@ class JsonReader(InputReader):
 
     @override(InputReader)
     def next(self) -> SampleBatchType:
-        batch = self._try_parse(self._next_line())
-        tries = 0
-        while not batch and tries < 100:
-            tries += 1
-            logger.debug("Skipping empty line in {}".format(self.cur_file))
+        ret = []
+        for _ in range(self.batch_size):
             batch = self._try_parse(self._next_line())
-        if not batch:
-            raise ValueError(
-                "Failed to read valid experience batch from file: {}".format(
-                    self.cur_file
+            tries = 0
+            while not batch and tries < 100:
+                tries += 1
+                logger.debug("Skipping empty line in {}".format(self.cur_file))
+                batch = self._try_parse(self._next_line())
+            if not batch:
+                raise ValueError(
+                    "Failed to read valid experience batch from file: {}".format(
+                        self.cur_file
+                    )
                 )
-            )
-
-        return self._postprocess_if_needed(batch)
+            batch = self._postprocess_if_needed(batch)
+            ret.append(batch)
+        ret = concat_samples(ret)
+        return ret
 
     def read_all_files(self) -> SampleBatchType:
         """Reads through all files and yields one SampleBatchType per line.
@@ -223,7 +230,7 @@ class JsonReader(InputReader):
             out = []
             for sub_batch in batch.split_by_episode():
                 out.append(self.default_policy.postprocess_trajectory(sub_batch))
-            return SampleBatch.concat_samples(out)
+            return concat_samples(out)
         else:
             # TODO(ekl) this is trickier since the alignments between agent
             #  trajectories in the episode are not available any more.
