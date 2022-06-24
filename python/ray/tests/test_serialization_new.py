@@ -2,7 +2,7 @@
 import logging
 import sys
 import ray
-import ray.serialization_new as ser_new
+import ray._private.serialization_new as ser_new
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

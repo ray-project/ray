@@ -2,7 +2,7 @@ import logging
 import threading
 import traceback
 
-import ray.serialization_new as serialization_new
+import ray._private.serialization_new as serialization_new
 import ray._private.utils
 import ray.cloudpickle as pickle
 from ray._private import ray_constants
