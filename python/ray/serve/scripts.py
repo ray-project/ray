@@ -403,10 +403,11 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
             if property in deployment:
                 del deployment[property]
 
-    config_str = yaml.dump(
+    config_str = f"# Ray v{ray.__version__}\n"
+    config_str = "# This file was generated using the `serve build` command.\n\n"
+    config_str += yaml.dump(
         config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
     )
-    config_str += f"# Built using Ray v{ray.__version__}\n"
 
     if output_path is not None:
         with open(output_path, "w") as f:
