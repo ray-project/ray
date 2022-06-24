@@ -12,7 +12,7 @@ import ray._private.utils
 import ray.cloudpickle as cloudpickle
 from ray.tune.utils.util import wait_for_gpu
 from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.trainable.util import TrainableUtil
 
 
 @pytest.mark.parametrize(
@@ -27,7 +27,7 @@ from ray.tune.utils.trainable import TrainableUtil
 @pytest.mark.parametrize("logdir", ["~/tmp/exp/trial", "~/tmp/exp/trial/"])
 def test_find_rel_checkpoint_dir(checkpoint_path, logdir):
     assert (
-        TrainableUtil.find_rel_checkpoint_dir(logdir, checkpoint_path) == "checkpoint0/"
+        TrainableUtil.find_rel_checkpoint_dir(logdir, checkpoint_path) == "checkpoint0"
     )
 
 

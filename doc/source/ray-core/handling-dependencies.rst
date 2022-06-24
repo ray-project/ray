@@ -134,7 +134,7 @@ This will install the dependencies to the remote cluster.  Any tasks and actors 
     1. As soon as the job starts (i.e., as soon as ``ray.init()`` is called), the dependencies are eagerly downloaded and installed.
     2. The dependencies are installed only when a task is invoked or an actor is created.
 
-  The default is option 1. To change the behavior to option 2, add ``"eager_install": False`` to the ``runtime_env``.
+  The default is option 1. To change the behavior to option 2, add ``"eager_install": False`` to the ``config`` of ``runtime_env``.
 
 .. _rte-per-task-actor:
 
@@ -199,6 +199,10 @@ You can also specify files via a remote cloud storage URI; see :ref:`remote-uris
 
 Using ``conda`` or ``pip`` packages
 """""""""""""""""""""""""""""""""""
+
+.. note:: 
+
+  ``conda`` and ``pip`` environments must have the same Ray and Python version as the cluster. The Ray version will be matched by default if you don't specify ``ray`` as a dependency.
 
 Your Ray application might depend on Python packages (for example, ``pendulum`` or ``requests``) via ``import`` statements.
 
@@ -310,9 +314,11 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
 
 - ``excludes`` (List[str]): When used with ``working_dir`` or ``py_modules``, specifies a list of files or paths to exclude from being uploaded to the cluster.
-  This field also supports the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
+  This field uses the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
+  Note: In accordance with ``.gitignore`` syntax, if there is a separator (``/``) at the beginning or middle (or both) of the pattern, then the pattern is interpreted relative to the level of the ``working_dir``.
+  In particular, you shouldn't use absolute paths (e.g. `/Users/my_working_dir/subdir/`) with `excludes`; rather, you should use the relative path `/subdir/` (written here with a leading `/` to match only the top-level `subdir` directory, rather than all directories named `subdir` at all levels.)
 
-  - Example: ``["my_file.txt", "path/to/dir", "*.log"]``
+  - Example: ``{"working_dir": "/Users/my_working_dir/", "excludes": ["my_file.txt", "/subdir/, "path/to/dir", "*.log"]}``
 
 - ``pip`` (dict | List[str] | str): Either (1) a list of pip `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing the path to a pip
   `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of pip packages,
@@ -321,6 +327,7 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   The syntax of a requirement specifier is defined in full in `PEP 508 <https://www.python.org/dev/peps/pep-0508/>`_.
   This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
+  The Ray version must match that of the cluster.
 
   - Example: ``["requests==1.0.0", "aiohttp", "ray[serve]"]``
 
@@ -334,6 +341,7 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
   or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
+  The Python and Ray version must match that of the cluster, so you likely should not specify them manually.
   Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
 
   - Example: ``{"dependencies": ["pytorch", "torchvision", "pip", {"pip": ["pendulum"]}]}``
@@ -355,17 +363,21 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
 
   Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 
-- ``eager_install`` (bool): Indicates whether to install the runtime environment on the cluster at ``ray.init()`` time, before the workers are leased. This flag is set to ``True`` by default.
+- ``config`` (dict | :class:`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): config for runtime environment. Either a dict or a RuntimeEnvConfig.
+  Fields:
+  (1) setup_timeout_seconds, the timeout of runtime environment creation, timeout is in seconds.
+
+  - Example: ``{"setup_timeout_seconds": 10}``
+
+  - Example: ``RuntimeEnvConfig(setup_timeout_seconds=10)``
+
+  (2) ``eager_install`` (bool): Indicates whether to install the runtime environment on the cluster at ``ray.init()`` time, before the workers are leased. This flag is set to ``True`` by default.
   If set to ``False``, the runtime environment will be only installed when the first task is invoked or when the first actor is created.
   Currently, specifying this option per-actor or per-task is not supported.
 
   - Example: ``{"eager_install": False}``
 
-- ``config`` (dict | :class:`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): config for runtime environment. Either a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the timeout of runtime environment creation, timeout is in seconds.
-
-  - Example: ``{"setup_timeout_seconds": 10}``
-
-  - Example: ``RuntimeEnvConfig(setup_timeout_seconds=10)``
+  - Example: ``RuntimeEnvConfig(eager_install=False)``
 
 Caching and Garbage Collection
 """"""""""""""""""""""""""""""
@@ -378,47 +390,29 @@ To disable all deletion behavior (for example, for debugging purposes) you may s
 Inheritance
 """""""""""
 
-The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden by explicitly specifying a runtime environment for the child task/actor.
+The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden.
 
-1. By default, all actors and tasks inherit the current runtime env.
+If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task) as follows:
 
-.. code-block:: python
+* The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
+  This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
+* Every other field in the ``runtime_env`` will be *overridden* by the child, not merged.  For example, if ``runtime_env["py_modules"]`` is specified, it will replace the ``runtime_env["py_modules"]`` field of the parent.
 
-  # Current `runtime_env`
-  ray.init(runtime_env={"pip": ["requests", "chess"]})
-
-  # Create child actor
-  ChildActor.remote()
-
-  # ChildActor's actual `runtime_env` (inherit from current runtime env)
-  {"pip": ["requests", "chess"]}
-
-2. However, if you specify runtime_env for task/actor, it will override current runtime env.
+Example:
 
 .. code-block:: python
 
-  # Current `runtime_env`
-  ray.init(runtime_env={"pip": ["requests", "chess"]})
-
-  # Create child actor
-  ChildActor.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote()
-
-  # ChildActor's actual `runtime_env` (specify runtime_env overrides)
-  {"env_vars": {"A": "a", "B": "b"}}
-
-3. If you'd like to still use current runtime env, you can use the API :ref:`ray.get_runtime_context().runtime_env <runtime-context-apis>` to get the current runtime env and modify it by yourself.
-
-.. code-block:: python
-
-  # Current `runtime_env`
-  ray.init(runtime_env={"pip": ["requests", "chess"]})
-
-  # Child updates `runtime_env`
-  Actor.options(runtime_env=ray.get_runtime_context().runtime_env.update({"env_vars": {"A": "a", "B": "b"}}))
-
-  # Child's actual `runtime_env` (merged with current runtime env)
+  # Parent's `runtime_env`
   {"pip": ["requests", "chess"],
   "env_vars": {"A": "a", "B": "b"}}
+
+  # Child's specified `runtime_env`
+  {"pip": ["torch", "ray[serve]"],
+  "env_vars": {"B": "new", "C", "c"}}
+
+  # Child's actual `runtime_env` (merged with parent's)
+  {"pip": ["torch", "ray[serve]"],
+  "env_vars": {"A": "a", "B": "new", "C", "c"}}
 
 .. _runtime-env-faq:
 
@@ -429,7 +423,7 @@ Are environments installed on every node?
 """""""""""""""""""""""""""""""""""""""""
 
 If a runtime environment is specified in ``ray.init(runtime_env=...)``, then the environment will be installed on every node.  See :ref:`Per-Job <rte-per-job>` for more details.
-(Note, by default the runtime environment will be installed eagerly on every node in the cluster. If you want to lazily install the runtime environment on demand, set the ``eager_install`` option to false: ``ray.init(runtime_env={..., "eager_install": False}``.)
+(Note, by default the runtime environment will be installed eagerly on every node in the cluster. If you want to lazily install the runtime environment on demand, set the ``eager_install`` option to false: ``ray.init(runtime_env={..., "config": {"eager_install": False}}``.)
 
 When is the environment installed?
 """"""""""""""""""""""""""""""""""

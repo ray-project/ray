@@ -25,6 +25,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.annotations import (
     PublicAPI,
     DeveloperAPI,
@@ -51,7 +52,7 @@ from ray.rllib.utils.typing import (
     T,
     TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -74,8 +75,8 @@ PolicySpec = PublicAPI(
     namedtuple(
         "PolicySpec",
         [
-            # If None, use the Trainer's default policy class stored under
-            # `Trainer._policy_class`.
+            # If None, use the Algorithm's default policy class stored under
+            # `Algorithm._policy_class`.
             "policy_class",
             # If None, use the env's observation space. If None and there is no Env
             # (e.g. offline RL), an error is thrown.
@@ -83,7 +84,7 @@ PolicySpec = PublicAPI(
             # If None, use the env's action space. If None and there is no Env
             # (e.g. offline RL), an error is thrown.
             "action_space",
-            # Overrides defined keys in the main Trainer config.
+            # Overrides defined keys in the main Algorithm config.
             # If None, use {}.
             "config",
         ],
@@ -124,14 +125,14 @@ class Policy(metaclass=ABCMeta):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         """Initializes a Policy instance.
 
         Args:
             observation_space: Observation space of the policy.
             action_space: Action space of the policy.
-            config: A complete Trainer/Policy config dict. For the default
+            config: A complete Algorithm/Policy config dict. For the default
                 config keys and values, see rllib/trainer/trainer.py.
         """
         self.observation_space: gym.Space = observation_space
@@ -142,13 +143,13 @@ class Policy(metaclass=ABCMeta):
         self.observation_space_struct = get_base_struct_from_space(observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
-        self.config: TrainerConfigDict = config
+        self.config: AlgorithmConfigDict = config
         self.framework = self.config.get("framework")
         # Create the callbacks object to use for handling custom callbacks.
         if self.config.get("callbacks"):
             self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
         else:
-            from ray.rllib.agents.callbacks import DefaultCallbacks
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
             self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
 
@@ -385,7 +386,7 @@ class Policy(metaclass=ABCMeta):
             kwargs: Forward compatibility placeholder
 
         Returns:
-            actions (TensorType): Batch of output actions, with shape like
+            actions: Batch of output actions, with shape like
                 [BATCH_SIZE, ACTION_SHAPE].
             state_outs (List[TensorType]): List of RNN state output
                 batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
@@ -522,7 +523,7 @@ class Policy(metaclass=ABCMeta):
         # Note that for better performance (less data sent through the
         # network), this policy should be co-located on the same node
         # as `replay_actor`. Such a co-location step is usually done during
-        # the Trainer's `setup()` phase.
+        # the Algorithm's `setup()` phase.
         batch = ray.get(replay_actor.replay.remote(policy_id=policy_id))
         if batch is None:
             return {}
@@ -790,7 +791,7 @@ class Policy(metaclass=ABCMeta):
         """Imports Policy from local file.
 
         Args:
-            import_file (str): Local readable file.
+            import_file: Local readable file.
         """
         raise NotImplementedError
 
@@ -876,10 +877,10 @@ class Policy(metaclass=ABCMeta):
             ),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            "t": ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(
@@ -898,7 +899,7 @@ class Policy(metaclass=ABCMeta):
         necessary for these computations (to save data storage and transfer).
 
         Args:
-            auto_remove_unneeded_view_reqs (bool): Whether to automatically
+            auto_remove_unneeded_view_reqs: Whether to automatically
                 remove those ViewRequirements records from
                 self.view_requirements that are not needed.
             stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
@@ -910,6 +911,8 @@ class Policy(metaclass=ABCMeta):
         # in the dummy batch are accessed by the different function (e.g.
         # loss) such that we can then adjust our view requirements.
         self._no_tracing = True
+        # Save for later so that loss init does not change global timestep
+        global_ts_before_init = int(convert_to_numpy(self.global_timestep))
 
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
@@ -971,14 +974,14 @@ class Policy(metaclass=ABCMeta):
         # We should simply do self.loss(...) here.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
-        elif is_overridden(self.loss):
+        elif is_overridden(self.loss) and not self.config["in_evaluation"]:
             self.loss(self.model, self.dist_class, train_batch)
         # Call the stats fn, if given.
         # TODO(jungong) : clean up after all agents get migrated.
         # We should simply do self.stats_fn(train_batch) here.
         if stats_fn is not None:
             stats_fn(self, train_batch)
-        if hasattr(self, "stats_fn"):
+        if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
             self.stats_fn(train_batch)
 
         # Re-enable tracing.
@@ -1013,6 +1016,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.DONES,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
+                            SampleBatch.T,
                         ]
                     ):
                         self.view_requirements[key].used_for_training = False
@@ -1030,6 +1034,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.DONES,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
+                            SampleBatch.T,
                         ]
                         and key not in self.model.view_requirements
                     ):
@@ -1049,13 +1054,24 @@ class Policy(metaclass=ABCMeta):
                         elif self.config["output"] is None:
                             del self.view_requirements[key]
 
+        if type(self.global_timestep) is int:
+            self.global_timestep = global_ts_before_init
+        elif isinstance(self.global_timestep, tf.Variable):
+            self.global_timestep.assign(global_ts_before_init)
+        else:
+            raise ValueError(
+                "Variable self.global_timestep of policy {} needs to be "
+                "either of type `int` or `tf.Variable`, "
+                "but is of type {}.".format(self, type(self.global_timestep))
+            )
+
     def _get_dummy_batch_from_view_requirements(
         self, batch_size: int = 1
     ) -> SampleBatch:
         """Creates a numpy dummy batch based on the Policy's view requirements.
 
         Args:
-            batch_size (int): The size of the batch to create.
+            batch_size: The size of the batch to create.
 
         Returns:
             Dict[str, TensorType]: The dummy batch containing all zero values.

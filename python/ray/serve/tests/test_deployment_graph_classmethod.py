@@ -12,7 +12,7 @@ from ray.serve.deployment_graph import ClassNode, InputNode
 
 def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNode]:
     if use_build:
-        return Application.from_dict(build_app(node).to_dict())
+        return build_app(node)
     else:
         return node
 
@@ -44,7 +44,8 @@ class Counter:
         return self.val
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_two_dags_shared_instance(serve_instance, use_build):
     """Test classmethod chain behavior is consistent across core and serve dag.
 

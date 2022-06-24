@@ -9,11 +9,10 @@ from typing import Any, Dict, List, Optional
 from pkg_resources import packaging
 
 try:
-    import aiohttp
     import requests
 except ImportError:
-    aiohttp = None
     requests = None
+
 
 from ray._private.runtime_env.packaging import (
     create_package,
@@ -97,9 +96,9 @@ def get_job_submission_client_cluster_info(
     inserted.
 
     Args:
-        address (str): Address without the module prefix that is passed
+        address: Address without the module prefix that is passed
             to SubmissionClient.
-        create_cluster_if_needed (bool): Indicates whether the cluster
+        create_cluster_if_needed: Indicates whether the cluster
             of the address returned needs to be running. Ray doesn't
             start a cluster before interacting with jobs, but other
             implementations may do so.
@@ -233,7 +232,13 @@ class SubmissionClient:
         *,
         data: Optional[bytes] = None,
         json_data: Optional[dict] = None,
+        **kwargs,
     ) -> "requests.Response":
+        """Perform the actual HTTP request
+
+        Keyword arguments other than "cookies", "headers" are forwarded to the
+        `requests.request()`.
+        """
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
         return requests.request(
@@ -243,6 +248,7 @@ class SubmissionClient:
             data=data,
             json=json_data,
             headers=self._headers,
+            **kwargs,
         )
 
     def _package_exists(

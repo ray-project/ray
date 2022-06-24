@@ -2,7 +2,7 @@ import os
 from typing import Dict, List
 
 from ray.tune.logger import LoggerCallback
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.utils import flatten_dict
 
 
@@ -224,7 +224,7 @@ class CometLoggerCallback(LoggerCallback):
             )
 
             # Walk through checkpoint directory and add all files to artifact
-            checkpoint_root = trial.checkpoint.value
+            checkpoint_root = trial.checkpoint.dir_or_data
             for root, dirs, files in os.walk(checkpoint_root):
                 rel_root = os.path.relpath(root, checkpoint_root)
                 for file in files:
