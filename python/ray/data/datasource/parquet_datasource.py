@@ -52,9 +52,7 @@ def _register_parquet_file_fragment_serialization():
 
 
 def _deregister_parquet_file_fragment_serialization():
-    from pyarrow.dataset import ParquetFileFragment
-
-    ray.util.deregister_serializer(ParquetFileFragment)
+    pass
 
 
 # This is the bare bone deserializing function with no retry
