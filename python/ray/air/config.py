@@ -5,7 +5,9 @@ from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
+
+# Move here later when ml_utils is deprecated
+from ray.util.ml_utils.checkpoint_manager import CheckpointConfig
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -314,5 +316,5 @@ class RunConfig:
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
-    checkpoint_config: Optional[CheckpointStrategy] = None
+    checkpoint_config: Optional[CheckpointConfig] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS

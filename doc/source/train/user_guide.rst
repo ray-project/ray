@@ -700,13 +700,13 @@ As an example, to completely disable writing checkpoints to disk:
     :emphasize-lines: 8,12
 
     from ray import train
-    from ray.train import CheckpointStrategy, Trainer
+    from ray.train import CheckpointConfig, Trainer
 
     def train_func():
         for epoch in range(3):
             train.save_checkpoint(epoch=epoch)
 
-    checkpoint_strategy = CheckpointStrategy(num_to_keep=0)
+    checkpoint_strategy = CheckpointConfig(num_to_keep=0)
 
     trainer = Trainer(backend="torch", num_workers=2)
     trainer.start()
@@ -714,12 +714,12 @@ As an example, to completely disable writing checkpoints to disk:
     trainer.shutdown()
 
 
-You may also config ``CheckpointStrategy`` to keep the "N best" checkpoints persisted to disk. The following example shows how you could keep the 2 checkpoints with the lowest "loss" value:
+You may also config ``CheckpointConfig`` to keep the "N best" checkpoints persisted to disk. The following example shows how you could keep the 2 checkpoints with the lowest "loss" value:
 
 .. code-block:: python
 
     from ray import train
-    from ray.train import CheckpointStrategy, Trainer
+    from ray.train import CheckpointConfig, Trainer
 
 
     def train_func():
@@ -733,7 +733,7 @@ You may also config ``CheckpointStrategy`` to keep the "N best" checkpoints pers
         train.save_checkpoint(loss=3)
 
     # Keep the 2 checkpoints with the smallest "loss" value.
-    checkpoint_strategy = CheckpointStrategy(num_to_keep=2,
+    checkpoint_strategy = CheckpointConfig(num_to_keep=2,
                                              checkpoint_score_attribute="loss",
                                              checkpoint_score_order="min")
 

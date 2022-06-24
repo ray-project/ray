@@ -14,8 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import ray
 from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
-from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.ml_utils.util import is_nan
 
 MAX = "max"
@@ -186,9 +185,10 @@ class _HeapCheckpointWrapper:
         return f"_HeapCheckpoint({repr(self.tracked_checkpoint)})"
 
 
-@PublicAPI(stability="beta")
+# Move to ray.air.config when ml_utils is deprecated.
 @dataclass
-class CheckpointStrategy:
+@PublicAPI(stability="alpha")
+class CheckpointConfig:
     """Configurable parameters for defining the checkpointing strategy.
 
     Default behavior is to persist all checkpoints to disk. If
@@ -196,7 +196,7 @@ class CheckpointStrategy:
     checkpoints with maximum timestamp, i.e. the most recent checkpoints.
 
     Args:
-        num_to_keep (Optional[int]): The number of checkpoints to keep
+        num_to_keep: The number of checkpoints to keep
             on disk for this run. If a checkpoint is persisted to disk after
             there are already this many checkpoints, then an existing
             checkpoint will be deleted. If this is ``None`` then checkpoints
@@ -208,7 +208,7 @@ class CheckpointStrategy:
             This attribute must be a key from the checkpoint
             dictionary which has a numerical value. Per default, the last
             checkpoints will be kept.
-        checkpoint_score_order (str). Either "max" or "min".
+        checkpoint_score_order: Either "max" or "min".
             If "max", then checkpoints with highest values of
             ``checkpoint_score_attribute`` will be kept.
             If "min", then checkpoints with lowest values of
@@ -242,6 +242,23 @@ class CheckpointStrategy:
         return f"{prefix}{self.checkpoint_score_attribute}"
 
 
+# Alias for backwards compatibility
+
+deprecation_message = (
+    "`CheckpointStrategy` is deprecated and will be removed in "
+    "the future. Please use `ray.air.config.CheckpointStrategy` "
+    "instead."
+)
+
+
+@Deprecated(message=deprecation_message)
+@dataclass
+class CheckpointStrategy(CheckpointConfig):
+    def __post_init__(self):
+        logger.warning(deprecation_message)
+        super().__post_init__()
+
+
 class _CheckpointManager:
     """Common checkpoint management and bookkeeping class for Ray Train and Tune.
 
@@ -269,11 +286,11 @@ class _CheckpointManager:
 
     def __init__(
         self,
-        checkpoint_strategy: CheckpointStrategy,
+        checkpoint_strategy: CheckpointConfig,
         latest_checkpoint_id: int = 0,
         delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
-        self._checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
+        self._checkpoint_strategy = checkpoint_strategy or CheckpointConfig()
 
         # Incremental unique checkpoint ID of this run.
         self._latest_checkpoint_id = latest_checkpoint_id
