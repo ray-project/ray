@@ -395,17 +395,16 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
     ).dict()
     config["import_path"] = import_path
 
-    config_str = f"# Ray v{ray.__version__}\n"
-    config_str = "# This file was generated using the `serve build` command.\n\n"
+    config_str = (
+        "# This file was generated using the `serve build` command "
+        f"on Ray v{ray.__version__}.\n\n"
+    )
     config_str += yaml.dump(
         config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
     )
 
-    if output_path is not None:
-        with open(output_path, "w") as f:
-            f.write(config_str)
-    else:
-        print(config_str, end="")
+    with open(output_path, "w") if output_path else sys.stdout as f:
+        f.write(config_str)
 
 
 class ServeBuildDumper(yaml.SafeDumper):
@@ -431,5 +430,8 @@ class ServeBuildDumper(yaml.SafeDumper):
         # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
         super().write_line_break(data)
 
+        # Indents must be less than 3 to ensure that only the top 2 levels of
+        # the config file have line breaks between them. The top 2 levels include
+        # import_path, runtime_env, deployments, and all entries of deployments.
         if len(self.indents) < 3:
             super().write_line_break()
