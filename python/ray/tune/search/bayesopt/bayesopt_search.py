@@ -5,7 +5,7 @@ import json
 from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.sample import Domain, Float, Quantized
+from ray.tune.search.sample import Domain, Float, Quantized
 from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,

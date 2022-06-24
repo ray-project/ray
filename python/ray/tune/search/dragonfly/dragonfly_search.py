@@ -12,7 +12,7 @@ from ray import cloudpickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.sample import Domain, Float, Quantized
+from ray.tune.search.sample import Domain, Float, Quantized
 from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,

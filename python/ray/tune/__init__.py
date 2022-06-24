@@ -22,7 +22,7 @@ from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
 )
-from ray.tune.sample import (
+from ray.tune.search.sample import (
     sample_from,
     uniform,
     quniform,

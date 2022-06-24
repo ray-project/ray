@@ -143,6 +143,11 @@ def test_import_search_util(logging_setup):
         import ray.tune.suggest.util  # noqa: F401
 
 
+def test_import_search_sample(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.sample  # noqa: F401
+
+
 def test_import_search_variant_generator(logging_setup):
     with pytest.warns(DeprecationWarning):
         import ray.tune.suggest.variant_generator  # noqa: F401

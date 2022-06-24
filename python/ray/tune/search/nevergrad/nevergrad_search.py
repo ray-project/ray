@@ -4,7 +4,14 @@ import pickle
 from typing import Dict, Optional, Type, Union, List, Sequence
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, Quantized
+from ray.tune.search.sample import (
+    Categorical,
+    Domain,
+    Float,
+    Integer,
+    LogUniform,
+    Quantized,
+)
 from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
