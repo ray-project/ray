@@ -3001,7 +3001,6 @@ def test_placement_group_match_string():
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     sys.exit(pytest.main(["-sv", __file__]))

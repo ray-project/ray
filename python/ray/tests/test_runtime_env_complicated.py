@@ -107,6 +107,7 @@ def conda_envs(tmp_path_factory):
 
     for package_version in REQUEST_VERSIONS:
         from filelock import FileLock
+
         with FileLock(f"/tmp/package-{package_version}"):
             create_package_env(
                 env_name=f"package-{package_version}", package_version=package_version
