@@ -58,6 +58,66 @@ def test_import_logger_all(logging_setup):
     import ray.tune.logger  # noqa: F401
 
 
+def test_import_search_ax(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.ax  # noqa: F401
+
+
+def test_import_search_bayesopt(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.bayesopt  # noqa: F401
+
+
+def test_import_search_bohb(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.bohb  # noqa: F401
+
+
+def test_import_search_dragonfly(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.dragonfly  # noqa: F401
+
+
+def test_import_search_flaml(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.flaml  # noqa: F401
+
+
+def test_import_search_hebo(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.hebo  # noqa: F401
+
+
+def test_import_search_hyperopt(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.hyperopt  # noqa: F401
+
+
+def test_import_search_nevergrad(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.nevergrad  # noqa: F401
+
+
+def test_import_search_optuna(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.optuna  # noqa: F401
+
+
+def test_import_search_sigopt(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.sigopt  # noqa: F401
+
+
+def test_import_search_skopt(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.skopt  # noqa: F401
+
+
+def test_import_search_zoopt(logging_setup):
+    with pytest.warns(DeprecationWarning):
+        import ray.tune.suggest.zoopt  # noqa: F401
+
+
 def test_import_trainable_function_trainable(logging_setup):
     with pytest.warns(DeprecationWarning):
         import ray.tune.function_runner  # noqa: F401

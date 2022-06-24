@@ -15,7 +15,7 @@ class SearchAlgorithm:
     this class upon new events, so custom search algorithms should
     maintain a list of trials ID generated from this class.
 
-    See also: `ray.tune.suggest.BasicVariantGenerator`.
+    See also: `ray.tune.search.BasicVariantGenerator`.
     """
 
     _finished = False

@@ -5,7 +5,7 @@ import os
 import warnings
 from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
 
-from ray.tune.suggest.util import set_search_properties_backwards_compatible
+from ray.tune.search.util import set_search_properties_backwards_compatible
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 
@@ -14,28 +14,6 @@ if TYPE_CHECKING:
     from ray.tune.analysis import ExperimentAnalysis
 
 logger = logging.getLogger(__name__)
-
-UNRESOLVED_SEARCH_SPACE = str(
-    "You passed a `{par}` parameter to {cls} that contained unresolved search "
-    "space definitions. {cls} should however be instantiated with fully "
-    "configured search spaces only. To use Ray Tune's automatic search space "
-    "conversion, pass the space definition as part of the `config` argument "
-    "to `tune.run()` instead."
-)
-
-UNDEFINED_SEARCH_SPACE = str(
-    "Trying to sample a configuration from {cls}, but no search "
-    "space has been defined. Either pass the `{space}` argument when "
-    "instantiating the search algorithm, or pass a `config` to "
-    "`tune.run()`."
-)
-
-UNDEFINED_METRIC_MODE = str(
-    "Trying to sample a configuration from {cls}, but the `metric` "
-    "({metric}) or `mode` ({mode}) parameters have not been set. "
-    "Either pass these arguments when instantiating the search algorithm, "
-    "or pass them to `tune.run()`."
-)
 
 
 @DeveloperAPI
@@ -448,7 +426,7 @@ class ConcurrencyLimiter(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest import ConcurrencyLimiter
+        from ray.tune.search import ConcurrencyLimiter
         search_alg = HyperOptSearch(metric="accuracy")
         search_alg = ConcurrencyLimiter(search_alg, max_concurrent=2)
         tune.run(trainable, search_alg=search_alg)
