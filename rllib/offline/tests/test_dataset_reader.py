@@ -30,3 +30,11 @@ class TestDatasetReader(unittest.TestCase):
         ioctx = IOContext(config={"train_batch_size": 2}, worker_index=0)
         reader = DatasetReader(ioctx, dataset)
         assert len(reader.next()) == 1200
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

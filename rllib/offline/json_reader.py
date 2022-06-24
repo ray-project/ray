@@ -1,6 +1,8 @@
 import glob
 import json
 import logging
+import math
+
 import numpy as np
 import os
 from pathlib import Path
@@ -151,6 +153,9 @@ class JsonReader(InputReader):
             self.default_policy = self.policy_map.get(DEFAULT_POLICY_ID)
 
         self.batch_size = ioctx.config.get("train_batch_size", 1)
+        num_workers = ioctx.config.get("num_workers", 0)
+        if num_workers:
+            self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)
 
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
