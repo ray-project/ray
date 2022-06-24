@@ -254,9 +254,7 @@ class ModelWrapper(SimpleSchemaIngress):
         predictor_cls: Union[str, Type["Predictor"]],
     ):
         """Reconfigure Model from given Checkpoint"""
-        self.model = predictor_cls.from_checkpoint(
-            checkpoint, predictor_cls
-        )
+        self.model = predictor_cls.from_checkpoint(checkpoint, predictor_cls)
 
 
 @serve.deployment
