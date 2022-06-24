@@ -1035,24 +1035,10 @@ void LocalTaskManager::RecordMetrics() const {
 }
 
 void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
-  buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
-  buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
-  buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
-  buffer << "Number of total spilled tasks: " << num_task_spilled_ << "\n";
-  buffer << "Number of spilled waiting tasks: " << num_waiting_task_spilled_ << "\n";
-  buffer << "Number of spilled unschedulable tasks: " << num_unschedulable_task_spilled_
-         << "\n";
-  buffer << "Resource usage {\n";
-
   // Calculates how much resources are occupied by tasks or actors.
   // Only iterate upto this number to avoid excessive CPU usage.
-  auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
-  uint32_t iteration = 0;
   for (const auto &worker : worker_pool_.GetAllRegisteredWorkers(
            /*filter_dead_workers*/ true)) {
-    if (max_iteration < iteration++) {
-      break;
-    }
     if (worker->IsDead()        // worker is dead
         || worker->IsBlocked()  // worker is blocked by blocking Ray API
         || (worker->GetAssignedTaskId().IsNil() &&
@@ -1065,27 +1051,13 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
                                          .GetTaskSpecification()
                                          .FunctionDescriptor()
                                          ->CallString();
-    buffer << "    - ("
-           << "language="
-           << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
-           << " "
-           << "actor_or_task=" << task_or_actor_name << " "
-           << "pid=" << worker->GetProcess().GetId() << "): "
-           << worker->GetAssignedTask()
+    buffer << "" << task_or_actor_name << "\n"
+           << "" << worker->GetProcess().GetId() << "\n"
+           << "" << worker->GetAssignedTask()
                   .GetTaskSpecification()
                   .GetRequiredResources()
                   .ToString()
            << "\n";
-  }
-  buffer << "}\n";
-  buffer << "Running tasks by scheduling class:\n";
-
-  for (const auto &pair : info_by_sched_cls_) {
-    const auto &sched_cls = pair.first;
-    const auto &info = pair.second;
-    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
-    buffer << "    - " << descriptor.DebugString() << ": " << info.running_tasks.size()
-           << "/" << info.capacity << "\n";
   }
 }
 

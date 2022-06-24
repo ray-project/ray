@@ -185,6 +185,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return string.
   std::string DebugString() const;
 
+  std::string HackathonDebugString() const;
+
   /// Record metrics.
   void RecordMetrics();
 

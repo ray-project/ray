@@ -1,6 +1,8 @@
 import collections
 import logging
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+import os
+import psutil
 
 import ray
 from ray.data._internal.block_list import BlockList
@@ -364,6 +366,8 @@ class ActorPoolStrategy(ComputeStrategy):
                     new_blocks.append(block)
                     new_metadata.append(metadata_mapping[block])
                 new_metadata = ray.get(new_metadata)
+            max_heap = max([md.max_uss for md in new_metadata])
+            print(f"suggested heap {max_heap / 1024**2}")
             return BlockList(new_blocks, new_metadata)
 
         except Exception as e:
@@ -430,6 +434,8 @@ def _map_block_nosplit(
     *fn_args,
     **fn_kwargs,
 ) -> Tuple[Block, BlockMetadata]:
+    process = psutil.Process(os.getpid())
+    start_uss = int(process.memory_full_info().uss)
     stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
     if fn is not None:
@@ -438,6 +444,10 @@ def _map_block_nosplit(
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
+    end_uss = int(process.memory_full_info().uss)
+    delta_uss = end_uss - start_uss
+    available = psutil.virtual_memory().available
+    print(f'delta {delta_uss} end {end_uss} av {available}')
     return new_block, accessor.get_metadata(
-        input_files=input_files, exec_stats=stats.build()
+        input_files=input_files, exec_stats=stats.build(), max_uss=end_uss
     )

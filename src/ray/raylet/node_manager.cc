@@ -2280,6 +2280,11 @@ void NodeManager::DumpDebugState() const {
           std::fstream::out | std::fstream::trunc);
   fs << DebugString();
   fs.close();
+
+  fs.open(initial_config_.log_dir + "/hackathon_dump.txt",
+          std::fstream::out | std::fstream::trunc);
+  fs << HackathonDebugString();
+  fs.close();
 }
 
 const NodeManagerConfig &NodeManager::GetInitialConfig() const { return initial_config_; }
@@ -2318,6 +2323,14 @@ std::string NodeManager::DebugString() const {
   result << "\nEvent stats:" << io_service_.stats().StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
+  return result.str();
+}
+
+std::string NodeManager::HackathonDebugString() const {
+  std::stringstream result;
+  if (cluster_task_manager_ != nullptr) {
+    result << cluster_task_manager_->DebugStr();
+  }
   return result.str();
 }
 
