@@ -15,7 +15,6 @@ import ray._private.gcs_pubsub as gcs_pubsub
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
-import ray._private.ray_constants as ray_constants
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 

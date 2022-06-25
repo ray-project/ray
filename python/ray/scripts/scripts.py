@@ -954,9 +954,11 @@ def start(
                             _tags={"exit code": str(process.returncode)},
                         )
 
-                # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
+                # explicitly kill all processes since atexit handlers
+                # will not exit with errors.
+                node.kill_all_processes(check_alive=False, allow_graceful=False)
                 os._exit(1)
         # not-reachable
 

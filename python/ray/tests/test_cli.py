@@ -394,7 +394,7 @@ def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path)
 
     # NOTE(rickyyx): The wait here is needed for the `head_proc`
     # process to exit
-    time.sleep(3)
+    head_proc.join(5)
 
     # Process with "--block" should be dead with a subprocess killed
     if head_proc.is_alive() or head_proc.exitcode == 0:
@@ -405,7 +405,7 @@ def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path)
             head_parent_conn.recv() if not head_proc.is_alive() else "still alive",
             (
                 "Head process should have exited with errors when one of"
-                " subprocesses killed."
+                f" subprocesses killed. But exited={head_proc.exitcode}"
             ),
         )
 
