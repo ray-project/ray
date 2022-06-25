@@ -46,7 +46,7 @@ def apply_grad_clipping(
         An info dict containing the "grad_norm" key and the resulting clipped
         gradients.
     """
-    info = {}
+    grad_gnorm = 0
     if policy.config["grad_clip"]:
         for param_group in optimizer.param_groups:
             # Make sure we only pass params with grad != None into torch
@@ -61,8 +61,21 @@ def apply_grad_clipping(
                 if isinstance(global_norm, torch.Tensor):
                     global_norm = global_norm.cpu().numpy()
 
-                info["grad_gnorm"] = min(global_norm, clip_value)
-    return info
+                grad_gnorm += min(global_norm, clip_value)
+
+    else:
+        for param_group in optimizer.param_groups:
+            # Make sure we only pass params with grad != None into torch
+            # clip_grad_norm_. Would fail otherwise.
+            params = list(filter(lambda p: p.grad is not None, param_group["params"]))
+            if params:
+                grad_gnorm += torch.linalg.norm(params)
+
+    if grad_gnorm > 0:
+        return {"grad_gnorm": grad_gnorm}
+    else:
+        # No grads available
+        return {}
 
 
 @Deprecated(
