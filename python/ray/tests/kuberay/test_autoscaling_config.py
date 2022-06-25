@@ -276,15 +276,22 @@ def test_autoscaling_config_fetch_retries(exception, num_exceptions):
                 return {"ok-key": "ok-value"}
 
     config_producer = MockAutoscalingConfigProducer()
-    # If you hit an exception and it's not HTTPError, expect to raise.
-    # If you hit >= 5 exceptions, expect to raise.
-    # Otherwise, don't expect to raise.
-    if (num_exceptions > 0 and exception != requests.HTTPError) or num_exceptions >= 5:
-        with pytest.raises(exception):
-            config_producer._fetch_ray_cr_from_k8s_with_retries()
-    else:
-        out = config_producer._fetch_ray_cr_from_k8s_with_retries()
-        assert out == {"ok-key": "ok-value"}
+    # Patch retry backoff period.
+    with mock.patch(
+        "ray.autoscaler._private.kuberay.autoscaling_config.RAYCLUSTER_FETCH_RETRY_S",
+        0,
+    ):
+        # If you hit an exception and it's not HTTPError, expect to raise.
+        # If you hit >= 5 exceptions, expect to raise.
+        # Otherwise, don't expect to raise.
+        if (
+            num_exceptions > 0 and exception != requests.HTTPError
+        ) or num_exceptions >= 5:
+            with pytest.raises(exception):
+                config_producer._fetch_ray_cr_from_k8s_with_retries()
+        else:
+            out = config_producer._fetch_ray_cr_from_k8s_with_retries()
+            assert out == {"ok-key": "ok-value"}
 
 
 if __name__ == "__main__":
