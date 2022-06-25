@@ -243,7 +243,10 @@ def test_job_eager_install(shutdown_only, runtime_env_class):
     wait_for_condition(lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
     ray.shutdown()
     # Test disable eager install
-    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": False}
+    runtime_env = {
+        "conda": {"dependencies": ["toolz"]},
+        "config": {"eager_install": False},
+    }
     ray.init(runtime_env=runtime_env_class(**runtime_env))
     with pytest.raises(RuntimeError):
         wait_for_condition(
@@ -251,7 +254,10 @@ def test_job_eager_install(shutdown_only, runtime_env_class):
         )
     ray.shutdown()
     # Test unavailable type
-    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
+    runtime_env = {
+        "conda": {"dependencies": ["toolz"]},
+        "config": {"eager_install": 123},
+    }
     with pytest.raises(TypeError):
         ray.init(runtime_env=runtime_env_class(**runtime_env))
     ray.shutdown()

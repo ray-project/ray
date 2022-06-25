@@ -10,8 +10,8 @@ import time
 
 import ray
 from ray import tune
-from ray.tune.suggest import ConcurrencyLimiter
-from ray.tune.suggest.optuna import OptunaSearch
+from ray.tune.search import ConcurrencyLimiter
+from ray.tune.search.optuna import OptunaSearch
 
 
 def evaluation_fn(step, width, height):

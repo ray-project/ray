@@ -99,9 +99,8 @@ def predict_linear(result: Result) -> Dataset:
 
     predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
 
-    pandas_predictions = predictions.to_pandas(float("inf"))
-
-    print(f"PREDICTIONS\n{pandas_predictions}")
+    print("PREDICTIONS")
+    predictions.show()
 
     return predictions
 

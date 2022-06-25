@@ -103,7 +103,13 @@ class HttpServerDashboardHead:
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2)
         app.add_routes(routes=routes.bound_routes())
-        self.runner = aiohttp.web.AppRunner(app)
+
+        self.runner = aiohttp.web.AppRunner(
+            app,
+            access_log_format=(
+                "%a %t '%r' %s %b bytes %D us " "'%{Referer}i' '%{User-Agent}i'"
+            ),
+        )
         await self.runner.setup()
         last_ex = None
         for i in range(1 + self.http_port_retries):
