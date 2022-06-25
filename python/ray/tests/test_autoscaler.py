@@ -11,7 +11,11 @@ from collections import defaultdict
 from enum import Enum
 from subprocess import CalledProcessError
 from typing import Callable, Dict, List, Optional
-from unittest.mock import Mock
+from unittest.mock import (
+    DEFAULT,
+    Mock,
+    patch,
+)
 
 import grpc
 import jsonschema
@@ -3536,10 +3540,26 @@ MemAvailable:   33000000 kB
         assert head_node_config["max_workers"] == 0
 
     def testAutoscalerInitFailure(self):
-        def mock():
+        """Validates error handling for failed autoscaler initialization in the
+        Monitor.
+        """
+        class AutoscalerInitFailException(Exception):
             pass
-        Monitor(address="Here", autoscaling_config=mock)
-        print("How?")
+
+        class FaultyAutoscaler:
+            def __init__(self, *args, **kwargs):
+                raise AutoscalerInitFailException
+
+        with patch("ray._private.utils.publish_error_to_driver") as mock_publish:
+            with patch.multiple(
+                "ray.autoscaler._private.monitor",
+                StandardAutoscaler=FaultyAutoscaler,
+                _internal_kv_initialized=Mock(return_value=False)
+            ):
+                monitor = Monitor(address="Here", autoscaling_config="")
+                with pytest.raises(AutoscalerInitFailException):
+                    monitor.run()
+                mock_publish.assert_called_once()
 
 
 def test_import():
