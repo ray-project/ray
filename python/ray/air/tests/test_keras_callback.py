@@ -41,14 +41,13 @@ def train_func(config: dict):
 
 def test_keras_callback():
     epochs = 3
-    scaling_config = {"num_workers": 2}
     config = {
         "epochs": epochs,
     }
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=scaling_config,
+        scaling_config=ScalingConfig(num_workers=2),
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
     checkpoint = trainer.fit().checkpoint
