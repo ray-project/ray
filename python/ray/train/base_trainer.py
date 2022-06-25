@@ -332,7 +332,8 @@ class BaseTrainer(abc.ABC):
         def train_func(config, checkpoint_dir=None):
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
-            config["scaling_config"] = ScalingConfig(**config["scaling_config"])
+            if isinstance(config["scaling_config"], dict):
+                config["scaling_config"] = ScalingConfig(**config["scaling_config"])
             trainer = trainer_cls(**config)
 
             if checkpoint_dir:
