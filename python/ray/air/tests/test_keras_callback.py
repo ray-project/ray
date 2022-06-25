@@ -9,6 +9,7 @@ from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     get_dataset,
 )
 from ray.train.constants import TRAIN_DATASET_KEY
+from ray.air.config import ScalingConfig
 from ray.train.tensorflow import TensorflowTrainer, prepare_dataset_shard
 
 
