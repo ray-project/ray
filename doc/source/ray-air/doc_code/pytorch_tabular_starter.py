@@ -23,13 +23,11 @@ test_dataset = ray.data.from_pandas(test_df.drop("target", axis=1))
 schema_order = [k for k in train_dataset.schema().names if k != "target"]
 
 def concat_for_tensor(dataframe):
-    result = []
-    for i, single_dict in dataframe.iterrows():
-        tensor = [single_dict[key] for key in schema_order]
-        result_dict = {"input": tensor}
-        if "target" in single_dict:
-             result_dict["target"] = single_dict["target"]
-        result.append(result_dict)
+    from ray.data.extensions import TensorArray
+    result = {}
+    result["input"] = TensorArray(dataframe[schema_order].to_numpy(dtype=np.float32))
+    if "target" in dataframe:
+        result["target"] = TensorArray(dataframe["target"].to_numpy(dtype=np.float32))
     return  pd.DataFrame(result)
 
 # Create a preprocessor to scale some columns
@@ -90,9 +88,7 @@ def train_loop_per_worker(config):
 
     def to_tensor_iterator(dict_iterator):
         for d in dict_iterator:
-            np_input = np.vstack(d["input"])
-            np_label = d["target"]
-            yield torch.Tensor(np_input).float(), torch.Tensor(np_label).float()
+            yield torch.Tensor(d["input"]).float(), torch.Tensor(d["target"]).float()
 
     # Create model.
     model = create_model(num_features)
