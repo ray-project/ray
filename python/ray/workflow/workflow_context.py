@@ -1,16 +1,17 @@
 import copy
-from dataclasses import dataclass, field
 import logging
-from typing import Optional, List, TYPE_CHECKING
 from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, List, Optional
+
 import ray
+from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 from ray.workflow.common import WorkflowStatus
-from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ray.workflow.common import StepID, CheckpointModeType
+    from ray.workflow.common import CheckpointModeType, StepID
 
 
 @dataclass
@@ -206,7 +207,7 @@ def workflow_logging_context(job_id) -> None:
     Args:
         job_id: The ID of the job that submits the workflow execution.
     """
-    node = ray.worker._global_node
+    node = ray._private.worker._global_node
     original_out_file, original_err_file = node.get_log_file_handles(
         get_worker_log_file_name("WORKER")
     )
