@@ -51,7 +51,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -782,8 +782,7 @@ class Impala(Algorithm):
         return sample_batches
 
     def place_processed_samples_on_learner_queue(self) -> None:
-        self._counters["num_samples_added_to_queue"] = 0
-
+        print(f"batches to place on learner = {len(self.batches_to_place_on_learner)}")
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:
@@ -791,7 +790,7 @@ class Impala(Algorithm):
                 self.batches_to_place_on_learner.pop(0)
                 self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-                self._counters["num_samples_added_to_queue"] = batch.count
+                self._counters["num_samples_added_to_queue"] += batch.count
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1
 
@@ -814,7 +813,7 @@ class Impala(Algorithm):
                 if learner_results:
                     learner_infos.append(learner_results)
             else:
-                raise RuntimeError("The learner thread died in while training")
+                raise RuntimeError("The learner thread died while training")
         if not learner_infos:
             final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
         else:
@@ -844,8 +843,10 @@ class Impala(Algorithm):
             batches = ray.get(batches)
         for batch in batches:
             batch = batch.decompress_if_needed()
+            c = batch.count
             self.local_mixin_buffer.add_batch(batch)
             batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            assert batch.count == c
             if batch:
                 processed_batches.append(batch)
         return processed_batches

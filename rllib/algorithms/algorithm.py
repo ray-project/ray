@@ -102,8 +102,8 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
-from ray.tune.experiment.trial import ExportFormat
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.trial import ExportFormat
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util import log_once
 from ray.util.timer import _Timer
 
@@ -797,6 +797,8 @@ class Algorithm(Trainable):
                     # 1 episode per returned batch.
                     if unit == "episodes":
                         num_units_done += len(batches)
+                        for b in batches:#TODO: make sure all batches are exactly one episoe
+                            assert b["dones"][-1] and np.sum(b["dones"]) == 1
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
@@ -806,11 +808,12 @@ class Algorithm(Trainable):
                     agent_steps_this_iter += _agent_steps
                     env_steps_this_iter += _env_steps
 
-                    logger.info(
-                        f"Ran round {round_} of parallel evaluation "
-                        f"({num_units_done}/{duration if not auto else '?'} "
-                        f"{unit} done)"
-                    )
+                    #logger.info(
+                    #    f"Ran round {round_} of parallel evaluation "
+                    #    f"({num_units_done}/{duration if not auto else '?'} "
+                    #    f"{unit} done)"
+                    #)
+
 
             if metrics is None:
                 metrics = collect_metrics(

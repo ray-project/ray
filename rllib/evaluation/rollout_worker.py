@@ -601,36 +601,36 @@ class RolloutWorker(ParallelIteratorWorker):
             else policy_config.get("num_gpus_per_worker", 0)
         )
         # Error if we don't find enough GPUs.
-        if (
-            ray.is_initialized()
-            and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
-            and not policy_config.get("_fake_gpus")
-        ):
+        #if (
+        #    ray.is_initialized()
+        #    and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
+        #    and not policy_config.get("_fake_gpus")
+        #):
 
-            devices = []
-            if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
-                devices = get_tf_gpu_devices()
-            elif policy_config.get("framework") == "torch":
-                devices = list(range(torch.cuda.device_count()))
+        #    devices = []
+        #    if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
+        #        devices = get_tf_gpu_devices()
+        #    elif policy_config.get("framework") == "torch":
+        #        devices = list(range(torch.cuda.device_count()))
 
-            if len(devices) < num_gpus:
-                raise RuntimeError(
-                    ERR_MSG_NO_GPUS.format(len(devices), devices) + HOWTO_CHANGE_CONFIG
-                )
+        #    if len(devices) < num_gpus:
+        #        raise RuntimeError(
+        #            ERR_MSG_NO_GPUS.format(len(devices), devices) + HOWTO_CHANGE_CONFIG
+        #        )
         # Warn, if running in local-mode and actual GPUs (not faked) are
         # requested.
-        elif (
-            ray.is_initialized()
-            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-            and num_gpus > 0
-            and not policy_config.get("_fake_gpus")
-        ):
-            logger.warning(
-                "You are running ray with `local_mode=True`, but have "
-                f"configured {num_gpus} GPUs to be used! In local mode, "
-                f"Policies are placed on the CPU and the `num_gpus` setting "
-                f"is ignored."
-            )
+        #elif (
+        #    ray.is_initialized()
+        #    and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+        #    and num_gpus > 0
+        #    and not policy_config.get("_fake_gpus")
+        #):
+        #    logger.warning(
+        #        "You are running ray with `local_mode=True`, but have "
+        #        f"configured {num_gpus} GPUs to be used! In local mode, "
+        #        f"Policies are placed on the CPU and the `num_gpus` setting "
+        #        f"is ignored."
+        #    )
 
         self._build_policy_map(
             self.policy_dict,
