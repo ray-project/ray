@@ -12,7 +12,6 @@ from enum import Enum
 from subprocess import CalledProcessError
 from typing import Callable, Dict, List, Optional
 from unittest.mock import (
-    DEFAULT,
     Mock,
     patch,
 )
@@ -3543,6 +3542,7 @@ MemAvailable:   33000000 kB
         """Validates error handling for failed autoscaler initialization in the
         Monitor.
         """
+
         class AutoscalerInitFailException(Exception):
             pass
 
@@ -3554,7 +3554,7 @@ MemAvailable:   33000000 kB
             with patch.multiple(
                 "ray.autoscaler._private.monitor",
                 StandardAutoscaler=FaultyAutoscaler,
-                _internal_kv_initialized=Mock(return_value=False)
+                _internal_kv_initialized=Mock(return_value=False),
             ):
                 monitor = Monitor(address="Here", autoscaling_config="")
                 with pytest.raises(AutoscalerInitFailException):
