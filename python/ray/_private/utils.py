@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
 import grpc
 import numpy as np
 
+# Import psutil after ray so the packaged version is used.
+import psutil
 from google.protobuf import json_format
 
 import ray
@@ -32,8 +34,6 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
-# Import psutil after ray so the packaged version is used.
-import psutil
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
