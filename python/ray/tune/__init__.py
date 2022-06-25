@@ -7,7 +7,7 @@ from ray.tune.stopper import Stopper
 from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
 from ray.tune.callback import Callback
-from ray.tune.suggest import grid_search
+from ray.tune.search import grid_search
 from ray.tune.trainable.session import (
     report,
     get_trial_dir,
@@ -22,7 +22,7 @@ from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
 )
-from ray.tune.sample import (
+from ray.tune.search.sample import (
     sample_from,
     uniform,
     quniform,
@@ -36,7 +36,7 @@ from ray.tune.sample import (
     loguniform,
     qloguniform,
 )
-from ray.tune.suggest import create_searcher
+from ray.tune.search import create_searcher
 from ray.tune.schedulers import create_scheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import with_parameters

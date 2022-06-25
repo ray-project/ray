@@ -4,7 +4,7 @@ accuracy = 42
 
 # __keras_hyperopt_start__
 from ray import tune
-from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 import keras
 
 

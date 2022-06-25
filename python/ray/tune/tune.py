@@ -33,12 +33,18 @@ from ray.tune.schedulers.util import (
     set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
 from ray.tune.stopper import Stopper
-from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
-from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
-from ray.tune.suggest.util import (
+from ray.tune.search import (
+    BasicVariantGenerator,
+    SearchAlgorithm,
+    SearchGenerator,
+    ConcurrencyLimiter,
+    Searcher,
+    create_searcher,
+)
+from ray.tune.search.util import (
     set_search_properties_backwards_compatible as searcher_set_search_props,
 )
-from ray.tune.suggest.variant_generator import has_unresolved_values
+from ray.tune.search.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, SyncerCallback, _validate_upload_dir
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
@@ -521,9 +527,6 @@ def run(
         raise ValueError("max_failures must be 0 if fail_fast=True.")
 
     if isinstance(search_alg, str):
-        # importing at top level causes a recursive dependency
-        from ray.tune.suggest import create_searcher
-
         search_alg = create_searcher(search_alg)
 
     # if local_mode=True is set during ray.init().

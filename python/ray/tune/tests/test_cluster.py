@@ -13,7 +13,7 @@ from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
-from ray.tune.suggest import BasicVariantGenerator
+from ray.tune.search import BasicVariantGenerator
 from ray.tune.syncer import SyncerCallback
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner

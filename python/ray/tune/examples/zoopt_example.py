@@ -7,7 +7,7 @@ Requires the ZOOpt library to be installed (`pip install zoopt`).
 import time
 
 from ray import tune
-from ray.tune.suggest.zoopt import ZOOptSearch
+from ray.tune.search.zoopt import ZOOptSearch
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 

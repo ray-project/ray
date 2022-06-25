@@ -4,8 +4,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ray.tune.suggest.suggestion import Searcher
-from ray.tune.suggest.util import set_search_properties_backwards_compatible
+from ray.tune.search import Searcher
+from ray.tune.search.util import set_search_properties_backwards_compatible
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ class Repeater(Searcher):
             trial completion will be averaged among all repeats.
         repeat: Number of times to generate a trial with a repeated
             configuration. Defaults to 1.
-        set_index: Sets a tune.suggest.repeater.TRIAL_INDEX in
+        set_index: Sets a tune.search.repeater.TRIAL_INDEX in
             Trainable/Function config which corresponds to the index of the
             repeated trial. This can be used for seeds. Defaults to True.
 
@@ -99,7 +99,7 @@ class Repeater(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest import Repeater
+        from ray.tune.search import Repeater
 
         search_alg = BayesOptSearch(...)
         re_search_alg = Repeater(search_alg, repeat=10)

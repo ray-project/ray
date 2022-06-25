@@ -9,7 +9,7 @@ import time
 
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.ax import AxSearch
+from ray.tune.search.ax import AxSearch
 
 
 def hartmann6(x):
@@ -74,7 +74,7 @@ if __name__ == "__main__":
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
     # Limit to 4 concurrent trials
-    algo = tune.suggest.ConcurrencyLimiter(algo, max_concurrent=4)
+    algo = tune.search.ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
     analysis = tune.run(
         easy_objective,

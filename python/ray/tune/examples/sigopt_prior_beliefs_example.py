@@ -8,7 +8,7 @@ import sys
 import numpy as np
 from ray import tune
 
-from ray.tune.suggest.sigopt import SigOptSearch
+from ray.tune.search.sigopt import SigOptSearch
 
 np.random.seed(0)
 vector1 = np.random.normal(0.0, 0.1, 100)

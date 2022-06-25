@@ -11,11 +11,11 @@ import numpy as np
 import unittest
 
 import ray
-import ray.tune.sample
+import ray.tune.search.sample
 from ray import tune
 from ray.tune import Experiment
-from ray.tune.suggest.util import logger
-from ray.tune.suggest.variant_generator import generate_variants
+from ray.tune.search.util import logger
+from ray.tune.search.variant_generator import generate_variants
 
 
 def _mock_objective(config):
@@ -173,11 +173,13 @@ class SearchSpaceTest(unittest.TestCase):
                 np.random.seed(1000)
             for _, generated in generate_variants(
                 {"config": config},
-                random_state=ray.tune.sample._BackwardsCompatibleNumpyRng(random_state),
+                random_state=ray.tune.search.sample._BackwardsCompatibleNumpyRng(
+                    random_state
+                ),
             ):
                 yield generated["config"]
 
-        with patch("ray.tune.sample.LEGACY_RNG", True):
+        with patch("ray.tune.search.sample.LEGACY_RNG", True):
             global_seed_legacy = [
                 next(config_generator(random_state=None)) for _ in range(100)
             ]
@@ -193,7 +195,7 @@ class SearchSpaceTest(unittest.TestCase):
                 assertDictAlmostEqual(global_seed_legacy[0], seed_legacy[i])
                 assertDictAlmostEqual(global_seed_legacy[0], generator_legacy[i])
 
-        if not ray.tune.sample.LEGACY_RNG:
+        if not ray.tune.search.sample.LEGACY_RNG:
             seed_new = [next(config_generator(random_state=1000)) for _ in range(100)]
             generator_new = [
                 next(config_generator(random_state=np.random.default_rng(1000)))
@@ -206,7 +208,7 @@ class SearchSpaceTest(unittest.TestCase):
     def testReproducibilityBasicVariantGenerator(self):
         config = self.config.copy()
         config.pop("func")
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.basic_variant import BasicVariantGenerator
 
         ray.init(num_cpus=1, local_mode=True)
 
@@ -218,7 +220,7 @@ class SearchSpaceTest(unittest.TestCase):
             mode="max",
             num_samples=num_samples,
         )
-        with patch("ray.tune.sample.LEGACY_RNG", True):
+        with patch("ray.tune.search.sample.LEGACY_RNG", True):
             np.random.seed(1000)
             analysis_global_seed = tune.run(
                 search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed
@@ -271,7 +273,7 @@ class SearchSpaceTest(unittest.TestCase):
                     analysis_generator_2.trials[i].config,
                 )
 
-        if not ray.tune.sample.LEGACY_RNG:
+        if not ray.tune.search.sample.LEGACY_RNG:
             analysis_seed = tune.run(
                 search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
                 **params,
@@ -305,7 +307,7 @@ class SearchSpaceTest(unittest.TestCase):
                 )
 
     def testBoundedFloat(self):
-        bounded = tune.sample.Float(-4.2, 8.3)
+        bounded = ray.tune.search.sample.Float(-4.2, 8.3)
 
         # Don't allow to specify more than one sampler
         with self.assertRaises(ValueError):
@@ -320,24 +322,24 @@ class SearchSpaceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             bounded.loguniform().sample(size=1000)
 
-        bounded_positive = tune.sample.Float(1e-4, 1e-1)
+        bounded_positive = ray.tune.search.sample.Float(1e-4, 1e-1)
         samples = bounded_positive.loguniform().sample(size=1000)
         self.assertTrue(any(1e-4 < s < 1e-1 for s in samples))
 
     def testUnboundedFloat(self):
-        unbounded = tune.sample.Float(None, None)
+        unbounded = ray.tune.search.sample.Float(None, None)
 
         # Require min and max bounds for loguniform
         with self.assertRaises(ValueError):
             unbounded.loguniform()
 
         # Normal
-        samples = tune.sample.Float(None, None).normal().sample(size=1000)
+        samples = ray.tune.search.sample.Float(None, None).normal().sample(size=1000)
         self.assertTrue(any(-5 < s < 5 for s in samples))
         self.assertTrue(-1 < np.mean(samples) < 1)
 
     def testBoundedInt(self):
-        bounded = tune.sample.Integer(-3, 12)
+        bounded = ray.tune.search.sample.Integer(-3, 12)
 
         samples = bounded.uniform().sample(size=1000)
         self.assertTrue(any(-3 <= s < 12 for s in samples))
@@ -345,7 +347,7 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testCategorical(self):
         categories = [-2, -1, 0, 1, 2]
-        cat = tune.sample.Categorical(categories)
+        cat = ray.tune.search.sample.Categorical(categories)
 
         samples = cat.uniform().sample(size=1000)
         self.assertTrue(any(-2 <= s <= 2 for s in samples))
@@ -355,7 +357,7 @@ class SearchSpaceTest(unittest.TestCase):
         def sample(spec):
             return np.random.uniform(-4, 4)
 
-        fnc = tune.sample.Function(sample)
+        fnc = ray.tune.search.sample.Function(sample)
 
         samples = fnc.sample(size=1000)
         self.assertTrue(any(-4 < s < 4 for s in samples))
@@ -388,15 +390,15 @@ class SearchSpaceTest(unittest.TestCase):
             print(fn.sample(None))
 
     def testQuantized(self):
-        bounded_positive = tune.sample.Float(1e-4, 1e-1)
+        bounded_positive = ray.tune.search.sample.Float(1e-4, 1e-1)
 
-        bounded = tune.sample.Float(1e-4, 1e-1)
+        bounded = ray.tune.search.sample.Float(1e-4, 1e-1)
         with self.assertRaises(ValueError):
             # Granularity too high
             bounded.quantized(5e-4)
 
         with self.assertRaises(ValueError):
-            tune.sample.Float(-1e-1, -1e-4).quantized(5e-4)
+            ray.tune.search.sample.Float(-1e-1, -1e-4).quantized(5e-4)
 
         samples = bounded_positive.loguniform().quantized(5e-5).sample(size=1000)
 
@@ -406,9 +408,9 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertAlmostEqual(factor, round(factor), places=10)
 
         with self.assertRaises(ValueError):
-            tune.sample.Float(0, 32).quantized(3)
+            ray.tune.search.sample.Float(0, 32).quantized(3)
 
-        samples = tune.sample.Float(0, 33).quantized(3).sample(size=1000)
+        samples = ray.tune.search.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
 
     def testCategoricalDtype(self):
@@ -447,7 +449,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ray.tune.suggest.ax import AxSearch
+        from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
 
         # Grid search not supported, should raise ValueError
@@ -455,11 +457,11 @@ class SearchSpaceTest(unittest.TestCase):
             AxSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": ray.tune.search.sample.Integer(0, 5).quantized(2),
                 "y": 4,
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         converted_config = AxSearch.convert_search_space(config)
@@ -512,7 +514,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ray.tune.suggest.ax import AxSearch
+        from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
         from ax.modelbridge.generation_strategy import (
             GenerationStrategy,
@@ -567,24 +569,24 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore, check_stats=False)
 
     def testConvertBayesOpt(self):
-        from ray.tune.suggest.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt import BayesOptSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
             BayesOptSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": ray.tune.search.sample.Integer(0, 5).quantized(2),
                 "y": 4,
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         with self.assertRaises(ValueError):
             converted_config = BayesOptSearch.convert_search_space(config)
 
-        config = {"b": {"z": tune.sample.Float(1e-4, 1e-2).loguniform()}}
+        config = {"b": {"z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform()}}
         bayesopt_config = {"b/z": (1e-4, 1e-2)}
         converted_config = BayesOptSearch.convert_search_space(config)
 
@@ -624,7 +626,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsBayesOpt(self):
-        from ray.tune.suggest.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt import BayesOptSearch
 
         ignore = [
             "func",
@@ -658,7 +660,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
         import ConfigSpace
 
         # Grid search not supported, should raise ValueError
@@ -666,11 +668,11 @@ class SearchSpaceTest(unittest.TestCase):
             TuneBOHB.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": ray.tune.search.sample.Integer(0, 5).quantized(2),
                 "y": 4,
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         converted_config = TuneBOHB.convert_search_space(config)
@@ -718,7 +720,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         ignore = [
             "func",
@@ -738,24 +740,27 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertDragonfly(self):
-        from ray.tune.suggest.dragonfly import DragonflySearch
+        from ray.tune.search.dragonfly import DragonflySearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
             DragonflySearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": ray.tune.search.sample.Integer(0, 5).quantized(2),
                 "y": 4,
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         with self.assertRaises(ValueError):
             converted_config = DragonflySearch.convert_search_space(config)
 
-        config = {"a": 4, "b": {"z": tune.sample.Float(1e-4, 1e-2).loguniform()}}
+        config = {
+            "a": 4,
+            "b": {"z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform()},
+        }
         dragonfly_config = [{"name": "b/z", "type": "float", "min": 1e-4, "max": 1e-2}]
         converted_config = DragonflySearch.convert_search_space(config)
 
@@ -817,7 +822,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsDragonfly(self):
-        from ray.tune.suggest.dragonfly import DragonflySearch
+        from ray.tune.search.dragonfly import DragonflySearch
 
         ignore = [
             "func",
@@ -847,7 +852,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertHEBO(self):
-        from ray.tune.suggest.hebo import HEBOSearch
+        from ray.tune.search.hebo import HEBOSearch
         from hebo.design_space.design_space import DesignSpace
         import torch
 
@@ -856,11 +861,11 @@ class SearchSpaceTest(unittest.TestCase):
             HEBOSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5),
+                "x": ray.tune.search.sample.Integer(0, 5),
                 "y": 4,
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         converted_config = HEBOSearch.convert_search_space(config)
@@ -902,7 +907,7 @@ class SearchSpaceTest(unittest.TestCase):
         # Mixed configs are not supported
 
     def testSampleBoundsHEBO(self):
-        from ray.tune.suggest.hebo import HEBOSearch
+        from ray.tune.search.hebo import HEBOSearch
 
         ignore = [
             "func",
@@ -927,7 +932,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertHyperOpt(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.hyperopt import HyperOptSearch
         from hyperopt import hp
 
         # Grid search not supported, should raise ValueError
@@ -935,11 +940,11 @@ class SearchSpaceTest(unittest.TestCase):
             HyperOptSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(-15, -10),
+                "x": ray.tune.search.sample.Integer(-15, -10),
                 "y": 4,
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         converted_config = HyperOptSearch.convert_search_space(config)
@@ -983,7 +988,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testConvertHyperOptChooseFromListOfList(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.hyperopt import HyperOptSearch
         from hyperopt import hp
 
         config = {
@@ -1015,34 +1020,34 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(config1.get("a") in [(1, 2), (3, 4)])
 
     def testConvertHyperOptNested(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.hyperopt import HyperOptSearch
 
         config = {
             "a": 1,
-            "dict_nested": tune.sample.Categorical(
+            "dict_nested": ray.tune.search.sample.Categorical(
                 [
                     {
-                        "a": tune.sample.Categorical(["M", "N"]),
-                        "b": tune.sample.Categorical(["O", "P"]),
+                        "a": ray.tune.search.sample.Categorical(["M", "N"]),
+                        "b": ray.tune.search.sample.Categorical(["O", "P"]),
                     }
                 ]
             ).uniform(),
-            "list_nested": tune.sample.Categorical(
+            "list_nested": ray.tune.search.sample.Categorical(
                 [
                     [
-                        tune.sample.Categorical(["M", "N"]),
-                        tune.sample.Categorical(["O", "P"]),
+                        ray.tune.search.sample.Categorical(["M", "N"]),
+                        ray.tune.search.sample.Categorical(["O", "P"]),
                     ],
                     [
-                        tune.sample.Categorical(["Q", "R"]),
-                        tune.sample.Categorical(["S", "T"]),
+                        ray.tune.search.sample.Categorical(["Q", "R"]),
+                        ray.tune.search.sample.Categorical(["S", "T"]),
                     ],
                 ]
             ).uniform(),
-            "domain_nested": tune.sample.Categorical(
+            "domain_nested": ray.tune.search.sample.Categorical(
                 [
-                    tune.sample.Categorical(["M", "N"]),
-                    tune.sample.Categorical(["O", "P"]),
+                    ray.tune.search.sample.Categorical(["M", "N"]),
+                    ray.tune.search.sample.Categorical(["O", "P"]),
                 ]
             ).uniform(),
         }
@@ -1067,7 +1072,7 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
 
     def testSampleBoundsHyperopt(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.hyperopt import HyperOptSearch
 
         ignore = [
             "func",
@@ -1088,7 +1093,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
+        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
 
         # Grid search not supported, should raise ValueError
@@ -1096,11 +1101,11 @@ class SearchSpaceTest(unittest.TestCase):
             NevergradSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": ray.tune.search.sample.Integer(0, 5).quantized(2),
                 "y": 4,
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         converted_config = NevergradSearch.convert_search_space(config)
@@ -1160,7 +1165,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
+        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
 
         ignore = [
@@ -1190,7 +1195,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.optuna import OptunaSearch
         import optuna
         from optuna.samplers import RandomSampler
 
@@ -1199,11 +1204,11 @@ class SearchSpaceTest(unittest.TestCase):
             OptunaSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": ray.tune.search.sample.Integer(0, 5).quantized(2),
                 "y": 4,
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         converted_config = OptunaSearch.convert_search_space(config)
@@ -1369,7 +1374,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.optuna import OptunaSearch
 
         # Quantization and log does not seem to work with Optuna
         ignore = ["func", "randn", "qrandn", "qloguniform", "qlograndint"]
@@ -1387,7 +1392,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertSkOpt(self):
-        from ray.tune.suggest.skopt import SkOptSearch
+        from ray.tune.search.skopt import SkOptSearch
         from skopt.space import Real, Integer, Categorical
 
         # Grid search not supported, should raise ValueError
@@ -1395,12 +1400,12 @@ class SearchSpaceTest(unittest.TestCase):
             SkOptSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
-            "a2": tune.sample.Categorical([2, 10]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
+            "a2": ray.tune.search.sample.Categorical([2, 10]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5),
+                "x": ray.tune.search.sample.Integer(0, 5),
                 "y": 4,
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         converted_config = SkOptSearch.convert_search_space(config)
@@ -1442,7 +1447,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsSkOpt(self):
-        from ray.tune.suggest.skopt import SkOptSearch
+        from ray.tune.search.skopt import SkOptSearch
 
         ignore = [
             "func",
@@ -1469,7 +1474,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertZOOpt(self):
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.zoopt import ZOOptSearch
         from zoopt import ValueType
 
         # Grid search not supported, should raise ValueError
@@ -1477,11 +1482,11 @@ class SearchSpaceTest(unittest.TestCase):
             ZOOptSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
-                "y": tune.sample.Categorical([2, 4, 6, 8]).uniform(),
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform(),
+                "x": ray.tune.search.sample.Integer(0, 5).quantized(2),
+                "y": ray.tune.search.sample.Categorical([2, 4, 6, 8]).uniform(),
+                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
             },
         }
         # Does not support categorical variables
@@ -1490,9 +1495,9 @@ class SearchSpaceTest(unittest.TestCase):
         config = {
             "a": 2,
             "b": {
-                "x": tune.sample.Integer(0, 5).uniform(),
-                "y": tune.sample.Categorical([2, 4, 6, 8]).uniform(),
-                "z": tune.sample.Float(-3, 7).uniform().quantized(1e-4),
+                "x": ray.tune.search.sample.Integer(0, 5).uniform(),
+                "y": ray.tune.search.sample.Categorical([2, 4, 6, 8]).uniform(),
+                "z": ray.tune.search.sample.Float(-3, 7).uniform().quantized(1e-4),
             },
         }
         converted_config = ZOOptSearch.convert_search_space(config)
@@ -1559,7 +1564,7 @@ class SearchSpaceTest(unittest.TestCase):
             "so skipping sampling test for now."
         )
 
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.zoopt import ZOOptSearch
 
         ignore = [
             "func",
@@ -1621,49 +1626,49 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testPointsToEvaluateAx(self):
         config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
+            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.ax import AxSearch
+        from ray.tune.search.ax import AxSearch
 
         return self._testPointsToEvaluate(AxSearch, config)
 
     def testPointsToEvaluateBayesOpt(self):
         config = {
-            "metric": tune.sample.Float(10, 20).uniform(),
-            "a": tune.sample.Float(-30, -20).uniform(),
-            "b": tune.sample.Float(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
+            "metric": ray.tune.search.sample.Float(10, 20).uniform(),
+            "a": ray.tune.search.sample.Float(-30, -20).uniform(),
+            "b": ray.tune.search.sample.Float(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt import BayesOptSearch
 
         return self._testPointsToEvaluate(BayesOptSearch, config)
 
     def testPointsToEvaluateBOHB(self):
         config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
+            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         return self._testPointsToEvaluate(TuneBOHB, config)
 
     def testPointsToEvaluateDragonfly(self):
         config = {
-            "metric": tune.sample.Float(10, 20).uniform(),
-            "a": tune.sample.Float(-30, -20).uniform(),
-            "b": tune.sample.Float(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
+            "metric": ray.tune.search.sample.Float(10, 20).uniform(),
+            "a": ray.tune.search.sample.Float(-30, -20).uniform(),
+            "b": ray.tune.search.sample.Float(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.dragonfly import DragonflySearch
+        from ray.tune.search.dragonfly import DragonflySearch
 
         return self._testPointsToEvaluate(
             DragonflySearch, config, domain="euclidean", optimizer="bandit"
@@ -1671,28 +1676,28 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testPointsToEvaluateHyperOpt(self):
         config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
+            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.hyperopt import HyperOptSearch
 
         return self._testPointsToEvaluate(HyperOptSearch, config)
 
     def testPointsToEvaluateHyperOptNested(self):
         space = {
             "nested": [
-                tune.sample.Integer(0, 10),
-                tune.sample.Integer(0, 10),
+                ray.tune.search.sample.Integer(0, 10),
+                ray.tune.search.sample.Integer(0, 10),
             ],
             "nosample": [4, 8],
         }
 
         points_to_evaluate = [{"nested": [2, 4], "nosample": [4, 8]}]
 
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.hyperopt import HyperOptSearch
 
         searcher = HyperOptSearch(
             space=space, metric="_", mode="max", points_to_evaluate=points_to_evaluate
@@ -1705,13 +1710,13 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testPointsToEvaluateNevergrad(self):
         config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
+            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.nevergrad import NevergradSearch
+        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
 
         return self._testPointsToEvaluate(
@@ -1720,25 +1725,25 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testPointsToEvaluateOptuna(self):
         config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
+            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.optuna import OptunaSearch
 
         return self._testPointsToEvaluate(OptunaSearch, config)
 
     def testPointsToEvaluateSkOpt(self):
         config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
+            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.skopt import SkOptSearch
+        from ray.tune.search.skopt import SkOptSearch
 
         return self._testPointsToEvaluate(SkOptSearch, config)
 
@@ -1750,13 +1755,13 @@ class SearchSpaceTest(unittest.TestCase):
         )
 
         config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).uniform(),
+            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).uniform(),
         }
 
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.zoopt import ZOOptSearch
 
         return self._testPointsToEvaluate(
             ZOOptSearch, config, budget=10, parallel_num=8
@@ -1764,13 +1769,13 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testPointsToEvaluateBasicVariant(self):
         config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
+            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.basic_variant import BasicVariantGenerator
 
         return self._testPointsToEvaluate(BasicVariantGenerator, config)
 
@@ -1793,7 +1798,7 @@ class SearchSpaceTest(unittest.TestCase):
             {"nested": {"random": 8.0}},
         ]
 
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.basic_variant import BasicVariantGenerator
 
         # grid_1 * grid_2 are 3 * 4 = 12 variants per complete grid search
         # However if one grid var is set by preset variables, that run
@@ -1848,8 +1853,8 @@ class SearchSpaceTest(unittest.TestCase):
             "b": tune.randint(0, 3),
         }
 
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
-        from ray.tune.suggest.variant_generator import logger
+        from ray.tune.search.basic_variant import BasicVariantGenerator
+        from ray.tune.search.variant_generator import logger
 
         # Test whether the initial points of fixed parameters are correctly
         # verified.
@@ -1895,7 +1900,7 @@ class SearchSpaceTest(unittest.TestCase):
             )
 
     def testGridSearchGenerator(self):
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.basic_variant import BasicVariantGenerator
 
         searcher = BasicVariantGenerator(constant_grid_search=False)
         exp = Experiment(
@@ -1919,7 +1924,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         num_samples = 6
 
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.basic_variant import BasicVariantGenerator
 
         # First, do not keep random variables constant
         searcher = BasicVariantGenerator(constant_grid_search=False)
@@ -1969,7 +1974,7 @@ class SearchSpaceTest(unittest.TestCase):
 
     @patch.object(logger, "warning")
     def testSetSearchPropertiesBackwardsCompatibility(self, mocked_warning_method):
-        from ray.tune.suggest import Searcher
+        from ray.tune.search import Searcher
 
         class MySearcher(Searcher):
             def __init__(self, metric="a", mode="min", **kwargs):

@@ -1,13 +1,4 @@
-try:
-    from flaml import BlendSearch, CFO
-except ImportError:
+from ray.tune._structure_refactor import warn_structure_refactor
+from ray.tune.search.flaml import *  # noqa: F401, F403
 
-    class _DummyErrorRaiser:
-        def __init__(self, *args, **kwargs) -> None:
-            raise ImportError(
-                "FLAML must be installed! "
-                "You can install FLAML with the command: "
-                "`pip install flaml`."
-            )
-
-    BlendSearch = CFO = _DummyErrorRaiser
+warn_structure_refactor(__name__, "ray.tune.search.flaml")

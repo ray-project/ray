@@ -163,7 +163,7 @@ See the docstring at :ref:`raytrialexecutor-docstring`.
 
 SearchAlg
 ~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/tree/master/python/ray/tune/suggest>`__]
+[`source code <https://github.com/ray-project/ray/tree/master/python/ray/tune/search>`__]
 The SearchAlgorithm is a user-provided object
 that is used for querying new hyperparameter configurations to evaluate.
 

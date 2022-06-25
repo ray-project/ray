@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from ray.tune.schedulers import TrialScheduler
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 from ray.util import PublicAPI
 
 

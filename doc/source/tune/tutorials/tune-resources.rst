@@ -101,7 +101,7 @@ How to limit concurrency?
 If using a :ref:`search algorithm <tune-search-alg>`, you may want to limit the number of trials that are being evaluated.
 For example, you may want to serialize the evaluation of trials to do sequential optimization.
 
-In this case, ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency:
+In this case, ``ray.tune.search.ConcurrencyLimiter`` to limit the amount of concurrency:
 
 .. code-block:: python
 
