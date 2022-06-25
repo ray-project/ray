@@ -159,7 +159,7 @@ class StateApiClient(SubmissionClient):
             NodeState,
             WorkerState,
             TaskState,
-            ObjectState,
+            List[ObjectState],
         ]
     ]:
         """Get resources states by id
@@ -169,7 +169,7 @@ class StateApiClient(SubmissionClient):
                 'placement_groups', 'tasks', 'objects'.
                 'jobs' and 'runtime-envs' are not supported yet.
             id: ID for the resource, i.e. 'node_id' for nodes.
-            options: List options. See `GetApiOptions` for details.
+            options: Get options. See `GetApiOptions` for details.
             _explain: Print the API information such as API
                 latency or failed query information.
 
@@ -222,7 +222,7 @@ class StateApiClient(SubmissionClient):
 
         # For the rest of the resources, there should only be a single entry
         # for a particular id.
-        assert len(result) >= 1
+        assert len(result) <= 1
         return result.get(id, None)
 
     def list(
