@@ -39,7 +39,7 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
 import ray.autoscaler._private.aws.config as aws_config
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
@@ -367,6 +367,7 @@ def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path)
 
     # Terminate everyone other than GCS
     # NOTE(rickyyx): The choice of picking GCS is arbitrary.
+    gcs_proc = None
     for child in children:
         if "gcs_server" in child.name():
             gcs_proc = child
