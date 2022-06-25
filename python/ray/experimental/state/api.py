@@ -8,6 +8,7 @@ import requests
 import ray
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.experimental.state.common import (
+    SummaryApiOptions,
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
@@ -22,6 +23,7 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
+    SummaryResource,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
@@ -72,9 +74,12 @@ class StateApiClient(SubmissionClient):
     def _get_default_api_server_address(cls) -> str:
         assert (
             ray.is_initialized()
-            and ray.worker.global_worker.node.address_info["webui_url"] is not None
+            and ray._private.worker.global_worker.node.address_info["webui_url"]
+            is not None
         )
-        return f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        return (
+            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
+        )
 
     @classmethod
     def _make_param(cls, options: Union[ListApiOptions, GetApiOptions]) -> Dict:
@@ -251,6 +256,43 @@ class StateApiClient(SubmissionClient):
         return self._make_http_get_request(
             endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
         )
+
+    def summary(
+        self,
+        resource: SummaryResource,
+        *,
+        options: SummaryApiOptions,
+        _explain: bool = False,
+    ) -> Dict:
+        """Summarize resources states
+
+        Args:
+            resource_name: Resource names,
+                see `SummaryResource` for details.
+            options: summary options. See `SummaryApiOptions` for details.
+            A dictionary of queried result from `SummaryApiResponse`,
+
+        Raises:
+            This doesn't catch any exceptions raised when the underlying request
+            call raises exceptions. For example, it could raise `requests.Timeout`
+            when timeout occurs.
+        """
+        params = {"timeout": options.timeout}
+        endpoint = f"/api/v0/{resource.value}/summarize"
+        response = self._request(endpoint, options.timeout, params)
+
+        if response["result"] is False:
+            raise RayStateApiException(
+                "API server internal error. See dashboard.log file for more details. "
+                f"Error: {response['msg']}"
+            )
+        if _explain:
+            # Print warnings if anything was given.
+            warning_msg = response["data"].get("partial_failure_warning", None)
+            if warning_msg:
+                warnings.warn(warning_msg, RuntimeWarning)
+
+        return response["data"]["result"]["node_id_to_summary"]
 
 
 """
@@ -493,7 +535,7 @@ def get_log(
     if api_server_url is None:
         assert ray.is_initialized()
         api_server_url = (
-            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
         )
 
     media_type = "stream" if follow else "file"
@@ -544,7 +586,7 @@ def list_logs(
     if api_server_url is None:
         assert ray.is_initialized()
         api_server_url = (
-            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
         )
 
     if not glob_filter:
@@ -569,5 +611,45 @@ def list_logs(
             "API server internal error. See dashboard.log file for more details. "
             f"Error: {response['msg']}"
         )
-
     return response["data"]["result"]
+
+
+"""
+Summary APIs
+"""
+
+
+def summarize_tasks(
+    address: str = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+):
+    return StateApiClient(api_server_address=address).summary(
+        SummaryResource.TASKS,
+        options=SummaryApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def summarize_actors(
+    address: str = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+):
+    return StateApiClient(api_server_address=address).summary(
+        SummaryResource.ACTORS,
+        options=SummaryApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def summarize_objects(
+    address: str = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+):
+    return StateApiClient(api_server_address=address).summary(
+        SummaryResource.OBJECTS,
+        options=SummaryApiOptions(timeout=timeout),
+        _explain=_explain,
+    )

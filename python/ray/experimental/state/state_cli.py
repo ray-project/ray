@@ -7,10 +7,16 @@ import click
 import yaml
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-import ray.ray_constants as ray_constants
+
+from ray.experimental.state.api import (
+    StateApiClient,
+    summarize_tasks,
+    summarize_actors,
+    summarize_objects,
+)
 from ray._private.gcs_utils import GcsClient
-from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -111,15 +117,28 @@ def format_list_api_output(
     return output_with_format(state_data, format)
 
 
-"""
-List API
-"""
-
-
 def _should_explain(format: AvailableFormat):
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
+
+
+"""
+Common Options for State API commands
+"""
+timeout_option = click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=f"Timeout in seconds for the API requests. Default is {DEFAULT_RPC_TIMEOUT}",
+)
+address_option = click.option(
+    "--address",
+    default="",
+    help=(
+        "The address of Ray API server. If not provided, it will be configured "
+        "automatically from querying the GCS server."
+    ),
+)
 
 
 # TODO(rickyyx): Once we have other APIs stablized, we should refactor them to
@@ -139,19 +158,8 @@ def _should_explain(format: AvailableFormat):
     "id",
     type=str,
 )
-@click.option(
-    "--address",
-    default=None,
-    help=(
-        "The address of Ray API server. If not provided, it will be configured "
-        "automatically from querying the GCS server."
-    ),
-)
-@click.option(
-    "--timeout",
-    default=DEFAULT_RPC_TIMEOUT,
-    help=f"Timeout in seconds for the API requests. Default is {DEFAULT_RPC_TIMEOUT}",
-)
+@address_option
+@timeout_option
 def get(
     resource: str,
     id: str,
@@ -226,19 +234,8 @@ def get(
     type=click.Tuple([str, str]),
     multiple=True,
 )
-@click.option(
-    "--timeout",
-    default=DEFAULT_RPC_TIMEOUT,
-    help=f"Timeout in seconds for the API requests. Default is {DEFAULT_RPC_TIMEOUT}",
-)
-@click.option(
-    "--address",
-    default="",
-    help=(
-        "The address of Ray API server. If not provided, it will be configured "
-        "automatically from querying the GCS server."
-    ),
-)
+@timeout_option
+@address_option
 def list(
     resource: str,
     format: str,
@@ -280,5 +277,66 @@ def list(
         format_list_api_output(
             state_data=data,
             format=format,
+        )
+    )
+
+
+@click.group("summary")
+@click.pass_context
+def summary_state_cli_group(ctx):
+    ctx.ensure_object(dict)
+    ctx.obj["api_server_url"] = get_api_server_url()
+
+
+@summary_state_cli_group.command(name="tasks")
+@timeout_option
+@address_option
+@click.pass_context
+def task_summary(ctx, timeout: float, address: str):
+    address = address or ctx.obj["api_server_url"]
+    print(
+        output_with_format(
+            summarize_tasks(
+                address=address,
+                timeout=timeout,
+                _explain=True,
+            ),
+            format=AvailableFormat.YAML,
+        )
+    )
+
+
+@summary_state_cli_group.command(name="actors")
+@timeout_option
+@address_option
+@click.pass_context
+def actor_summary(ctx, timeout: float, address: str):
+    address = address or ctx.obj["api_server_url"]
+    print(
+        output_with_format(
+            summarize_actors(
+                address=address,
+                timeout=timeout,
+                _explain=True,
+            ),
+            format=AvailableFormat.YAML,
+        )
+    )
+
+
+@summary_state_cli_group.command(name="objects")
+@timeout_option
+@address_option
+@click.pass_context
+def object_summary(ctx, timeout: float, address: str):
+    address = address or ctx.obj["api_server_url"]
+    print(
+        output_with_format(
+            summarize_objects(
+                address=address,
+                timeout=timeout,
+                _explain=True,
+            ),
+            format=AvailableFormat.YAML,
         )
     )

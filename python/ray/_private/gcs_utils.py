@@ -1,37 +1,36 @@
 import enum
 import logging
-from typing import List, Optional
-from functools import wraps
 import time
+from functools import wraps
+from typing import List, Optional
 
 import grpc
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated.common_pb2 import ErrorType
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated import gcs_service_pb2
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
-    GcsNodeInfo,
     AvailableResources,
-    JobTableData,
-    JobConfig,
     ErrorTableData,
     GcsEntry,
-    ResourceUsageBatchData,
-    ResourcesData,
+    GcsNodeInfo,
+    JobConfig,
+    JobTableData,
     ObjectTableData,
+    PlacementGroupTableData,
     ProfileTableData,
-    TablePrefix,
-    TablePubsub,
+    PubSubMessage,
     ResourceDemand,
     ResourceLoad,
     ResourceMap,
+    ResourcesData,
     ResourceTableData,
-    PubSubMessage,
+    ResourceUsageBatchData,
+    TablePrefix,
+    TablePubsub,
     WorkerTableData,
-    PlacementGroupTableData,
 )
 
 logger = logging.getLogger(__name__)

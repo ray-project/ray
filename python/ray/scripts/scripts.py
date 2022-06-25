@@ -12,12 +12,15 @@ from distutils.dir_util import copy_tree
 from typing import Optional, Set
 
 import click
+import psutil
 import yaml
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
-import ray.ray_constants as ray_constants
+from ray._private.internal_api import memory_summary
+from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
@@ -41,15 +44,15 @@ from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscale
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.api import get_log, list_logs
 from ray.experimental.state.common import DEFAULT_LIMIT
-from ray.experimental.state.state_cli import get as state_cli_get
-from ray.experimental.state.state_cli import get_api_server_url
-from ray.experimental.state.state_cli import list as state_cli_list
-from ray.experimental.state.state_cli import output_with_format
-from ray.internal.internal_api import memory_summary
-from ray.internal.storage import _load_class
 from ray.util.annotations import PublicAPI
 
-import psutil
+from ray.experimental.state.state_cli import (
+    get as state_cli_get,
+    list as state_cli_list,
+    get_api_server_url,
+    output_with_format,
+    summary_state_cli_group,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +121,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port, no_config_ca
         ]
         click.echo(
             "Attempting to establish dashboard locally at"
-            " localhost:{} connected to"
+            " http://localhost:{}/ connected to"
             " remote port {}".format(port, remote_port)
         )
         # We want to probe with a no-op that returns quickly to avoid
@@ -175,7 +178,7 @@ def continue_debug_session(live_jobs: Set[str]):
                         )
                         return
                     host, port = session["pdb_address"].split(":")
-                    ray.util.rpdb.connect_pdb_client(host, int(port))
+                    ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
                     )
@@ -206,7 +209,9 @@ def debug(address):
     ray.init(address=address, log_to_driver=False)
     while True:
         # Used to filter out and clean up entries from dead jobs.
-        live_jobs = {job["JobID"] for job in ray.state.jobs() if not job["IsDead"]}
+        live_jobs = {
+            job["JobID"] for job in ray._private.state.jobs() if not job["IsDead"]
+        }
         continue_debug_session(live_jobs)
 
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
@@ -261,7 +266,7 @@ def debug(address):
                 )
             )
             host, port = session["pdb_address"].split(":")
-            ray.util.rpdb.connect_pdb_client(host, int(port))
+            ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
 @cli.command()
@@ -740,7 +745,7 @@ def start(
                     " flag of `ray start` command."
                 )
 
-        node = ray.node.Node(
+        node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )
 
@@ -886,7 +891,7 @@ def start(
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
-        node = ray.node.Node(
+        node = ray._private.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
 
@@ -2226,7 +2231,7 @@ def global_gc(address):
     address = services.canonicalize_bootstrap_address(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
-    ray.internal.internal_api.global_gc()
+    ray._private.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
 
 
@@ -2309,7 +2314,7 @@ def healthcheck(address, redis_password, component):
 
     # If the status is too old, the service has probably already died.
     delta = cur_time - report_time
-    time_ok = delta < ray.ray_constants.HEALTHCHECK_EXPIRATION_S
+    time_ok = delta < ray._private.ray_constants.HEALTHCHECK_EXPIRATION_S
 
     if time_ok:
         sys.exit(0)
@@ -2479,6 +2484,7 @@ cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
 cli.add_command(state_cli_list)
 cli.add_command(state_cli_get)
+add_command_alias(summary_state_cli_group, name="summary", hidden=True)
 
 try:
     from ray.serve.scripts import serve_cli

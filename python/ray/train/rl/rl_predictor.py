@@ -8,7 +8,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 from ray.train.predictor import Predictor
-from ray.train.rl.rl_trainer import load_checkpoint
+from ray.train.rl.utils import load_checkpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
