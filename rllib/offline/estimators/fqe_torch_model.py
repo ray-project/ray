@@ -109,15 +109,9 @@ class FQETorchModel:
         for idx in range(0, self.batch.count, self.batch_size):
             minibatch = self.batch[idx : idx + self.batch_size]
             obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
-            actions = torch.tensor(
-                minibatch[SampleBatch.ACTIONS], device=self.device
-            )
-            rewards = torch.tensor(
-                minibatch[SampleBatch.REWARDS], device=self.device
-            )
-            next_obs = torch.tensor(
-                minibatch[SampleBatch.NEXT_OBS], device=self.device
-            )
+            actions = torch.tensor(minibatch[SampleBatch.ACTIONS], device=self.device)
+            rewards = torch.tensor(minibatch[SampleBatch.REWARDS], device=self.device)
+            next_obs = torch.tensor(minibatch[SampleBatch.NEXT_OBS], device=self.device)
             dones = torch.tensor(minibatch[SampleBatch.DONES], device=self.device)
 
             # Neccessary if policy uses recurrent/attention model
@@ -138,9 +132,7 @@ class FQETorchModel:
                 prev_reward_batch=minibatch[SampleBatch.REWARDS],
                 actions_normalized=False,
             )
-            next_action_prob = (
-                torch.exp(next_action_prob.T).to(self.device).detach()
-            )
+            next_action_prob = torch.exp(next_action_prob.T).to(self.device).detach()
 
             q_values, _ = self.q_model({"obs": obs}, [], None)
             q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
@@ -160,6 +152,9 @@ class FQETorchModel:
         iter_loss = sum(minibatch_losses) / len(minibatch_losses)
         self.update_target()
         return iter_loss
+    
+    def set_batch(self, batch: SampleBatch) -> None:
+        self.batch = batch
 
     def train_q(self, batch: SampleBatch) -> TensorType:
         """Trains self.q_model using FQE loss on given batch.
@@ -171,7 +166,7 @@ class FQETorchModel:
             A list of losses for each training iteration
         """
         losses = []
-        self.batch = batch
+        self.set_batch(batch)
         for _ in range(self.n_iters):
             iter_loss = self.step()
             losses.append(iter_loss)

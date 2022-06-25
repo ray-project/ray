@@ -1,5 +1,6 @@
 import logging
 from typing import Tuple, Generator, List, Dict, Optional, Callable, Any, Union
+from ray.rllib import policy
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -115,9 +116,10 @@ class DirectMethod(Trainable, OffPolicyEstimator):
             )
         
         self.batch = config.get("batch", None)
-        self.ope_num_workers = config.get("ope_num_workers", 0)
         self.train_test_split_val = config.get("train_test_split_val", 0.0)
+        assert isinstance(self.train_test_split_val, float)
         self.k = config.get("k", 0)
+        assert isinstance(self.k, int)
         self.n_iters = config.get("n_iters", 160)
         self.delta = config.get("delta", 1e-4)
         assert self.train_test_split_val != 0.0 or self.k != 0, (
@@ -131,11 +133,18 @@ class DirectMethod(Trainable, OffPolicyEstimator):
             gamma=self.gamma,
             **q_model_config,
         )
+        self.remote_models = []
+        if self.k != 0:
+            remote_model_cls = ray.remote(model_cls)
+            self.remote_models = [remote_model_cls.remote(policy=self.policy, gamma=self.gamma, **q_model_config) for _ in range(self.k)]
     
     @override(Trainable)
     def step(self):
-        if not self.ope_num_workers:
-            return self.model.step()
+        if not self.k:
+            return {"loss": self.model.step()}
+        else:
+            losses = ray.get([model.step.remote() for model in self.remote_models])
+            return {"loss": np.mean(losses)}
     
     @override(Trainable)
     def save_checkpoint(self, tmp_checkpoint_dir: str):
@@ -147,7 +156,8 @@ class DirectMethod(Trainable, OffPolicyEstimator):
     
     @override(Trainable)
     def cleanup(self):
-        return super().cleanup()
+        for model in self.remote_models:
+            model.__ray_terminate__.remote()
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
