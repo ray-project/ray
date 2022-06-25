@@ -220,15 +220,9 @@ def test_model_wrapper_reconfigure(serve_instance):
             predictor_cls=predictor_cls,
             checkpoint=uri,
         )
-        m1.reconfigure(uri, predictor_cls)
-
         new_checkpoint = Checkpoint.from_dict({"increment": 5})
-        m2 = ModelWrapperDeployment.bind(
-            predictor_cls=m1.model,
-            checkpoint=new_checkpoint,
-        )
-
-        dag = m2.predict.bind(dag_input)
+        m1.reconfigure.bind(new_checkpoint, predictor_cls)
+        dag = m1.predict.bind(dag_input)
     deployments = build(Ingress.bind(dag))
     for d in deployments:
         d.deploy()
