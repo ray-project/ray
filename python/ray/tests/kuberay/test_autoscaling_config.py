@@ -1,4 +1,5 @@
 from pathlib import Path
+import requests
 from typing import Any, Dict, Optional
 from unittest import mock
 
@@ -8,6 +9,7 @@ import yaml
 
 from ray.autoscaler._private.kuberay.autoscaling_config import (
     _derive_autoscaling_config_from_ray_cr,
+    AutoscalingConfigProducer,
 )
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
@@ -253,6 +255,43 @@ def test_cr_image_consistency():
 
     # All Ray images are the same.
     assert len({ray_container["image"] for ray_container in ray_containers}) == 1
+
+
+@pytest.mark.parametrize("exception", [Exception, requests.HTTPError])
+@pytest.mark.parametrize("num_exceptions", range(6))
+def test_autoscaling_config_fetch_retries(exception, num_exceptions):
+    """Validates retry logic in
+    AutoscalingConfigProducer._fetch_ray_cr_from_k8s_with_retries.
+    """
+
+    class MockAutoscalingConfigProducer(AutoscalingConfigProducer):
+        def __init__(self, *args, **kwargs):
+            self.exception_counter = 0
+
+        def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
+            if self.exception_counter < num_exceptions:
+                self.exception_counter += 1
+                raise exception
+            else:
+                return {"ok-key": "ok-value"}
+
+    config_producer = MockAutoscalingConfigProducer()
+    # Patch retry backoff period.
+    with mock.patch(
+        "ray.autoscaler._private.kuberay.autoscaling_config.RAYCLUSTER_FETCH_RETRY_S",
+        0,
+    ):
+        # If you hit an exception and it's not HTTPError, expect to raise.
+        # If you hit >= 5 exceptions, expect to raise.
+        # Otherwise, don't expect to raise.
+        if (
+            num_exceptions > 0 and exception != requests.HTTPError
+        ) or num_exceptions >= 5:
+            with pytest.raises(exception):
+                config_producer._fetch_ray_cr_from_k8s_with_retries()
+        else:
+            out = config_producer._fetch_ray_cr_from_k8s_with_retries()
+            assert out == {"ok-key": "ok-value"}
 
 
 if __name__ == "__main__":

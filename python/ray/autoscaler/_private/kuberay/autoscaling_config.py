@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import time
 from contextlib import suppress
 from typing import Any, Dict, Optional
 
@@ -20,6 +21,9 @@ AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 IDLE_SECONDS_KEY = "idleTimeoutSeconds"
 UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
+
+MAX_RAYCLUSTER_FETCH_TRIES = 5
+RAYCLUSTER_FETCH_RETRY_S = 5
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
@@ -50,9 +54,30 @@ class AutoscalingConfigProducer:
         )
 
     def __call__(self):
-        ray_cr = self._fetch_ray_cr_from_k8s()
+        ray_cr = self._fetch_ray_cr_from_k8s_with_retries()
         autoscaling_config = _derive_autoscaling_config_from_ray_cr(ray_cr)
         return autoscaling_config
+
+    def _fetch_ray_cr_from_k8s_with_retries(self) -> Dict[str, Any]:
+        """Fetch the RayCluster CR by querying the K8s API server.
+
+        Retry on HTTPError for robustness, in particular to protect autoscaler
+        initialization.
+        """
+        for i in range(1, MAX_RAYCLUSTER_FETCH_TRIES + 1):
+            try:
+                return self._fetch_ray_cr_from_k8s()
+            except requests.HTTPError as e:
+                if i < MAX_RAYCLUSTER_FETCH_TRIES:
+                    logger.exception(
+                        "Failed to fetch RayCluster CR from K8s. Retrying."
+                    )
+                    time.sleep(RAYCLUSTER_FETCH_RETRY_S)
+                else:
+                    raise e from None
+
+        # This branch is inaccessible. Raise to satisfy mypy.
+        raise AssertionError
 
     def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
         result = requests.get(
