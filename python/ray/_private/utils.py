@@ -34,7 +34,6 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
-
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
 
