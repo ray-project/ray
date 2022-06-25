@@ -47,7 +47,6 @@ Status RedisInternalKV::ValidateKey(const std::string &key) const {
 std::string RedisInternalKV::ExtractKey(const std::string &key) const {
   auto view = std::string_view(key);
   view = view.substr(cluster_id_.size() + kClusterSeparator.size());
-  RAY_LOG(ERROR) << "VIEW:" << view;
   if (absl::StartsWith(view, kNamespacePrefix)) {
     std::vector<std::string> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
@@ -74,7 +73,6 @@ void RedisInternalKV::Get(const std::string &ns,
                           const std::string &key,
                           std::function<void(std::optional<std::string>)> callback) {
   auto true_key = MakeKey(ns, key);
-  RAY_LOG(ERROR) << "DBG: true_key:" << true_key;
   std::vector<std::string> cmd = {"HGET", true_key, "value"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {

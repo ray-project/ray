@@ -16,7 +16,7 @@ from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 from ray.util.joblib import register_ray
 
 from joblib import parallel_backend, Parallel, delayed
-from ray._private.test_utils import test_external_redis
+from ray._private.test_utils import enable_external_redis
 
 
 def teardown_function(function):
@@ -69,9 +69,6 @@ def ray_start_4_cpu():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    test_external_redis(), reason="The same Redis is used within the test."
-)
 def test_ray_init(shutdown_only):
     def getpid(args):
         return os.getpid()
@@ -88,6 +85,11 @@ def test_ray_init(shutdown_only):
     pool.terminate()
     pool.join()
     ray.shutdown()
+
+    # Set up the cluster id so that gcs is talking with a different
+    # storage prefix
+    os.environ["RAY_cluster_id"] = "new_cluster"
+    ray._raylet.Config.initialize("")
 
     # Check that starting a pool doesn't affect ray if there is a local
     # ray cluster running.
@@ -121,9 +123,6 @@ def test_ray_init(shutdown_only):
     ],
     indirect=True,
 )
-@pytest.mark.skipif(
-    test_external_redis(), reason="The same Redis is used within the test."
-)
 def test_connect_to_ray(ray_start_cluster):
     def getpid(args):
         return os.getpid()
@@ -137,6 +136,11 @@ def test_connect_to_ray(ray_start_cluster):
     # ray cluster and connecting to an existing one.
     start_cpus = 1  # Set in fixture.
     init_cpus = 2
+
+    # Set up the cluster id so that gcs is talking with a different
+    # storage prefix
+    os.environ["RAY_cluster_id"] = "new_cluster"
+    ray._raylet.Config.initialize("")
 
     # Check that starting a pool still starts ray if RAY_ADDRESS not set.
     pool = Pool(processes=init_cpus)
@@ -156,6 +160,9 @@ def test_connect_to_ray(ray_start_cluster):
     pool.terminate()
     pool.join()
     ray.shutdown()
+
+    os.environ["RAY_cluster_id"] = "new_cluster2"
+    ray._raylet.Config.initialize("")
 
     # Set RAY_ADDRESS, so pools should connect to the running ray cluster.
     os.environ["RAY_ADDRESS"] = address

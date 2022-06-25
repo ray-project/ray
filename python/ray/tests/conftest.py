@@ -32,7 +32,7 @@ from ray._private.test_utils import (
     init_log_pubsub,
     setup_tls,
     teardown_tls,
-    test_external_redis,
+    enable_external_redis,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -98,7 +98,7 @@ def _setup_redis(request):
 
 @pytest.fixture
 def maybe_external_redis(request):
-    if test_external_redis():
+    if enable_external_redis():
         with _setup_redis(request):
             yield
     else:
