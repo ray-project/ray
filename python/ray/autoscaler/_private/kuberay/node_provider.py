@@ -1,11 +1,12 @@
 import json
 import logging
-import requests
 from typing import Any, Dict, List, Tuple
 
+import requests
+
 from ray.autoscaler._private.constants import (
-    DISABLE_NODE_UPDATERS_KEY,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
 )
 from ray.autoscaler.node_provider import NodeProvider

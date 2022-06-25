@@ -3,6 +3,7 @@ import errno
 import functools
 import hashlib
 import importlib
+import inspect
 import logging
 import multiprocessing
 import os
@@ -12,28 +13,35 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional, Sequence, Tuple, Any, Union, Dict
 import uuid
-import grpc
 import warnings
+from inspect import signature
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
+
+import grpc
+import numpy as np
+
+# Import psutil after ray so the packaged version is used.
+import psutil
+from google.protobuf import json_format
+
+import ray
+import ray._private.ray_constants as ray_constants
+from ray._private.tls_utils import load_certs_from_env
+from ray.core.generated.gcs_pb2 import ErrorTableData
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvInfo as ProtoRuntimeEnvInfo,
+)
+
+if TYPE_CHECKING:
+    from ray.runtime_env import RuntimeEnv
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-import inspect
-from inspect import signature
-from pathlib import Path
-import numpy as np
-
-import ray
-from ray.core.generated.gcs_pb2 import ErrorTableData
-import ray.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
-
-# Import psutil after ray so the packaged version is used.
-import psutil
 
 pwd = None
 if sys.platform != "win32":
@@ -670,7 +678,7 @@ def detect_fate_sharing_support_win32():
         import ctypes
 
         try:
-            from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
+            from ctypes.wintypes import BOOL, DWORD, HANDLE, LPCWSTR, LPVOID
 
             kernel32 = ctypes.WinDLL("kernel32")
             kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
@@ -752,7 +760,7 @@ def detect_fate_sharing_support_linux():
     global linux_prctl
     if linux_prctl is None and sys.platform.startswith("linux"):
         try:
-            from ctypes import c_int, c_ulong, CDLL
+            from ctypes import CDLL, c_int, c_ulong
 
             prctl = CDLL(None).prctl
             prctl.restype = c_int
@@ -1349,3 +1357,82 @@ def check_version_info(cluster_metadata):
             "    Python: " + version_info[1] + "\n"
         )
         raise RuntimeError(error_message)
+
+
+def get_runtime_env_info(
+    runtime_env: "RuntimeEnv",
+    *,
+    is_job_runtime_env: bool = False,
+    serialize: bool = False,
+):
+    """Create runtime env info from runtime env.
+
+    In the user interface, the argument `runtime_env` contains some fields
+    which not contained in `ProtoRuntimeEnv` but in `ProtoRuntimeEnvInfo`,
+    such as `eager_install`. This function will extract those fields from
+    `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it.
+    """
+    from ray.runtime_env import RuntimeEnvConfig
+
+    proto_runtime_env_info = ProtoRuntimeEnvInfo()
+
+    proto_runtime_env_info.uris[:] = runtime_env.get_uris()
+
+    # TODO(Catch-Bull): overload `__setitem__` for `RuntimeEnv`, change the
+    # runtime_env of all internal code from dict to RuntimeEnv.
+
+    runtime_env_config = runtime_env.get("config")
+    if runtime_env_config is None:
+        runtime_env_config = RuntimeEnvConfig.default_config()
+    else:
+        runtime_env_config = RuntimeEnvConfig.parse_and_validate_runtime_env_config(
+            runtime_env_config
+        )
+
+    proto_runtime_env_info.runtime_env_config.CopyFrom(
+        runtime_env_config.build_proto_runtime_env_config()
+    )
+
+    # Normally, `RuntimeEnv` should guarantee the accuracy of field eager_install,
+    # but so far, the internal code has not completely prohibited direct
+    # modification of fields in RuntimeEnv, so we should check it for insurance.
+    eager_install = (
+        runtime_env_config.get("eager_install")
+        if runtime_env_config is not None
+        else None
+    )
+    if is_job_runtime_env or eager_install is not None:
+        if eager_install is None:
+            eager_install = True
+        elif not isinstance(eager_install, bool):
+            raise TypeError(
+                f"eager_install must be a boolean. got {type(eager_install)}"
+            )
+        proto_runtime_env_info.runtime_env_config.eager_install = eager_install
+
+    proto_runtime_env_info.serialized_runtime_env = runtime_env.serialize()
+
+    if not serialize:
+        return proto_runtime_env_info
+
+    return json_format.MessageToJson(proto_runtime_env_info)
+
+
+def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
+    from ray.runtime_env import RuntimeEnv
+
+    # Parse local pip/conda config files here. If we instead did it in
+    # .remote(), it would get run in the Ray Client server, which runs on
+    # a remote node where the files aren't available.
+    if runtime_env:
+        if isinstance(runtime_env, dict):
+            return RuntimeEnv(**(runtime_env or {}))
+        raise TypeError(
+            "runtime_env must be dict or RuntimeEnv, ",
+            f"but got: {type(runtime_env)}",
+        )
+    else:
+        # Keep the new_runtime_env as None.  In .remote(), we need to know
+        # if runtime_env is None to know whether or not to fall back to the
+        # runtime_env specified in the @ray.remote decorator.
+        return None

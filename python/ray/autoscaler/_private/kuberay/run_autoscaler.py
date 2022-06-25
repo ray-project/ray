@@ -1,10 +1,10 @@
 import logging
-import subprocess
 import os
+import subprocess
 import time
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
@@ -56,7 +56,9 @@ def _setup_logging() -> None:
         logging_level=ray_constants.LOGGER_LEVEL,  # info
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=os.path.join(
-            ray._private.utils.get_ray_temp_dir(), ray.node.SESSION_LATEST, "logs"
+            ray._private.utils.get_ray_temp_dir(),
+            ray._private.node.SESSION_LATEST,
+            "logs",
         ),
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
         max_bytes=ray_constants.LOGGING_ROTATE_BYTES,

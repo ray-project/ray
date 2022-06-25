@@ -4,15 +4,15 @@ import logging
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
 
 import ray
-from ray.util import PublicAPI
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air.checkpoint import Checkpoint
-from ray.train.constants import TRAIN_DATASET_KEY
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
+from ray.train.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
 from ray.tune.error import TuneError
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
+from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.dict import merge_dicts
 
@@ -61,14 +61,14 @@ class BaseTrainer(abc.ABC):
 
     **How do I create a new Trainer?**
 
-    Subclass ``ray.train.BaseTrainer``, and override the ``training_loop``
+    Subclass ``ray.train.trainer.BaseTrainer``, and override the ``training_loop``
     method, and optionally ``setup``.
 
     .. code-block:: python
 
         import torch
 
-        from ray.train import BaseTrainer
+        from ray.train.trainer import BaseTrainer
         from ray import tune
 
 
@@ -354,6 +354,11 @@ class BaseTrainer(abc.ABC):
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
+
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)

@@ -1,25 +1,25 @@
-from contextlib import contextmanager
-import sys
 import os
-import time
 import subprocess
+import sys
+import time
+from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
-import requests
 from typing import Dict
 
 import pytest
-from ray.cluster_utils import AutoscalingCluster
-from ray.exceptions import RayActorError
+import requests
 
 import ray
-import ray.state
+import ray._private.state
 from ray import serve
-from ray.serve.context import get_global_client
-from ray.serve.schema import ServeApplicationSchema
+from ray._private.test_utils import wait_for_condition
+from ray.cluster_utils import AutoscalingCluster
+from ray.exceptions import RayActorError
 from ray.serve.client import ServeControllerClient
 from ray.serve.common import ApplicationStatus
 from ray.serve.constants import SERVE_NAMESPACE
-from ray._private.test_utils import wait_for_condition
+from ray.serve.context import get_global_client
+from ray.serve.schema import ServeApplicationSchema
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -198,8 +198,8 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
-        from ray.serve.api import build
         from ray._private.utils import import_attr
+        from ray.serve.api import build
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
@@ -485,7 +485,7 @@ class TestDeployApp:
             "runtime_env": {
                 "working_dir": (
                     "https://github.com/ray-project/test_dag/archive/"
-                    "cc246509ba3c9371f8450f74fdc18018428630bd.zip"
+                    "76a741f6de31df78411b1f302071cde46f098418.zip"
                 )
             },
         }
@@ -680,7 +680,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     assert ray.get(a.ready.remote()) == 1
 
     # 2 proxies, 1 controller, and one placeholder.
-    wait_for_condition(lambda: len(ray.state.actors()) == 4)
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 4)
     assert len(ray.nodes()) == 2
 
     # Now make sure the placeholder actor exits.
@@ -688,7 +688,12 @@ def test_autoscaler_shutdown_node_http_everynode(
     # The http proxy on worker node should exit as well.
     wait_for_condition(
         lambda: len(
-            list(filter(lambda a: a["State"] == "ALIVE", ray.state.actors().values()))
+            list(
+                filter(
+                    lambda a: a["State"] == "ALIVE",
+                    ray._private.state.actors().values(),
+                )
+            )
         )
         == 2
     )

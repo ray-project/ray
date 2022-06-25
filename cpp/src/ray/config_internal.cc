@@ -130,6 +130,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     }
     startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
   }
+  worker_type = config.is_worker_ ? WorkerType::WORKER : WorkerType::DRIVER;
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (bootstrap_ip.empty()) {
       auto ray_address_env = std::getenv("RAY_ADDRESS");
