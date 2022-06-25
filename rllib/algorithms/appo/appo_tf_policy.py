@@ -32,7 +32,7 @@ from ray.rllib.policy.tf_mixins import (
     LearningRateSchedule,
     KLCoeffMixin,
     ValueNetworkMixin,
-    GradStatsMixin
+    GradStatsMixin,
 )
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
