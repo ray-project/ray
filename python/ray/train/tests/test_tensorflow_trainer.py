@@ -105,7 +105,7 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
             metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model")
         )
 
-    scaling_config = {"num_workers": 2}
+    scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func, scaling_config=scaling_config
     )

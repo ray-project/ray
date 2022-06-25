@@ -210,7 +210,7 @@ def _is_trainable_name_overriden(trainer: BaseTrainer):
 
 
 def test_trainable_name_is_overriden_data_parallel_trainer(ray_start_4_cpus):
-    trainer = DataParallelTrainer(lambda x: x, scaling_config=dict(num_workers=1))
+    trainer = DataParallelTrainer(lambda x: x, scaling_config=ScalingConfig(num_workers=1))
 
     _is_trainable_name_overriden(trainer)
 
@@ -220,7 +220,7 @@ def test_trainable_name_is_overriden_gbdt_trainer(ray_start_4_cpus):
         params={},
         label_column="__values__",
         datasets={"train": ray.data.from_items([1, 2, 3])},
-        scaling_config=dict(num_workers=1),
+        scaling_config=ScalingConfig(num_workers=1),
     )
 
     _is_trainable_name_overriden(trainer)
