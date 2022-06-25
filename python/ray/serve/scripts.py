@@ -373,12 +373,6 @@ def shutdown(address: str, yes: bool):
     ),
 )
 def build(import_path: str, app_dir: str, output_path: Optional[str]):
-
-    if output_path is not None and not output_path.endswith(".yaml"):
-        raise ValueError(
-            f'FILE_PATH must end with ".yaml". Got "{output_path}" instead.'
-        )
-
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
