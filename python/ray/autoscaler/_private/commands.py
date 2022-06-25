@@ -20,6 +20,7 @@ import yaml
 import ray
 import ray._private.services as services
 from ray._private.usage import usage_lib
+from ray._private.worker import global_worker  # type: ignore
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
@@ -70,7 +71,6 @@ from ray.autoscaler.tags import (
 )
 from ray.experimental.internal_kv import _internal_kv_put
 from ray.util.debug import log_once
-from ray.worker import global_worker  # type: ignore
 
 try:  # py3
     from shlex import quote

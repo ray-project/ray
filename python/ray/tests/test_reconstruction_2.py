@@ -1,18 +1,14 @@
+import os
 import sys
 import time
-import os
 
 import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    wait_for_condition,
-    SignalActor,
-    Semaphore,
-)
-from ray.internal.internal_api import memory_summary
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
+from ray._private.internal_api import memory_summary
+from ray._private.test_utils import Semaphore, SignalActor, wait_for_condition
 
 # Task status.
 WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
