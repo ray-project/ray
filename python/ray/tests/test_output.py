@@ -1,16 +1,16 @@
-import subprocess
-import sys
-import pytest
+import os
 import re
 import signal
+import subprocess
+import sys
 import time
-import os
+
+import pytest
 
 import ray
-
 from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
     run_string_as_driver,
+    run_string_as_driver_nonblocking,
 )
 
 
@@ -260,7 +260,7 @@ ray.init(local_mode=True)
 
 # In local mode this generates an ERROR level log.
 ray._private.utils.push_error_to_driver(
-    ray.worker.global_worker, "type", "Hello there")
+    ray._private.worker.global_worker, "type", "Hello there")
     """
 
     proc = run_string_as_driver_nonblocking(script)
@@ -572,7 +572,7 @@ os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
 
 ray.init(_node_name=\"{NODE_NAME}\")
 # This will kill raylet without letting it exit gracefully.
-ray.worker._global_node.kill_raylet()
+ray._private.worker._global_node.kill_raylet()
 time.sleep(NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS)
 ray.shutdown()
     """
@@ -590,4 +590,7 @@ if __name__ == "__main__":
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
-        sys.exit(pytest.main(["-v", __file__]))
+        if os.environ.get("PARALLEL_CI"):
+            sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        else:
+            sys.exit(pytest.main(["-sv", __file__]))

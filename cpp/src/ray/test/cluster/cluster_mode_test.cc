@@ -78,6 +78,8 @@ TEST(RayClusterModeTest, FullTest) {
                                         .SetMaxRestarts(1)
                                         .SetName("named_actor")
                                         .Remote();
+  auto initialized_obj = actor.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj.Get());
   auto named_actor_obj = actor.Task(&Counter::Plus1)
                              .SetName("named_actor_task")
                              .SetResources({{"CPU", 1.0}})
@@ -250,15 +252,6 @@ TEST(RayClusterModeTest, PythonInvocationTest) {
   auto py_result = *py_obj3.Get();
   EXPECT_EQ(p.age, py_result.age);
   EXPECT_EQ(p.name, py_result.name);
-}
-
-TEST(RayClusterModeTest, JavaInvocationTest) {
-  auto java_actor_handle =
-      ray::Actor(ray::JavaActorClass{"io.ray.test.Counter"}).Remote(1);
-  EXPECT_TRUE(!java_actor_handle.ID().empty());
-  auto java_actor_ret =
-      java_actor_handle.Task(ray::JavaActorMethod<int>{"increase"}).Remote(2);
-  EXPECT_EQ(3, *java_actor_ret.Get());
 }
 
 TEST(RayClusterModeTest, MaxConcurrentTest) {

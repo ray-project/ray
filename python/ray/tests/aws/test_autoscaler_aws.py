@@ -1,36 +1,36 @@
 import copy
-
-from click.exceptions import ClickException
-import pytest
 from unittest.mock import Mock, patch
 
+import pytest
+from click.exceptions import ClickException
+
+import ray.tests.aws.utils.helpers as helpers
+import ray.tests.aws.utils.stubs as stubs
 from ray.autoscaler._private.aws.config import (
+    DEFAULT_AMI,
     _configure_subnet,
     _get_subnets_or_die,
     bootstrap_aws,
     log_to_cli,
-    DEFAULT_AMI,
 )
 from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
 from ray.autoscaler._private.providers import _get_node_provider
-import ray.tests.aws.utils.stubs as stubs
-import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import (
-    AUX_SUBNET,
-    DEFAULT_SUBNET,
-    DEFAULT_SG_AUX_SUBNET,
-    DEFAULT_SG,
-    DEFAULT_SG_DUAL_GROUP_RULES,
-    DEFAULT_SG_WITH_RULES_AUX_SUBNET,
     AUX_SG,
-    DEFAULT_SG_WITH_RULES,
+    AUX_SUBNET,
+    CUSTOM_IN_BOUND_RULES,
+    DEFAULT_CLUSTER_NAME,
+    DEFAULT_INSTANCE_PROFILE,
+    DEFAULT_KEY_PAIR,
+    DEFAULT_LT,
+    DEFAULT_SG,
+    DEFAULT_SG_AUX_SUBNET,
+    DEFAULT_SG_DUAL_GROUP_RULES,
     DEFAULT_SG_WITH_NAME,
     DEFAULT_SG_WITH_NAME_AND_RULES,
-    CUSTOM_IN_BOUND_RULES,
-    DEFAULT_KEY_PAIR,
-    DEFAULT_INSTANCE_PROFILE,
-    DEFAULT_CLUSTER_NAME,
-    DEFAULT_LT,
+    DEFAULT_SG_WITH_RULES,
+    DEFAULT_SG_WITH_RULES_AUX_SUBNET,
+    DEFAULT_SUBNET,
 )
 
 
@@ -727,7 +727,7 @@ def test_terminate_nodes(num_on_demand_nodes, num_spot_nodes, stop):
     }
     node_ids = list(on_demand_nodes.union(spot_nodes))
 
-    with patch("ray.autoscaler._private.aws.node_provider.make_ec2_client"):
+    with patch("ray.autoscaler._private.aws.node_provider.make_ec2_resource"):
         provider = AWSNodeProvider(
             provider_config={"region": "nowhere", "cache_stopped_nodes": stop},
             cluster_name="default",

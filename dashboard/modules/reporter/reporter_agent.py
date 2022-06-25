@@ -18,9 +18,9 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
+from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
-from ray.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)

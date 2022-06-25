@@ -1,30 +1,30 @@
 import os
 import re
-import sys
-import time
-
-from unittest.mock import MagicMock
-from collections import defaultdict, Counter
-from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import time
+from collections import Counter, defaultdict
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pytest
 
 import ray
-from ray.cross_language import java_actor_class
-from ray import ray_constants
-from ray._private.test_utils import (
-    get_log_batch,
-    wait_for_condition,
-    init_log_pubsub,
-    get_log_message,
-    run_string_as_driver,
-)
+from ray._private import ray_constants
 from ray._private.log_monitor import (
-    LogMonitor,
     LOG_NAME_UPDATE_INTERVAL_S,
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
+    LogMonitor,
 )
+from ray._private.test_utils import (
+    get_log_batch,
+    get_log_message,
+    init_log_pubsub,
+    run_string_as_driver,
+    wait_for_condition,
+)
+from ray.cross_language import java_actor_class
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -58,7 +58,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
     backup_count = 3
     set_logging_config(monkeypatch, max_bytes, backup_count)
     ray.init(num_cpus=1)
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -134,7 +134,7 @@ def test_periodic_event_stats(shutdown_only):
         num_cpus=1,
         _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
     )
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -171,7 +171,7 @@ def test_worker_id_names(shutdown_only):
         num_cpus=1,
         _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
     )
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -285,7 +285,7 @@ import ray
 os.environ["RAY_LOG_TO_STDERR"] = "1"
 ray.init()
 
-session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
 session_path = Path(session_dir)
 log_dir_path = session_path / "logs"
 
@@ -669,4 +669,7 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -207,9 +207,9 @@ test_python() {
     bazel test --config=ci \
       --build_tests_only $(./ci/run/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_env=CI=1 \
-      --test_env=RAY_CI_POST_WHEEL_TESTS=1 \
       --test_output=streamed \
       -- \
       ${test_shard_selection};
@@ -322,7 +322,7 @@ install_cython_examples() {
 
 install_go() {
   local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
-  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.14.2 bash)"
+  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.18.3 bash)"
 
   if [ -z "${GOPATH-}" ]; then
     GOPATH="${GOPATH:-${HOME}/go_dir}"
@@ -367,6 +367,11 @@ install_ray() {
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
     keep_alive pip install -v -e .
+  )
+  (
+    # For runtime_env tests, wheels are needed
+    cd "${WORKSPACE_DIR}"
+    keep_alive pip wheel -e python -w .whl
   )
 }
 
@@ -515,7 +520,7 @@ lint_bazel() {
     export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
 
     # Build buildifier
-    go get github.com/bazelbuild/buildtools/buildifier
+    go install github.com/bazelbuild/buildtools/buildifier@latest
 
     # Now run buildifier
     "${ROOT_DIR}"/lint/bazel-format.sh

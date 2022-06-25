@@ -1,12 +1,12 @@
-from typing import Dict, Callable, Optional
 import logging
+from typing import Callable, Dict, Optional
 
 import ray
-from ray.tune.trainable import Trainable
 from ray.tune.logger import LoggerCallback
-from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
-from ray.tune.trial import Trial
-from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray.tune.result import TIMESTEPS_TOTAL, TRAINING_ITERATION
+from ray.tune.trainable import Trainable
+from ray.tune.experiment import Trial
+from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class MLflowLoggerCallback(LoggerCallback):
         self.tags = tags
         self.should_save_artifact = save_artifact
 
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
 
         if ray.util.client.ray.is_connected():
             logger.warning(
@@ -247,7 +247,7 @@ def mlflow_mixin(func: Callable):
 
 class MLflowTrainableMixin:
     def __init__(self, config: Dict, *args, **kwargs):
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
 
         if not isinstance(self, Trainable):
             raise ValueError(

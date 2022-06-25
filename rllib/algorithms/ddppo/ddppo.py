@@ -24,9 +24,6 @@ import ray
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_THIS_ITER_COUNTER,
-)
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -163,8 +160,7 @@ class DDPPO(PPO):
         config: Optional[PartialAlgorithmConfigDict] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
-        remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        **kwargs,
     ):
         """Initializes a DDPPO instance.
 
@@ -177,9 +173,11 @@ class DDPPO(PPO):
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            **kwargs: Arguments passed to the Trainable base class
+
         """
         super().__init__(
-            config, env, logger_creator, remote_checkpoint_dir, sync_function_tpl
+            config=config, env=env, logger_creator=logger_creator, **kwargs
         )
 
         if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
@@ -296,10 +294,8 @@ class DDPPO(PPO):
         # - Update the worker's global_vars.
         # - Build info dict using a LearnerInfoBuilder object.
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
-        steps_this_iter = 0
         for worker, results in sample_and_update_results.items():
             for result in results:
-                steps_this_iter += result["env_steps"]
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
                 self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
                 self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
@@ -313,8 +309,6 @@ class DDPPO(PPO):
             global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
             for worker in self.workers.remote_workers():
                 worker.set_global_vars.remote(global_vars)
-
-        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = steps_this_iter
 
         # Sync down the weights from 1st remote worker (only if we have received
         # some results from it).

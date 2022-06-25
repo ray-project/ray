@@ -72,7 +72,7 @@ template <typename T>
 auto constexpr is_java_v = is_java_t<T>::value;
 
 template <typename T>
-auto constexpr is_x_lang_v = is_java_t<T>::value || is_python_t<T>::value;
+auto constexpr is_x_lang_v = is_java_v<T> || is_python_v<T>;
 
 }  // namespace internal
 }  // namespace ray
