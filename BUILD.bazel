@@ -111,6 +111,7 @@ cc_library(
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 

@@ -275,7 +275,7 @@ class RolloutWorker(ParallelIteratorWorker):
             tf_session_creator: A function that returns a TF session.
                 This is optional and only useful with TFPolicy.
             rollout_fragment_length: The target number of steps
-                (maesured in `count_steps_by`) to include in each sample
+                (measured in `count_steps_by`) to include in each sample
                 batch returned from this worker.
             count_steps_by: The unit in which to count fragment
                 lengths. One of env_steps or agent_steps.
@@ -293,7 +293,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 until the episode completes, and hence batches may contain
                 significant amounts of off-policy data.
             episode_horizon: Horizon at which to stop episodes (even if the
-                environment itself has not retured a "done" signal).
+                environment itself has not returned a "done" signal).
             preprocessor_pref: Whether to use RLlib preprocessors
                 ("rllib") or deepmind ("deepmind"), when applicable.
             sample_async: Whether to compute samples asynchronously in
@@ -1693,7 +1693,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_dict: The MultiAgentPolicyConfigDict to be added to this
                 worker's PolicyMap.
             policy_config: The general policy config to use. May be updated
-                by individual policy condig overrides in the given
+                by individual policy config overrides in the given
                 multi-agent `policy_dict`.
             session_creator: A callable that creates a tf session
                 (if applicable).
@@ -1851,7 +1851,7 @@ def _determine_spaces_for_multi_agent_dict(
     Args:
         multi_agent_policies_dict: The multi-agent `policies` dict mapping policy IDs
             to PolicySpec objects. Note that the `observation_space` and `action_space`
-            properties in these PolicySpecs may be None and must therefor be inferred
+            properties in these PolicySpecs may be None and must therefore be inferred
             here.
         env: An optional env instance, from which to infer the different spaces for
             the different policies.
