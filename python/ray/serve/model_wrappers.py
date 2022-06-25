@@ -250,7 +250,7 @@ class ModelWrapper(SimpleSchemaIngress):
 
     def reconfigure(self, config):
         """Reconfigure Model from Config Checkpoint"""
-        self.model = self.model.from_checkpoint(**config)
+        self.model = self.model.from_checkpoint(Checkpoint.from_dict(config["checkpoint"]))
 
 
 @serve.deployment
