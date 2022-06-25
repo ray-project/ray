@@ -1392,7 +1392,8 @@ def get_runtime_env_info(
             raise TypeError(
                 f"eager_install must be a boolean. got {type(eager_install)}"
             )
-        proto_runtime_env_info.runtime_env_eager_install = eager_install
+        if hasattr(proto_runtime_env_info, "runtime_env_eager_install"):
+            proto_runtime_env_info.runtime_env_eager_install = eager_install
 
     runtime_env_config = runtime_env.get("config")
     if runtime_env_config is None:
