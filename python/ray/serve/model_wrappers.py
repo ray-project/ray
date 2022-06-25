@@ -248,13 +248,9 @@ class ModelWrapper(SimpleSchemaIngress):
         """Perform inference directly without HTTP."""
         return await self.predict_impl(inp)
 
-    def reconfigure(
-        self,
-        checkpoint: Union[Checkpoint, str],
-        predictor_cls: Union[str, Type["Predictor"]],
-    ):
-        """Reconfigure Model from given Checkpoint"""
-        self.model = predictor_cls.from_checkpoint(checkpoint, predictor_cls)
+    def reconfigure(self, config):
+        """Reconfigure Model from Config Checkpoint"""
+        self.model = self.model.from_checkpoint(**config)
 
 
 @serve.deployment
