@@ -4,8 +4,7 @@ import os
 from pickle import PicklingError
 
 from ray.cloudpickle.cloudpickle import *  # noqa
-from ray.cloudpickle.cloudpickle_fast import CloudPickler, dumps, dump  # noqa
-
+from ray.cloudpickle.cloudpickle_fast import CloudPickler, dump, dumps  # noqa
 
 # Conform to the convention used by python serialization libraries, which
 # expose their Pickler subclass at top-level under the  "Pickler" name.
