@@ -2,7 +2,7 @@ dask[complete]==2021.03.0; python_version < '3.7'
 dask[complete]==2022.2.0; python_version >= '3.7'
 aioboto3==8.3.0
 flask_cors
-moto[s3]==2.3.1
+moto[s3]==3.1.14
 s3fs
 modin>=0.8.3;  python_version < '3.7'
 modin>=0.11.0; python_version >= '3.7'
