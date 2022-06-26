@@ -1118,6 +1118,7 @@ class TorchPolicyV2(Policy):
                     "shard_idx": shard_idx,
                     "tensor_devices": [sample_batch["obs"].get_device()],
                     "model_device": next(model.parameters()).device,
+                    "target_model_device": next(self.target_models[model].parameters()).device,
                     "device": device
                 }
             )
