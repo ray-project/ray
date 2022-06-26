@@ -10,13 +10,12 @@ import time
 import uuid
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 import ray
 import ray.cloudpickle as pickle
 from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
-from ray.tune.logger import Logger
 from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -42,8 +41,8 @@ from ray.tune.result import (
 from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython
-from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import (
     Tee,
     delete_external_checkpoint,
@@ -51,6 +50,9 @@ from ray.tune.utils.util import (
     retry_fn,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +96,7 @@ class Trainable:
     def __init__(
         self,
         config: Dict[str, Any] = None,
-        logger_creator: Callable[[Dict[str, Any]], Logger] = None,
+        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
         remote_checkpoint_dir: Optional[str] = None,
         custom_syncer: Optional[Syncer] = None,
     ):
@@ -448,7 +450,7 @@ class Trainable:
         return checkpoint_path
 
     def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
-        # Derived classes like the FunctionRunner might call this
+        # Derived classes like the FunctionTrainable might call this
         if not self.uses_cloud_checkpointing:
             return False
 
@@ -731,7 +733,7 @@ class Trainable:
     def _create_logger(
         self,
         config: Dict[str, Any],
-        logger_creator: Callable[[Dict[str, Any]], Logger] = None,
+        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
     ):
         """Create logger from logger creator.
 
