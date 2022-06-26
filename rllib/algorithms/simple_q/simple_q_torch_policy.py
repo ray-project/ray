@@ -174,7 +174,7 @@ class SimpleQTorchPolicy(
     ) -> TensorType:
         _is_training = is_training if is_training is not None else False
         input_dict = self._lazy_tensor_dict(
-            SampleBatch(obs=obs_batch, _is_training=_is_training)
+            SampleBatch(obs=obs_batch, _is_training=_is_training), device=next(model.parameters()).device
         )
         # Make sure, everything is PyTorch tensors.
         model_out, _ = model(input_dict, [], None)

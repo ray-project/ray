@@ -1112,18 +1112,20 @@ class TorchPolicyV2(Policy):
 
         def _worker(shard_idx, model, sample_batch, device):
             torch.set_grad_enabled(grad_enabled)
+            #
+            # log_str = str(
+            #     {
+            #         "shard_idx": shard_idx,
+            #         "tensor_devices": [sample_batch["obs"].get_device()],
+            #         "model_device": next(model.parameters()).device,
+            #         "target_model_device": next(self.target_models[model].parameters()).device,
+            #         "device": device,
+            #         "action_distribution": self.dist_class,
+            #
+            #     }
+            # )
 
-            log_str = str(
-                {
-                    "shard_idx": shard_idx,
-                    "tensor_devices": [sample_batch["obs"].get_device()],
-                    "model_device": next(model.parameters()).device,
-                    "target_model_device": next(self.target_models[model].parameters()).device,
-                    "device": device
-                }
-            )
-
-            logger.warning("parallel_calc_tensor_and_model_devices" + log_str)
+            # logger.warning("parallel_calc_tensor_and_model_devices" + log_str)
 
             try:
                 with NullContextManager() if device.type == "cpu" else torch.cuda.device(  # noqa: E501
