@@ -24,4 +24,6 @@ def warn_structure_refactor(old_module: str, new_module: str, direct: bool = Tru
                 f"check the contents of `{new_module}` before making changes."
             )
 
-        warnings.warn(warning, DeprecationWarning)
+        with warnings.catch_warnings():
+            warnings.simplefilter("always")
+            warnings.warn(warning, DeprecationWarning)
