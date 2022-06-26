@@ -1,5 +1,6 @@
 import unittest
 import ray
+from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
@@ -27,11 +28,11 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        train_steps = 200000
+        train_steps = 20000
         n_batches = 20  # Approx. equal to n_episodes
         n_eval_episodes = 20
         # Optional configs for the model-based estimators
-        cls.model_config = {"train_test_split_val": 0.0, "k": 2, "n_iters": 10}
+        cls.ope_config = {"train_test_split_val": 0.8, "n_iters": 10}
         cls.fqe_config = {}
         cls.qreg_config = {}
 
@@ -70,7 +71,7 @@ class TestOPE(unittest.TestCase):
                             "type": "qreg",
                             **cls.qreg_config,
                         },
-                        **cls.model_config,
+                        **cls.ope_config,
                     },
                     "dm_fqe": {
                         "type": DirectMethod,
@@ -78,7 +79,7 @@ class TestOPE(unittest.TestCase):
                             "type": "fqe",
                             **cls.fqe_config,
                         },
-                        **cls.model_config,
+                        **cls.ope_config,
                     },
                     "dr_qreg": {
                         "type": DoublyRobust,
@@ -86,7 +87,7 @@ class TestOPE(unittest.TestCase):
                             "type": "qreg",
                             **cls.qreg_config,
                         },
-                        **cls.model_config,
+                        **cls.ope_config,
                     },
                     "dr_fqe": {
                         "type": DoublyRobust,
@@ -94,7 +95,7 @@ class TestOPE(unittest.TestCase):
                             "type": "fqe",
                             **cls.fqe_config,
                         },
-                        **cls.model_config,
+                        **cls.ope_config,
                     },
                 },
             )
@@ -172,7 +173,7 @@ class TestOPE(unittest.TestCase):
         config["policy"] = self.algo.get_policy()
         config["gamma"] = self.gamma
         config["q_model"] = {"type": "qreg", **self.qreg_config}
-        config.update(self.model_config)
+        config.update(self.ope_config)
         estimator = DirectMethod(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])
@@ -185,7 +186,7 @@ class TestOPE(unittest.TestCase):
         config["policy"] = self.algo.get_policy()
         config["gamma"] = self.gamma
         config["q_model"] = {"type": "fqe", **self.fqe_config}
-        config.update(self.model_config)
+        config.update(self.ope_config)
         estimator = DirectMethod(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])
@@ -198,7 +199,7 @@ class TestOPE(unittest.TestCase):
         config["policy"] = self.algo.get_policy()
         config["gamma"] = self.gamma
         config["q_model"] = {"type": "qreg", **self.qreg_config}
-        config.update(self.model_config)
+        config.update(self.ope_config)
         estimator = DoublyRobust(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])
@@ -211,7 +212,7 @@ class TestOPE(unittest.TestCase):
         config["policy"] = self.algo.get_policy()
         config["gamma"] = self.gamma
         config["q_model"] = {"type": "fqe", **self.fqe_config}
-        config.update(self.model_config)
+        config.update(self.ope_config)
         estimator = DoublyRobust(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])

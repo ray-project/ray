@@ -1,7 +1,7 @@
 import logging
 from typing import Tuple, List, Dict, Union
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -79,21 +79,11 @@ class DirectMethod(Trainable, OffPolicyEstimator):
     DM estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
     @DeveloperAPI
-    def __init__(self, config):
+    def __init__(self, config, **kwargs):
         OffPolicyEstimator.__init__(self, config)
-        # Setup logger
-        timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-        logdir_prefix = "{}_{}".format(self.name, timestr)
-        if not os.path.exists(DEFAULT_RESULTS_DIR):
-            os.makedirs(DEFAULT_RESULTS_DIR)
-        logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-
-        def logger_creator(config):
-            """Creates a Unified logger with the default prefix."""
-            return UnifiedLogger(config, logdir, loggers=None)
 
         config.pop("policy")  # Neccessary for deepcopy within Trainable
-        Trainable.__init__(self, config=config, logger_creator=logger_creator)
+        Trainable.__init__(self, config=config, **kwargs)
 
     @override(Trainable)
     def setup(self, config: Dict):
@@ -159,9 +149,8 @@ class DirectMethod(Trainable, OffPolicyEstimator):
             for _ in range(self.k - 1)
         ]
 
-        # If running with tune.run(), batch will be passed in to init config
-        if config["batch"]:
-            self.reset_config(config)
+        # If running standalone, batch should be passed in to init config
+        self.reset_config(config)
 
     @override(Trainable)
     def step(self):
@@ -174,15 +163,16 @@ class DirectMethod(Trainable, OffPolicyEstimator):
     @override(Trainable)
     def reset_config(self, new_config: Dict) -> bool:
         # Allows reusing remote models as ray actors
-        self.eval_batches, train_batches = train_test_split(
-            new_config["batch"],
-            self.train_test_split_val,
-            self.k,
-        )
-        self.model.set_batch(train_batches[0])
-        for i, m in self.remote_models:
-            m.set_batch.remote(train_batches[i + 1])
-        return True
+        if "batch" in new_config:
+            self.eval_batches, train_batches = train_test_split(
+                new_config["batch"],
+                self.train_test_split_val,
+                self.k,
+            )
+            self.model.set_batch(concat_samples(train_batches[0]))
+            for i, m in self.remote_models:
+                m.set_batch.remote(concat_samples(train_batches[i + 1]))
+        return "batch" in new_config
 
     @override(Trainable)
     def cleanup(self):
@@ -213,7 +203,7 @@ class DirectMethod(Trainable, OffPolicyEstimator):
         self.check_can_estimate_for(batch)
 
         # Split data into train and eval batches and train model(s)
-        self.reset_config(batch)
+        self.reset_config({"batch": batch})
         for _ in range(self.n_iters):
             results = self.train()
             if results["done"]:
