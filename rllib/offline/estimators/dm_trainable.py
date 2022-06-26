@@ -83,7 +83,7 @@ class DirectMethod(Trainable, OffPolicyEstimator):
     """The Direct Method estimator.
 
     DM estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
-    
+
     @override(Trainable)
     def setup(self, config: Dict):
         OffPolicyEstimator.__init__(config["name"], config["policy"], config["gamma"])
@@ -114,7 +114,7 @@ class DirectMethod(Trainable, OffPolicyEstimator):
                 f"{self.__class__.__name__}"
                 "estimator only supports `policy.framework`=`torch`"
             )
-        
+
         self.batch = config.get("batch", None)
         self.train_test_split_val = config.get("train_test_split_val", 0.0)
         assert isinstance(self.train_test_split_val, float)
@@ -126,7 +126,8 @@ class DirectMethod(Trainable, OffPolicyEstimator):
             f"Both train_test_split_val: {self.train_test_split_val} and k: {self.k} "
             f"cannot be 0 for the {self.__class__.__name__} estimator!"
         )
-        # TODO (Rohan138): Change this to {q_model {type: ..., **q_model_config}} for consistency
+        # TODO (Rohan138): Change this to 
+        # {q_model {type: ..., **q_model_config}} for consistency
         q_model_config = config.get("q_model_config", {})
         self.model = model_cls(
             policy=self.policy,
@@ -136,24 +137,31 @@ class DirectMethod(Trainable, OffPolicyEstimator):
         self.remote_models = []
         if self.k != 0:
             remote_model_cls = ray.remote(model_cls)
-            self.remote_models = [remote_model_cls.remote(policy=self.policy, gamma=self.gamma, **q_model_config) for _ in range(self.k)]
-    
+            self.remote_models = [
+                remote_model_cls.remote(
+                    policy=self.policy, gamma=self.gamma, **q_model_config
+                )
+                for _ in range(self.k)
+            ]
+
     @override(Trainable)
     def step(self):
         if not self.k:
+            # Train-test split, no remote models
             return {"loss": self.model.step()}
         else:
+            # k-fold cv using ray.remote model parallelism
             losses = ray.get([model.step.remote() for model in self.remote_models])
             return {"loss": np.mean(losses)}
-    
+
     @override(Trainable)
     def save_checkpoint(self, tmp_checkpoint_dir: str):
         return super().save_checkpoint(tmp_checkpoint_dir)
-    
+
     @override(Trainable)
     def load_checkpoint(self, checkpoint: Union[Dict, str]):
         return super().load_checkpoint(checkpoint)
-    
+
     @override(Trainable)
     def cleanup(self):
         for model in self.remote_models:
@@ -178,24 +186,30 @@ class DirectMethod(Trainable, OffPolicyEstimator):
                 self.model.train_q(train_batch)
 
             # Calculate direct method OPE estimates
-            for episode in test_episodes:
-                rewards = episode["rewards"]
-                v_old = 0.0
-                v_new = 0.0
-                for t in range(episode.count):
-                    v_old += rewards[t] * self.gamma ** t
-
-                init_step = episode[0:1]
-                init_obs = np.array([init_step[SampleBatch.OBS]])
-                all_actions = np.arange(self.policy.action_space.n, dtype=float)
-                init_step[SampleBatch.ACTIONS] = all_actions
-                action_probs = np.exp(self.action_log_likelihood(init_step))
-                v_value = self.model.estimate_v(init_obs, action_probs)
-                v_new = convert_to_numpy(v_value).item()
-
-                estimates["v_old"].append(v_old)
-                estimates["v_new"].append(v_new)
-                estimates["v_gain"].append(v_new / max(v_old, 1e-8))
+            out = self.evaluate(test_episodes)
+            for k, v in out.items():
+                estimates[k].extend(v)
         return estimates
 
-    
+    def evaluate(self, eval_episodes):
+        estimates = {"v_old": [], "v_new": [], "v_gain": []}
+        # Calculate direct method OPE estimates
+        for episode in eval_episodes:
+            rewards = episode["rewards"]
+            v_old = 0.0
+            v_new = 0.0
+            for t in range(episode.count):
+                v_old += rewards[t] * self.gamma ** t
+
+            init_step = episode[0:1]
+            init_obs = np.array([init_step[SampleBatch.OBS]])
+            all_actions = np.arange(self.policy.action_space.n, dtype=float)
+            init_step[SampleBatch.ACTIONS] = all_actions
+            action_probs = np.exp(self.action_log_likelihood(init_step))
+            v_value = self.model.estimate_v(init_obs, action_probs)
+            v_new = convert_to_numpy(v_value).item()
+
+            estimates["v_old"].append(v_old)
+            estimates["v_new"].append(v_new)
+            estimates["v_gain"].append(v_new / max(v_old, 1e-8))
+        return estimates

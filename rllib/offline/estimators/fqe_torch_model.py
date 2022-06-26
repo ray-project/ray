@@ -152,7 +152,7 @@ class FQETorchModel:
         iter_loss = sum(minibatch_losses) / len(minibatch_losses)
         self.update_target()
         return iter_loss
-    
+
     def set_batch(self, batch: SampleBatch) -> None:
         self.batch = batch
 
