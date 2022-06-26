@@ -164,7 +164,6 @@ class MultiGPULearnerThread(LearnerThread):
                 get_num_samples_loaded_into_buffer += (
                     policy.get_num_samples_loaded_into_buffer(buffer_idx)
                 )
-                print(f"learned on loaded batch ({get_num_samples_loaded_into_buffer})")
 
             self.learner_info = learner_info_builder.finalize()
 
@@ -223,7 +222,6 @@ class _MultiGPULoaderThread(threading.Thread):
                         buffer_index=buffer_idx,
                     )
                 elif pid in batch.policy_batches:
-                    print(f"loading batch ({batch.policy_batches[pid].count}) into policy at idx={buffer_idx}")
                     policy.load_batch_into_buffer(
                         batch=batch.policy_batches[pid],
                         buffer_index=buffer_idx,
