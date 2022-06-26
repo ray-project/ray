@@ -23,10 +23,9 @@ pong-appo:
         num_multi_gpu_tower_stacks: 1
         num_envs_per_worker: 8
         minibatch_buffer_size: 4
-        num_sgd_iter: 2
         vf_loss_coeff: 1.0
         clip_param: 0.3
-        num_gpus: 1
+        num_gpus: 0
         grad_clip: 10
         model:
           dim: 42

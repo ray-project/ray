@@ -293,11 +293,7 @@ class SyncSampler(SamplerInput):
             item = next(self._env_runner)
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
-                #if self.worker_is_eval:
-                #    print(f"putting item into queue (worker={self.worker_index}); size={self.metrics_queue.qsize()}")
             else:
-                if not self.worker_is_eval:
-                    print(f"returning item ({item.count})")
                 return item
 
     @override(SamplerInput)
