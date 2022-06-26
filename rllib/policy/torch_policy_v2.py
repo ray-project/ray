@@ -683,7 +683,7 @@ class TorchPolicyV2(Policy):
             )
 
         # 3) Load splits into the given buffer (consisting of n GPUs).
-        slices = [slice.to_device(self.devices[buffer_index]) for slice in slices]
+        slices = [slice.to_device(self.devices[i]) for i, slice in enumerate(slices)]
         self._loaded_batches[buffer_index] = slices
 
         # Return loaded samples per-device.
@@ -1194,6 +1194,8 @@ class TorchPolicyV2(Policy):
                     raise last_result[0] from last_result[1]
         # Multi device (GPU) case: Parallelize via threads.
         else:
+            [logger.logerr((i , j) for i,j in zip(self.model_gpu_towers,
+                                                  sample_batches))]
             threads = [
                 threading.Thread(
                     target=_worker, args=(shard_idx, model, sample_batch, device)
