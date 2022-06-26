@@ -51,7 +51,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -762,6 +762,8 @@ class Impala(Algorithm):
                 self.batch_being_built = []
 
         for batch in batches:
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
 
@@ -782,16 +784,14 @@ class Impala(Algorithm):
         return sample_batches
 
     def place_processed_samples_on_learner_queue(self) -> None:
-        self._counters["num_samples_added_to_queue"] = 0
+        #self._counters["num_samples_added_to_queue"] = 0
 
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:
                 self._learner_thread.inqueue.put(batch, block=False)
                 self.batches_to_place_on_learner.pop(0)
-                self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-                self._counters["num_samples_added_to_queue"] = batch.count
+                self._counters["num_samples_added_to_queue"] += batch.count
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1
 
@@ -860,9 +860,11 @@ class Impala(Algorithm):
         ]
         ready_processed_batches = []
         for batch in batches:
-            self._aggregator_actor_manager.call(
+            success = self._aggregator_actor_manager.call(
                 lambda actor, b: actor.process_episodes(b), fn_kwargs={"b": batch}
             )
+            if not success:
+                self._counters["num_times_no_aggregation_worker_available"] += 1
 
         waiting_processed_sample_batches: Dict[
             ActorHandle, List[ObjectRef]

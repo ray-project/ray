@@ -50,7 +50,7 @@ from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_st
 from ray.rllib.offline import get_offline_io_resource_bundles
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.utils import FilterManager, deep_update, merge_dicts
+from ray.rllib.utils import FilterManager, merge_dicts
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -102,14 +102,86 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
-from ray.tune.experiment.trial import ExportFormat
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.trial import ExportFormat
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util import log_once
 from ray.util.timer import _Timer
 
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
+
+
+def deep_update(
+    original: dict,
+    new_dict: dict,
+    new_keys_allowed: bool = False,
+    allow_new_subkey_list: Optional[List[str]] = None,
+    override_all_if_type_changes: Optional[List[str]] = None,
+    override_all_key_list: Optional[List[str]] = None,
+) -> dict:
+    """Updates original dict with values from new_dict recursively.
+
+    If new key is introduced in new_dict, then if new_keys_allowed is not
+    True, an error will be thrown. Further, for sub-dicts, if the key is
+    in the allow_new_subkey_list, then new subkeys can be introduced.
+
+    Args:
+        original: Dictionary with default values.
+        new_dict: Dictionary with values to be updated
+        new_keys_allowed: Whether new keys are allowed.
+        allow_new_subkey_list: List of keys that
+            correspond to dict values where new subkeys can be introduced.
+            This is only at the top level.
+        override_all_if_type_changes: List of top level
+            keys with value=dict, for which we always simply override the
+            entire value (dict), iff the "type" key in that value dict changes.
+        override_all_key_list: List of top level keys
+            for which we override the entire value if the key is in the new_dict.
+    """
+    allow_new_subkey_list = allow_new_subkey_list or []
+    override_all_if_type_changes = override_all_if_type_changes or []
+    override_all_key_list = override_all_key_list or []
+
+    for k, value in new_dict.items():
+        if k not in original and not new_keys_allowed:
+            raise Exception("Unknown config parameter `{}` ".format(k))
+
+        # Both orginal value and new one are dicts.
+        if (
+            isinstance(original.get(k), dict)
+            and isinstance(value, dict)
+            and k not in override_all_key_list
+        ):
+            # Check old type vs old one. If different, override entire value.
+            if (
+                k in override_all_if_type_changes
+                and "type" in value
+                and "type" in original[k]
+                and value["type"] != original[k]["type"]
+            ):
+                original[k] = value
+            # Allowed key -> ok to add new subkeys.
+            elif k in allow_new_subkey_list:
+                deep_update(
+                    original[k],
+                    value,
+                    True,
+                    override_all_key_list=override_all_key_list,
+                )
+            # Non-allowed key.
+            else:
+                deep_update(
+                    original[k],
+                    value,
+                    new_keys_allowed,
+                    override_all_key_list=override_all_key_list,
+                )
+        # Original value not a dict OR new value not a dict:
+        # Override entire value.
+        else:
+            original[k] = value
+    return original
 
 
 @DeveloperAPI
@@ -797,6 +869,9 @@ class Algorithm(Trainable):
                     # 1 episode per returned batch.
                     if unit == "episodes":
                         num_units_done += len(batches)
+                        for b in batches:
+                            for pb in b.policy_batches.values():
+                                assert np.sum(pb['dones']) == 1
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
@@ -813,11 +888,13 @@ class Algorithm(Trainable):
                     )
 
             if metrics is None:
+                print("Collecting evaluation metrics from eval workers ...")
                 metrics = collect_metrics(
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
                 )
+                print(f"num_episodes={metrics['episodes_this_iter']}")
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
             # TODO: Revmoe this key atv some point. Here for backward compatibility.

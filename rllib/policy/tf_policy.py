@@ -152,12 +152,12 @@ class TFPolicy(Policy):
 
         # Get devices to build the graph on.
         worker_idx = config.get("worker_index", 0)
-        if (
-            not config["_fake_gpus"]
-            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-        ):
-            num_gpus = 0
-        elif worker_idx == 0:
+        #if (
+        #    not config["_fake_gpus"]
+        #    and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+        #):
+        #    num_gpus = 0
+        if worker_idx == 0:
             num_gpus = config["num_gpus"]
         else:
             num_gpus = config["num_gpus_per_worker"]
@@ -189,16 +189,16 @@ class TFPolicy(Policy):
 
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
-                gpu_ids = ray.get_gpu_ids()
+            #if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
+            #    gpu_ids = ray.get_gpu_ids()
 
-            if len(gpu_ids) < num_gpus:
-                raise ValueError(
-                    "TFPolicy was not able to find enough GPU IDs! Found "
-                    f"{gpu_ids}, but num_gpus={num_gpus}."
-                )
+            #if len(gpu_ids) < num_gpus:
+            #    raise ValueError(
+            #        "TFPolicy was not able to find enough GPU IDs! Found "
+            #        f"{gpu_ids}, but num_gpus={num_gpus}."
+            #    )
 
-            self.devices = [f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus]
+            self.devices = [f"/gpu:{i}" for i in range(num_gpus)]
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
