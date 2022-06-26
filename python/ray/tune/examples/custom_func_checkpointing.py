@@ -3,12 +3,12 @@
 # checkpoint through ``ray.air.session`` APIs.
 import os
 import time
-import json
 import argparse
 
 from ray import tune
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_FILE_NAME
+from ray import cloudpickle as pickle
 
 
 def evaluation_fn(step, width, height):
@@ -69,6 +69,8 @@ if __name__ == "__main__":
         },
     )
     print("Best hyperparameters: ", analysis.best_config)
-    print("Best checkpoint directory: ", analysis.best_checkpoint)
-    with open(os.path.join(analysis.best_checkpoint, "checkpoint"), "r") as f:
-        print("Best checkpoint: ", json.load(f))
+    best_checkpoint = analysis.best_checkpoint
+    with best_checkpoint.as_directory() as best_ckpt_dir:
+        print("Best checkpoint directory: ", best_ckpt_dir)
+        with open(os.path.join(best_ckpt_dir, _DICT_CHECKPOINT_FILE_NAME), "rb") as f:
+            print("Best checkpoint: ", pickle.load(f))

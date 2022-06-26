@@ -245,7 +245,7 @@ It wraps around another scheduler and uses its decisions.
     by calling ``Trainable.trial_resources``.
 
 * If you are using the functional API for tuning, the current trial resources can be
-    obtained by calling `session.get_trial_resources()` inside the training function.
+    obtained by calling `tune.get_trial_resources()` inside the training function.
     The function should be able to :ref:`load and save checkpoints <tune-checkpoint-syncing>`
     (the latter preferably every iteration).
 

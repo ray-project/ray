@@ -361,7 +361,7 @@ class DataParallelTrainer(BaseTrainer):
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_results = results[0]
 
-            session.report(**first_worker_results)
+            session.report(first_worker_results)
 
         # Shutdown workers.
         backend_executor.shutdown()

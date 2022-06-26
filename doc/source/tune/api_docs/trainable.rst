@@ -5,7 +5,7 @@
 .. TODO: Reusing actors and advanced resources allocation seem ill-placed.
 
 Training (tune.Trainable, session.report)
-======================================
+==========================================
 
 Training can be done with either a **Class API** (``tune.Trainable``) or **function API** (``session.report``).
 
