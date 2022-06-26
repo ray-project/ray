@@ -61,13 +61,13 @@ class TensorflowTrainer(DataParallelTrainer):
             train.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            train.get_world_size()
+            train.world_size()
 
             # Returns the rank of this worker.
-            train.get_world_rank()
+            train.world_rank()
 
             # Returns the rank of the worker on the current node.
-            train.get_local_rank()
+            train.local_rank()
 
     You can also use any of the :ref:`TensorFlow specific function utils
     <train-api-tensorflow-utils>`.
