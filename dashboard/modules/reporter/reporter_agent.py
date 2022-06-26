@@ -33,6 +33,10 @@ IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 # disk usage defined as the result of running psutil.disk_usage("/")
 # in the Ray container.
 ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") == "1"
+# Try to determine if we're in a container.
+IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
+# Using existence of /sys/fs/cgroup as the criterion is consistent with
+# Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
 
 try:
     import gpustat.core as gpustat
@@ -205,13 +209,24 @@ class ReporterAgent(
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
-        if IN_KUBERNETES_POD:
-            # psutil does not compute this correctly when in a K8s pod.
-            # Use ray._private.utils instead.
-            cpu_count = ray._private.utils.get_num_cpus()
-            self._cpu_counts = (cpu_count, cpu_count)
+
+        if IN_KUBERNETES_POD or IN_CONTAINER:
+            # psutil does not give a meaningful logical cpu count when in a K8s pod, or
+            # in a container in general.
+            # Use ray._private.utils for this instead.
+            logical_cpu_count = ray._private.utils.get_num_cpus(
+                override_docker_cpu_warning=True
+            )
+            # (Override the docker warning to avoid dashboard log spam.)
+
+            # The dashboard expects a physical CPU count as well.
+            # This is not always meaningful in a container, but we will go ahead
+            # and give the dashboard what it wants using psutil.
+            physical_cpu_count = psutil.cpu_count(logical=False)
         else:
-            self._cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
+            logical_cpu_count = psutil.cpu_count()
+            physical_cpu_count = psutil.cpu_count(logical=False)
+        self._cpu_counts = (logical_cpu_count, physical_cpu_count)
 
         self._ip = dashboard_agent.ip
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]

@@ -215,14 +215,15 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         5. Autoscaler recognizes GPU annotations and Ray custom resources.
         6. Autoscaler and operator ignore pods marked for deletion.
         7. Autoscaler logs work. Autoscaler events are piped to the driver.
-
-        Items 1. and 2. protect the example in the documentation.
-        Items 3. and 4. protect the autoscaler's ability to respond to Ray CR update.
+        8. Ray utils show correct resource limits in the head container.
 
         Tests the following modes of interaction with a Ray cluster on K8s:
         1. kubectl exec
         2. Ray Client
         3. Ray Job Submission
+
+        TODO (Dmitri): Split up the test logic.
+        Too much is stuffed into this one test case.
 
         Resources requested by this test are safely within the bounds of an m5.xlarge
         instance.
@@ -261,6 +262,18 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             pod_name_filter=HEAD_POD_PREFIX, namespace=RAY_CLUSTER_NAMESPACE
         )
         assert head_pod, "Could not find the Ray head pod."
+
+        # Confirm head pod resource allocation.
+        # (This is a misplaced test of Ray's resource detection in containers.
+        # See the TODO in the docstring.)
+        logger.info("Confirming head pod resource allocation.")
+        out = kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
+            script_name="check_cpu_and_memory.py",
+            pod=head_pod,
+            container="ray-head",
+            namespace="default",
+        )
+
         # Scale-up
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
