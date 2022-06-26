@@ -797,9 +797,11 @@ class Algorithm(Trainable):
                     # 1 episode per returned batch.
                     if unit == "episodes":
                         num_units_done += len(batches)
-                        for b in batches:#TODO: make sure all batches are exactly one episoe
-                            assert b["dones"][-1] and np.sum(b["dones"]) == 1
-                    # n timesteps per returned batch.
+                        # Make sure all batches are exactly one episode.
+                        for ma_batch in batches:
+                            ma_batch.as_multi_agent()
+                            for batch in ma_batch.policy_batches.values():
+                                assert np.sum(batch[SampleBatch. # n timesteps per returned batch.
                     else:
                         num_units_done += (
                             _agent_steps if self._by_agent_steps else _env_steps

@@ -801,7 +801,6 @@ class Impala(Algorithm):
         return sample_batches
 
     def place_processed_samples_on_learner_queue(self) -> None:
-        #print(f"batches to place on learner = {len(self.batches_to_place_on_learner)}")
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:
