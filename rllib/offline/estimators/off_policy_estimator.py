@@ -1,6 +1,5 @@
 import logging
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
@@ -14,7 +13,7 @@ class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
     @DeveloperAPI
-    def __init__(self, name: str, policy: Policy, gamma: float):
+    def __init__(self, config: Dict):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
@@ -22,10 +21,9 @@ class OffPolicyEstimator:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
         """
-        self.name = name
-        self.policy = policy
-        self.gamma = gamma
-        self.new_estimates = {}
+        self.name = config["name"]
+        self.policy = config["policy"]
+        self.gamma = config["gamma"]
 
     @DeveloperAPI
     def estimate(self, batch: SampleBatchType) -> Dict[str, List]:

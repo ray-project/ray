@@ -64,23 +64,31 @@ class TestOPE(unittest.TestCase):
                     "wis": {"type": WeightedImportanceSampling},
                     "dm_qreg": {
                         "type": DirectMethod,
-                        "q_model_type": "qreg",
-                        **cls.model_config,
+                        "q_model": {
+                            "type": "qreg",
+                            **cls.model_config,
+                        },
                     },
                     "dm_fqe": {
                         "type": DirectMethod,
-                        "q_model_type": "fqe",
-                        **cls.model_config,
+                        "q_model": {
+                            "type": "fqe",
+                            **cls.model_config,
+                        },
                     },
                     "dr_qreg": {
                         "type": DoublyRobust,
-                        "q_model_type": "qreg",
-                        **cls.model_config,
+                        "q_model": {
+                            "type": "qreg",
+                            **cls.model_config,
+                        },
                     },
                     "dr_fqe": {
                         "type": DoublyRobust,
-                        "q_model_type": "fqe",
-                        **cls.model_config,
+                        "q_model": {
+                            "type": "fqe",
+                            **cls.model_config,
+                        },
                     },
                 },
             )
@@ -207,6 +215,10 @@ class TestOPE(unittest.TestCase):
         results = self.algo.evaluate()
         print(results["evaluation"]["off_policy_estimator"])
         print("\n\n\n")
+
+    def test_ope_with_tune(self):
+        # TODO (Rohan138): Test with tune.run and search space
+        pass
 
     def test_multiple_inputs(self):
         # TODO (Rohan138): Test with multiple input files

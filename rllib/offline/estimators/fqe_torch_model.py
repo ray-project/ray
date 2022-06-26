@@ -1,6 +1,6 @@
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
-from typing import List, Union
+from typing import List, Union, Dict
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -103,6 +103,9 @@ class FQETorchModel:
         """Resets/Reinintializes the model weights."""
         self.q_model.apply(self.initializer)
 
+    def set_batch(self, batch: SampleBatch) -> None:
+        self.batch = batch
+
     def step(self):
         minibatch_losses = []
         self.batch.shuffle()
@@ -153,9 +156,6 @@ class FQETorchModel:
         self.update_target()
         return iter_loss
 
-    def set_batch(self, batch: SampleBatch) -> None:
-        self.batch = batch
-
     def train_q(self, batch: SampleBatch) -> TensorType:
         """Trains self.q_model using FQE loss on given batch.
 
@@ -185,7 +185,7 @@ class FQETorchModel:
         else return Q-values for all actions for each observation in `obs`.
         """
         obs = torch.tensor(obs, device=self.device)
-        q_values, _ = self.q_model({"obs": obs}, [], None)
+        q_values, _ = self.target_q_model({"obs": obs}, [], None)
         if actions is not None:
             actions = torch.tensor(actions, device=self.device, dtype=int)
             q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
@@ -211,7 +211,7 @@ class FQETorchModel:
         # target Q network, using (soft) tau-synching.
         tau = tau or self.tau
         model_state_dict = self.q_model.state_dict()
-        # Support partial (soft) synching.
+        # Support partial (soft) syncing.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
         target_state_dict = self.target_q_model.state_dict()
         model_state_dict = {
@@ -220,3 +220,10 @@ class FQETorchModel:
         }
 
         self.target_q_model.load_state_dict(model_state_dict)
+
+    def get_state_dict(self) -> Dict:
+        return self.target_q_model.state_dict()
+
+    def set_state_dict(self, state_dict: Dict):
+        self.q_model.load_state_dict(state_dict)
+        self.target_q_model.load_state_dict(state_dict)

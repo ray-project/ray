@@ -1,7 +1,6 @@
 import logging
-from typing import Tuple, Generator, List, Dict
+from typing import Tuple, List, Dict, Union
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
-from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
@@ -11,6 +10,14 @@ from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from gym.spaces import Discrete
 import numpy as np
+import datetime
+import os
+import ray
+from ray.tune.result import DEFAULT_RESULTS_DIR
+import tempfile
+
+from ray.tune import Trainable
+from ray.tune.logger import UnifiedLogger
 
 torch, nn = try_import_torch()
 
@@ -22,11 +29,11 @@ def train_test_split(
     batch: SampleBatchType,
     train_test_split_val: float = 0.0,
     k: int = 0,
-) -> Generator[Tuple[List[SampleBatch]], None, None]:
+) -> Tuple[List[List[SampleBatch]], List[List[SampleBatch]]]:
     """Utility function to split a batch into training and evaluation episodes.
 
-    This function returns an iterator with either a train/test split or
-    a k-fold cross validation generator over episodes from the given batch.
+    This function returns two lists with either a train/test split or
+    a k-fold cross validation split over episodes from the given batch.
     By default, `k` is set to 0.0, which sets eval_batch = batch
     and train_batch to an empty SampleBatch.
 
@@ -41,21 +48,16 @@ def train_test_split(
     Returns:
         A tuple with two SampleBatches (eval_batch, train_batch)
     """
-    if not train_test_split_val and not k:
-        logger.log(
-            "`train_test_split_val` and `k` are both 0;" "not generating training batch"
-        )
-        yield [batch], [SampleBatch()]
-        return
     episodes = batch.split_by_episode()
     n_episodes = len(episodes)
     # Train-test split
     if train_test_split_val:
         train_episodes = episodes[: int(n_episodes * train_test_split_val)]
         eval_episodes = episodes[int(n_episodes * train_test_split_val) :]
-        yield eval_episodes, train_episodes
-        return
+        return [eval_episodes], [train_episodes]
     # k-fold cv
+    eval_batches = []
+    train_batches = []
     assert n_episodes >= k, f"Not enough eval episodes in batch for {k}-fold cv!"
     n_fold = n_episodes // k
     for i in range(k):
@@ -65,59 +67,52 @@ def train_test_split(
         else:
             # Append remaining episodes onto the last eval_episodes
             eval_episodes = episodes[i * n_fold :]
-        yield eval_episodes, train_episodes
-    return
+        eval_batches.append(eval_episodes)
+        train_batches.append(train_episodes)
+    return eval_batches, train_batches
 
 
 @DeveloperAPI
-class DirectMethod(OffPolicyEstimator):
+class DirectMethod(Trainable, OffPolicyEstimator):
     """The Direct Method estimator.
 
     DM estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
-    @override(OffPolicyEstimator)
-    def __init__(
-        self,
-        name: str,
-        policy: Policy,
-        gamma: float,
-        q_model_type: str = "fqe",
-        train_test_split_val: float = 0.0,
-        k: int = 0,
-        **kwargs,
-    ):
-        """
-        Initializes a Direct Method OPE Estimator.
+    @DeveloperAPI
+    def __init__(self, config):
+        OffPolicyEstimator.__init__(config["name"], config["policy"], config["gamma"])
+        # Setup logger
+        name = config["name"]
+        timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+        logdir_prefix = "{}_{}".format(name, timestr)
+        if not os.path.exists(DEFAULT_RESULTS_DIR):
+            os.makedirs(DEFAULT_RESULTS_DIR)
+        logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
 
-        Args:
-            name: string to save OPE results under
-            policy: Policy to evaluate.
-            gamma: Discount factor of the environment.
-            q_model_type: Either "fqe" for Fitted Q-Evaluation
-                or "qreg" for Q-Regression, or a custom model that implements:
-                - `estimate_q(states, actions)`
-                - `estimate_v(states, action_probs)`
-            train_test_split_val: Split the batch into a training batch with
-            `train_test_split_val * n_episodes` episodes and an evaluation batch
-            with `(1 - train_test_split_val) * n_episodes` episodes. If not
-            specified, use `k` for k-fold cross validation instead.
-            k: k-fold cross validation for training model and evaluating OPE.
-            kwargs: Optional arguments for the specified Q model.
-        """
+        def logger_creator(config):
+            """Creates a Unified logger with the default prefix."""
+            return UnifiedLogger(config, logdir, loggers=None)
 
-        super().__init__(name, policy, gamma)
+        Trainable.__init__(self, config=config, logger_creator=logger_creator)
+
+    @override(Trainable)
+    def setup(self, config: Dict):
         # TODO (Rohan138): Add support for continuous action spaces
         assert isinstance(
-            policy.action_space, Discrete
+            self.policy.action_space, Discrete
         ), "DM Estimator only supports discrete action spaces!"
         assert (
-            policy.config["batch_mode"] == "complete_episodes"
+            self.policy.config["batch_mode"] == "complete_episodes"
         ), "DM Estimator only supports `batch_mode`=`complete_episodes`"
 
-        # TODO (Rohan138): Add support for TF!
-        if policy.framework == "torch":
+        # TODO (Rohan138): Add support for TF
+        # TODO (Rohan138): Create config objects for OPE
+        q_model_config = config.get("q_model", {"type": "fqe"})
+        q_model_type = q_model_config.pop("type")
+        if self.policy.framework == "torch":
             if q_model_type == "qreg":
-                model_cls = QRegTorchModel
+                # TODO (Rohan138): Rewrite QReg for Trainable
+                raise QRegTorchModel
             elif q_model_type == "fqe":
                 model_cls = FQETorchModel
             else:
@@ -133,38 +128,108 @@ class DirectMethod(OffPolicyEstimator):
                 "estimator only supports `policy.framework`=`torch`"
             )
 
+        # Initialize training config
+        self.n_iters = config.get("n_iters", 160)
+        self.delta = config.get("delta", 1e-4)
+        self.train_test_split_val = config.get("train_test_split_val", 0.0)
+        assert (
+            isinstance(self.train_test_split_val, float)
+            and 0.0 <= self.train_test_split_val < 1.0
+        )
+        self.k = config.get("k", 1)
+        assert isinstance(self.k, int) and self.k >= 1
+        assert self.train_test_split_val != 0.0 or self.k != 1, (
+            f"Either train_test_split_val: {self.train_test_split_val} != 0"
+            f" or k: {self.k} != 1 for the {self.__class__.__name__} estimator!"
+        )
+
+        # TODO (Rohan138): Change {"type": ..., **config} design across RLlib
+        # to {"type": ..., "config": {...}}
+        # Create models
         self.model = model_cls(
-            policy=policy,
-            gamma=gamma,
-            **kwargs,
+            policy=self.policy,
+            gamma=self.gamma,
+            **q_model_config,
         )
-        self.train_test_split_val = train_test_split_val
-        self.k = k
-        assert train_test_split_val != 0.0 or k != 0, (
-            f"Both train_test_split_val: {train_test_split_val} and k: {k} "
-            f"cannot be 0 for the {self.__class__.__name__} estimator!"
+        self.remote_models = []
+        remote_model_cls = ray.remote(model_cls)
+        self.remote_models = [
+            remote_model_cls.remote(
+                policy=self.policy, gamma=self.gamma, **q_model_config
+            )
+            for _ in range(self.k - 1)
+        ]
+
+        # If running with tune.run(), batch will be passed in to init config
+        if config["batch"]:
+            self.reset_config(config)
+
+    @override(Trainable)
+    def step(self):
+        losses = [self.model.step()]
+        losses.extend(ray.get([m.step.remote() for m in self.remote_models]))
+        loss = np.mean(losses)
+        done = self.iteration == self.n_iters - 1 or loss < self.delta
+        return {"loss": loss, "done": done}
+
+    @override(Trainable)
+    def reset_config(self, new_config: Dict) -> bool:
+        # Allows reusing remote models as ray actors
+        self.eval_batches, train_batches = train_test_split(
+            new_config["batch"],
+            self.train_test_split_val,
+            self.k,
         )
+        self.model.set_batch(train_batches[0])
+        for i, m in self.remote_models:
+            m.set_batch.remote(train_batches[i + 1])
+        return True
+
+    @override(Trainable)
+    def cleanup(self):
+        for model in self.remote_models:
+            model.__ray_terminate__.remote()
+
+    @override(Trainable)
+    def save_checkpoint(self, checkpoint_dir: str):
+        checkpoint_path = os.path.join(
+            checkpoint_dir, "checkpoint-{}".format(self.iteration)
+        )
+        model_state_dicts = [self.model.get_state_dict()]
+        model_state_dicts.extend(
+            ray.get([m.get_state_dict.remote() for m in self.remote_models])
+        )
+        torch.save(model_state_dicts, checkpoint_path)
+        return checkpoint_path
+
+    @override(Trainable)
+    def load_checkpoint(self, checkpoint: Union[Dict, str]):
+        model_state_dicts = torch.load(checkpoint)
+        self.model.set_state_dict(model_state_dicts[0])
+        for idx, m in enumerate(self.remote_models):
+            m.set_state_dict(model_state_dicts[idx + 1])
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
         self.check_can_estimate_for(batch)
+
+        # Split data into train and eval batches and train model(s)
+        self.reset_config(batch)
+        for _ in range(self.n_iters):
+            results = self.train()
+            if results["done"]:
+                break
+        return self.evaluate()
+
+    def evaluate(self) -> Dict[str, List]:
+        # Calculate direct method OPE estimates
         estimates = {"v_old": [], "v_new": [], "v_gain": []}
-        # Split data into train and test batches
-        for train_episodes, test_episodes in train_test_split(
-            batch,
-            self.train_test_split_val,
-            self.k,
-        ):
-
-            # Train Q-function
-            if train_episodes:
-                # Reinitialize model
-                self.model.reset()
-                train_batch = SampleBatch.concat_samples(train_episodes)
-                self.model.train_q(train_batch)
-
-            # Calculate direct method OPE estimates
-            for episode in test_episodes:
+        for idx, eval_episodes in enumerate(self.eval_batches):
+            if idx != 0:
+                self.model.set_state_dict(
+                    self.remote_models[idx - 1].get_state_dict.remote()
+                )
+            for episode in eval_episodes:
                 rewards = episode["rewards"]
                 v_old = 0.0
                 v_new = 0.0

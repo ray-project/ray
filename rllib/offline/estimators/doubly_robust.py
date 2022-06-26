@@ -1,6 +1,5 @@
-from ray.rllib.offline.estimators.direct_method import DirectMethod, train_test_split
+from ray.rllib.offline.estimators.direct_method import DirectMethod
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.numpy import convert_to_numpy
 import numpy as np
@@ -14,25 +13,15 @@ class DoublyRobust(DirectMethod):
     DR estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
     @override(DirectMethod)
-    def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
-        self.check_can_estimate_for(batch)
+    def evaluate(self) -> Dict[str, List]:
         estimates = {"v_old": [], "v_new": [], "v_gain": []}
-        # Split data into train and test batches
-        for train_episodes, test_episodes in train_test_split(
-            batch,
-            self.train_test_split_val,
-            self.k,
-        ):
-
-            # Train Q-function
-            if train_episodes:
-                # Reinitialize model
-                self.model.reset()
-                train_batch = SampleBatch.concat_samples(train_episodes)
-                self.model.train_q(train_batch)
-
+        for idx, eval_episodes in enumerate(self.eval_batches):
+            if idx != 0:
+                self.model.set_state_dict(
+                    self.remote_models[idx - 1].get_state_dict.remote()
+                )
             # Calculate doubly robust OPE estimates
-            for episode in test_episodes:
+            for episode in eval_episodes:
                 rewards, old_prob = episode["rewards"], episode["action_prob"]
                 new_prob = np.exp(self.action_log_likelihood(episode))
 

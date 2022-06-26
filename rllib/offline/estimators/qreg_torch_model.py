@@ -1,6 +1,6 @@
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
-from typing import List, Union
+from typing import List, Union, Dict
 import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -90,21 +90,13 @@ class QRegTorchModel:
         """Resets/Reinintializes the model weights."""
         self.q_model.apply(self.initializer)
 
-    def train_q(self, batch: SampleBatch) -> TensorType:
-        """Trains self.q_model using Q-Reg loss on given batch.
-
-        Args:
-            batch: A SampleBatch of episodes to train on
-
-        Returns:
-            A list of losses for each training iteration
-        """
-        losses = []
-        obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
-        actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
-        ps = torch.zeros([batch.count], device=self.device)
-        returns = torch.zeros([batch.count], device=self.device)
-        discounts = torch.zeros([batch.count], device=self.device)
+    def set_batch(self, batch: SampleBatch) -> None:
+        self.batch = batch
+        self.obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
+        self.actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
+        self.ps = torch.zeros([batch.count], device=self.device)
+        self.returns = torch.zeros([batch.count], device=self.device)
+        self.discounts = torch.zeros([batch.count], device=self.device)
 
         # Neccessary if policy uses recurrent/attention model
         num_state_inputs = 0
@@ -137,12 +129,12 @@ class QRegTorchModel:
             # calculate importance ratios and returns
 
             for t in range(episode.count):
-                discounts[eps_begin + t] = self.gamma ** t
+                self.discounts[eps_begin + t] = self.gamma ** t
                 if t == 0:
                     pt_prev = 1.0
                 else:
-                    pt_prev = ps[eps_begin + t - 1]
-                ps[eps_begin + t] = pt_prev * prob_ratio[eps_begin + t]
+                    pt_prev = self.ps[eps_begin + t - 1]
+                self.ps[eps_begin + t] = pt_prev * prob_ratio[eps_begin + t]
 
                 # O(n^3)
                 # ret = 0
@@ -161,31 +153,49 @@ class QRegTorchModel:
                     ret = rewards[eps_begin + t_] + self.gamma * rho * ret
                     rho = prob_ratio[eps_begin + t_]
 
-                returns[eps_begin + t] = ret
+                self.returns[eps_begin + t] = ret
 
             # Update before next episode
             eps_begin = eps_end
 
-        indices = np.arange(batch.count)
+    def step(self):
+        indices = np.random.permutation(self.batch.count)
+        minibatch_losses = []
+        for idx in range(0, self.batch.count, self.batch_size):
+            idxs = indices[idx : idx + self.batch_size]
+            q_values, _ = self.q_model({"obs": self.obs[idxs]}, [], None)
+            q_acts = torch.gather(
+                q_values, -1, self.actions[idxs].unsqueeze(-1)
+            ).squeeze(-1)
+            loss = (
+                self.discounts[idxs]
+                * self.ps[idxs]
+                * (self.returns[idxs] - q_acts) ** 2
+            )
+            loss = torch.mean(loss)
+            self.optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad.clip_grad_norm_(
+                self.q_model.variables(), self.clip_grad_norm
+            )
+            self.optimizer.step()
+            minibatch_losses.append(loss.item())
+        iter_loss = sum(minibatch_losses) / len(minibatch_losses)
+        return iter_loss
+
+    def train_q(self, batch: SampleBatch) -> TensorType:
+        """Trains self.q_model using Q-Reg loss on given batch.
+
+        Args:
+            batch: A SampleBatch of episodes to train on
+
+        Returns:
+            A list of losses for each training iteration
+        """
+        losses = []
+        self.set_batch(batch)
         for _ in range(self.n_iters):
-            minibatch_losses = []
-            np.random.shuffle(indices)
-            for idx in range(0, batch.count, self.batch_size):
-                idxs = indices[idx : idx + self.batch_size]
-                q_values, _ = self.q_model({"obs": obs[idxs]}, [], None)
-                q_acts = torch.gather(
-                    q_values, -1, actions[idxs].unsqueeze(-1)
-                ).squeeze(-1)
-                loss = discounts[idxs] * ps[idxs] * (returns[idxs] - q_acts) ** 2
-                loss = torch.mean(loss)
-                self.optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad.clip_grad_norm_(
-                    self.q_model.variables(), self.clip_grad_norm
-                )
-                self.optimizer.step()
-                minibatch_losses.append(loss.item())
-            iter_loss = sum(minibatch_losses) / len(minibatch_losses)
+            iter_loss = self.step()
             losses.append(iter_loss)
             if iter_loss < self.delta:
                 break
@@ -222,3 +232,9 @@ class QRegTorchModel:
         action_probs = torch.tensor(action_probs, device=self.device)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values.detach()
+
+    def get_state_dict(self) -> Dict:
+        return self.q_model.state_dict()
+
+    def set_state_dict(self, state_dict: Dict):
+        self.q_model.load_state_dict(state_dict)
