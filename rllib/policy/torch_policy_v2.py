@@ -751,17 +751,17 @@ class TorchPolicyV2(Policy):
             )
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
-        error_str = str(
+        log_str = str(
             {
                 "tensor_devices": [t["obs"].get_device() for t in device_batches],
                 "model_devices": [next(m.parameters()).device for m in
                                   self.model_gpu_towers],
-                "multi_gpu_components": zip(self.model_gpu_towers, device_batches,
-                                            self.devices),
+                "multi_gpu_components": list(zip(self.model_gpu_towers, device_batches,
+                                            self.devices)),
             }
         )
 
-        raise Exception(error_str)
+        logger.warning("MyMarker" + log_str)
 
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
