@@ -751,16 +751,6 @@ class TorchPolicyV2(Policy):
             )
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
-        log_str = str(
-            {
-                "tensor_devices": [t["obs"].get_device() for t in device_batches],
-                "model_devices": [next(m.parameters()).device for m in
-                                  self.model_gpu_towers],
-            }
-        )
-
-        logger.warning("tensors_and_model_devices" + log_str)
-
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
 
@@ -1112,21 +1102,6 @@ class TorchPolicyV2(Policy):
 
         def _worker(shard_idx, model, sample_batch, device):
             torch.set_grad_enabled(grad_enabled)
-            #
-            # log_str = str(
-            #     {
-            #         "shard_idx": shard_idx,
-            #         "tensor_devices": [sample_batch["obs"].get_device()],
-            #         "model_device": next(model.parameters()).device,
-            #         "target_model_device": next(self.target_models[model].parameters()).device,
-            #         "device": device,
-            #         "action_distribution": self.dist_class,
-            #
-            #     }
-            # )
-
-            # logger.warning("parallel_calc_tensor_and_model_devices" + log_str)
-
             try:
                 with NullContextManager() if device.type == "cpu" else torch.cuda.device(  # noqa: E501
                     device
