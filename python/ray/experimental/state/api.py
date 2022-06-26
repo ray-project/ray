@@ -218,17 +218,22 @@ class StateApiClient(SubmissionClient):
         result = self._make_http_get_request(
             endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
         )
+
+        # Empty result
+        if len(result) == 0:
+            return None
+
         if resource == StateResource.OBJECTS:
             # NOTE(rickyyx):
             # There might be multiple object entries for a single object id
             # because a single object could be referenced at different places
             # e.g. pinned as local variable, used as parameter
-            return [obj_entry for obj_id, obj_entry in result.items() if obj_id == id]
+            return result
 
         # For the rest of the resources, there should only be a single entry
         # for a particular id.
-        assert len(result) <= 1
-        return result.get(id, None)
+        assert len(result) == 1
+        return result[0]
 
     def list(
         self, resource: StateResource, options: ListApiOptions, _explain: bool = False
