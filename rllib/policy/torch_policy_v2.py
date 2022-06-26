@@ -1100,6 +1100,10 @@ class TorchPolicyV2(Policy):
         results = {}
         grad_enabled = torch.is_grad_enabled()
 
+        logger.warning("MyMarker")
+        [logger.warning(i, j) for i, j in zip(self.model_gpu_towers,
+                                               sample_batches)]
+
         def _worker(shard_idx, model, sample_batch, device):
             torch.set_grad_enabled(grad_enabled)
             try:
@@ -1194,8 +1198,6 @@ class TorchPolicyV2(Policy):
                     raise last_result[0] from last_result[1]
         # Multi device (GPU) case: Parallelize via threads.
         else:
-            [logger.logerr((i , j) for i,j in zip(self.model_gpu_towers,
-                                                  sample_batches))]
             threads = [
                 threading.Thread(
                     target=_worker, args=(shard_idx, model, sample_batch, device)
