@@ -124,7 +124,7 @@ Because it's built on top of Ray, you can run it anywhere Ray can: on your lapto
 
 ## Learn More
 
-Check out {ref}`getting-started` and {doc}`key-concepts`, look at the {ref}`serve-faq`,
+Check out {ref}`getting-started` and {ref}`serve-key-concepts`, look at the {ref}`serve-faq`,
 or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
 
 
@@ -137,8 +137,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     **Getting Started**
     ^^^
 
-    Start with our quick start tutorials for :ref:`deploying a single model locally<getting-started>`, how to :ref:`convert an existing model into a Ray Serve deployment<converting-to-ray-serve-deployment>` .
-    These concrete examples will give you an idea of how to use Ray Serve.
+    Start with our quick start tutorials for :ref:`deploying a single model locally<getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment<converting-to-ray-serve-deployment>` .
 
     +++
     .. link-button:: getting-started
@@ -151,19 +150,19 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     ^^^
 
     Understand the key concepts behind Ray Serve.
-    Learn about :ref:`Deployment<serve-key-concepts-deployment>`, :ref:`how to query it<serve-key-concepts-query-deployment>` and the :ref:`Deployment Graph<serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
+    Learn about :ref:`Deployments<serve-key-concepts-deployment>`, :ref:`how to query them<serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph<serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
 
     +++
-    .. link-button:: key-concepts
+    .. link-button:: serve-key-concepts
         :type: ref
         :text: Learn Key Concepts
         :classes: btn-outline-info btn-block
     ---
 
-    **User Guide**
+    **User Guides**
     ^^^
-
-    Learn how to :ref:`manage deployments<managing-deployments>`, :ref:`handle dependencies<handling-dependencies>`, :ref:`call deployments via HTTP<serve-http>`, :ref:`call deployments from Python<serve-handle-explainer>`, :ref:`deploy, update, and monitor your application with Ray Serve<serve-deploy-tutorial>`, :ref:`serve multiple ML models<serve-ml-models>`, :ref:`debug and monitor your Serve applications<serve-monitoring>`.
+    Learn best practices for common patterns like :ref:`managing deployments<managing-deployments>`, how to call deployments :ref:`via HTTP<serve-http>` or :ref:`from Python<serve-handle-explainer>`.
+    Learn how to serve multiple ML models with :ref:`Model Ensemble<serve-model-ensemble>`, and how to :ref:`monitor your Serve applications<serve-monitoring>`.
 
     +++
     .. link-button:: serve-user-guides
@@ -175,7 +174,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     **Examples**
     ^^^
 
-    Follow the tutorials to learn how to integrate Ray Serve with :ref:`Keras and TensorFlow<serve-tensorflow-tutorial>`, :ref:`Scikit-Learn<serve-sklearn-tutorial>`, :ref:`RLlib<serve-rllib-tutorial>`. Learn how Ray Serve also integrates with :ref:`existing web applications<serve-web-server-integration-tutorial>`
+    Follow the tutorials to learn how to integrate Ray Serve with :ref:`Keras and TensorFlow<serve-tensorflow-tutorial>`, :ref:`Scikit-Learn<serve-sklearn-tutorial>`, and :ref:`RLlib<serve-rllib-tutorial>`. Learn how Ray Serve also integrates with :ref:`existing web applications<serve-web-server-integration-tutorial>`
 
     +++
     .. link-button:: serve-examples
@@ -196,7 +195,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         :classes: btn-outline-info btn-block
     ---
 
-    **API**
+    **API Reference**
     ^^^
 
     Get more in-depth information about the Ray Serve API.
