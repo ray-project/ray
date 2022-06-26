@@ -1,5 +1,6 @@
 import unittest
 import ray
+from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
@@ -18,7 +19,7 @@ import gym
 class TestOPE(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=8)
+        ray.init(num_cpus=8, local_mode=True)
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         train_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
@@ -221,10 +222,12 @@ class TestOPE(unittest.TestCase):
         results = self.algo.evaluate()
         print(results["evaluation"]["off_policy_estimator"])
         print("\n\n\n")
-
+    
+    @unittest.skip("Does not work yet!")
     def test_ope_with_tune(self):
         # TODO (Rohan138): Test with tune.run and search space
-        pass
+        config = self.ope_config
+        tune.run(DoublyRobust, config=config)
 
     def test_multiple_inputs(self):
         # TODO (Rohan138): Test with multiple input files
