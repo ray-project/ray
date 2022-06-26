@@ -42,7 +42,7 @@ def test_dedupe_downloads_list(workflow_start_regular):
         numbers = [ray.put(i) for i in range(5)]
         workflows = [identity.bind(numbers) for _ in range(100)]
 
-        workflow.create(gather.bind(*workflows)).run()
+        workflow.run(gather.bind(*workflows))
 
         ops = debug_store._logged_storage.get_op_counter()
         get_objects_count = 0
@@ -70,7 +70,7 @@ def test_dedupe_download_raw_ref(workflow_start_regular):
         ref = ray.put("hello")
         workflows = [identity.bind(ref) for _ in range(100)]
 
-        workflow.create(gather.bind(*workflows)).run()
+        workflow.run(gather.bind(*workflows))
 
         ops = debug_store._logged_storage.get_op_counter()
         get_objects_count = 0
@@ -107,7 +107,7 @@ def test_nested_workflow_no_download(workflow_start_regular):
         utils._alter_storage(debug_store)
 
         ref = ray.put("hello")
-        result = workflow.create(recursive.bind([ref], 10)).run()
+        result = workflow.run(recursive.bind([ref], 10))
 
         ops = debug_store._logged_storage.get_op_counter()
         get_objects_count = 0
@@ -140,7 +140,7 @@ def test_recovery_simple_1(workflow_start_regular):
     workflow_id = "test_recovery_simple_1"
     with pytest.raises(workflow.WorkflowExecutionError):
         # internally we get WorkerCrashedError
-        workflow.create(the_failed_step.bind("x")).run(workflow_id=workflow_id)
+        workflow.run(the_failed_step.bind("x"), workflow_id=workflow_id)
 
     assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
@@ -162,7 +162,7 @@ def test_recovery_simple_2(workflow_start_regular):
     workflow_id = "test_recovery_simple_2"
     with pytest.raises(workflow.WorkflowExecutionError):
         # internally we get WorkerCrashedError
-        workflow.create(simple.bind("x")).run(workflow_id=workflow_id)
+        workflow.run(simple.bind("x"), workflow_id=workflow_id)
 
     assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
@@ -196,7 +196,7 @@ def test_recovery_simple_3(workflow_start_regular):
     workflow_id = "test_recovery_simple_3"
     with pytest.raises(workflow.WorkflowExecutionError):
         # internally we get WorkerCrashedError
-        workflow.create(simple.bind("x")).run(workflow_id=workflow_id)
+        workflow.run(simple.bind("x"), workflow_id=workflow_id)
 
     assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
@@ -240,7 +240,7 @@ def test_recovery_complex(workflow_start_regular):
     workflow_id = "test_recovery_complex"
     with pytest.raises(workflow.WorkflowExecutionError):
         # internally we get WorkerCrashedError
-        workflow.create(complex.bind("x")).run(workflow_id=workflow_id)
+        workflow.run(complex.bind("x"), workflow_id=workflow_id)
 
     assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
@@ -281,8 +281,7 @@ def foo(x):
 
 if __name__ == "__main__":
     ray.init(storage="{tmp_path}")
-    workflow.init()
-    assert workflow.create(foo.bind(0)).run(workflow_id="cluster_failure") == 20
+    assert workflow.run(foo.bind(0), workflow_id="cluster_failure") == 20
 """
     )
     time.sleep(10)
@@ -320,8 +319,7 @@ def foo(x):
 
 if __name__ == "__main__":
     ray.init(storage="{str(workflow_dir)}")
-    workflow.init()
-    assert workflow.create(foo.bind(0)).run(workflow_id="cluster_failure") == 20
+    assert workflow.run(foo.bind(0), workflow_id="cluster_failure") == 20
 """
     )
     time.sleep(10)
@@ -346,7 +344,7 @@ def test_shortcut(workflow_start_regular):
         else:
             return 100
 
-    assert workflow.create(recursive_chain.bind(0)).run(workflow_id="shortcut") == 100
+    assert workflow.run(recursive_chain.bind(0), workflow_id="shortcut") == 100
     # the shortcut points to the step with output checkpoint
     store = workflow_storage.get_workflow_storage("shortcut")
     step_id = store.get_entrypoint_step_id()
@@ -361,7 +359,7 @@ def test_resume_different_storage(shutdown_only, tmp_path):
 
     ray.init(storage=str(tmp_path))
     workflow.init()
-    workflow.create(constant.bind()).run(workflow_id="const")
+    workflow.run(constant.bind(), workflow_id="const")
     assert ray.get(workflow.resume(workflow_id="const")) == 31416
 
 
