@@ -17,12 +17,14 @@ docsearch({
 });
 
 const searchInput = document.getElementById("search-input");
+const docUrlRegex = /\/(\w+)\/(\w+)\/.*/g;
 searchInput.addEventListener("keydown", function (e) {
     if (e.code === "Enter") {
         var searchForm = document.getElementsByClassName("bd-search")[0];
 
+        const [[pathname, lang, tag]] = window.location.pathname.matchAll(docUrlRegex);
         const text = searchInput.value;
-        searchForm.action = "https://docs.ray.io/en/latest/search.html?q=" + text;
+        searchForm.action = `https://docs.ray.io/${lang}/${tag}/search.html?q=${text}`;
 
         searchForm.submit();
     }
