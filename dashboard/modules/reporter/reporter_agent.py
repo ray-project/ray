@@ -215,7 +215,7 @@ class ReporterAgent(
             # in a container in general.
             # Use ray._private.utils for this instead.
             logical_cpu_count = ray._private.utils.get_num_cpus(
-                override_docker_warning=True
+                override_docker_cpu_warning=True
             )
             # (Override the docker warning to avoid dashboard log spam.)
 
