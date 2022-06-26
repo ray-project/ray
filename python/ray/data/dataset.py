@@ -2890,10 +2890,13 @@ class Dataset(Generic[T]):
             number of records.
         """
 
-        if self.count() > limit:
+        count = self.count()
+        if count > limit:
             raise ValueError(
-                "The dataset has more than the given limit of {} records. "
-                "Use ds.limit(N).to_pandas().".format(limit)
+                f"The dataset has more than the given limit of {limit} "
+                f"records: {count}. If you are sure that a DataFrame with "
+                f"{count} rows will fit in local memory, use "
+                f"ds.to_pandas(limit={count})."
             )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
@@ -3068,7 +3071,7 @@ class Dataset(Generic[T]):
             def __iter__(self):
                 return Iterator(self._blocks)
 
-        pipe = DatasetPipeline(Iterable(blocks), length=times or float("inf"))
+        pipe = DatasetPipeline(Iterable(blocks), False, length=times or float("inf"))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
@@ -3210,7 +3213,7 @@ class Dataset(Generic[T]):
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        pipe = DatasetPipeline(it, length=len(it._splits))
+        pipe = DatasetPipeline(it, False, length=len(it._splits))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
