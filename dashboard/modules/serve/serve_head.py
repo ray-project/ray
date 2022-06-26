@@ -13,7 +13,7 @@ routes = optional_utils.ClassMethodRouteTable
 
 
 # NOTE (shrekris-anyscale): This class uses delayed imports for all
-# Ray Serve-related modules. That way, users can use the Ray dashboard for
+# Ray Serve-related modules. That way, users can use the Ray dashboard agent for
 # non-Serve purposes without downloading Serve dependencies.
 class ServeAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
