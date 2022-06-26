@@ -32,6 +32,8 @@ class TestOPE(unittest.TestCase):
         n_eval_episodes = 20
         # Optional configs for the model-based estimators
         cls.model_config = {"train_test_split_val": 0.0, "k": 2, "n_iters": 10}
+        cls.fqe_config = {}
+        cls.qreg_config = {}
 
         config = (
             DQNConfig()
@@ -66,29 +68,33 @@ class TestOPE(unittest.TestCase):
                         "type": DirectMethod,
                         "q_model": {
                             "type": "qreg",
-                            **cls.model_config,
+                            **cls.qreg_config,
                         },
+                        **cls.model_config,
                     },
                     "dm_fqe": {
                         "type": DirectMethod,
                         "q_model": {
                             "type": "fqe",
-                            **cls.model_config,
+                            **cls.fqe_config,
                         },
+                        **cls.model_config,
                     },
                     "dr_qreg": {
                         "type": DoublyRobust,
                         "q_model": {
                             "type": "qreg",
-                            **cls.model_config,
+                            **cls.qreg_config,
                         },
+                        **cls.model_config,
                     },
                     "dr_fqe": {
                         "type": DoublyRobust,
                         "q_model": {
                             "type": "fqe",
-                            **cls.model_config,
+                            **cls.fqe_config,
                         },
+                        **cls.model_config,
                     },
                 },
             )
@@ -139,74 +145,74 @@ class TestOPE(unittest.TestCase):
 
     def test_is(self):
         name = "is"
-        estimator = ImportanceSampling(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-        )
+        config = {}
+        config["name"] = name
+        config["policy"] = self.algo.get_policy()
+        config["gamma"] = self.gamma
+        estimator = ImportanceSampling(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])
         self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_wis(self):
         name = "wis"
-        estimator = WeightedImportanceSampling(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-        )
+        config = {}
+        config["name"] = name
+        config["policy"] = self.algo.get_policy()
+        config["gamma"] = self.gamma
+        estimator = WeightedImportanceSampling(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])
         self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_dm_qreg(self):
         name = "dm_qreg"
-        estimator = DirectMethod(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_type="qreg",
-            **self.model_config,
-        )
+        config = {}
+        config["name"] = name
+        config["policy"] = self.algo.get_policy()
+        config["gamma"] = self.gamma
+        config["q_model"] = {"type": "qreg", **self.qreg_config}
+        config.update(self.model_config)
+        estimator = DirectMethod(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])
         self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_dm_fqe(self):
         name = "dm_fqe"
-        estimator = DirectMethod(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_type="fqe",
-            **self.model_config,
-        )
+        config = {}
+        config["name"] = name
+        config["policy"] = self.algo.get_policy()
+        config["gamma"] = self.gamma
+        config["q_model"] = {"type": "fqe", **self.fqe_config}
+        config.update(self.model_config)
+        estimator = DirectMethod(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])
         self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_dr_qreg(self):
         name = "dr_qreg"
-        estimator = DoublyRobust(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_type="qreg",
-            **self.model_config,
-        )
+        config = {}
+        config["name"] = name
+        config["policy"] = self.algo.get_policy()
+        config["gamma"] = self.gamma
+        config["q_model"] = {"type": "qreg", **self.qreg_config}
+        config.update(self.model_config)
+        estimator = DoublyRobust(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])
         self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_dr_fqe(self):
         name = "dr_fqe"
-        estimator = DoublyRobust(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_type="fqe",
-            **self.model_config,
-        )
+        config = {}
+        config["name"] = name
+        config["policy"] = self.algo.get_policy()
+        config["gamma"] = self.gamma
+        config["q_model"] = {"type": "fqe", **self.fqe_config}
+        config.update(self.model_config)
+        estimator = DoublyRobust(config)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = np.mean(estimates["v_new"])
         self.std_ret[name] = np.std(estimates["v_new"])

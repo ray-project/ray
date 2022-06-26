@@ -10,7 +10,7 @@ from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from gym.spaces import Discrete
 import numpy as np
-import datetime
+from datetime import datetime
 import os
 import ray
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -80,11 +80,10 @@ class DirectMethod(Trainable, OffPolicyEstimator):
 
     @DeveloperAPI
     def __init__(self, config):
-        OffPolicyEstimator.__init__(config["name"], config["policy"], config["gamma"])
+        OffPolicyEstimator.__init__(self, config)
         # Setup logger
-        name = config["name"]
         timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-        logdir_prefix = "{}_{}".format(name, timestr)
+        logdir_prefix = "{}_{}".format(self.name, timestr)
         if not os.path.exists(DEFAULT_RESULTS_DIR):
             os.makedirs(DEFAULT_RESULTS_DIR)
         logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
@@ -93,6 +92,7 @@ class DirectMethod(Trainable, OffPolicyEstimator):
             """Creates a Unified logger with the default prefix."""
             return UnifiedLogger(config, logdir, loggers=None)
 
+        config.pop("policy")  # Neccessary for deepcopy within Trainable
         Trainable.__init__(self, config=config, logger_creator=logger_creator)
 
     @override(Trainable)
@@ -111,8 +111,7 @@ class DirectMethod(Trainable, OffPolicyEstimator):
         q_model_type = q_model_config.pop("type")
         if self.policy.framework == "torch":
             if q_model_type == "qreg":
-                # TODO (Rohan138): Rewrite QReg for Trainable
-                raise QRegTorchModel
+                model_cls = QRegTorchModel
             elif q_model_type == "fqe":
                 model_cls = FQETorchModel
             else:
