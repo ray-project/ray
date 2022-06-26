@@ -1,6 +1,5 @@
 import unittest
 import ray
-from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,

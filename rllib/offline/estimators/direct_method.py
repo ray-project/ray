@@ -10,14 +10,10 @@ from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from gym.spaces import Discrete
 import numpy as np
-from datetime import datetime
 import os
 import ray
-from ray.tune.result import DEFAULT_RESULTS_DIR
-import tempfile
 
 from ray.tune import Trainable
-from ray.tune.logger import UnifiedLogger
 
 torch, nn = try_import_torch()
 
