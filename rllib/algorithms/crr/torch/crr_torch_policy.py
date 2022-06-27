@@ -235,10 +235,12 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             ), "Action space should be discrete when advantage_type = expectation."
             assert hasattr(
                 self.model, "q_model"
-            ), "CRR's ModelV2 should have q_model neural network in discrete action spaces"
+            ), "CRR's ModelV2 should have q_model neural network in discrete \
+                action spaces"
             assert isinstance(
                 pi_s_t.dist, torch.distributions.Categorical
-            ), "The output of the policy should be a torch Categorical distribution."
+            ), "The output of the policy should be a torch Categorical \
+                distribution."
 
             q_vals = self.model.q_model(out_t)
             if hasattr(self.model, "twin_q_model"):
