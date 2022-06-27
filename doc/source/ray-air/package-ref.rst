@@ -96,7 +96,7 @@ Serving
 
 .. autoclass:: ray.serve.air_integrations.PredictorDeployment
 
-.. autoclass:: ray.serve.air_integrations.Predictor
+.. autoclass:: ray.serve.air_integrations.PredictorWrapper
 
 .. _air-results-ref:
 

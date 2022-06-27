@@ -144,7 +144,7 @@ class BatchingManager:
         return split_list_of_dict
 
 
-class Predictor(SimpleSchemaIngress):
+class PredictorWrapper(SimpleSchemaIngress):
     """Serve any Ray AIR predictor from an AIR checkpoint.
 
     Args:
@@ -251,5 +251,5 @@ class Predictor(SimpleSchemaIngress):
 
 
 @serve.deployment
-class PredictorDeployment(Predictor):
-    """Ray Serve Deployment of the Predictor class."""
+class PredictorDeployment(PredictorWrapper):
+    """Ray Serve Deployment for AIRPredictorWrapper."""
