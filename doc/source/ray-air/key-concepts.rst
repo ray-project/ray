@@ -50,7 +50,7 @@ Trainer objects will produce a :ref:`Results <air-results-ref>` object after cal
 Session
 -------
 
-AIR exposes a functional API for users to define training behavior, or for developers to create their own trainers.
+Ray AIR exposes a functional API for users to define training behavior, or for developers to create their own ``Trainer``\s.
 In both cases, there is a need for the following interactions:
 1. To disseminate information downstream, including trial_name, trial_id, trial_resources and rank information etc.
 2. To report information to upstream, including metrics and checkpoint.
