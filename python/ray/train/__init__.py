@@ -14,7 +14,7 @@ from ray.train.train_loop_utils import (
 from ray.train.trainer import Trainer, TrainingIterator
 from ray.air.config import CheckpointConfig
 
-# deprecated
+# Deprecated. Alias of CheckpointConfig for backwards compat
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 usage_lib.record_library_usage("train")
