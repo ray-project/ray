@@ -86,7 +86,7 @@ class LogFileInfo:
 class LogMonitor:
     """A monitor process for monitoring Ray log files.
 
-    This class mantains a list of open files and a list of closed log files. We
+    This class maintains a list of open files and a list of closed log files. We
     can't simply leave all files open because we'll run out of file
     descriptors.
 

@@ -46,7 +46,7 @@ class GCSHealthCheckThread(threading.Thread):
             future.set_result(check_result)
 
     async def check_once(self) -> bool:
-        """Ask the thread to perform a healthcheck."""
+        """Ask the thread to perform a health check."""
         assert (
             threading.current_thread != self
         ), "caller shouldn't be from the same thread as GCSHealthCheckThread."

@@ -108,6 +108,7 @@ void AgentManager::StartAgent() {
     RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
                      << " exit, return value " << exit_code << ". ip "
                      << agent_ip_address_ << ". pid " << agent_pid_;
+
     RAY_LOG(ERROR)
         << "The raylet exited immediately because the Ray agent failed. "
            "The raylet fate shares with the agent. This can happen because the "

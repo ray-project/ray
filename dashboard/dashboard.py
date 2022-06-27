@@ -4,6 +4,9 @@ import logging
 import logging.handlers
 import platform
 import traceback
+import signal
+import os
+import sys
 
 import ray._private.ray_constants as ray_constants
 import ray._private.services
@@ -175,6 +178,20 @@ if __name__ == "__main__":
             minimal=args.minimal,
         )
         loop = asyncio.get_event_loop()
+
+        def sigterm_handler():
+            logger.warn("Exiting with SIGTERM immediately...")
+            os._exit(signal.SIGTERM)
+
+        if sys.platform != "win32":
+            # TODO(rickyyx): we currently do not have any logic for actual
+            # graceful termination in the dashboard. Most of the underlying
+            # async tasks run by the dashboard head doesn't handle CancelledError.
+            # So a truly graceful shutdown is not trivial w/o much refactoring.
+            # Re-open the issue: https://github.com/ray-project/ray/issues/25518
+            # if a truly graceful shutdown is required.
+            loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
+
         loop.run_until_complete(dashboard.run())
     except Exception as e:
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
