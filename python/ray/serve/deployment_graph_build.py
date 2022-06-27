@@ -14,7 +14,6 @@ from ray.serve.deployment_function_executor_node import DeploymentFunctionExecut
 from ray.serve.json_serde import DAGNodeEncoder
 from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.schema import DeploymentSchema
-from ray.serve.config import DeploymentConfig
 
 
 from ray.dag import (
@@ -176,25 +175,12 @@ def transform_ray_dag_to_serve_dag(
             apply_fn=replace_with_handle,
         )
 
-        if "deployment_schema" in dag_node._bound_other_args_to_resolve:
-            # ClassNode is created via bind on serve.deployment decorated class
-            # with no serve specific configs.
-            deployment_schema: DeploymentSchema = dag_node._bound_other_args_to_resolve[
-                "deployment_schema"
-            ]
-            deployment_shell: Deployment = schema_to_deployment(deployment_schema)
-        else:
-            # ClassNode is created via bind on ray.remote decorated class with
-            # no serve specific configs.
-            deployment_shell: Deployment = Deployment(
-                dag_node._body,
-                deployment_name,
-                DeploymentConfig(),
-                init_args=replaced_deployment_init_args,
-                init_kwargs=replaced_deployment_init_kwargs,
-                ray_actor_options=dag_node.get_options(),
-                _internal=True,
-            )
+        # ClassNode is created via bind on serve.deployment decorated class
+        # with no serve specific configs.
+        deployment_schema: DeploymentSchema = dag_node._bound_other_args_to_resolve[
+            "deployment_schema"
+        ]
+        deployment_shell: Deployment = schema_to_deployment(deployment_schema)
 
         # Prefer user specified name to override the generated one.
         if (
