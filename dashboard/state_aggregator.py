@@ -189,7 +189,11 @@ class StateAPIManager:
         result = self._filter(result, option.filters, ActorState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
-        return ListApiResponse(result=list(islice(result, option.limit)))
+        result = list(islice(result, option.limit))
+        return ListApiResponse(
+            result=result,
+            total=max(option.limit, len(result)),
+        )
 
     async def list_placement_groups(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all placement group information from the cluster.
@@ -217,7 +221,11 @@ class StateAPIManager:
         result = self._filter(result, option.filters, PlacementGroupState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
-        return ListApiResponse(result=list(islice(result, option.limit)))
+        logger.error(f"SANG-TODO {len(result)}")
+        return ListApiResponse(
+            result=list(islice(result, option.limit)),
+            total=max(option.limit, len(result)),
+        )
 
     async def list_nodes(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all node information from the cluster.
@@ -241,7 +249,11 @@ class StateAPIManager:
         result = self._filter(result, option.filters, NodeState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
-        return ListApiResponse(result=list(islice(result, option.limit)))
+        result = list(islice(result, option.limit))
+        return ListApiResponse(
+            result=result,
+            total=max(option.limit, len(result)),
+        )
 
     async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all worker information from the cluster.
@@ -266,7 +278,11 @@ class StateAPIManager:
         result = self._filter(result, option.filters, WorkerState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
-        return ListApiResponse(result=list(islice(result, option.limit)))
+        result = list(islice(result, option.limit))
+        return ListApiResponse(
+            result=result,
+            total=max(option.limit, len(result)),
+        )
 
     def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
         # TODO(sang): Support limit & timeout & async calls.
@@ -279,7 +295,10 @@ class StateAPIManager:
                 result.append(data)
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
-        return ListApiResponse(result=result)
+        return ListApiResponse(
+            result=result,
+            total=max(option.limit, len(result)),
+        )
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all task information from the cluster.
@@ -343,9 +362,11 @@ class StateAPIManager:
         result = self._filter(result, option.filters, TaskState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
+        result = list(islice(result, option.limit))
         return ListApiResponse(
-            result=list(islice(result, option.limit)),
+            result=result,
             partial_failure_warning=partial_failure_warning,
+            total=max(option.limit, len(result)),
         )
 
     async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -414,9 +435,11 @@ class StateAPIManager:
         result = self._filter(result, option.filters, ObjectState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
+        result = list(islice(result, option.limit))
         return ListApiResponse(
-            result=list(islice(result, option.limit)),
+            result=result,
             partial_failure_warning=partial_failure_warning,
+            total=max(option.limit, len(result)),
         )
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -486,9 +509,11 @@ class StateAPIManager:
                 return float(entry["creation_time_ms"])
 
         result.sort(key=sort_func, reverse=True)
+        result = list(islice(result, option.limit))
         return ListApiResponse(
-            result=list(islice(result, option.limit)),
+            result=result,
             partial_failure_warning=partial_failure_warning,
+            total=max(option.limit, len(result)),
         )
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:

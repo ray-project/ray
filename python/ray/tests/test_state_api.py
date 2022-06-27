@@ -1454,6 +1454,25 @@ def test_filter(shutdown_only):
     assert alive_actor_id not in result.output
 
 
+def test_data_truncate(shutdown_only):
+    """
+    Verify the data is properly truncated when there are too many entries to return.
+    """
+    ray.init()
+
+    pgs = [ray.util.placement_group(bundles=[{"CPU": 0.001}]) for _ in range(101)]
+    runner = CliRunner()
+    with pytest.warns(UserWarning) as record:
+        result = runner.invoke(cli_list, ["placement-groups"])
+    assert "100 (101 total) placement_groups are returned. 1 entries have been truncated." in record[0].message.args[0]
+    assert result.exit_code == 0
+    # Make sure users cannot specify higher limit than 10000.
+    with pytest.raises(ValueError):
+        list_placement_groups(limit=10001)
+    
+    # SANG-TODO Make sure all RPCs truncate data correctly.
+
+
 if __name__ == "__main__":
     import os
     import sys

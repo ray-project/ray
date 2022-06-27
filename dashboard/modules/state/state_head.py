@@ -118,8 +118,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             return self._reply(
                 success=True,
                 error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
+                result=asdict(result),
             )
         except DataSourceUnavailable as e:
             return self._reply(success=False, error_message=str(e), result=None)
@@ -135,8 +134,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             return self._reply(
                 success=True,
                 error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
+                result=asdict(result),
             )
         except DataSourceUnavailable as e:
             return self._reply(success=False, error_message=str(e), result=None)

@@ -103,13 +103,37 @@ class StateApiClient(SubmissionClient):
         response = response.json()
         return response
 
+    def _print_list_api_warning(self, resource: StateResource, list_api_response: dict):
+        """Print the API warnings.
+
+        Args:
+            resource: Resource names, i.e. 'jobs', 'actors', 'nodes',
+                see `StateResource` for details.
+            list_api_response: The dictionarified `ListApiResponse`.
+        """
+        # Print warnings if anything was given.
+        warning_msgs = list_api_response.get("partial_failure_warning", None)
+        if warning_msgs:
+            warnings.warn(warning_msgs)
+
+        # Print warnings if data is truncated.
+        data = list_api_response["result"]
+        total = list_api_response["total"]
+        if total >= len(data):
+            warnings.warn(
+                (f"{len(data)} ({total} total) {resource.value} "
+                f"are returned. {total - len(data)} entries have been truncated. "
+                "Use `--filter` to reduce the amount of data to return "
+                "or increase the limit by specifying`--limit`."),
+            )
+
     def list(
         self, resource: StateResource, options: ListApiOptions, _explain: bool = False
     ) -> Union[Dict, List]:
         """List resources states
 
         Args:
-            resource_name: Resource names, i.e. 'jobs', 'actors', 'nodes',
+            resource: Resource names, i.e. 'jobs', 'actors', 'nodes',
                 see `StateResource` for details.
             options: List options. See `ListApiOptions` for details.
             _explain: Print the API information such as API
@@ -146,12 +170,13 @@ class StateApiClient(SubmissionClient):
                 f"Error: {response['msg']}"
             )
 
-        # Print warnings if anything was given.
-        warning_msgs = response["data"].get("partial_failure_warning", None)
-        if warning_msgs and _explain:
-            warnings.warn(warning_msgs, RuntimeWarning)
+        # Dictionary of `ListApiResponse`
+        list_api_response = response["data"]["result"]
+        
+        if _explain:
+            self._print_list_api_warning(resource, list_api_response)
 
-        return response["data"]["result"]
+        return list_api_response["result"]
 
     def summary(
         self,
