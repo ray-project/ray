@@ -807,7 +807,7 @@ def init(
         namespace: Namespace to use
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
-        metadata (list): List of tuples representing request metadata.
+        metadata (list): List of tuples representing request metadata for Ray Client gRPC.
         storage: [Experimental] Specify a URI for persistent cluster-wide storage.
             This storage path must be accessible by all nodes of the cluster, otherwise
             an error will be raised. This option can also be specified as the
