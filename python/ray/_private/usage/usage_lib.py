@@ -220,7 +220,7 @@ def _put_library_usage(library_usage: str):
     # Record the library usage to the temp (e.g., /tmp/ray) folder.
     # Note that although we always write this file, it is not
     # reported when the usage stats is disabled.
-    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
+    if ray._private.worker.global_worker.mode == ray.SCRIPT_MODE:
         try:
             lib_usage_recorder = LibUsageRecorder(ray._private.utils.get_ray_temp_dir())
             lib_usage_recorder.put_lib_usage(library_usage)
