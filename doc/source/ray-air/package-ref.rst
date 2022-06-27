@@ -125,3 +125,15 @@ Configs
     :members:
 
 .. autoclass:: ray.air.config.CheckpointConfig
+
+
+.. _air-builtin-callbacks:
+
+Callbacks
+~~~~~~~~~
+
+Keras
+#####
+
+.. automodule:: ray.air.callbacks.keras
+    :members:

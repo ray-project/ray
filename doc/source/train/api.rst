@@ -4,8 +4,6 @@
 Ray Train API
 =============
 
-.. _train-api-trainer:
-
 Trainer
 -------
 

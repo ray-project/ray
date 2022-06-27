@@ -9,7 +9,7 @@ Ray Train provides solutions for training machine learning models in a distribut
 This guide focuses on deep learning with PyTorch, TensorFlow and Horovod.
 For other model types, distributed training support is available through other Trainers & libraries:
 
-* **Reinforcement Learning with :ref:`RLLib <rllib-index>`:** :ref:`air-rl-examples-ref`
+* **Reinforcement Learning with** :ref:`RLLib <rllib-index>`
 * **XGBoost:** :doc:`/ray-air/examples/xgboost_example`
 * **LightGBM:** :doc:`/ray-air/examples/lightgbm_example`
 * **Scikit-Learn** :doc:`/ray-air/examples/sklearn_example`
@@ -183,7 +183,7 @@ training.
 Create Ray Train Trainer
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-``Trainer``s are the primary Ray Train classes that are used to manage state and
+``Trainer``\s are the primary Ray Train classes that are used to manage state and
 execute training. You can create a simple ``Trainer`` for the backend of choice
 with one of the following:
 
@@ -264,7 +264,7 @@ To customize the ``backend`` setup, you can replace the string argument with a
             scaling_config=dict(num_workers=2),
         )
 
-For more configurability, please reference the :ref:`train-api-trainer` API.
+For more configurability, please reference the :class:`BaseTrainer` API.
 
 Run training function
 ~~~~~~~~~~~~~~~~~~~~~
@@ -280,7 +280,7 @@ Configuring Training
 --------------------
 
 With Ray Train, you can execute a training function (``train_func``) in a
-distributed manner by calling ``trainer.fit()``. To pass arguments
+distributed manner by calling ``Trainer.fit``. To pass arguments
 into the training function, you can expose a single ``config`` dictionary parameter:
 
 .. code-block:: diff
@@ -310,7 +310,7 @@ configurations. As an example:
     def train_func(config):
         results = []
         for i in range(config["num_epochs"]):
-            session.report(epoch=i)
+            session.report({"epoch": i})
 
     trainer = TorchTrainer(
         train_func,
@@ -332,37 +332,19 @@ perform hyperparameter tuning with Ray Train, please refer to the
 The Result Object
 -----------------
 
-The return of a ``Trainer.fit()`` is a :class:`Result` object, containing
+The return of a ``Trainer.fit`` is a :class:`Result` object, containing
 information about the training run. You can access it to obtain saved checkpoints,
 metrics and other relevant data.
 
 .. _train-log-dir:
 
 Log Directory Structure
------------------------
+~~~~~~~~~~~~~~~~~~~~~~~
 
-Each ``Trainer`` will have a local directory created for logs, and each call
-to ``Trainer.run`` will create its own sub-directory of logs.
+Each ``Trainer`` will have a local directory created for logs and checkpoints.
 
-By default, the ``logdir`` will be created at
-``~/ray_results/train_<datestring>``.
-This can be overridden in the ``Trainer`` constructor to an absolute path or
-a path relative to ``~/ray_results``.
-
-Log directories are exposed through the following attributes:
-
-+------------------------+-----------------------------------------------------+
-| Attribute              | Example                                             |
-+========================+=====================================================+
-| trainer.logdir         | /home/ray_results/train_2021-09-01_12-00-00         |
-+------------------------+-----------------------------------------------------+
-| trainer.latest_run_dir | /home/ray_results/train_2021-09-01_12-00-00/run_001 |
-+------------------------+-----------------------------------------------------+
-
-Logs will be written by:
-
-1. :ref:`Callbacks <train-callbacks>`
-2. :ref:`Checkpoints <train-checkpointing>`
+You can obtain the path to the directory by accessing the ``log_dir`` attribute
+of the :class:`Result` object returned by ``Trainer.fit``.
 
 .. TODO link to Training Run Iterator API as a 3rd option for logging.
 
@@ -372,19 +354,17 @@ Logging, Monitoring, and Callbacks
 ----------------------------------
 
 Ray Train has mechanisms to easily collect intermediate results from the training workers during the training run
-and also has a :ref:`Callback interface <train-callbacks>` to perform actions on these intermediate results (such as logging, aggregations, printing, etc.).
-You can use either the :ref:`built-in callbacks <train-builtin-callbacks>` that Ray Train provides,
-or implement a :ref:`custom callback <train-custom-callbacks>` for your use case.
+and also has a :ref:`Callback interface <train-callbacks>` to perform actions on these intermediate results (such as logging, aggregations, etc.).
+You can use either the :ref:`built-in callbacks <air-builtin-callbacks>` that Ray AIR provides,
+or implement a :ref:`custom callback <train-custom-callbacks>` for your use case. The callback API
+is shared with Ray Tune.
 
 Reporting intermediate results
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Train provides a ``train.report(**kwargs)`` API for reporting intermediate
+Ray AIR provides a ``session.report(metrics, checkpoint=None)`` API for reporting intermediate
 results from the training function (run on distributed workers) up to the
 ``Trainer`` (where your python script is executed).
-
-Using ``Trainer.run``, these results can be processed through :ref:`Callbacks
-<train-callbacks>` with a ``handle_result`` method defined.
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
 the end of each training epoch.
@@ -395,45 +375,7 @@ the end of each training epoch.
         ...
         for i in range(num_epochs):
             results = model.train(...)
-            train.report(results)
-        return model
-
-
-For custom handling, the lower-level ``Trainer.run_iterator`` API produces a
-:ref:`train-api-iterator` which will iterate over the reported results.
-
-Autofilled metrics
-++++++++++++++++++
-
-In addition to user defined metrics, a few fields are automatically populated:
-
-.. code-block:: python
-
-    # Unix epoch time in seconds when the data is reported.
-    _timestamp
-    # Time in seconds between iterations.
-    _time_this_iter_s
-    # The iteration ID, where each iteration is defined by one call to train.report().
-    # This is a 1-indexed incrementing integer ID.
-    _training_iteration
-
-For debugging purposes, a more extensive set of metrics can be included in
-any run by setting the ``TRAIN_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS`` environment
-variable to ``1``.
-
-
-.. code-block:: python
-
-    # The local date string when the data is reported.
-    _date
-    # The worker hostname (platform.node()).
-    _hostname
-    # The worker IP address.
-    _node_ip
-    # The worker process ID (os.getpid()).
-    _pid
-    # The cumulative training time of all iterations so far.
-    _time_total_s
+            session.report({"results": results})
 
 
 .. _train-callbacks:
@@ -442,23 +384,10 @@ Callbacks
 ~~~~~~~~~
 
 You may want to plug in your training code with your favorite experiment management framework.
-Ray Train provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
-(the values passed into ``train.report(...)``).
+Ray AIR provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
+(the values passed into ``session.report(...)``).
 
-Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainingCallback`` interface.
-
-.. _train-builtin-callbacks:
-
-Built-in Callbacks
-++++++++++++++++++
-
-The following ``TrainingCallback``\s are available and will log the intermediate results of the training run.
-
-1. :ref:`train-api-print-callback`
-2. :ref:`train-api-json-logger-callback`
-3. :ref:`train-api-tbx-logger-callback`
-4. :ref:`train-api-mlflow-logger-callback`
-5. :ref:`train-api-torch-tensorboard-profiler-callback`
+Ray AIR contains :ref:`built-in callbacks <air-builtin-callbacks>` for popular tracking frameworks, or you can implement your own callback via the :ref:`Callback <tune-callbacks-docs>` interface.
 
 Example: Logging to MLflow and TensorBoard
 ++++++++++++++++++++++++++++++++++++++++++
@@ -475,105 +404,82 @@ Example: Logging to MLflow and TensorBoard
 .. literalinclude:: /../../python/ray/train/examples/mlflow_simple_example.py
    :language: python
 
-**Step 3: Visualize the logs**
-
-.. code-block:: bash
-
-    # Navigate to the run directory of the trainer.
-    # For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001`
-    $ cd <TRAINER_RUN_DIR>
-
-    # View the MLflow UI.
-    $ mlflow ui
-
-    # View the tensorboard UI.
-    $ tensorboard --logdir .
-
-
 .. _train-custom-callbacks:
 
 Custom Callbacks
 ++++++++++++++++
 
 If the provided callbacks do not cover your desired integrations or use-cases,
-you may always implement a custom callback by subclassing ``TrainingCallback``. If
-the callback is general enough, please feel welcome to `add it <https://docs
-.ray.io/en/master/getting-involved.html>`_ to the ``ray``
-`repository <https://github.com/ray-project/ray>`_.
+you may always implement a custom callback by subclassing ``Callback``. If
+the callback is general enough, please feel welcome to :ref:`add it <getting-involved>`
+to the ``ray`` `repository <https://github.com/ray-project/ray>`_.
 
 A simple example for creating a callback that will print out results:
 
 .. code-block:: python
 
-    from ray import train
-    from ray.train import Trainer, TrainingCallback
     from typing import List, Dict
 
-    class PrintingCallback(TrainingCallback):
-        def handle_result(self, results: List[Dict], **info):
-            print(results)
+    from ray.air import session
+    from ray.air.config import RunConfig
+    from ray.train.torch import TorchTrainer
+    from ray.tune.logger import LoggerCallback
+
+    # LoggerCallback is a higher level API of Callback.
+    class LoggingCallback(LoggerCallback):
+        def __init__(self) -> None:
+            self.results = []
+
+        def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+            self.results.append(trial.last_result)
 
     def train_func():
         for i in range(3):
-            train.report(epoch=i)
+            session.report({"epoch": i})
 
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
-    result = trainer.run(
+    callback = LoggingCallback()
+    trainer = TorchTrainer(
         train_func,
-        callbacks=[PrintingCallback()]
+        run_config=RunConfig(callbacks=[callback]),
+        scaling_config=dict(num_workers=2),
     )
-    # [{'epoch': 0, '_timestamp': 1630471763, '_time_this_iter_s': 0.0020279884338378906, '_training_iteration': 1}, {'epoch': 0, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014922618865966797, '_training_iteration': 1}]
-    # [{'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0008401870727539062, '_training_iteration': 2}, {'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0007486343383789062, '_training_iteration': 2}]
-    # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
-    trainer.shutdown()
+    trainer.fit()
 
-..
-    Advanced Customization
-    ~~~~~~~~~~~~~~~~~~~~~~
+    print("\n".join([str(x) for x in callback.results]))
+    # {'trial_id': '0f1d0_00000', 'experiment_id': '494a1d050b4a4d11aeabd87ba475fcd3', 'date': '2022-06-27_17-03-28', 'timestamp': 1656349408, 'pid': 23018, 'hostname': 'ip-172-31-43-110', 'node_ip': '172.31.43.110', 'config': {}}
+    # {'epoch': 0, '_timestamp': 1656349412, '_time_this_iter_s': 0.0026497840881347656, '_training_iteration': 1, 'time_this_iter_s': 3.433483362197876, 'done': False, 'timesteps_total': None, 'episodes_total': None, 'training_iteration': 1, 'trial_id': '0f1d0_00000', 'experiment_id': '494a1d050b4a4d11aeabd87ba475fcd3', 'date': '2022-06-27_17-03-32', 'timestamp': 1656349412, 'time_total_s': 3.433483362197876, 'pid': 23018, 'hostname': 'ip-172-31-43-110', 'node_ip': '172.31.43.110', 'config': {}, 'time_since_restore': 3.433483362197876, 'timesteps_since_restore': 0, 'iterations_since_restore': 1, 'warmup_time': 0.003779172897338867, 'experiment_tag': '0'}
+    # {'epoch': 1, '_timestamp': 1656349412, '_time_this_iter_s': 0.0013833045959472656, '_training_iteration': 2, 'time_this_iter_s': 0.016670703887939453, 'done': False, 'timesteps_total': None, 'episodes_total': None, 'training_iteration': 2, 'trial_id': '0f1d0_00000', 'experiment_id': '494a1d050b4a4d11aeabd87ba475fcd3', 'date': '2022-06-27_17-03-32', 'timestamp': 1656349412, 'time_total_s': 3.4501540660858154, 'pid': 23018, 'hostname': 'ip-172-31-43-110', 'node_ip': '172.31.43.110', 'config': {}, 'time_since_restore': 3.4501540660858154, 'timesteps_since_restore': 0, 'iterations_since_restore': 2, 'warmup_time': 0.003779172897338867, 'experiment_tag': '0'}
 
-    TODO add link to Run Iterator API and describe how to use it specifically
-    for custom integrations.
 
 Example: PyTorch Distributed metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
 In real applications, you may want to calculate optimization metrics besides
 accuracy and loss: recall, precision, Fbeta, etc.
 
-Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable Pytorch models.
+Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable PyTorch models.
 
 Here is an example:
 
 .. code-block:: python
 
-    from ray import train
-    from ray.train import Trainer, TrainingCallback
     from typing import List, Dict
+    from ray.air import session
+    from ray.train.torch import TorchTrainer
 
     import torch
     import torchmetrics
-
-    class PrintingCallback(TrainingCallback):
-        def handle_result(self, results: List[Dict], **info):
-            print(results)
 
     def train_func(config):
         preds = torch.randn(10, 5).softmax(dim=-1)
         target = torch.randint(5, (10,))
         accuracy = torchmetrics.functional.accuracy(preds, target).item()
-        train.report(accuracy=accuracy)
+        session.report({"accuracy": accuracy})
 
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
-    result = trainer.run(
-        train_func,
-        callbacks=[PrintingCallback()]
-    )
-    # [{'accuracy': 0.20000000298023224, '_timestamp': 1630716913, '_time_this_iter_s': 0.0039408206939697266, '_training_iteration': 1},
-    #  {'accuracy': 0.10000000149011612, '_timestamp': 1630716913, '_time_this_iter_s': 0.0030548572540283203, '_training_iteration': 1}]
-    trainer.shutdown()
+    trainer = TorchTrainer(train_func, scaling_config=dict(num_workers=2))
+    result = trainer.fit()
+    print(result.metrics["accuracy"])
+    # 0.20000000298023224
 
 .. _train-checkpointing:
 
@@ -783,7 +689,7 @@ Loading checkpoints
 
 Checkpoints can be loaded into the training function in 2 steps:
 
-1. From the training function, ``session.get_checkpoint()`` can be used to access
+1. From the training function, ``session.get_checkpoint`` can be used to access
    the most recently saved :class:`Checkpoint`. This is useful to continue training even
    if there's a worker failure.
 2. The checkpoint to start training with can be bootstrapped by passing in a
@@ -955,8 +861,9 @@ checkpointing.
    <train-checkpointing>`.
 
 Each instance of recovery from a worker failure is considered a retry. The
-number of retries is configurable through the ``max_retries`` argument of the
-``Trainer`` constructor.
+number of retries is configurable through the ``max_failures`` attribute of the
+``failure_config`` argument set in the ``run_config`` argument passed to the
+``Trainer``.
 
 .. note:: Elastic Training is not yet supported.
 
@@ -1077,7 +984,7 @@ Reproducibility
 .. tabbed:: PyTorch
 
     To limit sources of nondeterministic behavior, add
-    ``train.torch.enable_reproducibility()`` to the top of your training
+    ``train.torch.enable_reproducibility`` to the top of your training
     function. `
 
     .. code-block:: diff
@@ -1090,7 +997,7 @@ Reproducibility
 
             ...
 
-    .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
+    .. warning:: ``train.torch.enable_reproducibility`` can't guarantee
         completely reproducible results across executions. To learn more, read
         the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
 
@@ -1111,7 +1018,7 @@ Ray Train provides native support for :ref:`Ray Datasets <datasets>` to support 
    can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
    and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline-api` for more information.
 
-To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray Train will automatically shard the given dataset.
+To get started, pass in a Ray Dataset (or multiple) into ``Trainer``. Underneath the hood, Ray Train will automatically shard the given dataset.
 
 .. warning::
 
