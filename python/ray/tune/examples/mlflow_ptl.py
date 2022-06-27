@@ -9,7 +9,7 @@ from pl_bolts.datamodules import MNISTDataModule
 import mlflow
 
 from ray import tune
-from ray.air.callbacks.mlflow import mlflow_mixin
+from ray.tune.integration.mlflow import mlflow_mixin
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
 
