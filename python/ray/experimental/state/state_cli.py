@@ -81,7 +81,9 @@ def get_api_server_url() -> str:
     return api_server_url
 
 
-def output_with_format(state_data: Union[dict, list], format: AvailableFormat):
+def output_with_format(
+    state_data: Union[dict, list], format: AvailableFormat = AvailableFormat.DEFAULT
+):
     # Default is yaml.
     if format == AvailableFormat.DEFAULT:
         return yaml.dump(state_data, indent=4, explicit_start=True)

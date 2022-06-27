@@ -284,20 +284,11 @@ class StateApiClient(SubmissionClient):
         """
         params = {"timeout": options.timeout}
         endpoint = f"/api/v0/{resource.value}/summarize"
-        response = self._request(endpoint, options.timeout, params)
+        response = self._make_http_get_request(
+            endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
+        )
 
-        if response["result"] is False:
-            raise RayStateApiException(
-                "API server internal error. See dashboard.log file for more details. "
-                f"Error: {response['msg']}"
-            )
-        if _explain:
-            # Print warnings if anything was given.
-            warning_msg = response["data"].get("partial_failure_warning", None)
-            if warning_msg:
-                warnings.warn(warning_msg, RuntimeWarning)
-
-        return response["data"]["result"]["node_id_to_summary"]
+        return response["node_id_to_summary"]
 
 
 """
