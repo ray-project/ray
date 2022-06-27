@@ -20,10 +20,15 @@ class FlexDict(gym.spaces.Dict):
         if spaces is None:
             spaces = spaces_kwargs
 
+        self.spaces = spaces
         for space in spaces.values():
             self.assertSpace(space)
 
-        super().__init__(spaces=spaces)
+        # None for shape and dtype, since it'll require special handling
+        self.np_random = None
+        self.shape = None
+        self.dtype = None
+        self.seed()
 
     def assertSpace(self, space):
         err = "Values of the dict should be instances of gym.Space"
