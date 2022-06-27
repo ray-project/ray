@@ -74,8 +74,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
         from ray.air.checkpoint import Checkpoint
         def train_func():
             if session.get_checkpoint():
-                with session.get_checkpoint().as_directory() as
-                        loaded_checkpoint_dir:
+                with session.get_checkpoint().as_directory() as loaded_checkpoint_dir:
                     import tensorflow as tf
                     model = tf.keras.models.load_model(loaded_checkpoint_dir)
             else:
@@ -83,8 +82,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
 
             model.save("my_model", overwrite=True)
             session.report(
-                metrics={"iter": 1},
-                checkpoint=Checkpoint.from_directory("my_model")
+                metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model")
             )
 
         scaling_config = {"num_workers": 2}
