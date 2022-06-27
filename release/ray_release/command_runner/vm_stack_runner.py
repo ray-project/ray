@@ -3,6 +3,7 @@ import os
 import tempfile
 import time
 from typing import Optional, Dict, Any
+import subprocess
 
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
@@ -16,10 +17,21 @@ from ray_release.exception import (
     LogsError,
     RemoteEnvSetupError,
     ClusterNodesWaitTimeout,
+    LocalEnvSetupError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
 from ray_release.util import format_link, get_anyscale_sdk, exponential_backoff_retry
+from ray_release.wheels import install_matching_ray_locally
+
+def test_ray_up():
+    subprocess.check_output(
+        f"ray up cluster_launcher_config.yaml",
+        shell=True,
+        env=os.environ,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
 
 
 class VmStackRunner(CommandRunner):
@@ -37,7 +49,13 @@ class VmStackRunner(CommandRunner):
         '''
         TODO copy from client_runner, it installs matching ray locally.
         '''
-        pass
+        try:
+            install_matching_ray_locally(
+                ray_wheels_url or os.environ.get("RAY_WHEELS", None)
+            )
+
+        except Exception as e:
+            raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
     def prepare_remote_env(self):
         # TODO

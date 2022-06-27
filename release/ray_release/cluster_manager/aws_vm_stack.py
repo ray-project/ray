@@ -1,5 +1,25 @@
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from typing import Dict, Any, Optional
+import subprocess
+import sys
+
+def stream_subproc_output(process):
+    # TODO dup output so we can assert on it
+    # Otherwise, this can be simplified to proc.wait()
+    import select
+
+    associated_streams = {process.stderr: sys.stderr, process.stdout: sys.stdout}
+    timeout_seconds = 0.1
+
+    while True:
+        ready_reads, _, _ = select.select(associated_streams.keys(), [], [], timeout_seconds)
+        
+        if process.poll() != None:
+            break
+    
+        for stream in ready_reads:
+            read_one = stream.read1().decode('utf-8')
+            associated_streams[stream].write(read_one)
 
 
 class AwsVmClusterManager(ClusterManager):
@@ -27,8 +47,17 @@ class AwsVmClusterManager(ClusterManager):
         raise NotImplementedError
 
     def start_cluster(self, timeout: float):
-        # TODO
-        pass
+        # This is commented out as unless we need the stdout/stderr we can defer to process.wait
+        #process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config.yaml'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        ## TODO need to pipe in Y twice
+        #stream_subproc_output(process)
+
+        # TODO need to pipe in Y twice
+        process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config.yaml', '-y'])
+
+        # TODO handle timeouts
+        return_code = process.wait()
+
 
     def terminate_cluster(self, wait: bool):
         raise NotImplementedError

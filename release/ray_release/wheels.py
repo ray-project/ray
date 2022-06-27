@@ -375,7 +375,8 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
             "No Ray wheels found - can't install matching Ray wheels locally!"
         )
         return
-    assert "manylinux2014_x86_64" in ray_wheels, ray_wheels
+    # TODO
+    #assert "manylinux2014_x86_64" in ray_wheels, ray_wheels
     if sys.platform == "darwin":
         platform = "macosx_10_15_intel"
     elif sys.platform == "win32":
@@ -383,16 +384,19 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
     else:
         platform = "manylinux2014_x86_64"
     ray_wheels = ray_wheels.replace("manylinux2014_x86_64", platform)
-    logger.info(f"Installing matching Ray wheels locally: {ray_wheels}")
-    subprocess.check_output(
-        "pip uninstall -y ray", shell=True, env=os.environ, text=True
-    )
-    subprocess.check_output(
-        f"pip install -U {shlex.quote(ray_wheels)}",
-        shell=True,
-        env=os.environ,
-        text=True,
-    )
-    for module_name in RELOAD_MODULES:
-        if module_name in sys.modules:
-            importlib.reload(sys.modules[module_name])
+    if os.environ.get("CADE_SKIP_REINSTALL_RAY", False):
+        logger.info(f"CADE_SKIP_REINSTALL_RAY skipping reinstallation of ray wheels {ray_wheels}")
+    else:
+        logger.info(f"Installing matching Ray wheels locally: {ray_wheels}")
+        subprocess.check_output(
+            "pip uninstall -y ray", shell=True, env=os.environ, text=True
+        )
+        subprocess.check_output(
+            f"pip install -U {shlex.quote(ray_wheels)}",
+            shell=True,
+            env=os.environ,
+            text=True,
+        )
+        for module_name in RELOAD_MODULES:
+            if module_name in sys.modules:
+                importlib.reload(sys.modules[module_name])
