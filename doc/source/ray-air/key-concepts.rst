@@ -52,7 +52,7 @@ Session
 
 Ray AIR exposes a functional API for users to define training behavior, or for developers to create their own ``Trainer``\s.
 In both cases, there is a need for the following interactions:
-1. To disseminate information downstream, including trial_name, trial_id, trial_resources and rank information etc.
+1. To disseminate information downstream, including ``trial_name``, ``trial_id``, ``trial_resources`, rank information etc.
 2. To report information to upstream, including metrics and checkpoint.
 
 To facilitate such interactions, we introduce :ref:`Session <air-session-ref>`. The following figure shows how Session
