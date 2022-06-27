@@ -124,7 +124,7 @@ Because it's built on top of Ray, you can run it anywhere Ray can: on your lapto
 
 ## Learn More
 
-Check out {ref}`getting-started` and {doc}`core-apis`, look at the {ref}`serve-faq`,
+Check out {ref}`getting-started` and {doc}`key-concepts`, look at the {ref}`serve-faq`,
 or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
 
 For more, see the following blog posts about Ray Serve:

@@ -131,7 +131,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     # This node is killed by SIGTERM, ray_monitor will not mark it again.
     removing_node = cluster.add_node(num_cpus=0)
     cluster.remove_node(removing_node, allow_graceful=True)
-    errors = get_error_message(p, 1, timeout=2)
+    errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=2)
     assert len(errors) == 0
     # There is no connection error to a dead node.
     errors = get_error_message(p, 1, timeout=2)
@@ -609,4 +609,9 @@ def test_actor_task_fast_fail(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -1,7 +1,7 @@
 package io.ray.runtime.runner.worker;
 
 import io.ray.api.Ray;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 
 /** Default implementation of the worker process. */
 public class DefaultWorker {
@@ -12,6 +12,6 @@ public class DefaultWorker {
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.worker.mode", "WORKER");
     Ray.init();
-    ((RayRuntimeInternal) Ray.internal()).run();
+    ((AbstractRayRuntime) Ray.internal()).run();
   }
 }

@@ -52,9 +52,9 @@ PyTorch (or both as shown below):
 
 .. code-block:: bash
 
-    $ conda create -n rllib python=3.8
-    $ conda activate rllib
-    $ pip install "ray[rllib]" tensorflow torch
+    conda create -n rllib python=3.8
+    conda activate rllib
+    pip install "ray[rllib]" tensorflow torch
 
 Note, for installation on computers running Apple Silicon (such as M1), please follow instructions
 `here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
@@ -63,11 +63,11 @@ To be able to run our Atari examples, you should also install:
 
 .. code-block:: bash
 
-    $ pip install "gym[atari]" "gym[accept-rom-license]" atari_py
+    pip install "gym[atari]" "gym[accept-rom-license]" atari_py
 
 After these quick pip installs, you can start coding against RLlib.
 
-Here is an example of running a PPO Trainer on the "`Taxi domain <https://www.gymlibrary.ml/environments/toy_text/taxi/>`_"
+Here is an example of running PPO on the "`Taxi domain <https://www.gymlibrary.ml/environments/toy_text/taxi/>`_"
 for a few training iterations, then perform a single evaluation loop
 (with rendering enabled):
 
@@ -126,13 +126,13 @@ click on the dropdowns below:
 
     *  Model-based / Meta-learning / Offline
 
-       -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+       -  |pytorch| :ref:`Single-Player AlphaZero (AlphaZero) <alphazero>`
 
        -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
        -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
-       -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+       -  |pytorch| :ref:`Dreamer <dreamer>`
 
        -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
 
@@ -147,8 +147,8 @@ click on the dropdowns below:
 
     *  Contextual bandits
 
-       -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <lin-ucb>`
-       -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
+       -  |pytorch| :ref:`Linear Upper Confidence Bound (LinUCB) <lin-ucb>`
+       -  |pytorch| :ref:`Linear Thompson Sampling (LinTS) <lints>`
 
     *  Exploration-based plug-ins (can be combined with any algo)
 

@@ -6,9 +6,9 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.exception.RayActorException;
+import io.ray.api.exception.RayTaskException;
 import io.ray.api.function.PyActorMethod;
-import io.ray.runtime.exception.RayActorException;
-import io.ray.runtime.exception.RayTaskException;
 import io.ray.serve.Constants;
 import io.ray.serve.RayServeConfig;
 import io.ray.serve.RayServeException;
@@ -101,7 +101,9 @@ public class LongPollClientFactory {
 
     LongPollClientFactory.hostActor =
         Optional.ofNullable(hostActor)
-            .orElse(Ray.getActor(replicaContext.getInternalControllerName()).get());
+            .orElse(
+                Ray.getActor(replicaContext.getInternalControllerName(), Constants.SERVE_NAMESPACE)
+                    .get());
 
     scheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor(

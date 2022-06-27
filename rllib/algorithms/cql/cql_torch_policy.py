@@ -9,8 +9,11 @@ from typing import Dict, List, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.sac.sac_tf_policy import postprocess_trajectory, validate_spaces
-from ray.rllib.agents.sac.sac_torch_policy import (
+from ray.rllib.algorithms.sac.sac_tf_policy import (
+    postprocess_trajectory,
+    validate_spaces,
+)
+from ray.rllib.algorithms.sac.sac_torch_policy import (
     _get_dist_class,
     stats,
     build_sac_model_and_action_dist,
@@ -27,7 +30,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import LocalOptimizer, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import LocalOptimizer, TensorType, AlgorithmConfigDict
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
     convert_to_torch_tensor,
@@ -337,7 +340,7 @@ def cql_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]
 
 
 def cql_optimizer_fn(
-    policy: Policy, config: TrainerConfigDict
+    policy: Policy, config: AlgorithmConfigDict
 ) -> Tuple[LocalOptimizer]:
     policy.cur_iter = 0
     opt_list = optimizer_fn(policy, config)
@@ -362,7 +365,7 @@ def cql_setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     setup_late_mixins(policy, obs_space, action_space, config)
     if config["lagrangian"]:
@@ -387,7 +390,7 @@ CQLTorchPolicy = build_policy_class(
     name="CQLTorchPolicy",
     framework="torch",
     loss_fn=cql_loss,
-    get_default_config=lambda: ray.rllib.algorithms.cql.cql.CQL_DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG,
     stats_fn=cql_stats,
     postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,

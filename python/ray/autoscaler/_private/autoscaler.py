@@ -1,7 +1,4 @@
-from collections import defaultdict, namedtuple, Counter
-from typing import Any, Optional, Dict, List, Set, FrozenSet, Tuple, Union, Callable
 import copy
-from dataclasses import dataclass
 import logging
 import math
 import operator
@@ -9,68 +6,76 @@ import os
 import subprocess
 import threading
 import time
-import yaml
+from collections import Counter, defaultdict, namedtuple
+from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 import grpc
+import yaml
+from six.moves import queue
+
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S,
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+    AUTOSCALER_MAX_LAUNCH_BATCH,
+    AUTOSCALER_MAX_NUM_FAILURES,
+    AUTOSCALER_UPDATE_INTERVAL_S,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
+)
+from ray.autoscaler._private.event_summarizer import EventSummarizer
+from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.local.node_provider import (
+    LocalNodeProvider,
+    record_local_head_state_if_needed,
+)
+from ray.autoscaler._private.node_launcher import BaseNodeLauncher, NodeLauncher
+from ray.autoscaler._private.node_tracker import NodeTracker
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
+from ray.autoscaler._private.providers import _get_node_provider
+from ray.autoscaler._private.resource_demand_scheduler import (
+    ResourceDemandScheduler,
+    ResourceDict,
+    get_bin_pack_residual,
+)
+from ray.autoscaler._private.updater import NodeUpdaterThread
+from ray.autoscaler._private.util import (
+    ConcurrentCounter,
+    NodeCount,
+    NodeID,
+    NodeIP,
+    NodeType,
+    NodeTypeConfigDict,
+    format_info_string,
+    hash_launch_conf,
+    hash_runtime_conf,
+    validate_config,
+    with_head_node_ip,
+)
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_UNMANAGED,
+    NODE_KIND_WORKER,
+    STATUS_UP_TO_DATE,
+    STATUS_UPDATE_FAILED,
+    TAG_RAY_FILE_MOUNTS_CONTENTS,
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_RUNTIME_CONFIG,
+    TAG_RAY_USER_NODE_TYPE,
+)
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 
 try:
     from urllib3.exceptions import MaxRetryError
 except ImportError:
     MaxRetryError = None
 
-from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (
-    TAG_RAY_LAUNCH_CONFIG,
-    TAG_RAY_RUNTIME_CONFIG,
-    TAG_RAY_FILE_MOUNTS_CONTENTS,
-    TAG_RAY_NODE_STATUS,
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE,
-    STATUS_UP_TO_DATE,
-    STATUS_UPDATE_FAILED,
-    NODE_KIND_WORKER,
-    NODE_KIND_UNMANAGED,
-    NODE_KIND_HEAD,
-)
-from ray.autoscaler._private.event_summarizer import EventSummarizer
-from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
-from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.local.node_provider import LocalNodeProvider
-from ray.autoscaler._private.local.node_provider import (
-    record_local_head_state_if_needed,
-)
-from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
-from ray.autoscaler._private.providers import _get_node_provider
-from ray.autoscaler._private.updater import NodeUpdaterThread
-from ray.autoscaler._private.node_launcher import NodeLauncher
-from ray.autoscaler._private.node_tracker import NodeTracker
-from ray.autoscaler._private.resource_demand_scheduler import (
-    get_bin_pack_residual,
-    ResourceDemandScheduler,
-    NodeType,
-    NodeID,
-    NodeIP,
-    ResourceDict,
-)
-from ray.autoscaler._private.util import (
-    ConcurrentCounter,
-    validate_config,
-    with_head_node_ip,
-    hash_launch_conf,
-    hash_runtime_conf,
-    format_info_string,
-)
-from ray.autoscaler._private.constants import (
-    AUTOSCALER_MAX_NUM_FAILURES,
-    AUTOSCALER_MAX_LAUNCH_BATCH,
-    AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
-    AUTOSCALER_UPDATE_INTERVAL_S,
-    AUTOSCALER_HEARTBEAT_TIMEOUT_S,
-)
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-
-from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +88,8 @@ UpdateInstructions = namedtuple(
     "UpdateInstructions",
     ["node_id", "setup_commands", "ray_start_commands", "docker_config"],
 )
+
+NodeLaunchData = Tuple[NodeTypeConfigDict, NodeCount, NodeType]
 
 
 @dataclass
@@ -236,32 +243,57 @@ class StandardAutoscaler:
         # Should be set to true in situations where another component, such as
         # a Kubernetes operator, is responsible for Ray setup on nodes.
         self.disable_node_updaters = self.config["provider"].get(
-            "disable_node_updaters", False
+            DISABLE_NODE_UPDATERS_KEY, False
         )
+        logger.info(f"{DISABLE_NODE_UPDATERS_KEY}:{self.disable_node_updaters}")
 
         # Disable launch config checking if true.
         # This is set in the fake_multinode situations where there isn't any
         # meaningful node "type" to enforce.
         self.disable_launch_config_check = self.config["provider"].get(
-            "disable_launch_config_check", False
+            DISABLE_LAUNCH_CONFIG_CHECK_KEY, False
+        )
+        logger.info(
+            f"{DISABLE_LAUNCH_CONFIG_CHECK_KEY}:{self.disable_launch_config_check}"
         )
 
+        # By default, the autoscaler launches nodes in batches asynchronously in
+        # background threads.
+        # When the following flag is set, that behavior is disabled, so that nodes
+        # are launched in the main thread, all in one batch, blocking until all
+        # NodeProvider.create_node calls have returned.
+        self.foreground_node_launch = self.config["provider"].get(
+            FOREGROUND_NODE_LAUNCH_KEY
+        )
+        logger.info(f"{FOREGROUND_NODE_LAUNCH_KEY}:{self.foreground_node_launch}")
+
         # Node launchers
-        self.launch_queue = queue.Queue()
+        self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
+        self.launch_queue: Optional[queue.Queue[NodeLaunchData]] = None
         self.pending_launches = ConcurrentCounter()
-        max_batches = math.ceil(max_concurrent_launches / float(max_launch_batch))
-        for i in range(int(max_batches)):
-            node_launcher = NodeLauncher(
+        if self.foreground_node_launch:
+            self.foreground_node_launcher = BaseNodeLauncher(
                 provider=self.provider,
-                queue=self.launch_queue,
-                index=i,
                 pending=self.pending_launches,
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
                 event_summarizer=self.event_summarizer,
             )
-            node_launcher.daemon = True
-            node_launcher.start()
+        else:
+            self.launch_queue = queue.Queue()
+            max_batches = math.ceil(max_concurrent_launches / float(max_launch_batch))
+            for i in range(int(max_batches)):
+                node_launcher = NodeLauncher(
+                    provider=self.provider,
+                    queue=self.launch_queue,
+                    index=i,
+                    pending=self.pending_launches,
+                    node_types=self.available_node_types,
+                    prom_metrics=self.prom_metrics,
+                    event_summarizer=self.event_summarizer,
+                )
+                node_launcher.daemon = True
+                node_launcher.start()
 
         # NodeTracker maintains soft state to track the number of recently
         # failed nodes. It is best effort only.
@@ -424,6 +456,12 @@ class StandardAutoscaler:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
                 self.schedule_node_termination(node_id, "idle", logger.info)
+                # Get the local time of the node's last use as a string.
+                formatted_last_used_time = time.asctime(
+                    time.localtime(last_used[node_ip])
+                )
+                logger.info(f"Node last used: {formatted_last_used_time}.")
+                # Note that the current time will appear in the log prefix.
             elif not self.launch_config_ok(node_id):
                 self.schedule_node_termination(node_id, "outdated", logger.info)
             else:
@@ -1225,12 +1263,19 @@ class StandardAutoscaler:
         self.pending_launches.inc(node_type, count)
         self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
-        # Split into individual launch requests of the max batch size.
-        while count > 0:
-            self.launch_queue.put(
-                (config, min(count, self.max_launch_batch), node_type)
-            )
-            count -= self.max_launch_batch
+        if self.foreground_node_launch:
+            assert self.foreground_node_launcher is not None
+            # Launch in the main thread and block.
+            self.foreground_node_launcher.launch_node(config, count, node_type)
+        else:
+            assert self.launch_queue is not None
+            # Split into individual launch requests of the max batch size.
+            while count > 0:
+                # Enqueue launch data for the background NodeUpdater threads.
+                self.launch_queue.put(
+                    (config, min(count, self.max_launch_batch), node_type)
+                )
+                count -= self.max_launch_batch
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")

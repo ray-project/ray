@@ -5,7 +5,6 @@ import sys
 import os
 import yaml
 import requests
-import numpy as np
 
 import ray
 from ray import serve
@@ -278,18 +277,6 @@ class TestServeBuild:
     @serve.deployment
     class A:
         pass
-
-    def test_build_non_json_serializable_args(self, serve_instance):
-        with pytest.raises(
-            TypeError, match="must be JSON-serializable to build.*init_args"
-        ):
-            build_app(self.A.bind(np.zeros(100))).to_dict()
-
-    def test_build_non_json_serializable_kwargs(self, serve_instance):
-        with pytest.raises(
-            TypeError, match="must be JSON-serializable to build.*init_kwargs"
-        ):
-            build_app(self.A.bind(kwarg=np.zeros(100))).to_dict()
 
     def test_build_non_importable(self, serve_instance):
         def gen_deployment():

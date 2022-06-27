@@ -131,6 +131,13 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Get the count of tasks in `tasks_to_schedule_`.
   size_t GetPendingQueueSize() const;
 
+  /// Populate the info of pending and infeasible actors. This function
+  /// is only called by gcs node.
+  ///
+  /// \param[out] data: Output parameter. `resource_load_by_shape` is the only field
+  /// filled.
+  void FillPendingActorInfo(rpc::ResourcesData &data) const;
+
  private:
   void TryScheduleInfeasibleTask();
 
@@ -167,8 +174,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       infeasible_tasks_;
 
-  std::unique_ptr<SchedulerResourceReporter> scheduler_resource_reporter_;
-  mutable std::unique_ptr<SchedulerStats> internal_stats_;
+  const SchedulerResourceReporter scheduler_resource_reporter_;
+  mutable SchedulerStats internal_stats_;
 
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;

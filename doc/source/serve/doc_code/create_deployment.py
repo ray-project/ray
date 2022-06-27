@@ -93,4 +93,31 @@ if __name__ == '__main__':
             url = f"http://127.0.0.1:8000/{d_name}"
             print(f"handle name : {d_name}")
             print(f"prediction  : {requests.get(url, params= {'data': random()}).text}")
+
+# Output:
+# {'rep-1': Deployment(name=rep-1,version=None,route_prefix=/rep-1),
+# 'rep-2': Deployment(name=rep-2,version=None,route_prefix=/rep-2)}
+#
+# ServerHandle API responses: ----------
+# handle name : rep-1
+# prediction  : (pid: 62636); path: /model/rep-1.pkl; data: 0.600; prediction: 1.292
+# --
+# handle name : rep-2
+# prediction  : (pid: 62635); path: /model/rep-2.pkl; data: 0.075; prediction: 0.075
+# --
+# handle name : rep-1
+# prediction  : (pid: 62634); path: /model/rep-1.pkl; data: 0.186; prediction: 0.186
+# --
+# handle name : rep-2
+# prediction  : (pid: 62637); path: /model/rep-2.pkl; data: 0.751; prediction: 1.444
+# --
+# HTTP responses: ----------
+# handle name : rep-1
+# prediction  : (pid: 62636); path: /model/rep-1.pkl; data: 0.582; prediction: 1.481
+# handle name : rep-2
+# prediction  : (pid: 62637); path: /model/rep-2.pkl; data: 0.778; prediction: 1.678
+# handle name : rep-1
+# prediction  : (pid: 62634); path: /model/rep-1.pkl; data: 0.139; prediction: 0.139
+# handle name : rep-2
+# prediction  : (pid: 62635); path: /model/rep-2.pkl; data: 0.569; prediction: 1.262
 # __serve_example_end__

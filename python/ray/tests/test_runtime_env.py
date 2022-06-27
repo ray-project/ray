@@ -1,3 +1,4 @@
+import logging
 import os
 import pytest
 import sys
@@ -33,9 +34,12 @@ from ray.runtime_env import RuntimeEnv
 
 
 def test_get_wheel_filename():
-    ray_version = "2.0.0.dev0"
+    ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
+            if sys_platform == "win32" and py_version == "36":
+                # Windows wheels are not built for py3.6 anymore
+                continue
             filename = get_wheel_filename(sys_platform, ray_version, py_version)
             prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
             url = f"{prefix}{filename}"
@@ -43,10 +47,13 @@ def test_get_wheel_filename():
 
 
 def test_get_master_wheel_url():
-    ray_version = "2.0.0.dev0"
-    test_commit = "58a73821fbfefbf53a19b6c7ffd71e70ccf258c7"
+    ray_version = "3.0.0.dev0"
+    test_commit = "c3ac6fcf3fcc8cfe6930c9a820add0e187bff579"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
+            if sys_platform == "win32" and py_version == "36":
+                # Windows wheels are not built for py3.6 anymore
+                continue
             url = get_master_wheel_url(
                 test_commit, sys_platform, ray_version, py_version
             )
@@ -430,7 +437,7 @@ def test_runtime_env_log_msg(
 
     good_env = runtime_env_class(pip=["requests"])
     ray.get(f.options(runtime_env=good_env).remote())
-    sources = get_log_sources(p, timeout=10)
+    sources = get_log_sources(p, 5)
     if local_env_var_enabled:
         assert "runtime_env" in sources
     else:
@@ -563,7 +570,7 @@ class MyPlugin(RuntimeEnvPlugin):
 
     @staticmethod
     def modify_context(
-        uri: str, plugin_config_dict: dict, ctx: RuntimeEnvContext
+        uri: str, runtime_env: dict, ctx: RuntimeEnvContext, logger: logging.Logger
     ) -> None:
         global runtime_env_retry_times
         runtime_env_retry_times += 1
@@ -606,9 +613,6 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
             )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
 @pytest.mark.parametrize(
     "option",
     ["pip_list", "pip_dict", "conda_name", "conda_dict", "container", "plugins"],
@@ -658,9 +662,6 @@ def test_serialize_deserialize(option):
     assert cls_runtime_env_dict == runtime_env
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
 def test_runtime_env_interface():
 
     # Test the interface related to working_dir
@@ -836,4 +837,7 @@ def test_runtime_env_interface():
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

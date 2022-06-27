@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+from typing import Optional
 
 import ray
 import ray.ray_constants as ray_constants
@@ -138,12 +139,12 @@ class ResourceSpec(
 
         return resources
 
-    def resolve(self, is_head, node_ip_address=None):
+    def resolve(self, is_head: bool, node_ip_address: Optional[str] = None):
         """Returns a copy with values filled out with system defaults.
 
         Args:
-            is_head (bool): Whether this is the head node.
-            node_ip_address (str): The IP address of the node that we are on.
+            is_head: Whether this is the head node.
+            node_ip_address: The IP address of the node that we are on.
                 This is used to automatically create a node id resource.
         """
 
@@ -311,12 +312,12 @@ def _get_gpu_types_gputil():
     return {}
 
 
-def _constraints_from_gpu_info(info_str):
+def _constraints_from_gpu_info(info_str: str):
     """Parse the contents of a /proc/driver/nvidia/gpus/*/information to get the
     gpu model type.
 
         Args:
-            info_str (str): The contents of the file.
+            info_str: The contents of the file.
 
         Returns:
             (str) The full model name.

@@ -4,6 +4,7 @@ import os
 
 import ray
 from ray.util.annotations import DeveloperAPI
+from ray.util.scheduling_strategies import SchedulingStrategyT
 
 # The context singleton on this process.
 _default_context: "Optional[DatasetContext]" = None
@@ -37,6 +38,9 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATASET_PUSH_BASED_SHUFFLE", None)
 )
 
+# The default global scheduling strategy.
+DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
+
 
 @DeveloperAPI
 class DatasetContext:
@@ -57,6 +61,7 @@ class DatasetContext:
         optimize_fuse_shuffle_stages: bool,
         actor_prefetcher_enabled: bool,
         use_push_based_shuffle: bool,
+        scheduling_strategy: SchedulingStrategyT,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
@@ -68,6 +73,7 @@ class DatasetContext:
         self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
         self.actor_prefetcher_enabled = actor_prefetcher_enabled
         self.use_push_based_shuffle = use_push_based_shuffle
+        self.scheduling_strategy = scheduling_strategy
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -91,13 +97,16 @@ class DatasetContext:
                     optimize_fuse_shuffle_stages=DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES,
                     actor_prefetcher_enabled=DEFAULT_ACTOR_PREFETCHER_ENABLED,
                     use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
+                    scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
                 )
 
             if (
                 _default_context.block_splitting_enabled
                 and _default_context.block_owner is None
             ):
-                owner = _DesignatedBlockOwner.remote()
+                owner = _DesignatedBlockOwner.options(
+                    scheduling_strategy=_default_context.scheduling_strategy
+                ).remote()
                 ray.get(owner.ping.remote())
 
                 # Clear the actor handle after Ray reinits since it's no longer
@@ -122,7 +131,7 @@ class DatasetContext:
         _default_context = context
 
 
-@ray.remote(num_cpus=0, placement_group=None)
+@ray.remote(num_cpus=0)
 class _DesignatedBlockOwner:
     def ping(self):
         return "ok"

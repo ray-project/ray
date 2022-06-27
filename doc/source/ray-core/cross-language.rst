@@ -330,9 +330,9 @@ The exception stack will be:
     File "ray/worker.py", line 1425, in get
       raise value
   ray.exceptions.CrossLanguageError: An exception raised from JAVA:
-  io.ray.runtime.exception.RayTaskException: (pid=92253, ip=10.15.239.68) Error executing task df5a1a828c9685d3ffffffff01000000
+  io.ray.api.exception.RayTaskException: (pid=92253, ip=10.15.239.68) Error executing task df5a1a828c9685d3ffffffff01000000
     at io.ray.runtime.task.TaskExecutor.execute(TaskExecutor.java:167)
-  Caused by: io.ray.runtime.exception.CrossLanguageException: An exception raised from PYTHON:
+  Caused by: io.ray.api.exception.CrossLanguageException: An exception raised from PYTHON:
   ray.exceptions.RayTaskError: ray::raise_exception() (pid=92252, ip=10.15.239.68)
     File "python/ray/_raylet.pyx", line 482, in ray._raylet.execute_task
     File "ray_exception.py", line 7, in raise_exception

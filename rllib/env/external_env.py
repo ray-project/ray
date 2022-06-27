@@ -39,11 +39,11 @@ class ExternalEnv(threading.Thread):
 
     Examples:
         >>> from ray.tune import register_env
-        >>> from ray.rllib.agents.dqn import DQNTrainer # doctest: +SKIP
+        >>> from ray.rllib.algorithms.dqn import DQN # doctest: +SKIP
         >>> YourExternalEnv = ... # doctest: +SKIP
         >>> register_env("my_env", # doctest: +SKIP
         ...     lambda config: YourExternalEnv(config))
-        >>> trainer = DQNTrainer(env="my_env") # doctest: +SKIP
+        >>> trainer = DQN(env="my_env") # doctest: +SKIP
         >>> while True: # doctest: +SKIP
         >>>     print(trainer.train()) # doctest: +SKIP
     """
@@ -337,6 +337,7 @@ class _ExternalEnvEpisode:
             self.results_avail_condition.notify()
 
 
+@PublicAPI
 class ExternalEnvWrapper(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 

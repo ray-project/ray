@@ -6,10 +6,12 @@ import click
 
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
+    parse_python_version,
     read_and_validate_release_test_collection,
     find_test,
     as_smoke_test,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
+    DEFAULT_PYTHON_VERSION,
 )
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
@@ -101,8 +103,13 @@ def main(
     if smoke_test:
         test = as_smoke_test(test)
 
+    if "python" in test:
+        python_version = parse_python_version(test["python"])
+    else:
+        python_version = DEFAULT_PYTHON_VERSION
+
     ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        ray_wheels, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
+        ray_wheels, python_version=python_version, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
     )
 
     anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)

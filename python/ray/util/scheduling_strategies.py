@@ -42,8 +42,7 @@ class PlacementGroupSchedulingStrategy:
 
 @PublicAPI(stability="beta")
 class NodeAffinitySchedulingStrategy:
-    """Static scheduling strategy used to run a task or actor
-       on a particular node.
+    """Static scheduling strategy used to run a task or actor on a particular node.
 
     Attributes:
         node_id: the hex id of the node where the task or actor should run.

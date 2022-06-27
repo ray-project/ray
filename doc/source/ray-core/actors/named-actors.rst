@@ -76,7 +76,7 @@ exist. See :ref:`actor-lifetimes` for more details.
         # driver_1.py
         # Job 1 creates an actor, "orange" in the "colors" namespace.
         ray.init(address="auto", namespace="colors")
-        Actor.options(name="orange", lifetime="detached")
+        Actor.options(name="orange", lifetime="detached").remote()
 
         # driver_2.py
         # Job 2 is now connecting to a different namespace.

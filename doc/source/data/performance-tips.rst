@@ -90,8 +90,21 @@ Parquet Column Pruning
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Current Datasets will read all Parquet columns into memory.
-If you only need a subset of the columns, make sure to specify the list of columns explicitly when
-calling ``ray.data.read_parquet()`` to avoid loading unnecessary data.
+If you only need a subset of the columns, make sure to specify the list of columns
+explicitly when calling ``ray.data.read_parquet()`` to avoid loading unnecessary
+data (projection pushdown).
+For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"]`` to read
+just two of the five columns of Iris dataset.
+
+Parquet Row Pruning
+~~~~~~~~~~~~~~~~~~~
+
+Similarly, you can pass in a filter to ``ray.data.read_parquet()`` (selection pushdown)
+which will be applied at the file scan so only rows that match the filter predicate
+will be returned.
+For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pa.dataset.field("sepal.length") > 5.0``
+to read rows with sepal.length greater than 5.0.
+This can be used in conjunction with column pruning when appropriate to get the benefits of both.
 
 Tuning Read Parallelism
 ~~~~~~~~~~~~~~~~~~~~~~~

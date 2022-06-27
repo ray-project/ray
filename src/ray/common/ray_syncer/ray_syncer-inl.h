@@ -162,8 +162,8 @@ class ServerSyncConnection : public NodeSyncConnection {
   /// After the message being sent, these two fields will be set to be empty again.
   /// When the periodical timer wake up, it'll check whether these two fields are set
   /// and it'll only send data when these are set.
-  RaySyncMessages *response_ = nullptr;
-  grpc::ServerUnaryReactor *unary_reactor_ = nullptr;
+  std::vector<RaySyncMessages *> responses_;
+  std::vector<grpc::ServerUnaryReactor *> unary_reactors_;
 };
 
 /// SyncConnection for gRPC client side. It has customized logic for sending.
@@ -185,9 +185,6 @@ class ClientSyncConnection : public NodeSyncConnection {
 
   /// Stub for this connection.
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
-
-  /// Where the received message is stored.
-  ray::rpc::syncer::RaySyncMessages in_message_;
 
   /// Dummy request for long-polling.
   DummyRequest dummy_;

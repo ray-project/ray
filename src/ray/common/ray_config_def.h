@@ -242,6 +242,13 @@ RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 /// NOTE(swang): Linux only.
 RAY_CONFIG(int, worker_oom_score_adjustment, 1000)
 
+/// Sets workers' nice value on posix systems, so that the OS prioritizes CPU for other
+/// processes over worker. This makes CPU available to GCS, Raylet and user processes
+/// even when workers are busy.
+/// Valid value is [0, 19] (negative values require sudo permissions).
+/// NOTE: Linux, Unix and MacOS only.
+RAY_CONFIG(int, worker_niceness, 15)
+
 /// Allow up to 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
@@ -372,6 +379,10 @@ RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 10
 
 /// Feature flag to use the ray syncer for resource synchronization
 RAY_CONFIG(bool, use_ray_syncer, false)
+
+/// The queuing buffer of ray syncer. This indicates how many concurrent
+/// requests can run in flight for syncing.
+RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.

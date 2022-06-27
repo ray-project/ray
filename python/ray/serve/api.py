@@ -16,7 +16,15 @@ from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-from ray.serve.common import DeploymentStatusInfo
+import ray
+from ray import cloudpickle
+from ray.experimental.dag import DAGNode
+from ray.util.annotations import PublicAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.usage import usage_lib
+
+from ray.serve.application import Application
+from ray.serve.client import ServeControllerClient
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
@@ -26,41 +34,36 @@ from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
     CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
-from ray.serve.controller import ServeController
-from ray.serve.deployment import Deployment
-from ray.serve.exceptions import RayServeException
-from ray.experimental.dag import DAGNode
-from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve.logging_utils import LoggingContext
-from ray.serve.utils import (
-    ensure_serialization_context,
-    format_actor_name,
-    get_current_node_resource_key,
-    get_random_letters,
-    in_interactive_shell,
-    DEFAULT,
-    install_serve_encoders_to_fastapi,
-)
-from ray.util.annotations import PublicAPI
-import ray
-from ray import cloudpickle
-from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient, get_controller_namespace
 from ray.serve.context import (
     set_global_client,
     get_global_client,
     get_internal_replica_context,
     ReplicaContext,
 )
-from ray.serve.pipeline.api import build as pipeline_build
-from ray.serve.pipeline.api import get_and_validate_ingress_deployment
-from ray._private.usage import usage_lib
+from ray.serve.controller import ServeController
+from ray.serve.deployment import Deployment
+from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import RayServeHandle
+from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
+from ray.serve.logging_utils import LoggingContext
+from ray.serve.deployment_graph_build import (
+    build as pipeline_build,
+    get_and_validate_ingress_deployment,
+)
+from ray.serve.utils import (
+    ensure_serialization_context,
+    format_actor_name,
+    get_random_letters,
+    in_interactive_shell,
+    DEFAULT,
+    install_serve_encoders_to_fastapi,
+)
 
 logger = logging.getLogger(__file__)
 
@@ -71,7 +74,6 @@ def start(
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
     _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
-    _override_controller_namespace: Optional[str] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -83,7 +85,7 @@ def start(
     ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
-        detached (bool): Whether not the instance should be detached from this
+        detached: Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
@@ -109,7 +111,7 @@ def start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        dedicated_cpu (bool): Whether to reserve a CPU core for the internal
+        dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
     usage_lib.record_library_usage("serve")
@@ -124,20 +126,12 @@ def start(
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init(namespace="serve")
-
-    controller_namespace = get_controller_namespace(
-        detached, _override_controller_namespace=_override_controller_namespace
-    )
+        ray.init(namespace=SERVE_NAMESPACE)
 
     try:
-        client = get_global_client(
-            _override_controller_namespace=_override_controller_namespace,
-            _health_check_controller=True,
-        )
+        client = get_global_client(_health_check_controller=True)
         logger.info(
-            "Connecting to existing Serve instance in namespace "
-            f"'{controller_namespace}'."
+            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
         )
 
         _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
@@ -155,22 +149,26 @@ def start(
     if http_options is None:
         http_options = HTTPOptions()
 
+    # Used for scheduling things to the head node explicitly.
+    head_node_id = ray.get_runtime_context().node_id.hex()
     controller = ServeController.options(
         num_cpus=1 if dedicated_cpu else 0,
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,
         max_task_retries=-1,
-        # Pin Serve controller on the head node.
-        resources={get_current_node_resource_key(): 0.01},
-        namespace=controller_namespace,
+        # Schedule the controller on the head node with a soft constraint. This
+        # prefers it to run on the head node in most cases, but allows it to be
+        # restarted on other nodes in an HA cluster.
+        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
+        namespace=SERVE_NAMESPACE,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
         controller_name,
-        http_options,
-        _checkpoint_path,
+        http_config=http_options,
+        checkpoint_path=_checkpoint_path,
+        head_node_id=head_node_id,
         detached=detached,
-        _override_controller_namespace=_override_controller_namespace,
     )
 
     proxy_handles = ray.get(controller.get_http_proxies.remote())
@@ -189,12 +187,11 @@ def start(
         controller,
         controller_name,
         detached=detached,
-        _override_controller_namespace=_override_controller_namespace,
     )
     set_global_client(client)
     logger.info(
         f"Started{' detached ' if detached else ' '}Serve instance in "
-        f"namespace '{controller_namespace}'."
+        f'namespace "{SERVE_NAMESPACE}".'
     )
     return client
 
@@ -418,7 +415,7 @@ def deployment(
             to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
-        ray_actor_options (dict): Options to be passed to the Ray actor
+        ray_actor_options: Options to be passed to the Ray actor
             constructor such as resource requirements.
         user_config (Optional[Any]): [experimental] Config to pass to the
             reconfigure method of the deployment. This can be updated
@@ -443,6 +440,11 @@ def deployment(
     Returns:
         Deployment
     """
+
+    # Num of replicas should not be 0.
+    # TODO(Sihan) seperate num_replicas attribute from internal and api
+    if num_replicas == 0:
+        raise ValueError("num_replicas is expected to larger than 0")
 
     if num_replicas is not None and _autoscaling_config is not None:
         raise ValueError(
@@ -510,7 +512,7 @@ def get_deployment(name: str) -> Deployment:
             f"Deployment {name} was not found. Did you call Deployment.deploy()?"
         )
     return Deployment(
-        cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+        deployment_info.replica_config.deployment_def,
         name,
         deployment_info.deployment_config,
         version=deployment_info.version,
@@ -533,7 +535,7 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+            deployment_info.replica_config.deployment_def,
             name,
             deployment_info.deployment_config,
             version=deployment_info.version,
@@ -545,27 +547,6 @@ def list_deployments() -> Dict[str, Deployment]:
         )
 
     return deployments
-
-
-def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
-    """Returns a dictionary of deployment statuses.
-
-    A deployment's status is one of {UPDATING, UNHEALTHY, and HEALTHY}.
-
-    Example:
-    >>> from ray.serve.api import get_deployment_statuses
-    >>> statuses = get_deployment_statuses() # doctest: +SKIP
-    >>> status_info = statuses["deployment_name"] # doctest: +SKIP
-    >>> status = status_info.status # doctest: +SKIP
-    >>> message = status_info.message # doctest: +SKIP
-
-    Returns:
-            Dict[str, DeploymentStatus]: This dictionary maps the running
-                deployment's name to a DeploymentStatus object containing its
-                status and a message explaining the status.
-    """
-
-    return get_global_client().get_deployment_statuses()
 
 
 @PublicAPI(stability="alpha")
@@ -587,8 +568,8 @@ def run(
             A user-built Serve Application or a ClassNode that acts as the
             root node of DAG. By default ClassNode is the Driver
             deployment unless user provides a customized one.
-        host (str): The host passed into serve.start().
-        port (int): The port passed into serve.start().
+        host: The host passed into serve.start().
+        port: The port passed into serve.start().
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user

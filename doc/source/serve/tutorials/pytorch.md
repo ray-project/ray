@@ -8,7 +8,7 @@ In particular, we show:
 - How to load the model from PyTorch's pre-trained modelzoo.
 - How to parse the JSON request, transform the payload and evaluated in the model.
 
-Please see the {doc}`../core-apis` to learn more general information about Ray Serve.
+Please see the [Key Concepts](key-concepts) to learn more general information about Ray Serve.
 
 This tutorial requires Pytorch and Torchvision installed in your system. Ray Serve
 is framework agnostic and works with any version of PyTorch.

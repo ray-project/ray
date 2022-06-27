@@ -11,8 +11,10 @@ pong-deterministic-dqn:
         num_gpus: 1
         gamma: 0.99
         lr: .0001
-        learning_starts: 10000
-        buffer_size: 50000
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          capacity: 50000
+          learning_starts: 10000
         rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:

@@ -176,11 +176,11 @@ class ClientAPI:
         retried (max_retries will not be respected).
 
         Args:
-            object_ref (ObjectRef): ObjectRef returned by the task
+            object_ref: ObjectRef returned by the task
                 that should be canceled.
-            force (boolean): Whether to force-kill a running task by killing
+            force: Whether to force-kill a running task by killing
                 the worker that is running the task.
-            recursive (boolean): Whether to try to cancel tasks submitted by
+            recursive: Whether to try to cancel tasks submitted by
                 the task specified.
         """
         return self.worker.terminate_task(obj, force, recursive)
@@ -335,6 +335,10 @@ class ClientAPI:
     def _internal_kv_list(self, prefix: bytes) -> bytes:
         """Hook for internal_kv._internal_kv_list."""
         return self.worker.internal_kv_list(as_bytes(prefix))
+
+    def _pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
+        """Hook for internal_kv._pin_runtime_env_uri."""
+        return self.worker.pin_runtime_env_uri(uri, expiration_s)
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""

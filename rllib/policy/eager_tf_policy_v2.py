@@ -17,8 +17,8 @@ from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.eager_tf_policy import (
     _convert_to_tf,
     _disallow_var_creation,
-    OptimizerWrapper,
-    traced_eager_policy,
+    _OptimizerWrapper,
+    _traced_eager_policy,
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -42,7 +42,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -60,7 +60,7 @@ class EagerTFPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         **kwargs,
     ):
         self.framework = config.get("framework", "tf2")
@@ -136,7 +136,7 @@ class EagerTFPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def get_default_config(self) -> TrainerConfigDict:
+    def get_default_config(self) -> AlgorithmConfigDict:
         return {}
 
     @DeveloperAPI
@@ -145,7 +145,7 @@ class EagerTFPolicyV2(Policy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         return {}
 
@@ -226,11 +226,11 @@ class EagerTFPolicyV2(Policy):
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
+            policy: The Policy object that generated the loss tensor and
                 that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            loss (TensorType): The loss tensor for which gradients should be
+            loss: The loss tensor for which gradients should be
                 calculated.
 
         Returns:
@@ -250,11 +250,11 @@ class EagerTFPolicyV2(Policy):
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
+            policy: The Policy object that generated the loss tensor and
                 that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            grads (ModelGradients): The gradient tensor to be applied.
+            grads: The gradient tensor to be applied.
 
         Returns:
             "tf.Operation": TF operation that applies supplied gradients.
@@ -846,7 +846,7 @@ class EagerTFPolicyV2(Policy):
             # object looks like a "classic" tf.optimizer. This way, custom
             # compute_gradients_fn will work on both tf static graph
             # and tf-eager.
-            optimizer = OptimizerWrapper(tape)
+            optimizer = _OptimizerWrapper(tape)
             # More than one loss terms/optimizers.
             if self.config["_tf_policy_handles_more_than_one_loss"]:
                 grads_and_vars = self.compute_gradients_fn(
@@ -924,4 +924,4 @@ class EagerTFPolicyV2(Policy):
 
     @classmethod
     def with_tracing(cls):
-        return traced_eager_policy(cls)
+        return _traced_eager_policy(cls)

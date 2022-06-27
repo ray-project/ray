@@ -22,6 +22,7 @@ pendulum-cql:
         twin_q: true
         train_batch_size: 2000
         replay_buffer_config:
+          type: MultiAgentReplayBuffer
           learning_starts: 0
         bc_iters: 100
 

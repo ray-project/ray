@@ -239,12 +239,9 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
-      const JobID &job_id,
-      const std::string &ray_namespace,
-      uint32_t num_java_worker_per_process) {
+      const JobID &job_id, const std::string &ray_namespace) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
-    job_config_data->set_num_java_workers_per_process(num_java_worker_per_process);
 
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
