@@ -59,7 +59,9 @@ def test_keras_callback_e2e():
     checkpoint_dict = checkpoint.to_dict()
     assert MODEL_KEY in checkpoint_dict
 
-    predictor = TensorflowPredictor.from_checkpoint(checkpoint)
+    predictor = TensorflowPredictor.from_checkpoint(
+        checkpoint, model_definition=build_model
+    )
 
     items = np.random.uniform(0, 1, size=(10,))
     predictor.predict(data=items)
