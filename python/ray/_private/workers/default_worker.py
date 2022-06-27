@@ -174,8 +174,6 @@ if __name__ == "__main__":
         node_manager_port=args.node_manager_port,
         redis_address=args.redis_address,
         redis_password=args.redis_password,
-        plasma_store_socket_name=args.object_store_name,
-        raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         storage=args.storage,
         metrics_agent_port=args.metrics_agent_port,

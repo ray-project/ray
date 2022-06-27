@@ -87,10 +87,6 @@ class RayParams:
             Defaults to 8265.
         dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
-        plasma_store_socket_name: If provided, it will specify the socket
-            name used by the plasma store.
-        raylet_socket_name: If provided, it will specify the socket path
-            used by the raylet process.
         temp_dir: If provided, it will specify the root temporary
             directory for the Ray process.
         storage: Specify a URI for persistent cluster-wide storage. This storage path
@@ -157,8 +153,6 @@ class RayParams:
         dashboard_host: Optional[str] = ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port: Optional[bool] = ray_constants.DEFAULT_DASHBOARD_PORT,
         dashboard_agent_listen_port: Optional[int] = 0,
-        plasma_store_socket_name: Optional[str] = None,
-        raylet_socket_name: Optional[str] = None,
         temp_dir: Optional[str] = None,
         storage: Optional[str] = None,
         runtime_env_dir_name: Optional[str] = None,
@@ -208,8 +202,6 @@ class RayParams:
         self.dashboard_host = dashboard_host
         self.dashboard_port = dashboard_port
         self.dashboard_agent_listen_port = dashboard_agent_listen_port
-        self.plasma_store_socket_name = plasma_store_socket_name
-        self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
         self.storage = storage or os.environ.get(
             ray_constants.RAY_STORAGE_ENVIRONMENT_VARIABLE

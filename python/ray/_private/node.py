@@ -213,10 +213,6 @@ class Node:
             self.validate_external_storage()
 
         if connect_only:
-            # Get socket names from the configuration.
-            self._plasma_store_socket_name = ray_params.plasma_store_socket_name
-            self._raylet_socket_name = ray_params.raylet_socket_name
-
             # If user does not provide the socket name, get it from Redis.
             if (
                 self._plasma_store_socket_name is None
@@ -522,11 +518,6 @@ class Node:
         return self._ray_params.object_ref_seed
 
     @property
-    def plasma_store_socket_name(self):
-        """Get the node's plasma store socket name."""
-        return self._plasma_store_socket_name
-
-    @property
     def unique_id(self):
         """Get a unique identifier for this node."""
         return f"{self.node_ip_address}:{self._plasma_store_socket_name}"
@@ -535,11 +526,6 @@ class Node:
     def webui_url(self):
         """Get the cluster's web UI url."""
         return self._webui_url
-
-    @property
-    def raylet_socket_name(self):
-        """Get the node's raylet socket name."""
-        return self._raylet_socket_name
 
     @property
     def node_manager_port(self):

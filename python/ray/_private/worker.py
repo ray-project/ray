@@ -1334,7 +1334,6 @@ def init(
             memory=_memory,
             object_store_memory=object_store_memory,
             redis_max_memory=_redis_max_memory,
-            plasma_store_socket_name=None,
             temp_dir=_temp_dir,
             storage=storage,
             # We need to disable it if runtime env is not set.
