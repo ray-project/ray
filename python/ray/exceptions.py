@@ -229,7 +229,9 @@ class LocalRayletDiedError(RayError):
     """Indicates that the task's local raylet died."""
 
     def __str__(self):
-        return "The task's local raylet died. Check raylet.out for more information."
+        return (
+            "The task's local raylet died. Check raylet_xxx.log for more information."
+        )
 
 
 @PublicAPI

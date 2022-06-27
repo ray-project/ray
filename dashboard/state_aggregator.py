@@ -317,7 +317,7 @@ class StateAPIManager:
                 type="raylet",
                 total=len(raylet_ids),
                 network_failures=unresponsive_nodes,
-                log_command="raylet.out",
+                log_command="raylet_xxx.log",
             )
             if unresponsive_nodes == len(raylet_ids):
                 raise DataSourceUnavailable(warning_msg)
@@ -392,7 +392,7 @@ class StateAPIManager:
                 type="raylet",
                 total=len(raylet_ids),
                 network_failures=unresponsive_nodes,
-                log_command="raylet.out",
+                log_command="raylet_xxx.log",
             )
             if unresponsive_nodes == len(raylet_ids):
                 raise DataSourceUnavailable(warning_msg)

@@ -504,7 +504,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     warning = result.partial_failure_warning
     assert (
         NODE_QUERY_FAILURE_WARNING.format(
-            type="raylet", total=2, network_failures=1, log_command="raylet.out"
+            type="raylet", total=2, network_failures=1, log_command="raylet_xxx.log"
         )
         in warning
     )
@@ -583,7 +583,7 @@ async def test_api_manager_list_objects(state_api_manager):
     warning = result.partial_failure_warning
     assert (
         NODE_QUERY_FAILURE_WARNING.format(
-            type="raylet", total=2, network_failures=1, log_command="raylet.out"
+            type="raylet", total=2, network_failures=1, log_command="raylet_xxx.log"
         )
         in warning
     )

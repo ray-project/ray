@@ -756,7 +756,8 @@ void CoreWorker::ExitIfParentRayletDies() {
   bool should_shutdown = !IsProcessAlive(raylet_pid);
   if (should_shutdown) {
     RAY_LOG(WARNING) << "Shutting down the core worker because the local raylet failed. "
-                     << "Check out the raylet_xxx.log log file. Raylet pid: " << raylet_pid;
+                     << "Check out the raylet_xxx.log log file. Raylet pid: "
+                     << raylet_pid;
     QuickExit();
   }
 }

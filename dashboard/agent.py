@@ -169,10 +169,13 @@ class DashboardAgent:
             """Check if raylet is dead and fate-share if it is."""
             try:
                 curr_proc = psutil.Process()
+                raylet_pid = curr_proc.parent().pid
                 while True:
                     parent = curr_proc.parent()
                     if parent is None or parent.pid == 1 or self.ppid != parent.pid:
-                        log_path = os.path.join(self.log_dir, "raylet.out")
+                        log_path = os.path.join(
+                            self.log_dir, f"raylet_{raylet_pid}.log"
+                        )
                         error = False
                         msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
                         try:
