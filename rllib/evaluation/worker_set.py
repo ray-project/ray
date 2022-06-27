@@ -341,7 +341,8 @@ class WorkerSet:
                 recreated_worker=True,
                 config=self._remote_config,
             )
-            # Sync new worker from local one.
+
+            # Sync new worker from provided one (or local one).
             local_worker = local_worker or self.local_worker()
             if not local_worker:
                 raise ValueError(
@@ -353,9 +354,11 @@ class WorkerSet:
                 weights=local_worker.get_weights(),
                 global_vars=local_worker.get_global_vars(),
             )
+
             # Add new worker to list of remote workers.
             self._remote_workers[worker_index - 1] = new_worker
             new_workers.append(new_worker)
+
         return removed_workers, new_workers
 
     def stop(self) -> None:
