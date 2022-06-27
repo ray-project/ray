@@ -259,7 +259,7 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
             try:
                 if not ray.is_initialized():
                     try:
-                        if hasattr(self, '_dashboard_agent'):
+                        if hasattr(self, "_dashboard_agent"):
                             address = self._dashboard_agent.gcs_address
                         else:
                             address = self._dashboard_head.gcs_address

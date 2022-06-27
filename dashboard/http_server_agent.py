@@ -53,12 +53,22 @@ class HttpServerAgent:
 
         self.runner = aiohttp.web.AppRunner(app)
         await self.runner.setup()
-        site = aiohttp.web.TCPSite(
-            self.runner,
-            "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
-            self.listen_port,
-        )
-        await site.start()
+        try:
+            site = aiohttp.web.TCPSite(
+                self.runner,
+                "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
+                self.listen_port,
+            )
+            await site.start()
+        except OSError as e:
+            logger.warning("Try to use port %s: %s", self.listen_port, e)
+            logger.warning("Start dashboard agent with random listen port!")
+            site = aiohttp.web.TCPSite(
+                self.runner,
+                "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
+                0,
+            )
+            await site.start()
         self.http_host, self.http_port, *_ = site._server.sockets[0].getsockname()
         logger.info(
             "Dashboard agent http address: %s:%s", self.http_host, self.http_port
