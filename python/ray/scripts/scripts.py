@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -911,33 +912,55 @@ def start(
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
-                "This command will now block until terminated by a signal."
+                "This command will now block forever until terminated by a signal."
             )
             cli_logger.print(
                 "Running subprocesses are monitored and a message will be "
-                "printed if any of them terminate unexpectedly."
+                "printed if any of them terminate unexpectedly. Subprocesses "
+                "exit with SIGTERM will be treated as graceful, thus NOT reported."
             )
             cli_logger.flush()
 
         while True:
             time.sleep(1)
             deceased = node.dead_processes()
-            if len(deceased) > 0:
+
+            # Report unexpected exits of subprocesses with unexpected return codes.
+            # We are explicitly expecting SIGTERM because this is how `ray stop` sends
+            # shutdown signal to subprocesses, i.e. log_monitor, raylet...
+            # NOTE(rickyyx): We are treating 128+15 as an expected return code since
+            # this is what autoscaler/_private/monitor.py does upon SIGTERM
+            # handling.
+            expected_return_codes = [
+                0,
+                signal.SIGTERM,
+                -1 * signal.SIGTERM,
+                128 + signal.SIGTERM,
+            ]
+            unexpected_deceased = [
+                (process_type, process)
+                for process_type, process in deceased
+                if process.returncode not in expected_return_codes
+            ]
+            if len(unexpected_deceased) > 0:
                 cli_logger.newline()
-                cli_logger.error("Some Ray subprcesses exited unexpectedly:")
+                cli_logger.error("Some Ray subprocesses exited unexpectedly:")
 
                 with cli_logger.indented():
-                    for process_type, process in deceased:
+                    for process_type, process in unexpected_deceased:
                         cli_logger.error(
                             "{}",
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)},
                         )
 
-                # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
-                sys.exit(1)
+                # explicitly kill all processes since atexit handlers
+                # will not exit with errors.
+                node.kill_all_processes(check_alive=False, allow_graceful=False)
+                os._exit(1)
+        # not-reachable
 
 
 @cli.command()
