@@ -1,6 +1,6 @@
 import logging
 import gym
-from typing import Dict, Tuple, Union, List, Optional, Any, Type
+from typing import Dict, Tuple, List, Optional, Any, Type
 
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
