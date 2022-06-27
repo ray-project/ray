@@ -235,7 +235,7 @@ class SerializationContext:
         if metadata:
             metadata_fields = metadata.split(b",")
 
-            # Hock for new serialization infrastructure, will move the original code
+            # Hook for new serialization infrastructure, will move the original code
             # to here step by step.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_NEW_PROTOCOL:
                 result = RaySerializationResult.from_bytes(data.to_pybytes())
@@ -423,7 +423,7 @@ class SerializationContext:
         Args:
             value: The value to serialize.
         """
-        # New serialization infrastructure hock
+        # New serialization infrastructure hook
         if type(value) in serialization_new._ray_serializer_map:
             return serialization_new._serialize(value)
         else:

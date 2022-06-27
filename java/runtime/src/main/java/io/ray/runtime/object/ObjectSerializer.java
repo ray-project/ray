@@ -86,7 +86,7 @@ public class ObjectSerializer {
     byte[] data = nativeRayObject.data;
 
     if (meta != null && meta.length > 0) {
-      // Hock for new serialization infrastructure, will move the original code
+      // Hook for new serialization infrastructure, will move the original code
       // to here step by step.
       if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_NEW_PROTOCOL) == 0) {
         try {
@@ -147,7 +147,7 @@ public class ObjectSerializer {
    * @return The serialized object.
    */
   public static NativeRayObject serialize(Object object) {
-    // New serialization infrastructure hock
+    // New serialization infrastructure hook
     if (object != null && NewObjectSerializer.hasSerializer(object.getClass())) {
       try {
         byte[] res = NewObjectSerializer.serialize(object).toBytes();
