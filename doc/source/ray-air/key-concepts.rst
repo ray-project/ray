@@ -56,7 +56,7 @@ In both cases, there is a need for the following interactions:
 2. To report information to upstream, including metrics and checkpoint.
 
 To facilitate such interactions, we introduce :ref:`Session <air-session-ref>`. The following figure shows how Session
-looks like in a DataParallel training scenario and the conceptual image of Session at different levels (what we call
+looks like in a Data Parallel training scenario and the conceptual image of Session at different levels (what we call
 as Tune Session and Train Session).
 
 .. image:: images/session.svg
