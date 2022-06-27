@@ -124,3 +124,12 @@ Configs
 .. automodule:: ray.air.config
     :members:
 
+
+.. _air-session-ref:
+
+Session
+##########
+
+.. automodule:: ray.air.session
+    :members:
+

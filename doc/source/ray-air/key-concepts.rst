@@ -47,6 +47,26 @@ Trainer objects will produce a :ref:`Results <air-results-ref>` object after cal
     :end-before: __air_trainer_output_end__
 
 
+Session
+-------
+
+AIR exposes a functional API for users to define training behavior, or for developers to create their own trainers.
+In both cases, there is a need for the following interactions:
+1. To disseminate information downstream, including trial_name, trial_id, trial_resources and rank information etc.
+2. To report information to upstream, including metrics and checkpoint.
+
+To facilitate such interactions, we introduce :ref:`Session <air-session-ref>`. The following figure shows how Session
+looks like in a DataParallel training scenario and the conceptual image of Session at different levels (what we call
+as Tune Session and Train Session).
+
+.. image:: images/session.svg
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit
+
+
 Tuner
 -----
 
