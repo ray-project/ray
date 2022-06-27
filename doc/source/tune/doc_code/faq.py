@@ -22,7 +22,7 @@ np.random.seed(1234)
 tune.run(
     train,
     config={"seed": tune.randint(0, 1000)},
-    search_alg=tune.suggest.BasicVariantGenerator(),
+    search_alg=tune.search.BasicVariantGenerator(),
     num_samples=10,
 )
 # __reproducible_end__
