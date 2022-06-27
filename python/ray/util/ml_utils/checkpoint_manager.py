@@ -14,7 +14,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import ray
 from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
-from ray.tune.utils.trainable import TrainableUtil
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.util import is_nan
@@ -120,6 +119,8 @@ class _TrackedCheckpoint:
             logger.warning(f"Checkpoint deletion failed: {e}")
 
     def to_air_checkpoint(self) -> Optional[Checkpoint]:
+        from ray.tune.trainable.util import TrainableUtil
+
         checkpoint_data = self.dir_or_data
 
         if not checkpoint_data:
@@ -132,7 +133,7 @@ class _TrackedCheckpoint:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
-            with tempfile.mkdtemp() as tmpdir:
+            with tempfile.TemporaryDirectory() as tmpdir:
                 TrainableUtil.create_from_pickle(checkpoint_data, tmpdir)
                 # Double wrap in checkpoint so we hold the data in memory and
                 # can remove the temp directory

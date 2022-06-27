@@ -89,9 +89,7 @@ if __name__ == "__main__":
     do_link("util", force=args.yes)
     do_link("workflow", force=args.yes)
     do_link("_private", force=args.yes)
-    do_link("node.py", force=args.yes)
     do_link("cluster_utils.py", force=args.yes)
-    do_link("ray_constants.py", force=args.yes)
     # Link package's `dashboard` directly to local (repo's) dashboard.
     # The repo's `dashboard` is a file, soft-linking to which will not work
     # on Mac.

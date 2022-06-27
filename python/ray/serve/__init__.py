@@ -1,4 +1,4 @@
-import ray.worker
+import ray._private.worker
 
 try:
     from ray.serve import PredictorDeployment
@@ -24,7 +24,7 @@ except ModuleNotFoundError as e:
 
 # Mute the warning because Serve sometimes intentionally calls
 # ray.get inside async actors.
-ray.worker.blocking_get_inside_async_warned = True
+ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
     "batch",
