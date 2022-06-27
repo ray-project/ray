@@ -27,7 +27,7 @@ class TestDatasetReader(unittest.TestCase):
             {"input": "dataset", "input_config": input_config}, 0, True
         )
 
-        ioctx = IOContext(config={"train_batch_size": 2}, worker_index=0)
+        ioctx = IOContext(config={"train_batch_size": 1200}, worker_index=0)
         reader = DatasetReader(ioctx, dataset)
         assert len(reader.next()) == 1200
 

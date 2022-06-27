@@ -189,7 +189,8 @@ class JsonReader(InputReader):
     @override(InputReader)
     def next(self) -> SampleBatchType:
         ret = []
-        for _ in range(self.batch_size):
+        count = 0
+        while count < self.batch_size:
             batch = self._try_parse(self._next_line())
             tries = 0
             while not batch and tries < 100:
@@ -203,6 +204,7 @@ class JsonReader(InputReader):
                     )
                 )
             batch = self._postprocess_if_needed(batch)
+            count += batch.count
             ret.append(batch)
         ret = concat_samples(ret)
         return ret

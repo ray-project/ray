@@ -23,7 +23,7 @@ class TestJsonReader(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "rllib/tests/data/pendulum/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-        ioctx = IOContext(config={"train_batch_size": 2}, worker_index=0)
+        ioctx = IOContext(config={"train_batch_size": 1200}, worker_index=0)
         reader = JsonReader([data_file], ioctx)
         assert len(reader.next()) == 1200
 
