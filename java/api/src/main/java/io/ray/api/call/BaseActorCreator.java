@@ -25,6 +25,19 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return self();
   }
 
+  /**
+   * Set the actor name of a named actor.
+   *
+   * @param name The name of the named actor.
+   * @param namespace The namespace that this actor will live.
+   * @return self
+   */
+  public T setName(String name, String namespace) {
+    builder.setName(name);
+    builder.setNamespace(namespace);
+    return self();
+  }
+
   public T setLifetime(ActorLifetime lifetime) {
     builder.setLifetime(lifetime);
     return self();

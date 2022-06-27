@@ -61,9 +61,4 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
     return this;
   }
 
-  /** Set the namespace that this actor uses. */
-  public ActorCreator<A> setNamespace(String namespace) {
-    builder.setNamespace(namespace);
-    return this;
-  }
 }
