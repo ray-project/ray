@@ -53,7 +53,7 @@ class GcsWorkerManagerTest : public Test {
   }
 
   rpc::WorkerTableData GenWorkerTableData(pid_t pid) {
-    rpc::WorkerTableData worker_data; 
+    rpc::WorkerTableData worker_data;
     worker_data.mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
     worker_data.set_worker_type(rpc::WorkerType::DRIVER);
     worker_data.set_is_alive(true);
@@ -61,9 +61,7 @@ class GcsWorkerManagerTest : public Test {
     return worker_data;
   }
 
-  std::shared_ptr<gcs::GcsWorkerManager> GetWorkerManager() {
-    return worker_manager_;
-  }
+  std::shared_ptr<gcs::GcsWorkerManager> GetWorkerManager() { return worker_manager_; }
 
  private:
   std::unique_ptr<std::thread> thread_io_service_;
@@ -88,8 +86,8 @@ TEST_F(GcsWorkerManagerTest, TestGetAllWorkersLimit) {
     rpc::AddWorkerInfoReply reply;
     std::promise<void> promise;
     auto callback = [&promise](Status status,
-                    std::function<void()> success,
-                    std::function<void()> failure) { promise.set_value(); };
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
     worker_manager->HandleAddWorkerInfo(request, &reply, callback);
     promise.get_future().get();
   }
@@ -100,8 +98,8 @@ TEST_F(GcsWorkerManagerTest, TestGetAllWorkersLimit) {
     rpc::GetAllWorkerInfoReply reply;
     std::promise<void> promise;
     auto callback = [&promise](Status status,
-                    std::function<void()> success,
-                    std::function<void()> failure) { promise.set_value(); };
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
     worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
     promise.get_future().get();
 
@@ -116,15 +114,14 @@ TEST_F(GcsWorkerManagerTest, TestGetAllWorkersLimit) {
     rpc::GetAllWorkerInfoReply reply;
     std::promise<void> promise;
     auto callback = [&promise](Status status,
-                    std::function<void()> success,
-                    std::function<void()> failure) { promise.set_value(); };
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
     worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
     promise.get_future().get();
 
     ASSERT_EQ(reply.worker_table_data().size(), 2);
     ASSERT_EQ(reply.total(), 3);
   }
-
 }
 
 int main(int argc, char **argv) {
