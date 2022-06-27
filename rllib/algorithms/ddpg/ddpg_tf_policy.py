@@ -101,7 +101,8 @@ class TargetNetworkMixin:
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
 def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> Type:
-    """Construct a SimpleQTFPolicy inheriting either dynamic or eager base policies.
+    """Construct a DDPGTFPolicy inheriting either dynamic or eager base policies.
+
     Args:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
     Returns:
@@ -150,9 +151,7 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
         @override(base)
         def optimizer(
             self,
-        ) -> Union[
-            "tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]
-        ]:
+        ) -> List["tf.keras.optimizers.Optimizer"]:
             """Create separate optimizers for actor & critic losses."""
             if self.config["framework"] in ["tf2", "tfe"]:
                 self.global_step = get_variable(0, tf_name="global_step")
@@ -280,7 +279,7 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
             model: Union[ModelV2, "tf.keras.Model"],
             dist_class: Type[TFActionDistribution],
             train_batch: SampleBatch,
-        ) -> Union[TensorType, List[TensorType]]:
+        ) -> TensorType:
             twin_q = self.config["twin_q"]
             gamma = self.config["gamma"]
             n_step = self.config["n_step"]

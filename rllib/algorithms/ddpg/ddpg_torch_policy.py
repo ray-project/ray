@@ -147,7 +147,7 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
     @override(TorchPolicyV2)
     def optimizer(
         self,
-    ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
+    ) -> List["torch.optim.Optimizer"]:
         """Create separate optimizers for actor & critic losses."""
 
         # Set epsilons to match tf.keras.optimizers.Adam's epsilon default.
@@ -212,7 +212,7 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         model: ModelV2,
         dist_class: Type[TorchDistributionWrapper],
         train_batch: SampleBatch,
-    ) -> Union[TensorType, List[TensorType]]:
+    ) -> List[TensorType]:
         target_model = self.target_models[model]
 
         twin_q = self.config["twin_q"]

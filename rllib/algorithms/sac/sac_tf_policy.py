@@ -669,6 +669,7 @@ def setup_early_mixins(
     ActorCriticOptimizerMixin.__init__(policy, config)
 
 
+# TODO: Unify with DDPG's ComputeTDErrorMixin when SAC policy subclasses PolicyV2
 class ComputeTDErrorMixin:
     def __init__(self, loss_fn):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
@@ -696,6 +697,7 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
+# TODO: Unify with DDPG's TargetNetworkMixin when SAC policy subclasses PolicyV2
 class TargetNetworkMixin:
     def __init__(self, config: AlgorithmConfigDict):
         @make_tf_callable(self.get_session())

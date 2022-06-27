@@ -35,7 +35,6 @@ class TestDDPG(unittest.TestCase):
     def test_ddpg_compilation(self):
         """Test whether DDPG can be built with both frameworks."""
         config = ddpg.DDPGConfig()
-        config.seed = 42
         config.num_workers = 0
         config.num_envs_per_worker = 2
         config.replay_buffer_config["learning_starts"] = 0
@@ -70,7 +69,6 @@ class TestDDPG(unittest.TestCase):
         # Test against all frameworks.
         for _ in framework_iterator(core_config):
             config = copy.deepcopy(core_config)
-            config.seed = 42
             # Default OUNoise setup.
             algo = config.build(env="Pendulum-v1")
             # Setting explore=False should always return the same action.
