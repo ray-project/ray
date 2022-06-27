@@ -58,6 +58,16 @@ class PinObjectsInterface {
   virtual ~PinObjectsInterface(){};
 };
 
+class DumpCheckpointInterface {
+ public:
+  virtual void DumpCheckpoints(
+      std::vector<std::string *> checkpoint_urls,
+      const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::DumpCheckpointsReply> &callback) = 0;
+
+  virtual ~DumpCheckpointInterface(){};
+};
+
 /// Interface for leasing workers. Abstract for testing.
 class WorkerLeaseInterface {
  public:
@@ -173,6 +183,7 @@ class ResourceTrackingInterface {
 };
 
 class RayletClientInterface : public PinObjectsInterface,
+                              public DumpCheckpointInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
                               public ResourceReserveInterface,
@@ -447,6 +458,11 @@ class RayletClient : public RayletClientInterface {
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
+
+  void DumpCheckpoints(
+      std::vector<std::string *> checkpoint_urls,
+      const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::DumpCheckpointsReply> &callback) override;
 
   void ShutdownRaylet(
       const NodeID &node_id,

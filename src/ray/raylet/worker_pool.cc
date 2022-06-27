@@ -356,6 +356,16 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
         absl::Base64Escape(RayConfig::instance().object_spilling_config()));
   }
 
+  // add checkppoint config
+  if (IsIOWorkerType(worker_type)) {
+    RAY_CHECK(!RayConfig::instance().object_checkpoint_config().empty());
+    RAY_LOG(DEBUG) << "Adding object checkpoint config "
+                   << RayConfig::instance().object_checkpoint_config();
+    worker_command_args.push_back(
+        "--object-checkpoint-config=" +
+        absl::Base64Escape(RayConfig::instance().object_checkpoint_config()));
+  }
+
   if (language == Language::PYTHON) {
     worker_command_args.push_back("--startup-token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -845,7 +855,8 @@ void WorkerPool::PopRestoreWorker(
   PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
 }
 
-void WorkerPool::PushDumpCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker) {
+void WorkerPool::PushDumpCheckpointWorker(
+    const std::shared_ptr<WorkerInterface> &worker) {
   PushIOWorkerInternal(worker, rpc::WorkerType::DUMP_CHECKPOINT_WORKER);
 }
 
@@ -854,7 +865,8 @@ void WorkerPool::PopDumpCheckpointWorker(
   PopIOWorkerInternal(rpc::WorkerType::DUMP_CHECKPOINT_WORKER, callback);
 }
 
-void WorkerPool::PushLoadCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker) {
+void WorkerPool::PushLoadCheckpointWorker(
+    const std::shared_ptr<WorkerInterface> &worker) {
   PushIOWorkerInternal(worker, rpc::WorkerType::LOAD_CHECKPOINT_WORKER);
 }
 
@@ -1541,6 +1553,8 @@ void WorkerPool::WarnAboutSize() {
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
+  TryStartIOWorkers(language, rpc::WorkerType::DUMP_CHECKPOINT_WORKER);
+  TryStartIOWorkers(language, rpc::WorkerType::LOAD_CHECKPOINT_WORKER);
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language,
@@ -1624,6 +1638,10 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
     return state.spill_io_worker_state;
   case rpc::WorkerType::RESTORE_WORKER:
     return state.restore_io_worker_state;
+  case rpc::WorkerType::DUMP_CHECKPOINT_WORKER:
+    return state.dump_checkpoint_worker_state;
+  case rpc::WorkerType::LOAD_CHECKPOINT_WORKER:
+    return state.load_checkpoint_worker_state;
   default:
     RAY_LOG(FATAL) << "Unknown worker type: " << worker_type;
   }

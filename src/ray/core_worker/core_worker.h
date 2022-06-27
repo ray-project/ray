@@ -296,7 +296,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       std::shared_ptr<Buffer> *data,
       bool created_by_worker,
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-      bool inline_small_object = true);
+      bool inline_small_object = true,
+      const ActorID &global_owner_id = ActorID::Nil());
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -331,7 +332,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealOwned(const ObjectID &object_id,
                    bool pin_object,
-                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+                   const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                   const ActorID &global_owner_id = ActorID::Nil(),
+                   std::string *checkpoint_url = nullptr);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -343,7 +346,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealExisting(const ObjectID &object_id,
                       bool pin_object,
-                      const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+                      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                      const ActorID &global_owner_id = ActorID::Nil(),
+                      std::string *checkpoint_url = nullptr);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -762,6 +767,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                           rpc::SpillObjectsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleDumpObjectsCheckpoint(const rpc::DumpObjectsCheckpointRequest &request,
+                                   rpc::DumpObjectsCheckpointReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,
@@ -817,6 +826,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// num_executing, num_executed). It is a std map instead of absl due to its
   /// interface with language bindings.
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
+
+  void SubscribeGlobalOwnerAddress(ActorID actor_id);
 
  private:
   static rpc::RuntimeEnv OverrideRuntimeEnv(

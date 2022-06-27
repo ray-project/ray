@@ -328,6 +328,14 @@ message RestoreSpilledObjectsReply {
   int64 bytes_restored_total = 1;
 }
 
+message DumpObjectsCheckpointRequest {
+  repeated ObjectReference object_refs_to_dump = 1;
+}
+
+message DumpObjectsCheckpointReply {
+  repeated string dumped_objects_url = 1;
+}
+
 message DeleteSpilledObjectsRequest {
   // The URLs of spilled objects.
   repeated string spilled_objects_url = 1;
@@ -405,6 +413,8 @@ service CoreWorkerService {
   // Spill objects to external storage. Caller: raylet; callee: I/O worker.
   rpc SpillObjects(SpillObjectsRequest) returns (SpillObjectsReply);
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc DumpObjectsCheckpoint(DumpObjectsCheckpointRequest)
+      returns (DumpObjectsCheckpointReply);
   rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
       returns (RestoreSpilledObjectsReply);
   // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.

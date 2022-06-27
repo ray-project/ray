@@ -79,7 +79,7 @@ def _object_ref_deserializer(
             outer_id,
             owner_address,
             spilled_url,
-            spilled_node_id.binary(),
+            spilled_node_id,
             object_status,
         )
     return obj_ref

@@ -267,7 +267,9 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None):
+    def put_object(
+        self, value, object_ref=None, owner_address=None, owner_actor_id=None
+    ):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -313,12 +315,22 @@ class Worker:
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
+        (
+            object_id,
+            checkpoint_url,
+        ) = self.core_worker.put_serialized_object_and_increment_local_ref(
+            serialized_value,
+            object_ref=object_ref,
+            owner_address=owner_address,
+            owner_actor_id=owner_actor_id,
+        )
+
         return ray.ObjectRef(
-            self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value, object_ref=object_ref, owner_address=owner_address
-            ),
+            object_id,
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
+            global_owner_actor_id=owner_actor_id,
+            checkpoint_url=checkpoint_url,
         )
 
     def raise_errors(self, data_metadata_pairs, object_refs):
@@ -1906,6 +1918,7 @@ def put(
 
     if _owner is None:
         serialize_owner_address = None
+        owner_actor_id = None
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray.state.state.global_state_accessor` is not None
         ray.state.state._check_connected()
@@ -1915,12 +1928,17 @@ def put(
         if len(owner_address.worker_id) == 0:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
         serialize_owner_address = owner_address.SerializeToString()
+        owner_actor_id = _owner._actor_id.binary()
     else:
         raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
 
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, owner_address=serialize_owner_address)
+            object_ref = worker.put_object(
+                value,
+                owner_address=serialize_owner_address,
+                owner_actor_id=owner_actor_id,
+            )
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "

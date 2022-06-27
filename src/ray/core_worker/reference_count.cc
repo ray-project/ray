@@ -90,22 +90,26 @@ bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const rpc::Address &owner_address,
                                          const std::string &spilled_url,
                                          const NodeID &spilled_node_id,
-                                         bool foreign_owner_already_monitoring) {
+                                         bool foreign_owner_already_monitoring,
+                                         const absl::optional<ActorID> &global_owner_id) {
   absl::MutexLock lock(&mutex_);
   return AddBorrowedObjectInternal(object_id,
                                    outer_id,
                                    owner_address,
                                    spilled_url,
                                    spilled_node_id,
-                                   foreign_owner_already_monitoring);
+                                   foreign_owner_already_monitoring,
+                                   global_owner_id);
 }
 
-bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
-                                                 const ObjectID &outer_id,
-                                                 const rpc::Address &owner_address,
-                                                 const std::string &spilled_url,
-                                                 const NodeID &spilled_node_id,
-                                                 bool foreign_owner_already_monitoring) {
+bool ReferenceCounter::AddBorrowedObjectInternal(
+    const ObjectID &object_id,
+    const ObjectID &outer_id,
+    const rpc::Address &owner_address,
+    const std::string &spilled_url,
+    const NodeID &spilled_node_id,
+    bool foreign_owner_already_monitoring,
+    const absl::optional<ActorID> &global_owner_id) {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     it = object_id_refs_.emplace(object_id, Reference()).first;
@@ -113,6 +117,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   it->second.owner_address = owner_address;
+  it->second.global_owner_id = global_owner_id;
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
   it->second.foreign_owner_already_monitoring |= foreign_owner_already_monitoring;
@@ -471,6 +476,9 @@ bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
     return false;
   }
 
+  RAY_CHECK(owner_address != nullptr && spilled_url != nullptr &&
+            spilled_node_id != nullptr);
+
   *spilled_url = it->second.spilled_url;
   *spilled_node_id = it->second.spilled_node_id;
   if (it->second.owner_address) {
@@ -487,7 +495,12 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
   std::vector<rpc::Address> owner_addresses;
   for (const auto &object_id : object_ids) {
     rpc::Address owner_addr;
-    bool has_owner = GetOwnerInternal(object_id, &owner_addr);
+    // TOBE_SOLVED: @qingwu: the pointer of spilled_node_id and spilled_node_id will be
+    // nullptr
+    std::string spilled_url;
+    NodeID spilled_node_id;
+    bool has_owner =
+        GetOwnerInternal(object_id, &owner_addr, &spilled_url, &spilled_node_id);
     if (!has_owner) {
       RAY_LOG(WARNING)
           << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
@@ -1495,6 +1508,17 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   for (const auto &contains_id : nested().contains) {
     ref->add_contains(contains_id.Binary());
   }
+}
+
+void ReferenceCounter::ModifyGlobalOwnerAddress(
+    const ActorID &actor_id, const rpc::Address &global_owner_address) {
+  absl::MutexLock lock(&mutex_);
+  ModifyGlobalOwnerAddressInternal(actor_id, global_owner_address);
+}
+
+void ReferenceCounter::ModifyGlobalOwnerAddressInternal(
+    const ActorID &actor_id, const rpc::Address &global_owner_address) {
+  RAY_UNUSED(global_owner_address_map_.emplace(actor_id, global_owner_address));
 }
 
 }  // namespace core

@@ -352,6 +352,77 @@ void LocalObjectManager::SpillObjectsInternal(
       });
 }
 
+void LocalObjectManager::DumpCheckpoints(
+    const std::vector<ObjectID> &object_ids,
+    std::vector<std::string> &checkpoint_urls,
+    std::function<void(const ray::Status &)> callback) {
+  DumpCheckpointsInternal(object_ids, checkpoint_urls, callback);
+}
+
+void LocalObjectManager::DumpCheckpointsInternal(
+    const std::vector<ObjectID> &object_ids,
+    std::vector<std::string> &checkpoint_urls,
+    std::function<void(const ray::Status &)> callback) {
+  std::vector<ObjectID> objects_to_dump;
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Dump object: " << object_id;
+    objects_to_dump.push_back(object_id);
+  }
+  if (objects_to_dump.empty()) {
+    if (callback) {
+      callback(Status::Invalid("All objects are already being spilled."));
+    }
+    return;
+  }
+  std::promise<void> promise;
+  auto future = promise.get_future();
+  io_worker_pool_.PopDumpCheckpointWorker(
+      [this,
+       objects_to_dump = std::move(objects_to_dump),
+       &checkpoint_urls,
+       callback,
+       &promise](std::shared_ptr<WorkerInterface> io_worker) {
+        RAY_LOG(DEBUG) << "Start running PopDumpCheckpointWorker callback";
+        rpc::DumpObjectsCheckpointRequest request;
+        for (const auto &object_id : objects_to_dump) {
+          auto freed_it = local_objects_.find(object_id);
+          RAY_CHECK(freed_it != local_objects_.end());
+          auto ref = request.add_object_refs_to_dump();
+          ref->set_object_id(object_id.Binary());
+          ref->mutable_owner_address()->CopyFrom(freed_it->second.first);
+          RAY_LOG(DEBUG) << "Sending dump request for object " << object_id;
+        }
+
+        io_worker->rpc_client()->DumpObjectsCheckpoint(
+            request,
+            [this,
+             objects_to_dump = std::move(objects_to_dump),
+             &checkpoint_urls,
+             callback,
+             io_worker,
+             &promise](const ray::Status &status,
+                       const rpc::DumpObjectsCheckpointReply &reply) {
+              {
+                absl::MutexLock lock(&mutex_);
+                num_active_workers_ -= 1;
+              }
+              io_worker_pool_.PushDumpCheckpointWorker(io_worker);
+              size_t num_objects_dumped =
+                  status.ok() ? reply.dumped_objects_url_size() : 0;
+
+              RAY_CHECK(num_objects_dumped == objects_to_dump.size());
+              for (size_t i = 0; i < num_objects_dumped; i++) {
+                checkpoint_urls.push_back(std::move(reply.dumped_objects_url()[i]));
+              }
+              if (callback) {
+                callback(status);
+              }
+              promise.set_value();
+            });
+      });
+  future.wait();
+}
+
 void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids,
                                          const rpc::SpillObjectsReply &worker_reply) {
   for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());

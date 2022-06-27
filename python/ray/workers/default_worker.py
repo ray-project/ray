@@ -5,6 +5,8 @@ import time
 import sys
 import os
 
+from numpy import require
+
 import ray
 import ray.actor
 import ray.node
@@ -109,6 +111,13 @@ parser.add_argument(
     type=str,
     default="",
     help="The configuration of object spilling. Only used by I/O workers.",
+)
+parser.add_argument(
+    "--object-checkpoint-config",
+    required=False,
+    type=str,
+    default="",
+    help="The configuration of object checkpoint. Only used by I/O workers.",
 )
 parser.add_argument(
     "--object-checkpoint-donfig",
@@ -219,7 +228,10 @@ if __name__ == "__main__":
         )
 
     # Initialize dump/load checkpoint worker
-    if mode == ray.DUMP_CHECKPOINT_WORKER_MODE or mode == ray.LOAD_CHECKPOINT_WORKER_MODE:
+    if (
+        mode == ray.DUMP_CHECKPOINT_WORKER_MODE
+        or mode == ray.LOAD_CHECKPOINT_WORKER_MODE
+    ):
         from ray import external_storage
         from ray.internal import storage
 

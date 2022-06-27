@@ -463,7 +463,7 @@ cdef prepare_args_internal(
             else:
                 put_id = CObjectID.FromBinary(
                         core_worker.put_serialized_object_and_increment_local_ref(
-                            serialized_arg, inline_small_object=False))
+                            serialized_arg, inline_small_object=False)[0])
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(
                             put_id,
@@ -950,74 +950,6 @@ cdef int64_t restore_spilled_objects_handler(
     return bytes_restored
 
 
-cdef c_vector[c_string] dump_checkpoint_objects_handler(
-        const c_vector[CObjectReference]& object_refs_to_dump_checkpoint) nogil:
-    cdef:
-        c_vector[c_string] return_urls
-        c_vector[c_string] owner_addresses
-
-    with gil:
-        object_refs = VectorToObjectRefs(
-                object_refs_to_dump_checkpoint,
-                skip_adding_local_ref=False)
-        for i in range(object_refs_to_dump_checkpoint.size()):
-            owner_addresses.push_back(
-                    object_refs_to_dump_checkpoint[i].owner_address()
-                    .SerializeAsString())
-        try:
-            with ray.worker._changeproctitle(
-                    ray_constants.WORKER_PROCESS_TYPE_DUMP_CHECKPOINT_WORKER,
-                    ray_constants.WORKER_PROCESS_TYPE_DUMP_CHECKPOINT_WORKER_IDLE):
-                urls = external_storage.dump_checkpoint_objects(
-                    object_refs, owner_addresses)
-            for url in urls:
-                return_urls.push_back(url)
-        except Exception as err:
-            exception_str = (
-                "An unexpected internal error occurred while the IO worker "
-                "was dumpong checkpoint of objects: {}".format(err))
-            logger.exception(exception_str)
-            ray._private.utils.push_error_to_driver(
-                ray.worker.global_worker,
-                "dump_checkpoint_objects_error",
-                traceback.format_exc() + exception_str,
-                job_id=None)
-        return return_urls
-
-
-cdef int64_t load_checkpoint_objects_handler(
-        const c_vector[CObjectReference]& object_refs_to_load_checkpoint,
-        const c_vector[c_string]& object_urls) nogil:
-    cdef:
-        int64_t bytes_restored = 0
-    with gil:
-        urls = []
-        size = object_urls.size()
-        for i in range(size):
-            urls.append(object_urls[i])
-        object_refs = VectorToObjectRefs(
-                object_refs_to_load_checkpoint,
-                skip_adding_local_ref=False)
-        try:
-            with ray.worker._changeproctitle(
-                    ray_constants.WORKER_PROCESS_TYPE_LOAD_CHECKPOINT_WORKER,
-                    ray_constants.WORKER_PROCESS_TYPE_LOAD_CHECKPOINT_WORKER_IDLE):
-                bytes_restored = external_storage.load_checkpoint_objects(
-                    object_refs, urls)
-        except Exception:
-            exception_str = (
-                "An unexpected internal error occurred while the IO worker "
-                "was loading checkpoint of objects.")
-            logger.exception(exception_str)
-            if os.getenv("RAY_BACKEND_LOG_LEVEL") == "debug":
-                ray._private.utils.push_error_to_driver(
-                    ray.worker.global_worker,
-                    "load_checkpoint_objects_error",
-                    traceback.format_exc() + exception_str,
-                    job_id=None)
-    return bytes_restored
-
-
 cdef void delete_spilled_objects_handler(
         const c_vector[c_string]& object_urls,
         CWorkerType worker_type) nogil:
@@ -1161,10 +1093,10 @@ cdef class CoreWorker:
         elif worker_type == ray.RESTORE_WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_RESTORE_WORKER
-        elif worker_type == ray.DUMP_CHECKPOINT_WORKER:
+        elif worker_type == ray.DUMP_CHECKPOINT_WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_DUMP_CHECKPOINT_WORKER
-        elif worker_type == ray.LOAD_CHECKPOINT_WORKER:
+        elif worker_type == ray.LOAD_CHECKPOINT_WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_LOAD_CHECKPOINT_WORKER
         else:
@@ -1190,8 +1122,8 @@ cdef class CoreWorker:
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
-        options.dump_checkpoint_objects = dump_checkpoint_objects_handler
-        options.load_checkpoint_objects = load_checkpoint_objects_handler
+        options.dump_checkpoint_objects = spill_objects_handler
+        options.load_checkpoint_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
@@ -1310,6 +1242,7 @@ cdef class CoreWorker:
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
+                            CActorID c_owner_actor_id,
                             owner_address=None,
                             c_bool inline_small_object=True):
         cdef:
@@ -1324,7 +1257,8 @@ cdef class CoreWorker:
                              metadata, data_size, contained_ids,
                              c_object_id, data, created_by_worker,
                              move(c_owner_address),
-                             inline_small_object))
+                             inline_small_object,
+                             c_owner_actor_id))
         else:
             c_object_id[0] = object_ref.native()
             if owner_address is None:
@@ -1358,6 +1292,16 @@ cdef class CoreWorker:
             c_address = make_unique[CAddress]()
             dereference(c_address).ParseFromString(address)
         return move(c_address)
+
+    cdef CActorID _convert_binary_actor_id(self, actor_id=None):
+        cdef:
+            CActorID c_actor_id
+
+        if actor_id is not None:
+            c_actor_id = CActorID.FromBinary(<c_string>actor_id)
+        else:
+            c_actor_id = CActorID.Nil()
+        return c_actor_id
 
     def put_file_like_object(
             self, metadata, data_size, file_like, ObjectRef object_ref,
@@ -1408,13 +1352,16 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().SealExisting(
                             c_object_id, pin_object=False,
-                            owner_address=c_owner_address))
+                            owner_address=c_owner_address,
+                            global_owner_actor_id=CActorID.Nil(),
+                            checkpoint_url=NULL))
 
     def put_serialized_object_and_increment_local_ref(self, serialized_object,
                                                       ObjectRef object_ref=None,
                                                       c_bool pin_object=True,
                                                       owner_address=None,
-                                                      c_bool inline_small_object=True):
+                                                      c_bool inline_small_object=True,
+                                                      owner_actor_id=None):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -1423,16 +1370,28 @@ cdef class CoreWorker:
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
+            CActorID c_owner_actor_id
+            c_string checkpoint_url
+            c_string* checkpoint_url_point
+
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
         total_bytes = serialized_object.total_bytes
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
+        c_owner_actor_id = self._convert_binary_actor_id(owner_actor_id)
+
+        if owner_actor_id is None:
+            checkpoint_url_point = NULL
+        else:
+            checkpoint_url_point = &checkpoint_url
+
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
             contained_object_ids,
-            &c_object_id, &data, True, owner_address, inline_small_object)
+            &c_object_id, &data, True, c_owner_actor_id,
+            owner_address, inline_small_object)
 
         if not object_already_exists:
             if total_bytes > 0:
@@ -1458,7 +1417,9 @@ cdef class CoreWorker:
                             CCoreWorkerProcess.GetCoreWorker().SealOwned(
                                         c_object_id,
                                         pin_object,
-                                        move(c_owner_address)))
+                                        move(c_owner_address),
+                                        c_owner_actor_id,
+                                        checkpoint_url_point))
                     else:
                         # Using custom object refs is not supported because we
                         # can't track their lifecycle, so we don't pin the
@@ -1466,9 +1427,11 @@ cdef class CoreWorker:
                         check_status(
                             CCoreWorkerProcess.GetCoreWorker().SealExisting(
                                         c_object_id, pin_object=False,
-                                        owner_address=move(c_owner_address)))
+                                        owner_address=move(c_owner_address),
+                                        global_owner_actor_id=c_owner_actor_id,
+                                        checkpoint_url=checkpoint_url_point))
 
-        return c_object_id.Binary()
+        return c_object_id.Binary(), checkpoint_url
 
     def wait(self, object_refs, int num_returns, int64_t timeout_ms,
              TaskID current_task_id, c_bool fetch_local):

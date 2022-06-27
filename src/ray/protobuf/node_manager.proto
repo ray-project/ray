@@ -323,6 +323,14 @@ message NotifyGCSRestartRequest {}
 
 message NotifyGCSRestartReply {}
 
+message DumpCheckpointsRequest {
+  repeated bytes object_ids = 1;
+}
+
+message DumpCheckpointsReply {
+  repeated string checkpoint_urls = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage.
@@ -364,6 +372,7 @@ service NodeManagerService {
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
   // Pin the provided object IDs.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
+  rpc DumpCheckpoints(DumpCheckpointsRequest) returns (DumpCheckpointsReply);
   // Get the current node stats.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
   // Trigger garbage collection in all workers across the cluster.

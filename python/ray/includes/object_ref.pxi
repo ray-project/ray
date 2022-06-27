@@ -1,4 +1,4 @@
-from ray.includes.unique_ids cimport CObjectID
+from ray.includes.unique_ids cimport CObjectID, CActorID
 
 import asyncio
 import concurrent.futures
@@ -42,14 +42,25 @@ cdef class ObjectRef(BaseID):
 
     def __init__(
             self, id, owner_addr="", call_site_data="",
-            spilled_url="", spilled_node_id=NodeID.nil(),
-            skip_adding_local_ref=False):
+            # TOBE_SOLVED: @qingwu: Node.nil() will failed.
+            spilled_url="", spilled_node_id="",
+            skip_adding_local_ref=False,
+            global_owner_actor_id=b"",
+            checkpoint_url=""):
         self._set_id(id)
         self.owner_addr = owner_addr
         self.in_core_worker = False
         self.call_site_data = call_site_data
         self.spilled_url = spilled_url
-        self.spilled_node_id = spilled_node_id
+        if spilled_node_id:
+            self.spilled_node_id = spilled_node_id
+        else:
+            self.spilled_node_id = NodeID.nil().binary()
+        if global_owner_actor_id:
+            self.global_owner_actor_id = CActorID.FromBinary(global_owner_actor_id)
+        else:
+            self.global_owner_actor_id = CActorID.Nil()
+        self._checkpoint_url = checkpoint_url
 
         worker = ray.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
@@ -104,6 +115,9 @@ cdef class ObjectRef(BaseID):
 
     def size(self):
         return CObjectID.Size()
+
+    def checkpoint_url(self):
+        return self._checkpoint_url.decode("utf-8")
 
     def _set_id(self, id):
         check_id(id)

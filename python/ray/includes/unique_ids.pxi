@@ -220,6 +220,10 @@ cdef class NodeID(UniqueID):
     cdef CNodeID native(self):
         return <CNodeID>self.data
 
+    @classmethod
+    def nil(cls):
+        return cls(CNodeID.Nil().Binary())
+
 
 cdef class JobID(BaseID):
     cdef CJobID data

@@ -481,6 +481,33 @@ void raylet::RayletClient::PinObjectIDs(
   grpc_client_->PinObjectIDs(request, rpc_callback);
 }
 
+void raylet::RayletClient::DumpCheckpoints(
+    std::vector<std::string *> checkpoint_urls,
+    const std::vector<ObjectID> &object_ids,
+    const ray::rpc::ClientCallback<ray::rpc::DumpCheckpointsReply> &callback) {
+  RAY_CHECK(checkpoint_urls.size() == object_ids.size());
+  rpc::DumpCheckpointsRequest request;
+  for (const ObjectID &object_id : object_ids) {
+    request.add_object_ids(object_id.Binary());
+  }
+  std::promise<void> promise;
+  auto rpc_callback = [callback = std::move(callback), &promise, &checkpoint_urls](
+                          Status status, const rpc::DumpCheckpointsReply &reply) {
+    callback(status, reply);
+    RAY_CHECK(checkpoint_urls.size() == reply.checkpoint_urls().size())
+              << "checkpoint urls number: " << checkpoint_urls.size()
+              << ", reply urls number: " << reply.checkpoint_urls().size();
+    size_t index = 0;
+    for (const auto &checkpoint_url : reply.checkpoint_urls()) {
+      *checkpoint_urls[index] = checkpoint_url;
+      index++;
+    }
+    promise.set_value();
+  };
+  grpc_client_->DumpCheckpoints(request, rpc_callback);
+  promise.get_future().wait();
+}
+
 void raylet::RayletClient::ShutdownRaylet(
     const NodeID &node_id,
     bool graceful,

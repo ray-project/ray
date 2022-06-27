@@ -140,12 +140,14 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
-  virtual void PushDumpCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PushDumpCheckpointWorker(
+      const std::shared_ptr<WorkerInterface> &worker) = 0;
 
   virtual void PopDumpCheckpointWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
-  virtual void PushLoadCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PushLoadCheckpointWorker(
+      const std::shared_ptr<WorkerInterface> &worker) = 0;
 
   virtual void PopLoadCheckpointWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;

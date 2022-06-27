@@ -210,7 +210,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     CObjectID *object_id, shared_ptr[CBuffer] *data,
                     c_bool created_by_worker,
                     const unique_ptr[CAddress] &owner_address,
-                    c_bool inline_small_object)
+                    c_bool inline_small_object,
+                    const CActorID &owner_actor_id)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
@@ -218,9 +219,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   shared_ptr[CBuffer] *data,
                                   c_bool created_by_worker)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
-                             const unique_ptr[CAddress] &owner_address)
+                             const unique_ptr[CAddress] &owner_address,
+                             const CActorID &global_owner_actor_id,
+                             c_string *checkpoint_url)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
-                                const unique_ptr[CAddress] &owner_address)
+                                const unique_ptr[CAddress] &owner_address,
+                                const CActorID &global_owner_actor_id,
+                                c_string *checkpoint_url)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(
@@ -303,6 +308,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(c_bool) nogil) gc_collect
         (c_vector[c_string](
             const c_vector[CObjectReference] &) nogil) spill_objects
+        (c_vector[c_string](
+            const c_vector[CObjectReference] &) nogil) dump_objects
         (int64_t(
             const c_vector[CObjectReference] &,
             const c_vector[c_string] &) nogil) restore_spilled_objects

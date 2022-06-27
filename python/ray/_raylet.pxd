@@ -89,6 +89,8 @@ cdef class ObjectRef(BaseID):
         c_string call_site_data
         c_string spilled_url
         c_string spilled_node_id
+        CActorID global_owner_actor_id
+        c_string _checkpoint_url
 
     cdef CObjectID native(self)
 
@@ -121,9 +123,11 @@ cdef class CoreWorker:
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
+                            CActorID c_owner_actor_id,
                             owner_address=*,
                             c_bool inline_small_object=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
+    cdef CActorID _convert_binary_actor_id(self, actor_id=*)
     cdef store_task_output(
             self, serialized_object, const CObjectID &return_id, size_t
             data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]

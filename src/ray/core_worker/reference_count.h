@@ -36,12 +36,14 @@ class ReferenceCounterInterface {
  public:
   virtual void AddLocalReference(const ObjectID &object_id,
                                  const std::string &call_site) = 0;
-  virtual bool AddBorrowedObject(const ObjectID &object_id,
-                                 const ObjectID &outer_id,
-                                 const rpc::Address &owner_address,
-                                 const std::string &spilled_url,
-                                 const NodeID &spilled_node_id,
-                                 bool foreign_owner_already_monitoring = false) = 0;
+  virtual bool AddBorrowedObject(
+      const ObjectID &object_id,
+      const ObjectID &outer_id,
+      const rpc::Address &owner_address,
+      const std::string &spilled_url,
+      const NodeID &spilled_node_id,
+      bool foreign_owner_already_monitoring = false,
+      const absl::optional<ActorID> &global_owner_id = absl::optional<ActorID>()) = 0;
   virtual void AddOwnedObject(
       const ObjectID &object_id,
       const std::vector<ObjectID> &contained_ids,
@@ -213,8 +215,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                          const rpc::Address &owner_address,
                          const std::string &spilled_url,
                          const NodeID &spilled_node_id,
-                         bool foreign_owner_already_monitoring = false)
-      LOCKS_EXCLUDED(mutex_);
+                         bool foreign_owner_already_monitoring = false,
+                         const absl::optional<ActorID> &global_owner_id =
+                             absl::optional<ActorID>()) LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner address of the given object.
   ///
@@ -491,7 +494,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
 
+  void ModifyGlobalOwnerAddress(const ActorID &actor_id,
+                                const rpc::Address &global_owner_address)
+      LOCKS_EXCLUDED(mutex_);
+
  private:
+  void ModifyGlobalOwnerAddressInternal(const ActorID &actor_id,
+                                        const rpc::Address &global_owner_address)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {
     /// Object IDs that we own and that contain this object ID.
@@ -660,6 +671,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
     absl::optional<rpc::Address> owner_address;
+
+    absl::optional<ActorID> global_owner_id;
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
@@ -843,12 +856,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] foreign_owner_already_monitoring Whether to set the bit that an
   ///            externally assigned owner is monitoring the lifetime of this
   ///            object. This is the case for `ray.put(..., _owner=ZZZ)`.
-  bool AddBorrowedObjectInternal(const ObjectID &object_id,
-                                 const ObjectID &outer_id,
-                                 const rpc::Address &owner_address,
-                                 const std::string &spilled_url,
-                                 const NodeID &spilled_node_id,
-                                 bool foreign_owner_already_monitoring)
+  bool AddBorrowedObjectInternal(
+      const ObjectID &object_id,
+      const ObjectID &outer_id,
+      const rpc::Address &owner_address,
+      const std::string &spilled_url,
+      const NodeID &spilled_node_id,
+      bool foreign_owner_already_monitoring,
+      const absl::optional<ActorID> &global_owner_id = absl::optional<ActorID>())
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
@@ -934,6 +949,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
+
+  absl::flat_hash_map<ActorID, rpc::Address> global_owner_address_map_ GUARDED_BY(mutex_);
 
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is

@@ -795,7 +795,12 @@ const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
 rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
   rpc::Address owner_address;
-  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+  // TOBE_SOLVED: @qingwu: the pointer of spilled_node_id and spilled_node_id will be
+  // nullptr
+  std::string spilled_url;
+  NodeID spilled_node_id;
+  auto has_owner = reference_counter_->GetOwner(
+      object_id, &owner_address, &spilled_url, &spilled_node_id);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
          "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray "
@@ -949,7 +954,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     std::shared_ptr<Buffer> *data,
     bool created_by_worker,
     const std::unique_ptr<rpc::Address> &owner_address,
-    bool inline_small_object) {
+    bool inline_small_object,
+    const ActorID &global_owner_id) {
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -994,6 +1000,9 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
       request.add_contained_object_ids(contained_object_id.Binary());
     }
     request.set_object_size(data_size + metadata->Size());
+    RAY_LOG(DEBUG) << "connect to " << real_owner_address.ip_address() << ":"
+                   << real_owner_address.port()
+                   << ", input owner address is null: " << (owner_address == nullptr);
     auto conn = core_worker_client_pool_->GetOrConnect(real_owner_address);
     std::promise<Status> status_promise;
     conn->AssignObjectOwner(request,
@@ -1003,6 +1012,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                             });
     // Block until the remote call `AssignObjectOwner` returns.
     status = status_promise.get_future().get();
+    SubscribeGlobalOwnerAddress(global_owner_id);
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
@@ -1047,8 +1057,11 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,
                              bool pin_object,
-                             const std::unique_ptr<rpc::Address> &owner_address) {
-  auto status = SealExisting(object_id, pin_object, std::move(owner_address));
+                             const std::unique_ptr<rpc::Address> &owner_address,
+                             const ActorID &global_owner_id,
+                             std::string *checkpoint_url) {
+  auto status = SealExisting(
+      object_id, pin_object, std::move(owner_address), global_owner_id, checkpoint_url);
   if (status.ok()) return status;
   RemoveLocalReference(object_id);
   if (reference_counter_->HasReference(object_id)) {
@@ -1061,7 +1074,9 @@ Status CoreWorker::SealOwned(const ObjectID &object_id,
 
 Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 bool pin_object,
-                                const std::unique_ptr<rpc::Address> &owner_address) {
+                                const std::unique_ptr<rpc::Address> &owner_address,
+                                const ActorID &global_owner_id,
+                                std::string *checkpoint_url) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
@@ -1082,6 +1097,18 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     reference_counter_->FreePlasmaObjects({object_id});
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+
+  if (checkpoint_url) {
+    RAY_LOG(DEBUG) << "Begin to dump checkpoint, object id: " << object_id;
+    local_raylet_client_->DumpCheckpoints(
+        {checkpoint_url},
+        {object_id},
+        [](const Status &status, const rpc::DumpCheckpointsReply &reply) {
+          RAY_CHECK(status.ok()) << "failed to dump checkpoint!";
+        });
+    RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
+  }
+
   return Status::OK();
 }
 
@@ -2022,7 +2049,12 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
     return Status::Invalid("Actor task cancellation is not supported.");
   }
   rpc::Address obj_addr;
-  if (!reference_counter_->GetOwner(object_id, &obj_addr)) {
+  // TOBE_SOLVED: @qingwu: the pointer of spilled_node_id and spilled_node_id will be
+  // nullptr
+  std::string spilled_url;
+  NodeID spilled_node_id;
+  if (!reference_counter_->GetOwner(
+          object_id, &obj_addr, &spilled_url, &spilled_node_id)) {
     return Status::Invalid("No owner found for object.");
   }
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
@@ -2709,7 +2741,12 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   AddLocalReference(object_id, "<temporary (get object status)>");
 
   rpc::Address owner_address;
-  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+  // TOBE_SOLVED: @qingwu: the pointer of spilled_node_id and spilled_node_id will be
+  // nullptr
+  std::string spilled_url;
+  NodeID spilled_node_id;
+  auto has_owner = reference_counter_->GetOwner(
+      object_id, &owner_address, &spilled_url, &spilled_node_id);
   if (!has_owner) {
     // We owned this object, but the object has gone out of scope.
     reply->set_status(rpc::GetObjectStatusReply::OUT_OF_SCOPE);
@@ -3202,6 +3239,24 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
   }
 }
 
+void CoreWorker::HandleDumpObjectsCheckpoint(
+    const rpc::DumpObjectsCheckpointRequest &request,
+    rpc::DumpObjectsCheckpointReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (options_.dump_objects != nullptr) {
+    auto object_refs =
+        VectorFromProtobuf<rpc::ObjectReference>(request.object_refs_to_dump());
+    std::vector<std::string> object_urls = options_.dump_objects(object_refs);
+    for (size_t i = 0; i < object_urls.size(); i++) {
+      reply->add_dumped_objects_url(std::move(object_urls[i]));
+    }
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(
+        Status::NotImplemented("dump objects callback not defined"), nullptr, nullptr);
+  }
+}
+
 void CoreWorker::HandleRestoreSpilledObjects(
     const rpc::RestoreSpilledObjectsRequest &request,
     rpc::RestoreSpilledObjectsReply *reply,
@@ -3490,6 +3545,27 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
     return_ids[i] = ObjectID::FromIndex(task_id, i + 1);
   }
   return return_ids;
+}
+
+void CoreWorker::SubscribeGlobalOwnerAddress(ActorID actor_id) {
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+      actor_id,
+      [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
+        RAY_LOG(DEBUG) << "Actor(" << actor_id << ") state: " << actor_data.state()
+                       << ", address: " << actor_data.address().ip_address() << ":"
+                       << actor_data.address().port()
+                       << ", actor_name: " << actor_data.address().actor_name();
+        if (actor_data.state() == rpc::ActorTableData::ALIVE) {
+          reference_counter_->ModifyGlobalOwnerAddress(actor_id, actor_data.address());
+        }
+      },
+      [](Status status) {
+        if (status.ok()) {
+          RAY_LOG(DEBUG) << "Subscribe success!";
+        } else {
+          RAY_LOG(DEBUG) << "Subscribe failed!";
+        }
+      }));
 }
 
 }  // namespace core
