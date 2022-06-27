@@ -16,7 +16,6 @@ from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 from ray.util.joblib import register_ray
 
 from joblib import parallel_backend, Parallel, delayed
-from ray._private.test_utils import enable_external_redis
 
 
 def teardown_function(function):
