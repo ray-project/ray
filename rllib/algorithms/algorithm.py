@@ -2102,7 +2102,9 @@ class Algorithm(Trainable):
         removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
         if recreate:
-            removed_workers, new_workers = worker_set.recreate_failed_workers()
+            removed_workers, new_workers = worker_set.recreate_failed_workers(
+                local_worker=self.workers.local_worker()
+            )
         elif ignore:
             removed_workers = worker_set.remove_failed_workers()
 
