@@ -113,7 +113,7 @@ class StateSchema(ABC):
     # Returns {"column_b"}
     s.filterable_columns()
     # Returns {"column_a"}
-    s.min_columns()
+    s.base_columns()
     # Returns {"column_a", "column_b"}
     s.columns()
     ```
@@ -137,10 +137,10 @@ class StateSchema(ABC):
         return filterable
 
     @classmethod
-    def min_columns(cls) -> Set[str]:
-        """Return a list of minimal columns.
+    def base_columns(cls) -> Set[str]:
+        """Return a list of base columns.
 
-        Minimal columns mean columns to return when detail == False.
+        Base columns mean columns to return when detail == False.
         """
         detail = set()
         for f in fields(cls):
@@ -166,7 +166,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
         detail: Whether or not it should include columns for detail output.
     """
     filtered_data = {}
-    columns = state_dataclass.columns() if detail else state_dataclass.min_columns()
+    columns = state_dataclass.columns() if detail else state_dataclass.base_columns()
     for col in columns:
         if col in data:
             filtered_data[col] = data[col]
@@ -539,7 +539,8 @@ class ObjectSummaries:
                 total_size_mb += size_bytes / 1024 ** 2
 
             key_to_workers[key].add(object["pid"])
-            key_to_nodes[key].add(object["node_ip_address"])
+            print(object)
+            key_to_nodes[key].add(object["ip"])
 
         # Convert set of pid & node ips to length.
         for key, workers in key_to_workers.items():

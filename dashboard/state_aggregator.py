@@ -411,6 +411,8 @@ class StateAPIManager:
             # TODO(sang): Refactor `construct_memory_table`.
             data["object_id"] = data["object_ref"]
             del data["object_ref"]
+            data["ip"] = data["node_ip_address"]
+            del data["node_ip_address"]
             result.append(data)
 
         result = self._filter(result, option.filters, ObjectState, option.detail)

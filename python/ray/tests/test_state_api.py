@@ -104,7 +104,7 @@ def verify_schema(state, result_dict: dict, detail: bool = False):
     if detail:
         state_fields_columns = state.columns()
     else:
-        state_fields_columns = state.min_columns()
+        state_fields_columns = state.base_columns()
 
     for k in state_fields_columns:
         assert k in result_dict
@@ -283,7 +283,7 @@ def test_state_schema():
         "column_g",
     }
 
-    assert TestSchema.min_columns() == {
+    assert TestSchema.base_columns() == {
         "column_a",
         "column_b",
         "column_c",
@@ -1617,7 +1617,7 @@ def test_detail(shutdown_only):
     actor_state = list_actors()[0]
     actor_state_in_detail = list_actors(detail=True)[0]
 
-    assert set(actor_state.keys()) == ActorState.min_columns()
+    assert set(actor_state.keys()) == ActorState.base_columns()
     assert set(actor_state_in_detail.keys()) == ActorState.columns()
 
     """

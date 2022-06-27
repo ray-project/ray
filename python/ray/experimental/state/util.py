@@ -1,12 +1,18 @@
-from typing import Union
+from typing import Union, Optional
 
 
 def convert_string_to_type(
-    val: Union[str, int, float, bool], convert_type: Union[int, float, bool]
-):
+    val: Optional[Union[str, int, float, bool]], convert_type: Union[int, float, bool]
+) -> Union[int, float, bool]:
     """Convert the given value to a convert type.
 
     If the given val is None, it will just return None without the conversion.
+
+    It supports,
+        str -> int/float/bool
+        int -> int
+        bool -> bool
+        float -> float
     """
     if val is None:
         return None
