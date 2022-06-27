@@ -7,7 +7,7 @@ This document will explain Ray's logging system and its best practices.
 Driver logs
 ~~~~~~~~~~~
 An entry point of Ray applications that calls ``ray.init(address='auto')`` or ``ray.init()`` is called a driver.
-All the driver logs are handled in the same way as normal Python programs. 
+All the driver logs are handled in the same way as normal Python programs.
 
 Worker logs
 ~~~~~~~~~~~
@@ -30,7 +30,7 @@ Let's look at a code example to see how this works.
 
     ray.get(task.remote())
 
-You should be able to see the string `task` from your driver stdout. 
+You should be able to see the string `task` from your driver stdout.
 
 When logs are printed, the process id (pid) and an IP address of the node that executes tasks/actors are printed together. Check out the output below.
 
@@ -72,8 +72,8 @@ This produces the following output:
 
 How to set up loggers
 ~~~~~~~~~~~~~~~~~~~~~
-When using ray, all of the tasks and actors are executed remotely in Ray's worker processes. 
-Since Python logger module creates a singleton logger per process, loggers should be configured on per task/actor basis. 
+When using ray, all of the tasks and actors are executed remotely in Ray's worker processes.
+Since Python logger module creates a singleton logger per process, loggers should be configured on per task/actor basis.
 
 .. note::
 
@@ -137,11 +137,11 @@ Logging directory structure
 ---------------------------
 .. _logging-directory-structure:
 
-By default, Ray logs are stored in a ``/tmp/ray/session_*/logs`` directory. 
+By default, Ray logs are stored in a ``/tmp/ray/session_*/logs`` directory.
 
 .. note::
 
-    The default temp directory is ``/tmp/ray`` (for Linux and Mac OS). If you'd like to change the temp directory, you can specify it when ``ray start`` or ``ray.init()`` is called. 
+    The default temp directory is ``/tmp/ray`` (for Linux and Mac OS). If you'd like to change the temp directory, you can specify it when ``ray start`` or ``ray.init()`` is called.
 
 A new Ray instance creates a new session ID to the temp directory. The latest session ID is symlinked to ``/tmp/ray/session_latest``.
 
@@ -166,9 +166,9 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 
 Log rotation
 ------------
-Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Raylet and Python/Java worker logs are not rotating).
+Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Python worker logs are not rotating).
 
-By default, logs are rotating when it reaches to 512MB (maxBytes), and there could be up to 5 backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
+By default, logs are rotating when it reaches to 512MB (maxBytes), and there could be up to 10 backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet_xxx.log.1`)
 If you'd like to change the log rotation configuration, you can do it by specifying environment variables. For example,
 
 .. code-block:: bash

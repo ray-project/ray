@@ -50,8 +50,8 @@ starting Ray. For example, you can do:
  ray start
 
 This will print any ``RAY_LOG(DEBUG)`` lines in the source code to the
-``raylet.err`` file, which you can find in :ref:`temp-dir-log-files`.
-If it worked, you should see as the first line in ``raylet.err``:
+``raylet_xxx.log`` file, which you can find in :ref:`temp-dir-log-files`.
+If it worked, you should see as the first line in ``raylet_xxx.log``:
 
 .. code-block:: shell
 

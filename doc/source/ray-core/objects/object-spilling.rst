@@ -47,7 +47,7 @@ usage across multiple physical devices if needed (e.g., SSD devices):
     )
 
 .. note::
-  
+
   To optimize the performance, it is recommended to use SSD instead of HDD when using object spilling for memory intensive workloads.
 
 If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
@@ -58,7 +58,7 @@ If you are using an HDD, it is recommended that you specify a large buffer size 
         _system_config={
             "object_spilling_config": json.dumps(
                 {
-                  "type": "filesystem", 
+                  "type": "filesystem",
                   "params": {
                     "directory_path": "/tmp/spill",
                     "buffer_size": 1_000_000,
@@ -78,7 +78,7 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
             "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
             "object_spilling_config": json.dumps(
                 {
-                  "type": "smart_open", 
+                  "type": "smart_open",
                   "params": {
                     "uri": "s3://bucket/path"
                   },
@@ -100,7 +100,7 @@ Spilling to multiple remote storages is also supported.
             "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
             "object_spilling_config": json.dumps(
                 {
-                  "type": "smart_open", 
+                  "type": "smart_open",
                   "params": {
                     "uri": ["s3://bucket/path1", "s3://bucket/path2, "s3://bucket/path3"],
                   },
@@ -117,14 +117,14 @@ Cluster mode
 To enable object spilling in multi node clusters:
 
 .. code-block:: bash
-  
+
   # Note that `object_spilling_config`'s value should be json format.
   ray start --head --system-config='{"object_spilling_config":"{\"type\":\"filesystem\",\"params\":{\"directory_path\":\"/tmp/spill\"}}"}'
 
 Stats
 -----
 
-When spilling is happening, the following INFO level messages will be printed to the raylet logs (e.g., ``/tmp/ray/session_latest/logs/raylet.out``)::
+When spilling is happening, the following INFO level messages will be printed to the raylet logs (e.g., ``/tmp/ray/session_latest/logs/raylet_xxx.log``)::
 
   local_object_manager.cc:166: Spilled 50 MiB, 1 objects, write throughput 230 MiB/s
   local_object_manager.cc:334: Restored 50 MiB, 1 objects, read throughput 505 MiB/s
