@@ -585,7 +585,6 @@ def run_graph(
             app.deployments[name].set_options(**options)
 
         # Run the graph locally on the cluster
-        serve.start()
         serve.run(app)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
