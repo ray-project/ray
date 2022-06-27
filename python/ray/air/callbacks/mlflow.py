@@ -132,5 +132,3 @@ class MLflowLoggerCallback(LoggerCallback):
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
         self.mlflow_util.end_run(run_id=run_id, status=status)
-
-
