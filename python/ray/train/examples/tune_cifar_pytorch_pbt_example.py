@@ -185,7 +185,7 @@ if __name__ == "__main__":
         ),
         run_config=RunConfig(
             stop={"training_iteration": 2 if args.smoke_test else 100},
-            failure=FailureConfig(max_failures=3),  # used for fault tolerance
+            failure_config=FailureConfig(max_failures=3),  # used for fault tolerance
         ),
     )
 
