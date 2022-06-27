@@ -2,6 +2,7 @@ from functools import partial
 import gym
 from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
+import tree  # dm-tree
 import unittest
 
 import ray
@@ -18,6 +19,7 @@ from ray.rllib.models.tf.tf_action_dist import (
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -168,14 +170,13 @@ class TestModelCatalog(unittest.TestCase):
                     framework=fw,
                 )
                 self.assertTrue(test["expected_model"] in type(m).__name__)
-                if isinstance(test["obs_space"], Box):
-                    # Do a test forward pass.
-                    obs = np.array([test["obs_space"].sample()])
-                    if fw == "torch":
-                        obs = torch.from_numpy(obs)
-                    out, state_outs = m({"obs": obs})
-                    self.assertTrue(out.shape == (1, test["num_outputs"]))
-                    self.assertTrue(state_outs == [])
+                # Do a test forward pass.
+                obs = get_dummy_batch_for_space(test["obs_space"], fill_value="random")
+                if fw == "torch":
+                    obs = tree.map_structure(lambda a: torch.from_numpy(a), obs)
+                out, state_outs = m({"obs": obs})
+                self.assertTrue(out.shape == (1, test["num_outputs"]))
+                self.assertTrue(state_outs == [])
 
     def test_custom_model(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
