@@ -831,8 +831,8 @@ def test_dashboard_does_not_depend_on_serve():
 
     # Check that Serve-dependent features fail
     response = requests.get(f"http://{ctx.dashboard_url}/api/serve/deployments/")
-    assert response.status_code == 500
-    assert "ModuleNotFoundError" in response.text
+    assert response.status_code == 404
+    assert "Not Found" in response.text
 
 
 @pytest.mark.skipif(
