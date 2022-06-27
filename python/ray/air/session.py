@@ -77,7 +77,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
                 if ckpt:
                     with ckpt.as_directory() as loaded_checkpoint_dir:
                         import tensorflow as tf
-                        
+
                         model = tf.keras.models.load_model(loaded_checkpoint_dir)
                 else:
                     model = build_model()
