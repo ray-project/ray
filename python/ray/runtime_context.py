@@ -176,7 +176,13 @@ class RuntimeContext(object):
         Returns:
             The current actor id in this worker. None if there's no actor id.
         """
-        return self._get_actor_id()
+        # only worker mode has actor_id
+        assert (
+            self.worker.mode == ray._private.worker.WORKER_MODE
+        ), f"This method is only available when the process is a\
+                 worker. Current mode: {self.worker.mode}"
+        actor_id = self.worker.actor_id
+        return actor_id if not actor_id.is_nil() else None
 
     def get_actor_id(self):
         """Get the current actor ID in this worker.
@@ -189,8 +195,13 @@ class RuntimeContext(object):
             The current actor id in hex format in this worker. None if there's no
             actor id.
         """
-        id = self._get_actor_id()
-        return id.hex() if id else None
+        # only worker mode has actor_id
+        assert (
+            self.worker.mode == ray._private.worker.WORKER_MODE
+        ), f"This method is only available when the process is a\
+                 worker. Current mode: {self.worker.mode}"
+        actor_id = self.worker.actor_id
+        return actor_id.hex() if not actor_id.is_nil() else None
 
     @property
     def namespace(self):
