@@ -149,56 +149,7 @@ class CRR(Algorithm):
     #  defining Config class in the same file for now as a workaround.
 
     def setup(self, config: PartialAlgorithmConfigDict):
-        # default_config = self.get_default_config()
-        # num_workers = config.get("num_workers") or default_config.get("num_workers")
-        # train_batch_size = config.get("train_batch_size") or default_config.get(
-        #     "train_batch_size"
-        # )
-        # if num_workers:
-        #     config["rollout_fragment_length"] = int(
-        #         math.ceil(train_batch_size / num_workers)
-        #     )
-        # else:
-        #     config["rollout_fragment_length"] = train_batch_size
-
         super().setup(config)
-        # initial setup for handling the offline data in form of a replay buffer
-        # Add the entire dataset to Replay Buffer (global variable)
-        # reader = self.workers.local_worker().input_reader
-        #
-        # # For d4rl, add the D4RLReaders' dataset to the buffer.
-        # if isinstance(self.config["input"], str) and "d4rl" in self.config["input"]:
-        #     dataset = reader.dataset
-        #     self.local_replay_buffer.add(dataset)
-        # # For a list of files, add each file's entire content to the buffer.
-        # elif isinstance(reader, ShuffledInput):
-        #     num_batches = 0
-        #     total_timesteps = 0
-        #     for batch in reader.child.read_all_files():
-        #         num_batches += 1
-        #         total_timesteps += len(batch)
-        #         # Add NEXT_OBS if not available. This is slightly hacked
-        #         # as for the very last time step, we will use next-obs=zeros
-        #         # and therefore force-set DONE=True to avoid this missing
-        #         # next-obs to cause learning problems.
-        #         if SampleBatch.NEXT_OBS not in batch:
-        #             obs = batch[SampleBatch.OBS]
-        #             batch[SampleBatch.NEXT_OBS] = np.concatenate(
-        #                 [obs[1:], np.zeros_like(obs[0:1])]
-        #             )
-        #             batch[SampleBatch.DONES][-1] = True
-        #         self.local_replay_buffer.add(batch)
-        #     print(
-        #         f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
-        #         " replay buffer, which has capacity "
-        #         f"{self.local_replay_buffer.capacity}."
-        #     )
-        # else:
-        #     raise ValueError(
-        #         "Unknown offline input! config['input'] must either be list of"
-        #         " offline files (json) or a D4RL-specific InputReader "
-        #         "specifier (e.g. 'd4rl.hopper-medium-v0')."
-        #     )
 
         # added a counter key for keeping track of number of gradient updates
         self._counters[NUM_GRADIENT_UPDATES] = 0
