@@ -106,11 +106,13 @@ class TestModelCatalog(unittest.TestCase):
             "num_outputs": 5,
             "expected_model": "VisionNetwork",
         }
-        complex_obs_space = Tuple([
-            Box(0, 1, shape=(3,), dtype=np.float32),
-            Box(0, 1, shape=(4,), dtype=np.float32),
-            Discrete(3),
-        ])
+        complex_obs_space = Tuple(
+            [
+                Box(0, 1, shape=(3,), dtype=np.float32),
+                Box(0, 1, shape=(4,), dtype=np.float32),
+                Discrete(3),
+            ]
+        )
         obs_prep = TupleFlatteningPreprocessor(complex_obs_space)
         flat_complex_input_case = {
             "obs_space": obs_prep.observation_space,
@@ -119,14 +121,18 @@ class TestModelCatalog(unittest.TestCase):
             "expected_model": "FullyConnectedNetwork",
         }
         nested_complex_input_case = {
-            "obs_space": Tuple([
-                Box(0, 1, shape=(3,), dtype=np.float32),
-                Discrete(3),
-                Tuple([
-                    Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
-                    Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
-                ]),
-            ]),
+            "obs_space": Tuple(
+                [
+                    Box(0, 1, shape=(3,), dtype=np.float32),
+                    Discrete(3),
+                    Tuple(
+                        [
+                            Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+                            Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+                        ]
+                    ),
+                ]
+            ),
             "action_space": Box(0, 1, shape=(7,)),
             "num_outputs": 7,
             "expected_model": "ComplexInputNetwork",
