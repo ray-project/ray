@@ -60,5 +60,4 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
     builder.setRuntimeEnv(runtimeEnv);
     return this;
   }
-
 }
