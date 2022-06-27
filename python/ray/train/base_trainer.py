@@ -11,7 +11,7 @@ from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
 from ray.tune.error import TuneError
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.dict import merge_dicts
@@ -356,6 +356,11 @@ class BaseTrainer(abc.ABC):
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
+
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
