@@ -63,19 +63,19 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
       lib->unload();
       return;
     }
-    RAY_LOG(INFO) << "Library " << lib_path
+    RAY_LOG(INFO) << "The library " << lib_path
                   << " is loaded successfully. The remote functions: " << function_names
                   << ".";
     return;
   } catch (boost::system::system_error &e) {
-    RAY_LOG(INFO) << "Library " << lib_path << " isn't integrated with Ray, skip it.";
+    RAY_LOG(INFO) << "The library " << lib_path << " isn't integrated with Ray, skip it.";
     lib->unload();
   } catch (std::exception &e) {
-    RAY_LOG(WARNING) << "Failed to get entry function from lib_path: " << lib_path
+    RAY_LOG(WARNING) << "Failed to get entry function from library: " << lib_path
                      << ", failed reason: " << e.what();
     lib->unload();
   } catch (...) {
-    RAY_LOG(WARNING) << "Failed to get entry function from lib_path: " << lib_path
+    RAY_LOG(WARNING) << "Failed to get entry function from library: " << lib_path
                      << ", unknown failed reason.";
     lib->unload();
   }
