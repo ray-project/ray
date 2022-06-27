@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import warnings
 
 import pytest
@@ -8,39 +10,50 @@ def logging_setup():
     warnings.filterwarnings("always")
 
 
-def test_import_execution_checkpoint_manager(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.checkpoint_manager  # noqa: F401
-
-
-def test_import_execution_cluster_info(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.cluster_info  # noqa: F401
-
-
-def test_import_execution_insufficient_resources_manager(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.insufficient_resources_manager  # noqa: F401
-
-
-def test_import_execution_placement_groups(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.utils.placement_groups  # noqa: F401
-
-
-def test_import_execution_ray_trial_executor(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.ray_trial_executor  # noqa: F401
-
-
-def test_import_execution_trial_runner(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.trial_runner  # noqa: F401
-
-
-def test_import_experiment_config_parser(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.config_parser  # noqa: F401
+@pytest.mark.parametrize(
+    "module",
+    [
+        "ray.tune.checkpoint_manager",
+        "ray.tune.cluster_info",
+        "ray.tune.insufficient_resources_manager",
+        "ray.tune.utils.placement_groups",
+        "ray.tune.ray_trial_executor",
+        "ray.tune.trial_runner",
+        "ray.tune.config_parser",
+        "ray.tune.trial",
+        "ray.tune.suggest.ax",
+        "ray.tune.suggest.bayesopt",
+        "ray.tune.suggest.bohb",
+        "ray.tune.suggest.dragonfly",
+        "ray.tune.suggest.flaml",
+        "ray.tune.suggest.hebo",
+        "ray.tune.suggest.hyperopt",
+        "ray.tune.suggest.nevergrad",
+        "ray.tune.suggest.optuna",
+        "ray.tune.suggest.sigopt",
+        "ray.tune.suggest.skopt",
+        "ray.tune.suggest.zoopt",
+        "ray.tune.suggest.basic_variant",
+        "ray.tune.suggest.search",
+        "ray.tune.suggest.search_generator",
+        "ray.tune.suggest.suggestion",
+        "ray.tune.suggest.util",
+        "ray.tune.suggest.variant_generator",
+        "ray.tune.sample",
+        "ray.tune.function_runner",
+        "ray.tune.session",
+    ],
+)
+def test_import_module_raises_warnings(module):
+    py_cmd = (
+        f"import pytest\n"
+        f"with pytest.warns(DeprecationWarning):\n"
+        f"      import {module}\n"
+        f"\n"
+    )
+    # We need to run this in a separate process to make sure we don't have
+    # leftover state from previous runs
+    subprocess.check_call([sys.executable, "-c", py_cmd])
 
 
 def test_import_experiment_experiment(logging_setup):
@@ -48,22 +61,10 @@ def test_import_experiment_experiment(logging_setup):
     from ray.tune.experiment import Experiment, convert_to_experiment_list  # noqa: F401
 
 
-def test_import_experiment_trial(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.trial  # noqa: F401
-
-
-def test_import_trainable_function_trainable(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.function_runner  # noqa: F401
-
-
-def test_import_trainable_session(logging_setup):
-    with pytest.warns(DeprecationWarning):
-        import ray.tune.session  # noqa: F401
+def test_import_logger_all(logging_setup):
+    # No warning - original imports still work
+    import ray.tune.logger  # noqa: F401
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

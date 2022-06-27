@@ -205,8 +205,10 @@ extern jfieldID java_actor_creation_options_serialized_runtime_env;
 extern jfieldID java_actor_creation_options_max_pending_calls;
 /// ActorLifetime enum class
 extern jclass java_actor_lifetime_class;
-/// Enum DETACHED of ActorLifetime class
-extern jobject STATUS_DETACHED;
+/// ordinal method of ActorLifetime class
+extern jmethodID java_actor_lifetime_ordinal;
+/// ordinal value of Enum DETACHED of ActorLifetime class
+extern int DETACHED_LIFETIME_ORDINAL_VALUE;
 /// ConcurrencyGroupImpl class
 extern jclass java_concurrency_group_impl_class;
 /// getFunctionDescriptors method of ConcurrencyGroupImpl class
