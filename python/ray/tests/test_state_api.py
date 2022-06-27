@@ -73,6 +73,7 @@ from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiE
 from ray.experimental.state.state_cli import (
     AvailableFormat,
     get_state_api_output_to_print,
+    _parse_filter,
 )
 from ray.experimental.state.state_cli import list as cli_list
 from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
@@ -232,6 +233,60 @@ def create_api_options(
     return ListApiOptions(
         limit=limit, timeout=timeout, filters=filters, _server_timeout_multiplier=1.0
     )
+
+
+def test_parse_filter():
+    # Basic
+    assert _parse_filter("key=value") == ("key", "=", "value")
+    assert _parse_filter("key!=value") == ("key", "!=", "value")
+
+    # Predicate =
+    assert _parse_filter("key=value=123=1") == ("key", "=", "value=123=1")
+    assert _parse_filter("key=value!=123!=1") == ("key", "=", "value!=123!=1")
+    assert _parse_filter("key=value!=123=1") == ("key", "=", "value!=123=1")
+    assert _parse_filter("key=value!=123=1!") == ("key", "=", "value!=123=1!")
+    assert _parse_filter("key=value!=123=1=") == ("key", "=", "value!=123=1=")
+    assert _parse_filter("key=value!=123=1!=") == ("key", "=", "value!=123=1!=")
+
+    # Predicate !=
+    assert _parse_filter("key!=value=123=1") == ("key", "!=", "value=123=1")
+    assert _parse_filter("key!=value!=123!=1") == ("key", "!=", "value!=123!=1")
+    assert _parse_filter("key!=value!=123=1") == ("key", "!=", "value!=123=1")
+    assert _parse_filter("key!=value!=123=1!") == ("key", "!=", "value!=123=1!")
+    assert _parse_filter("key!=value!=123=1=") == ("key", "!=", "value!=123=1=")
+    assert _parse_filter("key!=value!=123=1!=") == ("key", "!=", "value!=123=1!=")
+
+    # Incorrect cases
+    with pytest.raises(ValueError):
+        _parse_filter("keyvalue")
+
+    with pytest.raises(ValueError):
+        _parse_filter("keyvalue!")
+    with pytest.raises(ValueError):
+        _parse_filter("keyvalue!=")
+    with pytest.raises(ValueError):
+        _parse_filter("keyvalue=")
+
+    with pytest.raises(ValueError):
+        _parse_filter("!keyvalue")
+    with pytest.raises(ValueError):
+        _parse_filter("!=keyvalue")
+    with pytest.raises(ValueError):
+        _parse_filter("=keyvalue")
+
+    with pytest.raises(ValueError):
+        _parse_filter("=keyvalue=")
+    with pytest.raises(ValueError):
+        _parse_filter("!=keyvalue=")
+    with pytest.raises(ValueError):
+        _parse_filter("=keyvalue!=")
+    with pytest.raises(ValueError):
+        _parse_filter("!=keyvalue!=")
+
+    with pytest.raises(ValueError):
+        _parse_filter("key>value")
+    with pytest.raises(ValueError):
+        _parse_filter("key>value!=")
 
 
 def test_id_to_ip_map():

@@ -22,7 +22,7 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     ListApiOptions,
     StateResource,
-    AvailablePredicate,
+    PredicateType,
     SupportedFilterType,
 )
 
@@ -37,24 +37,55 @@ class AvailableFormat(Enum):
     TABLE = "table"
 
 
-def _parse_filter(filter: str) -> Tuple[str, AvailablePredicate, SupportedFilterType]:
+def _parse_filter(filter: str) -> Tuple[str, PredicateType, SupportedFilterType]:
     """Parse the filter string to a tuple of key, preciate, and value."""
     # The function assumes there's going to be no key that includes "="" or "!=".
-    if "!=" in filter:
-        splitted = filter.split("!=")
-        key = splitted.pop(0)
-        val = "".join(splitted)
-        return (key, "!=", val)
-    elif "=" in filter:
-        splitted = filter.split("=")
-        key = splitted.pop(0)
-        val = "".join(splitted)
-        return (key, "=", val)
-    else:
+    # Since key is controlled by us, it should be trivial to keep the invariant.
+
+    predicate = None
+    # Tuple of [predicate_start, predicate_end).
+    predicate_index = None
+
+    # Find the first predicate match. This logic works because we assume the
+    # key doesn't contain = or !=.
+    for i in range(len(filter)):
+        char = filter[i]
+        if char == "=":
+            predicate = "="
+            predicate_index = (i, i + 1)
+            break
+        elif char == "!":
+            if len(filter) <= i + 1:
+                continue
+
+            next_char = filter[i + 1]
+            if next_char == "=":
+                predicate = "!="
+                predicate_index = (i, i + 2)
+                break
+
+    if not predicate or not predicate_index:
         raise ValueError(
-            f"The format of a given filter {filter} is invalid. "
+            f"The format of a given filter {filter} is invalid: "
+            "Cannot find the predicate. "
             "Please provide key=val or key!=val format string."
         )
+
+    key, predicate, value = (
+        filter[: predicate_index[0]],
+        filter[predicate_index[0] : predicate_index[1]],
+        filter[predicate_index[1] :],
+    )
+
+    assert predicate == "=" or predicate == "!="
+    if len(key) == 0 or len(value) == 0:
+        raise ValueError(
+            f"The format of a given filter {filter} is invalid: "
+            f"Cannot identify key {key} or value, {value}. "
+            "Please provide key=val or key!=val format string."
+        )
+
+    return (key, predicate, value)
 
 
 def _get_available_formats() -> List[str]:

@@ -44,16 +44,16 @@ class SummaryResource(Enum):
 SupportedFilterType = Union[str, bool, int, float]
 
 
-AvailablePredicate = str  # Literal["=", "!="]
+PredicateType = str  # Literal["=", "!="]
 
 
 @dataclass(init=True)
 class ListApiOptions:
     limit: int = DEFAULT_LIMIT
     timeout: int = DEFAULT_RPC_TIMEOUT
-    filters: Optional[
-        List[Tuple[str, AvailablePredicate, SupportedFilterType]]
-    ] = field(default_factory=list)
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
+        default_factory=list
+    )
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,

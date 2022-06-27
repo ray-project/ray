@@ -29,7 +29,7 @@ from ray.experimental.state.common import (
     StateSummary,
     ActorSummaries,
     ObjectSummaries,
-    AvailablePredicate,
+    PredicateType,
 )
 from ray.experimental.state.state_manager import (
     DataSourceUnavailable,
@@ -58,7 +58,7 @@ NODE_QUERY_FAILURE_WARNING = (
 
 
 def _convert_filters_type(
-    filter: List[Tuple[str, AvailablePredicate, SupportedFilterType]],
+    filter: List[Tuple[str, PredicateType, SupportedFilterType]],
     schema: StateSchema,
 ) -> List[Tuple[str, SupportedFilterType]]:
     """Convert the given filter's type to SupportedFilterType.
