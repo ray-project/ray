@@ -126,7 +126,6 @@ class DatasetReader(InputReader):
             print(
                 "DatasetReader ", ioctx.worker_index, " has ", ds.count(), " samples."
             )
-            # self._iter = self._dataset.repeat().iter_batches(batch_size=batch_size)
             self._iter = self._dataset.repeat().iter_rows()
         else:
             self._iter = None
@@ -137,12 +136,6 @@ class DatasetReader(InputReader):
         assert self._iter is not None
         ret = []
         count = 0
-        # d = next(self._iter)
-        # for _, row in d.iterrows():
-        #     dict_ified = row.to_dict()
-        #     d = from_json_data(dict_ified, self._ioctx.worker)
-        #     ret.append(d)
-        # ret = concat_samples(ret)
         while count < self.batch_size:
             d = next(self._iter).as_pydict()
             # Columns like obs are compressed when written by DatasetWriter.
