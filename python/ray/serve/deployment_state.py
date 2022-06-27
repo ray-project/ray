@@ -71,9 +71,9 @@ class ReplicaHealthCheckResponse(Enum):
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
-SLOW_STARTUP_WARNING_S = int(os.getenv("SERVE_SLOW_STARTUP_WARNING_S", 30))
+SLOW_STARTUP_WARNING_S = int(os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30))
 SLOW_STARTUP_WARNING_PERIOD_S = int(
-    os.getenv("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
+    os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
 )
 
 ALL_REPLICA_STATES = list(ReplicaState)

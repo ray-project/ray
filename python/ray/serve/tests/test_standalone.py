@@ -54,8 +54,8 @@ def ray_cluster():
 
 @pytest.fixture()
 def lower_slow_startup_threshold_and_reset():
-    original_slow_startup_warning_s = os.getenv("SERVE_SLOW_STARTUP_WARNING_S")
-    original_slow_startup_warning_period_s = os.getenv(
+    original_slow_startup_warning_s = os.environ.get("SERVE_SLOW_STARTUP_WARNING_S")
+    original_slow_startup_warning_period_s = os.environ.get(
         "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
     )
     # Lower slow startup warning threshold to 1 second to reduce test duration
@@ -72,10 +72,12 @@ def lower_slow_startup_threshold_and_reset():
 
     # Reset slow startup warning threshold to prevent state sharing across unit
     # tests
-    os.environ["SERVE_SLOW_STARTUP_WARNING_S"] = original_slow_startup_warning_s
-    os.environ[
-        "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
-    ] = original_slow_startup_warning_period_s
+    if original_slow_startup_warning_s is not None:
+        os.environ["SERVE_SLOW_STARTUP_WARNING_S"] = original_slow_startup_warning_s
+    if original_slow_startup_warning_period_s is not None:
+        os.environ[
+            "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
+        ] = original_slow_startup_warning_period_s
 
 
 def test_shutdown(ray_shutdown):
