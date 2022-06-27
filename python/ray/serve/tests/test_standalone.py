@@ -54,9 +54,9 @@ def ray_cluster():
 
 @pytest.fixture()
 def lower_slow_startup_threshold_and_reset():
-    original_slow_startup_warning_s = os.getenv("SERVE_SLOW_STARTUP_WARNING_S", "30")
+    original_slow_startup_warning_s = os.getenv("SERVE_SLOW_STARTUP_WARNING_S")
     original_slow_startup_warning_period_s = os.getenv(
-        "SERVE_SLOW_STARTUP_WARNING_PERIOD_S", "30"
+        "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
     )
     # Lower slow startup warning threshold to 1 second to reduce test duration
     os.environ["SERVE_SLOW_STARTUP_WARNING_S"] = "1"
