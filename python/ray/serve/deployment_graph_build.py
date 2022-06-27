@@ -177,39 +177,16 @@ def transform_ray_dag_to_serve_dag(
         )
 
         if "deployment_schema" in dag_node._bound_other_args_to_resolve:
+            # ClassNode is created via bind on serve.deployment decorated class
+            # with no serve specific configs.
             deployment_schema: DeploymentSchema = dag_node._bound_other_args_to_resolve[
                 "deployment_schema"
             ]
-            deployment_shell = schema_to_deployment(deployment_schema)
-
-            # Prefer user specified name to override the generated one.
-            if (
-                inspect.isclass(dag_node._body)
-                and deployment_shell.name != dag_node._body.__name__
-            ):
-                deployment_name = deployment_shell.name
-
-            # Set the route prefix, prefer the one user supplied,
-            # otherwise set it to /deployment_name
-            if (
-                deployment_shell.route_prefix is None
-                or deployment_shell.route_prefix != f"/{deployment_shell.name}"
-            ):
-                route_prefix = deployment_shell.route_prefix
-            else:
-                route_prefix = f"/{deployment_name}"
-
-            deployment = deployment_shell.options(
-                func_or_class=dag_node._body,
-                name=deployment_name,
-                init_args=replaced_deployment_init_args,
-                init_kwargs=replaced_deployment_init_kwargs,
-                route_prefix=route_prefix,
-            )
+            deployment_shell: Deployment = schema_to_deployment(deployment_schema)
         else:
             # ClassNode is created via bind on ray.remote decorated class with
             # no serve specific configs.
-            deployment: Deployment = Deployment(
+            deployment_shell: Deployment = Deployment(
                 dag_node._body,
                 deployment_name,
                 DeploymentConfig(),
@@ -218,6 +195,31 @@ def transform_ray_dag_to_serve_dag(
                 ray_actor_options=dag_node.get_options(),
                 _internal=True,
             )
+
+        # Prefer user specified name to override the generated one.
+        if (
+            inspect.isclass(dag_node._body)
+            and deployment_shell.name != dag_node._body.__name__
+        ):
+            deployment_name = deployment_shell.name
+
+        # Set the route prefix, prefer the one user supplied,
+        # otherwise set it to /deployment_name
+        if (
+            deployment_shell.route_prefix is None
+            or deployment_shell.route_prefix != f"/{deployment_shell.name}"
+        ):
+            route_prefix = deployment_shell.route_prefix
+        else:
+            route_prefix = f"/{deployment_name}"
+
+        deployment = deployment_shell.options(
+            func_or_class=dag_node._body,
+            name=deployment_name,
+            init_args=replaced_deployment_init_args,
+            init_kwargs=replaced_deployment_init_kwargs,
+            route_prefix=route_prefix,
+        )
 
         return DeploymentNode(
             deployment,
