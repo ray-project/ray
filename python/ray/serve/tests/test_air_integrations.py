@@ -4,9 +4,10 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import pytest
-import ray
 import requests
 from fastapi import Depends, FastAPI
+
+import ray
 from ray import serve
 from ray.air.checkpoint import Checkpoint
 from ray.serve.air_integrations import BatchingManager, PredictorDeployment

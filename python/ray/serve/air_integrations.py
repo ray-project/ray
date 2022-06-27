@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 import numpy as np
+
 import ray
 from ray import serve
 from ray._private.utils import import_attr
