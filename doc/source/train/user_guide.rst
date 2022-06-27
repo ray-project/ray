@@ -9,7 +9,7 @@ Ray Train provides solutions for training machine learning models in a distribut
 This guide focuses on deep learning with PyTorch, TensorFlow and Horovod.
 For other model types, distributed training support is available through other Trainers & libraries:
 
-* **Reinforcement Learning with** :ref:`RLLib <rllib-index>`
+* **Reinforcement Learning with** :ref:`RLlib <rllib-index>`
 * **XGBoost:** :doc:`/ray-air/examples/xgboost_example`
 * **LightGBM:** :doc:`/ray-air/examples/lightgbm_example`
 * **Scikit-Learn** :doc:`/ray-air/examples/sklearn_example`
