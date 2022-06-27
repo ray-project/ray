@@ -177,16 +177,46 @@ define_java_module(
     ],
 )
 
-java_binary(
-    name = "all_tests",
-    args = ["java/testng.xml"],
-    data = ["testng.xml"],
-    main_class = "org.testng.TestNG",
+java_library(
+    name = "all_tests_lib",
     runtime_deps = [
         ":io_ray_ray_performance_test",
         ":io_ray_ray_runtime_test",
         ":io_ray_ray_serve_test",
         ":io_ray_ray_test",
+    ],
+)
+
+java_test(
+    name = "all_tests",
+    args = ["java/testng.xml"],
+    data = [
+        "testng.xml",
+        ":ray_java_pkg",
+        "//:ray_pkg",
+    ],
+    main_class = "org.testng.TestNG",
+    tags = ["local"],
+    runtime_deps = [
+        ":all_tests_lib",
+    ],
+)
+
+# 0. `cp testng_custom_template.xml testng_custom.xml`
+# 1. Specify test class/method in `testng_custom.xml`
+# 2. `bazel test //java:custom_test --test_output=streamed`
+java_test(
+    name = "custom_test",
+    args = ["java/testng_custom.xml"],
+    data = [
+        "testng_custom.xml",
+        ":ray_java_pkg",
+        "//:ray_pkg",
+    ],
+    main_class = "org.testng.TestNG",
+    tags = ["local"],
+    runtime_deps = [
+        ":all_tests_lib",
     ],
 )
 
