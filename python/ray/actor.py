@@ -1,5 +1,6 @@
 import inspect
 import logging
+import warnings
 import weakref
 from typing import Any, Dict, List, Optional
 
@@ -715,6 +716,21 @@ class ActorClass:
         placement_group_capture_child_tasks = actor_options[
             "placement_group_capture_child_tasks"
         ]
+        if placement_group:
+            warnings.warn(
+                "DeprecationWarning: placement_group parameter is "
+                "deprecated. Use scheduling_strategy parameter instead."
+            )
+        if placement_group_bundle_index:
+            warnings.warn(
+                "DeprecationWarning: placement_group_bundle_index is "
+                "deprecated. Use scheduling_strategy parameter instead."
+            )
+        if placement_group_capture_child_tasks:
+            warnings.warn(
+                "DeprecationWarning: placement_group_capture_child_tasks is "
+                "deprecated. Use scheduling_strategy parameter instead."
+            )
         scheduling_strategy = actor_options["scheduling_strategy"]
         max_restarts = actor_options["max_restarts"]
         max_task_retries = actor_options["max_task_retries"]

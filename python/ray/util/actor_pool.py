@@ -1,9 +1,10 @@
 from typing import List, Callable, Any
 
 import ray
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 
+@Deprecated
 @PublicAPI(stability="beta")
 class ActorPool:
     """Utility class to operate on a fixed pool of actors.

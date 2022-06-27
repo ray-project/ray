@@ -5,6 +5,7 @@ from typing import List, TypeVar, Optional, Dict, Type, Tuple
 
 import ray
 from ray.actor import ActorHandle
+from ray.util.annotations import Deprecated
 
 T = TypeVar("T")
 ActorMetadata = TypeVar("ActorMetadata")
@@ -49,6 +50,7 @@ class ActorGroupMethod:
         ]
 
 
+@Deprecated
 class ActorGroup:
     """Group of Ray Actors that can execute arbitrary functions.
 

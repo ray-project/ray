@@ -11,7 +11,7 @@ from ray.util.annotations import Deprecated
 from ray.util.client import ray
 
 
-@Deprecated
+@Deprecated(message="Use ray.init() instead.")
 def connect(
     conn_str: str,
     secure: bool = False,
@@ -51,7 +51,7 @@ def connect(
     return conn
 
 
-@Deprecated
+@Deprecated(message="Use ray.shutdown() instead.")
 def disconnect():
     """Disconnects from server; is idempotent."""
     return ray.disconnect()
