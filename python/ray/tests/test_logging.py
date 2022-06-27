@@ -69,9 +69,9 @@ def test_log_rotation(shutdown_only, monkeypatch):
         ray_constants.PROCESS_TYPE_MONITOR,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
         # Below components are not log rotating now.
-        # ray_constants.PROCESS_TYPE_RAYLET,
-        # ray_constants.PROCESS_TYPE_GCS_SERVER,
         # ray_constants.PROCESS_TYPE_WORKER,
     ]
 
@@ -156,14 +156,16 @@ def test_periodic_event_stats(shutdown_only):
                     found = True
         return found
 
-    for path in paths:
+    components_to_check = [
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
+    ]
+
+    for component in components_to_check:
         # Need to remove suffix to avoid reading log rotated files.
-        if "python-core-driver" in str(path):
-            wait_for_condition(lambda: is_event_loop_stats_found(path))
-        if "raylet" in str(path):
-            wait_for_condition(lambda: is_event_loop_stats_found(path))
-        if "gcs_server" in str(path):
-            wait_for_condition(lambda: is_event_loop_stats_found(path))
+        path = [p for p in paths if component in p.name and p.name.endswith(".log")][0]
+        wait_for_condition(lambda: is_event_loop_stats_found(path))
 
 
 def test_worker_id_names(shutdown_only):
@@ -256,7 +258,8 @@ def test_log_redirect_to_stderr(shutdown_only, capfd):
     log_components = {
         ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "Dashboard agent grpc address",
-        ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
+        # GCS server logs are printed to `gcs_server_xxx.log` and not affected by `RAY_LOG_TO_STDERR`.
+        # ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
         # No log monitor output if all components are writing to stderr.
         ray_constants.PROCESS_TYPE_LOG_MONITOR: "",
         ray_constants.PROCESS_TYPE_MONITOR: "Starting monitor using ray installation",
@@ -265,7 +268,8 @@ def test_log_redirect_to_stderr(shutdown_only, capfd):
         # TODO(Clark): Add coverage for Ray Client.
         # ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER: "Starting Ray Client server",
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER: "",
-        ray_constants.PROCESS_TYPE_RAYLET: "Starting object store with directory",
+        # Raylet logs are printed to `raylet_xxx.log` and not affected by `RAY_LOG_TO_STDERR`.
+        # ray_constants.PROCESS_TYPE_RAYLET: "Starting object store with directory",
         # No reaper process run (kernel fate-sharing).
         ray_constants.PROCESS_TYPE_REAPER: "",
         # No reporter process run.

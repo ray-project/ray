@@ -43,7 +43,7 @@ GCS_QUERY_FAILURE_WARNING = (
     "(1) GCS is unexpectedly failed. "
     "(2) GCS is overloaded. "
     "(3) There's an unexpected network issue. "
-    "Please check the gcs_server.out log to find the root cause."
+    "Please check the gcs_server_xxx.log log to find the root cause."
 )
 NODE_QUERY_FAILURE_WARNING = (
     "Failed to query data from {type}. "

@@ -206,7 +206,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
               std::ostringstream ss;
               ss << "Failed to get the system config from raylet because "
                  << "it is dead. Worker will terminate. Status: " << status
-                 << " .Please see `raylet.out` for more details.";
+                 << " .Please see `raylet_xxx.log` for more details.";
               if (options_.worker_type == WorkerType::DRIVER) {
                 // If it is the driver, surface the issue to the user.
                 RAY_LOG(ERROR) << ss.str();
