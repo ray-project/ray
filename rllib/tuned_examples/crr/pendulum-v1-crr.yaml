@@ -5,8 +5,11 @@ pendulum_crr:
       evaluation/episode_reward_mean: -200
       training_iteration: 500
     config:
-        input:
-          - 'tests/data/pendulum/f5afd36b02ee49f1a92f4427490ad0da_000000.json'
+#        input: "dataset"
+#        input_config:
+#            format: "json"
+#            path: '/Users/avnish/avnish_ray_2/rllib/tests/data/pendulum/f5afd36b02ee49f1a92f4427490ad0da_000000.json'
+        input: '/Users/avnish/avnish_ray_2/rllib/tests/data/pendulum/f5afd36b02ee49f1a92f4427490ad0da_000000.json'
         framework: torch
         gamma: 0.99
         train_batch_size: 1024
