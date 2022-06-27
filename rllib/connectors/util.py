@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict
+from typing import Any, Tuple, TYPE_CHECKING
 
 from ray.rllib.connectors.action.clip import ClipActionsConnector
 from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
@@ -17,11 +17,6 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
-
-
-@PublicAPI(stability="alpha")
-def get_connectors_from_cfg(config: dict) -> Dict[str, Connector]:
-    return {k: get_connector(*v) for k, v in config.items()}
 
 
 @PublicAPI(stability="alpha")
@@ -86,3 +81,18 @@ def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     print("Connectors enabled:")
     print(policy.agent_connectors.__str__(indentation=4))
     print(policy.action_connectors.__str__(indentation=4))
+
+
+@PublicAPI(stability="alpha")
+def restore_connectors_for_policy(
+    policy: "Policy", connector_config: Tuple[str, Tuple[Any]]
+) -> Connector:
+    """Util to create connector for a Policy based on serialized config.
+
+    Args:
+        policy: Policy instance.
+        connector_config: Serialized connector config.
+    """
+    ctx: ConnectorContext = ConnectorContext.from_policy(policy)
+    name, params = connector_config
+    return get_connector(ctx, name, params)
