@@ -192,7 +192,7 @@ class StateAPIManager:
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
-            total=max(option.limit, len(result)),
+            total=reply.total,
         )
 
     async def list_placement_groups(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -221,10 +221,9 @@ class StateAPIManager:
         result = self._filter(result, option.filters, PlacementGroupState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
-        logger.error(f"SANG-TODO {len(result)}")
         return ListApiResponse(
             result=list(islice(result, option.limit)),
-            total=max(option.limit, len(result)),
+            total=reply.total,
         )
 
     async def list_nodes(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -249,10 +248,12 @@ class StateAPIManager:
         result = self._filter(result, option.filters, NodeState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
+        total_nodes = len(result)
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
-            total=max(option.limit, len(result)),
+            # No reason to truncate node because they are usually small.
+            total=total_nodes,
         )
 
     async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -281,7 +282,7 @@ class StateAPIManager:
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
-            total=max(option.limit, len(result)),
+            total=reply.total,
         )
 
     def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -297,7 +298,8 @@ class StateAPIManager:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
         return ListApiResponse(
             result=result,
-            total=max(option.limit, len(result)),
+            # TODO(sang): Support this.
+            total=len(result),
         )
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -319,6 +321,7 @@ class StateAPIManager:
         unresponsive_nodes = 0
         running_task_id = set()
         successful_replies = []
+        total_tasks = 0
         for reply in replies:
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
@@ -327,6 +330,7 @@ class StateAPIManager:
                 raise reply
 
             successful_replies.append(reply)
+            total_tasks += reply.total
             for task_id in reply.running_task_ids:
                 running_task_id.add(binary_to_hex(task_id))
 
@@ -366,7 +370,7 @@ class StateAPIManager:
         return ListApiResponse(
             result=result,
             partial_failure_warning=partial_failure_warning,
-            total=max(option.limit, len(result)),
+            total=total_tasks,
         )
 
     async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -387,6 +391,7 @@ class StateAPIManager:
 
         unresponsive_nodes = 0
         worker_stats = []
+        total_objects = 0
         for reply, _ in zip(replies, raylet_ids):
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
@@ -394,6 +399,7 @@ class StateAPIManager:
             elif isinstance(reply, Exception):
                 raise reply
 
+            total_objects += reply.total
             for core_worker_stat in reply.core_workers_stats:
                 # NOTE: Set preserving_proto_field_name=False here because
                 # `construct_memory_table` requires a dictionary that has
@@ -439,7 +445,7 @@ class StateAPIManager:
         return ListApiResponse(
             result=result,
             partial_failure_warning=partial_failure_warning,
-            total=max(option.limit, len(result)),
+            total=total_objects,
         )
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -463,6 +469,7 @@ class StateAPIManager:
 
         result = []
         unresponsive_nodes = 0
+        total_runtime_envs = 0
         for node_id, reply in zip(self._client.get_all_registered_agent_ids(), replies):
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
@@ -470,6 +477,7 @@ class StateAPIManager:
             elif isinstance(reply, Exception):
                 raise reply
 
+            total_runtime_envs += reply.total
             states = reply.runtime_env_states
             for state in states:
                 data = self._message_to_dict(message=state, fields_to_decode=[])
@@ -513,7 +521,7 @@ class StateAPIManager:
         return ListApiResponse(
             result=result,
             partial_failure_warning=partial_failure_warning,
-            total=max(option.limit, len(result)),
+            total=total_runtime_envs,
         )
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:

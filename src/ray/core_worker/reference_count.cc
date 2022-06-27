@@ -130,9 +130,18 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
 void ReferenceCounter::AddObjectRefStats(
     const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
-    rpc::CoreWorkerStats *stats) const {
+    rpc::CoreWorkerStats *stats,
+    const int64_t limit) const {
   absl::MutexLock lock(&mutex_);
+  auto total = object_id_refs_.size();
+  auto count = 0;
+
   for (const auto &ref : object_id_refs_) {
+    if (limit != -1 && count >= limit) {
+      break;
+    }
+    count += 1;
+
     auto ref_proto = stats->add_object_refs();
     ref_proto->set_object_id(ref.first.Binary());
     ref_proto->set_call_site(ref.second.call_site);
@@ -163,13 +172,19 @@ void ReferenceCounter::AddObjectRefStats(
   // Also include any unreferenced objects that are pinned in memory.
   for (const auto &entry : pinned_objects) {
     if (object_id_refs_.find(entry.first) == object_id_refs_.end()) {
-      auto ref_proto = stats->add_object_refs();
-      ref_proto->set_object_id(entry.first.Binary());
-      ref_proto->set_object_size(entry.second.first);
-      ref_proto->set_call_site(entry.second.second);
-      ref_proto->set_pinned_in_memory(true);
+      if (limit != -1 && count < limit) {
+        auto ref_proto = stats->add_object_refs();
+        ref_proto->set_object_id(entry.first.Binary());
+        ref_proto->set_object_size(entry.second.first);
+        ref_proto->set_call_site(entry.second.second);
+        ref_proto->set_pinned_in_memory(true);
+      }
+      count += 1;
+      total += 1;
     }
   }
+
+  stats->set_objects_total(total);
 }
 
 void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,

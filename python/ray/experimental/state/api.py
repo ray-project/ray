@@ -119,12 +119,14 @@ class StateApiClient(SubmissionClient):
         # Print warnings if data is truncated.
         data = list_api_response["result"]
         total = list_api_response["total"]
-        if total >= len(data):
+        if total > len(data):
             warnings.warn(
-                (f"{len(data)} ({total} total) {resource.value} "
-                f"are returned. {total - len(data)} entries have been truncated. "
-                "Use `--filter` to reduce the amount of data to return "
-                "or increase the limit by specifying`--limit`."),
+                (
+                    f"{len(data)} ({total} total) {resource.value} "
+                    f"are returned. {total - len(data)} entries have been truncated. "
+                    "Use `--filter` to reduce the amount of data to return "
+                    "or increase the limit by specifying`--limit`."
+                ),
             )
 
     def list(
@@ -172,7 +174,7 @@ class StateApiClient(SubmissionClient):
 
         # Dictionary of `ListApiResponse`
         list_api_response = response["data"]["result"]
-        
+
         if _explain:
             self._print_list_api_warning(resource, list_api_response)
 

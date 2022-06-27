@@ -69,7 +69,8 @@ class ListApiOptions:
         if self.limit > MAX_LIMIT:
             raise ValueError(
                 f"Given limit {self.limit} exceeds the supported "
-                f"limit {MAX_LIMIT}. Use a lower limit.")
+                f"limit {MAX_LIMIT}. Use a lower limit."
+            )
 
 
 @dataclass(init=True)
