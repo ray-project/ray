@@ -189,6 +189,7 @@ class AlgorithmConfig:
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
+        self.sync_filters_on_rollout_workers_timeout_s = 60.0
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
@@ -1091,7 +1092,14 @@ class AlgorithmConfig:
             metrics_episode_collection_timeout_s: Wait for metric batches for at most
                 this many seconds. Those that have not returned in time will be
                 collected in the next train iteration.
-            metrics_num_episodes_for_smoothing: Smooth metrics over this many episodes.
+            metrics_num_episodes_for_smoothing: Smooth rollout metrics over this many
+                episodes, if possible.
+                In case rollouts (sample collection) just started, there may be fewer
+                than this many episodes in the buffer and we'll compute metrics
+                over this smaller number of available episodes.
+                In case there are more than this many episodes collected in a single
+                training iteration, use all of these episodes for metrics computation,
+                meaning don't ever cut any "excess" episodes.
             min_time_s_per_iteration: Minimum time to accumulate within a single
                 `train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by

@@ -12,7 +12,6 @@ from typing import Any, Dict, Optional, Sequence, Union, Callable, Type, List
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str, detect_checkpoint_function
@@ -302,6 +301,8 @@ class Experiment:
         Raises:
             TuneError: if ``run_object`` passed in is invalid.
         """
+        from ray.tune.search.sample import Domain
+
         if isinstance(run_object, str) or isinstance(run_object, Domain):
             return run_object
         elif isinstance(run_object, type) or callable(run_object):
@@ -343,6 +344,8 @@ class Experiment:
         Returns:
             A string representing the trainable identifier.
         """
+        from ray.tune.search.sample import Domain
+
         if isinstance(run_object, str):
             return run_object
         elif isinstance(run_object, Domain):
