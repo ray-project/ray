@@ -330,10 +330,11 @@ class WorkerSet:
                 config=self._remote_config,
             )
             # Sync new worker from local one.
-            new_worker.set_weights.remote(
-                weights=self.local_worker().get_weights(),
-                global_vars=self.local_worker().get_global_vars(),
-            )
+            if self.local_worker():
+                new_worker.set_weights.remote(
+                    weights=self.local_worker().get_weights(),
+                    global_vars=self.local_worker().get_global_vars(),
+                )
             # Add new worker to list of remote workers.
             self._remote_workers[worker_index - 1] = new_worker
             new_workers.append(new_worker)
