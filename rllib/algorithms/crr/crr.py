@@ -60,7 +60,7 @@ class CRRConfig(AlgorithmConfig):
         self.tau = 5e-3
 
         # overriding the trainer config default
-        self.num_workers = 0  # offline RL does not need rollout workers
+        self.num_workers = 4  # offline RL does not need rollout workers
         self.offline_sampling = True
 
     def training(
@@ -149,17 +149,17 @@ class CRR(Algorithm):
     #  defining Config class in the same file for now as a workaround.
 
     def setup(self, config: PartialAlgorithmConfigDict):
-        default_config = self.get_default_config()
-        num_workers = config.get("num_workers") or default_config.get("num_workers")
-        train_batch_size = config.get("train_batch_size") or default_config.get(
-            "train_batch_size"
-        )
-        if num_workers:
-            config["rollout_fragment_length"] = int(
-                math.ceil(train_batch_size / num_workers)
-            )
-        else:
-            config["rollout_fragment_length"] = train_batch_size
+        # default_config = self.get_default_config()
+        # num_workers = config.get("num_workers") or default_config.get("num_workers")
+        # train_batch_size = config.get("train_batch_size") or default_config.get(
+        #     "train_batch_size"
+        # )
+        # if num_workers:
+        #     config["rollout_fragment_length"] = int(
+        #         math.ceil(train_batch_size / num_workers)
+        #     )
+        # else:
+        #     config["rollout_fragment_length"] = train_batch_size
 
         super().setup(config)
         # initial setup for handling the offline data in form of a replay buffer

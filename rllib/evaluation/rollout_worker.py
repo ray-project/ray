@@ -868,7 +868,6 @@ class RolloutWorker(ParallelIteratorWorker):
             max_batches = self.num_envs
         else:
             max_batches = float("inf")
-
         while steps_so_far < self.rollout_fragment_length and (
             len(batches) < max_batches or self.policy_config.get("offline_sampling")
         ):
