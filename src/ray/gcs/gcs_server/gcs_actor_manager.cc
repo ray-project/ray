@@ -305,38 +305,16 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
                                             rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
-  if (request.show_dead_jobs() == false) {
-    for (const auto &iter : registered_actors_) {
-      reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
-          const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
-    }
-    for (const auto &iter : destroyed_actors_) {
-      reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
-          const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
-    }
-    RAY_LOG(DEBUG) << "Finished getting all actor info.";
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    return;
+  for (const auto &iter : registered_actors_) {
+    reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
+        const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
   }
-
-  RAY_CHECK(request.show_dead_jobs());
-  // We don't maintain an in-memory cache of all actors which belong to dead
-  // jobs, so fetch it from redis.
-  Status status = gcs_table_storage_->ActorTable().GetAll(
-      [reply, send_reply_callback](
-          const absl::flat_hash_map<ActorID, rpc::ActorTableData> &result) {
-        for (const auto &pair : result) {
-          // TODO yic: Fix const cast
-          reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
-              const_cast<rpc::ActorTableData *>(&pair.second));
-        }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-        RAY_LOG(DEBUG) << "Finished getting all actor info.";
-      });
-  if (!status.ok()) {
-    // Send the response to unblock the sender and free the request.
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  for (const auto &iter : destroyed_actors_) {
+    reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
+        const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
   }
+  RAY_LOG(DEBUG) << "Finished getting all actor info.";
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsActorManager::HandleGetNamedActorInfo(
@@ -1249,43 +1227,6 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       gcs_actor_scheduler_->Reschedule(actor);
     }
   }
-}
-
-void GcsActorManager::OnJobFinished(const JobID &job_id) {
-  auto on_done = [this,
-                  job_id](const absl::flat_hash_map<ActorID, ActorTableData> &result) {
-    if (!result.empty()) {
-      std::vector<ActorID> non_detached_actors;
-      for (auto &item : result) {
-        if (!item.second.is_detached()) {
-          non_detached_actors.push_back(item.first);
-        }
-      }
-
-      run_delayed_(
-          [this, non_detached_actors = std::move(non_detached_actors)]() {
-            RAY_CHECK_OK(gcs_table_storage_->ActorTable().BatchDelete(
-                non_detached_actors, [this, non_detached_actors](const Status &status) {
-                  RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().BatchDelete(
-                      non_detached_actors, nullptr));
-                }));
-          },
-
-          actor_gc_delay_);
-
-      for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
-        if (iter->first.JobId() == job_id && !iter->second->IsDetached()) {
-          destroyed_actors_.erase(iter++);
-        } else {
-          iter++;
-        }
-      };
-    }
-  };
-
-  // Only non-detached actors should be deleted. We get all actors of this job and to the
-  // filtering.
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetByJobId(job_id, on_done));
 }
 
 const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>

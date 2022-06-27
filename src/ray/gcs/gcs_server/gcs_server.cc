@@ -654,7 +654,6 @@ void GcsServer::InstallEventListeners() {
 
   // Install job event listeners.
   gcs_job_manager_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
-    gcs_actor_manager_->OnJobFinished(*job_id);
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
   });
 

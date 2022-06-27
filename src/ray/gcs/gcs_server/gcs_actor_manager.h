@@ -361,12 +361,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
 
-  /// Delete non-detached actor information from durable storage once the associated job
-  /// finishes.
-  ///
-  /// \param job_id The id of finished job.
-  void OnJobFinished(const JobID &job_id);
-
   /// Get the created actors.
   ///
   /// \return The created actors.
