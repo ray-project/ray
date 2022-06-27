@@ -6,7 +6,7 @@ It has been used by some larger corporations to deploy Ray on their infrastructu
 Going forward, we would like to make this way of deployment accessible and seamless for
 all Ray users and standardize Ray deployment on Kubernetes around KubeRay's operator.
 While KubeRay has been used in production to manage large Ray deployments, certain integrations
-are still under development -- in particular, KubeRay's autoscaling functionality is alphq.
+are still under development -- in particular, KubeRay's autoscaling functionality is alpha.
 It is still valid to use the existing [Kubernetes integration](kubernetes.rst) hosted in the Ray repository for running Ray on Kubernetes. However, if you would like to try the KubeRay integration out, this documentation is for you! We would love your feedback as a [Github issue](https://github.com/ray-project/ray/issues) including `[KubeRay]` in the title.
 You may also wish to check out the [KubeRay repository's documentation](https://ray-project.github.io/kuberay/).
 ```
