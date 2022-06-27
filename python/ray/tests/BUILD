@@ -105,7 +105,6 @@ py_test_module_list(
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
-    "test_multi_node_3.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
@@ -253,6 +252,7 @@ py_test_module_list(
   files = [
     "test_basic_3.py",
     "test_output.py",
+    "test_out_of_disk_space.py",
     "test_failure_4.py",
     "test_object_spilling.py",
     "test_object_spilling_no_asan.py",
@@ -261,6 +261,7 @@ py_test_module_list(
     "test_plasma_unlimited.py",
     "test_placement_group_mini_integration.py",
     "test_scheduling_2.py",
+    "test_multi_node_3.py",
   ],
   size = "large",
   extra_srcs = SRCS,
