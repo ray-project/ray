@@ -2,7 +2,6 @@ from functools import partial
 import gym
 from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
-import tree  # dm-tree
 import unittest
 
 import ray
@@ -20,6 +19,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -177,11 +177,16 @@ class TestModelCatalog(unittest.TestCase):
                 )
                 self.assertTrue(test["expected_model"] in type(m).__name__)
                 # Do a test forward pass.
-                obs = get_dummy_batch_for_space(test["obs_space"], fill_value="random")
+                batch_size = 16
+                obs = get_dummy_batch_for_space(
+                    test["obs_space"],
+                    batch_size=batch_size,
+                    fill_value="random",
+                )
                 if fw == "torch":
-                    obs = tree.map_structure(lambda a: torch.from_numpy(a), obs)
+                    obs = convert_to_torch_tensor(obs)
                 out, state_outs = m({"obs": obs})
-                self.assertTrue(out.shape == (1, test["num_outputs"]))
+                self.assertTrue(out.shape == (batch_size, test["num_outputs"]))
                 self.assertTrue(state_outs == [])
 
     def test_custom_model(self):
