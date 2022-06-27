@@ -247,13 +247,6 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, 
     return env_vars
 
 
-def parse_and_validate_eager_install(eager_install: bool) -> bool:
-    assert eager_install is not None
-    if not isinstance(eager_install, bool):
-        raise TypeError(f"eager_install must be a boolean. got {type(eager_install)}")
-    return eager_install
-
-
 # Dictionary mapping runtime_env options with the function to parse and
 # validate them.
 OPTION_TO_VALIDATION_FN = {
@@ -264,5 +257,4 @@ OPTION_TO_VALIDATION_FN = {
     "pip": parse_and_validate_pip,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
-    "eager_install": parse_and_validate_eager_install,
 }

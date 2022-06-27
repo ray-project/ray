@@ -79,7 +79,7 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
             automatically converted into a class during registration.
     """
 
-    from ray.tune.function_runner import wrap_function
+    from ray.tune.trainable import wrap_function
     from ray.tune.trainable import Trainable
 
     if isinstance(trainable, type):
