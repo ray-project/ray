@@ -1002,6 +1002,8 @@ class RayTrialExecutor:
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
                 except RayTaskError as e:
+                    error_msg = f"Trial {trial}: Error get next executor event."
+                    logger.exception(error_msg)
                     return _ExecutorEvent(
                         _ExecutorEventType.ERROR,
                         trial,
