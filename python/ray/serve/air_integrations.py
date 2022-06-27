@@ -6,17 +6,19 @@ import numpy as np
 import ray
 from ray import serve
 from ray._private.utils import import_attr
-from ray.air.checkpoint import Checkpoint
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve.utils import require_packages
 
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor
+    from ray.air.checkpoint import Checkpoint
 else:
     try:
         from ray.train.predictor import Predictor
+        from ray.air.checkpoint import Checkpoint
     except ImportError:
         Predictor = None
+        Checkpoint = None
 
 try:
     import pandas as pd
