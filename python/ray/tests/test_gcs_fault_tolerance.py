@@ -474,6 +474,48 @@ assert ray.get(a.r.remote(10)) == 10
     [
         {
             **generate_system_config_map(
+                num_heartbeats_timeout=20,
+                gcs_rpc_server_reconnect_timeout_s=3600,
+                gcs_server_request_timeout_seconds=10,
+            ),
+            "namespace": "actor",
+        }
+    ],
+    indirect=True,
+)
+def test_named_actor_workloads(ray_start_regular_with_external_redis):
+    """This test cover the case to create actor while gcs is down
+    and also make sure existing actor continue to work even when
+    GCS is down.
+    """
+
+    @ray.remote
+    class Counter:
+        def r(self, v):
+            return v
+
+    c = Counter.options(name="c", lifetime="detached").remote()
+    r = ray.get(c.r.remote(10))
+    assert r == 10
+
+    print("GCS is killed")
+    ray.worker._global_node.kill_gcs_server()
+
+    print("Start to create a new actor")
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        cc = Counter.options(name="cc", lifetime="detached").remote()
+
+    assert ray.get(c.r.remote(10)) == 10
+    ray.worker._global_node.start_gcs_server()
+    cc = Counter.options(name="cc", lifetime="detached").remote()
+    assert ray.get(cc.r.remote(10)) == 10
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
                 num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=3600
             ),
             "namespace": "actor",
@@ -516,8 +558,9 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
 
 
 if __name__ == "__main__":
-    import pytest
     import os
+
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
