@@ -6,9 +6,11 @@ from ray_release.alerts.handle import handle_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
+from ray_release.cluster_manager.aws_vm_stack import AwsVmClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
+from ray_release.command_runner.vm_stack_runner import VmStackRunner
 from ray_release.config import (
     Test,
     DEFAULT_BUILD_TIMEOUT,
@@ -19,7 +21,7 @@ from ray_release.config import (
     DEFAULT_AUTOSUSPEND_MINS,
     validate_test,
 )
-from ray_release.template import load_test_cluster_env, load_test_cluster_compute
+from ray_release.template import load_test_cluster_env, load_test_cluster_compute, load_test_cluster_launcher_config
 from ray_release.exception import (
     ReleaseTestConfigError,
     ReleaseTestSetupError,
@@ -33,6 +35,7 @@ from ray_release.exception import (
     ClusterEnvCreateError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
+from ray_release.file_manager.vm_stack_file_manager import VmStackFileManager
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
@@ -49,12 +52,14 @@ type_str_to_command_runner = {
     "sdk_command": SDKRunner,
     "job": JobRunner,
     "client": ClientRunner,
+    "vm_stack_command": VmStackRunner,
 }
 
 command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
     ClientRunner: FullClusterManager,
     JobRunner: FullClusterManager,
+    VmStackRunner: AwsVmClusterManager
 }
 
 file_manager_str_to_file_manager = {
@@ -67,6 +72,7 @@ command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
     ClientRunner: RemoteTaskFileManager,
     JobFileManager: JobFileManager,
+    VmStackRunner: VmStackFileManager
 }
 
 uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
@@ -137,28 +143,34 @@ def run_release_test(
     pipeline_exception = None
     try:
         # Load configs
-        cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
-        cluster_compute = load_test_cluster_compute(test)
+        cluster_launcher_config = load_test_cluster_launcher_config(test)
 
-        if cluster_env_id:
-            try:
-                cluster_manager.cluster_env_id = cluster_env_id
-                cluster_manager.build_cluster_env()
-                cluster_manager.fetch_build_info()
-                logger.info(
-                    "Using overridden cluster environment with ID "
-                    f"{cluster_env_id} and build ID "
-                    f"{cluster_manager.cluster_env_build_id}"
-                )
-            except Exception as e:
-                raise ClusterEnvCreateError(
-                    f"Could not get existing overridden cluster environment "
-                    f"{cluster_env_id}: {e}"
-                ) from e
+        if cluster_launcher_config:
+            # TODO pass to cluster manager
+            pass
         else:
-            cluster_manager.set_cluster_env(cluster_env)
+            cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
+            cluster_compute = load_test_cluster_compute(test)
 
-        cluster_manager.set_cluster_compute(cluster_compute)
+            if cluster_env_id:
+                try:
+                    cluster_manager.cluster_env_id = cluster_env_id
+                    cluster_manager.build_cluster_env()
+                    cluster_manager.fetch_build_info()
+                    logger.info(
+                        "Using overridden cluster environment with ID "
+                        f"{cluster_env_id} and build ID "
+                        f"{cluster_manager.cluster_env_build_id}"
+                    )
+                except Exception as e:
+                    raise ClusterEnvCreateError(
+                        f"Could not get existing overridden cluster environment "
+                        f"{cluster_env_id}: {e}"
+                    ) from e
+            else:
+                cluster_manager.set_cluster_env(cluster_env)
+
+            cluster_manager.set_cluster_compute(cluster_compute)
 
         buildkite_group(":nut_and_bolt: Setting up local environment")
         driver_setup_script = test.get("driver_setup", None)

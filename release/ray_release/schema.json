@@ -72,6 +72,9 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
+				"cluster_launcher_config": {
+					"type": "string"
+				},
 				"cluster_env": {
 					"type": "string"
 				},
@@ -89,10 +92,7 @@
 					"type": "string"
 				}
 			},
-			"required": [
-				"cluster_compute",
-				"cluster_env"
-			],
+			"required": [],
 			"title": "Cluster"
 		},
 		"Legacy": {
@@ -122,7 +122,8 @@
 						"command",
 						"sdk_command",
 						"job",
-						"client"
+						"client",
+                                                "vm_stack_command"
 					]
 				},
 				"file_manager": {

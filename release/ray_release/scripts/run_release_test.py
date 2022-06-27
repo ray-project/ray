@@ -114,9 +114,10 @@ def main(
 
     anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
     if not anyscale_project:
-        raise ReleaseTestCLIError(
-            "You have to set the ANYSCALE_PROJECT environment variable!"
-        )
+        logger.info("Ignoring error message You have to set the ANYSCALE_PROJECT environment variable!")
+        #raise ReleaseTestCLIError(
+        #    "You have to set the ANYSCALE_PROJECT environment variable!"
+        #)
 
     maybe_fetch_api_token()
 

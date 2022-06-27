@@ -94,6 +94,36 @@
 #  # It can then let the test fail, e.g. if a metric regression is observed.
 #  alert: default
 
+# TODO(@cade)
+#
+#
+
+- name: cade-test
+  group: cade-test
+  working_dir: vm_stack_tests
+
+  frequency: nightly
+  team: ml # TODO
+
+  cluster:
+    cluster_launcher_config: cluster_launcher_config.yaml
+
+  run:
+    timeout: 36000
+    script: python does-not-exist-yet.py
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 3
+
+    type: vm_stack_command
+    #file_manager: job
+
+  smoke_test:
+    frequency: disabled
+    run:
+      timeout: 1800
+
+  alert: default
 
 #########################
 # AIR release tests

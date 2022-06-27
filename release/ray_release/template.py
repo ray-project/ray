@@ -116,6 +116,16 @@ def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
     return load_and_render_yaml_template(cluster_env_path, env=env)
 
 
+def load_test_cluster_launcher_config(test: Test) -> Optional[Dict]:
+
+    cluster = test["cluster"]
+    if "cluster_launcher_config" in cluster:
+        path = cluster["cluster_launcher_config"]
+        return load_and_render_yaml_template(path)
+    else:
+        return None
+
+
 def populate_cluster_env_variables(test: Test, ray_wheels_url: str) -> Dict:
     env = get_test_environment()
 
