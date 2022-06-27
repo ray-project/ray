@@ -1,7 +1,6 @@
 import ray._private.worker
 
 try:
-    from ray.serve import PredictorDeployment
     from ray.serve.api import (
         deployment,
         get_deployment,
@@ -12,6 +11,7 @@ try:
         shutdown,
         start,
     )
+    from ray.serve.air_integrations import PredictorDeployment
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
 except ModuleNotFoundError as e:
