@@ -8,7 +8,7 @@ import time
 
 from ray import tune
 from ray.air import session
-from ray.tune.suggest.zoopt import ZOOptSearch
+from ray.tune.search.zoopt import ZOOptSearch
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 

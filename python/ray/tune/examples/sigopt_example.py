@@ -10,7 +10,7 @@ import time
 from ray import tune
 from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.sigopt import SigOptSearch
+from ray.tune.search.sigopt import SigOptSearch
 
 
 def evaluate(step, width, height):

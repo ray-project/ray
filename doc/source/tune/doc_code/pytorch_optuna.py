@@ -82,7 +82,7 @@ class ConvNet(nn.Module):
 import torch
 from ray import tune
 from ray.air import session
-from ray.tune.suggest.optuna import OptunaSearch
+from ray.tune.search.optuna import OptunaSearch
 
 
 # 1. Wrap a PyTorch model in an objective function.
