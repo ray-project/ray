@@ -89,30 +89,30 @@ class TestModelCatalog(unittest.TestCase):
 
         # Build test cases
         flat_input_case = {
-            "input_space": Box(0, 1, shape=(3,), dtype=np.float32),
-            "output_space": Box(0, 1, shape=(4,)),
+            "obs_space": Box(0, 1, shape=(3,), dtype=np.float32),
+            "action_space": Box(0, 1, shape=(4,)),
             "num_outputs": 4,
             "expected_model": "FullyConnectedNetwork",
         }
         img_input_case = {
-            "input_space": Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
-            "output_space": Discrete(5),
+            "obs_space": Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+            "action_space": Discrete(5),
             "num_outputs": 5,
             "expected_model": "VisionNetwork",
         }
         flat_complex_input_case = {
-            "input_space": Box(0, 1, shape=(10,), dtype=np.float32),
-            "output_space": Box(0, 1, shape=(5,)),
+            "obs_space": Box(0, 1, shape=(10,), dtype=np.float32),
+            "action_space": Box(0, 1, shape=(5,)),
             "num_outputs": 5,
             "expected_model": "FullyConnectedNetwork",
         }
-        flat_complex_input_case["input_space"].original_space = Tuple([
+        flat_complex_input_case["obs_space"].original_space = Tuple([
             Box(0, 1, shape=(3,), dtype=np.float32),
             Box(0, 1, shape=(4,), dtype=np.float32),
             Discrete(3),
         ])
         nested_complex_input_case = {
-            "input_space": Tuple([
+            "obs_space": Tuple([
                 Box(0, 1, shape=(3,), dtype=np.float32),
                 Discrete(3),
                 Tuple([
@@ -120,7 +120,7 @@ class TestModelCatalog(unittest.TestCase):
                     Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
                 ]),
             ]),
-            "output_space": Box(0, 1, shape=(7,)),
+            "action_space": Box(0, 1, shape=(7,)),
             "num_outputs": 7,
             "expected_model": "ComplexInputNetwork",
         }
@@ -156,16 +156,16 @@ class TestModelCatalog(unittest.TestCase):
                 if test["expected_model"] == "ComplexInputNetwork":
                     model_config["fcnet_hiddens"] = [256, 256]
                 m = ModelCatalog.get_model_v2(
-                    obs_space=test["input_space"],
-                    action_space=test["output_space"],
+                    obs_space=test["obs_space"],
+                    action_space=test["action_space"],
                     num_outputs=test["num_outputs"],
                     model_config=model_config,
                     framework=fw,
                 )
                 self.assertTrue(test["expected_model"] in type(m).__name__)
-                if isinstance(test["input_space"], Box):
+                if isinstance(test["obs_space"], Box):
                     # Do a test forward pass.
-                    obs = np.array([test["input_space"].sample()])
+                    obs = np.array([test["obs_space"].sample()])
                     if fw == "torch":
                         obs = torch.from_numpy(obs)
                     out, state_outs = m({"obs": obs})
