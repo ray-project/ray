@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_preprocessors_start__
 import ray
@@ -68,17 +69,13 @@ print(best_result)
 # __air_tuner_end__
 
 # __air_batch_predictor_start__
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.xgboost import XGBoostPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 
 # Bulk batch prediction.
-predicted_labels = (
-    batch_predictor.predict(test_dataset)
-    .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
-    .to_pandas(limit=float("inf"))
-)
+predicted_probabilities = batch_predictor.predict(test_dataset)
 
 # Pipelined batch prediction: instead of processing the data in bulk, process it
 # incrementally in windows of the given size.

@@ -1,24 +1,23 @@
 from typing import List
 
 import ray
+from ray._private.client_mode_hook import client_mode_hook
 from ray._private.services import get_node_ip_address
 from ray.util import iter
-from ray.util.annotations import PublicAPI
+from ray.util import rpdb as pdb
 from ray.util.actor_pool import ActorPool
+from ray.util.annotations import PublicAPI
 from ray.util.check_serialize import inspect_serializability
-from ray.util.debug import log_once, disable_log_once_globally, enable_periodic_logging
+from ray.util.client_connect import connect, disconnect
+from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.placement_group import (
+    get_current_placement_group,
+    get_placement_group,
     placement_group,
     placement_group_table,
     remove_placement_group,
-    get_placement_group,
-    get_current_placement_group,
 )
-from ray.util import rpdb as pdb
-from ray.util.serialization import register_serializer, deregister_serializer
-
-from ray.util.client_connect import connect, disconnect
-from ray._private.client_mode_hook import client_mode_hook
+from ray.util.serialization import deregister_serializer, register_serializer
 
 
 @PublicAPI(stability="beta")
@@ -36,7 +35,7 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
     returned regardless of namespace, and the returned entries will be of the
     form {"namespace": namespace, "name": name}.
     """
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     actors = worker.core_worker.list_named_actors(all_namespaces)

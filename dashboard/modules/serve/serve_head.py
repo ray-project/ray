@@ -56,20 +56,11 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        from ray import serve
-        from ray.serve.application import Application
         from ray.serve.context import get_global_client
         from ray.serve.schema import ServeApplicationSchema
 
         config = ServeApplicationSchema.parse_obj(await req.json())
-
-        if config.import_path is not None:
-            client = get_global_client()
-            client.deploy_app(config)
-        else:
-            # TODO (shrekris-anyscale): Remove this conditional path
-            app = Application.from_dict(await req.json())
-            serve.run(app, _blocking=False)
+        get_global_client().deploy_app(config)
 
         return Response()
 

@@ -1,18 +1,18 @@
 import sys
+from time import sleep
+
+import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-import pytest
-import psutil
-
-from time import sleep
-
 from ray._private.test_utils import (
+    convert_actor_state,
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
-    convert_actor_state,
 )
+
+import psutil
 
 
 @ray.remote
@@ -40,8 +40,8 @@ def test_gcs_server_restart(ray_start_regular_with_external_redis):
     result = ray.get(actor1.method.remote(1))
     assert result == 3
 
-    ray.worker._global_node.kill_gcs_server()
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
 
     actor2 = Increase.remote()
     result = ray.get(actor2.method.remote(2))
@@ -81,8 +81,8 @@ def test_gcs_server_restart_during_actor_creation(
         actor = Increase.remote()
         ids.append(actor.method.remote(1))
 
-    ray.worker._global_node.kill_gcs_server()
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
 
     # The timeout seems too long.
     # TODO(mwtian): after fixing reconnection in GCS pubsub, try using a lower
@@ -180,7 +180,7 @@ def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
     pid = ray.get(actor.ready.remote())
     print("actor is ready and kill gcs")
 
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     print("make actor exit")
     import psutil
@@ -191,7 +191,7 @@ def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
 
     sleep(1)
     print("start gcs")
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
 
     print("try actor method again")
     with pytest.raises(ray.exceptions.RayActorError):
@@ -212,14 +212,14 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     result = ray.get(actor.method.remote(1))
     assert result == 3
 
-    ray.worker._global_node.kill_gcs_server()
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
 
     actor_id = actor._actor_id.hex()
     del actor
 
     def condition():
-        actor_status = ray.state.actors(actor_id=actor_id)
+        actor_status = ray._private.state.actors(actor_id=actor_id)
         if actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD):
             return True
         else:
@@ -282,8 +282,8 @@ def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_
     wait_for_condition(condition, timeout=5)
 
     # kill the gcs
-    ray.worker._global_node.kill_gcs_server()
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
     # make sure resubscription is done
     # TODO(iycheng): The current way of resubscription potentially will lose
     # worker failure message because we don't ask for the snapshot of worker
@@ -328,11 +328,11 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
     a = Actor.remote()
     r = a.ready.remote()
     # Actor is not ready before GCS is down.
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     lock.release()
     # Actor is ready after GCS starts
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
     # Test the resubscribe works: if not, it'll timeout because worker
     # will think the actor is not ready.
     ray.get(r, timeout=5)
@@ -361,10 +361,10 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
     a = A.options(name="a", lifetime="detached", max_restarts=-1).remote()
 
     pid = ray.get(a.ready.remote())
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
     p = psutil.Process(pid)
     p.kill()
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
 
     while True:
         try:
@@ -376,7 +376,7 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
-    gcs_address = ray.worker.global_worker.gcs_client.address
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = (
         gcs_utils.GcsClient(address=gcs_address)
         if auto_reconnect
@@ -386,8 +386,8 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     gcs_client.internal_kv_get(b"a", None) == b"b"
 
-    ray.worker._global_node.kill_gcs_server()
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
     if auto_reconnect is False:
         # This may flake: when GCS server restarted quickly, there would be no
         # connection error when calling internal_kv_get().
@@ -426,7 +426,7 @@ def test_actor_workloads(ray_start_regular_with_external_redis):
     assert r == 10
 
     print("GCS is killed")
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     print("Start to create a new actor")
     cc = Counter.remote()
@@ -434,7 +434,7 @@ def test_actor_workloads(ray_start_regular_with_external_redis):
         ray.get(cc.r.remote(10), timeout=5)
 
     assert ray.get(c.r.remote(10)) == 10
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
 
     import threading
 
@@ -449,13 +449,13 @@ def test_actor_workloads(ray_start_regular_with_external_redis):
 
     assert ray.get(c.r.remote(10)) == 10
 
-    ray.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.kill_gcs_server()
 
     sleep(2)
 
     assert ray.get(c.r.remote(10)) == 10
 
-    ray.worker._global_node.start_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
 
     from ray._private.test_utils import run_string_as_driver
 
@@ -469,7 +469,100 @@ assert ray.get(a.r.remote(10)) == 10
     )
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                num_heartbeats_timeout=20,
+                gcs_rpc_server_reconnect_timeout_s=3600,
+                gcs_server_request_timeout_seconds=10,
+            ),
+            "namespace": "actor",
+        }
+    ],
+    indirect=True,
+)
+def test_named_actor_workloads(ray_start_regular_with_external_redis):
+    """This test cover the case to create actor while gcs is down
+    and also make sure existing actor continue to work even when
+    GCS is down.
+    """
+
+    @ray.remote
+    class Counter:
+        def r(self, v):
+            return v
+
+    c = Counter.options(name="c", lifetime="detached").remote()
+    r = ray.get(c.r.remote(10))
+    assert r == 10
+
+    print("GCS is killed")
+    ray.worker._global_node.kill_gcs_server()
+
+    print("Start to create a new actor")
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        cc = Counter.options(name="cc", lifetime="detached").remote()
+
+    assert ray.get(c.r.remote(10)) == 10
+    ray.worker._global_node.start_gcs_server()
+    cc = Counter.options(name="cc", lifetime="detached").remote()
+    assert ray.get(cc.r.remote(10)) == 10
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=3600
+            ),
+            "namespace": "actor",
+        }
+    ],
+    indirect=True,
+)
+def test_pg_actor_workloads(ray_start_regular_with_external_redis):
+    from ray.util.placement_group import placement_group
+
+    bundle1 = {"CPU": 1}
+    pg = placement_group([bundle1], strategy="STRICT_PACK")
+
+    ray.get(pg.ready())
+
+    @ray.remote
+    class Counter:
+        def r(self, v):
+            return v
+
+        def pid(self):
+            import os
+
+            return os.getpid()
+
+    c = Counter.options(placement_group=pg).remote()
+    r = ray.get(c.r.remote(10))
+    assert r == 10
+
+    print("GCS is killed")
+    pid = ray.get(c.pid.remote())
+    ray.worker._global_node.kill_gcs_server()
+
+    assert ray.get(c.r.remote(10)) == 10
+
+    ray.worker._global_node.start_gcs_server()
+
+    for _ in range(100):
+        assert pid == ray.get(c.pid.remote())
+
+
 if __name__ == "__main__":
+    import os
+
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

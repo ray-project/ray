@@ -1,14 +1,22 @@
-from typing import Any, Union, Generic, Tuple, List, Callable
-from ray.util.annotations import PublicAPI
-from ray.data.dataset import Dataset
-from ray.data.dataset import BatchType
+from typing import Any, Callable, Generic, List, Tuple, Union
+
 from ray.data._internal import sort
-from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
-from ray.data.block import BlockExecStats, KeyFn
-from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.compute import CallableClass, ComputeStrategy
+from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    KeyFn,
+    KeyType,
+    T,
+    U,
+)
+from ray.data.dataset import BatchType, Dataset
+from ray.util.annotations import PublicAPI
 
 
 class _GroupbyOp(ShuffleOp):
@@ -35,7 +43,7 @@ class _GroupbyOp(ShuffleOp):
         meta = BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
-        return [meta] + parts
+        return parts + [meta]
 
     @staticmethod
     def reduce(
