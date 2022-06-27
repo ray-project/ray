@@ -81,6 +81,15 @@ def _pid_alive(pid):
     return alive
 
 
+def get_pid(name):
+    pids = psutil.process_iter()
+    for pid in pids:
+        if name in pid.name():
+            return pid.pid
+
+    return -1
+
+
 def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows

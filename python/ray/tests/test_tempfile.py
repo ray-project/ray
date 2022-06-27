@@ -7,7 +7,7 @@ import psutil
 import pytest
 
 import ray
-from ray._private.test_utils import check_call_ray, wait_for_condition
+from ray._private.test_utils import check_call_ray, wait_for_condition, get_pid
 
 
 def unix_socket_create_path(name):
@@ -42,15 +42,6 @@ def test_tempdir(shutdown_only):
         os.path.join(ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir"),
         ignore_errors=True,
     )
-
-
-def get_pid(name):
-    pids = psutil.process_iter()
-    for pid in pids:
-        if name in pid.name():
-            return pid.pid
-
-    return -1
 
 
 def test_tempdir_commandline():

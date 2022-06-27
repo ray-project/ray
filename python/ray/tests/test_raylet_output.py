@@ -11,7 +11,7 @@ from ray._private.test_utils import wait_for_condition
 def enable_export_loglevel(func):
     # For running in both python and pytest, this decorator makes sure
     # log level env parameter will be changed.
-    # Make raylet emit a log to raylet.log.
+    # Make raylet emit a log to raylet_xxx.log.
     os.environ["RAY_BACKEND_LOG_LEVEL"] = "info"
     return func
 
@@ -20,7 +20,8 @@ def enable_export_loglevel(func):
 def test_ray_log_redirected(ray_start_regular):
     session_dir = ray._private.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Session dir not found."
-    raylet_log_path = "{}/logs/raylet.log".format(session_dir)
+    raylet_logs = glob.glob("{}/logs/raylet*".format(session_dir))
+    assert len(raylet_logs) == 3  # .out, .err, .log
 
     @ray.remote
     class Actor:
@@ -37,7 +38,8 @@ def test_ray_log_redirected(ray_start_regular):
     remote_pid = ray.get(actor.get_pid.remote())
     local_pid = os.getpid()
 
-    wait_for_condition(lambda: file_exists_and_not_empty(raylet_log_path))
+    wait_for_condition(
+        lambda: all(map(file_exists_and_not_empty, raylet_logs)))
 
     core_worker_logs = glob.glob(
         "{}/logs/python-core-worker*{}.log".format(session_dir, remote_pid)

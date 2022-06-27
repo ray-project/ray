@@ -6,16 +6,7 @@ import psutil
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
-
-
-def get_pid(name):
-    pids = psutil.process_iter()
-    for pid in pids:
-        if name in pid.name():
-            return pid.pid
-
-    return -1
+from ray._private.test_utils import wait_for_condition, get_pid
 
 
 def check_result(filename, num_signal, check_key):
