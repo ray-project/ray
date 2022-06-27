@@ -249,12 +249,12 @@ class RemoteFunction:
         placement_group_capture_child_tasks = task_options[
             "placement_group_capture_child_tasks"
         ]
-        if placement_group:
+        if placement_group != "default":
             warnings.warn(
                 "DeprecationWarning: placement_group parameter is "
                 "deprecated. Use scheduling_strategy parameter instead."
             )
-        if placement_group_bundle_index:
+        if placement_group_bundle_index != -1:
             warnings.warn(
                 "DeprecationWarning: placement_group_bundle_index is "
                 "deprecated. Use scheduling_strategy parameter instead."
