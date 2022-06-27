@@ -18,29 +18,33 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
       randomized each time.
 """
 import glob
+import multiprocessing as mp
+import os
+import re
 import sys
 import tempfile
+import time
 import uuid
-import re
-import os
 from contextlib import contextmanager
 from pathlib import Path
-
-import pytest
+from typing import Optional
+from unittest.mock import MagicMock, patch
 
 import moto
-from moto import mock_ec2, mock_iam
-from unittest.mock import MagicMock, patch
+import pytest
 from click.testing import CliRunner
-
+from moto import mock_ec2, mock_iam
 from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
 import ray.autoscaler._private.aws.config as aws_config
-from ray.cluster_utils import cluster_not_supported
+import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
+from ray.cluster_utils import cluster_not_supported
+
+import psutil
 
 boto3_list = [
     {
@@ -111,17 +115,43 @@ def _unlink_test_ssh_key():
         pass
 
 
-def _debug_die(result):
+def _start_ray_and_block(runner, child_conn: mp.connection.Connection, as_head: bool):
+    """Utility function to start a CLI command with `ray start --block`
+
+    This function is expected to be run in another process, where `child_conn` is used
+    for IPC with the parent.
+    """
+    args = ["--block"]
+    if as_head:
+        args.append("--head")
+    else:
+        # Worker node
+        args.append(f"--address=localhost:{ray_constants.DEFAULT_PORT}")
+
+    result = runner.invoke(
+        scripts.start,
+        args,
+    )
+    # Should be blocked until stopped by signals (SIGTERM)
+    child_conn.send(result.output)
+
+
+def _debug_die(output, assert_msg: str = ""):
     print("!!!!")
-    print(result.output)
+    print(output)
     print("!!!!")
-    assert False
+    assert False, assert_msg
+
+
+def _fail_if_false(
+    predicate: bool, stdout: Optional[str] = "", assert_msg: Optional[str] = ""
+):
+    if not predicate:
+        _debug_die(stdout, assert_msg)
 
 
 def _die_on_error(result):
-    if result.exit_code == 0:
-        return
-    _debug_die(result)
+    _fail_if_false(result.exit_code == 0, result.output)
 
 
 def _debug_check_line_by_line(result, expected_lines):
@@ -301,6 +331,174 @@ def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
     assert os.path.exists(os.path.join(temp_dir, "ray_hook_ok"))
 
     _die_on_error(runner.invoke(scripts.stop))
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support. "),
+)
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows signal handling not compatible"
+)
+def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path):
+    """Test `ray start` with `--block` as heads and workers and signal handles"""
+
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+    runner = CliRunner()
+
+    head_parent_conn, head_child_conn = mp.Pipe()
+
+    # Run `ray start --block --head` in another process and blocks
+    head_proc = mp.Process(
+        target=_start_ray_and_block,
+        kwargs={"runner": runner, "child_conn": head_child_conn, "as_head": True},
+    )
+
+    # Run
+    head_proc.start()
+
+    # Give it some time to start various subprocesses and `ray stop`
+    # A smaller interval seems to cause occasional failure as the head process
+    # was stopped too early before spawning all the subprocesses.
+    time.sleep(5)
+
+    # Terminate some of the children process
+    children = psutil.Process(head_proc.pid).children()
+
+    # Terminate everyone other than GCS
+    # NOTE(rickyyx): The choice of picking GCS is arbitrary.
+    gcs_proc = None
+    for child in children:
+        if "gcs_server" in child.name():
+            gcs_proc = child
+            continue
+        child.terminate()
+        child.wait(5)
+
+        if not head_proc.is_alive():
+            # NOTE(rickyyx): call recv() here is safe since the process
+            # is guaranteed to be terminated.
+            _fail_if_false(
+                False,
+                head_parent_conn.recv(),
+                (
+                    "`ray start --head --block` should not exit"
+                    f"({head_proc.exitcode}) when a subprocess is "
+                    "terminated with SIGTERM."
+                ),
+            )
+
+    # Kill the GCS last should unblock the CLI
+    gcs_proc.kill()
+    gcs_proc.wait(5)
+
+    # NOTE(rickyyx): The wait here is needed for the `head_proc`
+    # process to exit
+    head_proc.join(5)
+
+    # Process with "--block" should be dead with a subprocess killed
+    if head_proc.is_alive() or head_proc.exitcode == 0:
+        # NOTE(rickyyx): call recv() here is safe since the process
+        # is guaranteed to be terminated thus invocation is non-blocking.
+        _fail_if_false(
+            False,
+            head_parent_conn.recv() if not head_proc.is_alive() else "still alive",
+            (
+                "Head process should have exited with errors when one of"
+                f" subprocesses killed. But exited={head_proc.exitcode}"
+            ),
+        )
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support. "),
+)
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows signal handling not compatible"
+)
+def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
+    """Test `ray start` with `--block` as heads and workers and `ray stop`"""
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+    runner = CliRunner()
+
+    head_parent_conn, head_child_conn = mp.Pipe()
+    worker_parent_conn, worker_child_conn = mp.Pipe()
+
+    # Run `ray start --block --head` in another process and blocks
+    head_proc = mp.Process(
+        target=_start_ray_and_block,
+        kwargs={"runner": runner, "child_conn": head_child_conn, "as_head": True},
+    )
+
+    # Run `ray start --block --address=localhost:DEFAULT_PORT`
+    worker_proc = mp.Process(
+        target=_start_ray_and_block,
+        kwargs={"runner": runner, "child_conn": worker_child_conn, "as_head": False},
+    )
+
+    # Run
+    head_proc.start()
+    worker_proc.start()
+
+    # Give it some time to start various subprocesses and `ray stop`
+    # A smaller interval seems to cause occasional failure as the head process
+    # was stopped too early before spawning all the subprocesses.
+    time.sleep(5)
+    stop_result = runner.invoke(scripts.stop)
+    _die_on_error(stop_result)
+
+    # Process with "--block" should be blocked forever w/o
+    # termination by signals
+    if not head_proc.is_alive():
+        # NOTE(rickyyx): call recv() here is safe since the process
+        # is guaranteed to be terminated.
+        _fail_if_false(
+            False,
+            head_parent_conn.recv(),
+            (
+                "`ray start --head --block` should block forever even"
+                " though Ray subprocesses are stopped normally. But "
+                f"it exited with {head_proc.exitcode} early. \n"
+                f"Stop command: {stop_result.output}"
+            ),
+        )
+
+    if not worker_proc.is_alive():
+        _fail_if_false(
+            False,
+            worker_parent_conn.recv(),
+            (
+                "`ray start --block` should block forever even"
+                " though Ray subprocesses are stopped normally. But"
+                f"it exited with {worker_proc.exitcode} already. \n"
+                f"Stop command: {stop_result.output}"
+            ),
+        )
+
+    # Stop both worker and head with SIGTERM
+    head_proc.terminate()
+    worker_proc.terminate()
+
+    if head_parent_conn.poll(3):
+        head_output = head_parent_conn.recv()
+    if worker_parent_conn.poll(3):
+        worker_output = worker_parent_conn.recv()
+
+    head_proc.join(5)
+    worker_proc.join(5)
+
+    _fail_if_false(
+        head_proc.exitcode == 0,
+        head_output,
+        f"Head process failed unexpectedly({head_proc.exitcode})",
+    )
+
+    _fail_if_false(
+        worker_proc.exitcode == 0,
+        worker_output,
+        f"Worker process failed unexpectedly({worker_proc.exitcode})",
+    )
 
 
 @pytest.mark.skipif(
