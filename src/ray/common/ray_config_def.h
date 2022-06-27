@@ -483,6 +483,13 @@ RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 /// This is configured based on object_spilling_config.
 RAY_CONFIG(bool, is_external_storage_type_fs, true)
 
+/// Control the capacity threshold for ray local file system (for object store).
+/// Once we are over the capacity, all subsequent object creation will fail.
+RAY_CONFIG(float, local_fs_capacity_threshold, 0.95);
+
+/// Control the frequency of checking the disk usage.
+RAY_CONFIG(uint64_t, local_fs_monitor_interval_ms, 100);
+
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
 /// dependency locality when choosing a worker for leasing.

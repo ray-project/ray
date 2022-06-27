@@ -12,9 +12,9 @@ from ray import tune
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.resources import Resources
-from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.tune.trial import Trial
-from ray.tune import trial_runner
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.experiment import Trial
+from ray.tune.execution import trial_runner
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 
 CHECKPOINT_FILENAME = "model.xgb"

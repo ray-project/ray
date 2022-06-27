@@ -59,17 +59,11 @@ from ray.train.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 
-predicted_labels = (
-    batch_predictor.predict(test_dataset)
-    .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
-    .to_pandas(limit=float("inf"))
-)
-print("PREDICTED LABELS")
-print(f"{predicted_labels}")
+predicted_probabilities = batch_predictor.predict(test_dataset)
+print("PREDICTED PROBABILITIES")
+predicted_probabilities.show()
 
-shap_values = batch_predictor.predict(test_dataset, pred_contribs=True).to_pandas(
-    limit=float("inf")
-)
+shap_values = batch_predictor.predict(test_dataset, pred_contribs=True)
 print("SHAP VALUES")
-print(f"{shap_values}")
+shap_values.show()
 # __air_xgb_batchpred_end__

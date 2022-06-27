@@ -139,9 +139,10 @@ def summarize_episodes(
     """Summarizes a set of episode metrics tuples.
 
     Args:
-        episodes: smoothed set of episodes including historical ones
-        new_episodes: just the new episodes in this iteration. This must be
-            a subset of `episodes`. If None, assumes all episodes are new.
+        episodes: List of most recent n episodes. This may include historical ones
+            (not newly collected in this iteration) in order to achieve the size of
+            the smoothing window.
+        new_episodes: All the episodes that were completed in this iteration.
     """
 
     if new_episodes is None:
