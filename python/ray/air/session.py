@@ -64,7 +64,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
 
     Returns:
         Checkpoint object if the session is currently being resumed.
-        Otherwise, return None.
+            Otherwise, return None.
 
     Example:
         .. code-block: python

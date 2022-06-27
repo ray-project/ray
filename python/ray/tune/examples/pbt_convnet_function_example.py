@@ -70,7 +70,7 @@ def test_best_model(analysis):
     """Test the best model given output of tune.run"""
     best_checkpoint_path = analysis.best_checkpoint
     best_model = ConvNet()
-    best_checkpoint = torch.load(os.path.join(best_checkpoint_path, "checkpoint"))
+    best_checkpoint = torch.load(os.path.join(best_checkpoint_path, "checkpoint.pt"))
     best_model.load_state_dict(best_checkpoint["model_state_dict"])
     # Note that test only runs on a small random set of the test data, thus the
     # accuracy may be different from metrics shown in tuning process.
