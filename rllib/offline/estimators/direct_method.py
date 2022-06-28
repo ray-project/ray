@@ -39,7 +39,7 @@ class DirectMethod(OffPolicyEstimator):
             state_value_fn: Function that takes in self.policy and a
             SampleBatch with states s and return the state values V(s).
             This is meant to be generic; modify this for your Algorithm as neccessary.
-            If not specified, try to look up the function using lookup_state_value_fn.
+            If None, try to look up the function using lookup_state_value_fn.
         """
 
         super().__init__(name, policy, gamma)
@@ -58,8 +58,8 @@ class DirectMethod(OffPolicyEstimator):
                 v_old += rewards[t] * self.gamma ** t
 
             init_step = episode[0:1]
-            v_value = self.state_value_fn(self.policy, init_step)
-            v_new = convert_to_numpy(v_value).item()
+            v_new = self.state_value_fn(self.policy, init_step)
+            v_new = convert_to_numpy(v_new).item()
 
             estimates["v_old"].append(v_old)
             estimates["v_new"].append(v_new)

@@ -37,11 +37,11 @@ class DoublyRobust(OffPolicyEstimator):
             state_value_fn: Function that takes in self.policy and a
             SampleBatch with states s and return the state values V(s).
             This is meant to be generic; modify this for your Algorithm as neccessary.
-            If not specified, try to look up the function using lookup_state_value_fn.
+            If none, try to look up the function using lookup_state_value_fn.
             action_value_fn: Function that takes in self.policy and a
             SampleBatch with states s and actions a and return the action values Q(s,a).
             This is meant to be generic; modify this for your Algorithm as neccessary.
-            If not specified, try to look up the function using lookup_action_value_fn.
+            If None, try to look up the function using lookup_action_value_fn.
         """
 
         super().__init__(name, policy, gamma)
@@ -59,16 +59,9 @@ class DoublyRobust(OffPolicyEstimator):
 
             v_old = 0.0
             v_new = 0.0
-            q_values = self
+            q_values = self.action_value_fn(self.policy, episode)
             q_values = convert_to_numpy(q_values)
-
-            all_actions = np.zeros([episode.count, self.policy.action_space.n])
-            all_actions[:] = np.arange(self.policy.action_space.n)
-            # Two transposes required for torch.distributions to work
-            tmp_episode = episode.copy()
-            tmp_episode[SampleBatch.ACTIONS] = all_actions.T
-            action_probs = np.exp(self.action_log_likelihood(tmp_episode)).T
-            v_values = self.model.estimate_v(episode[SampleBatch.OBS], action_probs)
+            v_values = self.state_value_fn(self.policy, episode)
             v_values = convert_to_numpy(v_values)
 
             for t in reversed(range(episode.count)):

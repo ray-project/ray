@@ -18,7 +18,7 @@ import gym
 class TestOPE(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=8)
+        ray.init(num_cpus=4)
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         train_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
@@ -27,7 +27,7 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        train_steps = 200000
+        train_steps = 2000000
         n_batches = 20  # Approx. equal to n_episodes
         n_eval_episodes = 20
 
@@ -44,12 +44,12 @@ class TestOPE(unittest.TestCase):
                 },
             )
             .framework("torch")
-            .offline_data(
-                input_="dataset",
-                input_config={"format": "json", "path": train_data},
-            )
+            # .offline_data(
+            #     input_="dataset",
+            #     input_config={"format": "json", "path": train_data},
+            # )
             .evaluation(
-                evaluation_interval=None,
+                evaluation_interval=1,
                 evaluation_duration=n_eval_episodes,
                 evaluation_num_workers=1,
                 evaluation_duration_unit="episodes",
@@ -159,8 +159,11 @@ class TestOPE(unittest.TestCase):
 
     def test_ope_in_algo(self):
         results = self.algo.evaluate()
-        print(results["evaluation"]["off_policy_estimator"])
-        print("\n\n\n")
+        print(
+            *list(results["evaluation"]["off_policy_estimator"].items()),
+            sep="\n",
+            end="\n\n\n"
+        )
 
     def test_multiple_inputs(self):
         # TODO (Rohan138): Test with multiple input files
