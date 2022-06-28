@@ -123,14 +123,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
     return JobId.fromInt(jobCounter.getAndIncrement());
   }
 
-  private static class AsyncContext {
-    private TaskSpec task;
-
-    private AsyncContext(TaskSpec task) {
-      this.task = task;
-    }
-  }
-
   private static void updateSessionDir(RayConfig rayConfig) {
     SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd_hh-mm-ss-ms");
     Date date = new Date();

@@ -294,14 +294,4 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native List<byte[]> nativeGetCurrentReturnIds(int numReturns, byte[] actorId);
 
-  static class AsyncContext {
-
-    public final UniqueId workerId;
-    public final ClassLoader currentClassLoader;
-
-    AsyncContext(UniqueId workerId, ClassLoader currentClassLoader) {
-      this.workerId = workerId;
-      this.currentClassLoader = currentClassLoader;
-    }
-  }
 }
