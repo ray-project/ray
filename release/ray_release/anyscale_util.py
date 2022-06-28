@@ -1,16 +1,17 @@
-from typing import Optional
-
-from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+from typing import TYPE_CHECKING, Optional
 
 from ray_release.logger import logger
 from ray_release.util import get_anyscale_sdk
+
+if TYPE_CHECKING:
+    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 
 LAST_LOGS_LENGTH = 10
 
 
 def find_cloud_by_name(
-    cloud_name: str, sdk: Optional[AnyscaleSDK] = None
+    cloud_name: str, sdk: Optional["AnyscaleSDK"] = None
 ) -> Optional[str]:
     sdk = sdk or get_anyscale_sdk()
 
@@ -37,14 +38,14 @@ def find_cloud_by_name(
     return cloud_id
 
 
-def get_project_name(project_id: str, sdk: Optional[AnyscaleSDK] = None) -> str:
+def get_project_name(project_id: str, sdk: Optional["AnyscaleSDK"] = None) -> str:
     sdk = sdk or get_anyscale_sdk()
 
     result = sdk.get_project(project_id)
     return result.result.name
 
 
-def get_cluster_name(cluster_id: str, sdk: Optional[AnyscaleSDK] = None) -> str:
+def get_cluster_name(cluster_id: str, sdk: Optional["AnyscaleSDK"] = None) -> str:
     sdk = sdk or get_anyscale_sdk()
 
     result = sdk.get_cluster(cluster_id)

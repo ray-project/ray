@@ -2,24 +2,25 @@ import json
 import os
 import tempfile
 import time
-from typing import Optional, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
-
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.exception import (
-    CommandTimeout,
+    ClusterNodesWaitTimeout,
     CommandError,
-    ResultsError,
+    CommandTimeout,
     LogsError,
     RemoteEnvSetupError,
-    ClusterNodesWaitTimeout,
+    ResultsError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
-from ray_release.util import format_link, get_anyscale_sdk, exponential_backoff_retry
+from ray_release.util import exponential_backoff_retry, format_link, get_anyscale_sdk
+
+if TYPE_CHECKING:
+    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 
 class SDKRunner(CommandRunner):
@@ -28,7 +29,7 @@ class SDKRunner(CommandRunner):
         cluster_manager: ClusterManager,
         file_manager: FileManager,
         working_dir: str,
-        sdk: Optional[AnyscaleSDK] = None,
+        sdk: Optional["AnyscaleSDK"] = None,
     ):
         super(SDKRunner, self).__init__(
             cluster_manager=cluster_manager,

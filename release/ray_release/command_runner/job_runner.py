@@ -1,26 +1,27 @@
 import json
 import os
 import tempfile
-from typing import Optional, Dict, Any
-
-from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.exception import (
-    CommandTimeout,
+    ClusterNodesWaitTimeout,
     CommandError,
-    ResultsError,
+    CommandTimeout,
+    LocalEnvSetupError,
     LogsError,
     RemoteEnvSetupError,
-    ClusterNodesWaitTimeout,
-    LocalEnvSetupError,
+    ResultsError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
 from ray_release.logger import logger
 from ray_release.util import format_link, get_anyscale_sdk
 from ray_release.wheels import install_matching_ray_locally
+
+if TYPE_CHECKING:
+    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 
 class JobRunner(CommandRunner):
@@ -29,7 +30,7 @@ class JobRunner(CommandRunner):
         cluster_manager: ClusterManager,
         file_manager: FileManager,
         working_dir: str,
-        sdk: Optional[AnyscaleSDK] = None,
+        sdk: Optional["AnyscaleSDK"] = None,
     ):
         super(JobRunner, self).__init__(
             cluster_manager=cluster_manager,
