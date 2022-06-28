@@ -594,8 +594,12 @@ def test_log_get(ray_start_cluster):
 
     def verify():
         # By default, node id should be configured to the head node.
+        raylet_log_files = list_logs(
+            node_id=head_node["node_id"], glob_filter="raylet_*.log"
+        )["raylet"]
+        raylet_log_filename = [f for f in raylet_log_files if f.endswith(".log")][0]
         for log in get_log(
-            node_id=head_node["node_id"], filename="raylet.out", tail=10
+            node_id=head_node["node_id"], filename=raylet_log_filename, tail=10
         ):
             # + 1 since the last line is just empty.
             assert len(log.split("\n")) == 11
