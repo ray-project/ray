@@ -317,6 +317,7 @@ def run(
         try:
             summary = ray._private.internal_api.memory_summary(stats_only=True)
         except Exception:
+            time.sleep(1)
             pass
         if summary:
             break
