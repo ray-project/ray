@@ -344,14 +344,19 @@ session (Function API)
 --------------------------------------------
 
 .. autofunction:: ray.air.session.report
+    :noindex:
 
 .. autofunction:: ray.air.session.get_checkpoint
+    :noindex:
 
 .. autofunction:: ray.air.session.get_trial_name
+    :noindex:
 
 .. autofunction:: ray.air.session.get_trial_id
+    :noindex:
 
 .. autofunction:: ray.air.session.get_trial_resources
+    :noindex:
 
 tune.Trainable (Class API)
 --------------------------
