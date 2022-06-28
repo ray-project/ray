@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
@@ -50,7 +51,7 @@ class RuntimeContext(object):
         assert not job_id.is_nil()
         return job_id
 
-    def get_job_id(self):
+    def get_job_id(self) -> str:
         """Get current job ID for this worker or driver.
 
         Job ID is the id of your Ray drivers that create tasks or actors.
@@ -78,7 +79,7 @@ class RuntimeContext(object):
         assert not node_id.is_nil()
         return node_id
 
-    def get_node_id(self):
+    def get_node_id(self) -> str:
         """Get current node ID for this worker or driver.
 
         Node ID is the id of a node that your driver, task, or actor runs.
@@ -129,7 +130,7 @@ class RuntimeContext(object):
         task_id = self.worker.current_task_id
         return task_id if not task_id.is_nil() else None
 
-    def get_task_id(self):
+    def get_task_id(self) -> Optional[str]:
         """Get current task ID for this worker or driver.
 
         Task ID is the id of a Ray task. The ID will be in hex format.
@@ -158,10 +159,12 @@ class RuntimeContext(object):
             The current worker's task id in hex. None if there's no task id.
         """
         # only worker mode has actor_id
-        assert (
-            self.worker.mode == ray._private.worker.WORKER_MODE
-        ), f"This method is only available when the process is a\
-                 worker. Current mode: {self.worker.mode}"
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            logger.warning(
+                "This method is only available when the process is a "
+                "worker. Current mode: {self.worker.mode}"
+            )
+            return None
         task_id = self.worker.current_task_id
         return task_id.hex() if not task_id.is_nil() else None
 
@@ -184,7 +187,7 @@ class RuntimeContext(object):
         actor_id = self.worker.actor_id
         return actor_id if not actor_id.is_nil() else None
 
-    def get_actor_id(self):
+    def get_actor_id(self) -> Optional[str]:
         """Get the current actor ID in this worker.
 
         ID of the actor of the current process.
@@ -196,10 +199,12 @@ class RuntimeContext(object):
             actor id.
         """
         # only worker mode has actor_id
-        assert (
-            self.worker.mode == ray._private.worker.WORKER_MODE
-        ), f"This method is only available when the process is a\
-                 worker. Current mode: {self.worker.mode}"
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            logger.warning(
+                "This method is only available when the process is a "
+                "worker. Current mode: {self.worker.mode}"
+            )
+            return None
         actor_id = self.worker.actor_id
         return actor_id.hex() if not actor_id.is_nil() else None
 
@@ -235,7 +240,7 @@ class RuntimeContext(object):
         """
         return self.worker.placement_group_id
 
-    def get_current_placement_group_id(self):
+    def get_current_placement_group_id(self) -> str:
         """Get the current Placement group ID of this worker.
 
         Returns:

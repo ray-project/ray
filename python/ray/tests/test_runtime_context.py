@@ -223,6 +223,8 @@ def test_ids(ray_start_regular):
     assert rtc.get_current_placement_group_id() == rtc.current_placement_group_id.hex()
 
     # task id
+    assert rtc.get_task_id() is None
+
     @ray.remote
     def foo_task():
         rtc = ray.get_runtime_context()
@@ -232,6 +234,8 @@ def test_ids(ray_start_regular):
     ray.get(foo_task.remote())
 
     # actor id
+    assert rtc.get_actor_id() is None
+
     @ray.remote
     class FooActor:
         def foo(self):
