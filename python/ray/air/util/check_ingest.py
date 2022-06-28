@@ -144,7 +144,8 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--use-stream-api", "-s", action="store_true", help="Number of blocks to prefetch when reading data."
+        "--use-stream-api", "-s", action="store_true",
+        help="If enabled, the input Dataset will be streamed (as a DatasetPipeline)."
     )
     args = parser.parse_args()
 
