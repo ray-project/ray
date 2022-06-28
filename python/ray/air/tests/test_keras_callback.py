@@ -63,7 +63,7 @@ def test_keras_callback_e2e():
         checkpoint, model_definition=build_model
     )
 
-    items = np.random.uniform(0, 1, size=(10,))
+    items = np.random.uniform(0, 1, size=(10, 1))
     predictor.predict(data=items)
 
 
