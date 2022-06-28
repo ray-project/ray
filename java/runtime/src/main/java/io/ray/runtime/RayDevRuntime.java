@@ -11,7 +11,6 @@ import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
-import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
