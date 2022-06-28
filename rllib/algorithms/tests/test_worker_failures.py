@@ -171,7 +171,7 @@ class TestWorkerFailure(unittest.TestCase):
                         ray.get(
                             worker.apply.remote(
                                 lambda w: w.recreated_worker
-                                          and w.env_context.recreated_worker
+                                and w.env_context.recreated_worker
                             )
                         )
                         for worker in a.workers.remote_workers()
