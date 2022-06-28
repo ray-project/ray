@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Mapping, Tuple
-from ray._raylet import RaySerializationResult
+from ray._raylet import RaySerializationResult, SerializedObject
 from ray import ObjectRef
 import logging
+import ray
+import msgpack
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +17,7 @@ class RaySerializer(ABC):
     @abstractmethod
     def deserialize(
         self,
-        in_band_buffer: bytes,
-        oob_buffers: Mapping[bytes, Mapping[int, memoryview]],
+        ray_serialization_result: RaySerializationResult,
     ):
         pass
 
@@ -56,13 +57,40 @@ def _serialize(instance) -> RaySerializationResult:
 
 def _deserialize(ray_serialization_result: RaySerializationResult):
     serializer = _get_serializer(ray_serialization_result.type_id)
-    return serializer.deserialize(
-        ray_serialization_result.in_band_buffer,
-        ray_serialization_result.out_of_band_buffers,
-    )
+    return serializer.deserialize(ray_serialization_result)
 
 
 # ------------------------Build-in serializers-----------------------------
+
+
+class OldDefaultSerializer(RaySerializer):
+    TYPE_ID = b"ray_serde_old_default"
+
+    def serialize(self, instance) -> RaySerializationResult:
+        old_serialized_obj: SerializedObject = (
+            ray._private.worker.global_worker.get_serialization_context().serialize(
+                instance
+            )
+        )
+        """
+        msgpack.packb(old.write_to(), old.metadata)
+        -> new.in_band_data
+        ------------------------
+        old.contained_object_refs -> new.contained_object_refs
+        """
+        return RaySerializationResult.from_old_serialized_obj(
+            OldDefaultSerializer.TYPE_ID, old_serialized_obj
+        )
+
+    def deserialize(self, ray_serialization_result: RaySerializationResult):
+        old_bytes, old_metadata = msgpack.unpackb(
+            ray_serialization_result.in_band_buffer
+        )
+        context = ray._private.worker.global_worker.get_serialization_context()
+        return context.deserialize_objects(
+            data_metadata_pairs=[(old_bytes, old_metadata)],
+            object_refs=ray_serialization_result.contained_object_refs,
+        )[0]
 
 
 class BytesInBandSerializer(RaySerializer):
@@ -71,10 +99,8 @@ class BytesInBandSerializer(RaySerializer):
     def serialize(self, instance: bytes) -> RaySerializationResult:
         return RaySerializationResult(BytesInBandSerializer.TYPE_ID, instance)
 
-    def deserialize(
-        self, in_band_buffer: bytes, oob_buffers: Mapping[str, Mapping[int, memoryview]]
-    ) -> bytes:
-        return in_band_buffer
+    def deserialize(self, ray_serialization_result: RaySerializationResult) -> bytes:
+        return ray_serialization_result.in_band_buffer
 
 
 class MemoryviewOutOfBandSerializer(RaySerializer):
@@ -87,11 +113,11 @@ class MemoryviewOutOfBandSerializer(RaySerializer):
             MemoryviewOutOfBandSerializer.TYPE_ID, random_id, oob_buffers
         )
 
-    def deserialize(
-        self, in_band_buffer: bytes, oob_buffers: Mapping[str, Mapping[int, memoryview]]
-    ) -> bytes:
-        memoryview_id = in_band_buffer
-        return oob_buffers[MemoryviewOutOfBandSerializer.TYPE_ID][memoryview_id]
+    def deserialize(self, ray_serialization_result: RaySerializationResult) -> bytes:
+        memoryview_id = ray_serialization_result.in_band_buffer
+        return ray_serialization_result.out_of_band_buffers[
+            MemoryviewOutOfBandSerializer.TYPE_ID
+        ][memoryview_id]
 
 
 _register_serializer(BytesInBandSerializer.TYPE_ID, type(b""), BytesInBandSerializer())

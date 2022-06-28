@@ -610,6 +610,29 @@ cdef class RaySerializationResult(SerializedObject):
             = msgpack.unpackb(data)
         return result
 
+    @staticmethod
+    def from_old_serialized_obj(type_id: bytes, old_obj: SerializedObject):
+        cdef:
+            shared_ptr[CBuffer] cbuffer
+            int64_t size
+        '''
+        msgpack.packb(old.write_to(), old.metadata)
+        -> new.in_band_data
+        ------------------------
+        old.contained_object_refs -> new.contained_object_refs
+        '''
+        result = RaySerializationResult()
+        result.type_id = type_id
+        result.contained_object_refs = old_obj.contained_object_refs
+
+        size = old_obj.total_bytes
+        cbuffer = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                make_shared[LocalMemoryBuffer](size))
+        buf = Buffer.make(cbuffer)
+        old_obj.write_to(buf)
+        result.in_band_buffer = msgpack.packb(buf.to_pybytes(), old_obj.metadata)
+        return result
+
     @property
     def type_id(self):
         return self._type_id
