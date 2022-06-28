@@ -150,7 +150,7 @@ if __name__ == "__main__":
 
     # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
     # into 100 blocks (parallelism=100).
-    dataset = ray.data.range_tensor(5000, shape=(80, 80, 4), parallelism=100)
+    dataset = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
 
     # An example preprocessor chain that just scales all values by 4.0 in two stages.
     preprocessor = Chain(
