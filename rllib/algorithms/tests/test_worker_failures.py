@@ -3,7 +3,6 @@ import unittest
 import gym
 
 import ray
-from ray.rllib import _register_all
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
