@@ -831,7 +831,11 @@ class RolloutWorker(ParallelIteratorWorker):
             AssertionError: If this RolloutWorker's constructor was not completed
             properly.
         """
-        assert self.policy_map and self.input_reader and self.output_writer
+        assert (
+            self.policy_map and self.input_reader and self.output_writer,
+            f"RolloutWorker {self} (idx={self.worker_index}; "
+            f"num_workers={self.num_workers}) not healthy!"
+        )
 
     @DeveloperAPI
     def sample(self) -> SampleBatchType:
