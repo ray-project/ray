@@ -267,7 +267,8 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                         address = self._dashboard_head.gcs_address
                         logger.info(f"Connecting to ray with address={address}")
                         ray.init(
-                            address=address, namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
+                            address=address,
+                            namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:
                         ray.shutdown()

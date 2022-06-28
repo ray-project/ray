@@ -105,7 +105,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         resp = {"driver": dataclasses.asdict(driver_activity_info)}
         return dashboard_optional_utils.rest_response(
-            success=True, convert_google_style=False, ray_activity_response=resp,
+            success=True,
+            convert_google_style=False,
+            ray_activity_response=resp,
         )
 
     async def _get_job_activity_info(self) -> RayActivityResponse:
