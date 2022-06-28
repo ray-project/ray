@@ -115,7 +115,12 @@ class StateApiClient(SubmissionClient):
         return options_dict
 
     def _make_http_get_request(
-        self, endpoint: str, params: Dict, timeout: float, resource: StateResource, _explain: bool = False
+        self,
+        endpoint: str,
+        params: Dict,
+        timeout: float,
+        resource: StateResource,
+        _explain: bool = False,
     ):
         response = None
         try:
@@ -152,12 +157,7 @@ class StateApiClient(SubmissionClient):
             )
 
         # Dictionary of `ListApiResponse`
-        list_api_response = response["data"]["result"]
-
-        if _explain:
-            self._print_list_api_warning(resource, list_api_response)
-
-        return list_api_response["result"]
+        return response["data"]["result"]
 
     def get(
         self,
@@ -225,9 +225,14 @@ class StateApiClient(SubmissionClient):
         params["detail"] = True
         endpoint = f"/api/v0/{resource.value}"
 
-        result = self._make_http_get_request(
-            endpoint=endpoint, params=params, timeout=options.timeout, resource=resource, _explain=_explain
+        list_api_response = self._make_http_get_request(
+            endpoint=endpoint,
+            params=params,
+            timeout=options.timeout,
+            resource=resource,
+            _explain=_explain,
         )
+        result = list_api_response["result"]
 
         # Empty result
         if len(result) == 0:
@@ -294,9 +299,16 @@ class StateApiClient(SubmissionClient):
         """
         endpoint = f"/api/v0/{resource.value}"
         params = self._make_param(options)
-        return self._make_http_get_request(
-            endpoint=endpoint, params=params, timeout=options.timeout, resource=resource, _explain=_explain
+        list_api_response = self._make_http_get_request(
+            endpoint=endpoint,
+            params=params,
+            timeout=options.timeout,
+            resource=resource,
+            _explain=_explain,
         )
+        if _explain:
+            self._print_list_api_warning(resource, list_api_response)
+        return list_api_response["result"]
 
     def summary(
         self,
@@ -320,11 +332,15 @@ class StateApiClient(SubmissionClient):
         """
         params = {"timeout": options.timeout}
         endpoint = f"/api/v0/{resource.value}/summarize"
-        response = self._make_http_get_request(
-            endpoint=endpoint, params=params, timeout=options.timeout, resource= resource, _explain=_explain
+        list_api_response = self._make_http_get_request(
+            endpoint=endpoint,
+            params=params,
+            timeout=options.timeout,
+            resource=resource,
+            _explain=_explain,
         )
-
-        return response["node_id_to_summary"]
+        result = list_api_response["result"]
+        return result["node_id_to_summary"]
 
 
 """

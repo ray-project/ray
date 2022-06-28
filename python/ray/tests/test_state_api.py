@@ -758,8 +758,12 @@ async def test_api_manager_list_objects(state_api_manager):
     Test detail
     """
     data_source_client.get_object_info.side_effect = [
-        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
-        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
+        GetObjectsInfoReply(
+            core_workers_stats=[generate_object_info(obj_1_id)], total=1
+        ),
+        GetObjectsInfoReply(
+            core_workers_stats=[generate_object_info(obj_2_id)], total=1
+        ),
     ]
     result = await state_api_manager.list_objects(
         option=create_api_options(detail=True)

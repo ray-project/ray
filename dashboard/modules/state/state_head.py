@@ -269,8 +269,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         return self._reply(
             success=True,
             error_message="",
-            result=asdict(result.result),
-            partial_failure_warning=result.partial_failure_warning,
+            result=asdict(result),
         )
 
     @routes.get("/api/v0/tasks/summarize")

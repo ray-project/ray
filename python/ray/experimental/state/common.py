@@ -89,7 +89,6 @@ class ListApiOptions:
                 )
 
 
-
 @dataclass(init=True)
 class GetApiOptions:
     # Timeout for the HTTP request
