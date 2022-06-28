@@ -3,7 +3,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
 import numpy as np
-from typing import Dict, List
+from typing import Dict, Any
 
 
 @DeveloperAPI
@@ -20,7 +20,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         self.filter_counts = []
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
+    def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
         self.check_can_estimate_for(batch)
         estimates = {"v_old": [], "v_new": [], "v_gain": []}
         for sub_batch in batch.split_by_episode():
@@ -54,4 +54,10 @@ class WeightedImportanceSampling(OffPolicyEstimator):
             estimates["v_old"].append(v_old)
             estimates["v_new"].append(v_new)
             estimates["v_gain"].append(v_new / max(v_old, 1e-8))
+        estimates["v_old_std"] = np.std(estimates["v_old"])
+        estimates["v_old"] = np.mean(estimates["v_old"])
+        estimates["v_new_std"] = np.std(estimates["v_new"])
+        estimates["v_new"] = np.mean(estimates["v_new"])
+        estimates["v_gain_std"] = np.std(estimates["v_gain"])
+        estimates["v_gain"] = np.mean(estimates["v_gain"])
         return estimates

@@ -560,21 +560,16 @@ class Algorithm(Trainable):
             elif isinstance(method_type, type) and issubclass(
                 method_type, OffPolicyEstimator
             ):
-                gamma = self.config["gamma"]
                 # Grab a reference to the current model
                 keys = list(self.workers.local_worker().policy_map.keys())
                 if len(keys) > 1:
                     raise NotImplementedError(
                         "Off-policy estimation is not implemented for multi-agent. "
                     )
-                self.reward_estimators.append(
-                    method_type(
-                        name=name,
-                        policy=self.get_policy(),
-                        gamma=gamma,
-                        **method_config,
-                    )
-                )
+                method_config["name"] = name
+                method_config["policy"] = self.get_policy()
+                method_config["gamma"] = self.config["gamma"]
+                self.reward_estimators.append(method_type(method_config))
             else:
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
@@ -899,11 +894,7 @@ class Algorithm(Trainable):
             metrics["off_policy_estimator"] = {}
             for estimator in self.reward_estimators:
                 estimates = estimator.estimate(total_batch)
-                out = {}
-                for k, v in estimates.items():
-                    out[k] = np.mean(v)
-                    out[k + "_std"] = np.std(v)
-                metrics["off_policy_estimator"][estimator.name] = out
+                metrics["off_policy_estimator"][estimator.name] = estimates
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to

@@ -4,7 +4,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
-from typing import List, Dict
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +25,9 @@ class OffPolicyEstimator:
         self.name = name
         self.policy = policy
         self.gamma = gamma
-        self.new_estimates = {}
 
     @DeveloperAPI
-    def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
+    def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
         """Returns off policy estimates for the given batch of episodes.
 
         Args:

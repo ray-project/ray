@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Generator, List, Dict
+from typing import Tuple, Generator, List, Dict, Any
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -146,7 +146,7 @@ class DirectMethod(OffPolicyEstimator):
         )
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
+    def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
         self.check_can_estimate_for(batch)
         estimates = {"v_old": [], "v_new": [], "v_gain": []}
         # Split data into train and test batches
@@ -182,4 +182,10 @@ class DirectMethod(OffPolicyEstimator):
                 estimates["v_old"].append(v_old)
                 estimates["v_new"].append(v_new)
                 estimates["v_gain"].append(v_new / max(v_old, 1e-8))
+        estimates["v_old_std"] = np.std(estimates["v_old"])
+        estimates["v_old"] = np.mean(estimates["v_old"])
+        estimates["v_new_std"] = np.std(estimates["v_new"])
+        estimates["v_new"] = np.mean(estimates["v_new"])
+        estimates["v_gain_std"] = np.std(estimates["v_gain"])
+        estimates["v_gain"] = np.mean(estimates["v_gain"])
         return estimates
