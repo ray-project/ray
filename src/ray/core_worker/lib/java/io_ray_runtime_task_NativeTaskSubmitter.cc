@@ -166,6 +166,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
   std::vector<ConcurrencyGroup> concurrency_groups;
   std::string serialized_runtime_env = "";
+  std::string ray_namespace = "";
   int32_t max_pending_calls = -1;
 
   if (actorCreationOptions) {
@@ -250,13 +251,16 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       serialized_runtime_env = JavaStringToNativeString(env, java_serialized_runtime_env);
     }
 
+    auto java_namespace = (jstring)env->GetObjectField(actorCreationOptions,
+                                                  java_actor_creation_options_namespace);
+    if (java_namespace) {
+      ray_namespace = JavaStringToNativeString(env, java_namespace);
+    }
+
     max_pending_calls = static_cast<int32_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
   }
 
-  // TODO(suquark): support passing namespace for Java. Currently
-  // there is no use case.
-  std::string ray_namespace = "";
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
   if (!placement_options.first.IsNil()) {
