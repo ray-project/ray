@@ -187,7 +187,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         glob_filter = req.query.get("glob", "*")
         node_id = req.query.get("node_id", None)
         node_ip = req.query.get("node_ip", None)
-        timeout = req.query.get("timeout", DEFAULT_RPC_TIMEOUT)
+        timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
 
         # TODO(sang): Do input validation from the middleware instead.
         if not node_id and not node_ip:
