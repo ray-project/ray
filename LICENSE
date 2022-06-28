@@ -403,7 +403,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ---------------------------------------------------------------------------------------------------------------
-Code in python/ray/util/thirdparty/tabulate.py is adapted from https://github.com/astanin/python-tabulate/blob/4892c6e9a79638c7897ccea68b602040da9cc7a7/tabulate.py
+Code in python/ray/_private/thirdparty/tabulate/tabulate.py is adapted from https://github.com/astanin/python-tabulate/blob/4892c6e9a79638c7897ccea68b602040da9cc7a7/tabulate.py
 
 Copyright (c) 2011-2020 Sergey Astanin and contributors
 
