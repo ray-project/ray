@@ -24,7 +24,7 @@ namespace ray {
 namespace internal {
 
 void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
-  RAY_LOG(INFO) << "Start load library " << lib_path;
+  RAY_LOG(INFO) << "Start loading the library " << lib_path << ".";
 
   auto it = libraries_.find(lib_path.string());
   if (it != libraries_.end()) {
@@ -39,16 +39,15 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
     lib = std::make_shared<boost::dll::shared_library>(
         lib_path.string(), boost::dll::load_mode::type::rtld_lazy);
   } catch (std::exception &e) {
-    RAY_LOG(FATAL) << "Load library failed, lib_path: " << lib_path
+    RAY_LOG(FATAL) << "Failed to load library, lib_path: " << lib_path
                    << ", failed reason: " << e.what();
     return;
   } catch (...) {
-    RAY_LOG(FATAL) << "Load library failed, lib_path: " << lib_path
+    RAY_LOG(FATAL) << "Failed to load library, lib_path: " << lib_path
                    << ", unknown failed reason.";
     return;
   }
 
-  RAY_LOG(INFO) << "Loaded library: " << lib_path << " successfully.";
   RAY_CHECK(libraries_.emplace(lib_path.string(), lib).second);
 
   try {
@@ -57,20 +56,26 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
         *lib, "TaskExecutionHandler");
     auto function_names = LoadAllRemoteFunctions(lib_path.string(), *lib, entry_func);
     if (function_names.empty()) {
-      RAY_LOG(WARNING) << "No remote functions in library " << lib_path
-                       << ", maybe it's not a dynamic library of Ray application.";
+      RAY_LOG(WARNING)
+          << "No remote functions in library " << lib_path
+          << ". If you've already used Ray::Task or Ray::Actor in the library, please "
+             "ensure the remote functions have been registered by `RAY_REMOTE` macro.";
       lib->unload();
       return;
     }
-    RAY_LOG(INFO) << "The lib path: " << lib_path
-                  << ", all remote functions: " << function_names;
+    RAY_LOG(INFO) << "The library " << lib_path
+                  << " is loaded successfully. The remote functions: " << function_names
+                  << ".";
     return;
+  } catch (boost::system::system_error &e) {
+    RAY_LOG(INFO) << "The library " << lib_path << " isn't integrated with Ray, skip it.";
+    lib->unload();
   } catch (std::exception &e) {
-    RAY_LOG(WARNING) << "Get execute function failed, lib_path: " << lib_path
+    RAY_LOG(WARNING) << "Failed to get entry function from library: " << lib_path
                      << ", failed reason: " << e.what();
     lib->unload();
   } catch (...) {
-    RAY_LOG(WARNING) << "Get execute function failed, lib_path: " << lib_path
+    RAY_LOG(WARNING) << "Failed to get entry function from library: " << lib_path
                      << ", unknown failed reason.";
     lib->unload();
   }
@@ -126,7 +131,6 @@ void FindDynamicLibrary(boost::filesystem::path path,
 #endif
   auto extension = boost::filesystem::extension(path);
   if (dynamic_library_extension.find(extension) != dynamic_library_extension.end()) {
-    RAY_LOG(INFO) << path << " dynamic library found.";
     dynamic_libraries.emplace_back(path);
   }
 }
