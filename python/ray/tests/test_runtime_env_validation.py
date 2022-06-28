@@ -6,6 +6,7 @@ from pathlib import Path
 from ray import job_config
 import yaml
 import jsonschema
+import unittest
 
 from ray._private.runtime_env.validation import (
     parse_and_validate_excludes,
