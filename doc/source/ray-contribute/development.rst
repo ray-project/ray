@@ -387,3 +387,32 @@ If the dependency already has a Bazel build file in it, you can use
 To test switching back to the original rule, change ``False`` to ``True``.
 
 .. _`PR template`: https://github.com/ray-project/ray/blob/master/.github/PULL_REQUEST_TEMPLATE.md
+
+Troubleshooting
+---------------
+
+If importing Ray (``python3 -c "import ray"``) in your development clone results
+in this error:
+
+.. code-block:: python
+
+  Traceback (most recent call last):
+    File "<string>", line 1, in <module>
+    File ".../ray/python/ray/__init__.py", line 63, in <module>
+      import ray._raylet  # noqa: E402
+    File "python/ray/_raylet.pyx", line 98, in init ray._raylet
+      import ray.memory_monitor as memory_monitor
+    File ".../ray/python/ray/memory_monitor.py", line 9, in <module>
+      import psutil  # noqa E402
+    File ".../ray/python/ray/thirdparty_files/psutil/__init__.py", line 159, in <module>
+      from . import _psosx as _psplatform
+    File ".../ray/python/ray/thirdparty_files/psutil/_psosx.py", line 15, in <module>
+      from . import _psutil_osx as cext
+  ImportError: cannot import name '_psutil_osx' from partially initialized module 'psutil' (most likely due to a circular import) (.../ray/python/ray/thirdparty_files/psutil/__init__.py)
+
+Then you should run the following commands:
+
+.. code-block:: bash
+
+  rm -rf python/ray/thirdparty_files/
+  python3 -m pip install setproctitle
