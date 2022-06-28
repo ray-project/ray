@@ -88,7 +88,7 @@ for batch in pipeline.iter_batches():
 # __air_deploy_start__
 from ray import serve
 from fastapi import Request
-from ray.serve.model_wrappers import ModelWrapperDeployment
+from ray.serve import PredictorDeployment
 from ray.serve.http_adapters import json_request
 
 
@@ -99,7 +99,7 @@ async def adapter(request: Request):
 
 
 serve.start(detached=True)
-deployment = ModelWrapperDeployment.options(name="XGBoostService")
+deployment = PredictorDeployment.options(name="XGBoostService")
 
 deployment.deploy(
     XGBoostPredictor, result.checkpoint, batching_params=False, http_adapter=adapter

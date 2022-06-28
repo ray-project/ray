@@ -47,7 +47,7 @@ AIR Feature Guides
     +++
     .. link-button:: /ray-air/examples/serving_guide
         :type: ref
-        :text: How to configure AIR ModelWrapper for HTTP input or batching?
+        :text: How to configure AIR PredictorDeployment for HTTP input or batching?
         :classes: btn-link btn-block stretched-link
 
     ---

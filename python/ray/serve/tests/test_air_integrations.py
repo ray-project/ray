@@ -4,16 +4,17 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import pytest
-import ray
 import requests
 from fastapi import Depends, FastAPI
+
+import ray
 from ray import serve
 from ray.air.checkpoint import Checkpoint
+from ray.serve.air_integrations import BatchingManager, PredictorDeployment
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.deployment_graph_build import build
 from ray.serve.http_adapters import json_to_ndarray
-from ray.serve.model_wrappers import BatchingManager, ModelWrapperDeployment
 from ray.train.predictor import DataBatchType, Predictor
 
 
@@ -105,7 +106,7 @@ def send_request(**requests_kargs):
 
 
 def test_simple_adder(serve_instance):
-    ModelWrapperDeployment.options(name="Adder").deploy(
+    PredictorDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=Checkpoint.from_dict({"increment": 2}),
     )
@@ -114,7 +115,7 @@ def test_simple_adder(serve_instance):
 
 
 def test_predictor_kwargs(serve_instance):
-    ModelWrapperDeployment.options(name="Adder").deploy(
+    PredictorDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=Checkpoint.from_dict({"increment": 2}),
         predict_kwargs={"override_increment": 100},
@@ -124,7 +125,7 @@ def test_predictor_kwargs(serve_instance):
 
 
 def test_predictor_from_checkpoint_kwargs(serve_instance):
-    ModelWrapperDeployment.options(name="Adder").deploy(
+    PredictorDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=Checkpoint.from_dict({"increment": 2}),
         do_double=True,
@@ -134,7 +135,7 @@ def test_predictor_from_checkpoint_kwargs(serve_instance):
 
 
 def test_batching(serve_instance):
-    ModelWrapperDeployment.options(name="Adder").deploy(
+    PredictorDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=Checkpoint.from_dict({"increment": 2}),
         batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
@@ -160,7 +161,7 @@ class TakeArrayReturnDataFramePredictor(Predictor):
 
 
 def test_mixed_input_output_type_with_batching(serve_instance):
-    ModelWrapperDeployment.options(name="Adder").deploy(
+    PredictorDeployment.options(name="Adder").deploy(
         predictor_cls=TakeArrayReturnDataFramePredictor,
         checkpoint=Checkpoint.from_dict({"increment": 2}),
         batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
@@ -185,15 +186,15 @@ class Ingress:
         return await self.dag.remote(data)
 
 
-def test_model_wrappers_in_pipeline(serve_instance):
+def test_air_integrations_in_pipeline(serve_instance):
     path = tempfile.mkdtemp()
     uri = f"file://{path}/test_uri"
     Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
-    predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
+    predictor_cls = "ray.serve.tests.test_air_integrations.AdderPredictor"
 
     with InputNode() as dag_input:
-        m1 = ModelWrapperDeployment.bind(
+        m1 = PredictorDeployment.bind(
             predictor_cls=predictor_cls,
             checkpoint=uri,
         )
