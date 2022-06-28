@@ -82,12 +82,14 @@ def get_simple_q_tf_policy(
             self,
             model: ModelV2,
             *,
-            obs_batch: TensorType,
+            input_dict: SampleBatch,
             state_batches: TensorType,
             **kwargs,
         ) -> Tuple[TensorType, type, List[TensorType]]:
             # Compute the Q-values for each possible action, using our Q-value network.
-            q_vals = self._compute_q_values(self.model, obs_batch, is_training=False)
+            q_vals = self._compute_q_values(
+                self.model, input_dict[SampleBatch.OBS], is_training=False
+            )
             return q_vals, Categorical, state_batches
 
         @override(base)
