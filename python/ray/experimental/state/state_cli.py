@@ -1,7 +1,8 @@
 import json
 import logging
 from enum import Enum, unique
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Dict
+from datetime import datetime
 
 import click
 import yaml
@@ -23,6 +24,7 @@ from ray.experimental.state.common import (
     ListApiOptions,
     StateResource,
 )
+from ray.util.thirdparty.tabulate import tabulate
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +72,17 @@ def get_api_server_url() -> str:
     return api_server_url
 
 
+def get_table_output(state_data: Union[dict, list]):
+    headers = []
+    table = []
+    for data in state_data:
+        headers = data.keys()
+        table.append(data.values())
+    return tabulate(table, headers=headers, showindex=True, tablefmt="plain", floatfmt=".3f")
+
+
 def get_state_api_output_to_print(
-    state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
+    state_data: List, *, format: AvailableFormat = AvailableFormat.DEFAULT
 ):
     if len(state_data) == 0:
         return "No resource in the cluster"
@@ -84,12 +95,79 @@ def get_state_api_output_to_print(
     elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
     elif format == AvailableFormat.TABLE:
-        raise NotImplementedError("Table formatter is not implemented yet.")
+        return get_table_output(state_data)
     else:
         raise ValueError(
             f"Unexpected format: {format}. "
             f"Supported formatting: {_get_available_formats()}"
         )
+
+
+def get_summary_output_to_print(state_data: Dict):
+    if len(state_data) == 0:
+        return "No resource in the cluster"
+
+    cluster_data = state_data["cluster"]
+    summaries = cluster_data["summary"]
+    del cluster_data["summary"]
+
+    # cluster_info_table = tabulate([cluster_data.values()], headers=cluster_data.keys(), tablefmt="plain", numalign="left")
+    cluster_info_table = yaml.dump(cluster_data, indent=2)
+    table = []
+    headers = []
+    for summary in summaries.values():
+        summary["state_counts"] = yaml.dump(summary["state_counts"])
+        table.append(summary.values())
+        headers = summary.keys()
+    summary_table = tabulate(table, headers=headers, tablefmt="plain", numalign="left")
+    time = datetime.now()
+    header = "=" * 8 + f" Actor Summary: {time} " + "=" * 8
+
+    return f"""
+{header}
+Cluster
+------------------------------------
+{cluster_info_table}
+
+Summary
+------------------------------------
+{summary_table}
+"""
+
+def get_object_summary_output_to_print(state_data: Dict):
+    if len(state_data) == 0:
+        return "No resource in the cluster"
+
+    cluster_data = state_data["cluster"]
+    summaries = cluster_data["summary"]
+    del cluster_data["summary"]
+
+    # cluster_info_table = tabulate([cluster_data.values()], headers=cluster_data.keys(), tablefmt="plain", numalign="left")
+    cluster_info_table = yaml.dump(cluster_data, indent=2)
+    tables = []
+    for callsite, summary in summaries.items():
+        table = []
+        summary["task_state_counts"] = yaml.dump(summary["task_state_counts"])
+        summary["ref_type_counts"] = yaml.dump(summary["ref_type_counts"])
+        table.append(summary.values())
+        headers = summary.keys()
+        t = tabulate(table, headers=headers, tablefmt="fancy_grid", numalign="left")
+        tables.append(f"Callsite:\n  {callsite}\n\nTable:\n{t}")
+    # summary_table = tabulate(table, headers=headers, tablefmt="plain", numalign="left", maxcolwidths=[None, 18])
+    time = datetime.now()
+    header = "=" * 8 + f" Object Summary: {time} " + "=" * 8
+    table_string = "\n\n\n".join(tables)
+
+    return f"""
+{header}
+Cluster
+------------------------------------
+{cluster_info_table}
+
+Summary
+------------------------------------
+{table_string}
+"""
 
 
 timeout_option = click.option(
@@ -199,13 +277,12 @@ def summary_state_cli_group(ctx):
 def task_summary(ctx, timeout: float, address: str):
     address = address or ctx.obj["api_server_url"]
     print(
-        get_state_api_output_to_print(
+        get_summary_output_to_print(
             summarize_tasks(
                 address=address,
                 timeout=timeout,
                 _explain=True,
             ),
-            format=AvailableFormat.YAML,
         )
     )
 
@@ -217,13 +294,12 @@ def task_summary(ctx, timeout: float, address: str):
 def actor_summary(ctx, timeout: float, address: str):
     address = address or ctx.obj["api_server_url"]
     print(
-        get_state_api_output_to_print(
+        get_summary_output_to_print(
             summarize_actors(
                 address=address,
                 timeout=timeout,
                 _explain=True,
             ),
-            format=AvailableFormat.YAML,
         )
     )
 
@@ -235,12 +311,11 @@ def actor_summary(ctx, timeout: float, address: str):
 def object_summary(ctx, timeout: float, address: str):
     address = address or ctx.obj["api_server_url"]
     print(
-        get_state_api_output_to_print(
+        get_object_summary_output_to_print(
             summarize_objects(
                 address=address,
                 timeout=timeout,
                 _explain=True,
             ),
-            format=AvailableFormat.YAML,
         )
     )
