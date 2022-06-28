@@ -9,7 +9,7 @@ from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
@@ -51,7 +51,8 @@ def test_result_grid_no_checkpoint(ray_start_2_cpus):
     assert result.checkpoint is None
 
 
-def test_result_grid_future_checkpoint(ray_start_2_cpus):
+@pytest.mark.parametrize("to_object", [False, True])
+def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     trainable_cls = get_trainable_cls("__fake")
     trial = Trial("__fake", stub=True)
     trial.config = {"some_config": 1}
@@ -59,7 +60,11 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus):
 
     trainable = ray.remote(trainable_cls).remote()
     ray.get(trainable.set_info.remote({"info": 4}))
-    checkpoint_data = trainable.save.remote()
+
+    if to_object:
+        checkpoint_data = trainable.save_to_object.remote()
+    else:
+        checkpoint_data = trainable.save.remote()
 
     trial.on_checkpoint(
         _TrackedCheckpoint(checkpoint_data, storage_mode=CheckpointStorage.MEMORY)

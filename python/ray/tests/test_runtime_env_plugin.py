@@ -1,31 +1,35 @@
+import logging
 import os
 import tempfile
 from time import sleep
-import logging
+from typing import List
+
 import pytest
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import wait_for_condition, test_external_redis
-from ray.exceptions import RuntimeEnvSetupError
 
 import ray
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import test_external_redis, wait_for_condition
+from ray.exceptions import RuntimeEnvSetupError
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.MyPlugin"
+MY_PLUGIN_NAME = "MyPlugin"
 
 
 class MyPlugin(RuntimeEnvPlugin):
+    name = MY_PLUGIN_NAME
     env_key = "MY_PLUGIN_TEST_ENVIRONMENT_KEY"
 
     @staticmethod
     def validate(runtime_env_dict: dict) -> str:
-        value = runtime_env_dict["plugins"][MY_PLUGIN_CLASS_PATH]
+        value = runtime_env_dict[MY_PLUGIN_NAME]
         if value == "fail":
             raise ValueError("not allowed")
         return value
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         plugin_config_dict: dict,
         ctx: RuntimeEnvContext,
         logger: logging.Logger,
@@ -40,7 +44,14 @@ class MyPlugin(RuntimeEnvPlugin):
         )
 
 
-def test_simple_env_modification_plugin(ray_start_regular):
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        MY_PLUGIN_CLASS_PATH,
+    ],
+    indirect=True,
+)
+def test_simple_env_modification_plugin(set_runtime_env_plugins, ray_start_regular):
     _, tmp_file_path = tempfile.mkstemp()
 
     @ray.remote
@@ -55,21 +66,19 @@ def test_simple_env_modification_plugin(ray_start_regular):
             "nice": psutil.Process().nice(),
         }
 
-    with pytest.raises(ValueError, match="not allowed"):
-        f.options(runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: "fail"}}).remote()
+    with pytest.raises(RuntimeEnvSetupError, match="not allowed"):
+        ray.get(f.options(runtime_env={MY_PLUGIN_NAME: "fail"}).remote())
 
     if os.name != "nt":
         output = ray.get(
             f.options(
                 runtime_env={
-                    "plugins": {
-                        MY_PLUGIN_CLASS_PATH: {
-                            "env_value": 42,
-                            "tmp_file": tmp_file_path,
-                            "tmp_content": "hello",
-                            # See https://en.wikipedia.org/wiki/Nice_(Unix)
-                            "prefix_command": "nice -n 19",
-                        }
+                    MY_PLUGIN_NAME: {
+                        "env_value": 42,
+                        "tmp_file": tmp_file_path,
+                        "tmp_content": "hello",
+                        # See https://en.wikipedia.org/wiki/Nice_(Unix)
+                        "prefix_command": "nice -n 19",
                     }
                 }
             ).remote()
@@ -79,11 +88,13 @@ def test_simple_env_modification_plugin(ray_start_regular):
 
 
 MY_PLUGIN_FOR_HANG_CLASS_PATH = "ray.tests.test_runtime_env_plugin.MyPluginForHang"
+MY_PLUGIN_FOR_HANG_NAME = "MyPluginForHang"
 my_plugin_setup_times = 0
 
 
 # This plugin will hang when first setup, second setup will ok
 class MyPluginForHang(RuntimeEnvPlugin):
+    name = MY_PLUGIN_FOR_HANG_NAME
     env_key = "MY_PLUGIN_FOR_HANG_TEST_ENVIRONMENT_KEY"
 
     @staticmethod
@@ -101,7 +112,7 @@ class MyPluginForHang(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         plugin_config_dict: dict,
         ctx: RuntimeEnvContext,
         logger: logging.Logger,
@@ -110,7 +121,14 @@ class MyPluginForHang(RuntimeEnvPlugin):
         ctx.env_vars[MyPluginForHang.env_key] = str(my_plugin_setup_times)
 
 
-def test_plugin_hang(ray_start_regular):
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        MY_PLUGIN_FOR_HANG_CLASS_PATH,
+    ],
+    indirect=True,
+)
+def test_plugin_hang(set_runtime_env_plugins, ray_start_regular):
     env_key = MyPluginForHang.env_key
 
     @ray.remote(num_cpus=0.1)
@@ -120,11 +138,9 @@ def test_plugin_hang(ray_start_regular):
     refs = [
         f.options(
             # Avoid hitting the cache of runtime_env
-            runtime_env={"plugins": {MY_PLUGIN_FOR_HANG_CLASS_PATH: {"name": "f1"}}}
+            runtime_env={MY_PLUGIN_FOR_HANG_NAME: {"name": "f1"}}
         ).remote(),
-        f.options(
-            runtime_env={"plugins": {MY_PLUGIN_FOR_HANG_CLASS_PATH: {"name": "f2"}}}
-        ).remote(),
+        f.options(runtime_env={MY_PLUGIN_FOR_HANG_NAME: {"name": "f2"}}).remote(),
     ]
 
     def condition():
@@ -143,19 +159,26 @@ def test_plugin_hang(ray_start_regular):
 
 
 DUMMY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.DummyPlugin"
+DUMMY_PLUGIN_NAME = "DummyPlugin"
 HANG_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.HangPlugin"
+HANG_PLUGIN_NAME = "HangPlugin"
 DISABLE_TIMEOUT_PLUGIN_CLASS_PATH = (
     "ray.tests.test_runtime_env_plugin.DiasbleTimeoutPlugin"
 )
+DISABLE_TIMEOUT_PLUGIN_NAME = "test_plugin_timeout"
 
 
 class DummyPlugin(RuntimeEnvPlugin):
+    name = DUMMY_PLUGIN_NAME
+
     @staticmethod
     def validate(runtime_env_dict: dict) -> str:
         return 1
 
 
 class HangPlugin(DummyPlugin):
+    name = HANG_PLUGIN_NAME
+
     def create(
         self, uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
     ) -> float:
@@ -163,14 +186,25 @@ class HangPlugin(DummyPlugin):
 
 
 class DiasbleTimeoutPlugin(DummyPlugin):
+    name = DISABLE_TIMEOUT_PLUGIN_NAME
+
     def create(
         self, uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
     ) -> float:
         sleep(10)
 
 
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        f"{DUMMY_PLUGIN_CLASS_PATH},"
+        f"{HANG_PLUGIN_CLASS_PATH},"
+        f"{DISABLE_TIMEOUT_PLUGIN_CLASS_PATH}",
+    ],
+    indirect=True,
+)
 @pytest.mark.skipif(test_external_redis(), reason="Failing in redis mode.")
-def test_plugin_timeout(start_cluster):
+def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
     @ray.remote(num_cpus=0.1)
     def f():
         return True
@@ -178,20 +212,14 @@ def test_plugin_timeout(start_cluster):
     refs = [
         f.options(
             runtime_env={
-                "plugins": {
-                    HANG_PLUGIN_CLASS_PATH: {"name": "f1"},
-                },
+                HANG_PLUGIN_NAME: {"name": "f1"},
                 "config": {"setup_timeout_seconds": 10},
             }
         ).remote(),
-        f.options(
-            runtime_env={"plugins": {DUMMY_PLUGIN_CLASS_PATH: {"name": "f2"}}}
-        ).remote(),
+        f.options(runtime_env={DUMMY_PLUGIN_NAME: {"name": "f2"}}).remote(),
         f.options(
             runtime_env={
-                "plugins": {
-                    HANG_PLUGIN_CLASS_PATH: {"name": "f3"},
-                },
+                HANG_PLUGIN_NAME: {"name": "f3"},
                 "config": {"setup_timeout_seconds": -1},
             }
         ).remote(),

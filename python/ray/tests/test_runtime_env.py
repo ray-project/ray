@@ -1,35 +1,37 @@
+import json
 import logging
 import os
-import pytest
-import sys
 import subprocess
-import time
-import requests
-from pathlib import Path
-from unittest import mock
-import json
+import sys
 import tempfile
+import time
+from pathlib import Path
+from typing import List
+from unittest import mock
+
+import pytest
+import requests
 
 import ray
-from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import (
-    wait_for_condition,
-    get_error_message,
-    get_log_sources,
-    chdir,
-)
-from ray._private.utils import (
-    get_wheel_filename,
-    get_master_wheel_url,
-    get_release_wheel_url,
-)
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.utils import (
     SubprocessCalledProcessError,
     check_output_cmd,
 )
-from ray._private.runtime_env.uri_cache import URICache
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import (
+    chdir,
+    get_error_message,
+    get_log_sources,
+    wait_for_condition,
+)
+from ray._private.utils import (
+    get_master_wheel_url,
+    get_release_wheel_url,
+    get_wheel_filename,
+)
+from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 
@@ -176,7 +178,7 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
     assert ray.get(a.get.remote()) == 0
 
     # Check "debug_state.txt" to ensure no extra workers were started.
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     debug_state_path = session_path / "logs" / "debug_state.txt"
 
@@ -233,7 +235,7 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
 
     # Check no warning printed.
     ray.get(f.remote())
-    errors = get_error_message(p, 5, ray.ray_constants.RESOURCE_DEADLOCK_ERROR)
+    errors = get_error_message(p, 5, ray._private.ray_constants.RESOURCE_DEADLOCK_ERROR)
     assert len(errors) == 0
 
 
@@ -557,6 +559,7 @@ def test_to_make_ensure_runtime_env_api(start_cluster):
 
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env.MyPlugin"
+MY_PLUGIN_NAME = "MyPlugin"
 success_retry_number = 3
 runtime_env_retry_times = 0
 
@@ -564,13 +567,19 @@ runtime_env_retry_times = 0
 # This plugin can make runtime env creation failed before the retry times
 # increased to `success_retry_number`.
 class MyPlugin(RuntimeEnvPlugin):
+
+    name = MY_PLUGIN_NAME
+
     @staticmethod
     def validate(runtime_env_dict: dict) -> str:
-        return runtime_env_dict["plugins"][MY_PLUGIN_CLASS_PATH]
+        return runtime_env_dict[MY_PLUGIN_NAME]
 
     @staticmethod
     def modify_context(
-        uri: str, runtime_env: dict, ctx: RuntimeEnvContext, logger: logging.Logger
+        uris: List[str],
+        runtime_env: dict,
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
     ) -> None:
         global runtime_env_retry_times
         runtime_env_retry_times += 1
@@ -587,7 +596,16 @@ class MyPlugin(RuntimeEnvPlugin):
     ],
     indirect=True,
 )
-def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        MY_PLUGIN_CLASS_PATH,
+    ],
+    indirect=True,
+)
+def test_runtime_env_retry(
+    set_runtime_env_retry_times, set_runtime_env_plugins, ray_start_regular
+):
     @ray.remote
     def f():
         return "ok"
@@ -596,9 +614,7 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
     if runtime_env_retry_times >= success_retry_number:
         # Enough retry times
         output = ray.get(
-            f.options(
-                runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
-            ).remote()
+            f.options(runtime_env={MY_PLUGIN_NAME: {"key": "value"}}).remote()
         )
         assert output == "ok"
     else:
@@ -606,11 +622,7 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
         with pytest.raises(
             RuntimeEnvSetupError, match=f"Fault injection {runtime_env_retry_times}"
         ):
-            ray.get(
-                f.options(
-                    runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
-                ).remote()
-            )
+            ray.get(f.options(runtime_env={MY_PLUGIN_NAME: {"key": "value"}}).remote())
 
 
 @pytest.mark.parametrize(
@@ -634,7 +646,7 @@ def test_serialize_deserialize(option):
     elif option == "container":
         runtime_env["container"] = {
             "image": "anyscale/ray-ml:nightly-py38-cpu",
-            "worker_path": "/root/python/ray/workers/default_worker.py",
+            "worker_path": "/root/python/ray/_private/workers/default_worker.py",
             "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
         }
     elif option == "plugins":
@@ -806,7 +818,7 @@ def test_runtime_env_interface():
     # Test the interface related to container
     container_init = {
         "image": "anyscale/ray-ml:nightly-py38-cpu",
-        "worker_path": "/root/python/ray/workers/default_worker.py",
+        "worker_path": "/root/python/ray/_private/workers/default_worker.py",
         "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
     }
     update_container = {"image": "test_modify"}
