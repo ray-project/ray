@@ -48,16 +48,24 @@ class AwsVmClusterManager(ClusterManager):
 
     def start_cluster(self, timeout: float):
         # This is commented out as unless we need the stdout/stderr we can defer to process.wait
-        #process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config.yaml'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        ## TODO need to pipe in Y twice
+        #process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config.yaml', '-y'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         #stream_subproc_output(process)
 
-        # TODO need to pipe in Y twice
+        # TODO need to propagate bad error codes
         process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config.yaml', '-y'])
 
         # TODO handle timeouts
         return_code = process.wait()
 
+        '''
+        Next steps:
+        * Terminate cluster (why is it not called?)
+        * Run a command on the cluster
+        * Do we need files on the cluster?
+        * Do we need `wait_for_nodes`? in runner
+        * Get last logs, fetch results
+        * AWS testcase (simpler on on BK). Also should be using legacy-work with its delicious lambdas.
+        '''
 
     def terminate_cluster(self, wait: bool):
         raise NotImplementedError
