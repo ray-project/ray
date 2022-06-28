@@ -213,6 +213,7 @@ class StateApiClient(SubmissionClient):
 
         params["filter_keys"] = [RESOURCE_ID_KEY_NAME[resource]]
         params["filter_values"] = [id]
+        params["detail"] = True
         endpoint = f"/api/v0/{resource.value}"
 
         result = self._make_http_get_request(

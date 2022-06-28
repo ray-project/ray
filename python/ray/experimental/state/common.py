@@ -546,7 +546,6 @@ class ObjectSummaries:
                 total_size_mb += size_bytes / 1024 ** 2
 
             key_to_workers[key].add(object["pid"])
-            print(object)
             key_to_nodes[key].add(object["ip"])
 
         # Convert set of pid & node ips to length.

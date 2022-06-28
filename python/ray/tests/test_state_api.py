@@ -1197,6 +1197,7 @@ def test_list_get_actors(shutdown_only):
         assert a._actor_id.hex() == actors[0]["actor_id"]
 
         # Test get
+        actors = list_actors(detail=True)
         for actor in actors:
             get_actor_data = get_actor(actor["actor_id"])
             assert get_actor_data is not None
@@ -1225,6 +1226,7 @@ def test_list_get_pgs(shutdown_only):
         assert pg.id.hex() == pgs[0]["placement_group_id"]
 
         # Test get
+        pgs = list_placement_groups(detail=True)
         for pg_data in pgs:
             get_pg_data = get_placement_group(pg_data["placement_group_id"])
             assert get_pg_data is not None
@@ -1260,6 +1262,7 @@ def test_list_get_nodes(shutdown_only):
             assert check_node["NodeName"] == node["node_name"]
 
         # Check the Get api
+        nodes = list_nodes(detail=True)
         for node in nodes:
             get_node_data = get_node(node["node_id"])
             assert get_node_data == node
@@ -1310,6 +1313,7 @@ def test_list_get_workers(shutdown_only):
         assert len(workers) == ray.cluster_resources()["CPU"] + 1
 
         # Test get worker returns the same result
+        workers = list_workers(detail=True)
         for worker in workers:
             got_worker = get_worker(worker["worker_id"])
             assert got_worker == worker
@@ -1379,6 +1383,7 @@ def test_list_get_tasks(shutdown_only):
         assert running == 2
 
         # Test get tasks
+        tasks = list_tasks(detail=True)
         for task in tasks:
             get_task_data = get_task(task["task_id"])
             assert get_task_data == task
@@ -1465,6 +1470,7 @@ def test_list_get_objects(shutdown_only):
         # For detailed output, the test is covered from `test_memstat.py`
         assert obj["object_id"] == plasma_obj.hex()
 
+        obj = list_objects(detail=True)[0]
         got_objs = get_objects(plasma_obj.hex())
         assert len(got_objs) == 1
         assert obj == got_objs[0]
