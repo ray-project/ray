@@ -37,11 +37,12 @@ class ServeSubmissionClient(SubmissionClient):
             metadata=metadata,
             headers=headers,
         )
-        self._check_connection_and_version(
+        self._check_connection_and_version_with_url(
             min_version="1.12",
             version_error_message="Serve CLI is not supported on the Ray "
             "cluster. Please ensure the cluster is "
             "running Ray 1.12 or higher.",
+            url="/api/ray/version",
         )
 
     def deploy_application(self, config: Dict) -> None:

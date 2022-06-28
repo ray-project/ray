@@ -26,7 +26,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
 
-    @routes.get("/api/version")
+    @routes.get("/api/ray/version")
     async def get_version(self, req: Request) -> Response:
         # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the
         # client when we have backwards-incompatible changes.
