@@ -1,6 +1,7 @@
 import copy
 import subprocess
 import sys
+import os
 from typing import Dict
 
 import pytest
@@ -24,6 +25,10 @@ def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def deploy_and_check_config(config: Dict):
     put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=30)
     assert put_response.status_code == 200
@@ -35,7 +40,10 @@ def deploy_and_check_config(config: Dict):
     assert get_response.json() == config
     print("GET request returned correct config.")
 
-
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_put_get(ray_start_stop):
     config1 = {
         "import_path": (
@@ -100,7 +108,10 @@ def test_put_get(ray_start_stop):
         )
         print("Deployments are live and reachable over HTTP.\n")
 
-
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_delete(ray_start_stop):
     config = {
         "import_path": "dir.subdir.a.add_and_sub.serve_dag",
@@ -165,7 +176,10 @@ def test_delete(ray_start_stop):
             requests.post("http://localhost:8000/", json=["SUB", 1]).raise_for_status()
         print("Deployments have been deleted and are not reachable.\n")
 
-
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_get_status(ray_start_stop):
     print("Checking status info before any deployments.")
 
@@ -214,7 +228,10 @@ def test_get_status(ray_start_stop):
     assert serve_status["app_status"]["message"] == ""
     print("Serve app status is correct.")
 
-
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_serve_namespace(ray_start_stop):
     """
     Check that the Dashboard's Serve can interact with the Python API
