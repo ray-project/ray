@@ -52,7 +52,7 @@ parts:
               - file: data/examples/big_data_ingestion
                 title: Large-scale ML Ingest
               - file: data/examples/ocr_example
-                title: OCR with Ray Datasets
+                title: Scaling OCR with Ray Datasets
           - file: data/faq
           - file: data/package-ref
           - file: data/integrations
