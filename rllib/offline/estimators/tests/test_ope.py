@@ -30,8 +30,6 @@ class TestOPE(unittest.TestCase):
         train_steps = 200000
         n_batches = 20  # Approx. equal to n_episodes
         n_eval_episodes = 20
-        # Optional configs for the model-based estimators
-        cls.model_config = {"train_test_split_val": 0.0, "k": 2, "n_iters": 10}
 
         config = (
             DQNConfig()
@@ -62,25 +60,11 @@ class TestOPE(unittest.TestCase):
                 off_policy_estimation_methods={
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
-                    "dm_qreg": {
+                    "dm": {
                         "type": DirectMethod,
-                        "q_model_type": "qreg",
-                        **cls.model_config,
                     },
-                    "dm_fqe": {
-                        "type": DirectMethod,
-                        "q_model_type": "fqe",
-                        **cls.model_config,
-                    },
-                    "dr_qreg": {
+                    "dr": {
                         "type": DoublyRobust,
-                        "q_model_type": "qreg",
-                        **cls.model_config,
-                    },
-                    "dr_fqe": {
-                        "type": DoublyRobust,
-                        "q_model_type": "fqe",
-                        **cls.model_config,
                     },
                 },
             )
@@ -137,8 +121,8 @@ class TestOPE(unittest.TestCase):
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = np.mean(estimates["v_new"])
-        self.std_ret[name] = np.std(estimates["v_new"])
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
 
     def test_wis(self):
         name = "wis"
@@ -148,60 +132,30 @@ class TestOPE(unittest.TestCase):
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = np.mean(estimates["v_new"])
-        self.std_ret[name] = np.std(estimates["v_new"])
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
 
-    def test_dm_qreg(self):
-        name = "dm_qreg"
+    def test_dm(self):
+        name = "dm"
         estimator = DirectMethod(
             name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
-            q_model_type="qreg",
-            **self.model_config,
         )
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = np.mean(estimates["v_new"])
-        self.std_ret[name] = np.std(estimates["v_new"])
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
 
-    def test_dm_fqe(self):
-        name = "dm_fqe"
-        estimator = DirectMethod(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_type="fqe",
-            **self.model_config,
-        )
-        estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = np.mean(estimates["v_new"])
-        self.std_ret[name] = np.std(estimates["v_new"])
-
-    def test_dr_qreg(self):
-        name = "dr_qreg"
+    def test_dr(self):
+        name = "dr"
         estimator = DoublyRobust(
             name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
-            q_model_type="qreg",
-            **self.model_config,
         )
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = np.mean(estimates["v_new"])
-        self.std_ret[name] = np.std(estimates["v_new"])
-
-    def test_dr_fqe(self):
-        name = "dr_fqe"
-        estimator = DoublyRobust(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_type="fqe",
-            **self.model_config,
-        )
-        estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = np.mean(estimates["v_new"])
-        self.std_ret[name] = np.std(estimates["v_new"])
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
 
     def test_ope_in_algo(self):
         results = self.algo.evaluate()
