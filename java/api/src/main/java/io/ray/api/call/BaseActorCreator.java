@@ -26,10 +26,10 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set the actor name of a named actor.
+   * Set the actor name along with a different namespace.
    *
    * @param name The name of the named actor.
-   * @param namespace The namespace that this actor will live.
+   * @param namespace The namespace that this actor will live in.
    * @return self
    */
   public T setName(String name, String namespace) {
