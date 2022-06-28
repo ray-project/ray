@@ -559,6 +559,7 @@ def test_to_make_ensure_runtime_env_api(start_cluster):
 
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env.MyPlugin"
+MY_PLUGIN_NAME = "MyPlugin"
 success_retry_number = 3
 runtime_env_retry_times = 0
 
@@ -566,9 +567,12 @@ runtime_env_retry_times = 0
 # This plugin can make runtime env creation failed before the retry times
 # increased to `success_retry_number`.
 class MyPlugin(RuntimeEnvPlugin):
+
+    name = MY_PLUGIN_NAME
+
     @staticmethod
     def validate(runtime_env_dict: dict) -> str:
-        return runtime_env_dict["plugins"][MY_PLUGIN_CLASS_PATH]
+        return runtime_env_dict[MY_PLUGIN_NAME]
 
     @staticmethod
     def modify_context(
@@ -592,7 +596,16 @@ class MyPlugin(RuntimeEnvPlugin):
     ],
     indirect=True,
 )
-def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        MY_PLUGIN_CLASS_PATH,
+    ],
+    indirect=True,
+)
+def test_runtime_env_retry(
+    set_runtime_env_retry_times, set_runtime_env_plugins, ray_start_regular
+):
     @ray.remote
     def f():
         return "ok"
@@ -601,9 +614,7 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
     if runtime_env_retry_times >= success_retry_number:
         # Enough retry times
         output = ray.get(
-            f.options(
-                runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
-            ).remote()
+            f.options(runtime_env={MY_PLUGIN_NAME: {"key": "value"}}).remote()
         )
         assert output == "ok"
     else:
@@ -611,11 +622,7 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
         with pytest.raises(
             RuntimeEnvSetupError, match=f"Fault injection {runtime_env_retry_times}"
         ):
-            ray.get(
-                f.options(
-                    runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
-                ).remote()
-            )
+            ray.get(f.options(runtime_env={MY_PLUGIN_NAME: {"key": "value"}}).remote())
 
 
 @pytest.mark.parametrize(
