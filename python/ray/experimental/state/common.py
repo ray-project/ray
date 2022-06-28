@@ -45,11 +45,16 @@ class SummaryResource(Enum):
 SupportedFilterType = Union[str, bool, int, float]
 
 
+PredicateType = str  # Literal["=", "!="]
+
+
 @dataclass(init=True)
 class ListApiOptions:
     limit: int = DEFAULT_LIMIT
     timeout: int = DEFAULT_RPC_TIMEOUT
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
+        default_factory=list
+    )
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,
@@ -66,11 +71,21 @@ class ListApiOptions:
         self.timeout = int(self.timeout * self._server_timeout_multiplier)
         if self.filters is None:
             self.filters = []
+
         if self.limit > MAX_LIMIT:
             raise ValueError(
                 f"Given limit {self.limit} exceeds the supported "
                 f"limit {MAX_LIMIT}. Use a lower limit."
             )
+
+        for filter in self.filters:
+            _, filter_predicate, _ = filter
+            if filter_predicate != "=" and filter_predicate != "!=":
+                raise ValueError(
+                    f"Unsupported filter predicate {filter_predicate} is given. "
+                    "Available predicates: =, !=."
+                )
+
 
 
 @dataclass(init=True)

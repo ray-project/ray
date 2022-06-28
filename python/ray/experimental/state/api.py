@@ -24,6 +24,7 @@ from ray.experimental.state.common import (
     TaskState,
     WorkerState,
     SummaryResource,
+    PredicateType,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
@@ -84,8 +85,6 @@ class StateApiClient(SubmissionClient):
     @classmethod
     def _make_param(cls, options: Union[ListApiOptions, GetApiOptions]) -> Dict:
         options_dict = {}
-        # We don't use `asdict` to avoid deepcopy.
-        # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict
         for field in fields(options):
             # TODO(rickyyx): We will need to find a way to pass server side timeout
             # TODO(rickyyx): We will have to convert filter option
@@ -94,10 +93,17 @@ class StateApiClient(SubmissionClient):
             # probably organize the marshaling a bit better.
             if field.name == "filters":
                 options_dict["filter_keys"] = []
+                options_dict["filter_predicates"] = []
                 options_dict["filter_values"] = []
                 for filter in options.filters:
-                    filter_k, filter_val = filter
+                    if len(filter) != 3:
+                        raise ValueError(
+                            f"The given filter has incorrect intput type, {filter}. "
+                            "Provide (key, predicate, value) tuples."
+                        )
+                    filter_k, filter_predicate, filter_val = filter
                     options_dict["filter_keys"].append(filter_k)
+                    options_dict["filter_predicates"].append(filter_predicate)
                     options_dict["filter_values"].append(filter_val)
                 continue
 
@@ -213,6 +219,7 @@ class StateApiClient(SubmissionClient):
             raise ValueError(f"Can't get {resource.name} by id.")
 
         params["filter_keys"] = [RESOURCE_ID_KEY_NAME[resource]]
+        params["filter_predicates"] = ["="]
         params["filter_values"] = [id]
         endpoint = f"/api/v0/{resource.value}"
 
@@ -428,7 +435,7 @@ Supported arguments to the below methods, see `ListApiOptions`:
 
 def list_actors(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -442,7 +449,7 @@ def list_actors(
 
 def list_placement_groups(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -456,7 +463,7 @@ def list_placement_groups(
 
 def list_nodes(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -470,7 +477,7 @@ def list_nodes(
 
 def list_jobs(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -484,7 +491,7 @@ def list_jobs(
 
 def list_workers(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -498,7 +505,7 @@ def list_workers(
 
 def list_tasks(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -512,7 +519,7 @@ def list_tasks(
 
 def list_objects(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -526,7 +533,7 @@ def list_objects(
 
 def list_runtime_envs(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
