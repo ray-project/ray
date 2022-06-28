@@ -171,7 +171,7 @@ class DiasbleTimeoutPlugin(DummyPlugin):
         sleep(10)
 
 
-@pytest.mark.skipif(test_external_redis(), reason="Failing in redis mode.")
+@pytest.mark.skipif(enable_external_redis(), reason="Failing in redis mode.")
 def test_plugin_timeout(start_cluster):
     @ray.remote(num_cpus=0.1)
     def f():
