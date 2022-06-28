@@ -622,8 +622,8 @@ def wrap_function(
     if use_checkpoint:
         if log_once("tune_checkpoint_dir_deprecation") and warn:
             warnings.warn(
-                "`checkpoint_dir` in `func(config, checkpoint_dir)` is being deprecated."
-                "To save and load checkpoint in tune function, "
+                "`checkpoint_dir` in `func(config, checkpoint_dir)` is being "
+                "deprecated. To save and load checkpoint in tune function, "
                 "please use `ray.air.session` API.",
                 DeprecationWarning,
             )
