@@ -1857,7 +1857,6 @@ cc_test(
     ],
 )
 
-
 cc_library(
     name = "gcs_table_storage_lib",
     srcs = glob(
