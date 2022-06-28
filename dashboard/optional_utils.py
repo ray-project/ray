@@ -168,7 +168,7 @@ def rest_response(
         "data": to_google_style(kwargs) if convert_google_style else kwargs,
     }
     if message:
-        response["msg"] = (message,)
+        response["msg"] = message
     return aiohttp.web.json_response(
         response,
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
