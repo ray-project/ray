@@ -303,12 +303,8 @@ def get(
 def list(
     resource: str,
     format: str,
-<<<<<<< HEAD
-    filter: List[Tuple[str, str]],
     detail: bool,
-=======
     filter: List[str],
->>>>>>> master
     timeout: float,
     address: str,
 ):
