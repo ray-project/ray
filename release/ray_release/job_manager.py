@@ -97,6 +97,7 @@ class JobManager:
     def run_and_wait(
         self, cmd_to_run, env_vars, timeout: int = 120
     ) -> Tuple[int, float]:
+
         cid = self._run_job(cmd_to_run, env_vars)
         return self._wait_job(cid, timeout)
 

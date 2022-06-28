@@ -52,13 +52,14 @@ type_str_to_command_runner = {
     "sdk_command": SDKRunner,
     "job": JobRunner,
     "client": ClientRunner,
-    "vm_stack_command": VmStackRunner,
+    "vm_stack_command": JobRunner,
 }
 
 command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
     ClientRunner: FullClusterManager,
-    JobRunner: FullClusterManager,
+    JobRunner: AwsVmClusterManager,
+    #JobRunner: FullClusterManager,
     VmStackRunner: AwsVmClusterManager
 }
 

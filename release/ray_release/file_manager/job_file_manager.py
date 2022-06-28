@@ -22,7 +22,7 @@ class JobFileManager(FileManager):
     def __init__(self, cluster_manager: ClusterManager):
         super(JobFileManager, self).__init__(cluster_manager=cluster_manager)
 
-        self.sdk = self.cluster_manager.sdk
+        #self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client("s3")
         self.bucket = RELEASE_AWS_BUCKET
         self.job_manager = JobManager(cluster_manager)

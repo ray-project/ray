@@ -36,7 +36,7 @@ class JobRunner(CommandRunner):
             file_manager=file_manager,
             working_dir=working_dir,
         )
-        self.sdk = sdk or get_anyscale_sdk()
+        #self.sdk = sdk or get_anyscale_sdk()
         self.job_manager = JobManager(cluster_manager)
 
         self.last_command_scd_id = None

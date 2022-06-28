@@ -24,15 +24,6 @@ from ray_release.logger import logger
 from ray_release.util import format_link, get_anyscale_sdk, exponential_backoff_retry
 from ray_release.wheels import install_matching_ray_locally
 
-def test_ray_up():
-    subprocess.check_output(
-        f"ray up cluster_launcher_config.yaml",
-        shell=True,
-        env=os.environ,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-
 
 class VmStackRunner(CommandRunner):
     def __init__(
@@ -69,7 +60,7 @@ class VmStackRunner(CommandRunner):
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
     ) -> float:
         # TODO
-        pass
+        raise ValueError(f'run command CADE {command} {env}')
 
     def get_last_logs(self, scd_id: Optional[str] = None):
         raise NotImplementedError

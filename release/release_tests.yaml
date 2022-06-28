@@ -110,13 +110,13 @@
 
   run:
     timeout: 36000
-    script: python does-not-exist-yet.py
-    long_running: true
-    wait_for_nodes:
-      num_nodes: 3
+    script: python script.py
+    #long_running: true
+    #wait_for_nodes:
+    #  num_nodes: 3
 
     type: vm_stack_command
-    #file_manager: job
+    file_manager: job
 
   smoke_test:
     frequency: disabled
