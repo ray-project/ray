@@ -44,10 +44,10 @@ class TestOPE(unittest.TestCase):
                 },
             )
             .framework("torch")
-            # .offline_data(
-            #     input_="dataset",
-            #     input_config={"format": "json", "path": train_data},
-            # )
+            .offline_data(
+                input_="dataset",
+                input_config={"format": "json", "path": train_data},
+            )
             .evaluation(
                 evaluation_interval=1,
                 evaluation_duration=n_eval_episodes,

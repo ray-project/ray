@@ -87,6 +87,7 @@ def lookup_action_value_fn(
                 batch = convert_to_torch_tensor(batch)
             model_out, _ = policy.model(batch)
             q_values = policy.model.get_q_values(model_out, batch[SampleBatch.ACTIONS])
+            q_values = convert_to_numpy(q_values).reshape([batch.count])
             return q_values
 
         action_value_fn = modelv2_action_value_fn
