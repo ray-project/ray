@@ -6,6 +6,7 @@ import numbers
 import os
 import sys
 import time
+import warnings
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -239,9 +240,6 @@ class TuneReporterBase(ProgressReporter):
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
-        if metric is None or mode is None:
-            self._sort_by_metric = False
-
         return True
 
     def set_total_samples(self, total_samples: int):
@@ -354,6 +352,12 @@ class TuneReporterBase(ProgressReporter):
             )
 
         if has_verbosity(Verbosity.V1_EXPERIMENT):
+            if self._sort_by_metric and (self._metric is None or self._mode is None):
+                self._sort_by_metric = False
+                warnings.warn(
+                    "Both 'metric' and 'mode' must be set to be able "
+                    "to sort by metric. No sorting is performed."
+                )
             # Will filter the table in `trial_progress_str`
             messages.append(
                 trial_progress_str(
