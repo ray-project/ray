@@ -37,11 +37,13 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
+    NUM_SYNCH_WORKER_WEIGHTS,
+    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
 )
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
-# from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
@@ -49,7 +51,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -795,7 +797,8 @@ class Impala(Algorithm):
 
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
-        learner_info = copy.deepcopy(self._learner_thread.learner_info)
+        final_learner_info = {}
+        learner_infos = []
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
 
@@ -809,16 +812,22 @@ class Impala(Algorithm):
                 num_env_steps_trained += env_steps
                 num_agent_steps_trained += agent_steps
                 if learner_results:
-                    learner_info.update(learner_results)
+                    learner_infos.append(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
+        if not learner_infos:
+            final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
+        else:
+            builder = LearnerInfoBuilder()
+            for info in learner_infos:
+                builder.add_learn_on_batch_results_multi_agent(info)
+            final_learner_info = builder.finalize()
 
         # Update the steps trained counters.
-        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
         self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
         self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
 
-        return learner_info
+        return final_learner_info
 
     def process_experiences_directly(
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
@@ -865,18 +874,18 @@ class Impala(Algorithm):
 
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
-        self._counters["steps_since_broadcast"] += 1
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
+        self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
             self.workers.remote_workers()
-            and self._counters["steps_since_broadcast"]
+            and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
             >= self.config["broadcast_interval"]
             and self.workers_that_need_updates
         ):
             weights = ray.put(self.workers.local_worker().get_weights())
-            self._counters["steps_since_broadcast"] = 0
+            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._learner_thread.weights_updated = False
-            self._counters["num_weight_broadcasts"] += 1
+            self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
 
             for worker in self.workers_that_need_updates:
                 worker.set_weights.remote(weights, global_vars)
@@ -902,10 +911,8 @@ class Impala(Algorithm):
             self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Algorithm)
-    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
-        result = super()._compile_iteration_results(
-            step_ctx=step_ctx, iteration_results=iteration_results
-        )
+    def _compile_iteration_results(self, *args, **kwargs):
+        result = super()._compile_iteration_results(*args, **kwargs)
         result = self._learner_thread.add_learner_metrics(
             result, overwrite_learner_info=False
         )

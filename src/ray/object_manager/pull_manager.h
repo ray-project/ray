@@ -64,7 +64,7 @@ class PullManager {
       const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const std::function<void(const ObjectID &)> cancel_pull_request,
-      const std::function<void(const ObjectID &)> fail_pull_request,
+      const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time_seconds,
       int pull_timeout_ms,
@@ -164,6 +164,8 @@ class PullManager {
   /// Returns the number of bytes of quota remaining. When this is less than zero,
   /// we are OverQuota(). Visible for testing.
   int64_t RemainingQuota();
+
+  void SetOutOfDisk(const ObjectID &object_id);
 
  private:
   /// A helper structure for tracking information about each ongoing object pull.
@@ -467,7 +469,7 @@ class PullManager {
   std::function<std::string(const ObjectID &)> get_locally_spilled_object_url_;
 
   // A callback to fail a hung pull request.
-  std::function<void(const ObjectID &)> fail_pull_request_;
+  std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

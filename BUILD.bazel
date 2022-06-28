@@ -111,6 +111,7 @@ cc_library(
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 
@@ -1431,6 +1432,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_common",
         ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],

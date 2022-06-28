@@ -13,8 +13,8 @@ from multiprocessing.synchronize import Event
 from typing import Any, Callable, Dict, Optional, Union
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray._private.utils
-import ray.ray_constants as ray_constants
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -142,9 +142,9 @@ class Monitor:
         stop_event: Optional[Event] = None,
         retry_on_failure: bool = True,
     ):
-        gcs_address = address
+        self.gcs_address = address
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        gcs_channel = ray._private.utils.init_grpc_channel(gcs_address, options)
+        gcs_channel = ray._private.utils.init_grpc_channel(self.gcs_address, options)
         # TODO: Use gcs client for this
         self.gcs_node_resources_stub = (
             gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
@@ -155,8 +155,8 @@ class Monitor:
         if redis_password is not None:
             logger.warning("redis_password has been deprecated.")
         # Set the redis client and mode so _internal_kv works for autoscaler.
-        worker = ray.worker.global_worker
-        gcs_client = GcsClient(address=gcs_address)
+        worker = ray._private.worker.global_worker
+        gcs_client = GcsClient(address=self.gcs_address)
 
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
@@ -170,7 +170,7 @@ class Monitor:
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
         worker.mode = 0
-        head_node_ip = gcs_address.split(":")[0]
+        head_node_ip = self.gcs_address.split(":")[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None
@@ -319,7 +319,9 @@ class Monitor:
         """Fetches resource requests from the internal KV and updates load."""
         if not _internal_kv_initialized():
             return
-        data = _internal_kv_get(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
+        data = _internal_kv_get(
+            ray._private.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+        )
         if data:
             try:
                 resource_request = json.loads(data)
@@ -450,7 +452,7 @@ class Monitor:
             _internal_kv_put(
                 ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
             )
-        gcs_publisher = GcsPublisher(address=args.gcs_address)
+        gcs_publisher = GcsPublisher(address=self.gcs_address)
         from ray._private.utils import publish_error_to_driver
 
         publish_error_to_driver(
