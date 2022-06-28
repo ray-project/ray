@@ -463,9 +463,12 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     node_id = list_nodes()[0]["node_id"]
 
     def verify_basic():
+        gcs_server_log_filename = list_logs(
+            node_id=node_id, glob_filter="gcs_server_*.log"
+        )["gcs_server"][0]
         stream_response = requests.get(
             webui_url
-            + f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out&lines=5",
+            + f"/api/v0/logs/file?node_id={node_id}&filename={gcs_server_log_filename}&lines=5",
             stream=True,
         )
         if stream_response.status_code != 200:
@@ -594,10 +597,9 @@ def test_log_get(ray_start_cluster):
 
     def verify():
         # By default, node id should be configured to the head node.
-        raylet_log_files = list_logs(
+        raylet_log_filename = list_logs(
             node_id=head_node["node_id"], glob_filter="raylet_*.log"
-        )["raylet"]
-        raylet_log_filename = [f for f in raylet_log_files if f.endswith(".log")][0]
+        )["raylet"][0]
         for log in get_log(
             node_id=head_node["node_id"], filename=raylet_log_filename, tail=10
         ):
