@@ -1,12 +1,19 @@
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pytest
 import tensorflow as tf
 
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.util.data_batch_conversion import (
+    convert_pandas_to_batch_type,
+    convert_batch_type_to_pandas,
+)
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
+from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.tensorflow import TensorflowPredictor, to_air_checkpoint
 
 
@@ -85,6 +92,19 @@ def test_predict_array():
     assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
 
 
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+def test_predict(batch_type):
+    predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
+
+    raw_batch = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+    raw_predictions = predictor.predict(data_batch)
+    predictions = convert_batch_type_to_pandas(raw_predictions)
+
+    assert len(predictions) == 2
+    assert predictions.to_numpy().flatten().tolist() == [1, 3]
+
+
 def test_predict_dataframe_with_feature_columns():
     predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
 
@@ -108,7 +128,5 @@ def test_tensorflow_predictor_no_training():
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
