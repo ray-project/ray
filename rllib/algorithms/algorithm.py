@@ -901,7 +901,7 @@ class Algorithm(Trainable):
                 estimates = estimator.estimate(total_batch)
                 out = {}
                 for k, v in estimates.items():
-                    out[k + "_mean"] = np.mean(v)
+                    out[k] = np.mean(v)
                     out[k + "_std"] = np.std(v)
                 metrics["off_policy_estimator"][estimator.name] = out
 
