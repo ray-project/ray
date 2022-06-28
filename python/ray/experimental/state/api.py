@@ -560,6 +560,7 @@ def get_log(
     pid: Optional[int] = None,
     follow: bool = False,
     tail: int = 100,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
     _interval: Optional[float] = None,
 ) -> Generator[str, None, None]:
     if api_server_url is None:
@@ -569,6 +570,7 @@ def get_log(
         )
 
     media_type = "stream" if follow else "file"
+
     options = GetLogOptions(
         node_id=node_id,
         node_ip=node_ip,
@@ -579,7 +581,7 @@ def get_log(
         lines=tail,
         interval=_interval,
         media_type=media_type,
-        timeout=DEFAULT_RPC_TIMEOUT,
+        timeout=timeout,
     )
     options_dict = {}
     for field in fields(options):
@@ -612,6 +614,7 @@ def list_logs(
     node_id: str = None,
     node_ip: str = None,
     glob_filter: str = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
 ) -> Dict[str, List[str]]:
     if api_server_url is None:
         assert ray.is_initialized()
@@ -629,6 +632,7 @@ def list_logs(
         options_dict["node_id"] = node_id
     if glob_filter:
         options_dict["glob"] = glob_filter
+    options_dict["timeout"] = timeout
 
     r = requests.get(
         f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}"

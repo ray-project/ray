@@ -363,11 +363,50 @@ async def test_logs_manager_stream_log(logs_manager):
         keep_alive=True,
         lines=10,
         interval=0.5,
-        timeout=30,
+        timeout=None,
     )
 
     # Currently cannot test actor_id with AsyncMock.
     # It will be tested by the integration test.
+
+
+@pytest.mark.skipif(
+    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
+    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
+    " or higher",
+)
+@pytest.mark.asyncio
+async def test_logs_manager_keepalive_no_timeout(logs_manager):
+    """Test when --follow is specified, there's no timeout.
+
+    Related: https://github.com/ray-project/ray/issues/25721
+    """
+    NUM_LOG_CHUNKS = 10
+    logs_client = logs_manager.data_source_client
+
+    logs_client.get_all_registered_agent_ids = MagicMock()
+    logs_client.get_all_registered_agent_ids.return_value = ["1", "2"]
+    logs_client.ip_to_node_id = MagicMock()
+    logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
+
+    # Test file_name, media_type="file", node_id
+    options = GetLogOptions(
+        timeout=30, media_type="stream", lines=10, node_id="1", filename="raylet.out"
+    )
+
+    async for chunk in logs_manager.stream_logs(options):
+        pass
+
+    # Make sure timeout == None when media_type == stream. This is to avoid
+    # closing the connection due to DEADLINE_EXCEEDED when --follow is specified.
+    logs_client.stream_log.assert_awaited_with(
+        node_id="1",
+        log_file_name="raylet.out",
+        keep_alive=True,
+        lines=10,
+        interval=None,
+        timeout=None,
+    )
 
 
 # Integration tests
