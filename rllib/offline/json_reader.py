@@ -150,16 +150,14 @@ class JsonReader(InputReader):
         self.default_policy = self.policy_map = None
         self.batch_size = 1
         if self.ioctx:
-            self.batch_size = ioctx.config.get("train_batch_size", 1)
-            num_workers = ioctx.config.get("num_workers", 0)
+            self.batch_size = self.ioctx.config.get("train_batch_size", 1)
+            num_workers = self.ioctx.config.get("num_workers", 0)
             if num_workers:
                 self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)
 
         if self.ioctx.worker is not None:
             self.policy_map = self.ioctx.worker.policy_map
             self.default_policy = self.policy_map.get(DEFAULT_POLICY_ID)
-
-
 
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
