@@ -159,6 +159,12 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Whether to feed r_{t-n:t-1} to GTrXL.
     "attention_use_n_prev_rewards": 0,
 
+    # == Linear-complexity transformer/attention networks (experimental)
+    "use_linear_attention": False,
+    "linear_attn_hidden_size": 128,
+
+
+
     # == Atari ==
     # Set to True to enable 4x stacking behavior.
     "framestack": True,
@@ -305,14 +311,10 @@ class ModelCatalog:
             else:
                 dist_cls = Categorical
         # Tuple/Dict Spaces -> MultiAction.
-        elif (
-            dist_type
-            in (
-                MultiActionDistribution,
-                TorchMultiActionDistribution,
-            )
-            or isinstance(action_space, (Tuple, Dict))
-        ):
+        elif dist_type in (
+            MultiActionDistribution,
+            TorchMultiActionDistribution,
+        ) or isinstance(action_space, (Tuple, Dict)):
             return ModelCatalog._get_multi_action_distribution(
                 (
                     MultiActionDistribution
@@ -599,18 +601,26 @@ class ModelCatalog:
                         )
             elif framework == "torch":
                 # Try wrapping custom model with LSTM/attention, if required.
-                if model_config.get("use_lstm") or model_config.get("use_attention"):
+                if (
+                    model_config.get("use_lstm")
+                    or model_config.get("use_attention")
+                    or model_config.get("use_linear_attention")
+                ):
                     from ray.rllib.models.torch.attention_net import AttentionWrapper
+                    from ray.rllib.models.torch.linear_attention_net import (
+                        LinearAttentionWrapper,
+                    )
                     from ray.rllib.models.torch.recurrent_net import LSTMWrapper
 
                     wrapped_cls = model_cls
                     forward = wrapped_cls.forward
-                    model_cls = ModelCatalog._wrap_if_needed(
-                        wrapped_cls,
-                        LSTMWrapper
-                        if model_config.get("use_lstm")
-                        else AttentionWrapper,
-                    )
+                    if model_config.get("use_lstm"):
+                        wrapper_cls = LSTMWrapper
+                    elif model_config.get("use_attention"):
+                        wrapper_cls = AttentionWrapper
+                    else:
+                        wrapper_cls = LinearAttentionWrapper
+                    model_cls = ModelCatalog._wrap_if_needed(wrapped_cls, wrapper_cls)
                     model_cls._wrapped_forward = forward
 
                 # PyTorch automatically tracks nn.Modules inside the parent
@@ -725,19 +735,36 @@ class ModelCatalog:
             if not v2_class:
                 raise ValueError("ModelV2 class could not be determined!")
 
-            if model_config.get("use_lstm") or model_config.get("use_attention"):
+            if (
+                model_config.get("use_lstm")
+                or model_config.get("use_attention")
+                or model_config.get("use_linear_attention")
+            ):
 
                 from ray.rllib.models.torch.attention_net import AttentionWrapper
                 from ray.rllib.models.torch.recurrent_net import LSTMWrapper
+                from ray.rllib.models.torch.linear_attention_net import (
+                    LinearAttentionWrapper,
+                )
 
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
+                if model_config.get("use_lstm"):
+                    wrapper_cls = LSTMWrapper
+                elif model_config.get("use_attention"):
+                    wrapper_cls = AttentionWrapper
+                else:
+                    wrapper_cls = LinearAttentionWrapper
+
+                v2_class = ModelCatalog._wrap_if_needed(wrapped_cls, wrapper_cls)
+                """
                 if model_config.get("use_lstm"):
                     v2_class = ModelCatalog._wrap_if_needed(wrapped_cls, LSTMWrapper)
                 else:
                     v2_class = ModelCatalog._wrap_if_needed(
                         wrapped_cls, AttentionWrapper
                     )
+                """
 
                 v2_class._wrapped_forward = forward
 
