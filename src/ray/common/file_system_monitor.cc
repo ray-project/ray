@@ -103,7 +103,7 @@ bool FileSystemMonitor::OverCapacityImpl(
   }
 
   RAY_LOG_EVERY_MS(ERROR, 10 * 1000)
-      << path << " is over " << capacity_threshold_
+      << path << " is over " << capacity_threshold_ * 100
       << "\% full, available space: " << space_info->available
       << ". Object creation will fail if spilling is required.";
   return true;
