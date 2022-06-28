@@ -94,7 +94,10 @@ class TorchPolicyV2(Policy):
 
         # Get devices to build the graph on.
         worker_idx = self.config.get("worker_index", 0)
-        if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
+        if (
+            not config["_fake_gpus"]
+            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+        ):
             num_gpus = 0
         elif worker_idx == 0:
             num_gpus = config["num_gpus"]
@@ -137,7 +140,7 @@ class TorchPolicyV2(Policy):
             )
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            if ray.worker._mode() == ray.worker.WORKER_MODE:
+            if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
             if len(gpu_ids) < num_gpus:
@@ -691,7 +694,7 @@ class TorchPolicyV2(Policy):
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
-        return len(self._loaded_batches[buffer_index])
+        return sum(len(b) for b in self._loaded_batches[buffer_index])
 
     @override(Policy)
     @DeveloperAPI

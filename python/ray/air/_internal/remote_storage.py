@@ -97,7 +97,7 @@ def get_fs_and_path(
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
         _cached_fs[cache_key] = fs
         return fs, path
-    except pyarrow.lib.ArrowInvalid:
+    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
         if not fsspec:
             # Only return if fsspec is not installed

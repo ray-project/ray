@@ -105,7 +105,7 @@ prediction_dataset = ray.data.from_items(items)
 
 predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
 
-pandas_predictions = predictions.to_pandas(float("inf"))
+print("PREDICTIONS")
+predictions.show()
 
-print(f"PREDICTIONS\n{pandas_predictions}")
 # __air_tf_batchpred_end__

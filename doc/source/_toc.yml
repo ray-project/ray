@@ -164,6 +164,7 @@ parts:
               - file: serve/deploying-serve
               - file: serve/monitoring
               - file: serve/performance
+              - file: serve/autoscaling
               - file: serve/deployment-graph
                 sections:
                   - file: serve/deployment-graph/deployment-graph-e2e-tutorial
@@ -172,6 +173,7 @@ parts:
                   - file: serve/deployment-graph/control_flow_based_on_user_inputs
                   - file: serve/deployment-graph/visualize_dag_during_development
                   - file: serve/deployment-graph/http_endpoint_for_dag_graph
+              - file: serve/production
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq

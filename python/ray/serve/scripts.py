@@ -22,6 +22,7 @@ from ray.serve.constants import (
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
 )
+from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
 
@@ -42,7 +43,7 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
 )
 
 
-@click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
+@click.group(help="CLI for managing Serve instances on a Ray cluster.")
 def cli():
     pass
 
@@ -116,7 +117,6 @@ def start(
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
-    hidden=True,
 )
 @click.argument("config_file_name")
 @click.option(
@@ -276,10 +276,7 @@ def run(
         sys.exit()
 
 
-@cli.command(
-    help="Get the current config of the running Serve app.",
-    hidden=True,
-)
+@cli.command(help="Get the current config of the running Serve app.")
 @click.option(
     "--address",
     "-a",
@@ -323,7 +320,6 @@ def status(address: str):
 
 @cli.command(
     help="Deletes the Serve app.",
-    hidden=True,
 )
 @click.option(
     "--address",
@@ -351,13 +347,12 @@ def shutdown(address: str, yes: bool):
 
 
 @cli.command(
-    short_help="Writes a Pipeline's config file.",
+    short_help="Writes a Serve Deployment Graph's config file.",
     help=(
         "Imports the ClassNode or FunctionNode at IMPORT_PATH "
         "and generates a structured config for it that can be used by "
         "`serve deploy` or the REST API. "
     ),
-    hidden=True,
 )
 @click.argument("import_path")
 @click.option(
@@ -388,20 +383,49 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         )
 
     app = build_app(node)
-    config = app.to_dict()
+
+    config = ServeApplicationSchema(
+        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
+    ).dict()
     config["import_path"] = import_path
 
-    deprecated_config_properties = {"init_args", "init_kwargs", "import_path"}
-    for deployment in config["deployments"]:
-        for property in deprecated_config_properties:
-            if property in deployment:
-                del deployment[property]
+    config_str = (
+        "# This file was generated using the `serve build` command "
+        f"on Ray v{ray.__version__}.\n\n"
+    )
+    config_str += yaml.dump(
+        config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
+    )
 
-    if output_path is not None:
-        if not output_path.endswith(".yaml"):
-            raise ValueError("FILE_PATH must end with '.yaml'.")
+    with open(output_path, "w") if output_path else sys.stdout as f:
+        f.write(config_str)
 
-        with open(output_path, "w") as f:
-            yaml.safe_dump(config, stream=f, default_flow_style=False, sort_keys=False)
-    else:
-        print(yaml.safe_dump(config, default_flow_style=False, sort_keys=False), end="")
+
+class ServeBuildDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for `serve build` command.
+
+    Reformat config to follow this spacing:
+    ---------------------------------------
+
+    import_path: example.path
+
+    runtime_env: {}
+
+    deployments:
+
+    - name: val1
+        ...
+
+    - name: val2
+        ...
+    """
+
+    def write_line_break(self, data=None):
+        # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
+        super().write_line_break(data)
+
+        # Indents must be less than 3 to ensure that only the top 2 levels of
+        # the config file have line breaks between them. The top 2 levels include
+        # import_path, runtime_env, deployments, and all entries of deployments.
+        if len(self.indents) < 3:
+            super().write_line_break()
