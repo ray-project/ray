@@ -3,6 +3,7 @@ import signal
 from collections import Counter
 import multiprocessing
 import os
+import pytest
 import shutil
 import tempfile
 import threading
@@ -570,8 +571,20 @@ class ResourceExhaustedTest(unittest.TestCase):
             tune.run(training_func)
 
 
+def test_stacktrace(capsys):
+    """Test proper stacktrace is outputted for RayTaskError."""
+
+    def train(config):
+        raise Exception("Inducing exception for testing purposes.")
+
+    with pytest.raises(TuneError):
+        tune.run(train, num_samples=1)
+
+    out, err = capsys.readouterr()
+    assert "Inducing exception for testing purposes." in err
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
