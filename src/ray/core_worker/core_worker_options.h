@@ -70,8 +70,9 @@ struct CoreWorkerOptions {
         check_signals(nullptr),
         gc_collect(nullptr),
         spill_objects(nullptr),
-        dump_objects(nullptr),
         restore_spilled_objects(nullptr),
+        dump_checkpoint_objects(nullptr),
+        load_checkpoint_objects(nullptr),
         delete_spilled_objects(nullptr),
         unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
@@ -134,8 +135,6 @@ struct CoreWorkerOptions {
   std::function<std::vector<std::string>(const std::vector<rpc::ObjectReference> &)>
       spill_objects;
 
-  std::function<std::vector<std::string>(const std::vector<rpc::ObjectReference> &)>
-      dump_objects;
   /// Application-language callback to restore objects from external storage.
   std::function<int64_t(const std::vector<rpc::ObjectReference> &,
                         const std::vector<std::string> &)>

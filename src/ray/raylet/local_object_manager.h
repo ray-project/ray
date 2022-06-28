@@ -99,9 +99,11 @@ class LocalObjectManager {
   void SpillObjects(const std::vector<ObjectID> &objects_ids,
                     std::function<void(const ray::Status &)> callback);
 
-  void DumpCheckpoints(const std::vector<ObjectID> &objects_ids,
-                       std::vector<std::string> &checkpoint_urls,
-                       std::function<void(const ray::Status &)> callback);
+  void DumpCheckpoints(
+      const std::vector<ObjectID> &objects_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      std::function<void(const ray::Status &)> callback,
+      std::function<void(const std::vector<std::string> &)> get_result_callback);
 
   /// Restore a spilled object from external storage back into local memory.
   /// Note: This is no-op if the same restoration request is in flight or the requested
@@ -183,9 +185,11 @@ class LocalObjectManager {
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
 
-  void DumpCheckpointsInternal(const std::vector<ObjectID> &objects_ids,
-                               std::vector<std::string> &checkpoint_urls,
-                               std::function<void(const ray::Status &)> callback);
+  void DumpCheckpointsInternal(
+      const std::vector<ObjectID> &objects_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      std::function<void(const ray::Status &)> callback,
+      std::function<void(const std::vector<std::string> &)> get_result_callback);
 
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);

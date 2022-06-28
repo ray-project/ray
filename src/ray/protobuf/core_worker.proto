@@ -371,6 +371,13 @@ message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
 
+message SendCheckpointURLsRequest {
+  repeated bytes object_ids = 1;
+  repeated string checkpoint_urls = 2;
+}
+
+message SendCheckpointURLsReply {}
+
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
@@ -426,4 +433,5 @@ service CoreWorkerService {
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
+  rpc SendCheckpointURLs(SendCheckpointURLsRequest) returns (SendCheckpointURLsReply);
 }

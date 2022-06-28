@@ -1325,7 +1325,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
-  RAY_LOG(DEBUG) << "hejialing test HandleWorkerAvailable: worker id: " << worker->WorkerId();
+  RAY_LOG(DEBUG) << "hejialing test HandleWorkerAvailable: worker id: "
+                 << worker->WorkerId();
   if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
     // Return the worker to the idle pool.
     worker_pool_.PushSpillWorker(worker);
@@ -2385,28 +2386,38 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "received DumpCheckpointsRequest";
   std::vector<ObjectID> objects_to_dump;
-  for (const auto &object_id_binary : request.object_ids()) {
-    auto object_id = ObjectID::FromBinary(object_id_binary);
+  std::vector<rpc::Address> owner_addresses;
+  for (size_t i = 0; i < request.object_ids_size(); i++) {
+    auto object_id = ObjectID::FromBinary(request.object_ids()[i]);
     objects_to_dump.push_back(std::move(object_id));
-    // reply->add_checkpoint_urls(object_id.Hex() +
-    // std::string("_by_hejialing_test.txt"));
+    owner_addresses.push_back(std::move(request.owner_addresses()[i]));
   }
-
-  std::vector<std::string> checkpoint_urls;
+  rpc::Address worker_address = request.worker_address();
   local_object_manager_.DumpCheckpoints(
-      objects_to_dump, checkpoint_urls, [](ray::Status status) {
+      objects_to_dump,
+      owner_addresses,
+      [](ray::Status status) {
         // TO_BE_SOLVED: handle dump failed.
         RAY_CHECK(status.ok());
+      },
+      /* Send result to caller CoreWorker*/
+      [this, worker_address = std::move(worker_address), objects_to_dump](
+          const std::vector<std::string> &checkpoint_urls) {
+        RAY_CHECK(objects_to_dump.size() == checkpoint_urls.size())
+          << "objects_to_dump size: " << objects_to_dump.size()
+          << ", checkpoint_urls size: " << checkpoint_urls.size();
+        auto conn = worker_rpc_pool_.GetOrConnect(worker_address);
+        rpc::SendCheckpointURLsRequest request;
+        for (size_t i = 0; i < checkpoint_urls.size(); i++) {
+          request.add_object_ids(objects_to_dump[i].Binary());
+          request.add_checkpoint_urls(checkpoint_urls[i]);
+        }
+        conn->SendCheckpointURLs(
+            request, [](const Status &status, const rpc::SendCheckpointURLsReply &reply) {
+              // TO_BE_SOLVED: handle dump failed.
+              RAY_CHECK(status.ok());
+            });
       });
-  RAY_CHECK(checkpoint_urls.size() == objects_to_dump.size())
-    << "checkpoint url number: " << checkpoint_urls.size()
-    << ", request object number: " << objects_to_dump.size();
-  RAY_LOG(INFO) << "hejialing test---- "
-                << "checkpoint url number: " << checkpoint_urls.size()
-                << ", request object number: " << objects_to_dump.size();
-  for (size_t i = 0; i < checkpoint_urls.size(); i++) {
-    reply->add_checkpoint_urls(std::move(checkpoint_urls[i]));
-  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

@@ -65,7 +65,7 @@ def test_owner_failed(ray_start_cluster):
 
 def test_checkpoint(ray_start_cluster):
     cluster_node_config = [
-        {"num_cpus": 1, "resources": {f"node{i+1}": 10}} for i in range(3)
+        {"num_cpus": 10, "resources": {f"node{i+1}": 10}} for i in range(3)
     ]
     cluster = ray_start_cluster
     for kwargs in cluster_node_config:

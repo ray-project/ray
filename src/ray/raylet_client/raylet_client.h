@@ -61,8 +61,9 @@ class PinObjectsInterface {
 class DumpCheckpointInterface {
  public:
   virtual void DumpCheckpoints(
-      std::vector<std::string *> checkpoint_urls,
       const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      const rpc::Address &worker_address,
       const ray::rpc::ClientCallback<ray::rpc::DumpCheckpointsReply> &callback) = 0;
 
   virtual ~DumpCheckpointInterface(){};
@@ -460,8 +461,9 @@ class RayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   void DumpCheckpoints(
-      std::vector<std::string *> checkpoint_urls,
       const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      const rpc::Address &worker_address,
       const ray::rpc::ClientCallback<ray::rpc::DumpCheckpointsReply> &callback) override;
 
   void ShutdownRaylet(

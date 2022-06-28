@@ -354,19 +354,22 @@ void LocalObjectManager::SpillObjectsInternal(
 
 void LocalObjectManager::DumpCheckpoints(
     const std::vector<ObjectID> &object_ids,
-    std::vector<std::string> &checkpoint_urls,
-    std::function<void(const ray::Status &)> callback) {
-  DumpCheckpointsInternal(object_ids, checkpoint_urls, callback);
+    const std::vector<rpc::Address> &owner_addresses,
+    std::function<void(const ray::Status &)> callback,
+    std::function<void(const std::vector<std::string> &)> get_result_callback) {
+  DumpCheckpointsInternal(object_ids, owner_addresses, callback, get_result_callback);
 }
 
 void LocalObjectManager::DumpCheckpointsInternal(
     const std::vector<ObjectID> &object_ids,
-    std::vector<std::string> &checkpoint_urls,
-    std::function<void(const ray::Status &)> callback) {
-  std::vector<ObjectID> objects_to_dump;
-  for (const auto &object_id : object_ids) {
-    RAY_LOG(DEBUG) << "Dump object: " << object_id;
-    objects_to_dump.push_back(object_id);
+    const std::vector<rpc::Address> &owner_addresses,
+    std::function<void(const ray::Status &)> callback,
+    std::function<void(const std::vector<std::string> &)> get_result_callback) {
+  RAY_CHECK(object_ids.size() == owner_addresses.size());
+  std::vector<std::pair<ObjectID, rpc::Address>> objects_to_dump;
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    RAY_LOG(DEBUG) << "Dump object: " << object_ids[i];
+    objects_to_dump.push_back(std::make_pair(object_ids[i], owner_addresses[i]));
   }
   if (objects_to_dump.empty()) {
     if (callback) {
@@ -374,53 +377,47 @@ void LocalObjectManager::DumpCheckpointsInternal(
     }
     return;
   }
-  std::promise<void> promise;
-  auto future = promise.get_future();
   io_worker_pool_.PopDumpCheckpointWorker(
-      [this,
-       objects_to_dump = std::move(objects_to_dump),
-       &checkpoint_urls,
-       callback,
-       &promise](std::shared_ptr<WorkerInterface> io_worker) {
+      [this, objects_to_dump = std::move(objects_to_dump), callback, get_result_callback](
+          std::shared_ptr<WorkerInterface> io_worker) {
         RAY_LOG(DEBUG) << "Start running PopDumpCheckpointWorker callback";
         rpc::DumpObjectsCheckpointRequest request;
-        for (const auto &object_id : objects_to_dump) {
-          auto freed_it = local_objects_.find(object_id);
-          RAY_CHECK(freed_it != local_objects_.end());
+        for (const auto &object_entry : objects_to_dump) {
           auto ref = request.add_object_refs_to_dump();
-          ref->set_object_id(object_id.Binary());
-          ref->mutable_owner_address()->CopyFrom(freed_it->second.first);
-          RAY_LOG(DEBUG) << "Sending dump request for object " << object_id;
+          ref->set_object_id(object_entry.first.Binary());
+          ref->mutable_owner_address()->CopyFrom(object_entry.second);
+          RAY_LOG(DEBUG) << "Sending dump request for object " << object_entry.first;
         }
 
         io_worker->rpc_client()->DumpObjectsCheckpoint(
             request,
             [this,
              objects_to_dump = std::move(objects_to_dump),
-             &checkpoint_urls,
              callback,
-             io_worker,
-             &promise](const ray::Status &status,
-                       const rpc::DumpObjectsCheckpointReply &reply) {
+             get_result_callback,
+             io_worker](const ray::Status &status,
+                        const rpc::DumpObjectsCheckpointReply &reply) {
               {
                 absl::MutexLock lock(&mutex_);
                 num_active_workers_ -= 1;
               }
               io_worker_pool_.PushDumpCheckpointWorker(io_worker);
-              size_t num_objects_dumped =
-                  status.ok() ? reply.dumped_objects_url_size() : 0;
+              size_t num_objects_dumped = reply.dumped_objects_url_size();
 
-              RAY_CHECK(num_objects_dumped == objects_to_dump.size());
+              RAY_CHECK(status.ok());
+              RAY_CHECK(num_objects_dumped == objects_to_dump.size())
+                << "num_objects_dumped: " << num_objects_dumped
+                << ", objects_to_dump size: " << objects_to_dump.size();
+              std::vector<std::string> checkpoint_urls;
               for (size_t i = 0; i < num_objects_dumped; i++) {
                 checkpoint_urls.push_back(std::move(reply.dumped_objects_url()[i]));
               }
+              get_result_callback(checkpoint_urls);
               if (callback) {
                 callback(status);
               }
-              promise.set_value();
             });
       });
-  future.wait();
 }
 
 void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids,

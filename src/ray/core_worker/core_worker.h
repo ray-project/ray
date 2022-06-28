@@ -793,6 +793,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::AssignObjectOwnerReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleSendCheckpointURLs(const rpc::SendCheckpointURLsRequest &request,
+                                rpc::SendCheckpointURLsReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -1293,6 +1296,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the checking and increasing of backpressure pending calls counter
   /// is not atomic, which may lead to under counting or over counting.
   absl::Mutex actor_task_mutex_;
+
+  absl::flat_hash_map<ObjectID, std::shared_ptr<std::promise<std::string>>>
+      object_checkpoint_url_map_ GUARDED_BY(object_checkpoint_url_mutex_);
+  absl::Mutex object_checkpoint_url_mutex_;
 };
 
 }  // namespace core

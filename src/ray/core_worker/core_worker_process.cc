@@ -188,7 +188,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
                                              &raylet_client,
                                              &promise,
                                              &io_service](int64_t num_attempts) {
-      RAY_LOG(DEBUG) << "hejialing test in get once: " << getpid() << ", num_attempts: " << num_attempts;
+      RAY_LOG(DEBUG) << "hejialing test in get once: " << getpid()
+                     << ", num_attempts: " << num_attempts;
       auto worker_pid = getpid();
       raylet_client.GetSystemConfig(
           [this, num_attempts, &get_once, &promise, &io_service, worker_pid](

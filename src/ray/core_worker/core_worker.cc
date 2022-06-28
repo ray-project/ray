@@ -1078,11 +1078,35 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 const ActorID &global_owner_id,
                                 std::string *checkpoint_url) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
-  if (pin_object) {
+
+  rpc::Address real_owner_address = owner_address != nullptr ? *owner_address : rpc_address_;
+  if (checkpoint_url) {
+    RAY_LOG(DEBUG) << "Begin to dump checkpoint, object id: " << object_id;
+    auto result_promise = std::make_shared<std::promise<std::string>>();
+    {
+      absl::MutexLock lock(&object_checkpoint_url_mutex_);
+      RAY_CHECK(object_checkpoint_url_map_.find(object_id) ==
+                object_checkpoint_url_map_.end());
+      object_checkpoint_url_map_.emplace(object_id, result_promise);
+    }
+    local_raylet_client_->DumpCheckpoints(
+        {object_id},
+        {real_owner_address},
+        rpc_address_,
+        [](const Status &status, const rpc::DumpCheckpointsReply &reply) {
+          RAY_CHECK(status.ok()) << "failed to dump checkpoint!";
+        });
+    RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
+    // RAY_LOG(DEBUG) << "hejialing test in seal existing:" << result_promise->get_future().get();
+    *checkpoint_url = result_promise->get_future().get();
+
+  }
+
+  if (pin_object && checkpoint_url == nullptr) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
     local_raylet_client_->PinObjectIDs(
-        owner_address != nullptr ? *owner_address : rpc_address_,
+        real_owner_address,
         {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
@@ -1097,17 +1121,6 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     reference_counter_->FreePlasmaObjects({object_id});
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-
-  if (checkpoint_url) {
-    RAY_LOG(DEBUG) << "Begin to dump checkpoint, object id: " << object_id;
-    local_raylet_client_->DumpCheckpoints(
-        {checkpoint_url},
-        {object_id},
-        [](const Status &status, const rpc::DumpCheckpointsReply &reply) {
-          RAY_CHECK(status.ok()) << "failed to dump checkpoint!";
-        });
-    RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
-  }
 
   return Status::OK();
 }
@@ -3243,10 +3256,10 @@ void CoreWorker::HandleDumpObjectsCheckpoint(
     const rpc::DumpObjectsCheckpointRequest &request,
     rpc::DumpObjectsCheckpointReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (options_.dump_objects != nullptr) {
+  if (options_.dump_checkpoint_objects != nullptr) {
     auto object_refs =
         VectorFromProtobuf<rpc::ObjectReference>(request.object_refs_to_dump());
-    std::vector<std::string> object_urls = options_.dump_objects(object_refs);
+    std::vector<std::string> object_urls = options_.dump_checkpoint_objects(object_refs);
     for (size_t i = 0; i < object_urls.size(); i++) {
       reply->add_dumped_objects_url(std::move(object_urls[i]));
     }
@@ -3353,6 +3366,19 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleSendCheckpointURLs(const rpc::SendCheckpointURLsRequest &request,
+                                          rpc::SendCheckpointURLsReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  absl::MutexLock lock(&object_checkpoint_url_mutex_);
+  RAY_CHECK(request.object_ids_size() == request.checkpoint_urls_size());
+  for (size_t i = 0; i < request.object_ids_size(); i++) {
+    auto object_id = ObjectID::FromBinary(request.object_ids()[i]);
+    auto it = object_checkpoint_url_map_.find(object_id);
+    RAY_CHECK(it != object_checkpoint_url_map_.end());
+    it->second->set_value(std::move(request.checkpoint_urls()[i]));
+  }
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

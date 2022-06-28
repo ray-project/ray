@@ -482,30 +482,22 @@ void raylet::RayletClient::PinObjectIDs(
 }
 
 void raylet::RayletClient::DumpCheckpoints(
-    std::vector<std::string *> checkpoint_urls,
     const std::vector<ObjectID> &object_ids,
+    const std::vector<rpc::Address> &owner_addresses,
+    const rpc::Address &worker_address,
     const ray::rpc::ClientCallback<ray::rpc::DumpCheckpointsReply> &callback) {
-  RAY_CHECK(checkpoint_urls.size() == object_ids.size());
+  RAY_CHECK(object_ids.size() == owner_addresses.size());
   rpc::DumpCheckpointsRequest request;
-  for (const ObjectID &object_id : object_ids) {
-    request.add_object_ids(object_id.Binary());
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    request.add_object_ids(object_ids[i].Binary());
+    request.add_owner_addresses()->CopyFrom(owner_addresses[i]);
   }
-  std::promise<void> promise;
-  auto rpc_callback = [callback = std::move(callback), &promise, &checkpoint_urls](
+  request.mutable_worker_address()->CopyFrom(worker_address);
+  auto rpc_callback = [callback = std::move(callback)](
                           Status status, const rpc::DumpCheckpointsReply &reply) {
     callback(status, reply);
-    RAY_CHECK(checkpoint_urls.size() == reply.checkpoint_urls().size())
-              << "checkpoint urls number: " << checkpoint_urls.size()
-              << ", reply urls number: " << reply.checkpoint_urls().size();
-    size_t index = 0;
-    for (const auto &checkpoint_url : reply.checkpoint_urls()) {
-      *checkpoint_urls[index] = checkpoint_url;
-      index++;
-    }
-    promise.set_value();
   };
   grpc_client_->DumpCheckpoints(request, rpc_callback);
-  promise.get_future().wait();
 }
 
 void raylet::RayletClient::ShutdownRaylet(
