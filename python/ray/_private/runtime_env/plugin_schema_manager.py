@@ -20,11 +20,13 @@ class RuntimeEnvPluginSchemaManager:
         for schema_path in schema_paths:
             schema = json.load(open(schema_path))
             if "title" not in schema:
-                logger.error("No valid title in %s", schema_path)
+                logger.error(
+                    "No valid title in runtime env schema %s, skip it.", schema_path
+                )
                 continue
             if schema["title"] in cls.schemas:
                 logger.error(
-                    "The schema %s 'title' conflicts with %s",
+                    "The 'title' of runtime env schema %s conflicts with %s, skip it.",
                     schema_path,
                     cls.schemas[schema["title"]],
                 )
@@ -38,11 +40,15 @@ class RuntimeEnvPluginSchemaManager:
             for f in files:
                 if f.endswith("schema.json"):
                     schema_json_files.append(os.path.join(root, f))
-            logger.info(f"Loading the default runtime env schemas: {schema_json_files}")
+            logger.info(
+                f"Loading the default runtime env schemas: {schema_json_files}."
+            )
             cls._load_schemas(schema_json_files)
 
     @classmethod
     def _load_schemas_from_env_var(cls):
+        # The format of env var:
+        # "/path/to/env_1_schema.json,/path/to/env_2_schema.json,/path/to/schemas_dir/"
         schema_paths = os.environ.get(RAY_RUNTIME_ENV_PLUGINS_SCHEMAS_ENV_VAR)
         if schema_paths:
             schema_json_files = list()
@@ -55,7 +61,7 @@ class RuntimeEnvPluginSchemaManager:
                             if f.endswith("schema.json"):
                                 schema_json_files.append(os.path.join(root, f))
             logger.info(
-                f"Loading the runtime env schemas from env var: {schema_json_files}"
+                f"Loading the runtime env schemas from env var: {schema_json_files}."
             )
             cls._load_schemas(schema_json_files)
 
@@ -66,6 +72,7 @@ class RuntimeEnvPluginSchemaManager:
             cls._load_default_schemas()
             cls._load_schemas_from_env_var()
             cls.loaded = True
+        # if no schema matches, skip the validation.
         if name in cls.schemas:
             jsonschema.validate(instance=instance, schema=cls.schemas[name])
 
