@@ -23,6 +23,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final int bundleIndex;
   public final List<ConcurrencyGroup> concurrencyGroups;
   public final String serializedRuntimeEnv;
+  public final String namespace;
   public final int maxPendingCalls;
 
   private ActorCreationOptions(
@@ -36,6 +37,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
       int bundleIndex,
       List<ConcurrencyGroup> concurrencyGroups,
       String serializedRuntimeEnv,
+      String namespace,
       int maxPendingCalls) {
     super(resources);
     this.name = name;
@@ -47,6 +49,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.bundleIndex = bundleIndex;
     this.concurrencyGroups = concurrencyGroups;
     this.serializedRuntimeEnv = serializedRuntimeEnv;
+    this.namespace = namespace;
     this.maxPendingCalls = maxPendingCalls;
   }
 
@@ -62,6 +65,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int bundleIndex;
     private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
     private RuntimeEnv runtimeEnv = null;
+    private String namespace = null;
     private int maxPendingCalls = -1;
 
     /**
@@ -197,6 +201,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
           bundleIndex,
           concurrencyGroups,
           runtimeEnv != null ? runtimeEnv.toJsonBytes() : "",
+          namespace,
           maxPendingCalls);
     }
 
@@ -208,6 +213,11 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public Builder setRuntimeEnv(RuntimeEnv runtimeEnv) {
       this.runtimeEnv = runtimeEnv;
+      return this;
+    }
+
+    public Builder setNamespace(String namespace) {
+      this.namespace = namespace;
       return this;
     }
   }
