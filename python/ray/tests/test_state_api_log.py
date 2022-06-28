@@ -468,7 +468,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         )["gcs_server"][0]
         stream_response = requests.get(
             webui_url
-            + f"/api/v0/logs/file?node_id={node_id}&filename={gcs_server_log_filename}&lines=5",
+            + f"/api/v0/logs/file?node_id={node_id}&filename={gcs_server_log_filename}&lines=5",  # noqa: E501
             stream=True,
         )
         if stream_response.status_code != 200:
