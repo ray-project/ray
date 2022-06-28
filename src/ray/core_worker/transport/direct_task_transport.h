@@ -97,12 +97,20 @@ class CoreWorkerDirectTaskSubmitter {
   ///
   /// \param[in] task_spec The task to kill.
   /// \param[in] force_kill Whether to kill the worker executing the task.
-  Status CancelTask(TaskSpecification task_spec, bool force_kill, bool recursive);
+  /// \param[in] recursive Whether to cancel tasks submitted by the task to cancel.
+  /// \param[in] no_retry Whether to disallow retrying tasks if `max_retries` is
+  /// specified.
+  /// \param[out] Status
+  Status CancelTask(TaskSpecification task_spec,
+                    bool force_kill,
+                    bool recursive,
+                    bool no_retry);
 
   Status CancelRemoteTask(const ObjectID &object_id,
                           const rpc::Address &worker_addr,
                           bool force_kill,
-                          bool recursive);
+                          bool recursive,
+                          bool no_retry);
   /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
   /// CheckNoSchedulingKeyEntries function after acquiring the lock.
   bool CheckNoSchedulingKeyEntriesPublic() {

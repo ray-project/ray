@@ -596,9 +596,11 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool force_kill,
-                                                 bool recursive) {
+                                                 bool recursive,
+                                                 bool no_retry) {
   RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
-                << " force_kill: " << force_kill << " recursive: " << recursive;
+                << " force_kill: " << force_kill << " recursive: " << recursive
+                << "no_retry: " << no_retry;
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(),
       task_spec.GetDependencyIds(),
@@ -608,7 +610,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   {
     absl::MutexLock lock(&mu_);
     if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
+        !task_finisher_->MarkTaskCanceled(task_spec.TaskId(), no_retry)) {
       return Status::OK();
     }
 
@@ -662,9 +664,10 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
+  request.set_no_retry(no_retry);
   client->CancelTask(
       request,
-      [this, task_spec, scheduling_key, force_kill, recursive](
+      [this, task_spec, scheduling_key, force_kill, recursive, no_retry](
           const Status &status, const rpc::CancelTaskReply &reply) {
         absl::MutexLock lock(&mu_);
         RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
@@ -692,7 +695,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                               this,
                               task_spec,
                               force_kill,
-                              recursive));
+                              recursive,
+                              no_retry));
             } else {
               RAY_LOG(ERROR)
                   << "Failed to cancel a task which is running. Stop retrying.";
@@ -709,7 +713,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
 Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
                                                        const rpc::Address &worker_addr,
                                                        bool force_kill,
-                                                       bool recursive) {
+                                                       bool recursive,
+                                                       bool no_retry) {
   auto maybe_client = client_cache_->GetByID(rpc::WorkerAddress(worker_addr).worker_id);
 
   if (!maybe_client.has_value()) {
@@ -719,6 +724,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
+  request.set_no_retry(no_retry);
   request.set_remote_object_id(object_id.Binary());
   client->RemoteCancelTask(request, nullptr);
   return Status::OK();

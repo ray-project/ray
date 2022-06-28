@@ -244,6 +244,8 @@ message CancelTaskRequest {
   bool force_kill = 2;
   // Whether to recursively cancel tasks.
   bool recursive = 3;
+  // Whether to disallow retrying tasks if `max_retries` is specified.
+  bool no_retry = 4;
 }
 
 message CancelTaskReply {
@@ -260,6 +262,8 @@ message RemoteCancelTaskRequest {
   bool force_kill = 2;
   // Whether to recursively cancel tasks.
   bool recursive = 3;
+  // Whether to disallow retrying tasks if `max_retries` is specified.
+  bool no_retry = 4;
 }
 
 message RemoteCancelTaskReply {

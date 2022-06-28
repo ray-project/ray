@@ -133,7 +133,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
       rpc::ErrorType error_type,
       const rpc::RayErrorInfo *ray_error_info = nullptr) override {}
 
-  bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
+  bool MarkTaskCanceled(const TaskID &task_id, bool no_retry) override { return true; }
 
   absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();

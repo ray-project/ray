@@ -1984,7 +1984,8 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
 
 Status CoreWorker::CancelTask(const ObjectID &object_id,
                               bool force_kill,
-                              bool recursive) {
+                              bool recursive,
+                              bool no_retry) {
   if (actor_manager_->CheckActorHandleExists(object_id.TaskId().ActorId())) {
     return Status::Invalid("Actor task cancellation is not supported.");
   }
@@ -1994,23 +1995,24 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
   }
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
     return direct_task_submitter_->CancelRemoteTask(
-        object_id, obj_addr, force_kill, recursive);
+        object_id, obj_addr, force_kill, recursive, no_retry);
   }
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
   if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
-    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
+    return direct_task_submitter_->CancelTask(
+        task_spec.value(), force_kill, recursive, no_retry);
   }
   return Status::OK();
 }
 
-Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
+Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill, bool no_retry) {
   bool recursive_success = true;
   for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
     auto child_spec = task_manager_->GetTaskSpec(child_id);
     if (child_spec.has_value()) {
-      auto result =
-          direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
+      auto result = direct_task_submitter_->CancelTask(
+          child_spec.value(), force_kill, /*recursive=*/true, no_retry);
       recursive_success = recursive_success && result.ok();
     } else {
       recursive_success = false;
@@ -3004,7 +3006,8 @@ void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &requ
                                         rpc::SendReplyCallback send_reply_callback) {
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                            request.force_kill(),
-                           request.recursive());
+                           request.recursive(),
+                           request.no_retry());
   send_reply_callback(status, nullptr, nullptr);
 }
 
@@ -3029,7 +3032,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
   }
   if (request.recursive()) {
-    auto recursive_cancel = CancelChildren(task_id, request.force_kill());
+    auto recursive_cancel = CancelChildren(task_id, request.force_kill(), request.no_retry());
     if (!recursive_cancel.ok()) {
       RAY_LOG(ERROR) << "Recursive cancel failed for a task " << task_id
                      << " due to reason: " << recursive_cancel.ToString();

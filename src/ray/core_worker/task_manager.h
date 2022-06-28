@@ -55,7 +55,7 @@ class TaskFinisherInterface {
 
   virtual void MarkDependenciesResolved(const TaskID &task_id) = 0;
 
-  virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
+  virtual bool MarkTaskCanceled(const TaskID &task_id, bool no_retry) = 0;
 
   virtual void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec,
@@ -211,8 +211,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Set number of retries to zero for a task that is being canceled.
   ///
   /// \param[in] task_id to cancel.
+  /// \param[in] no_retry Whether to disallow retrying tasks if `max_retries` is
+  /// specified.
   /// \return Whether the task was pending and was marked for cancellation.
-  bool MarkTaskCanceled(const TaskID &task_id) override;
+  bool MarkTaskCanceled(const TaskID &task_id, bool no_retry) override;
 
   /// Return the spec for a pending task.
   absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;

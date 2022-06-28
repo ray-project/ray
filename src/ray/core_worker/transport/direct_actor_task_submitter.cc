@@ -126,7 +126,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
         "CoreWorkerDirectActorTaskSubmitter::SubmitTask");
   } else {
     // Do not hold the lock while calling into task_finisher_.
-    task_finisher_.MarkTaskCanceled(task_id);
+    task_finisher_.MarkTaskCanceled(task_id, /*no_retry=*/true);
     rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
     {
@@ -276,7 +276,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
 
       for (auto &task_id : task_ids) {
-        task_finisher_.MarkTaskCanceled(task_id);
+        task_finisher_.MarkTaskCanceled(task_id, /*no_retry=*/true);
         // No need to increment the number of completed tasks since the actor is
         // dead.
         RAY_UNUSED(!task_finisher_.FailOrRetryPendingTask(

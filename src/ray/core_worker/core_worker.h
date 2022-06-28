@@ -543,8 +543,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_id of the task to kill (must be a Non-Actor task)
   /// \param[in] force_kill Whether to force kill a task by killing the worker.
   /// \param[in] recursive Whether to cancel tasks submitted by the task to cancel.
+  /// \param[in] no_retry Whether to disallow retrying tasks if `max_retries` is
+  /// specified.
   /// \param[out] Status
-  Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
+  Status CancelTask(const ObjectID &object_id,
+                    bool force_kill,
+                    bool recursive,
+                    bool no_retry);
 
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
@@ -910,7 +915,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] task_id of the parent task
   /// \param[in] force_kill Whether to force kill a task by killing the worker.
-  Status CancelChildren(const TaskID &task_id, bool force_kill);
+  /// \param[in] no_retry Whether to disallow retrying tasks if `max_retries` is
+  /// specified.
+  Status CancelChildren(const TaskID &task_id, bool force_kill, bool no_retry);
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.

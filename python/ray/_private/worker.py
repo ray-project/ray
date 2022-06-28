@@ -2430,7 +2430,13 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 @PublicAPI
 @client_mode_hook(auto_init=True)
-def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
+def cancel(
+    object_ref: "ray.ObjectRef",
+    *,
+    force: bool = False,
+    recursive: bool = True,
+    no_retry: bool = True,
+):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -2452,6 +2458,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
             the worker that is running the task.
         recursive: Whether to try to cancel tasks submitted by the
             task specified.
+        no_retry: Whether to disallow retrying tasks if `max_retries` is specified.
     Raises:
         TypeError: This is also raised for actor tasks.
     """
@@ -2463,7 +2470,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
             "ray.cancel() only supported for non-actor object refs. "
             f"Got: {type(object_ref)}."
         )
-    return worker.core_worker.cancel_task(object_ref, force, recursive)
+    return worker.core_worker.cancel_task(object_ref, force, recursive, no_retry)
 
 
 def _mode(worker=global_worker):

@@ -580,10 +580,10 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
 }
 
-bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+bool TaskManager::MarkTaskCanceled(const TaskID &task_id, bool no_retry) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
-  if (it != submissible_tasks_.end()) {
+  if (it != submissible_tasks_.end() && no_retry) {
     it->second.num_retries_left = 0;
   }
   return it != submissible_tasks_.end();
