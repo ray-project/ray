@@ -52,7 +52,7 @@ class AwsVmClusterManager(ClusterManager):
         #stream_subproc_output(process)
 
         # TODO need to propagate bad error codes
-        process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config.yaml', '-y'])
+        process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config_aws.yaml', '-y'])
 
         # TODO handle timeouts
         return_code = process.wait()

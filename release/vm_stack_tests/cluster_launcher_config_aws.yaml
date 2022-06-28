@@ -1,0 +1,43 @@
+cluster_name: cade-minimal-test
+
+max_workers: 1
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    #security_group:
+    #  GroupName: test_security_group_name
+    #  IpPermissions:
+    #    - FromPort: 443
+    #      ToPort: 443
+    #      IpProtocol: TCP
+    #      IpRanges:
+    #        - CidrIp: 0.0.0.0/0
+    #    - FromPort: 8265
+    #      ToPort: 8265
+    #      IpProtocol: TCP
+    #      IpRanges:
+    #        - CidrIp: 0.0.0.0/0
+
+available_node_types:
+    ray.head.default:
+        resources: {}
+        node_config:
+            InstanceType: m5.large
+            ImageId: ami-0b037dcb7a2b4a9a9
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs:
+                      VolumeSize: 200
+
+
+docker:
+  image: rayproject/ray:1.12.2-py37-cu112
+  container_name: ray_container
+
+  #setup_commands: []
+
+auth:
+    ssh_user: ubuntu
+    #ssh_private_key: /Users/cade/.ssh/ray-autoscaler_gcp_us-west1_anyscale-dev_ubuntu_0.pem
