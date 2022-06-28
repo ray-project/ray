@@ -53,7 +53,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -679,12 +679,12 @@ class Impala(Algorithm):
             )
 
         def record_steps_trained(item):
-            count, fetches, _ = item
+            env_steps, agent_steps, fetches = item
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
             # thread is executing outside the pipeline.
-            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
-            metrics.counters[STEPS_TRAINED_COUNTER] += count
+            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = env_steps
+            metrics.counters[STEPS_TRAINED_COUNTER] += env_steps
             return item
 
         # This sub-flow updates the steps trained counter based on learner
