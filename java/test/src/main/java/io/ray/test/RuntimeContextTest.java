@@ -1,19 +1,16 @@
 package io.ray.test;
 
-import com.google.common.base.Preconditions;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
+import io.ray.api.id.UniqueId;
+import io.ray.api.runtimecontext.NodeInfo;
+import io.ray.runtime.gcs.GcsClient;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
-
-import io.ray.api.id.UniqueId;
-import io.ray.api.runtimecontext.NodeInfo;
-import io.ray.runtime.config.RayConfig;
-import io.ray.runtime.gcs.GcsClient;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -59,7 +56,6 @@ public class RuntimeContextTest extends BaseTest {
 
       return "ok";
     }
-
   }
 
   @Test

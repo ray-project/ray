@@ -21,7 +21,7 @@ public class UniqueId extends BaseId implements Serializable {
     return new UniqueId(byteBuffer2Bytes(bb));
   }
 
-  /** Creates a UniqueId from bytes*/
+  /** Creates a UniqueId from bytes */
   public static UniqueId fromBytes(byte[] bytes) {
     return new UniqueId(bytes);
   }
