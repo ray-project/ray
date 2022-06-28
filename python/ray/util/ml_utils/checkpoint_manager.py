@@ -236,7 +236,9 @@ class CheckpointConfig:
     @property
     def _tune_legacy_checkpoint_score_attr(self) -> Optional[str]:
         """Same as ``checkpoint_score_attr`` in ``tune.run``.
-        Only used for Legacy API compatibility."""
+
+        Only used for Legacy API compatibility.
+        """
         if self.checkpoint_score_attribute is None:
             return self.checkpoint_score_attribute
         prefix = ""
