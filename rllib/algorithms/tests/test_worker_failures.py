@@ -78,7 +78,7 @@ class TestWorkerFailure(unittest.TestCase):
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             algo = algo_cls(config=config, env="fault_env")
             result = algo.train()
-            self.assertTrue(result["num_healthy_workers"] == 1)
+            self.assertTrue(result["num_healthy_workers"], 1)
             algo.stop()
 
     def _do_test_fault_fatal(self, alg, config):
