@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from ray import job_config
 import yaml
+import jsonschema
 
 from ray._private.runtime_env.validation import (
     parse_and_validate_excludes,
@@ -15,6 +16,8 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_py_modules,
 )
 from ray.runtime_env import RuntimeEnv
+
+from ray._private.runtime_env import plugin_schema_manager
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
 
@@ -296,6 +299,40 @@ class TestParseJobConfig:
         config = job_config.JobConfig.from_json(job_config_json)
         assert config.runtime_env == job_config_json.get("runtime_env")
         assert config.metadata == {}
+
+
+schemas_dir = os.path.join(os.path.dirname(plugin_schema_manager.__file__), "schemas")
+pip_schemas_file = os.path.join(
+    os.path.dirname(plugin_schema_manager.__file__), "schemas/pip_schema.json"
+)
+working_dir_schemas_file = os.path.join(
+    os.path.dirname(plugin_schema_manager.__file__), "schemas/working_dir_schema.json"
+)
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins_schemas",
+    [schemas_dir, f"{pip_schemas_file},{working_dir_schemas_file}"],
+    indirect=True,
+)
+class TestValidateByJsonSchema:
+    def test_validate_pip(self, set_runtime_env_plugins_schemas):
+        runtime_env = RuntimeEnv()
+        runtime_env.set("pip", {"packages": ["requests"], "pip_check": True})
+        with pytest.raises(jsonschema.exceptions.ValidationError, match="pip_check"):
+            runtime_env.set("pip", {"packages": ["requests"], "pip_check": "1"})
+        runtime_env["pip"] = {"packages": ["requests"], "pip_check": True}
+        with pytest.raises(jsonschema.exceptions.ValidationError, match="pip_check"):
+            runtime_env["pip"] = {"packages": ["requests"], "pip_check": "1"}
+
+    def test_validate_working_dir(self, set_runtime_env_plugins_schemas):
+        runtime_env = RuntimeEnv()
+        runtime_env.set("working_dir", "https://abc/file.zip")
+        with pytest.raises(jsonschema.exceptions.ValidationError, match="working_dir"):
+            runtime_env.set("working_dir", ["https://abc/file.zip"])
+        runtime_env["working_dir"] = "https://abc/file.zip"
+        with pytest.raises(jsonschema.exceptions.ValidationError, match="working_dir"):
+            runtime_env["working_dir"] = ["https://abc/file.zip"]
 
 
 if __name__ == "__main__":

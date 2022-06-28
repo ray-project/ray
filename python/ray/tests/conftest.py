@@ -933,3 +933,13 @@ def set_runtime_env_plugins(request):
         yield runtime_env_plugins
     finally:
         del os.environ["RAY_RUNTIME_ENV_PLUGINS"]
+
+
+@pytest.fixture
+def set_runtime_env_plugins_schemas(request):
+    runtime_env_plugins_schemas = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGINS_SCHEMAS"] = runtime_env_plugins_schemas
+        yield runtime_env_plugins_schemas
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGINS_SCHEMAS"]
