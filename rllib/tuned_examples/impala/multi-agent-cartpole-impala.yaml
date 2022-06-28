@@ -28,6 +28,8 @@ multi-agent-cartpole-impala:
             fcnet_activation: linear
             vf_share_layers: true
 
+        replay_ratio: 0.0
+
         multiagent:
             policies: ["p0", "p1", "p2", "p3"]
             # YAML-capable policy_mapping_fn definition via providing a callable class here.

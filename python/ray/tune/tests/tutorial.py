@@ -156,7 +156,7 @@ for d in dfs.values():
 
 # __run_searchalg_begin__
 from hyperopt import hp
-from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 
 space = {
     "lr": hp.loguniform("lr", 1e-10, 0.1),

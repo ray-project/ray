@@ -64,12 +64,12 @@ parser.add_argument(
 )
 
 
-# Define new Trainer with custom execution_plan/workflow.
-class MyTrainer(Algorithm):
+# Define new Algorithm with custom execution_plan/workflow.
+class MyAlgo(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfigDict:
-        # Run this Trainer with new `training_iteration` API and set some PPO-specific
+        # Run this Algorithm with new `training_step` API and set some PPO-specific
         # parameters.
         return with_common_config(
             {
@@ -218,7 +218,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, config=config, stop=stop)
+    results = tune.run(MyAlgo, config=config, stop=stop)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
