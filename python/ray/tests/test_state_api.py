@@ -1,5 +1,6 @@
 import json
 import sys
+import re
 from dataclasses import fields
 from typing import List, Tuple
 from unittest.mock import MagicMock
@@ -876,7 +877,8 @@ async def test_state_data_source_client(ray_start_cluster):
         result = await client.list_logs(node_id, timeout=30, glob_filter="*")
         assert isinstance(result, ListLogsReply)
 
-        stream = await client.stream_log(node_id, "raylet.out", False, 10, 1, 5)
+        raylet_log_filename = [f for f in result.log_files if re.search(r"raylet_\d+\.log", f)][0]
+        stream = await client.stream_log(node_id, raylet_log_filename, False, 10, 1, 5)
         async for logs in stream:
             log_lines = len(logs.data.decode().split("\n"))
             assert isinstance(logs, StreamLogReply)
