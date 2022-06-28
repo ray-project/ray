@@ -291,7 +291,7 @@ if setup_spec.type == SetupType.RAY:
         "requests",
         # Light weight requirement, can be replaced with "typing" once
         # we deprecate Python 3.7 (this will take a while).
-        "typing_extensions",
+        "typing_extensions; python_version < '3.8'",
         "virtualenv",  # For pip runtime env.
     ]
 

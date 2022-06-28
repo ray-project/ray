@@ -33,7 +33,11 @@ from typing import (
 
 import colorama
 import setproctitle
-from typing_extensions import Literal, Protocol
+
+if sys.version_info >= (3, 8):
+    from typing import Literal, Protocol
+else:
+    from typing_extensions import Literal, Protocol
 
 import ray
 import ray._private.gcs_utils as gcs_utils
