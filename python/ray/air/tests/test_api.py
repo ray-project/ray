@@ -46,20 +46,20 @@ def test_checkpointing_config():
         )
 
     checkpointing = CheckpointConfig()
-    assert checkpointing.checkpoint_score_attr is None
+    assert checkpointing._tune_legacy_checkpoint_score_attr is None
 
     checkpointing = CheckpointConfig(checkpoint_score_attribute="metric")
-    assert checkpointing.checkpoint_score_attr == "metric"
+    assert checkpointing._tune_legacy_checkpoint_score_attr == "metric"
 
     checkpointing = CheckpointConfig(
         checkpoint_score_attribute="metric", checkpoint_score_order="max"
     )
-    assert checkpointing.checkpoint_score_attr == "metric"
+    assert checkpointing._tune_legacy_checkpoint_score_attr == "metric"
 
     checkpointing = CheckpointConfig(
         checkpoint_score_attribute="metric", checkpoint_score_order="min"
     )
-    assert checkpointing.checkpoint_score_attr == "min-metric"
+    assert checkpointing._tune_legacy_checkpoint_score_attr == "min-metric"
 
 
 def test_scaling_config():

@@ -168,7 +168,7 @@ class TunerInternal:
                 else None
             ),
             checkpoint_score_attr=(
-                self._run_config.checkpoint_config.checkpoint_score_attr
+                self._run_config.checkpoint_config._tune_legacy_checkpoint_score_attr
                 if self._run_config.checkpoint_config
                 else None
             ),
