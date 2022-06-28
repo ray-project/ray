@@ -122,7 +122,7 @@ def start(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -280,7 +280,7 @@ def run(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -307,7 +307,7 @@ def config(address: str):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -324,7 +324,7 @@ def status(address: str):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,

@@ -309,41 +309,41 @@ As a side note, you could also package your deployment graph into a standalone P
 By default, `serve deploy` deploys to a cluster running locally. However, you should also use `serve deploy` whenever you want to deploy your Serve application to a remote cluster. `serve deploy` takes in an optional `--address/-a` argument where you can specify the dashboard address of your remote Ray cluster. This address should be of the form:
 
 ```
-[YOUR_RAY_CLUSTER_URI]:[DASHBOARD PORT]
+[YOUR_RAY_CLUSTER_URI]:[DASHBOARD AGENT PORT]
 ```
 
-As an example, the address for the local cluster started by `ray start --head` is `http://127.0.0.1:8265`. We can explicitly deploy to this address using the command
+As an example, the address for the local cluster started by `ray start --head` is `http://127.0.0.1:52365`. We can explicitly deploy to this address using the command
 
 ```console
-$ serve deploy config_file.yaml -a http://127.0.0.1:8265
+$ serve deploy config_file.yaml -a http://127.0.0.1:52365
 ```
 
-The Ray dashboard's default port is 8265. This port may be different if:
-* You explicitly set it using the `--dashboard-port` argument when running `ray start`.
-* Port 8265 was unavailable when Ray started. In that case, the dashboard port is incremented until an available port is found. E.g. if 8265 is unavailable, the port becomes 8266. If that's unavailable, it becomes 8267, and so on.
+The Ray dashboard agent's default port is 52365. This port may be different if:
+* You explicitly set it using the `--dashboard-agent-listen-port` argument when running `ray start`.
+* Port 52365 was unavailable when Ray started. In that case, the dashboard agent port is randomly generated.
 
 :::{tip}
-By default, all the Serve CLI commands assume that you're working with a local cluster, so if you don't specify an `--address/-a` value, they use the Ray address associated with a local cluster started by `ray start --head`. However, if the `RAY_ADDRESS` environment variable is set, all Serve CLI commands will default to that value instead (unless you also specify an `--address/-a` value).
+By default, all the Serve CLI commands assume that you're working with a local cluster, they use the Ray agent address associated with a local cluster started by `ray start --head`. However, if the `RAY_AGENT_ADDRESS` environment variable is set, all Serve CLI commands will default to that value instead.
 
 You can check this variable's value by running:
 
 ```console
-$ echo $RAY_ADDRESS
+$ echo $RAY_AGENT_ADDRESS
 ```
 
 You can set this variable by running the CLI command:
 
 ```console
-$ export RAY_ADDRESS=[YOUR VALUE]
+$ export RAY_AGENT_ADDRESS=[YOUR VALUE]
 ```
 
 You can unset this variable by running the CLI command:
 
 ```console
-$ unset RAY_ADDRESS
+$ unset RAY_AGENT_ADDRESS
 ```
 
-Check for this variable in your environment to make sure you're using your desired Ray address.
+Check for this variable in your environment to make sure you're using your desired Ray agent address.
 :::
 
 (serve-in-production-inspecting)=
@@ -352,7 +352,9 @@ Check for this variable in your environment to make sure you're using your desir
 
 The Serve CLI offers two commands to help you inspect your Serve application in production: `serve config` and `serve status`.
 
-If you're working with a remote cluster, `serve config` and `serve status` also offer an `--address/-a` argument to access your cluster. Check out [the previous section](serve-in-production-remote-cluster) for more info on this argument.
+If you're working with a remote cluster, `serve config` and `serve status` also offer an `--address/-a` argument to access your cluster.
+
+By default, all the Serve CLI commands assume that you're working with a local cluster, so if you don't specify an `--address/-a` value, they use the Ray agent address associated with a local cluster started by `ray start --head`. However, if the `RAY_AGENT_ADDRESS` environment variable is set, all Serve CLI commands will default to that value instead (unless you also specify an `--address/-a` value).
 
 (serve-in-production-config-command)=
 
