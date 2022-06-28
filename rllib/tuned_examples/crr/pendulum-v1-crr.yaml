@@ -37,6 +37,7 @@ pendulum_crr:
           learning_starts: 0
           capacity: 100000
         # specific to CRR
+        temperature: 1.0
         weight_type: exp
         advantage_type: max
         max_weight: 20.0

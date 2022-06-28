@@ -281,6 +281,20 @@ py_test(
     args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
 )
 
+py_test(
+    name = "learning_tests_cartpole_crr_expectation",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include an offline json data file as well.
+    data = [
+        "tuned_examples/crr/cartpole-v0-crr_expectation.yaml",
+        "tests/data/cartpole/large.json",
+    ],
+    args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
+)
+
 # DDPG
 # py_test(
 #   name = "learning_tests_pendulum_ddpg",
