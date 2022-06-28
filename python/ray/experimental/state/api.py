@@ -85,8 +85,6 @@ class StateApiClient(SubmissionClient):
     @classmethod
     def _make_param(cls, options: Union[ListApiOptions, GetApiOptions]) -> Dict:
         options_dict = {}
-        # We don't use `asdict` to avoid deepcopy.
-        # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict
         for field in fields(options):
             # TODO(rickyyx): We will need to find a way to pass server side timeout
             # TODO(rickyyx): We will have to convert filter option
@@ -104,9 +102,9 @@ class StateApiClient(SubmissionClient):
                             "Provide (key, predicate, value) tuples."
                         )
                     filter_k, filter_predicate, filter_val = filter
-                    params["filter_keys"].append(filter_k)
-                    params["filter_predicates"].append(filter_predicate)
-                    params["filter_values"].append(filter_val)
+                    options_dict["filter_keys"].append(filter_k)
+                    options_dict["filter_predicates"].append(filter_predicate)
+                    options_dict["filter_values"].append(filter_val)
                 continue
 
             option_val = getattr(options, field.name)
@@ -220,6 +218,7 @@ class StateApiClient(SubmissionClient):
             raise ValueError(f"Can't get {resource.name} by id.")
 
         params["filter_keys"] = [RESOURCE_ID_KEY_NAME[resource]]
+        params["filter_predicates"] = ["="]
         params["filter_values"] = [id]
         endpoint = f"/api/v0/{resource.value}"
 

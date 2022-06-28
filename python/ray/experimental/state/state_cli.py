@@ -42,7 +42,6 @@ def _parse_filter(filter: str) -> Tuple[str, PredicateType, SupportedFilterType]
     """Parse the filter string to a tuple of key, preciate, and value."""
     # The function assumes there's going to be no key that includes "="" or "!=".
     # Since key is controlled by us, it should be trivial to keep the invariant.
-
     predicate = None
     # Tuple of [predicate_start, predicate_end).
     predicate_index = None
