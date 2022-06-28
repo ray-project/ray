@@ -595,6 +595,8 @@ class FunctionApiTest(unittest.TestCase):
 
 
 def test_checkpoint_dir_deprecation():
+    warnings.filterwarnings("always")
+
     def train(config, checkpoint_dir=None):
         for i in range(10):
             tune.report({"foo": "bar"})
