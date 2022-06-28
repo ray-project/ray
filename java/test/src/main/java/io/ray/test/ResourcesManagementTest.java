@@ -74,4 +74,10 @@ public class ResourcesManagementTest extends BaseTest {
     Assert.assertEquals(0, waitResult.getReady().size());
     Assert.assertEquals(1, waitResult.getUnready().size());
   }
+
+  public void testSpecifyZeroCPU() {
+    ActorHandle<Echo> echo = Ray.actor(Echo::new).setResource("CPU", 0.0).remote();
+    final ObjectRef<Integer> result1 = echo.task(Echo::echo, 100).remote();
+    Assert.assertEquals(100, (int) result1.get());
+  }
 }
