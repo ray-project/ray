@@ -1,5 +1,8 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
-debian_packages: []
+env_vars: {"LD_PRELOAD": "/usr/lib/x86_64-linux-gnu/libjemalloc.so"}
+
+debian_packages:
+- libjemalloc-dev
 
 python:
   pip_packages: []
