@@ -848,7 +848,10 @@ def _process_observations(
                 if atari_metrics is not None:
                     for m in atari_metrics:
                         outputs.append(
-                            m._replace(custom_metrics=episode.custom_metrics)
+                            m._replace(
+                                custom_metrics=episode.custom_metrics,
+                                hist_data=episode.hist_data,
+                            )
                         )
                 else:
                     outputs.append(
