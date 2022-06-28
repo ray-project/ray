@@ -1,10 +1,9 @@
 import logging
 from collections import defaultdict
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.rllib.utils.annotations import ExperimentalAPI
 
 logger = logging.getLogger(__name__)
 

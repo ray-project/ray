@@ -11,7 +11,6 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import (
     is_overridden,
-    OverrideToImplementCustomLogic,
     PublicAPI,
 )
 from ray.rllib.utils.deprecation import deprecation_warning, Deprecated

@@ -233,8 +233,7 @@ class TestAsyncRequestsManager(unittest.TestCase):
         )
         num_ready = 0
         for i in range(2000):
-            num = manager.call_on_all_available(lambda w: w.task())
-            print(f"iteration {i} called on {num} available")
+            manager.call_on_all_available(lambda w: w.task())
             time.sleep(0.01)
 
             ready = manager.get_ready()
