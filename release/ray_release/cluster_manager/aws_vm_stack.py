@@ -52,10 +52,13 @@ class AwsVmClusterManager(ClusterManager):
         #stream_subproc_output(process)
 
         # TODO need to propagate bad error codes
-        process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config_aws.yaml', '-y'])
-
-        # TODO handle timeouts
-        return_code = process.wait()
+        import os
+        if os.environ.get('CADE_SKIP_RAY_UP_COMMAND', None):
+            pass
+        else:
+            process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config_aws.yaml', '-y'])
+            # TODO handle timeouts
+            return_code = process.wait()
 
         '''
         Next steps:
@@ -68,7 +71,14 @@ class AwsVmClusterManager(ClusterManager):
         '''
 
     def terminate_cluster(self, wait: bool):
-        raise NotImplementedError
+        # TODO wait=False functionality
+        import os
+        if os.environ.get('CADE_SKIP_RAY_DOWN_COMMAND', None):
+            pass
+        else:
+            process = subprocess.Popen(['ray', 'down', 'cluster_launcher_config_aws.yaml', '-y'])
+            # TODO handle timeouts
+            return_code = process.wait()
 
     def get_cluster_address(self) -> str:
         raise NotImplementedError

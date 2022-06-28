@@ -89,6 +89,7 @@ def run_release_test(
     cluster_env_id: Optional[str] = None,
     no_terminate: bool = False,
 ) -> Result:
+
     buildkite_group(":spiral_note_pad: Loading test configuration")
 
     validate_test(test)
