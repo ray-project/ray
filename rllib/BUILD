@@ -281,6 +281,20 @@ py_test(
     args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
 )
 
+py_test(
+    name = "learning_tests_cartpole_crr_expectation",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include an offline json data file as well.
+    data = [
+        "tuned_examples/crr/cartpole-v0-crr_expectation.yaml",
+        "tests/data/cartpole/large.json",
+    ],
+    args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
+)
+
 # DDPG
 # py_test(
 #   name = "learning_tests_pendulum_ddpg",
@@ -1558,7 +1572,7 @@ py_test(
 py_test(
     name = "test_async_requests_manager",
     tags = ["team:rllib", "execution"],
-    size = "small",
+    size = "medium",
     srcs = ["execution/tests/test_async_requests_manager.py"]
 )
 
@@ -1805,6 +1819,20 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_segment_tree_replay_buffer_api.py"]
+)
+
+py_test(
+    name = "test_check_env",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_check_env.py"]
+)
+
+py_test(
+    name = "test_check_multi_agent",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_check_multi_agent.py"]
 )
 
 # --------------------------------------------------------------------
@@ -3285,8 +3313,6 @@ py_test_module_list(
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
     "execution/tests/test_mixin_multi_agent_replay_buffer.py",
-    "utils/tests/test_check_env.py",
-    "utils/tests/test_check_multi_agent.py",
     "utils/tests/test_errors.py",
     "utils/tests/test_utils.py",
   ],

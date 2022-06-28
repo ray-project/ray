@@ -20,10 +20,10 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.runtime_env.plugin import PluginCacheManager
+from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
-from ray._private.utils import import_attr
 from ray.core.generated import (
     agent_manager_pb2,
     runtime_env_agent_pb2,
@@ -31,10 +31,6 @@ from ray.core.generated import (
 )
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
-)
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_initialized,
 )
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
@@ -183,14 +179,19 @@ class RuntimeEnvAgent(
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        _initialize_internal_kv(self._dashboard_agent.gcs_client)
-        assert _internal_kv_initialized()
+        self._gcs_aio_client = self._dashboard_agent.gcs_aio_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
-        self._py_modules_plugin = PyModulesPlugin(self._runtime_env_dir)
-        self._java_jars_plugin = JavaJarsPlugin(self._runtime_env_dir)
-        self._working_dir_plugin = WorkingDirPlugin(self._runtime_env_dir)
+        self._py_modules_plugin = PyModulesPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
+        self._java_jars_plugin = JavaJarsPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
+        self._working_dir_plugin = WorkingDirPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
@@ -223,6 +224,7 @@ class RuntimeEnvAgent(
             self.unused_uris_processor,
             self.unused_runtime_env_processor,
         )
+        self._runtime_env_plugin_manager = RuntimeEnvPluginManager()
 
         self._logger = default_logger
 
@@ -294,13 +296,13 @@ class RuntimeEnvAgent(
 
             def setup_plugins():
                 # Run setup function from all the plugins
-                for plugin_class_path, config in runtime_env.plugins():
-                    per_job_logger.debug(
-                        f"Setting up runtime env plugin {plugin_class_path}"
-                    )
-                    plugin_class = import_attr(plugin_class_path)
-                    plugin = plugin_class()
+                for name, config in runtime_env.plugins():
+                    per_job_logger.debug(f"Setting up runtime env plugin {name}")
+                    plugin = self._runtime_env_plugin_manager.get_plugin(name)
+                    if plugin is None:
+                        raise RuntimeError(f"runtime env plugin {name} not found.")
                     # TODO(architkulkarni): implement uri support
+                    plugin.validate(runtime_env)
                     plugin.create("uri not implemented", json.loads(config), context)
                     plugin.modify_context(
                         "uri not implemented",
