@@ -239,12 +239,12 @@ def get(
     resource = StateResource(resource.replace("-", "_"))
 
     # Get the state API server address from ray if not provided by user
-    api_server_address = address if address else get_api_server_url()
+    address = address if address else get_api_server_url()
 
     # Create the State API server and put it into context
-    logger.debug(f"Create StateApiClient at {api_server_address}...")
+    logger.debug(f"Create StateApiClient at {address}...")
     client = StateApiClient(
-        api_server_address=api_server_address,
+        address=address,
     )
 
     options = GetApiOptions(

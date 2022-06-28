@@ -1,9 +1,10 @@
 import urllib
 import warnings
 import threading
-import time
+import logging
 from dataclasses import fields
 from typing import Dict, Generator, List, Optional, Tuple, Union, Any
+from contextlib import contextmanager
 
 import requests
 
@@ -30,6 +31,52 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def warnings_on_slow_request(
+    *, address: str, endpoint: str, timeout: float, explain: bool
+):
+    """A context manager to print warnings if the request is replied slowly.
+
+    Warnings are printed 3 times
+
+    Args:
+        address: The address of the endpoint.
+        endpoint: The name of the endpoint.
+        timeout: Request timeout in seconds.
+        explain: Whether ot not it will print the warning.
+    """
+    # Do nothing if explain is not specified.
+    if not explain:
+        yield
+        return
+
+    # Prepare timers to print warning.
+    # Print 3 times with exponential backoff. timeout / 2, timeout / 4, timeout / 8
+    def print_warning(elapsed: float):
+        logger.info(
+            f"({round(elapsed, 2)} / {timeout} seconds) "
+            "Waiting for the response from the API server "
+            f"address {address}{endpoint}.",
+        )
+
+    warning_timers = [
+        threading.Timer(timeout / i, print_warning, args=[timeout / i])
+        for i in [2, 4, 8]
+    ]
+
+    try:
+        for timer in warning_timers:
+            timer.start()
+        yield
+    finally:
+        # Make sure all timers are cancelled once request is terminated.
+        for timer in warning_timers:
+            timer.cancel()
+
+
 """
 This file contains API client and methods for querying ray state.
 
@@ -38,7 +85,7 @@ NOTE(rickyyx): This is still a work-in-progress API, and subject to changes.
 Usage:
     1. [Recommended] With StateApiClient:
     ```
-        client = StateApiClient(api_server_address="localhost:8265")
+        client = StateApiClient(address="localhost:8265")
         data = client.list(StateResource.NODES)
         ...
     ```
@@ -85,64 +132,6 @@ class StateApiClient(SubmissionClient):
             cookies=cookies,
         )
 
-    def print_slow_api_warning(
-        self,
-        timeout: int,
-        cv: threading.Condition,
-        endpoint: str,
-        print_interval_s: float,
-        print_warning: bool,
-    ):
-        """Print the slow API warning. every print_interval_s seconds until timeout.
-
-        Args:
-            timeout: The API timeout.
-            cv: Condition variable. If it is notified, the thread will terminate.
-            endpoint: The endpoint to query.
-            print_interval_s: The interval to print warning message until timeout.
-            print_warning: Print the warning if it is set to True.
-        """
-        start = time.time()
-        last = time.time()
-        i = 1
-        while True:
-            with cv:
-                # Will return True if it is notified from other thread
-                # which means it should terminate the loop.
-                # False if timeout is occured.
-                notified_to_terminate = cv.wait(0.1)
-                if notified_to_terminate:
-                    break
-
-            elapsed = time.time() - start
-            if time.time() - last >= print_interval_s:
-                if print_warning:
-                    print(
-                        f"({round(elapsed, 2)} / {timeout} seconds) "
-                        "Waiting for the response from the API server "
-                        f"address {self._address}{endpoint}."
-                    )
-                i += 1
-                last = time.time()
-
-            if time.time() - start > timeout:
-                break
-
-    def _request(
-        self,
-        endpoint: str,
-        timeout: float,
-        params: Dict,
-        explain: bool,
-        delay_warning_print_interval_s: float = 5,
-    ):
-        cv = threading.Condition(lock=threading.Lock())
-        t = threading.Thread(
-            target=self.print_slow_api_warning,
-            args=(timeout, cv, endpoint, delay_warning_print_interval_s, explain),
-        )
-        t.start()
-
     @classmethod
     def _make_param(cls, options: Union[ListApiOptions, GetApiOptions]) -> Dict:
         options_dict = {}
@@ -175,40 +164,46 @@ class StateApiClient(SubmissionClient):
         return options_dict
 
     def _make_http_get_request(
-        self, endpoint: str, params: Dict, timeout: float, _explain: bool = False
+        self,
+        endpoint: str,
+        params: Dict,
+        timeout: float,
+        _explain: bool = False,
     ):
->>>>>>> master
-        response = None
-        try:
-            response = self._do_request(
-                "GET",
-                endpoint,
-                timeout=timeout,
-                params=params,
-            )
-
-            response.raise_for_status()
-        except Exception as e:
-            err_str = f"Failed to make request to {self._address}{endpoint}. "
-
-            # Best-effort to give hints to users on potential reasons of connection
-            # failure.
-            if isinstance(e, requests.exceptions.ConnectionError):
-                err_str += (
-                    "Failed to connect to API server. Please check the API server "
-                    "log for details. Make sure dependencies are installed with "
-                    "`pip install ray[default]`."
+        with warnings_on_slow_request(
+            address=self._address, endpoint=endpoint, timeout=timeout, explain=_explain
+        ):
+            # Send a request.
+            response = None
+            try:
+                response = self._do_request(
+                    "GET",
+                    endpoint,
+                    timeout=timeout,
+                    params=params,
                 )
-                raise ServerUnavailable(err_str)
 
-            if response is not None:
-                err_str += f"Response(url={response.url},status={response.status_code})"
-            raise RayStateApiException(err_str) from e
-        finally:
-            with cv:
-                cv.notify()
-            t.join(timeout=1)
+                response.raise_for_status()
+            except Exception as e:
+                err_str = f"Failed to make request to {self._address}{endpoint}. "
 
+                # Best-effort to give hints to users on potential reasons of connection
+                # failure.
+                if isinstance(e, requests.exceptions.ConnectionError):
+                    err_str += (
+                        "Failed to connect to API server. Please check the API server "
+                        "log for details. Make sure dependencies are installed with "
+                        "`pip install ray[default]`."
+                    )
+                    raise ServerUnavailable(err_str)
+
+                if response is not None:
+                    err_str += (
+                        f"Response(url={response.url},status={response.status_code})"
+                    )
+                raise RayStateApiException(err_str) from e
+
+        # Process the response.
         response = response.json()
         if response["result"] is False:
             raise RayStateApiException(
@@ -375,7 +370,7 @@ def get_actor(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[ActorState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.ACTORS, id, GetApiOptions(timeout=timeout), _explain=_explain
     )
 
@@ -396,7 +391,7 @@ def get_placement_group(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[PlacementGroupState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.PLACEMENT_GROUPS,
         id,
         GetApiOptions(timeout=timeout),
@@ -410,7 +405,7 @@ def get_node(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[NodeState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.NODES,
         id,
         GetApiOptions(timeout=timeout),
@@ -424,7 +419,7 @@ def get_worker(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[WorkerState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.WORKERS,
         id,
         GetApiOptions(timeout=timeout),
@@ -438,7 +433,7 @@ def get_task(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[TaskState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.TASKS,
         id,
         GetApiOptions(timeout=timeout),
@@ -452,7 +447,7 @@ def get_objects(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> List[ObjectState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.OBJECTS,
         id,
         GetApiOptions(timeout=timeout),

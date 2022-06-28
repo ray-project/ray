@@ -314,18 +314,38 @@ def test_id_to_ip_map():
     assert m.get_node_id(node_id_1) is None
 
 
-def test_state_api_client_periodic_warning(shutdown_only, capsys):
+# Without this, capsys will have a race condition
+# that causes
+# ValueError: I/O operation on closed file.
+@pytest.fixture
+def clear_loggers():
+    """Remove handlers from all loggers"""
+    yield
+    import logging
+
+    loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
+    for logger in loggers:
+        handlers = getattr(logger, "handlers", [])
+        for handler in handlers:
+            logger.removeHandler(handler)
+
+
+def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers):
     ray.init()
     timeout = 10
-    StateApiClient()._request("/api/v0/delay/5", timeout, {}, True, 0.1)
+    StateApiClient()._make_http_get_request("/api/v0/delay/5", {}, timeout, True)
     captured = capsys.readouterr()
-    lines = captured.out.strip().split("\n")
-    # Have some buffers. There must be around 50 lines
-    # since we print warning every 0.1 second.
-    assert len(lines) >= 45 and len(lines) <= 55
-    for line in lines:
+    lines = captured.err.strip().split("\n")
+    # Lines are printed 1.25, 2.5, and 5 seconds.
+    # First line is the dashboard start log.
+    # INFO services.py:1477 -- View the Ray dashboard at http://127.0.0.1:8265
+    assert len(lines) == 4
+
+    expected_elapsed = [1.25, 2.5, 5.0]
+    for i, line in enumerate(lines[1:]):
         expected = (
-            "10 seconds) Waiting for the response from the API "
+            f"({expected_elapsed[i]} / 10 seconds) Waiting for the "
+            "response from the API "
             "server address http://127.0.0.1:8265/api/v0/delay/5."
         )
         assert expected in line
@@ -1043,6 +1063,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
 
     def verify_output(cmd, args: List[str], necessary_substrings: List[str]):
         result = runner.invoke(cmd, args)
+        print(result)
         exit_code_correct = result.exit_code == 0
         substring_matched = all(
             substr in result.output for substr in necessary_substrings
