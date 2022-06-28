@@ -2,20 +2,23 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 import numpy as np
+
 import ray
 from ray import serve
 from ray._private.utils import import_attr
-from ray.air.checkpoint import Checkpoint
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve.utils import require_packages
 
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor
+    from ray.air.checkpoint import Checkpoint
 else:
     try:
         from ray.train.predictor import Predictor
+        from ray.air.checkpoint import Checkpoint
     except ImportError:
         Predictor = None
+        Checkpoint = None
 
 try:
     import pandas as pd
@@ -143,7 +146,7 @@ class BatchingManager:
         return split_list_of_dict
 
 
-class ModelWrapper(SimpleSchemaIngress):
+class PredictorWrapper(SimpleSchemaIngress):
     """Serve any Ray AIR predictor from an AIR checkpoint.
 
     Args:
@@ -215,7 +218,7 @@ class ModelWrapper(SimpleSchemaIngress):
                     batched = BatchingManager.batch_dict_array(inp)
                 else:
                     raise ValueError(
-                        "ModelWrapper only accepts numpy array, dataframe, or dict of "
+                        "Predictor only accepts numpy array, dataframe, or dict of "
                         "arrays as input "
                         f"but got types {[type(i) for i in inp]}"
                     )
@@ -234,7 +237,7 @@ class ModelWrapper(SimpleSchemaIngress):
                     return out
                 else:
                     raise ValueError(
-                        f"ModelWrapper only accepts list of length {batch_size}, numpy "
+                        f"Predictor only accepts list of length {batch_size}, numpy "
                         "array, dataframe, or dict of array as output "
                         f"but got types {type(out)} with length "
                         f"{len(out) if hasattr(out, '__len__') else 'unknown'}."
@@ -250,5 +253,5 @@ class ModelWrapper(SimpleSchemaIngress):
 
 
 @serve.deployment
-class ModelWrapperDeployment(ModelWrapper):
-    """Ray Serve Deployment of the ModelWrapper class."""
+class PredictorDeployment(PredictorWrapper):
+    """Ray Serve Deployment for AIRPredictorWrapper."""
