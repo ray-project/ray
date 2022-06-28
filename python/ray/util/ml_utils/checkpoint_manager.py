@@ -7,6 +7,7 @@ import numbers
 import os
 import shutil
 import tempfile
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -256,7 +257,7 @@ deprecation_message = (
 @dataclass
 class CheckpointStrategy(CheckpointConfig):
     def __post_init__(self):
-        logger.warning(deprecation_message)
+        warnings.warn(deprecation_message)
         super().__post_init__()
 
 
