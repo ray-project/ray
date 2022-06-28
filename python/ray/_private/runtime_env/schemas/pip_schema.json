@@ -8,11 +8,19 @@
         "type": "object",
         "properties": {
           "packages": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "a list of pip packages"
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "a list of pip packages"
+              },
+              {
+                "type": "string",
+                "description": "the path to a pip `requirements.txt` file"
+              }
+            ]
           },
           "pip_check": {
             "type": "boolean",

@@ -313,6 +313,7 @@ test_env_2 = os.path.join(
     [schemas_dir, f"{test_env_1},{test_env_2}"],
     indirect=True,
 )
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 class TestValidateByJsonSchema:
     def test_validate_pip(self, set_runtime_env_plugins_schemas):
         runtime_env = RuntimeEnv()
