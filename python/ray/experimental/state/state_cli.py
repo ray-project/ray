@@ -24,7 +24,7 @@ from ray.experimental.state.common import (
     ListApiOptions,
     StateResource,
 )
-from ray.util.thirdparty.tabulate import tabulate
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,9 @@ def get_table_output(state_data: Union[dict, list]):
     for data in state_data:
         headers = data.keys()
         table.append(data.values())
-    return tabulate(table, headers=headers, showindex=True, tablefmt="plain", floatfmt=".3f")
+    return tabulate(
+        table, headers=headers, showindex=True, tablefmt="plain", floatfmt=".3f"
+    )
 
 
 def get_state_api_output_to_print(
@@ -111,7 +113,6 @@ def get_summary_output_to_print(state_data: Dict):
     summaries = cluster_data["summary"]
     del cluster_data["summary"]
 
-    # cluster_info_table = tabulate([cluster_data.values()], headers=cluster_data.keys(), tablefmt="plain", numalign="left")
     cluster_info_table = yaml.dump(cluster_data, indent=2)
     table = []
     headers = []
@@ -134,6 +135,7 @@ Summary
 {summary_table}
 """
 
+
 def get_object_summary_output_to_print(state_data: Dict):
     if len(state_data) == 0:
         return "No resource in the cluster"
@@ -142,7 +144,6 @@ def get_object_summary_output_to_print(state_data: Dict):
     summaries = cluster_data["summary"]
     del cluster_data["summary"]
 
-    # cluster_info_table = tabulate([cluster_data.values()], headers=cluster_data.keys(), tablefmt="plain", numalign="left")
     cluster_info_table = yaml.dump(cluster_data, indent=2)
     tables = []
     for callsite, summary in summaries.items():
@@ -153,7 +154,6 @@ def get_object_summary_output_to_print(state_data: Dict):
         headers = summary.keys()
         t = tabulate(table, headers=headers, tablefmt="fancy_grid", numalign="left")
         tables.append(f"Callsite:\n  {callsite}\n\nTable:\n{t}")
-    # summary_table = tabulate(table, headers=headers, tablefmt="plain", numalign="left", maxcolwidths=[None, 18])
     time = datetime.now()
     header = "=" * 8 + f" Object Summary: {time} " + "=" * 8
     table_string = "\n\n\n".join(tables)

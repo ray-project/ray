@@ -23,6 +23,7 @@ from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
+
 @click.command()
 @click.argument("test_name", required=True, type=str)
 @click.option(
