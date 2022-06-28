@@ -29,6 +29,7 @@ from ray.experimental.state.common import (
     ActorSummaries,
     ObjectSummaries,
     filter_fields,
+    PredicateType,
 )
 from ray.experimental.state.state_manager import (
     DataSourceUnavailable,
@@ -58,7 +59,8 @@ NODE_QUERY_FAILURE_WARNING = (
 
 
 def _convert_filters_type(
-    filter: List[Tuple[str, SupportedFilterType]], schema: StateSchema
+    filter: List[Tuple[str, PredicateType, SupportedFilterType]],
+    schema: StateSchema,
 ) -> List[Tuple[str, SupportedFilterType]]:
     """Convert the given filter's type to SupportedFilterType.
 
@@ -75,7 +77,7 @@ def _convert_filters_type(
     new_filter = []
     schema = {field.name: field.type for field in fields(schema)}
 
-    for col, val in filter:
+    for col, predicate, val in filter:
         if col in schema:
             column_type = schema[col]
             if isinstance(val, column_type):
@@ -109,7 +111,7 @@ def _convert_filters_type(
                         f"`--filter {col} [True|true|1]` for True or "
                         f"`--filter {col} [False|false|0]` for False."
                     )
-        new_filter.append((col, val))
+        new_filter.append((col, predicate, val))
     return new_filter
 
 
@@ -151,7 +153,7 @@ class StateAPIManager:
         result = []
         for datum in data:
             match = True
-            for filter_column, filter_value in filters:
+            for filter_column, filter_predicate, filter_value in filters:
                 filterable_columns = state_dataclass.filterable_columns()
                 if filter_column not in filterable_columns:
                     raise ValueError(
@@ -159,8 +161,17 @@ class StateAPIManager:
                         f"Supported filter columns: {filterable_columns}"
                     )
 
-                if datum[filter_column] != filter_value:
-                    match = False
+                if filter_predicate == "=":
+                    match = datum[filter_column] == filter_value
+                elif filter_predicate == "!=":
+                    match = datum[filter_column] != filter_value
+                else:
+                    raise ValueError(
+                        f"Unsupported filter predicate {filter_predicate} is given. "
+                        "Available predicates: =, !=."
+                    )
+
+                if not match:
                     break
 
             if match:

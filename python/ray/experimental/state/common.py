@@ -35,12 +35,16 @@ class SummaryResource(Enum):
 SupportedFilterType = Union[str, bool, int, float]
 
 
+PredicateType = str  # Literal["=", "!="]
+
+
 @dataclass(init=True)
 class ListApiOptions:
     # Maximum number of entries to return
     limit: int = DEFAULT_LIMIT
     # The timeout for the API call.
     timeout: int = DEFAULT_RPC_TIMEOUT
+<<<<<<< HEAD
     # If True, more detailed output will be printed.
     # The API could query more sources than detail == False
     # to get more data in detail.
@@ -49,6 +53,11 @@ class ListApiOptions:
     # If there's more than 1 filter, it means AND.
     # E.g., [(key, val), (key2, val2)] means (key=val) AND (key2==val2)
     filters: Optional[List[Tuple[str, SupportedFilterType]]] = None
+=======
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
+        default_factory=list
+    )
+>>>>>>> master
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,
@@ -66,6 +75,13 @@ class ListApiOptions:
         self.timeout = int(self.timeout * self._server_timeout_multiplier)
         if self.filters is None:
             self.filters = []
+        for filter in self.filters:
+            _, filter_predicate, _ = filter
+            if filter_predicate != "=" and filter_predicate != "!=":
+                raise ValueError(
+                    f"Unsupported filter predicate {filter_predicate} is given. "
+                    "Available predicates: =, !=."
+                )
 
 
 @dataclass(init=True)
