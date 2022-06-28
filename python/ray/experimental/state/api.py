@@ -13,11 +13,20 @@ from ray.experimental.state.common import (
     SummaryApiOptions,
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
+    ActorState,
+    GetApiOptions,
     GetLogOptions,
+    JobState,
     ListApiOptions,
+    NodeState,
+    ObjectState,
+    PlacementGroupState,
     StateResource,
     SupportedFilterType,
+    TaskState,
+    WorkerState,
     SummaryResource,
+    PredicateType,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
@@ -134,6 +143,41 @@ class StateApiClient(SubmissionClient):
         )
         t.start()
 
+    @classmethod
+    def _make_param(cls, options: Union[ListApiOptions, GetApiOptions]) -> Dict:
+        options_dict = {}
+        for field in fields(options):
+            # TODO(rickyyx): We will need to find a way to pass server side timeout
+            # TODO(rickyyx): We will have to convert filter option
+            # slightly differently for now. But could we do k,v pair rather than this?
+            # I see we are also converting dict to XXXApiOptions later on, we could
+            # probably organize the marshaling a bit better.
+            if field.name == "filters":
+                options_dict["filter_keys"] = []
+                options_dict["filter_predicates"] = []
+                options_dict["filter_values"] = []
+                for filter in options.filters:
+                    if len(filter) != 3:
+                        raise ValueError(
+                            f"The given filter has incorrect intput type, {filter}. "
+                            "Provide (key, predicate, value) tuples."
+                        )
+                    filter_k, filter_predicate, filter_val = filter
+                    options_dict["filter_keys"].append(filter_k)
+                    options_dict["filter_predicates"].append(filter_predicate)
+                    options_dict["filter_values"].append(filter_val)
+                continue
+
+            option_val = getattr(options, field.name)
+            if option_val:
+                options_dict[field.name] = option_val
+
+        return options_dict
+
+    def _make_http_get_request(
+        self, endpoint: str, params: Dict, timeout: float, _explain: bool = False
+    ):
+>>>>>>> master
         response = None
         try:
             response = self._do_request(
@@ -166,7 +210,103 @@ class StateApiClient(SubmissionClient):
             t.join(timeout=1)
 
         response = response.json()
-        return response
+        if response["result"] is False:
+            raise RayStateApiException(
+                "API server internal error. See dashboard.log file for more details. "
+                f"Error: {response['msg']}"
+            )
+
+        # Print warnings if anything was given.
+        warning_msgs = response["data"].get("partial_failure_warning", None)
+        if warning_msgs and _explain:
+            warnings.warn(warning_msgs, RuntimeWarning)
+
+        return response["data"]["result"]
+
+    def get(
+        self,
+        resource: StateResource,
+        id: str,
+        options: Optional[GetApiOptions],
+        _explain: bool = False,
+    ) -> Optional[
+        Union[
+            ActorState,
+            PlacementGroupState,
+            NodeState,
+            WorkerState,
+            TaskState,
+            List[ObjectState],
+        ]
+    ]:
+        """Get resources states by id
+
+        Args:
+            resource_name: Resource names, i.e. 'workers', 'actors', 'nodes',
+                'placement_groups', 'tasks', 'objects'.
+                'jobs' and 'runtime-envs' are not supported yet.
+            id: ID for the resource, i.e. 'node_id' for nodes.
+            options: Get options. See `GetApiOptions` for details.
+            _explain: Print the API information such as API
+                latency or failed query information.
+
+        Returns:
+            None if not found, and found:
+            - ActorState for actors
+            - PlacementGroupState for placement groups
+            - NodeState for nodes
+            - WorkerState for workers
+            - TaskState for tasks
+
+            Empty list for objects if not found, or list of ObjectState for objects
+
+        Raises:
+            This doesn't catch any exceptions raised when the underlying request
+            call raises exceptions. For example, it could raise `requests.Timeout`
+            when timeout occurs.
+
+            ValueError:
+                if the resource could not be GET by id, i.e. jobs and runtime-envs.
+
+        """
+        # TODO(rickyyx): Make GET not using filters on list operation
+        params = self._make_param(options)
+
+        RESOURCE_ID_KEY_NAME = {
+            StateResource.NODES: "node_id",
+            StateResource.ACTORS: "actor_id",
+            StateResource.PLACEMENT_GROUPS: "placement_group_id",
+            StateResource.WORKERS: "worker_id",
+            StateResource.TASKS: "task_id",
+            StateResource.OBJECTS: "object_id",
+        }
+        if resource not in RESOURCE_ID_KEY_NAME:
+            raise ValueError(f"Can't get {resource.name} by id.")
+
+        params["filter_keys"] = [RESOURCE_ID_KEY_NAME[resource]]
+        params["filter_predicates"] = ["="]
+        params["filter_values"] = [id]
+        endpoint = f"/api/v0/{resource.value}"
+
+        result = self._make_http_get_request(
+            endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
+        )
+
+        # Empty result
+        if len(result) == 0:
+            return None
+
+        if resource == StateResource.OBJECTS:
+            # NOTE(rickyyx):
+            # There might be multiple object entries for a single object id
+            # because a single object could be referenced at different places
+            # e.g. pinned as local variable, used as parameter
+            return result
+
+        # For the rest of the resources, there should only be a single entry
+        # for a particular id.
+        assert len(result) == 1
+        return result[0]
 
     def list(
         self, resource: StateResource, options: ListApiOptions, _explain: bool = False
@@ -190,33 +330,10 @@ class StateApiClient(SubmissionClient):
 
         """
         endpoint = f"/api/v0/{resource.value}"
-
-        # We don't use `asdict` to avoid deepcopy.
-        # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict
-        params = {
-            "limit": options.limit,
-            "timeout": options.timeout,
-            "filter_keys": [],
-            "filter_values": [],
-        }
-        for filter in options.filters:
-            filter_k, filter_val = filter
-            params["filter_keys"].append(filter_k)
-            params["filter_values"].append(filter_val)
-
-        response = self._request(endpoint, options.timeout, params, _explain)
-        if response["result"] is False:
-            raise RayStateApiException(
-                "API server internal error. See dashboard.log file for more details. "
-                f"Error: {response['msg']}"
-            )
-
-        # Print warnings if anything was given.
-        warning_msgs = response["data"].get("partial_failure_warning", None)
-        if warning_msgs and _explain:
-            warnings.warn(warning_msgs, RuntimeWarning)
-
-        return response["data"]["result"]
+        params = self._make_param(options)
+        return self._make_http_get_request(
+            endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
+        )
 
     def summary(
         self,
@@ -231,10 +348,6 @@ class StateApiClient(SubmissionClient):
             resource_name: Resource names,
                 see `SummaryResource` for details.
             options: summary options. See `SummaryApiOptions` for details.
-            _explain: Print the API information such as API
-                latency or failed query information.
-
-        Returns:
             A dictionary of queried result from `SummaryApiResponse`,
 
         Raises:
@@ -244,20 +357,107 @@ class StateApiClient(SubmissionClient):
         """
         params = {"timeout": options.timeout}
         endpoint = f"/api/v0/{resource.value}/summarize"
-        response = self._request(endpoint, options.timeout, params, _explain)
+        response = self._make_http_get_request(
+            endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
+        )
 
-        if response["result"] is False:
-            raise RayStateApiException(
-                "API server internal error. See dashboard.log file for more details. "
-                f"Error: {response['msg']}"
-            )
-        if _explain:
-            # Print warnings if anything was given.
-            warning_msg = response["data"].get("partial_failure_warning", None)
-            if warning_msg:
-                warnings.warn(warning_msg, RuntimeWarning)
+        return response["node_id_to_summary"]
 
-        return response["data"]["result"]["node_id_to_summary"]
+
+"""
+Convenient Methods for get_<RESOURCE> by id
+"""
+
+
+def get_actor(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[ActorState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.ACTORS, id, GetApiOptions(timeout=timeout), _explain=_explain
+    )
+
+
+# TODO(rickyyx:alpha-obs)
+def get_job(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[JobState]:
+    raise NotImplementedError("Get Job by id is currently not supported")
+
+
+def get_placement_group(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[PlacementGroupState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.PLACEMENT_GROUPS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def get_node(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[NodeState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.NODES,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def get_worker(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[WorkerState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.WORKERS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def get_task(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[TaskState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.TASKS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def get_objects(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> List[ObjectState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.OBJECTS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
 
 
 """
@@ -274,7 +474,7 @@ Supported arguments to the below methods, see `ListApiOptions`:
 
 def list_actors(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -288,7 +488,7 @@ def list_actors(
 
 def list_placement_groups(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -302,7 +502,7 @@ def list_placement_groups(
 
 def list_nodes(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -316,7 +516,7 @@ def list_nodes(
 
 def list_jobs(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -330,7 +530,7 @@ def list_jobs(
 
 def list_workers(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -344,7 +544,7 @@ def list_workers(
 
 def list_tasks(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -358,7 +558,7 @@ def list_tasks(
 
 def list_objects(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -372,7 +572,7 @@ def list_objects(
 
 def list_runtime_envs(
     address: Optional[str] = None,
-    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
