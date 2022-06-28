@@ -68,7 +68,14 @@ class ListApiOptions:
 
 
 @dataclass(init=True)
+class GetApiOptions:
+    # Timeout for the HTTP request
+    timeout: int = DEFAULT_RPC_TIMEOUT
+
+
+@dataclass(init=True)
 class SummaryApiOptions:
+    # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
 
 
