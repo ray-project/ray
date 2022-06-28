@@ -220,6 +220,7 @@ class StateApiClient(SubmissionClient):
         params["filter_keys"] = [RESOURCE_ID_KEY_NAME[resource]]
         params["filter_predicates"] = ["="]
         params["filter_values"] = [id]
+        params["detail"] = True
         endpoint = f"/api/v0/{resource.value}"
 
         result = self._make_http_get_request(
@@ -403,6 +404,8 @@ Supported arguments to the below methods, see `ListApiOptions`:
     filters: Optional list of filter key-value pair.
     timeout: Time for the request.
     limit: Limit of entries in the result
+    detail: If True, APIs will return more detailed output.
+        In this case, it can query more sources (more expensive).
 """
 
 
@@ -411,11 +414,14 @@ def list_actors(
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
     _explain: bool = False,
 ):
     return StateApiClient(api_server_address=address).list(
         StateResource.ACTORS,
-        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
         _explain=_explain,
     )
 
@@ -425,11 +431,14 @@ def list_placement_groups(
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
     _explain: bool = False,
 ):
     return StateApiClient(api_server_address=address).list(
         StateResource.PLACEMENT_GROUPS,
-        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
         _explain=_explain,
     )
 
@@ -439,11 +448,14 @@ def list_nodes(
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
     _explain: bool = False,
 ):
     return StateApiClient(api_server_address=address).list(
         StateResource.NODES,
-        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
         _explain=_explain,
     )
 
@@ -453,11 +465,14 @@ def list_jobs(
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
     _explain: bool = False,
 ):
     return StateApiClient(api_server_address=address).list(
         StateResource.JOBS,
-        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
         _explain=_explain,
     )
 
@@ -467,11 +482,14 @@ def list_workers(
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
     _explain: bool = False,
 ):
     return StateApiClient(api_server_address=address).list(
         StateResource.WORKERS,
-        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
         _explain=_explain,
     )
 
@@ -481,11 +499,14 @@ def list_tasks(
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
     _explain: bool = False,
 ):
     return StateApiClient(api_server_address=address).list(
         StateResource.TASKS,
-        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
         _explain=_explain,
     )
 
@@ -495,11 +516,14 @@ def list_objects(
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
     _explain: bool = False,
 ):
     return StateApiClient(api_server_address=address).list(
         StateResource.OBJECTS,
-        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
         _explain=_explain,
     )
 
@@ -509,11 +533,14 @@ def list_runtime_envs(
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
     _explain: bool = False,
 ):
     return StateApiClient(api_server_address=address).list(
         StateResource.RUNTIME_ENVS,
-        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
         _explain=_explain,
     )
 
