@@ -1114,14 +1114,14 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
 
     @ray.remote
-    def long_running(obj):  # noqa
+    def long_running_task(obj):  # noqa
         objs = [ray.put(1) for _ in range(10)]  # noqa
         import time
 
         time.sleep(300)
 
     objs = [ray.put(1) for _ in range(4)]
-    refs = [long_running.remote(obj) for obj in objs]
+    refs = [long_running_task.remote(obj) for obj in objs]
 
     async def verify():
         result = await client.get_object_info(node_id, limit=2)

@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
 DEFAULT_LIMIT = 100
+DEFAULT_LOG_LIMIT = 1000
 MAX_LIMIT = 10000
 
 

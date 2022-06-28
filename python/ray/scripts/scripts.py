@@ -44,7 +44,7 @@ from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE
 from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.api import get_log, list_logs
-from ray.experimental.state.common import DEFAULT_LIMIT
+from ray.experimental.state.common import DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
@@ -2092,7 +2092,7 @@ def logs(
     # If there's an unique match, print the log file.
     if match_unique:
         if not tail:
-            tail = 0 if follow else DEFAULT_LIMIT
+            tail = 0 if follow else DEFAULT_LOG_LIMIT
 
             if tail > 0:
                 print(

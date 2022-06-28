@@ -10,6 +10,7 @@ from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.experimental.state.common import (
     SummaryApiOptions,
     DEFAULT_LIMIT,
+    DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
     GetApiOptions,
@@ -559,7 +560,7 @@ def get_log(
     task_id: Optional[str] = None,
     pid: Optional[int] = None,
     follow: bool = False,
-    tail: int = 100,
+    tail: int = DEFAULT_LOG_LIMIT,
     _interval: Optional[float] = None,
 ) -> Generator[str, None, None]:
     if api_server_url is None:

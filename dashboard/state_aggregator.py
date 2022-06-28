@@ -19,6 +19,7 @@ from ray.experimental.state.common import (
     RuntimeEnvState,
     SummaryApiResponse,
     DEFAULT_LIMIT,
+    MAX_LIMIT,
     SummaryApiOptions,
     TaskSummaries,
     StateSchema,
@@ -536,9 +537,10 @@ class StateAPIManager:
         )
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
             option=ListApiOptions(
-                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+                timeout=option.timeout, limit=MAX_LIMIT, filters=[]
             )
         )
         summary = StateSummary(
@@ -551,9 +553,10 @@ class StateAPIManager:
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_actors(
             option=ListApiOptions(
-                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+                timeout=option.timeout, limit=MAX_LIMIT, filters=[]
             )
         )
         summary = StateSummary(
@@ -566,9 +569,10 @@ class StateAPIManager:
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_objects(
             option=ListApiOptions(
-                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+                timeout=option.timeout, limit=MAX_LIMIT, filters=[]
             )
         )
         summary = StateSummary(
