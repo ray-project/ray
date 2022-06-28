@@ -195,9 +195,9 @@ class LogsManager:
                 result["core_worker"].append(log_file)
             elif "core-driver" in log_file and log_file.endswith(".log"):
                 result["driver"].append(log_file)
-            elif "raylet." in log_file:
+            elif "raylet" in log_file:
                 result["raylet"].append(log_file)
-            elif "gcs_server." in log_file:
+            elif "gcs_server" in log_file:
                 result["gcs_server"].append(log_file)
             elif "log_monitor" in log_file:
                 result["internal"].append(log_file)

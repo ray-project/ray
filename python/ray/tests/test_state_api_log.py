@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import re
 from typing import List
 from unittest.mock import MagicMock
 
@@ -648,21 +649,25 @@ def test_log_cli(shutdown_only):
         assert result.exit_code == 0
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
+        assert re.search(r"raylet_\d+\.log", result.output)
         assert "gcs_server.out" in result.output
         assert "gcs_server.err" in result.output
+        assert re.search(r"gcs_server_\d+\.log", result.output)
         return True
 
     wait_for_condition(verify)
 
     # Test when there's only 1 match, it prints logs.
     def verify():
-        result = runner.invoke(scripts.logs, ["raylet.out"])
+        result = runner.invoke(scripts.logs, ["raylet_*.log"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" not in result.output
         assert "raylet.err" not in result.output
+        assert not re.search(r"raylet_\d+\.log", result.output)
         assert "gcs_server.out" not in result.output
         assert "gcs_server.err" not in result.output
+        assert not re.search(r"gcs_server_\d+\.log", result.output)
         # Make sure it prints the log message.
         assert "NodeManager server started" in result.output
         return True
@@ -671,13 +676,15 @@ def test_log_cli(shutdown_only):
 
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
-        result = runner.invoke(scripts.logs, ["raylet.*"])
+        result = runner.invoke(scripts.logs, ["raylet*"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
+        assert re.search(r"raylet_\d+\.log", result.output)
         assert "gcs_server.out" not in result.output
         assert "gcs_server.err" not in result.output
+        assert not re.search(r"gcs_server_\d+\.log", result.output)
         return True
 
     wait_for_condition(verify)
