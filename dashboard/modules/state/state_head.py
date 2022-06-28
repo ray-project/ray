@@ -22,6 +22,7 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.experimental.state.util import convert_string_to_type
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -57,7 +58,11 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         filters = []
         for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
             filters.append((key, predicate, val))
-        return ListApiOptions(limit=limit, timeout=timeout, filters=filters)
+        detail = convert_string_to_type(req.query.get("detail", False), bool)
+
+        return ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        )
 
     def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:
         timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
@@ -181,7 +186,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         glob_filter = req.query.get("glob", "*")
         node_id = req.query.get("node_id", None)
         node_ip = req.query.get("node_ip", None)
-        timeout = req.query.get("timeout", DEFAULT_RPC_TIMEOUT)
+        timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
 
         # TODO(sang): Do input validation from the middleware instead.
         if not node_id and not node_ip:
