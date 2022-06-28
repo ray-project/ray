@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import uuid
+import warnings
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional
@@ -616,6 +617,15 @@ def wrap_function(
                 "unexpected behavior when using checkpointing features or "
                 "certain schedulers. To enable, set the train function "
                 "arguments to be `func(config, checkpoint_dir=None)`."
+            )
+
+    if use_checkpoint:
+        if log_once("tune_checkpoint_dir_deprecation") and warn:
+            warnings.warn(
+                "`checkpoint_dir` in `func(config, checkpoint_dir)` is being deprecated."
+                "To save and load checkpoint in tune function, "
+                "please use `ray.air.session` API.",
+                DeprecationWarning,
             )
 
     class ImplicitFunc(*inherit_from):

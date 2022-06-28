@@ -47,36 +47,6 @@ Tune will run this function on a separate thread in a Ray actor process.
 You'll notice that Ray Tune will output extra values in addition to the user reported metrics,
 such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
-Function API return and yield values
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Instead of using ``session.report()``, you can also use Python's ``yield``
-statement to report metrics to Ray Tune:
-
-
-.. code-block:: python
-
-    def trainable(config):
-        # config (dict): A dict of hyperparameters.
-
-        for x in range(20):
-            intermediate_score = objective(x, config["a"], config["b"])
-
-            yield {"score": intermediate_score}  # This sends the score to Tune.
-
-    analysis = tune.run(
-        trainable,
-        config={"a": 2, "b": 4}
-    )
-
-    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
-
-If you yield a dictionary object, this will work just as ``session.report()``.
-If you yield a number, if will be reported to Ray Tune with the key ``_metric``, i.e.
-as if you had called ``session.report({"_metric": value})``.
-
-Ray Tune supports the same functionality for return values if you only
-report metrics at the end of each run:
-
 .. code-block:: python
 
     def trainable(config):
@@ -341,7 +311,7 @@ It is also possible to specify memory (``"memory"``, in bytes) and custom resour
 .. _tune-function-docstring:
 
 session (Function API)
---------------------------------------------
+----------------------
 
 .. autofunction:: ray.air.session.report
     :noindex:

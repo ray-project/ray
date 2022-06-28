@@ -52,12 +52,15 @@ Session
 
 Ray AIR exposes a functional API for users to define training behavior, or for developers to create their own ``Trainer``\s.
 In both cases, there is a need for the following interactions:
+
 1. To disseminate information downstream, including ``trial_name``, ``trial_id``, ``trial_resources``, rank information etc.
 2. To report information to upstream, including metrics and checkpoint.
 
-To facilitate such interactions, we introduce :ref:`Session <air-session-ref>`. The following figure shows how Session
-looks like in a Data Parallel training scenario and the conceptual image of Session at different levels (what we call
-as Tune Session and Train Session).
+To facilitate such interactions, we introduce the :ref:`Session <air-session-ref>` concept.
+
+The session concept exists on several levels: The execution layer (called `Tune Session`) and the Data Parallel training layer
+(called `Train Session`).
+The following figure shows how these two sessions look like in a Data Parallel training scenario.
 
 .. image:: images/session.svg
    :width: 650px

@@ -183,6 +183,7 @@ You can do this in the trainable, as shown below:
     ``library`` refers to whatever 3rd party logging library you are using.
 
     .. code-block:: python
+
         from ray.air import session
 
         def trainable(config):
