@@ -17,7 +17,7 @@ from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.typing import (
     ResultDict,
@@ -37,8 +37,8 @@ class MARWILConfig(AlgorithmConfig):
         ...             .offline_data(input_=["./rllib/tests/data/cartpole/large.json"])
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build()
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.marwil import MARWILConfig
@@ -284,7 +284,7 @@ class MARWIL(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
         # Update global vars on local worker as well.

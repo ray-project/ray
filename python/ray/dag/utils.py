@@ -10,7 +10,7 @@ from ray.dag import (
 )
 
 
-class DAGNodeNameGenerator(object):
+class _DAGNodeNameGenerator(object):
     """
     Generate unique suffix for each given Node in the DAG.
     Apply monotonic increasing id suffix for duplicated names.

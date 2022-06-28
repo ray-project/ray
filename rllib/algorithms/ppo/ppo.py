@@ -38,7 +38,7 @@ from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 
 logger = logging.getLogger(__name__)
@@ -426,7 +426,7 @@ class PPO(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
         # For each policy: update KL scale and warn about possible issues
