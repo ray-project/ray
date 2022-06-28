@@ -9,7 +9,7 @@ import pytest
 import ray
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import test_external_redis, wait_for_condition
+from ray._private.test_utils import enable_external_redis, wait_for_condition
 from ray.exceptions import RuntimeEnvSetupError
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.MyPlugin"
