@@ -1,38 +1,38 @@
 import json
 import os
-import requests
-
-from unittest.mock import MagicMock
-from typing import List
-import pytest
 import sys
+from typing import List
+from unittest.mock import MagicMock
+
+import pytest
+import requests
+from click.testing import CliRunner
+
+import ray
+import ray.scripts.scripts as scripts
+from ray._private.test_utils import (
+    format_web_url,
+    wait_for_condition,
+    wait_until_server_available,
+)
+from ray._raylet import ActorID, NodeID, TaskID, WorkerID
+from ray.core.generated.common_pb2 import Address
+from ray.core.generated.gcs_pb2 import ActorTableData
+from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
+from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
+from ray.dashboard.modules.log.log_agent import tail as tail_file
+from ray.dashboard.modules.log.log_manager import LogsManager
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
+from ray.experimental.state.common import GetLogOptions
+from ray.experimental.state.exception import DataSourceUnavailable
+from ray.experimental.state.state_manager import StateDataSourceClient
 
 if sys.version_info > (3, 7, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock
 
-import ray
-
-from click.testing import CliRunner
-from ray._private.test_utils import (
-    format_web_url,
-    wait_until_server_available,
-)
-from ray._raylet import WorkerID, ActorID, TaskID, NodeID
-from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
-from ray.dashboard.tests.conftest import *  # noqa
-from ray.core.generated.common_pb2 import Address
-from ray.core.generated.reporter_pb2 import StreamLogReply, ListLogsReply
-from ray.core.generated.gcs_pb2 import ActorTableData
-from ray.dashboard.modules.log.log_agent import tail as tail_file
-from ray.dashboard.modules.log.log_manager import LogsManager
-from ray.experimental.state.api import list_nodes, list_workers, list_logs, get_log
-from ray.experimental.state.common import GetLogOptions
-from ray.experimental.state.exception import DataSourceUnavailable
-from ray.experimental.state.state_manager import StateDataSourceClient
-import ray.scripts.scripts as scripts
-from ray._private.test_utils import wait_for_condition
 
 ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
 
@@ -377,7 +377,7 @@ def test_logs_list(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
-    node_id = list(list_nodes().keys())[0]
+    node_id = list_nodes()[0]["node_id"]
 
     def verify():
         response = requests.get(webui_url + f"/api/v0/logs?node_id={node_id}")
@@ -418,7 +418,7 @@ def test_logs_list(ray_start_with_dashboard):
         logs = result["data"]["result"]
         assert "gcs_server" in logs
         assert "internal" in logs
-        assert len(logs.keys()) == 2
+        assert len(logs) == 2
         assert "gcs_server.out" in logs["gcs_server"]
         assert "gcs_server.err" in logs["gcs_server"]
         assert "debug_state_gcs.txt" in logs["internal"]
@@ -441,9 +441,7 @@ def test_logs_list(ray_start_with_dashboard):
         ]
         assert all([cat in logs for cat in worker_log_categories])
         num_workers = len(
-            list(
-                filter(lambda w: w["worker_type"] == "WORKER", list_workers().values())
-            )
+            list(filter(lambda w: w["worker_type"] == "WORKER", list_workers()))
         )
         assert (
             len(logs["worker_out"])
@@ -461,7 +459,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
-    node_id = list(list_nodes().keys())[0]
+    node_id = list_nodes()[0]["node_id"]
 
     def verify_basic():
         stream_response = requests.get(
@@ -552,7 +550,7 @@ def test_log_list(ray_start_cluster):
     ray.init(address=cluster.address)
 
     def verify():
-        head_node = list(list_nodes().values())[0]
+        head_node = list_nodes()[0]
         # When glob filter is not provided, it should provide all logs
         logs = list_logs(node_id=head_node["node_id"])
         assert "raylet" in logs
@@ -575,7 +573,7 @@ def test_log_get(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
-    head_node = list(list_nodes().values())[0]
+    head_node = list_nodes()[0]
     cluster.add_node(num_cpus=1)
 
     @ray.remote(num_cpus=1)
@@ -688,4 +686,7 @@ def test_log_cli(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

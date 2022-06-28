@@ -206,7 +206,6 @@ class TestDeploymentSchema:
 
         return {
             "name": "deep",
-            "import_path": "my_module.MyClass",
             "num_replicas": None,
             "route_prefix": None,
             "max_concurrent_queries": None,
@@ -232,7 +231,6 @@ class TestDeploymentSchema:
 
         deployment_schema = {
             "name": "shallow",
-            "import_path": "test_env.shallow_import.ShallowClass",
             "num_replicas": 2,
             "route_prefix": "/shallow",
             "max_concurrent_queries": 32,
@@ -265,24 +263,6 @@ class TestDeploymentSchema:
         }
 
         DeploymentSchema.parse_obj(deployment_schema)
-
-    def test_invalid_python_attributes(self):
-        # Test setting invalid attributes for Python to ensure a validation or
-        # value error is raised.
-
-        # Python requires an import path
-        deployment_schema = self.get_minimal_deployment_schema()
-
-        # DeploymentSchema should be generated with valid import_paths
-        for path in get_valid_import_paths():
-            deployment_schema["import_path"] = path
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # Invalid import_path syntax should raise a ValidationError
-        for path in get_invalid_import_paths():
-            deployment_schema["import_path"] = path
-            with pytest.raises(ValidationError):
-                DeploymentSchema.parse_obj(deployment_schema)
 
     def test_gt_zero_deployment_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -391,7 +371,6 @@ class TestServeApplicationSchema:
             "deployments": [
                 {
                     "name": "shallow",
-                    "import_path": "test_env.shallow_import.ShallowClass",
                     "num_replicas": 2,
                     "route_prefix": "/shallow",
                     "max_concurrent_queries": 32,
@@ -424,7 +403,6 @@ class TestServeApplicationSchema:
                 },
                 {
                     "name": "deep",
-                    "import_path": ("test_env.subdir1.subdir2.deep_import.DeepClass"),
                     "num_replicas": None,
                     "route_prefix": None,
                     "max_concurrent_queries": None,
@@ -638,9 +616,8 @@ def test_deployment_to_schema_to_deployment():
         # decorator without converting global_f() into a Deployment object.
         pass
 
-    f._func_or_class = "ray.serve.tests.test_schema.global_f"
-
     deployment = schema_to_deployment(deployment_to_schema(f))
+    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
 
     assert deployment.num_replicas == 3
     assert deployment.route_prefix == "/hello"
@@ -670,9 +647,8 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     def f():
         pass
 
-    f._func_or_class = "ray.serve.tests.test_schema.global_f"
-
     deployment = schema_to_deployment(deployment_to_schema(f))
+    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
 
     assert len(deployment.ray_actor_options) == 0
 
@@ -712,28 +688,6 @@ def test_status_schema_helpers():
     assert len(deployment_names) == 0
 
     serve.shutdown()
-
-
-@serve.deployment
-def decorated_f(*args):
-    return "reached decorated_f"
-
-
-def test_use_deployment_import_path():
-    """Ensure deployment func_or_class becomes import path when schematized."""
-
-    d = schema_to_deployment(deployment_to_schema(decorated_f))
-
-    assert isinstance(d.func_or_class, str)
-
-    # CI may change the parent path, so check only that the suffix matches.
-    assert d.func_or_class.endswith("ray.serve.tests.test_schema.decorated_f")
-
-    serve.start()
-    d.deploy()
-    assert (
-        requests.get("http://localhost:8000/decorated_f").text == "reached decorated_f"
-    )
 
 
 if __name__ == "__main__":

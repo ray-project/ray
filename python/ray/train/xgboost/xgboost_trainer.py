@@ -1,18 +1,16 @@
-import os
 from typing import Optional, Tuple, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
-from ray.train.constants import MODEL_KEY
+from ray.train.xgboost.utils import load_checkpoint
 
 import xgboost
 import xgboost_ray
 from xgboost_ray.tune import TuneReportCheckpointCallback
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="alpha")
@@ -57,7 +55,7 @@ class XGBoostTrainer(GBDTTrainer):
             be used to add sample weights with the ``weights`` parameter.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
         **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
@@ -75,24 +73,3 @@ class XGBoostTrainer(GBDTTrainer):
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
         return load_checkpoint(checkpoint)
-
-
-def load_checkpoint(
-    checkpoint: Checkpoint,
-) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``XGBoostTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the model and
-            preprocessor from. It is expected to be from the result of a
-            ``XGBoostTrainer`` run.
-
-    Returns:
-        The model and AIR preprocessor contained within.
-    """
-    with checkpoint.as_directory() as checkpoint_path:
-        xgb_model = xgboost.Booster()
-        xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
-        preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
-    return xgb_model, preprocessor

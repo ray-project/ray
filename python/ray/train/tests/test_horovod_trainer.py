@@ -6,12 +6,12 @@ from torchvision import datasets
 from torchvision.transforms import transforms
 
 import ray
+from ray.air.examples.horovod.horovod_pytorch_example import Net
 from ray.air.examples.horovod.horovod_pytorch_example import (
     train_func as hvd_train_func,
-    Net,
 )
-from ray.air.predictors.integrations.torch import TorchPredictor
 from ray.train.horovod import HorovodTrainer
+from ray.train.torch import TorchPredictor
 
 
 @pytest.fixture
@@ -103,7 +103,8 @@ def test_horovod_state_dict(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

@@ -1,18 +1,19 @@
+import logging
 import os
 import sys
-
-import logging
-import pytest
 import unittest.mock
+
+import grpc
+import pytest
+
 import ray
 import ray._private.services
-from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray._private.test_utils import run_string_as_driver
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
-from ray._private.test_utils import run_string_as_driver
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
-import grpc
 
 
 def test_shutdown_and_reset_global_worker(shutdown_only):
@@ -305,8 +306,9 @@ def test_ray_init_using_hostname(ray_start_cluster):
 
 
 def test_redis_connect_backoff():
-    from ray import ray_constants
     import time
+
+    from ray._private import ray_constants
 
     unreachable_address = "127.0.0.1:65535"
     redis_ip, redis_port = unreachable_address.split(":")
@@ -331,7 +333,9 @@ def test_redis_connect_backoff():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

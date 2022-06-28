@@ -1,16 +1,14 @@
-import threading
 import bisect
-from collections import defaultdict
 import logging
-from threading import Event
-from typing import Type
+import threading
 import time
-from typing import Callable, DefaultDict, Dict, List, Optional
+from collections import defaultdict
 from dataclasses import dataclass, field
+from threading import Event
+from typing import Callable, DefaultDict, Dict, List, Optional, Type
 
 import ray
 from ray.serve.constants import SERVE_LOGGER_NAME
-
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -150,7 +148,7 @@ class InMemoryMetricsStore:
             return
         return sum(point.value for point in points_after_idx) / len(points_after_idx)
 
-    def max(self, key: str, window_start_timestamp_s: float):
+    def max(self, key: str, window_start_timestamp_s: float, do_compact: bool = True):
         """Perform a max operation for metric `key`.
 
         Args:
@@ -158,10 +156,16 @@ class InMemoryMetricsStore:
             window_start_timestamp_s(float): the unix epoch timestamp for the
               start of the window. The computed average will use all datapoints
               from this timestamp until now.
+            do_compact(bool): whether or not to delete the datapoints that's
+              before `window_start_timestamp_s` to save memory. Default is
+              true.
         Returns:
             Max value of the data points for the key on and after time
             window_start_timestamp_s, or None if there are no such points.
         """
         points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
+
+        if do_compact:
+            self.data[key] = points_after_idx
 
         return max((point.value for point in points_after_idx), default=None)
