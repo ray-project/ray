@@ -1,5 +1,6 @@
 package io.ray.test;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
@@ -7,6 +8,12 @@ import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.List;
+
+import io.ray.api.id.UniqueId;
+import io.ray.api.runtimecontext.NodeInfo;
+import io.ray.runtime.config.RayConfig;
+import io.ray.runtime.gcs.GcsClient;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -36,11 +43,23 @@ public class RuntimeContextTest extends BaseTest {
   public static class RuntimeContextTester {
 
     public String testRuntimeContext(ActorId actorId) {
+      /// test getCurrentJobId
       Assert.assertEquals(JOB_ID, Ray.getRuntimeContext().getCurrentJobId());
+      /// test getCurrentTaskId
       Assert.assertNotEquals(Ray.getRuntimeContext().getCurrentTaskId(), TaskId.NIL);
+      /// test getCurrentActorId
       Assert.assertEquals(actorId, Ray.getRuntimeContext().getCurrentActorId());
+
+      /// test getCurrentNodeId
+      UniqueId currNodeId = Ray.getRuntimeContext().getCurrentNodeId();
+      GcsClient gcsClient = TestUtils.getRuntime().getGcsClient();
+      List<NodeInfo> allNodeInfo = gcsClient.getAllNodeInfo();
+      Assert.assertEquals(allNodeInfo.size(), 1);
+      Assert.assertEquals(allNodeInfo.get(0).nodeId, currNodeId);
+
       return "ok";
     }
+
   }
 
   @Test
