@@ -783,7 +783,7 @@ class Impala(Algorithm):
             aggregate_into_larger_batch()
 
     def get_samples_from_workers(
-        self
+        self,
     ) -> Dict[
         Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
     ]:
