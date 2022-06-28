@@ -1,3 +1,5 @@
+# Mute the warning because Serve sometimes intentionally calls
+# ray.get inside async actors.
 import ray._private.worker
 
 try:
@@ -11,7 +13,6 @@ try:
         shutdown,
         start,
     )
-    from ray.serve.air_integrations import PredictorDeployment
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
 except ModuleNotFoundError as e:
@@ -22,8 +23,6 @@ except ModuleNotFoundError as e:
     raise e
 
 
-# Mute the warning because Serve sometimes intentionally calls
-# ray.get inside async actors.
 ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
@@ -37,5 +36,4 @@ __all__ = [
     "get_deployment",
     "list_deployments",
     "run",
-    "PredictorDeployment",
 ]

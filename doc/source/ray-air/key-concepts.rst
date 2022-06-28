@@ -76,7 +76,7 @@ You can take a trained model and do batch inference using the BatchPredictor obj
 Online Inference
 ----------------
 
-Deploy the model as an inference service by using Ray Serve and the ``PredictorDeployment`` class.
+Deploy the model as an inference service by using Ray Serve and the ``ModelWrapperDeployment`` class.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python
