@@ -17,8 +17,6 @@ from ray._private.runtime_env.validation import (
 )
 from ray.runtime_env import RuntimeEnv
 
-from ray._private.runtime_env import plugin_schema_manager
-
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
 
 PIP_LIST = ["requests==1.0.0", "pip-install-test"]
@@ -301,18 +299,18 @@ class TestParseJobConfig:
         assert config.metadata == {}
 
 
-schemas_dir = os.path.join(os.path.dirname(plugin_schema_manager.__file__), "schemas")
-pip_schemas_file = os.path.join(
-    os.path.dirname(plugin_schema_manager.__file__), "schemas/pip_schema.json"
+schemas_dir = os.path.dirname(__file__)
+test_env_1 = os.path.join(
+    os.path.dirname(__file__), "test_runtime_env_validation_1_schema.json"
 )
-working_dir_schemas_file = os.path.join(
-    os.path.dirname(plugin_schema_manager.__file__), "schemas/working_dir_schema.json"
+test_env_2 = os.path.join(
+    os.path.dirname(__file__), "test_runtime_env_validation_2_schema.json"
 )
 
 
 @pytest.mark.parametrize(
     "set_runtime_env_plugins_schemas",
-    [schemas_dir, f"{pip_schemas_file},{working_dir_schemas_file}"],
+    [schemas_dir, f"{test_env_1},{test_env_2}"],
     indirect=True,
 )
 class TestValidateByJsonSchema:
@@ -333,6 +331,18 @@ class TestValidateByJsonSchema:
         runtime_env["working_dir"] = "https://abc/file.zip"
         with pytest.raises(jsonschema.exceptions.ValidationError, match="working_dir"):
             runtime_env["working_dir"] = ["https://abc/file.zip"]
+
+    def test_validate_test_env_1(self, set_runtime_env_plugins_schemas):
+        runtime_env = RuntimeEnv()
+        runtime_env.set("test_env_1", {"array": ["123"], "bool": True})
+        with pytest.raises(jsonschema.exceptions.ValidationError, match="bool"):
+            runtime_env.set("test_env_1", {"array": ["123"], "bool": "1"})
+
+    def test_validate_test_env_2(self, set_runtime_env_plugins_schemas):
+        runtime_env = RuntimeEnv()
+        runtime_env.set("test_env_2", "123")
+        with pytest.raises(jsonschema.exceptions.ValidationError, match="test_env_2"):
+            runtime_env.set("test_env_2", ["123"])
 
 
 if __name__ == "__main__":

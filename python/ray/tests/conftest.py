@@ -21,6 +21,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
 from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
@@ -940,6 +941,8 @@ def set_runtime_env_plugins_schemas(request):
     runtime_env_plugins_schemas = getattr(request, "param", "0")
     try:
         os.environ["RAY_RUNTIME_ENV_PLUGINS_SCHEMAS"] = runtime_env_plugins_schemas
+        # Clear and reload schemas.
+        RuntimeEnvPluginSchemaManager.clear()
         yield runtime_env_plugins_schemas
     finally:
         del os.environ["RAY_RUNTIME_ENV_PLUGINS_SCHEMAS"]
