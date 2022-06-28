@@ -10,6 +10,7 @@ from click.testing import CliRunner
 
 import ray
 import ray.dashboard.consts as dashboard_consts
+import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
@@ -47,6 +48,12 @@ from ray.dashboard.state_aggregator import (
     _convert_filters_type,
 )
 from ray.experimental.state.api import (
+    get_actor,
+    get_node,
+    get_objects,
+    get_placement_group,
+    get_task,
+    get_worker,
     list_actors,
     list_jobs,
     list_nodes,
@@ -70,11 +77,8 @@ from ray.experimental.state.common import (
     WorkerState,
 )
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
-from ray.experimental.state.state_cli import (
-    AvailableFormat,
-    get_state_api_output_to_print,
-    _parse_filter,
-)
+from ray.experimental.state.state_cli import AvailableFormat, format_list_api_output, _parse_filter
+from ray.experimental.state.state_cli import get as cli_get
 from ray.experimental.state.state_cli import list as cli_list
 from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
@@ -981,10 +985,11 @@ def is_hex(val):
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported on Windows")
 def test_cli_apis_sanity_check(ray_start_cluster):
     """Test all of CLI APIs work as expected."""
+    NUM_NODES = 4
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
-    for _ in range(3):
+    for _ in range(NUM_NODES - 1):
         cluster.add_node(num_cpus=2)
     runner = CliRunner()
 
@@ -1014,8 +1019,8 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     )
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
-    def verify_output(resource_name, necessary_substrings: List[str]):
-        result = runner.invoke(cli_list, [resource_name])
+    def verify_output(cmd, args: List[str], necessary_substrings: List[str]):
+        result = runner.invoke(cmd, args)
         exit_code_correct = result.exit_code == 0
         substring_matched = all(
             substr in result.output for substr in necessary_substrings
@@ -1023,23 +1028,67 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         print(result.output)
         return exit_code_correct and substring_matched
 
-    wait_for_condition(lambda: verify_output("actors", ["actor_id"]))
-    wait_for_condition(lambda: verify_output("workers", ["worker_id"]))
-    wait_for_condition(lambda: verify_output("nodes", ["node_id"]))
+    wait_for_condition(lambda: verify_output(cli_list, ["actors"], ["actor_id"]))
+    wait_for_condition(lambda: verify_output(cli_list, ["workers"], ["worker_id"]))
+    wait_for_condition(lambda: verify_output(cli_list, ["nodes"], ["node_id"]))
     wait_for_condition(
-        lambda: verify_output("placement-groups", ["placement_group_id"])
+        lambda: verify_output(cli_list, ["placement-groups"], ["placement_group_id"])
     )
-    wait_for_condition(lambda: verify_output("jobs", ["raysubmit"]))
-    wait_for_condition(lambda: verify_output("tasks", ["task_id"]))
-    wait_for_condition(lambda: verify_output("objects", ["object_id"]))
-    wait_for_condition(lambda: verify_output("runtime-envs", ["runtime_env"]))
+    wait_for_condition(lambda: verify_output(cli_list, ["jobs"], ["raysubmit"]))
+    wait_for_condition(lambda: verify_output(cli_list, ["tasks"], ["task_id"]))
+    wait_for_condition(lambda: verify_output(cli_list, ["objects"], ["object_id"]))
+    wait_for_condition(
+        lambda: verify_output(cli_list, ["runtime-envs"], ["runtime_env"])
+    )
+
+    # Test get node by id
+    nodes = ray.nodes()
+    wait_for_condition(
+        lambda: verify_output(
+            cli_get, ["nodes", nodes[0]["NodeID"]], ["node_id", nodes[0]["NodeID"]]
+        )
+    )
+    # Test get workers by id
+    workers = global_state.workers()
+    assert len(workers) > 0
+    worker_id = list(workers.keys())[0]
+    wait_for_condition(
+        lambda: verify_output(cli_get, ["workers", worker_id], ["worker_id", worker_id])
+    )
+
+    # Test get actors by id
+    wait_for_condition(
+        lambda: verify_output(
+            cli_get,
+            ["actors", actor._actor_id.hex()],
+            ["actor_id", actor._actor_id.hex()],
+        )
+    )
+
+    # Test get placement groups by id
+    wait_for_condition(
+        lambda: verify_output(
+            cli_get,
+            ["placement-groups", pg.id.hex()],
+            ["placement_group_id", pg.id.hex()],
+        )
+    )
+
+    # Test get objects by id
+    wait_for_condition(
+        lambda: verify_output(cli_get, ["objects", obj.hex()], ["object_id", obj.hex()])
+    )
+
+    # TODO(rickyyx:alpha-obs):
+    # - get job by id: jobs is not currently filterable by id
+    # - get task by id: no easy access to tasks yet
 
 
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_actors(shutdown_only):
+def test_list_get_actors(shutdown_only):
     ray.init()
 
     @ray.remote
@@ -1049,11 +1098,20 @@ def test_list_actors(shutdown_only):
     a = A.remote()  # noqa
 
     def verify():
-        actor_data = list_actors()[0]
-        correct_state = actor_data["state"] == "ALIVE"
-        is_id_hex = is_hex(actor_data["actor_id"])
-        correct_id = a._actor_id.hex() == actor_data["actor_id"]
-        return correct_state and is_id_hex and correct_id
+        # Test list
+        actors = list_actors()
+        assert len(actors) == 1
+        assert actors[0]["state"] == "ALIVE"
+        assert is_hex(actors[0]["actor_id"])
+        assert a._actor_id.hex() == actors[0]["actor_id"]
+
+        # Test get
+        for actor in actors:
+            get_actor_data = get_actor(actor["actor_id"])
+            assert get_actor_data is not None
+            assert get_actor_data == actor
+
+        return True
 
     wait_for_condition(verify)
     print(list_actors())
@@ -1063,16 +1121,25 @@ def test_list_actors(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_pgs(shutdown_only):
+def test_list_get_pgs(shutdown_only):
     ray.init()
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
     def verify():
-        pg_data = list_placement_groups()[0]
-        correct_state = pg_data["state"] == "CREATED"
-        is_id_hex = is_hex(pg_data["placement_group_id"])
-        correct_id = pg.id.hex() == pg_data["placement_group_id"]
-        return correct_state and is_id_hex and correct_id
+        # Test list
+        pgs = list_placement_groups()
+        assert len(pgs) == 1
+        assert pgs[0]["state"] == "CREATED"
+        assert is_hex(pgs[0]["placement_group_id"])
+        assert pg.id.hex() == pgs[0]["placement_group_id"]
+
+        # Test get
+        for pg_data in pgs:
+            get_pg_data = get_placement_group(pg_data["placement_group_id"])
+            assert get_pg_data is not None
+            assert pg_data == get_pg_data
+
+        return True
 
     wait_for_condition(verify)
     print(list_placement_groups())
@@ -1082,15 +1149,31 @@ def test_list_pgs(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_nodes(shutdown_only):
+def test_list_get_nodes(shutdown_only):
     ray.init()
 
     def verify():
-        node_data = list_nodes()[0]
-        correct_state = node_data["state"] == "ALIVE"
-        is_id_hex = is_hex(node_data["node_id"])
-        correct_id = ray.nodes()[0]["NodeID"] == node_data["node_id"]
-        return correct_state and is_id_hex and correct_id
+        nodes = list_nodes()
+        assert nodes[0]["state"] == "ALIVE"
+        assert is_hex(nodes[0]["node_id"])
+
+        # Check with legacy API
+        check_nodes = ray.nodes()
+        assert len(check_nodes) == len(nodes)
+
+        sorted(check_nodes, key=lambda n: n["NodeID"])
+        sorted(nodes, key=lambda n: n["node_id"])
+
+        for check_node, node in zip(check_nodes, nodes):
+            assert check_node["NodeID"] == node["node_id"]
+            assert check_node["NodeName"] == node["node_name"]
+
+        # Check the Get api
+        for node in nodes:
+            get_node_data = get_node(node["node_id"])
+            assert get_node_data == node
+
+        return True
 
     wait_for_condition(verify)
     print(list_nodes())
@@ -1126,21 +1209,27 @@ def test_list_jobs(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_workers(shutdown_only):
+def test_list_get_workers(shutdown_only):
     ray.init()
 
     def verify():
-        worker_data = list_workers()[0]
-        is_id_hex = is_hex(worker_data["worker_id"])
+        workers = list_workers()
+        assert is_hex(workers[0]["worker_id"])
         # +1 to take into account of drivers.
-        correct_num_workers = len(list_workers()) == ray.cluster_resources()["CPU"] + 1
-        return is_id_hex and correct_num_workers
+        assert len(workers) == ray.cluster_resources()["CPU"] + 1
+
+        # Test get worker returns the same result
+        for worker in workers:
+            got_worker = get_worker(worker["worker_id"])
+            assert got_worker == worker
+
+        return True
 
     wait_for_condition(verify)
     print(list_workers())
 
 
-def test_list_tasks(shutdown_only):
+def test_list_get_tasks(shutdown_only):
     ray.init(num_cpus=2)
 
     @ray.remote
@@ -1165,7 +1254,7 @@ def test_list_tasks(shutdown_only):
 
     def verify():
         tasks = list_tasks()
-        correct_num_tasks = len(tasks) == 5
+        assert len(tasks) == 5
         waiting_for_execution = len(
             list(
                 filter(
@@ -1174,9 +1263,11 @@ def test_list_tasks(shutdown_only):
                 )
             )
         )
+        assert waiting_for_execution == 0
         scheduled = len(
             list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
         )
+        assert scheduled == 2
         waiting_for_dep = len(
             list(
                 filter(
@@ -1185,6 +1276,7 @@ def test_list_tasks(shutdown_only):
                 )
             )
         )
+        assert waiting_for_dep == 1
         running = len(
             list(
                 filter(
@@ -1193,14 +1285,14 @@ def test_list_tasks(shutdown_only):
                 )
             )
         )
+        assert running == 2
 
-        return (
-            correct_num_tasks
-            and running == 2
-            and waiting_for_dep == 1
-            and waiting_for_execution == 0
-            and scheduled == 2
-        )
+        # Test get tasks
+        for task in tasks:
+            get_task_data = get_task(task["task_id"])
+            assert get_task_data == task
+
+        return True
 
     wait_for_condition(verify)
     print(list_tasks())
@@ -1264,7 +1356,7 @@ def test_list_actor_tasks(shutdown_only):
     print(list_tasks())
 
 
-def test_list_objects(shutdown_only):
+def test_list_get_objects(shutdown_only):
     ray.init()
     import numpy as np
 
@@ -1280,7 +1372,13 @@ def test_list_objects(shutdown_only):
     def verify():
         obj = list_objects()[0]
         # For detailed output, the test is covered from `test_memstat.py`
-        return obj["object_id"] == plasma_obj.hex()
+        assert obj["object_id"] == plasma_obj.hex()
+
+        got_objs = get_objects(plasma_obj.hex())
+        assert len(got_objs) == 1
+        assert obj == got_objs[0]
+
+        return True
 
     wait_for_condition(verify)
     print(list_objects())
@@ -1438,17 +1536,17 @@ async def test_cli_format_print(state_api_manager):
     result = result.result
     # If the format is not yaml, it will raise an exception.
     yaml.load(
-        get_state_api_output_to_print(result, format=AvailableFormat.YAML),
+        format_list_api_output(result, format=AvailableFormat.YAML),
         Loader=yaml.FullLoader,
     )
     # If the format is not json, it will raise an exception.
-    json.loads(get_state_api_output_to_print(result, format=AvailableFormat.JSON))
+    json.loads(format_list_api_output(result, format=AvailableFormat.JSON))
     # Verify the default format is yaml
-    yaml.load(get_state_api_output_to_print(result), Loader=yaml.FullLoader)
+    yaml.load(format_list_api_output(result), Loader=yaml.FullLoader)
     with pytest.raises(ValueError):
-        get_state_api_output_to_print(result, format="random_format")
+        format_list_api_output(result, format="random_format")
     with pytest.raises(NotImplementedError):
-        get_state_api_output_to_print(result, format=AvailableFormat.TABLE)
+        format_list_api_output(result, format=AvailableFormat.TABLE)
 
 
 def test_filter(shutdown_only):

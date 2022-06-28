@@ -43,7 +43,11 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
     def _options_from_req(self, req: aiohttp.web.Request) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
-        limit = int(req.query.get("limit"))
+        limit = int(
+            req.query.get("limit")
+            if req.query.get("limit") is not None
+            else DEFAULT_LIMIT
+        )
         timeout = int(req.query.get("timeout"))
         filter_keys = req.query.getall("filter_keys", [])
         filter_predicates = req.query.getall("filter_predicates", [])
