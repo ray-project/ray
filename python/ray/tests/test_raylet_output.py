@@ -20,8 +20,11 @@ def enable_export_loglevel(func):
 def test_ray_log_redirected(ray_start_regular):
     session_dir = ray._private.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Session dir not found."
-    raylet_logs = glob.glob("{}/logs/raylet*".format(session_dir))
-    assert len(raylet_logs) == 3  # .out, .err, .log
+    # Usually raylet.out is empty.
+    raylet_logs = glob.glob("{}/logs/raylet*.log".format(session_dir)) + glob.glob(
+        "{}/logs/raylet*.err".format(session_dir)
+    )
+    assert len(raylet_logs) == 2  # .err, .log
 
     @ray.remote
     class Actor:
