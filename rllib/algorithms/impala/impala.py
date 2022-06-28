@@ -782,7 +782,9 @@ class Impala(Algorithm):
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
 
-    def get_samples_from_workers(self) -> Dict[
+    def get_samples_from_workers(
+        self
+    ) -> Dict[
         Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
     ]:
         # Perform asynchronous sampling on all (remote) rollout workers.

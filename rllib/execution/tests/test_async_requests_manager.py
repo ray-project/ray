@@ -224,7 +224,9 @@ class TestAsyncRequestsManager(unittest.TestCase):
             manager.call(lambda w: w.task(), actor=worker_not_in_manager)
 
     def test_high_load(self):
-        workers = [RemoteRLlibActor.remote(sleep_time=random.random() * 2.0) for _ in range(60)]
+        workers = [
+            RemoteRLlibActor.remote(sleep_time=random.random() * 2.0) for _ in range(60)
+        ]
         manager = AsyncRequestsManager(
             workers,
             max_remote_requests_in_flight_per_worker=2,
@@ -250,7 +252,11 @@ class TestAsyncRequestsManager(unittest.TestCase):
         ready = manager.get_ready()
         num_ready += sum(len(reqs) for reqs in ready.values())
 
-        actually_called = sum(ray.get([worker.apply.remote(lambda w: w.num_task_called) for worker in workers]))
+        actually_called = sum(
+            ray.get(
+                [worker.apply.remote(lambda w: w.num_task_called) for worker in workers]
+            )
+        )
         assert actually_called == num_ready, (actually_called, num_ready)
 
 
