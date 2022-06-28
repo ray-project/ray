@@ -1,7 +1,7 @@
 import json
 import logging
 from enum import Enum, unique
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import click
 import yaml
@@ -20,6 +20,7 @@ from ray._private.gcs_utils import GcsClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
+    GetApiOptions,
     ListApiOptions,
     StateResource,
 )
@@ -40,10 +41,20 @@ def _get_available_formats() -> List[str]:
     return [format_enum.value for format_enum in AvailableFormat]
 
 
-def _get_available_resources() -> List[str]:
-    """Return the available resources in a list of string"""
+def _get_available_resources(
+    excluded: Optional[List[StateResource]] = None,
+) -> List[str]:
+    """Return the available resources in a list of string
+
+    Args:
+        excluded: List of resources that should be excluded
+    """
     # All resource names use '_' rather than '-'. But users options have '-'
-    return [e.value.replace("_", "-") for e in StateResource]
+    return [
+        e.value.replace("_", "-")
+        for e in StateResource
+        if excluded is None or e not in excluded
+    ]
 
 
 def get_api_server_url() -> str:
@@ -70,12 +81,9 @@ def get_api_server_url() -> str:
     return api_server_url
 
 
-def get_state_api_output_to_print(
-    state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
+def output_with_format(
+    state_data: Union[dict, list], format: AvailableFormat = AvailableFormat.DEFAULT
 ):
-    if len(state_data) == 0:
-        return "No resource in the cluster"
-
     # Default is yaml.
     if format == AvailableFormat.DEFAULT:
         return yaml.dump(state_data, indent=4, explicit_start=True)
@@ -92,6 +100,34 @@ def get_state_api_output_to_print(
         )
 
 
+def format_get_api_output(
+    state_data: Union[dict, list],
+    id: str,
+    format: AvailableFormat = AvailableFormat.DEFAULT,
+):
+    if len(state_data) == 0:
+        return f"Resource with id={id} not found in the cluster."
+
+    return output_with_format(state_data, format)
+
+
+def format_list_api_output(
+    state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
+):
+    if len(state_data) == 0:
+        return "No resource in the cluster"
+    return output_with_format(state_data, format)
+
+
+def _should_explain(format: AvailableFormat):
+    # If the format is json or yaml, it should not print stats because
+    # users don't want additional strings.
+    return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
+
+
+"""
+Common Options for State API commands
+"""
 timeout_option = click.option(
     "--timeout",
     default=DEFAULT_RPC_TIMEOUT,
@@ -107,15 +143,77 @@ address_option = click.option(
 )
 
 
-"""
-List API
-"""
+# TODO(rickyyx): Once we have other APIs stablized, we should refactor them to
+# reuse some of the options, e.g. `--address`.
+# list/get/summary could all go under a single command group for options sharing.
+@click.command()
+@click.argument(
+    "resource",
+    # NOTE(rickyyx): We are not allowing query job with id, and runtime envs
+    type=click.Choice(
+        _get_available_resources(
+            excluded=[StateResource.JOBS, StateResource.RUNTIME_ENVS]
+        )
+    ),
+)
+@click.argument(
+    "id",
+    type=str,
+)
+@address_option
+@timeout_option
+def get(
+    resource: str,
+    id: str,
+    address: Optional[str],
+    timeout: float,
+):
+    """
+    Get RESOURCE by ID.
 
+    RESOURCE is the name of the possible resources from `StateResource`,
+    i.e. 'workers', 'actors', 'nodes', ...
 
-def _should_explain(format: AvailableFormat):
-    # If the format is json or yaml, it should not print stats because
-    # users don't want additional strings.
-    return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
+    NOTE: We currently DO NOT support get by id for jobs and runtime-envs
+
+    Example:
+
+    ```
+    ray get nodes <node-id>
+    ray get workers <worker-id>
+    ```
+    """
+    # All resource names use '_' rather than '-'. But users options have '-'
+    resource = StateResource(resource.replace("-", "_"))
+
+    # Get the state API server address from ray if not provided by user
+    api_server_address = address if address else get_api_server_url()
+
+    # Create the State API server and put it into context
+    logger.debug(f"Create StateApiClient at {api_server_address}...")
+    client = StateApiClient(
+        api_server_address=api_server_address,
+    )
+
+    options = GetApiOptions(
+        timeout=timeout,
+    )
+
+    # If errors occur, exceptions will be thrown.
+    data = client.get(
+        resource=resource,
+        id=id,
+        options=options,
+        _explain=_should_explain(AvailableFormat.YAML),
+    )
+
+    # Print data to console.
+    print(
+        format_list_api_output(
+            state_data=data,
+            format=AvailableFormat.YAML,
+        )
+    )
 
 
 @click.command()
@@ -178,7 +276,7 @@ def list(
 
     # Print data to console.
     print(
-        get_state_api_output_to_print(
+        format_list_api_output(
             state_data=data,
             format=format,
         )
@@ -199,7 +297,7 @@ def summary_state_cli_group(ctx):
 def task_summary(ctx, timeout: float, address: str):
     address = address or ctx.obj["api_server_url"]
     print(
-        get_state_api_output_to_print(
+        output_with_format(
             summarize_tasks(
                 address=address,
                 timeout=timeout,
@@ -217,7 +315,7 @@ def task_summary(ctx, timeout: float, address: str):
 def actor_summary(ctx, timeout: float, address: str):
     address = address or ctx.obj["api_server_url"]
     print(
-        get_state_api_output_to_print(
+        output_with_format(
             summarize_actors(
                 address=address,
                 timeout=timeout,
@@ -235,7 +333,7 @@ def actor_summary(ctx, timeout: float, address: str):
 def object_summary(ctx, timeout: float, address: str):
     address = address or ctx.obj["api_server_url"]
     print(
-        get_state_api_output_to_print(
+        output_with_format(
             summarize_objects(
                 address=address,
                 timeout=timeout,
