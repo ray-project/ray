@@ -1,12 +1,13 @@
-from ray.tests.conftest import *  # noqa
-import pytest
-
 import asyncio
-import ray
-from ray import workflow
-from ray.workflow.tests import utils
 import subprocess
 import time
+
+import pytest
+
+import ray
+from ray import workflow
+from ray.tests.conftest import *  # noqa
+from ray.workflow.tests import utils
 
 
 def test_sleep(workflow_start_regular_shared):
@@ -165,7 +166,7 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
     """Ensure that if the cluster dies while the event is being checkpointed, we
     properly re-poll for the event."""
 
-    from ray.internal import storage
+    from ray._private import storage
 
     storage_uri = storage._storage_uri
 
@@ -229,7 +230,7 @@ def test_crash_after_commit(workflow_start_regular_shared):
     checkpointing.
     """
 
-    from ray.internal import storage
+    from ray._private import storage
 
     storage_uri = storage._storage_uri
 

@@ -8,9 +8,9 @@ import time
 
 import ray
 from ray import tune
-from ray.tune.suggest import ConcurrencyLimiter
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.flaml import CFO
+from ray.tune.search.flaml import CFO
 
 
 def evaluation_fn(step, width, height):

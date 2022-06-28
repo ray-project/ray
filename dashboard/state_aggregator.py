@@ -1,5 +1,6 @@
 import asyncio
 import logging
+
 from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
@@ -16,11 +17,19 @@ from ray.experimental.state.common import (
     ObjectState,
     PlacementGroupState,
     RuntimeEnvState,
+    SummaryApiResponse,
+    DEFAULT_LIMIT,
+    SummaryApiOptions,
+    TaskSummaries,
     StateSchema,
     SupportedFilterType,
     TaskState,
     WorkerState,
     filter_fields,
+    StateSummary,
+    ActorSummaries,
+    ObjectSummaries,
+    PredicateType,
 )
 from ray.experimental.state.state_manager import (
     DataSourceUnavailable,
@@ -49,7 +58,8 @@ NODE_QUERY_FAILURE_WARNING = (
 
 
 def _convert_filters_type(
-    filter: List[Tuple[str, SupportedFilterType]], schema: StateSchema
+    filter: List[Tuple[str, PredicateType, SupportedFilterType]],
+    schema: StateSchema,
 ) -> List[Tuple[str, SupportedFilterType]]:
     """Convert the given filter's type to SupportedFilterType.
 
@@ -66,7 +76,7 @@ def _convert_filters_type(
     new_filter = []
     schema = {field.name: field.type for field in fields(schema)}
 
-    for col, val in filter:
+    for col, predicate, val in filter:
         if col in schema:
             column_type = schema[col]
             if isinstance(val, column_type):
@@ -103,7 +113,7 @@ def _convert_filters_type(
                         f"`--filter {col} [True|true|1]` for True or "
                         f"`--filter {col} [False|false|0]` for False."
                     )
-        new_filter.append((col, val))
+        new_filter.append((col, predicate, val))
     return new_filter
 
 
@@ -144,7 +154,7 @@ class StateAPIManager:
         result = []
         for datum in data:
             match = True
-            for filter_column, filter_value in filters:
+            for filter_column, filter_predicate, filter_value in filters:
                 filterable_columns = state_dataclass.filterable_columns()
                 if filter_column not in filterable_columns:
                     raise ValueError(
@@ -152,8 +162,17 @@ class StateAPIManager:
                         f"Supported filter columns: {filterable_columns}"
                     )
 
-                if datum[filter_column] != filter_value:
-                    match = False
+                if filter_predicate == "=":
+                    match = datum[filter_column] == filter_value
+                elif filter_predicate == "!=":
+                    match = datum[filter_column] != filter_value
+                else:
+                    raise ValueError(
+                        f"Unsupported filter predicate {filter_predicate} is given. "
+                        "Available predicates: =, !=."
+                    )
+
+                if not match:
                     break
 
             if match:
@@ -358,7 +377,7 @@ class StateAPIManager:
 
         unresponsive_nodes = 0
         worker_stats = []
-        for reply, node_id in zip(replies, raylet_ids):
+        for reply, _ in zip(replies, raylet_ids):
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
                 continue
@@ -481,6 +500,51 @@ class StateAPIManager:
         return ListApiResponse(
             result=list(islice(result, option.limit)),
             partial_failure_warning=partial_failure_warning,
+        )
+
+    async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        result = await self.list_tasks(
+            option=ListApiOptions(
+                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+            )
+        )
+        summary = StateSummary(
+            node_id_to_summary={
+                "cluster": TaskSummaries.to_summary(tasks=result.result)
+            }
+        )
+        return SummaryApiResponse(
+            result=summary, partial_failure_warning=result.partial_failure_warning
+        )
+
+    async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        result = await self.list_actors(
+            option=ListApiOptions(
+                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+            )
+        )
+        summary = StateSummary(
+            node_id_to_summary={
+                "cluster": ActorSummaries.to_summary(actors=result.result)
+            }
+        )
+        return SummaryApiResponse(
+            result=summary, partial_failure_warning=result.partial_failure_warning
+        )
+
+    async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        result = await self.list_objects(
+            option=ListApiOptions(
+                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+            )
+        )
+        summary = StateSummary(
+            node_id_to_summary={
+                "cluster": ObjectSummaries.to_summary(objects=result.result)
+            }
+        )
+        return SummaryApiResponse(
+            result=summary, partial_failure_warning=result.partial_failure_warning
         )
 
     def _message_to_dict(

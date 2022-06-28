@@ -774,7 +774,7 @@ named after the exploration strategies that they employ:
 
 Linear Upper Confidence Bound (BanditLinUCB)
 --------------------------------------------
-|pytorch|
+|pytorch| |tensorflow|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
 <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
 LinUCB assumes a linear dependency between the expected reward of an action and
@@ -801,7 +801,7 @@ Tuned examples:
 
 Linear Thompson Sampling (BanditLinTS)
 --------------------------------------
-|pytorch|
+|pytorch| |tensorflow|
 `[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
 Like LinUCB, LinTS also assumes a linear dependency between the expected
@@ -977,7 +977,7 @@ often: The "forward" model will eventually get better at predicting these next l
 NovelD (Novelty Difference Exploration)
 ---------------------------------------
 
-|tensorflow||pytorch|
+|tensorflow| |pytorch|
 `[paper] <https://proceedings.neurips.cc/paper/2021/file/d428d070622e0f4363fceae11f4a3576-Paper.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/noveld.py>`__
 
