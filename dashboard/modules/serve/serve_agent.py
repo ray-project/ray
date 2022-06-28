@@ -3,8 +3,15 @@ import logging
 
 from aiohttp.web import Request, Response
 
+import dataclasses
+import ray
+import aiohttp.web
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.modules.job.common import (
+    CURRENT_VERSION,
+    VersionResponse,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -18,6 +25,21 @@ routes = optional_utils.ClassMethodRouteTable
 class ServeAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
+
+    @routes.get("/api/version")
+    async def get_version(self, req: Request) -> Response:
+        # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the
+        # client when we have backwards-incompatible changes.
+        resp = VersionResponse(
+            version=CURRENT_VERSION,
+            ray_version=ray.__version__,
+            ray_commit=ray.__commit__,
+        )
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json",
+            status=aiohttp.web.HTTPOk.status_code,
+        )
 
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
