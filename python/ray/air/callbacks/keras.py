@@ -1,6 +1,7 @@
 from collections import Counter
 from typing import Dict, List, Optional, Union
 
+from ray.air.constants import MODEL_KEY
 from tensorflow.keras.callbacks import Callback as KerasCallback
 
 from ray.air import session
@@ -171,8 +172,7 @@ class Callback(_Callback):
 
         checkpoint = None
         if freq > 0 and self._counter[when] % freq == 0:
-            self.model.save("my_model", overwrite=True)
-            checkpoint = Checkpoint.from_directory("my_model")
+            checkpoint = Checkpoint.from_dict({MODEL_KEY: self.model.get_weights()})
 
         if not self._metrics:
             report_dict = logs
