@@ -26,8 +26,21 @@ def test_inactive_component_activities(call_ray_start):
     # Verify no activity in response if no active drivers
     response = requests.get("http://127.0.0.1:8265/api/component_activities")
     response.raise_for_status()
-    data = response.json()["data"]["ray_activity_response"]
-    driver_ray_activity_response = RayActivityResponse(**data["driver"])
+
+    # Validate schema of response
+    data = response.json()
+    schema_path = os.path.join(
+        os.path.dirname(dashboard.__file__),
+        "modules/snapshot/component_activities_schema.json",
+    )
+    pprint.pprint(data)
+    jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
+
+    # Validate ray_activity_response field can be cast to RayActivityResponse object
+    ray_activity_response_data = data["data"]["ray_activity_response"]
+    driver_ray_activity_response = RayActivityResponse(
+        **ray_activity_response_data["driver"]
+    )
     assert not driver_ray_activity_response.is_active
     assert driver_ray_activity_response.reason == "0"
 
@@ -54,8 +67,22 @@ ray.init(address="auto", namespace="{namespace}")
     webui_url = format_web_url(webui_url)
     response = requests.get(f"{webui_url}/api/component_activities")
     response.raise_for_status()
-    data = response.json()["data"]["ray_activity_response"]
-    driver_ray_activity_response = RayActivityResponse(**data["driver"])
+
+    # Validate schema of response
+    data = response.json()
+    schema_path = os.path.join(
+        os.path.dirname(dashboard.__file__),
+        "modules/snapshot/component_activities_schema.json",
+    )
+    pprint.pprint(data)
+    jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
+
+    # Validate ray_activity_response field can be cast to RayActivityResponse object
+    ray_activity_response_data = data["data"]["ray_activity_response"]
+    driver_ray_activity_response = RayActivityResponse(
+        **ray_activity_response_data["driver"]
+    )
+
     assert driver_ray_activity_response.is_active
     # Drivers with namespace starting with "_ray_internal" are not
     # considered active drivers. Three active drivers are the two

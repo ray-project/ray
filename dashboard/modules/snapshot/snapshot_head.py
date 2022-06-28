@@ -29,7 +29,7 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 class RayActivityResponse:
     is_active: bool
     reason: str
-    timestamp: Optional[str]
+    timestamp: Optional[float]
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
@@ -105,10 +105,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         resp = {"driver": dataclasses.asdict(driver_activity_info)}
         return dashboard_optional_utils.rest_response(
-            success=True,
-            message="",
-            convert_google_style=False,
-            ray_activity_response=resp,
+            success=True, convert_google_style=False, ray_activity_response=resp,
         )
 
     async def _get_job_activity_info(self) -> RayActivityResponse:

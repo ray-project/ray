@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://github.com/ray-project/ray/dashboard/modules/snapshot/component_activities_schema.json",
+  "type": "object",
+  "properties": {
+    "result": {
+      "type": "boolean"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "ray_activity_response": {
+          "type": "object",
+          "patternProperties": {
+            "[0-9a-f]*": {
+              "type": "object",
+              "properties":{
+                "is_active": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "is_active",
+                "reason"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "result",
+    "data"
+  ]
+}
