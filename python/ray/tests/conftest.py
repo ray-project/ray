@@ -923,3 +923,13 @@ def start_http_proxy(request):
         if proxy:
             proxy.terminate()
             proxy.wait()
+
+
+@pytest.fixture
+def set_runtime_env_plugins(request):
+    runtime_env_plugins = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGINS"] = runtime_env_plugins
+        yield runtime_env_plugins
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGINS"]
