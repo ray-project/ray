@@ -101,8 +101,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *, jclass);
  * Signature: ()[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *,
-                                                                  jclass);
+Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentNodeId(JNIEnv *, jclass);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
