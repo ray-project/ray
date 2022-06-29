@@ -94,9 +94,9 @@ Tuner
 Serving
 ~~~~~~~
 
-.. autoclass:: ray.serve.air_integrations.PredictorDeployment
+.. autoclass:: ray.serve.model_wrappers.ModelWrapperDeployment
 
-.. autoclass:: ray.serve.air_integrations.PredictorWrapper
+.. autoclass:: ray.serve.model_wrappers.ModelWrapper
 
 .. _air-results-ref:
 
@@ -124,3 +124,4 @@ Configs
 .. automodule:: ray.air.config
     :members:
 
+.. autoclass:: ray.air.config.CheckpointConfig
