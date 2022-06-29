@@ -71,3 +71,15 @@ class OffPolicyEstimator:
                 "`exploration_config: {type: 'SoftQ'}`. You can also set "
                 "`off_policy_estimation_methods: {}` to disable estimation."
             )
+
+    @DeveloperAPI
+    def train(self, batch: SampleBatchType) -> Dict[str, Any]:
+        """Train a model for Off-Policy Estimation.
+
+        Args:
+            batch: SampleBatch to train on
+
+        Returns:
+            Any optional metrics to return from the estimator
+        """
+        return {}

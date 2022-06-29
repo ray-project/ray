@@ -6,7 +6,11 @@ from ray.rllib.offline.estimators import (
     WeightedImportanceSampling,
     DirectMethod,
     DoublyRobust,
+    DMTrainable,
+    DRTrainable,
 )
+from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
+from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.sample_batch import concat_samples
 from pathlib import Path
@@ -24,9 +28,10 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        train_steps = 200000
+        train_steps = 20000
         n_batches = 20  # Approx. equal to n_episodes
         n_eval_episodes = 20
+        cls.q_model_config = {"n_iters": 10}
 
         config = (
             DQNConfig()
@@ -80,6 +85,7 @@ class TestOPE(unittest.TestCase):
 
         cls.mean_ret = {}
         cls.std_ret = {}
+        cls.losses = {}
 
         # Simulate Monte-Carlo rollouts
         mc_ret = []
@@ -104,6 +110,7 @@ class TestOPE(unittest.TestCase):
     def tearDownClass(cls):
         print("Mean:", cls.mean_ret)
         print("Stddev:", cls.std_ret)
+        print("Losses:", cls.losses)
         ray.shutdown()
 
     def test_is(self):
@@ -146,6 +153,58 @@ class TestOPE(unittest.TestCase):
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
+
+    def test_dm_fqe(self):
+        name = "dm_fqe"
+        estimator = DMTrainable(
+            name=name,
+            policy=self.algo.get_policy(),
+            gamma=self.gamma,
+            q_model_config={"type": FQETorchModel, **self.q_model_config},
+        )
+        self.losses[name] = estimator.train(self.batch)
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
+
+    def test_dr_fqe(self):
+        name = "dr_fqe"
+        estimator = DRTrainable(
+            name=name,
+            policy=self.algo.get_policy(),
+            gamma=self.gamma,
+            q_model_config={"type": FQETorchModel, **self.q_model_config},
+        )
+        self.losses[name] = estimator.train(self.batch)
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
+
+    def test_dm_qreg(self):
+        name = "dm_qreg"
+        estimator = DMTrainable(
+            name=name,
+            policy=self.algo.get_policy(),
+            gamma=self.gamma,
+            q_model_config={"type": QRegTorchModel, **self.q_model_config},
+        )
+        self.losses[name] = estimator.train(self.batch)
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
+
+    def test_dr_qreg(self):
+        name = "dr_qreg"
+        estimator = DRTrainable(
+            name=name,
+            policy=self.algo.get_policy(),
+            gamma=self.gamma,
+            q_model_config={"type": QRegTorchModel, **self.q_model_config},
+        )
+        self.losses[name] = estimator.train(self.batch)
         estimates = estimator.estimate(self.batch)
         self.mean_ret[name] = estimates["v_new"]
         self.std_ret[name] = estimates["v_new_std"]

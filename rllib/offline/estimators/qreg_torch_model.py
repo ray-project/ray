@@ -1,6 +1,5 @@
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
-from typing import List, Union
 import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -9,6 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType, ModelConfigDict
+from ray.rllib.offline.estimators.utils import action_log_likelihood
 
 torch, nn = try_import_torch()
 
@@ -191,34 +191,16 @@ class QRegTorchModel:
                 break
         return losses
 
-    def estimate_q(
-        self,
-        obs: Union[TensorType, List[TensorType]],
-        actions: Union[TensorType, List[TensorType]] = None,
-    ) -> TensorType:
-        """Given `obs`, a list or array or tensor of observations,
-        compute the Q-values for `obs` for all actions in the action space.
-        If `actions` is not None, return the Q-values for the actions provided,
-        else return Q-values for all actions for each observation in `obs`.
-        """
-        obs = torch.tensor(obs, device=self.device)
+    def estimate_q(self, batch: SampleBatch) -> TensorType:
+        obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
         q_values, _ = self.q_model({"obs": obs}, [], None)
-        if actions is not None:
-            actions = torch.tensor(actions, device=self.device, dtype=int)
-            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
+        actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
+        q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
         return q_values.detach()
 
-    def estimate_v(
-        self,
-        obs: Union[TensorType, List[TensorType]],
-        action_probs: Union[TensorType, List[TensorType]],
-    ) -> TensorType:
-        """Given `obs`, compute q-values for all actions in the action space
-        for each observations s in `obs`, then multiply this by `action_probs`,
-        the probability distribution over actions for each state s to give the
-        state value V(s) = sum_A pi(a|s)Q(s,a).
-        """
-        q_values = self.estimate_q(obs)
+    def estimate_v(self, batch: SampleBatch) -> TensorType:
+        q_values = self.estimate_q(batch)
+        action_probs = action_log_likelihood(self.policy, batch)
         action_probs = torch.tensor(action_probs, device=self.device)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values.detach()

@@ -1,13 +1,11 @@
 import logging
 from typing import Dict, Any
-from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
-from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from gym.spaces import Discrete
+import numpy as np
 
 from ray.rllib.offline.estimators.direct_method import DirectMethod
 
@@ -46,7 +44,7 @@ class DMTrainable(DirectMethod):
 
         super().__init__(name, policy, gamma)
         q_model_config = q_model_config or {"type": "fqe"}
-        q_model_type = q_model_config.pop("type")
+        model_cls = q_model_config.pop("type")
         # TODO (Rohan138): Add support for continuous action spaces
         assert isinstance(
             policy.action_space, Discrete
@@ -55,30 +53,16 @@ class DMTrainable(DirectMethod):
             policy.config["batch_mode"] == "complete_episodes"
         ), "DM Estimator only supports `batch_mode`=`complete_episodes`"
 
-        # TODO (Rohan138): Add support for TF!
-        if policy.framework == "torch":
-            if q_model_type == "qreg":
-                model_cls = QRegTorchModel
-            elif q_model_type == "fqe":
-                model_cls = FQETorchModel
-            else:
-                assert hasattr(
-                    q_model_type, "estimate_q"
-                ), "q_model_type must implement `estimate_q`!"
-                assert hasattr(
-                    q_model_type, "estimate_v"
-                ), "q_model_type must implement `estimate_v`!"
-        else:
-            raise ValueError(
-                f"{self.__class__.__name__}"
-                "estimator only supports `policy.framework`=`torch`"
-            )
-
         self.model = model_cls(
             policy=policy,
             gamma=gamma,
             **q_model_config,
         )
-    
-    def train(self, batch: SampleBatchType) -> Dict[str,Any]:
-        return {self.name + "_loss", self.model.train_q(batch)}
+        assert hasattr(
+            self.model, "estimate_v"
+        ), "self.model must implement `estimate_v`!"
+        self.state_value_fn = lambda policy, batch: self.model.estimate_v(batch)
+
+    def train(self, batch: SampleBatchType) -> Dict[str, Any]:
+        losses = self.model.train(batch)
+        return {self.name + "_loss", np.mean(losses)}
