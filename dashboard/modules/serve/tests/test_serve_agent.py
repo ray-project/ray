@@ -18,9 +18,7 @@ STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
 @pytest.fixture
 def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
-    subprocess.check_output(
-        ["ray", "start", "--head", "--dashboard-agent-listen-port", "52365"]
-    )
+    subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
         lambda: requests.get(
             "http://localhost:52365/api/serve/deployments/"
