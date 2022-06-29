@@ -12,7 +12,6 @@ import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
-import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
@@ -127,14 +126,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   private JobId nextJobId() {
     return JobId.fromInt(jobCounter.getAndIncrement());
-  }
-
-  private static class AsyncContext {
-    private TaskSpec task;
-
-    private AsyncContext(TaskSpec task) {
-      this.task = task;
-    }
   }
 
   private static void updateSessionDir(RayConfig rayConfig) {
