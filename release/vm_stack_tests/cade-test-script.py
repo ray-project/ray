@@ -1,5 +1,6 @@
 import ray
 import requests
+import time
 
 ray.init()
 
@@ -14,10 +15,26 @@ class Counter:
     def get_counter(self):
         return self.counter
 
-counter = Counter.remote()
+def main():
+    counter = Counter.remote()
+    
+    for _ in range(5):
+        ray.get(counter.inc.remote())
+        print(ray.get(counter.get_counter.remote()))
+    
+    
+    print(requests.__version__)
 
-for _ in range(5):
-    ray.get(counter.inc.remote())
-    print(ray.get(counter.get_counter.remote()))
+if __name__ == '__main__':
+    start_time = time.time()
+    rval = main()
+    duration = time.time() - start_time
 
-print(requests.__version__)
+    if "TEST_OUTPUT_JSON" in os.environ:
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+            results = {
+                "time": duration,
+                "success": "1" if rval is None else "0",
+                "perf_metrics": [],
+            }
+            json.dump(results, out_file)
