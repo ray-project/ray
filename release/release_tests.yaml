@@ -967,6 +967,7 @@
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
     cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+    autosuspend_mins: 60
 
   run:
     timeout: 600
@@ -996,6 +997,7 @@
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
     cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+    autosuspend_mins: 60
 
   run:
     timeout: 600
@@ -1025,6 +1027,7 @@
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
     cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+    autosuspend_mins: 60
 
   run:
     timeout: 600
