@@ -2532,7 +2532,6 @@ class TrainIterCtx:
         self.algo = algo
 
     def __enter__(self):
-        #self.started = False
         # Before first call to `step()`, `results` is expected to be None ->
         # Start with self.failures=-1 -> set to 0 before the very first call
         # to `self.step()`.
@@ -2557,7 +2556,6 @@ class TrainIterCtx:
 
         # Before first call to `step()`.
         if results is None:
-            #self.started = True
             # Fail after n retries.
             self.failures += 1
             if self.failures > self.failure_tolerance:
@@ -2601,7 +2599,6 @@ class TrainIterCtx:
             # env|train timesteps have been processed (or these min
             # values are not provided by the user).
             if (
-                #results is not None
                 (not min_t or time.time() - self.time_start >= min_t)
                 and (not min_sample_ts or self.sampled >= min_sample_ts)
                 and (not min_train_ts or self.trained >= min_train_ts)
