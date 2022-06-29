@@ -1,32 +1,36 @@
 import argparse
 import asyncio
 import io
+import json
 import logging
 import logging.handlers
 import os
 import sys
-import json
+
+import ray
+import ray._private.ray_constants as ray_constants
+import ray._private.services
+import ray._private.utils
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
+from ray._private.gcs_utils import GcsAioClient, GcsClient
+from ray._private.ray_logging import setup_component_logger
+from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
+from ray.experimental.internal_kv import (
+    _initialize_internal_kv,
+    _internal_kv_initialized,
+)
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-import ray
-import ray.experimental.internal_kv as internal_kv
-import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.utils as dashboard_utils
-import ray.ray_constants as ray_constants
-import ray._private.services
-import ray._private.utils
-from ray._private.gcs_utils import GcsClient
-from ray._private.gcs_pubsub import GcsPublisher, GcsAioPublisher
-from ray.core.generated import agent_manager_pb2
-from ray.core.generated import agent_manager_pb2_grpc
-from ray._private.ray_logging import setup_component_logger
-
-# Import psutil after ray so the packaged version is used.
-import psutil
 
 # Publishes at most this number of lines of Raylet logs, when the Raylet dies
 # unexpectedly.
@@ -125,7 +129,12 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
+        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
+        # gcs_aio_client and not gcs_client.
         self.gcs_client = GcsClient(address=self.gcs_address)
+        _initialize_internal_kv(self.gcs_client)
+        assert _internal_kv_initialized()
+        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
         self.publisher = GcsAioPublisher(address=self.gcs_address)
 
     async def _configure_http_server(self, modules):

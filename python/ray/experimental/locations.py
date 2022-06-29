@@ -1,6 +1,7 @@
+from typing import Any, Dict, List
+
 import ray
 from ray._raylet import ObjectRef
-from typing import Any, Dict, List
 
 
 def get_object_locations(
@@ -34,6 +35,6 @@ def get_object_locations(
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray hasn't been initialized.")
-    return ray.worker.global_worker.core_worker.get_object_locations(
+    return ray._private.worker.global_worker.core_worker.get_object_locations(
         obj_refs, timeout_ms
     )

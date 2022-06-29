@@ -1,7 +1,8 @@
-import pytest
-import ray
 import sys
 
+import pytest
+
+import ray
 from ray._private.test_utils import Semaphore, client_test_enabled, wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_list
 
@@ -88,7 +89,7 @@ def get_gcs_memory_used():
 
 
 def function_entry_num(job_id):
-    from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+    from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 
     return (
         len(
@@ -143,7 +144,7 @@ def test_function_table_gc(call_ray_start):
     # It's not working on win32.
     if sys.platform != "win32":
         assert get_gcs_memory_used() > 500 * 1024 * 1024
-    job_id = ray.worker.global_worker.current_job_id.hex().encode()
+    job_id = ray._private.worker.global_worker.current_job_id.hex().encode()
     assert function_entry_num(job_id) > 0
     ray.shutdown()
 
@@ -167,7 +168,7 @@ def test_function_table_gc_actor(call_ray_start):
     # If there is a detached actor, the function won't be deleted.
     a = Actor.options(lifetime="detached", name="a").remote()
     ray.get(a.ready.remote())
-    job_id = ray.worker.global_worker.current_job_id.hex().encode()
+    job_id = ray._private.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
 
     ray.init(address="auto", namespace="b")
@@ -180,7 +181,7 @@ def test_function_table_gc_actor(call_ray_start):
     # If there is not a detached actor, it'll be deleted when the job finishes.
     a = Actor.remote()
     ray.get(a.ready.remote())
-    job_id = ray.worker.global_worker.current_job_id.hex().encode()
+    job_id = ray._private.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
     ray.init(address="auto", namespace="c")
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
@@ -205,5 +206,9 @@ def test_worker_oom_score(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
+    import os
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

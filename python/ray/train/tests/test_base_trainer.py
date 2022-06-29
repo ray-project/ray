@@ -1,11 +1,21 @@
+import io
+import logging
+import os
+import time
+from contextlib import redirect_stderr
+from unittest.mock import patch
+
 import pytest
 
 import ray
 from ray import tune
-
 from ray.data.preprocessor import Preprocessor
+from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -43,6 +53,13 @@ class DummyTrainer(BaseTrainer):
 
     def training_loop(self) -> None:
         self.train_loop(self)
+
+
+class DummyGBDTTrainer(GBDTTrainer):
+    _dmatrix_cls: type = None
+    _ray_params_cls: type = None
+    _tune_callback_cls: type = None
+    _init_model_arg_name: str = None
 
 
 def test_trainer_fit(ray_start_4_cpus):
@@ -170,8 +187,45 @@ def test_fail(ray_start_4_cpus):
         trainer.fit()
 
 
+@patch.dict(os.environ, {"RAY_LOG_TO_STDERR": "1"})
+def _is_trainable_name_overriden(trainer: BaseTrainer):
+    trainable = trainer.as_trainable()
+    output = io.StringIO()
+
+    def say(self):
+        logger.warning("say")
+
+    trainable.say = say
+    with redirect_stderr(output):
+        remote_trainable = ray.remote(trainable)
+        remote_actor = remote_trainable.remote()
+        ray.get(remote_actor.say.remote())
+        time.sleep(1)  # make sure logging gets caught
+    output = output.getvalue()
+    print(output)
+    assert trainable().__repr__() in output
+
+
+def test_trainable_name_is_overriden_data_parallel_trainer(ray_start_4_cpus):
+    trainer = DataParallelTrainer(lambda x: x, scaling_config=dict(num_workers=1))
+
+    _is_trainable_name_overriden(trainer)
+
+
+def test_trainable_name_is_overriden_gbdt_trainer(ray_start_4_cpus):
+    trainer = DummyGBDTTrainer(
+        params={},
+        label_column="__values__",
+        datasets={"train": ray.data.from_items([1, 2, 3])},
+        scaling_config=dict(num_workers=1),
+    )
+
+    _is_trainable_name_overriden(trainer)
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
