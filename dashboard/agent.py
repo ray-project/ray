@@ -63,7 +63,7 @@ class DashboardAgent:
         log_dir=None,
         metrics_export_port=None,
         node_manager_port=None,
-        listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+        listen_port=0,
         object_store_name=None,
         raylet_name=None,
         logging_params=None,
