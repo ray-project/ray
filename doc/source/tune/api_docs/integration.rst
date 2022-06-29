@@ -25,7 +25,7 @@ MLflow (tune.integration.mlflow)
 
 :ref:`See also here <tune-mlflow-ref>`.
 
-.. autoclass:: ray.tune.integration.mlflow.MLflowLoggerCallback
+.. autoclass:: ray.air.callbacks.mlflow.MLflowLoggerCallback
 
 .. autofunction:: ray.tune.integration.mlflow.mlflow_mixin
 
@@ -56,7 +56,7 @@ Weights and Biases (tune.integration.wandb)
 
 :ref:`See also here <tune-wandb-ref>`.
 
-.. autoclass:: ray.tune.integration.wandb.WandbLoggerCallback
+.. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
 
 .. autofunction:: ray.tune.integration.wandb.wandb_mixin
 

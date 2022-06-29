@@ -15,6 +15,9 @@
 				"working_dir": {
 					"type": "string"
 				},
+                "env": {
+					"type": "string"
+				},
 				"legacy": {
 					"$ref": "#/definitions/Legacy"
 				},
@@ -181,6 +184,9 @@
 			"title": "SmokeTest",
 			"properties": {
 				"working_dir": {
+					"type": "string"
+				},
+                "env": {
 					"type": "string"
 				},
                 "driver_setup": {

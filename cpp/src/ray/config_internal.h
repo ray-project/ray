@@ -60,6 +60,10 @@ class ConfigInternal {
 
   std::vector<std::string> head_args = {};
 
+  // The default actor lifetime type.
+  rpc::JobConfig_ActorLifetime default_actor_lifetime =
+      rpc::JobConfig_ActorLifetime_NON_DETACHED;
+
   static ConfigInternal &Instance() {
     static ConfigInternal config;
     return config;
