@@ -67,7 +67,7 @@ class AwsVmClusterManager(ClusterManager):
         # TODO error handling?
         # TODO should dump this output to stdout (actually I think it already goes to stdout)
         # TODO fix terminal borking.
-        self.port_forward_proc = subprocess.Popen(['ray', 'dashboard', 'cluster_launcher_config_aws.yaml'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.port_forward_proc = subprocess.Popen(['ray', 'dashboard', 'cluster_launcher_config_aws.yaml'])
         import time
         print('Sleeping 10s to wait for port forward to be online. TODO(cade) remove this')
         time.sleep(10)
@@ -77,26 +77,8 @@ class AwsVmClusterManager(ClusterManager):
 
         '''
         Next steps:
-        * Run a command on the cluster
-        * Do we need files on the cluster?
-        * Do we need `wait_for_nodes`? in runner
-        * Get last logs, fetch results
-        * AWS testcase (simpler on on BK). Also should be using legacy-work with its delicious lambdas.
-
-        Notes on command running:
-            I can either port-forward the Dashboard URL by running a `ray dashboard config.yaml` proc,
-            then run `ray job submit script`, or I can use `ray submit config.yaml script`.
-
-            The former runs into issues because we don't have files on the cluster -- need to rsync them
-            but if we do that then we might as well use ray submit directly.
-
-            But if we use the job_manager, it can't connect to the Ray address without port forwarding.
-            In other words, we don't have a `ray submit` manager AFAIK.
-
-            What tar.gz are we uploading to s3? and why doesn't it have what we need?
-
-
-            Looks like the tar.gz has the files we want.
+        * Error: returning files fails
+        ray_release.exception.FileDownloadError: Error downloading file /tmp/release_test_out.json to /var/folders/70/8_80x3vn6q3_23hgl__hzw7m0000gn/T/release-XXXXXXXXXX.tAvsWDtm/tmpaglq4nc_.json
         '''
 
     def terminate_cluster(self, wait: bool):
