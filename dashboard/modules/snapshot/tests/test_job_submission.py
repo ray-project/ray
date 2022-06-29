@@ -33,7 +33,7 @@ def _get_snapshot(address: str):
     return data
 
 
-@pytest.mark.fixture("address_suffix", ["", "/"])  # Trailing slash should succeed
+@pytest.mark.parametrize("address_suffix", ["", "/"])  # Trailing slash should succeed
 def test_successful_job_status(
     ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
 ):
@@ -98,7 +98,7 @@ def test_successful_job_status(
     wait_for_condition(wait_for_job_to_succeed, timeout=30)
 
 
-@pytest.mark.fixture("address_suffix", ["", "/"])  # Trailing slash should succeed
+@pytest.mark.parametrize("address_suffix", ["", "/"])  # Trailing slash should succeed
 def test_failed_job_status(
     ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
 ):
