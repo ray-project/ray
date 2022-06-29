@@ -13,10 +13,10 @@ public abstract class BaseTaskOptions implements Serializable {
 
   public BaseTaskOptions(Map<String, Double> resources) {
     for (Map.Entry<String, Double> entry : resources.entrySet()) {
-      if (entry.getValue() == null || entry.getValue().compareTo(0.0) <= 0) {
+      if (entry.getValue() == null || entry.getValue().compareTo(0.0) < 0) {
         throw new IllegalArgumentException(
             String.format(
-                "Resource values should be " + "positive. Specified resource: %s = %s.",
+                "Resource values should be " + "non negative. Specified resource: %s = %s.",
                 entry.getKey(), entry.getValue()));
       }
       // Note: A resource value should be an integer if it is greater than 1.0.
@@ -30,6 +30,12 @@ public abstract class BaseTaskOptions implements Serializable {
                 entry.getKey(), entry.getValue()));
       }
     }
-    this.resources.putAll(resources);
+    /// Filter 0 resources
+    resources.forEach(
+        (key, value) -> {
+          if (value != 0) {
+            this.resources.put(key, value);
+          }
+        });
   }
 }

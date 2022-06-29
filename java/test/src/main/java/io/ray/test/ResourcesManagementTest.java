@@ -1,12 +1,10 @@
 package io.ray.test;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.WaitResult;
-import io.ray.api.options.CallOptions;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -47,15 +45,6 @@ public class ResourcesManagementTest extends BaseTest {
 
     Assert.assertEquals(1, waitResult.getReady().size());
     Assert.assertEquals(0, waitResult.getUnready().size());
-
-    try {
-      CallOptions callOptions3 =
-          new CallOptions.Builder().setResources(ImmutableMap.of("CPU", 0.0)).build();
-      Assert.fail();
-    } catch (RuntimeException e) {
-      // We should receive a RuntimeException indicates that we should not
-      // pass a zero capacity resource.
-    }
   }
 
   public void testActors() {
@@ -73,5 +62,17 @@ public class ResourcesManagementTest extends BaseTest {
 
     Assert.assertEquals(0, waitResult.getReady().size());
     Assert.assertEquals(1, waitResult.getUnready().size());
+  }
+
+  public void testSpecifyZeroCPU() {
+    ActorHandle<Echo> echo = Ray.actor(Echo::new).setResource("CPU", 0.0).remote();
+    final ObjectRef<Integer> result1 = echo.task(Echo::echo, 100).remote();
+    Assert.assertEquals(100, (int) result1.get());
+  }
+
+  public void testSpecifyZeroCustomResource() {
+    ActorHandle<Echo> echo = Ray.actor(Echo::new).setResource("A", 0.0).remote();
+    final ObjectRef<Integer> result1 = echo.task(Echo::echo, 100).remote();
+    Assert.assertEquals(100, (int) result1.get());
   }
 }
