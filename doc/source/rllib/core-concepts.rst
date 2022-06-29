@@ -16,6 +16,36 @@ These algorithms use ``policies`` to select actions for your agents.
 Given a policy, ``evaluation`` of a policy produces ``sample batches`` of experiences.
 You can also customize the ``training_iteration``\s of your RL experiments.
 
+.. _environments:
+
+Environments
+------------
+
+Solving a problem in RL begins with an **environment**. In the simplest definition of RL:
+
+  An **agent** interacts with an **environment** and receives a reward.
+
+An environment in RL is the agent's world, it is a simulation of the problem to be solved.
+
+.. image:: images/env_key_concept1.png
+
+An RLlib environment consists of: 
+
+1. all possible actions (**action space**)
+2. a complete omniscient description of the environment, nothing hidden (**state space**)
+3. an observation by the agent of certain parts of the state (**observation space**)
+4. **reward**, which is the only feedback the agent receives per action.
+
+The model that tries to maximize the expected sum over all future rewards is called a **policy**. The policy is a function mapping the environment's observations to an action to take, usually written **π** (s(t)) -> a(t). Below is a diagram of the RL iterative learning process.
+
+.. image:: images/env_key_concept2.png
+
+The RL simulation feedback loop repeatedly collects data, for one (single-agent case) or multiple (multi-agent case) policies, trains the policies on these collected data, and makes sure the policies' weights are kept in synch. Thereby, the collected environment data contains observations, taken actions, received rewards and so-called **done** flags, indicating the boundaries of different episodes the agents play through in the simulation.
+
+The simulation iterations of action -> reward -> next state -> train -> repeat, until the end state, is called an **episode**, or in RLlib, a **rollout**.
+
+.. _algorithms:
+
 Algorithms
 ----------
 
@@ -353,7 +383,3 @@ Examples
     Check out the `PPO + DQN multi-agent workflow example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__ for more details.
     One line to pay particular attention to in this example is the use of ``LocalIterator.duplicate()`` to clone the iterator of experiences into two separate iterators,
     which are filtered via ``SelectExperiences`` and then consumed by PPO and DQN sub-dataflows respectively.
-
-
-
-.. include:: /_includes/rllib/announcement_bottom.rst
