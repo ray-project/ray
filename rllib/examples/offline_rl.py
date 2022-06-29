@@ -21,13 +21,6 @@ import numpy as np
 import os
 
 from ray.rllib.algorithms import cql as cql
-from ray.rllib.offline.estimators import (
-    ImportanceSampling,
-    WeightedImportanceSampling,
-    DirectMethod,
-    DoublyRobust,
-)
-import ray
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
@@ -35,7 +28,6 @@ torch, _ = try_import_torch()
 if __name__ == "__main__":
 
     # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
-    ray.init(local_mode=True)
 
     config = cql.DEFAULT_CONFIG.copy()
     config["num_workers"] = 0  # Run locally.
@@ -69,9 +61,9 @@ if __name__ == "__main__":
     config["train_batch_size"] = 256
     config["target_network_update_freq"] = 1
     config["min_train_timesteps_per_iteration"] = 1000
-    data_file = "/tmp/pendulum-out"
+    data_file = "/path/to/my/json_file.json"
     print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
-    config["input"] = data_file
+    config["input"] = [data_file]
     config["log_level"] = "INFO"
     config["env"] = "Pendulum-v1"
 
@@ -83,14 +75,7 @@ if __name__ == "__main__":
     # cause evaluation to lag one iter behind training.
     config["evaluation_parallel_to_training"] = False
     # Evaluate on actual environment.
-    config["framework"] = "torch"
-    config["evaluation_config"] = {"input": data_file}
-    config["off_policy_estimation_methods"] = {
-        "is": {"type": ImportanceSampling},
-        "wis": {"type": WeightedImportanceSampling},
-        "dm": {"type": DirectMethod},
-        "dr": {"type": DoublyRobust},
-    }
+    config["evaluation_config"] = {"input": "sampler"}
 
     # Check, whether we can learn from the given file in `num_iterations`
     # iterations, up to a reward of `min_reward`.
