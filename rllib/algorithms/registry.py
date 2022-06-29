@@ -80,7 +80,7 @@ def _import_cql():
 def _import_crr():
     from ray.rllib.algorithms import crr
 
-    return crr.CRR, crr.CRRConfig
+    return crr.CRR, crr.CRRConfig().to_dict()
 
 
 def _import_ddpg():
