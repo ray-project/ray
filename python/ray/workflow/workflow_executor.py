@@ -192,6 +192,14 @@ class WorkflowExecutor:
                     state.free_outputs.add(c)
 
     def _garbage_collect(self) -> None:
+        """Garbage collect the output refs of tasks.
+
+        Currently, this is done after task submission, because when a task
+        starts, we no longer needs its inputs (i.e. outputs from other tasks).
+
+        # TODO(suquark): We may need to improve garbage collection
+        #  when taking more fault tolerant cases into consideration.
+        """
         state = self._state
         while state.free_outputs:
             # garbage collect all free outputs immediately
