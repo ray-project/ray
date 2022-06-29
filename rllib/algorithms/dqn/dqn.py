@@ -217,7 +217,7 @@ class DQNConfig(SimpleQConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "num_ts_added_before_sampling_starts": 1000,
+                "min_size_for_sampling": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }

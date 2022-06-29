@@ -180,7 +180,7 @@ if __name__ == "__main__":
         # Example of using DQN (supports off-policy actions).
         config.update(
             {
-                "replay_buffer_config": {"num_ts_added_before_sampling_starts": 100},
+                "replay_buffer_config": {"min_size_for_sampling": 100},
                 "min_sample_timesteps_per_iteration": 200,
                 "n_step": 3,
                 "rollout_fragment_length": 4,

@@ -14,6 +14,6 @@ pendulum-td3:
         # === Exploration ===
         replay_buffer_config:
           type: MultiAgentReplayBuffer
-          num_ts_added_before_sampling_starts: 5000
+          min_size_for_sampling: 5000
         exploration_config:
             random_timesteps: 5000

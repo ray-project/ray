@@ -113,9 +113,9 @@ class AlphaZeroConfig(AlgorithmConfig):
             # batches, instead of sequences, episodes or timesteps.
             "storage_unit": "fragments",
             # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before num_ts_added_before_sampling_starts is reached,
+            # returns a batch. Before min_size_for_sampling is reached,
             # sample() will return an empty batch and no learning will happen.
-            "num_ts_added_before_sampling_starts": 1000,
+            "min_size_for_sampling": 1000,
         }
         self.lr_schedule = None
         self.vf_share_layers = False
@@ -184,7 +184,7 @@ class AlphaZeroConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "num_ts_added_before_sampling_starts": 1000,
+                "min_size_for_sampling": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
@@ -376,53 +376,6 @@ class AlphaZero(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-    @staticmethod
-    @override(Algorithm)
-    def execution_plan(
-        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "Alpha zero execution_plan does NOT take any additional parameters"
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-        if config["simple_optimizer"]:
-            train_op = rollouts.combine(
-                ConcatBatches(
-                    min_batch_size=config["train_batch_size"],
-                    count_steps_by=config["multiagent"]["count_steps_by"],
-                )
-            ).for_each(TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
-        else:
-            replay_buffer = SimpleReplayBuffer(config["buffer_size"])
-
-            store_op = rollouts.for_each(
-                StoreToReplayBuffer(local_buffer=replay_buffer)
-            )
-
-            replay_op = (
-                Replay(local_buffer=replay_buffer)
-                .filter(
-                    WaitUntilTimestepsElapsed(
-                        config["num_ts_added_before_sampling_starts"]
-                    )
-                )
-                .combine(
-                    ConcatBatches(
-                        min_batch_size=config["train_batch_size"],
-                        count_steps_by=config["multiagent"]["count_steps_by"],
-                    )
-                )
-                .for_each(TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
-            )
-
-            train_op = Concurrently(
-                [store_op, replay_op], mode="round_robin", output_indexes=[1]
-            )
-
-        return StandardMetricsReporting(train_op, workers, config)
 
 
 # Deprecated: Use ray.rllib.algorithms.alpha_zero.AlphaZeroConfig instead!

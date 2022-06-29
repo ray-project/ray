@@ -91,9 +91,9 @@ class SlateQConfig(AlgorithmConfig):
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
             # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before num_ts_added_before_sampling_starts is reached,
+            # returns a batch. Before min_size_for_sampling is reached,
             # sample() will return an empty batch and no learning will happen.
-            "num_ts_added_before_sampling_starts": 20000,
+            "min_size_for_sampling": 20000,
         }
 
         # Override some of AlgorithmConfig's default values with SlateQ-specific values.
@@ -123,7 +123,7 @@ class SlateQConfig(AlgorithmConfig):
         # fmt: on
 
         # Deprecated config keys.
-        self.num_ts_added_before_sampling_starts = DEPRECATED_VALUE
+        self.learning_starts = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
     def training(

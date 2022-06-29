@@ -27,7 +27,7 @@ pendulum-sac:
         min_sample_timesteps_per_iteration: 1000
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
-          num_ts_added_before_sampling_starts: 256
+          min_size_for_sampling: 256
         optimization:
           actor_learning_rate: 0.0003
           critic_learning_rate: 0.0003

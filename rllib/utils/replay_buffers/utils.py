@@ -246,11 +246,11 @@ def validate_buffer_config(config: dict) -> None:
             old="config['learning_starts'] or"
             "config['replay_buffer_config']['learning_starts']",
             help="config['replay_buffer_config']"
-            "['num_ts_added_before_sampling_starts']",
+            "['min_size_for_sampling']",
             error=False,
         )
         config["replay_buffer_config"][
-            "num_ts_added_before_sampling_starts"
+            "min_size_for_sampling"
         ] = learning_starts
 
     # Can't use DEPRECATED_VALUE here because this is also a deliberate

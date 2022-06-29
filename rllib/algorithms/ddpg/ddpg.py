@@ -108,9 +108,9 @@ class DDPGConfig(SimpleQConfig):
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
             # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before num_ts_added_before_sampling_starts is reached,
+            # returns a batch. Before min_size_for_sampling is reached,
             # sample() will return an empty batch and no learning will happen.
-            "num_ts_added_before_sampling_starts": 1500,
+            "min_size_for_sampling": 1500,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }

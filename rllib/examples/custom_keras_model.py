@@ -117,7 +117,7 @@ if __name__ == "__main__":
 
     if args.run == "DQN":
         extra_config = {
-            "replay_buffer_config": {"num_ts_added_before_sampling_starts": 0}
+            "replay_buffer_config": {"min_size_for_sampling": 0}
         }
     else:
         extra_config = {}

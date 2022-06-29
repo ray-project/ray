@@ -45,9 +45,9 @@ class CRRConfig(AlgorithmConfig):
             "type": MultiAgentReplayBuffer,
             "capacity": 50000,
             # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before num_ts_added_before_sampling_starts is reached,
+            # returns a batch. Before min_size_for_sampling is reached,
             # sample() will return an empty batch and no learning will happen.
-            "num_ts_added_before_sampling_starts": 1000,
+            "min_size_for_sampling": 1000,
             "replay_batch_size": 32,
             # The number of contiguous environment steps to replay at once. This
             # may be set to greater than 1 to support recurrent models.

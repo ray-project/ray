@@ -58,7 +58,7 @@ class TestCQL(unittest.TestCase):
                 clip_actions=False,
                 train_batch_size=2000,
                 twin_q=True,
-                replay_buffer_config={"num_ts_added_before_sampling_starts": 0},
+                replay_buffer_config={"min_size_for_sampling": 0},
                 bc_iters=2,
             )
             .evaluation(

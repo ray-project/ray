@@ -13,7 +13,7 @@ two-step-game-maddpg:
               actions_are_logits: true
 
         replay_buffer_config:
-          num_ts_added_before_sampling_starts: 200
+          min_size_for_sampling: 200
 
         multiagent:
             policies:

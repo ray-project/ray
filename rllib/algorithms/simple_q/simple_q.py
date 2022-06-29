@@ -82,7 +82,7 @@ class SimpleQConfig(AlgorithmConfig):
         >>>     })
         >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
         >>>                         .exploration(exploration_config=explore_config)\
-        >>>                         .training(num_ts_added_before_sampling_starts=200)
+        >>>                         .training(min_size_for_sampling=200)
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
@@ -107,9 +107,9 @@ class SimpleQConfig(AlgorithmConfig):
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
             # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before num_ts_added_before_sampling_starts is reached,
+            # returns a batch. Before min_size_for_sampling is reached,
             # sample() will return an empty batch and no learning will happen.
-            "num_ts_added_before_sampling_starts": 1000,
+            "min_size_for_sampling": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
             # The number of contiguous environment steps to replay at once. This
@@ -150,7 +150,7 @@ class SimpleQConfig(AlgorithmConfig):
         # Deprecated.
         self.buffer_size = DEPRECATED_VALUE
         self.prioritized_replay = DEPRECATED_VALUE
-        self.num_ts_added_before_sampling_starts = DEPRECATED_VALUE
+        self.learning_starts = DEPRECATED_VALUE
         self.replay_batch_size = DEPRECATED_VALUE
         # Can not use DEPRECATED_VALUE here because -1 is a common config value
         self.replay_sequence_length = None
@@ -182,7 +182,7 @@ class SimpleQConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "num_ts_added_before_sampling_starts": 1000,
+                "min_size_for_sampling": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
