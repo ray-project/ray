@@ -111,6 +111,7 @@ cc_library(
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 
@@ -1431,6 +1432,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_common",
         ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1826,6 +1828,23 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_worker_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_worker_manager_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
