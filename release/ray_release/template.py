@@ -6,6 +6,7 @@ from typing import Optional, Dict
 
 import jinja2
 import yaml
+
 from ray_release.config import (
     Test,
     RELEASE_PACKAGE_DIR,
