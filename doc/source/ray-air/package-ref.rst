@@ -124,12 +124,12 @@ Configs
 .. automodule:: ray.air.config
     :members:
 
+.. autoclass:: ray.air.config.CheckpointConfig
 
 .. _air-session-ref:
 
 Session
-##########
+~~~~~~~
 
 .. automodule:: ray.air.session
     :members:
-
