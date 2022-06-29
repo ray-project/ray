@@ -9,11 +9,13 @@ import numpy as np
 from ray.tune import Trainable
 from ray.tune.trainable import wrap_function
 from ray.tune.integration.wandb import (
+    WandbTrainableMixin,
+    wandb_mixin,
+)
+from ray.air.callbacks.wandb import (
     WandbLoggerCallback,
     _WandbLoggingProcess,
     WANDB_ENV_VAR,
-    WandbTrainableMixin,
-    wandb_mixin,
     _QueueItem,
 )
 from ray.tune.result import TRIAL_INFO
