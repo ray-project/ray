@@ -1,0 +1,488 @@
+[cade-oss-vm-launcher-test-infra-wip 271e4f72f] WIP
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+Cloning into '/var/folders/70/8_80x3vn6q3_23hgl__hzw7m0000gn/T/release-XXXXXXXXXX.tAvsWDtm'...
+warning: --depth is ignored in local clones; use file:// instead.
+done.
+/var/folders/70/8_80x3vn6q3_23hgl__hzw7m0000gn/T/release-XXXXXXXXXX.tAvsWDtm/release ~/dev/oss-ray-cluster-test-infra/ray/release
+WARNING:root:The passed Ray wheels URL may not work with the python version used in this test! Got python version (3, 7) and wheels URL: http://localhost:8000/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl.
+INFO:root:Using Ray wheels URL: http://localhost:8000/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+INFO:root:Waiting up to 7200 seconds until URL is available (http://localhost:8000/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl)
+INFO:root:URL is now available: http://localhost:8000/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+INFO:root:Ignoring error message You have to set the ANYSCALE_PROJECT environment variable!
+INFO:root:Loaded anyscale credentials from local storage.
+INFO:botocore.credentials:Found credentials in environment variables.
+INFO:root:CADE_SKIP_REINSTALL_RAY skipping reinstallation of ray wheels http://localhost:8000/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+INFO:root:Re-installing `anyscale` package
+INFO:root:Installed python packages:
+aiobotocore==1.2.2
+aiodataloader==0.2.0
+aiofiles==0.5.0
+aiohttp==3.7.4.post0
+aiohttp-cors==0.7.0
+aiohttp-middlewares==1.2.1
+aioitertools==0.9.0
+aiojobs==0.3.0
+aioredis==1.3.1
+aiosignal==1.2.0
+alchemy-mock==0.4.3
+alembic==1.5.2
+aniso8601==7.0.0
+anyio==3.5.0
+anyscale==0.5.31
+anyscale-node-provider @ file:///Users/cade/dev/product/infra/regional/operators/anyscale_node_provider
+apipkg==1.5
+appdirs==1.4.4
+argon2-cffi==20.1.0
+asdev @ file:///Users/cade/asdev
+asgiref==3.3.1
+astroid==2.6.2
+async-exit-stack==1.0.1
+async-generator==1.10
+async-timeout==3.0.1
+asyncache==0.1.1
+asyncpg==0.21.0
+asynctest==0.13.0
+attrs==21.2.0
+awscli==1.22.66
+awspricing==2.0.3
+backoff==1.10.0
+backports.entry-points-selectable==1.1.0
+black==19.10b0
+blessed==1.19.1
+boto3==1.16.52
+botocore==1.19.52
+cachetools==4.2.0
+certifi==2021.10.8
+cffi==1.14.4
+cfgv==3.3.0
+chardet==4.0.0
+charset-normalizer==2.0.12
+click==8.0.1
+colorama==0.4.5
+colorful==0.5.4
+conda-pack==0.6.0
+coverage==6.3.2
+cryptography==3.3.1
+Deprecated==1.2.13
+distlib==0.3.2
+dnspython==2.1.0
+docker==4.4.1
+docutils==0.15.2
+email-validator==1.1.2
+execnet==1.9.0
+expiringdict==1.2.1
+fastapi==0.73.0
+filelock==3.0.12
+flake8==3.9.2
+flake8-alfred==1.1.1
+flake8-polyfill==1.0.2
+Flask==1.1.4
+Flask-Cors==3.0.10
+freezegun==1.1.0
+frozenlist==1.3.0
+gitdb==4.0.9
+GitPython==3.1.27
+google-api-core==2.8.1
+google-api-python-client==1.12.8
+google-auth==2.6.6
+google-auth-httplib2==0.0.4
+google-auth-oauthlib==0.4.2
+google-cloud-billing==1.1.0
+google-cloud-container==2.10.7
+google-cloud-core==2.3.0
+google-cloud-dns==0.33.0
+google-cloud-iam==2.0.0
+google-cloud-resource-manager==0.30.3
+google-cloud-storage==2.2.1
+google-crc32c==1.3.0
+google-resumable-media==2.3.3
+googleapis-common-protos==1.56.2
+gpustat==1.0.0b1
+graphene==2.1.8
+graphql-core==2.3.2
+graphql-relay==2.0.1
+greenlet==1.0.0
+grimp==1.2.3
+grpc-google-iam-v1==0.12.3
+grpc-stubs==1.24.3
+grpcio==1.43.0
+grpcio-status==1.46.3
+grpcio-tools==1.35.0
+h11==0.9.0
+halo==0.0.31
+hiredis==2.0.0
+httplib2==0.18.1
+httptools==0.1.1
+identify==2.2.11
+idna==3.3
+import-linter==1.2.4
+importlib-metadata==4.6.1
+importlib-resources==5.4.0
+iniconfig==1.1.1
+iso8601==0.1.14
+isodate==0.6.1
+isort==5.9.2
+itsdangerous==1.1.0
+Jinja2==3.0.3
+jmespath==0.10.0
+joblib==1.1.0
+jsonpatch==1.32
+jsonpointer==2.2
+jsonschema==4.4.0
+kopf==1.32.1
+kubernetes==17.17.0
+kubernetes-asyncio==12.0.1
+launchdarkly-server-sdk==6.13.1
+lazy-object-proxy==1.6.0
+libcst==0.3.16
+lightgbm==3.3.2
+lightgbm-ray @ git+https://github.com/ray-project/lightgbm_ray.git@e3a35f7382b6a4f3526162e206e3759f7130d4f3
+log-symbols==0.0.14
+lxml==4.8.0
+Mako==1.1.4
+MarkupSafe==2.1.0
+mccabe==0.6.1
+more-itertools==8.7.0
+msgpack==1.0.3
+multidict==6.0.2
+mypy==0.790
+mypy-extensions==0.4.3
+networkx==2.6.2
+nodeenv==1.6.0
+numpy==1.21.5
+nvidia-ml-py3==7.352.0
+oauth2client==3.0.0
+oauthlib==3.1.0
+opencensus==0.9.0
+opencensus-context==0.1.2
+opentelemetry-api==1.3.0
+opentelemetry-exporter-otlp==1.3.0
+opentelemetry-exporter-otlp-proto-grpc==1.3.0
+opentelemetry-instrumentation==0.22b0
+opentelemetry-instrumentation-asgi==0.22b0
+opentelemetry-instrumentation-asyncpg==0.22b0
+opentelemetry-instrumentation-botocore==0.22b0
+opentelemetry-instrumentation-sqlalchemy==0.22b0
+opentelemetry-instrumentation-starlette==0.22b0
+opentelemetry-proto==1.3.0
+opentelemetry-sdk==1.3.0
+opentelemetry-semantic-conventions==0.22b0
+opentelemetry-util-http==0.22b0
+orjson==3.4.7
+packaging==21.3
+pandas==1.3.5
+pathspec==0.8.1
+pazel==0.1.0
+pep8-naming==0.12.0
+pip==21.2.2
+pip-tools==5.5.0
+platformdirs==2.0.2
+pluggy==1.0.0
+pre-commit==2.13.0
+prometheus-client==0.13.1
+promise==2.3
+proto-plus==1.20.5
+protobuf==3.19.4
+psutil==5.9.1
+psycopg2-binary==2.8.6
+ptyprocess==0.7.0
+py==1.11.0
+py-spy==0.3.12
+pyasn1==0.4.8
+pyasn1-modules==0.2.8
+pycodestyle==2.7.0
+pycosat==0.6.3
+pycparser==2.20
+pydantic==1.9.1
+pyflakes==2.3.1
+PyGithub==1.55
+PyJWT==2.4.0
+pylint==2.9.3
+PyNaCl==1.5.0
+pyparsing==3.0.7
+pyRFC3339==1.1
+pyrsistent==0.18.1
+pytest==7.0.1
+pytest-aiohttp==0.3.0
+pytest-asyncio==0.18.1
+pytest-cov==3.0.0
+pytest-forked==1.4.0
+pytest-shard==0.1.2
+pytest-timeout==2.1.0
+pytest-tornado==0.8.1
+pytest-xdist==2.5.0
+python-dateutil==2.8.2
+python-dotenv==0.20.0
+python-editor==1.0.4
+python-engineio==3.14.2
+python-json-logger==2.0.1
+python-multipart==0.0.5
+python-socketio==4.6.0
+python3-saml==1.12.0
+pytz==2020.5
+PyYAML==5.4.1
+ray @ http://localhost:8000/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+-e git+ssh://git@github.com/ray-project/ray.git@271e4f72f18cf29721910e24b3b216598161bd6f#egg=ray_release&subdirectory=release
+redis==4.1.4
+regex==2021.7.6
+requests==2.27.1
+requests-oauthlib==1.3.0
+rsa==4.7
+Rx==1.6.1
+s3transfer==0.3.7
+scalesec-gcp-workload-identity==1.0.7
+scikit-learn==1.0.2
+scipy==1.7.3
+semver==2.13.0
+sentry-sdk==1.5.5
+setproctitle==1.2.2
+setuptools==58.0.4
+shellingham==1.4.0
+six==1.16.0
+slackclient==2.9.4
+smart-open==6.0.0
+smmap==5.0.0
+sniffio==1.2.0
+spinners==0.0.24
+SQLAlchemy==1.4.0b1
+sqlalchemy-stubs==0.4
+starlette==0.17.1
+tabulate==0.8.9
+termcolor==1.1.0
+terminado==0.12.1
+threadpoolctl==3.1.0
+toml==0.10.2
+tomli==2.0.1
+tornado==6.1
+typed-ast==1.4.3
+typer==0.4.0
+typing-inspect==0.6.0
+typing_extensions==4.1.1
+ujson==3.2.0
+uritemplate==3.0.1
+urllib3==1.26.8
+uvicorn==0.11.8
+uvloop==0.14.0
+virtualenv==20.5.0
+wcwidth==0.2.5
+websocket-client==0.57.0
+websockets==8.1
+Werkzeug==1.0.1
+wheel==0.37.1
+wrapt==1.12.1
+xgboost==1.6.1
+xgboost-ray @ git+https://github.com/ray-project/xgboost_ray.git@a84a446562bd1fafe54bee9797b6b04abae9a916
+xmlsec==1.3.12
+yarl==1.7.2
+zipp==3.5.0
+2022-06-28 18:47:47,254	INFO util.py:338 -- setting max workers for head node type to 0
+ssh: connect to host 34.212.33.167 port 22: Operation timed out
+[37mCluster[39m: [1mcade-minimal-test[22m
+
+Checking AWS environment settings
+[36mAWS config[39m
+  [37mIAM Profile[39m: [1mray-autoscaler-v1[22m[0m[2m [default][22m[0m
+  [37mEC2 Key pair (all available node types)[39m: [1mray-autoscaler_5_us-west-2[22m[0m[2m [default][22m[0m
+  [37mVPC Subnets (all available node types)[39m: [1m[1msubnet-083df29b288eb4fa5[22m[22m[0m[2m [default][22m[0m
+  [37mEC2 Security groups (all available node types)[39m: [1m[1msg-042ca16925c42c0a3[22m[22m[0m[2m [default][22m[0m
+  [37mEC2 AMI (all available node types)[39m: [1mami-0b037dcb7a2b4a9a9[22m
+
+No head node found. Launching a new cluster. [4mConfirm [y/N]:[24m y [2m[automatic, due to --yes][22m
+
+Usage stats collection is enabled. To disable this, add `--disable-usage-stats` to the command that starts the cluster, or run the following command: `ray disable-usage-stats` before starting the cluster. See https://docs.ray.io/en/master/cluster/usage-stats.html for more details.
+
+[36mAcquiring an up-to-date head node[39m
+  Reusing nodes [1mi-082d11cee9e95a343[22m. To disable reuse, set `cache_stopped_nodes: False` under `provider` in the cluster configuration.
+  [36mStopping instances to reuse[39m
+    Waiting for instance i-082d11cee9e95a343 to stop
+  Launched a new head node
+  [36mFetching the new head node[39m
+  
+[2m<1/1>[22m [36mSetting up head node[39m
+  Prepared bootstrap config
+  [37mNew status[39m: [1mwaiting-for-ssh[22m
+  [2m[1/7][22m [36mWaiting for SSH to become available[39m
+    Running `[1muptime[22m[26m` as a test.
+    [36mWaiting for IP[39m
+      Not yet available, retrying in [1m5[22m[26m seconds
+      [37mReceived[39m: [1m34.212.33.167[22m
+ssh: connect to host 34.212.33.167 port 22: Connection refused
+    SSH still not available [2m(SSH command failed.)[22m[26m, retrying in [1m5[22m[26m seconds.
+Warning: Permanently added '34.212.33.167' (ED25519) to the list of known hosts.
+ 01:48:53 up 0 min,  1 user,  load average: 0.47, 0.10, 0.03
+Shared connection to 34.212.33.167 closed.
+    SSH still not available [2m(SSH command failed.)[22m[26m, retrying in [1m5[22m[26m seconds.
+Shared connection to 34.212.33.167 closed.
+    [32mSuccess.[39m
+1.12.2-py37-cu112: Pulling from rayproject/ray
+Digest: sha256:71fe70fe28f8cec04e9c77098de54fc58f0ce9dcbd12356b421c49cf84645336
+Status: Image is up to date for rayproject/ray:1.12.2-py37-cu112
+docker.io/rayproject/ray:1.12.2-py37-cu112
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+  Updating cluster configuration.[0m[2m [hash=4729e62a3124dcc207c19bfd44f8c0d92e36eed3][22m[0m
+  [37mNew status[39m: [1msyncing-files[22m
+  [2m[2/7][22m [36mProcessing file mounts[39m
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+  [2m[3/7][22m No worker file mounts to sync
+  [37mNew status[39m: [1msetting-up[22m
+  [2m[4/7][22m No initialization commands to run.
+  [2m[5/7][22m [36mInitializing command runner[39m
+1.12.2-py37-cu112: Pulling from rayproject/ray
+Digest: sha256:71fe70fe28f8cec04e9c77098de54fc58f0ce9dcbd12356b421c49cf84645336
+Status: Image is up to date for rayproject/ray:1.12.2-py37-cu112
+docker.io/rayproject/ray:1.12.2-py37-cu112
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver. Make sure that the latest NVIDIA driver is installed and running.
+
+Shared connection to 34.212.33.167 closed.
+2022-06-28 18:49:04,725	WARNING command_runner.py:1058 -- Nvidia Container Runtime is present, but no GPUs found.
+3eb50105cad55776ba5da70efabb0b24105660ac222aa667bf161575e65baa25
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+sending incremental file list
+ray_bootstrap_config.yaml
+
+sent 1,082 bytes  received 35 bytes  2,234.00 bytes/sec
+total size is 2,478  speedup is 2.22
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+sending incremental file list
+ray_bootstrap_key.pem
+
+sent 1,398 bytes  received 35 bytes  2,866.00 bytes/sec
+total size is 1,674  speedup is 1.17
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+Shared connection to 34.212.33.167 closed.
+  [2m[6/7][22m [36mRunning setup commands[39m
+    [2m(0/3)[22m [1m(stat $HOME/anaconda3/envs/ten[22m...[26m
+/home/ray/anaconda3/bin/ray
+Shared connection to 34.212.33.167 closed.
+    [2m(1/3)[22m [1mwhich ray || pip install -U "r[22m...[26m
+Requirement already satisfied: boto3>=1.4.8 in ./anaconda3/lib/python3.7/site-packages (1.4.8)
+Requirement already satisfied: s3transfer<0.2.0,>=0.1.10 in ./anaconda3/lib/python3.7/site-packages (from boto3>=1.4.8) (0.1.13)
+Requirement already satisfied: botocore<1.9.0,>=1.8.0 in ./anaconda3/lib/python3.7/site-packages (from boto3>=1.4.8) (1.8.50)
+Requirement already satisfied: jmespath<1.0.0,>=0.7.1 in ./anaconda3/lib/python3.7/site-packages (from boto3>=1.4.8) (0.10.0)
+Requirement already satisfied: docutils>=0.10 in ./anaconda3/lib/python3.7/site-packages (from botocore<1.9.0,>=1.8.0->boto3>=1.4.8) (0.18.1)
+Requirement already satisfied: python-dateutil<3.0.0,>=2.1 in ./anaconda3/lib/python3.7/site-packages (from botocore<1.9.0,>=1.8.0->boto3>=1.4.8) (2.8.2)
+Requirement already satisfied: six>=1.5 in ./anaconda3/lib/python3.7/site-packages (from python-dateutil<3.0.0,>=2.1->botocore<1.9.0,>=1.8.0->boto3>=1.4.8) (1.13.0)
+Shared connection to 34.212.33.167 closed.
+    [2m(2/3)[22m [1mpip install 'boto3>=1.4.8'[22m[26m
+Did not find any active Ray processes.
+[0mShared connection to 34.212.33.167 closed.
+  [2m[7/7][22m [36mStarting the Ray runtime[39m
+[37mLocal node IP[39m: [1m10.0.4.121[22m
+2022-06-28 18:49:25,367	INFO services.py:1462 -- View the Ray dashboard at [1m[32mhttp://127.0.0.1:8265[39m[22m
+
+[32m--------------------[39m
+[32mRay runtime started.[39m
+[32m--------------------[39m
+
+[36mNext steps[39m
+  To connect to this Ray runtime from another node, run
+  [1m  ray start --address='10.0.4.121:6379'[22m
+  
+  Alternatively, use the following Python code:
+    [35mimport[39m[26m ray
+    ray[35m.[39m[26minit(address[35m=[39m[26m[33m'auto'[39m[26m)
+  
+  To connect to this Ray runtime from outside of the cluster, for example to
+  connect to a remote cluster from your laptop directly, use the following
+  Python code:
+    [35mimport[39m[26m ray
+    ray[35m.[39m[26minit(address[35m=[39m[26m[33m'ray://<head_node_ip_address>:10001'[39m[26m)
+  
+  [4mIf connection fails, check your firewall settings and network configuration.[24m
+  
+  To terminate the Ray runtime, run
+  [1m  ray stop[22m
+[0mShared connection to 34.212.33.167 closed.
+  [37mNew status[39m: [1mup-to-date[22m
+
+[36mUseful commands[39m
+  Monitor autoscaling with
+  [1m  ray exec /Users/cade/dev/oss-ray-cluster-test-infra/ray/release/vm_stack_tests/cluster_launcher_config_aws.yaml 'tail -n 100 -f /tmp/ray/session_latest/logs/monitor*'[22m
+  Connect to a terminal on the cluster head:
+  [1m  ray attach /Users/cade/dev/oss-ray-cluster-test-infra/ray/release/vm_stack_tests/cluster_launcher_config_aws.yaml[22m
+  Get a remote shell to the cluster manually:
+    ssh -tt -o IdentitiesOnly=yes -i /Users/cade/.ssh/ray-autoscaler_5_us-west-2.pem ubuntu@34.212.33.167 docker exec -it ray_container /bin/bash
+Sleeping 10s to wait for port forward to be online. TODO(cade) remove this
+INFO:root:Executing pip install -q awscli && aws s3 cp s3://cade-test/tmp/obcpgwcbqw archive.tar.gz && tar xf archive.tar.gz  with {} via ray job submit
+INFO:ray.dashboard.modules.dashboard_sdk:No address provided, defaulting to http://localhost:8265.
+INFO:root:Running command in cluster TODO-cluster-name: TEST_OUTPUT_JSON=/tmp/release_test_out.json python script.py
+INFO:root:Link to cluster: None
+INFO:root:Executing TEST_OUTPUT_JSON=/tmp/release_test_out.json python script.py with {'TEST_OUTPUT_JSON': '/tmp/release_test_out.json'} via ray job submit
+INFO:ray.dashboard.modules.dashboard_sdk:No address provided, defaulting to http://localhost:8265.
+INFO:root:/var/folders/70/8_80x3vn6q3_23hgl__hzw7m0000gn/T/release-XXXXXXXXXX.tAvsWDtm/tmpaglq4nc_.json
+INFO:root:Executing pip install -q awscli && aws s3 cp /tmp/release_test_out.json s3://cade-test/tmp/vxpoczcihq --acl bucket-owner-full-control with {} via ray job submit
+ERROR:root:Could not fetch results for test command
+ERROR:root:Could not fetch results from session: Error downloading file /tmp/release_test_out.json to /var/folders/70/8_80x3vn6q3_23hgl__hzw7m0000gn/T/release-XXXXXXXXXX.tAvsWDtm/tmpaglq4nc_.json
+Traceback (most recent call last):
+  File "/Users/cade/dev/oss-ray-cluster-test-infra/ray/release/ray_release/command_runner/job_runner.py", line 121, in fetch_results
+    self.file_manager.download(self.result_output_json, tmpfile)
+  File "/Users/cade/dev/oss-ray-cluster-test-infra/ray/release/ray_release/file_manager/job_file_manager.py", line 63, in download
+    raise FileDownloadError(f"Error downloading file {source} to {target}")
+ray_release.exception.FileDownloadError: Error downloading file /tmp/release_test_out.json to /var/folders/70/8_80x3vn6q3_23hgl__hzw7m0000gn/T/release-XXXXXXXXXX.tAvsWDtm/tmpaglq4nc_.json
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/cade/dev/oss-ray-cluster-test-infra/ray/release/ray_release/glue.py", line 277, in run_release_test
+    command_results = command_runner.fetch_results()
+  File "/Users/cade/dev/oss-ray-cluster-test-infra/ray/release/ray_release/command_runner/job_runner.py", line 129, in fetch_results
+    raise ResultsError(f"Could not fetch results from session: {e}") from e
+ray_release.exception.ResultsError: Could not fetch results from session: Error downloading file /tmp/release_test_out.json to /var/folders/70/8_80x3vn6q3_23hgl__hzw7m0000gn/T/release-XXXXXXXXXX.tAvsWDtm/tmpaglq4nc_.json
+2022-06-28 18:50:08,785	INFO util.py:338 -- setting max workers for head node type to 0
+2022-06-28 18:50:08,799	INFO util.py:338 -- setting max workers for head node type to 0
+1/7 stopped.2/7 stopped.3/7 stopped.4/7 stopped.5/7 stopped.6/7 stopped.7/7 stopped.[32mStopped all 7 Ray processes.[39m
+[0mShared connection to 34.212.33.167 closed.
+[33mLoaded cached provider configuration[39m
+[33mIf you experience issues with the cloud provider, try re-running the command with [1m--no-config-cache[22m[26m.[39m
+Destroying cluster. [4mConfirm [y/N]:[24m y [2m[automatic, due to --yes][22m
+[37mFetched IP[39m: [1m34.212.33.167[22m
+[37mFetched IP[39m: [1m34.212.33.167[22m
+Stopping instances [1mi-082d11cee9e95a343[22m [2m(to terminate instead, set `cache_stopped_nodes: False` under `provider` in the cluster configuration)[22m
+Requested [1m1[22m[26m nodes to shut down.[0m[2m [interval=1s][22m[0m
+[1m0[22m[26m nodes remaining after 5 second(s).
+[32mNo nodes remaining.[39m
+INFO:root:Checking results for test cade-test using alerting suite default
+INFO:root:No alerts have been raised - test passed successfully!
+INFO:root:Test cade-test finished after 154.82 seconds. Last logs:
+
+1
+2
+3
+4
+5
+2.25.1
+
+
+INFO:root:Got the following metadata: 
+  name:    cade-test
+  status:  finished
+  runtime: 154.82
+  stable:  True
+
+  buildkite_url: 
+  wheels_url:    http://localhost:8000/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+  cluster_url:   None
+
+INFO:root:Did not find any results.
+INFO:root:Release test pipeline for test cade-test completed. Returning with exit code = 0
+Script finished successfully on try 1/1
+cp: directory /tmp/ray_release_test_artifacts does not exist
+----------------------------------------
+Release test finished with final exit code 0 after 1/1 tries
+Run results:
+  Run 1: Exit code = 0 (success)
+----------------------------------------
+Final release test exit code is 0 (success)
+RELEASE MANAGER: This test seems to have passed.
+~/dev/oss-ray-cluster-test-infra/ray/release
