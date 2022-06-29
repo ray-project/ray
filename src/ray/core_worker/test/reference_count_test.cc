@@ -600,7 +600,7 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
   rc->UpdateObjectSize(id1, 200);
 
   rpc::CoreWorkerStats stats;
-  rc->AddObjectRefStats({}, &stats);
+  rc->AddObjectRefStats({}, &stats, -1);
   ASSERT_EQ(stats.object_refs_size(), 1);
   ASSERT_EQ(stats.object_refs(0).object_id(), id1.Binary());
   ASSERT_EQ(stats.object_refs(0).local_ref_count(), 1);
@@ -610,12 +610,30 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
 
   rc->AddOwnedObject(id2, {}, address, "file2.py:43", 100, false, /*add_local_ref=*/true);
   rpc::CoreWorkerStats stats2;
-  rc->AddObjectRefStats({}, &stats2);
+  rc->AddObjectRefStats({}, &stats2, -1);
   ASSERT_EQ(stats2.object_refs_size(), 1);
   ASSERT_EQ(stats2.object_refs(0).object_id(), id2.Binary());
   ASSERT_EQ(stats2.object_refs(0).local_ref_count(), 1);
   ASSERT_EQ(stats2.object_refs(0).object_size(), 100);
   ASSERT_EQ(stats2.object_refs(0).call_site(), "file2.py:43");
+  rc->RemoveLocalReference(id2, nullptr);
+}
+
+TEST_F(ReferenceCountTest, TestReferenceStatsLimit) {
+  ObjectID id1 = ObjectID::FromRandom();
+  ObjectID id2 = ObjectID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  rc->AddLocalReference(id1, "file.py:42");
+  rc->UpdateObjectSize(id1, 200);
+
+  rpc::CoreWorkerStats stats;
+
+  rc->AddOwnedObject(id2, {}, address, "file2.py:43", 100, false, /*add_local_ref=*/true);
+  rc->AddObjectRefStats({}, &stats, 1);
+  ASSERT_EQ(stats.object_refs_size(), 1);
+  rc->RemoveLocalReference(id1, nullptr);
   rc->RemoveLocalReference(id2, nullptr);
 }
 
