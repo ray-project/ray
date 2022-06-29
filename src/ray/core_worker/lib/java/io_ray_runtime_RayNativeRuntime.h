@@ -97,19 +97,19 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *, jclass);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
- * Method:    nativeGetCurrentNodeId
- * Signature: ()[B
- */
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentNodeId(JNIEnv *, jclass);
-
-/*
- * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeGetCurrentReturnIds
  * Signature: (I[B)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentReturnIds(
     JNIEnv *, jclass, jint, jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_RayNativeRuntime
+ * Method:    nativeGetCurrentNodeId
+ * Signature: ()[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentNodeId(JNIEnv *, jclass);
 
 #ifdef __cplusplus
 }
