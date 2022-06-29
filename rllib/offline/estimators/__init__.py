@@ -8,7 +8,6 @@ from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 
 __all__ = [
     "OffPolicyEstimator",
-    "OffPolicyEstimate",
     "ImportanceSampling",
     "WeightedImportanceSampling",
     "DirectMethod",

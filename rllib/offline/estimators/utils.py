@@ -123,7 +123,7 @@ def _sampling_state_value_fn(
     q_values = []
     for _ in range(n_samples):
         tmp_batch[SampleBatch.ACTIONS] = np.array(
-            [policy.action_space.sample() for _ in batch.count]
+            [policy.action_space.sample() for _ in range(batch.count)]
         )
         tmp_probs = np.exp(action_log_likelihood(policy, tmp_batch))
         action_probs.append(tmp_probs)
