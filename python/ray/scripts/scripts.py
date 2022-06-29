@@ -44,14 +44,16 @@ from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE
 from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.api import get_log, list_logs
-from ray.experimental.state.common import DEFAULT_LIMIT
+from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
+from ray.util.annotations import PublicAPI
+
 from ray.experimental.state.state_cli import (
+    get as state_cli_get,
+    list as state_cli_list,
     get_api_server_url,
-    get_state_api_output_to_print,
+    output_with_format,
     summary_state_cli_group,
 )
-from ray.experimental.state.state_cli import list as cli_list
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -2038,6 +2040,15 @@ def local_dump(
     help="The interval to print new logs when `--follow` is specified.",
     hidden=True,
 )
+@click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=(
+        "Timeout in seconds for the API requests. "
+        f"Default is {DEFAULT_RPC_TIMEOUT}. If --follow is specified, "
+        "this option will be ignored."
+    ),
+)
 def logs(
     glob_filter,
     node_ip: str,
@@ -2048,6 +2059,7 @@ def logs(
     follow: bool,
     tail: int,
     interval: float,
+    timeout: int,
 ):
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
@@ -2069,6 +2081,7 @@ def logs(
             node_id=node_id,
             node_ip=node_ip,
             glob_filter=glob_filter,
+            timeout=timeout,
         )
         log_files_found = []
         for _, log_files in logs.items():
@@ -2085,12 +2098,12 @@ def logs(
                 print(f"Node ID: {node_id}")
             elif node_ip:
                 print(f"Node IP: {node_ip}")
-            print(get_state_api_output_to_print(logs))
+            print(output_with_format(logs))
 
     # If there's an unique match, print the log file.
     if match_unique:
         if not tail:
-            tail = 0 if follow else DEFAULT_LIMIT
+            tail = 0 if follow else DEFAULT_LOG_LIMIT
 
             if tail > 0:
                 print(
@@ -2109,6 +2122,7 @@ def logs(
             tail=tail,
             follow=follow,
             _interval=interval,
+            timeout=timeout,
         ):
             print(chunk, end="", flush=True)
 
@@ -2502,8 +2516,9 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-cli.add_command(cli_list)
 add_command_alias(job_cli_group, name="job", hidden=True)
+cli.add_command(state_cli_list)
+cli.add_command(state_cli_get)
 add_command_alias(summary_state_cli_group, name="summary", hidden=True)
 
 try:

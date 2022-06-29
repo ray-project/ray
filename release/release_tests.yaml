@@ -2594,6 +2594,25 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
 
+
+- name: microbenchmark_staging
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+  env: staging
+
+  python: "3.7"
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+
+
 - name: microbenchmark_38
   group: core-daily-test
   team: core
@@ -3110,6 +3129,8 @@
 - name: many_nodes
   group: core-scalability-test
   working_dir: benchmarks
+  env: staging
+
   legacy:
     test_name: many_nodes
     test_suite: benchmark_tests

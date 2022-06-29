@@ -6,9 +6,6 @@ import numpy as np
 
 import ray
 import ray.rllib.algorithms.ddpg as ddpg
-from ray.rllib.algorithms.ddpg.ddpg_torch_policy import (
-    ddpg_actor_critic_loss as loss_torch,
-)
 from ray.rllib.algorithms.sac.tests.test_sac import SimpleEnv
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -38,7 +35,6 @@ class TestDDPG(unittest.TestCase):
     def test_ddpg_compilation(self):
         """Test whether DDPG can be built with both frameworks."""
         config = ddpg.DDPGConfig()
-        config.seed = 42
         config.num_workers = 0
         config.num_envs_per_worker = 2
         config.replay_buffer_config["learning_starts"] = 0
@@ -73,7 +69,6 @@ class TestDDPG(unittest.TestCase):
         # Test against all frameworks.
         for _ in framework_iterator(core_config):
             config = copy.deepcopy(core_config)
-            config.seed = 42
             # Default OUNoise setup.
             algo = config.build(env="Pendulum-v1")
             # Setting explore=False should always return the same action.
@@ -285,7 +280,7 @@ class TestDDPG(unittest.TestCase):
                 tf_a_grads = [g for g, v in tf_a_grads]
 
             elif fw == "torch":
-                loss_torch(policy, policy.model, None, input_)
+                policy.loss(policy.model, None, input_)
                 c, a, t = (
                     policy.get_tower_stats("critic_loss")[0],
                     policy.get_tower_stats("actor_loss")[0],

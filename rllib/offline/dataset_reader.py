@@ -116,8 +116,9 @@ class DatasetReader(InputReader):
         self._ioctx = ioctx
         self._dataset = ds
         # the number of rows to return per call to next()
-        self.batch_size = ioctx.config.get("train_batch_size", 1)
-        num_workers = ioctx.config.get("num_workers", 0)
+        if self._ioctx:
+            self.batch_size = ioctx.config.get("train_batch_size", 1)
+            num_workers = ioctx.config.get("num_workers", 0)
         if num_workers:
             self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)
         # We allow the creation of a non-functioning None DatasetReader.
