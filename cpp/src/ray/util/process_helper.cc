@@ -143,6 +143,9 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.task_execution_callback = callback;
   options.startup_token = ConfigInternal::Instance().startup_token;
   rpc::JobConfig job_config;
+  job_config.set_default_actor_lifetime(
+      ConfigInternal::Instance().default_actor_lifetime);
+
   for (const auto &path : ConfigInternal::Instance().code_search_path) {
     job_config.add_code_search_path(path);
   }

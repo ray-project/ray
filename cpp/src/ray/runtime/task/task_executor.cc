@@ -102,21 +102,23 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
   } catch (RayIntentionalSystemExitException &e) {
+    RAY_LOG(ERROR) << "Ray intentional system exit while executing function(" << func_name
+                   << ").";
     return std::make_pair(ray::Status::IntentionalSystemExit(""), nullptr);
-  } catch (RayException &e) {
-    return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
-  } catch (msgpack::type_error &e) {
-    return std::make_pair(
-        ray::Status::Invalid(std::string("invalid arguments: ") + e.what()), nullptr);
-  } catch (const std::invalid_argument &e) {
-    return std::make_pair(
-        ray::Status::Invalid(std::string("function execute exception: ") + e.what()),
-        nullptr);
   } catch (const std::exception &e) {
-    return std::make_pair(
-        ray::Status::Invalid(std::string("function execute exception: ") + e.what()),
-        nullptr);
+#ifdef _WIN32
+    auto exception_name = std::string(typeid(e).name());
+#else
+    auto exception_name =
+        std::string(abi::__cxa_demangle(typeid(e).name(), nullptr, nullptr, nullptr));
+#endif
+    std::string err_msg = "An exception was thrown while executing function(" +
+                          func_name + "): " + exception_name + ": " + e.what();
+    RAY_LOG(ERROR) << err_msg;
+    return std::make_pair(ray::Status::Invalid(err_msg), nullptr);
   } catch (...) {
+    RAY_LOG(ERROR) << "An unknown exception was thrown while executing function("
+                   << func_name << ").";
     return std::make_pair(ray::Status::UnknownError(std::string("unknown exception")),
                           nullptr);
   }
@@ -136,7 +138,8 @@ Status TaskExecutor::ExecuteTask(
     bool *is_application_level_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute) {
-  RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
+  RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
+                 << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();
   RAY_CHECK(function_descriptor->Type() ==
