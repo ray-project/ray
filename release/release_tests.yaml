@@ -110,7 +110,7 @@
 
   run:
     timeout: 36000
-    script: python script.py
+    script: python cade-test-script.py
     #long_running: true
     #wait_for_nodes:
     #  num_nodes: 3
