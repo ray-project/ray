@@ -1,3 +1,4 @@
+import decimal
 import json
 import logging
 import math
@@ -5,6 +6,7 @@ import time
 from contextlib import suppress
 from typing import Any, Dict, Optional
 
+import kubernetes
 import requests
 
 from ray.autoscaler._private.constants import (
@@ -280,14 +282,30 @@ def _get_num_cpus(
 def _get_memory(
     ray_start_params: Dict[str, str], k8s_resource_limits: Dict[str, Any]
 ) -> Optional[int]:
-    """Get memory resource annotation from ray_start_params, if it is set there.
-
-    TODO, maybe: Consider container resource limits as in
-    https://github.com/ray-project/ray/pull/14567/files
+    """Get memory resource annotation from ray_start_params or k8s_resource_limits,
+    with priority for ray_start_params.
     """
     if "memory" in ray_start_params:
         return int(ray_start_params["memory"])
+    elif "memory" in k8s_resource_limits:
+        memory_quantity: str = k8s_resource_limits["memory"]
+        return _round_up_k8s_quantity(memory_quantity)
     return None
+
+
+def _round_up_k8s_quantity(quantity: str) -> int:
+    """Rounds a Kubernetes resource quantity up to the nearest integer.
+
+    Args:
+        quantity: Resource quantity as a string in the canonical K8s form.
+
+    Returns:
+        The quantity, rounded up, as an integer.
+    """
+    resource_decimal: decimal.Decimal = kubernetes.utils.quantity\
+        .parse_quantity(quantity)
+    rounded = resource_decimal.to_integral_value(rounding=decimal.ROUND_UP)
+    return int(rounded)
 
 
 def _get_num_gpus(
