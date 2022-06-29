@@ -31,8 +31,6 @@ RAYCLUSTER_FETCH_RETRY_S = 5
 # Used as the name of the "head node type" by the autoscaler.
 _HEAD_GROUP_NAME = "head-group"
 
-_GPU_WARNING_LOGGED = False
-
 
 class AutoscalingConfigProducer:
     """Produces an autoscaling config by reading data from the RayCluster CR.
@@ -261,6 +259,9 @@ def _get_num_cpus(
     k8s_resource_limits: Dict[str, str],
     group_name: str,
 ) -> int:
+    """Get CPU annotation from ray_start_params or k8s_resource_limits,
+    with priority for ray_start_params.
+    """
     if "num_cpus" in ray_start_params:
         return int(ray_start_params["num_cpus"])
     elif "cpu" in k8s_resource_limits:
@@ -309,31 +310,21 @@ def _get_num_gpus(
     k8s_resource_limits: Dict[str, Any],
     group_name: str,
 ) -> Optional[int]:
-    """Read the number of GPUs from the Ray start params.
-
-    Potential TODO: Read GPU info from the container spec, here and in the
-    Ray Operator.
+    """Get memory resource annotation from ray_start_params or k8s_resource_limits,
+    with priority for ray_start_params.
     """
 
     if "num-gpus" in ray_start_params:
         return int(ray_start_params["num-gpus"])
-
-    # Issue a warning if GPUs are present in the container spec but not in the
-    # ray start params.
-    # TODO: Consider reading GPU info from container spec.
-    for key in k8s_resource_limits:
-        global _GPU_WARNING_LOGGED
-        if "gpu" in key and not _GPU_WARNING_LOGGED:
-            with suppress(Exception):
-                if int(k8s_resource_limits[key]) > 0:
-                    logger.warning(
-                        f"Detected GPUs in container resources for group {group_name}."
-                        "To ensure Ray and the autoscaler are aware of the GPUs,"
-                        " set the `--num-gpus` rayStartParam."
-                    )
-                    _GPU_WARNING_LOGGED = True
-            break
-
+    else:
+        for key in k8s_resource_limits:
+            # e.g. nvidia.com/gpu
+            if key.endswith("/gpu"):
+                num_gpus = int(k8s_resource_limits[key])
+                if num_gpus > 0:
+                    # Only one GPU type supported for now, break out on first
+                    # "/gpu" match.
+                    return num_gpus
     return None
 
 
