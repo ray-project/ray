@@ -808,10 +808,6 @@ def test_runtime_env_interface():
     assert runtime_env.to_dict() == {}
 
 
-def using_ray_client(address):
-    return address.startswith("ray://")
-
-
 if __name__ == "__main__":
     import sys
 

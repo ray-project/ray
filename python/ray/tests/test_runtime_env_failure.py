@@ -1,12 +1,4 @@
-import json
-import logging
 import os
-import subprocess
-import sys
-import tempfile
-import time
-from pathlib import Path
-from typing import List
 from unittest import mock
 
 import pytest
@@ -14,29 +6,14 @@ from ray._private.runtime_env.packaging import (
     RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR,
     RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR,
 )
-import requests
-
 import ray
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.runtime_env.uri_cache import URICache
-from ray._private.runtime_env.utils import (
-    SubprocessCalledProcessError,
-    check_output_cmd,
-)
-from ray._private.test_utils import (
-    chdir,
-    get_error_message,
-    get_log_sources,
-    wait_for_condition,
-)
-from ray._private.utils import (
-    get_master_wheel_url,
-    get_release_wheel_url,
-    get_wheel_filename,
-)
-from ray.exceptions import RuntimeEnvSetupError
+
 from ray.runtime_env import RuntimeEnv
+
+
+def using_ray_client(address):
+    return address.startswith("ray://")
+
 
 @pytest.fixture
 def set_agent_failure_env_var():
@@ -75,6 +52,7 @@ def test_runtime_env_broken(
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
+
 # Set scope to "class" to force this to run before start_cluster, whose scope
 # is "function".  We need this environment variable to be set before Ray is started.
 @pytest.fixture(scope="class")
@@ -87,6 +65,7 @@ def fail_download():
     ):
         print("RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING enabled.")
         yield
+
 
 class TestRuntimeEnvFailure:
     @pytest.mark.parametrize("plugin", ["working_dir", "py_modules"])
@@ -165,6 +144,7 @@ class TestRuntimeEnvFailure:
 
             with pytest.raises(Exception):
                 ray.get(f.remote())
+
 
 if __name__ == "__main__":
     import sys
