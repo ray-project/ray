@@ -1,19 +1,19 @@
-from collections import OrderedDict
-import gym
 import logging
 import re
-import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple, Type, TYPE_CHECKING, Union
+from collections import OrderedDict
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
-from ray.util.debug import log_once
-from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
+import gym
+import tree  # pip install dm_tree
+
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy import TFMultiGPUTowerStack
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
@@ -28,11 +28,12 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    AlgorithmConfigDict,
 )
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import Episode
@@ -250,15 +251,12 @@ class DynamicTFPolicyV2(TFPolicy):
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
-        policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
         grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy: The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
             optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
             grads: The gradient tensor to be applied.
@@ -403,11 +401,12 @@ class DynamicTFPolicyV2(TFPolicy):
                     "`make_model` is required if `action_sampler_fn` OR "
                     "`action_distribution_fn` is given"
                 )
+            return None
         else:
             dist_class, _ = ModelCatalog.get_action_dist(
                 self.action_space, self.config["model"]
             )
-        return dist_class
+            return dist_class
 
     def _init_view_requirements(self):
         # If ViewRequirements are explicitly specified.
@@ -582,7 +581,7 @@ class DynamicTFPolicyV2(TFPolicy):
                     self._state_out,
                 ) = self.action_sampler_fn(
                     self.model,
-                    obs_batch=self._input_dict[SampleBatch.CUR_OBS],
+                    obs_batch=self._input_dict[SampleBatch.OBS],
                     state_batches=self._state_inputs,
                     seq_lens=self._seq_lens,
                     prev_action_batch=self._input_dict.get(SampleBatch.PREV_ACTIONS),
@@ -602,7 +601,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         self._state_out,
                     ) = self.action_distribution_fn(
                         self.model,
-                        input_dict=in_dict,
+                        obs_batch=in_dict[SampleBatch.OBS],
                         state_batches=self._state_inputs,
                         seq_lens=self._seq_lens,
                         explore=explore,
@@ -803,6 +802,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
+                        SampleBatch.T,
                         SampleBatch.OBS_EMBEDS,
                     ]
                 ):
@@ -824,6 +824,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
+                        SampleBatch.T,
                     ]
                     and key not in self.model.view_requirements
                 ):

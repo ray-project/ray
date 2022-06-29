@@ -22,7 +22,7 @@ np.random.seed(1234)
 tune.run(
     train,
     config={"seed": tune.randint(0, 1000)},
-    search_alg=tune.suggest.BasicVariantGenerator(),
+    search_alg=tune.search.BasicVariantGenerator(),
     num_samples=10,
 )
 # __reproducible_end__
@@ -197,7 +197,6 @@ tune.run(tune.with_parameters(f, data=data))
 # __large_data_end__
 
 MyTrainableClass = None
-custom_sync_str_or_func = ""
 
 if not MOCK:
     # __log_1_start__
@@ -209,37 +208,31 @@ if not MOCK:
     # __log_1_end__
 
     # __log_2_start__
+    from ray.tune.syncer import Syncer
+
+    class CustomSyncer(Syncer):
+        def sync_up(
+            self, local_dir: str, remote_dir: str, exclude: list = None
+        ) -> bool:
+            pass  # sync up
+
+        def sync_down(
+            self, remote_dir: str, local_dir: str, exclude: list = None
+        ) -> bool:
+            pass  # sync down
+
+        def delete(self, remote_dir: str) -> bool:
+            pass  # delete
+
     tune.run(
         MyTrainableClass,
         sync_config=tune.SyncConfig(
-            upload_dir="s3://my-log-dir", syncer=custom_sync_str_or_func
+            upload_dir="s3://my-log-dir", syncer=CustomSyncer()
         ),
     )
 # __log_2_end__
 
-# __sync_start__
-import subprocess
-
-
-def custom_sync_func(source, target):
-    # run other workload here
-    sync_cmd = "s3 {source} {target}".format(source=source, target=target)
-    sync_process = subprocess.Popen(sync_cmd, shell=True)
-    sync_process.wait()
-
-
-# __sync_end__
-
 if not MOCK:
-    # __docker_start__
-    from ray import tune
-    from ray.tune.integration.docker import DockerSyncer
-
-    sync_config = tune.SyncConfig(syncer=DockerSyncer)
-
-    tune.run(train, sync_config=sync_config)
-    # __docker_end__
-
     # __s3_start__
     from ray import tune
 
@@ -264,13 +257,6 @@ if not MOCK:
     )
     # __sync_config_end__
 
-    # __k8s_start__
-    from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
-
-    sync_config = tune.SyncConfig(syncer=NamespacedKubernetesSyncer("ray"))
-
-    tune.run(train, sync_config=sync_config)
-# __k8s_end__
 
 import ray
 

@@ -12,15 +12,16 @@ from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNo
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
 from ray.serve.json_serde import DAGNodeEncoder
 
-from ray.experimental.dag import (
+
+from ray.dag import (
     DAGNode,
     ClassNode,
     ClassMethodNode,
     PARENT_CLASS_NODE_KEY,
 )
-from ray.experimental.dag.function_node import FunctionNode
-from ray.experimental.dag.input_node import InputNode
-from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.dag.function_node import FunctionNode
+from ray.dag.input_node import InputNode
+from ray.dag.utils import _DAGNodeNameGenerator
 
 
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
@@ -75,7 +76,7 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
         >>> deployments = build_app(ray_dag) # it can be method node
         >>> deployments = build_app(m1) # or just a regular node.
     """
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag_root_node.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
@@ -124,7 +125,7 @@ def get_and_validate_ingress_deployment(
 
 
 def transform_ray_dag_to_serve_dag(
-    dag_node: DAGNode, node_name_generator: DAGNodeNameGenerator
+    dag_node: DAGNode, node_name_generator: _DAGNodeNameGenerator
 ):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with

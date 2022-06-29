@@ -1,21 +1,18 @@
-from pathlib import Path
 import os
 import sys
-import time
 import tempfile
+import time
+from pathlib import Path
+from unittest import mock
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from unittest import mock
 
 import ray
 import ray.experimental.internal_kv as kv
-from ray.ray_constants import (
-    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
-)
-from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
+from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
+from ray._private.test_utils import chdir, check_local_files_gced, wait_for_condition
 from ray._private.utils import get_directory_size_bytes
-
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -374,9 +371,7 @@ class TestGC:
 
             # Without the cache size limit, we would expect the local dir to be
             # 12 MB.  Since we do have a size limit, the first package must be
-            # GC'ed, leaving us with 4 MB.  Sleep to give time for deletion.
-            time.sleep(5)
-            print("Slept for 5 seconds.")
+            # GC'ed, leaving us with 4 MB.
 
             for idx, node in enumerate(cluster.list_all_nodes()):
                 local_dir = os.path.join(
@@ -384,7 +379,11 @@ class TestGC:
                 )
                 print("Created local_dir path.")
 
-                assert 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
+                def local_dir_size_near_4mb():
+                    return 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
+
+                wait_for_condition(local_dir_size_near_4mb)
+
                 print(f"get_directory_size_bytes assertion {idx} passed.")
 
 
@@ -467,4 +466,7 @@ def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

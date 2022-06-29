@@ -1,9 +1,10 @@
-from aiohttp.web import Request, Response
 import json
 import logging
 
-import ray.dashboard.utils as dashboard_utils
+from aiohttp.web import Request, Response
+
 import ray.dashboard.optional_utils as optional_utils
+import ray.dashboard.utils as dashboard_utils
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -21,12 +22,12 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
-        from ray.serve.api import list_deployments
-        from ray.serve.application import Application
+        from ray.serve.context import get_global_client
 
-        app = Application(list(list_deployments().values()))
+        client = get_global_client()
+
         return Response(
-            text=json.dumps(app.to_dict()),
+            text=json.dumps(client.get_app_config()),
             content_type="application/json",
         )
 
@@ -36,7 +37,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         from ray.serve.context import get_global_client
         from ray.serve.schema import serve_status_to_schema
 
-        client = get_global_client(_override_controller_namespace="serve")
+        client = get_global_client()
 
         serve_status_schema = serve_status_to_schema(client.get_serve_status())
         return Response(
@@ -55,20 +56,11 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        from ray import serve
         from ray.serve.context import get_global_client
         from ray.serve.schema import ServeApplicationSchema
-        from ray.serve.application import Application
 
         config = ServeApplicationSchema.parse_obj(await req.json())
-
-        if config.import_path is not None:
-            client = get_global_client(_override_controller_namespace="serve")
-            client.deploy_app(config)
-        else:
-            # TODO (shrekris-anyscale): Remove this conditional path
-            app = Application.from_dict(await req.json())
-            serve.run(app, _blocking=False)
+        get_global_client().deploy_app(config)
 
         return Response()
 

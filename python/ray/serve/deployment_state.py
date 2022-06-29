@@ -1,6 +1,3 @@
-from copy import copy
-from collections import defaultdict, OrderedDict
-from enum import Enum
 import itertools
 import json
 import logging
@@ -9,23 +6,23 @@ import os
 import random
 import time
 import traceback
+from collections import OrderedDict, defaultdict
+from copy import copy
+from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
-from ray import ObjectRef
+from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
-from ray.util.placement_group import PlacementGroup
-from ray import cloudpickle
-
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     Duration,
-    ReplicaTag,
     ReplicaName,
+    ReplicaTag,
     RunningReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig
@@ -34,10 +31,11 @@ from ray.serve.constants import (
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
+from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.utils import (
     JavaActorHandleProxy,
     format_actor_name,
@@ -45,6 +43,7 @@ from ray.serve.utils import (
     msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
+from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -72,8 +71,10 @@ class ReplicaHealthCheckResponse(Enum):
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
-SLOW_STARTUP_WARNING_S = 30
-SLOW_STARTUP_WARNING_PERIOD_S = 30
+SLOW_STARTUP_WARNING_S = int(os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30))
+SLOW_STARTUP_WARNING_PERIOD_S = int(
+    os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
+)
 
 ALL_REPLICA_STATES = list(ReplicaState)
 USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
@@ -143,15 +144,11 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
-        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.client.get_controller_namespace(
-            detached, _override_controller_namespace=_override_controller_namespace
-        )
 
         self._replica_tag = replica_tag
         self._deployment_name = deployment_name
@@ -195,7 +192,7 @@ class ActorReplicaWrapper:
         if not self._actor_handle:
             try:
                 self._actor_handle = ray.get_actor(
-                    self._actor_name, namespace=self._controller_namespace
+                    self._actor_name, namespace=SERVE_NAMESPACE
                 )
             except ValueError:
                 self._actor_handle = None
@@ -294,7 +291,6 @@ class ActorReplicaWrapper:
             deployment_info.deployment_config.to_proto_bytes(),
             version,
             self._controller_name,
-            self._controller_namespace,
             self._detached,
         )
         # TODO(simon): unify the constructor arguments across language
@@ -325,7 +321,7 @@ class ActorReplicaWrapper:
 
         self._actor_handle = actor_def.options(
             name=self._actor_name,
-            namespace=self._controller_namespace,
+            namespace=SERVE_NAMESPACE,
             lifetime="detached" if self._detached else None,
             placement_group=self._placement_group,
             placement_group_capture_child_tasks=False,
@@ -441,9 +437,7 @@ class ActorReplicaWrapper:
         Returns the timeout after which to kill the actor.
         """
         try:
-            handle = ray.get_actor(
-                self._actor_name, namespace=self._controller_namespace
-            )
+            handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             pass
@@ -453,9 +447,7 @@ class ActorReplicaWrapper:
     def check_stopped(self) -> bool:
         """Check if the actor has exited."""
         try:
-            handle = ray.get_actor(
-                self._actor_name, namespace=self._controller_namespace
-            )
+            handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
@@ -587,9 +579,7 @@ class ActorReplicaWrapper:
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
         try:
-            ray.kill(
-                ray.get_actor(self._actor_name, namespace=self._controller_namespace)
-            )
+            ray.kill(ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE))
         except ValueError:
             pass
 
@@ -621,7 +611,6 @@ class DeploymentReplica(VersionedReplica):
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
-        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
@@ -629,7 +618,6 @@ class DeploymentReplica(VersionedReplica):
             controller_name,
             replica_tag,
             deployment_name,
-            _override_controller_namespace=_override_controller_namespace,
         )
         self._controller_name = controller_name
         self._deployment_name = deployment_name
@@ -923,7 +911,6 @@ class DeploymentState:
         detached: bool,
         long_poll_host: LongPollHost,
         _save_checkpoint_func: Callable,
-        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._name = name
@@ -931,9 +918,6 @@ class DeploymentState:
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._save_checkpoint_func = _save_checkpoint_func
-        self._override_controller_namespace: Optional[
-            str
-        ] = _override_controller_namespace
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -1012,7 +996,6 @@ class DeploymentState:
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 None,
-                _override_controller_namespace=self._override_controller_namespace,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
@@ -1063,6 +1046,7 @@ class DeploymentState:
                 deployment_info.version,
                 user_config=deployment_info.deployment_config.user_config,
             )
+            self._deleting = False
 
         else:
             self._target_replicas = 0
@@ -1286,7 +1270,6 @@ class DeploymentState:
                     replica_name.replica_tag,
                     replica_name.deployment_tag,
                     self._target_version,
-                    _override_controller_namespace=self._override_controller_namespace,
                 )
                 new_deployment_replica.start(self._target_info, self._target_version)
 
@@ -1515,7 +1498,7 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = slow_start_replicas[0][0].resource_requirements()
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_allocation)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
@@ -1525,16 +1508,36 @@ class DeploymentState:
                     f"Resources required for each replica: {required}, "
                     f"resources available: {available}."
                 )
+                logger.warning(message)
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
+                # If status is UNHEALTHY, leave the status and message as is.
+                # The issue that caused the deployment to be unhealthy should be
+                # prioritized over this resource availability issue.
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             if len(pending_initialization) > 0:
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
                     f"may be caused by a slow __init__ or reconfigure method."
                 )
+                logger.warning(message)
+                # If status is UNHEALTHY, leave the status and message as is.
+                # The issue that caused the deployment to be unhealthy should be
+                # prioritized over this resource availability issue.
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             self._prev_startup_warning = time.time()
 
@@ -1601,7 +1604,6 @@ class DeploymentStateManager:
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
-        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._controller_name = controller_name
@@ -1614,7 +1616,6 @@ class DeploymentStateManager:
             detached,
             long_poll_host,
             self._save_checkpoint_func,
-            _override_controller_namespace=_override_controller_namespace,
         )
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()

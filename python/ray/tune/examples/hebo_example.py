@@ -8,7 +8,7 @@ import time
 
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.hebo import HEBOSearch
+from ray.tune.search.hebo import HEBOSearch
 
 
 def evaluation_fn(step, width, height):

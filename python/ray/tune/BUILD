@@ -128,26 +128,19 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_F"],
 )
 
+
+py_test(
+    name = "test_legacy_import",
+    size = "small",
+    srcs = ["tests/test_legacy_import.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_L"],
+)
+
 py_test(
     name = "test_integration_comet",
     size = "small",
     srcs = ["tests/test_integration_comet.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_I"],
-)
-
-py_test(
-    name = "test_integration_docker",
-    size = "small",
-    srcs = ["tests/test_integration_docker.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_I"],
-)
-
-py_test(
-    name = "test_integration_kubernetes",
-    size = "small",
-    srcs = ["tests/test_integration_kubernetes.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_I"],
 )
@@ -234,7 +227,7 @@ py_test(
 
 py_test(
     name = "test_result_grid",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_result_grid.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
@@ -281,9 +274,25 @@ py_test(
 )
 
 py_test(
-    name = "test_sync",
+    name = "test_util_file_transfer",
     size = "medium",
-    srcs = ["tests/test_sync.py"],
+    srcs = ["tests/test_util_file_transfer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_syncer",
+    size = "medium",
+    srcs = ["tests/test_syncer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_syncer_callback",
+    size = "medium",
+    srcs = ["tests/test_syncer_callback.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_S"],
 )

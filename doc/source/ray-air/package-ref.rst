@@ -14,10 +14,10 @@ Components
 Preprocessors
 ~~~~~~~~~~~~~
 
-.. autoclass:: ray.air.preprocessor.Preprocessor
+.. autoclass:: ray.data.preprocessor.Preprocessor
     :members:
 
-.. automodule:: ray.air.preprocessors
+.. automodule:: ray.data.preprocessors
     :members:
     :show-inheritance:
 
@@ -26,10 +26,18 @@ Preprocessors
 
 .. _air-trainer-ref:
 
-Trainer
-~~~~~~~
+Trainers and Predictors
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.trainer.BaseTrainer
+    :members:
+
+.. autoclass:: ray.train.predictor.Predictor
+    :members:
+
+.. autoclass:: ray.train.predictor.DataBatchType
+
+.. autoclass:: ray.train.batch_predictor.BatchPredictor
     :members:
 
 .. automodule:: ray.train.xgboost
@@ -81,41 +89,6 @@ Tuner
 .. automodule:: ray.tune.result_grid
     :members:
 
-Predictors
-~~~~~~~~~~
-
-.. autoclass:: ray.air.predictor.Predictor
-    :members:
-
-.. autoclass:: ray.air.predictor.DataBatchType
-
-.. autoclass:: ray.air.batch_predictor.BatchPredictor
-    :members:
-
-.. automodule:: ray.air.predictors.integrations.xgboost
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.lightgbm
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.tensorflow
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.torch
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.sklearn
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.huggingface
-    :members:
-    :show-inheritance:
-
 .. _air-serve-integration:
 
 Serving
@@ -151,3 +124,4 @@ Configs
 .. automodule:: ray.air.config
     :members:
 
+.. autoclass:: ray.air.config.CheckpointConfig
