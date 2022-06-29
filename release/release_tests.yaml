@@ -3129,6 +3129,8 @@
 - name: many_nodes
   group: core-scalability-test
   working_dir: benchmarks
+  env: staging
+
   legacy:
     test_name: many_nodes
     test_suite: benchmark_tests
