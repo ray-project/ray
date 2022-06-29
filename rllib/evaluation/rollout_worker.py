@@ -830,8 +830,8 @@ class RolloutWorker(ParallelIteratorWorker):
         Returns:
             True if the worker is properly initialized
         """
-        assert (
-            self.policy_map and self.input_reader and self.output_writer,
+        is_healthy = self.policy_map and self.input_reader and self.output_writer
+        assert is_healthy, (
             f"RolloutWorker {self} (idx={self.worker_index}; "
             f"num_workers={self.num_workers}) not healthy!"
         )
