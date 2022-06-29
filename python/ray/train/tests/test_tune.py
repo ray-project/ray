@@ -200,7 +200,9 @@ def test_retry(ray_start_4_cpus):
     trainer = DataParallelTrainer(
         train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)
     )
-    tuner = Tuner(trainer, run_config=RunConfig(failure=FailureConfig(max_failures=3)))
+    tuner = Tuner(
+        trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
+    )
 
     analysis = tuner.fit()._experiment_analysis
     checkpoint_path = analysis.trials[0].checkpoint.dir_or_data

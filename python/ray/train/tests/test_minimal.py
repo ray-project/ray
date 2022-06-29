@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-import ray.train as train
+from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -38,10 +38,9 @@ def test_run(ray_start_4_cpus):
     config = TestConfig()
 
     def train_func():
-        checkpoint = train.load_checkpoint()
-        train.report(**checkpoint)
-        train.save_checkpoint(**checkpoint)
-        return checkpoint[key]
+        checkpoint = session.get_checkpoint()
+        session.report(metrics=checkpoint.to_dict(), checkpoint=checkpoint)
+        return checkpoint.to_dict()[key]
 
     checkpoint = Checkpoint.from_dict(
         {
