@@ -274,6 +274,9 @@ message GetCoreWorkerStatsRequest {
   // Whether to include task information. This could be large since it
   // includes metadata for all live tasks.
   bool include_task_info = 3;
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 4;
 }
 
 message GetCoreWorkerStatsReply {
@@ -292,6 +295,8 @@ message GetCoreWorkerStatsReply {
   // All tasks must be treated as TaskStatus::RUNNING
   // from the caller side.
   repeated bytes running_task_ids = 3;
+  // Length of the number of tasks without truncation.
+  int64 tasks_total = 4;
 }
 
 message LocalGCRequest {

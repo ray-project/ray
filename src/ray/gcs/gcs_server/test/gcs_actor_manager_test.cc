@@ -1191,6 +1191,22 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
     promise.get_future().get();
     ASSERT_EQ(reply.actor_table_data().size(), 1);
   }
+  {
+    // Test limit.
+    rpc::GetAllActorInfoRequest request;
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
+    request.set_show_dead_jobs(true);
+    request.set_limit(0);
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(reply.actor_table_data().size(), 0);
+    ASSERT_EQ(reply.total(), 1);
+  }
   // Now the entry should be removed from "redis"
   {
     absl::MutexLock lock(&mutex_);
@@ -1209,6 +1225,38 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
     gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
     promise.get_future().get();
     ASSERT_EQ(reply.actor_table_data().size(), 0);
+  }
+}
+
+TEST_F(GcsActorManagerTest, TestGetAllActorInfoLimit) {
+  google::protobuf::Arena arena;
+  auto job_id_1 = JobID::FromInt(1);
+  auto num_actors = 3;
+  for (int i = 0; i < num_actors; i++) {
+    auto request1 = Mocker::GenRegisterActorRequest(job_id_1,
+                                                    /*max_restarts=*/0,
+                                                    /*detached=*/false);
+    Status status = gcs_actor_manager_->RegisterActor(
+        request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+    ASSERT_TRUE(status.ok());
+  }
+
+  {
+    rpc::GetAllActorInfoRequest request;
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
+    auto callback = [](Status status,
+                       std::function<void()> success,
+                       std::function<void()> failure) {};
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+    ASSERT_EQ(reply.actor_table_data().size(), 3);
+
+    request.set_limit(2);
+    auto &reply_2 =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply_2, callback);
+    ASSERT_EQ(reply_2.actor_table_data().size(), 2);
+    ASSERT_EQ(reply_2.total(), 3);
   }
 }
 

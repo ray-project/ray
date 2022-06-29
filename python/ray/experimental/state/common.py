@@ -10,7 +10,9 @@ from ray.core.generated.common_pb2 import TaskType
 logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
-DEFAULT_LIMIT = 10000
+DEFAULT_LIMIT = 100
+DEFAULT_LOG_LIMIT = 1000
+MAX_LIMIT = 10000
 
 
 @unique
@@ -71,6 +73,13 @@ class ListApiOptions:
         self.timeout = int(self.timeout * self._server_timeout_multiplier)
         if self.filters is None:
             self.filters = []
+
+        if self.limit > MAX_LIMIT:
+            raise ValueError(
+                f"Given limit {self.limit} exceeds the supported "
+                f"limit {MAX_LIMIT}. Use a lower limit."
+            )
+
         for filter in self.filters:
             _, filter_predicate, _ = filter
             if filter_predicate != "=" and filter_predicate != "!=":
@@ -336,6 +345,10 @@ class RuntimeEnvState(StateSchema):
 
 @dataclass(init=True)
 class ListApiResponse:
+    # Total number of the resource from the cluster.
+    # Note that this value can be larger than `result`
+    # because `result` can be truncated.
+    total: int
     # Returned data. None if no data is returned.
     result: List[
         Union[

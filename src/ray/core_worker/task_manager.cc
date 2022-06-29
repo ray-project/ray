@@ -663,9 +663,17 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   it->second.status = rpc::TaskStatus::WAITING_FOR_EXECUTION;
 }
 
-void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
+void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
+                               const int64_t limit) const {
   absl::MutexLock lock(&mu_);
+  auto total = submissible_tasks_.size();
+  auto count = 0;
   for (const auto &task_it : submissible_tasks_) {
+    if (limit != -1 && count >= limit) {
+      break;
+    }
+    count += 1;
+
     const auto &task_entry = task_it.second;
     auto entry = reply->add_owned_task_info_entries();
     const auto &task_spec = task_entry.spec;
@@ -692,6 +700,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
                                                 resources_map.end());
     entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   }
+  reply->set_tasks_total(total);
 }
 
 }  // namespace core

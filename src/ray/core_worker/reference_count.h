@@ -384,7 +384,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] stats The proto to write references to.
   void AddObjectRefStats(
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
-      rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
+      rpc::CoreWorkerStats *stats,
+      const int64_t limit) const LOCKS_EXCLUDED(mutex_);
 
   /// Add a new location for the given object. The owner must have the object ref in
   /// scope.
