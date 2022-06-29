@@ -67,7 +67,7 @@ class AwsVmClusterManager(ClusterManager):
         # TODO error handling?
         # TODO should dump this output to stdout (actually I think it already goes to stdout)
         # TODO fix terminal borking.
-        #self.port_forward_proc = subprocess.Popen(['ray', 'dashboard', 'cluster_launcher_config_aws.yaml'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.port_forward_proc = subprocess.Popen(['ray', 'dashboard', 'cluster_launcher_config_aws.yaml'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         import time
         print('Sleeping 10s to wait for port forward to be online. TODO(cade) remove this')
         time.sleep(10)
