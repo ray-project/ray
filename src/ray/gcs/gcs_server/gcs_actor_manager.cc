@@ -303,14 +303,30 @@ void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request
 void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                                             rpc::GetAllActorInfoReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  auto limit = request.has_limit() ? request.limit() : -1;
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
+
   if (request.show_dead_jobs() == false) {
+    auto total_actors = registered_actors_.size() + destroyed_actors_.size();
+    reply->set_total(total_actors);
+
+    auto count = 0;
     for (const auto &iter : registered_actors_) {
+      if (limit != -1 && count >= limit) {
+        break;
+      }
+      count += 1;
+
       reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
           const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
     }
     for (const auto &iter : destroyed_actors_) {
+      if (limit != -1 && count >= limit) {
+        break;
+      }
+      count += 1;
+
       reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
           const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
     }
@@ -323,9 +339,18 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
   // We don't maintain an in-memory cache of all actors which belong to dead
   // jobs, so fetch it from redis.
   Status status = gcs_table_storage_->ActorTable().GetAll(
-      [reply, send_reply_callback](
+      [reply, send_reply_callback, limit](
           const absl::flat_hash_map<ActorID, rpc::ActorTableData> &result) {
+        auto total_actors = result.size();
+        reply->set_total(total_actors);
+
+        auto count = 0;
         for (const auto &pair : result) {
+          if (limit != -1 && count >= limit) {
+            break;
+          }
+          count += 1;
+
           // TODO yic: Fix const cast
           reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
               const_cast<rpc::ActorTableData *>(&pair.second));
