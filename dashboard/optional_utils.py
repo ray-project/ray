@@ -12,7 +12,7 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from aiohttp.web import Response
 
@@ -151,10 +151,7 @@ class ClassMethodRouteTable:
 
 
 def rest_response(
-    success: bool,
-    message: Optional[str] = None,
-    convert_google_style: bool = True,
-    **kwargs,
+    success, message, convert_google_style=True, **kwargs
 ) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
@@ -163,14 +160,12 @@ def rest_response(
         headers = {"Access-Control-Allow-Origin": "*"}
     else:
         headers = {}
-    response = {
-        "result": success,
-        "data": to_google_style(kwargs) if convert_google_style else kwargs,
-    }
-    if message:
-        response["msg"] = message
     return aiohttp.web.json_response(
-        response,
+        {
+            "result": success,
+            "msg": message,
+            "data": to_google_style(kwargs) if convert_google_style else kwargs,
+        },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
     )

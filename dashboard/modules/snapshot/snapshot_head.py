@@ -27,8 +27,15 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 @dataclasses.dataclass
 class RayActivityResponse:
+    """
+    Dataclass used to inform if a particular Ray component can be considered
+    active, and metadata about observation.
+    """
+    # Whether the corresponding Ray component is considered active
     is_active: bool
+    # Why the Ray component is considered active
     reason: str
+    # Timestamp of when this observation about the Ray component was made
     timestamp: Optional[float]
 
 
@@ -101,21 +108,27 @@ class APIHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/component_activities")
     async def get_component_activities(self, req) -> aiohttp.web.Response:
         # Get activity information for driver
-        driver_activity_info = await self._get_job_activity_info()
+        timeout = req.query.get("timeout", None)
+        if timeout and timeout.isdigit():
+            timeout = int(timeout)
+        else:
+            timeout = 5
+
+        driver_activity_info = await self._get_job_activity_info(timeout=timeout)
 
         resp = {"driver": dataclasses.asdict(driver_activity_info)}
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            convert_google_style=False,
-            ray_activity_response=resp,
+        return aiohttp.web.Response(
+            text=json.dumps(resp),
+            content_type="application/json",
+            status=aiohttp.web.HTTPOk.status_code,
         )
 
-    async def _get_job_activity_info(self) -> RayActivityResponse:
+    async def _get_job_activity_info(self, timeout: int) -> RayActivityResponse:
         # Returns if there is Ray activity from drivers (job).
         # Drivers in namespaces that start with _ray_internal are not
         # considered activity.
         request = gcs_service_pb2.GetAllJobInfoRequest()
-        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
+        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=timeout)
 
         ray_internal_job_prefix = "_ray_internal"
         num_active_drivers = 0
@@ -129,7 +142,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         return RayActivityResponse(
             is_active=num_active_drivers > 0,
-            reason=f"{num_active_drivers}",
+            reason=f"Number of active drivers: {num_active_drivers}",
             timestamp=datetime.now().timestamp(),
         )
 
