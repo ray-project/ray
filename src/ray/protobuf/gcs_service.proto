@@ -116,12 +116,17 @@ message ListNamedActorsReply {
 message GetAllActorInfoRequest {
   // Whether or not to filter out actors which belong to dead jobs.
   bool show_dead_jobs = 1;
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 2;
 }
 
 message GetAllActorInfoReply {
   GcsStatus status = 1;
-  // Data of actor.
+  // Data of actor.2
   repeated ActorTableData actor_table_data = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
 }
 
 // `KillActorViaGcsRequest` is sent to GCS Service to ask to kill an actor.
@@ -280,12 +285,17 @@ message GetWorkerInfoReply {
 }
 
 message GetAllWorkerInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
 }
 
 message GetAllWorkerInfoReply {
   GcsStatus status = 1;
   // Data of worker
   repeated WorkerTableData worker_table_data = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
 }
 
 message AddWorkerInfoRequest {
@@ -359,12 +369,17 @@ enum GcsServiceFailureType {
 }
 
 message GetAllPlacementGroupRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
 }
 
 message GetAllPlacementGroupReply {
   GcsStatus status = 1;
   // Data of placement group
   repeated PlacementGroupTableData placement_group_table_data = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
 }
 
 message WaitPlacementGroupUntilReadyRequest {
