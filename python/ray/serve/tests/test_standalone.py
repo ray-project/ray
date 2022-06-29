@@ -817,6 +817,9 @@ def test_run_graph_task_uses_zero_cpus():
         == "May I take your order?"
     )
 
+    serve.shutdown()
+    ray.shutdown()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
