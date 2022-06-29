@@ -63,11 +63,13 @@ def register_lambda_action_connector(
 
 
 # Convert actions and states into numpy arrays if necessary.
-ConvertToNumpyConnector = register_lambda_action_connector(
-    "ConvertToNumpyConnector",
-    lambda actions, states, fetches: (
-        convert_to_numpy(actions),
-        convert_to_numpy(states),
-        fetches,
+ConvertToNumpyConnector = PublicAPI(stability="alpha")(
+    register_lambda_action_connector(
+        "ConvertToNumpyConnector",
+        lambda actions, states, fetches: (
+            convert_to_numpy(actions),
+            convert_to_numpy(states),
+            fetches,
+        ),
     ),
 )
