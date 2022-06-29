@@ -12,9 +12,6 @@ from gym.spaces import Discrete, Box
 
 logger = logging.getLogger(__name__)
 
-DQN_ALGOS = ["DQN", "R2D2", "SimpleQ"]
-MODELV2_ALGOS = ["CRR", "CQL", "DDPG", "TD3", "SAC"]
-
 
 def action_log_likelihood(
     policy: Policy, batch: SampleBatch, actions_normalized=True
@@ -59,7 +56,7 @@ def lookup_action_value_fn(
     action_value_fn = None
     algo_name = policy.config["algo_class"].__name__
 
-    if algo_name in DQN_ALGOS:
+    if algo_name in ["DQN", "ApexDQN"]:
         if policy.config["framework"] == "torch":
             from ray.rllib.algorithms.dqn.dqn_torch_policy import compute_q_values
         elif policy.config["framework"] in ["tf", "tf1", "tf2", "tfe"]:
@@ -67,8 +64,19 @@ def lookup_action_value_fn(
 
         def dqn_action_value_fn(policy: Policy, batch: SampleBatch) -> TensorType:
             if policy.config["framework"] == "torch":
-                batch = convert_to_torch_tensor(batch)
-            q_values = compute_q_values(policy, policy.model, batch)[0]
+                batch = convert_to_torch_tensor(batch, policy.device)
+            i = 0
+            state_batches = []
+            while "state_in_{}".format(i) in batch:
+                state_batches.append(batch["state_in_{}".format(i)])
+                i += 1
+            q_values = compute_q_values(
+                policy,
+                policy.model,
+                batch,
+                state_batches,
+                batch.get(SampleBatch.SEQ_LENS),
+                )[0]
             if SampleBatch.ACTIONS in batch:
                 q_values = convert_to_numpy(q_values)
                 actions = convert_to_numpy(batch[SampleBatch.ACTIONS])
@@ -80,17 +88,53 @@ def lookup_action_value_fn(
 
         action_value_fn = dqn_action_value_fn
 
-    elif algo_name in MODELV2_ALGOS:
+    elif algo_name in ["CRR", "CQL", "DDPG", "ApexDDPG", "TD3"]:
 
         def modelv2_action_value_fn(policy: Policy, batch: SampleBatch) -> TensorType:
             if policy.config["framework"] == "torch":
-                batch = convert_to_torch_tensor(batch)
+                batch = convert_to_torch_tensor(batch, policy.device)
             model_out, _ = policy.model(batch)
             q_values = policy.model.get_q_values(model_out, batch[SampleBatch.ACTIONS])
             q_values = convert_to_numpy(q_values).reshape([batch.count])
             return q_values
 
         action_value_fn = modelv2_action_value_fn
+
+    elif algo_name in ["SAC", "CQL"]:
+        def sac_action_value_fn(policy: Policy, batch: SampleBatch) -> TensorType:
+            if policy.config["framework"] == "torch":
+                batch = convert_to_torch_tensor(batch, policy.device)
+            model_out, _ = policy.model(batch)
+            if isinstance(policy.action_space, Discrete):
+                q_values = policy.model.get_q_values(model_out)[0]
+                if SampleBatch.ACTIONS in batch:
+                    q_values = convert_to_numpy(q_values)
+                    actions = convert_to_numpy(batch[SampleBatch.ACTIONS])
+                    q_values = np.squeeze(
+                        np.take_along_axis(q_values, np.expand_dims(actions, -1), axis=-1),
+                        -1,
+                    )
+            elif isinstance(policy.action_space, Box):
+                q_values = policy.model.get_q_values(model_out, batch[SampleBatch.ACTIONS])
+                q_values = convert_to_numpy(q_values).reshape([batch.count])
+            return q_values
+        
+        action_value_fn = sac_action_value_fn
+
+    elif algo_name == "SimpleQ":
+
+        def simpleq_action_value_fn(policy: Policy, batch: SampleBatch) -> TensorType:
+            q_values = policy._compute_q_values(policy.model, batch["obs"])
+            if SampleBatch.ACTIONS in batch:
+                q_values = convert_to_numpy(q_values)
+                actions = convert_to_numpy(batch[SampleBatch.ACTIONS])
+                q_values = np.squeeze(
+                    np.take_along_axis(q_values, np.expand_dims(actions, -1), axis=-1),
+                    -1,
+                )
+            return q_values
+        
+        action_value_fn = simpleq_action_value_fn
 
     if not action_value_fn:
         raise ValueError("Could not find action_value_fn for policy:", str(policy))
