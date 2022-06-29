@@ -525,6 +525,7 @@ class RuntimeEnvAgent(
         # Cache information
         # Metrics (creation time & success)
         # Deleted URIs
+        limit = request.limit if request.HasField("limit") else -1
         runtime_env_states = defaultdict(ProtoRuntimeEnvState)
         runtime_env_refs = self._reference_table.runtime_env_refs
         for runtime_env, ref_cnt in runtime_env_refs.items():
@@ -538,9 +539,13 @@ class RuntimeEnvAgent(
             runtime_env_states[runtime_env].creation_time_ms = result.creation_time_ms
 
         reply = runtime_env_agent_pb2.GetRuntimeEnvsInfoReply()
+        count = 0
         for runtime_env_state in runtime_env_states.values():
+            if limit != -1 and count >= limit:
+                break
+            count += 1
             reply.runtime_env_states.append(runtime_env_state)
-
+        reply.total = len(runtime_env_states)
         return reply
 
     async def run(self, server):
