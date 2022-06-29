@@ -324,6 +324,7 @@ class WorkflowExecutor:
                 for callback in self._task_done_callbacks[target_task_id]:
                     callback.set_result(output_ref)
             for m in state.reference_set[target_task_id]:
+                # we ensure that each reference corresponds to a pending input
                 state.pending_input_set[m].remove(target_task_id)
                 if not state.pending_input_set[m]:
                     state.append_frontier_to_run(m)
@@ -347,13 +348,13 @@ class WorkflowExecutor:
         if self._task_done_callbacks[task_id]:
             return self._task_done_callbacks[task_id][0]
 
-        callback = asyncio.Future()
+        fut = asyncio.Future()
         task_id = state.continuation_root.get(task_id, task_id)
         output = state.get_input(task_id)
         if output is not None:
-            callback.set_result(output)
+            fut.set_result(output)
         elif task_id in state.done_tasks:
-            callback.set_exception(
+            fut.set_exception(
                 ValueError(
                     f"Task '{task_id}' is done but neither in memory or in storage "
                     "could we find its output. It could because its in memory "
@@ -362,5 +363,5 @@ class WorkflowExecutor:
                 )
             )
         else:
-            self._task_done_callbacks[task_id].append(callback)
-        return callback
+            self._task_done_callbacks[task_id].append(fut)
+        return fut

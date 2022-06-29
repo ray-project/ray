@@ -46,8 +46,8 @@ class WorkflowExecutionState:
     next_continuation: Dict[StepID, StepID] = field(default_factory=dict)
     # The reversed mapping from continuation to its immediate task.
     prev_continuation: Dict[StepID, StepID] = field(default_factory=dict)
-    # The mapping from a task to its latest continuation. The task itself must not
-    # be a continuation.
+    # The mapping from a task to its latest continuation. The latest continuation is
+    # a task that returns a value instead of a continuation.
     latest_continuation: Dict[StepID, StepID] = field(default_factory=dict)
     # The mapping from a task to the root of the continuation, i.e. the initial task
     # that generates the lineage of continuation.
