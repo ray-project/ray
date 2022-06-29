@@ -37,9 +37,7 @@ def test_inactive_component_activities(call_ray_start):
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
     # Validate ray_activity_response field can be cast to RayActivityResponse object
-    driver_ray_activity_response = RayActivityResponse(
-        **data["driver"]
-    )
+    driver_ray_activity_response = RayActivityResponse(**data["driver"])
     assert not driver_ray_activity_response.is_active
     assert driver_ray_activity_response.reason == "Number of active drivers: 0"
 
@@ -77,9 +75,7 @@ ray.init(address="auto", namespace="{namespace}")
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
     # Validate ray_activity_response field can be cast to RayActivityResponse object
-    driver_ray_activity_response = RayActivityResponse(
-        **data["driver"]
-    )
+    driver_ray_activity_response = RayActivityResponse(**data["driver"])
 
     assert driver_ray_activity_response.is_active
     # Drivers with namespace starting with "_ray_internal" are not
