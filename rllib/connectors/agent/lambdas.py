@@ -80,7 +80,5 @@ def flatten_data(data: Dict[str, TensorStructType]):
 # Agent connector to build and return a flattened observation SampleBatch
 # in addition to the original input dict.
 FlattenDataAgentConnector = PublicAPI(stability="alpha")(
-    register_lambda_agent_connector(
-        "FlattenDataAgentConnector", flatten_data
-    )
+    register_lambda_agent_connector("FlattenDataAgentConnector", flatten_data)
 )
