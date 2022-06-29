@@ -5,6 +5,7 @@ from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
+from ray.tune.sample import Domain
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -12,6 +13,8 @@ if TYPE_CHECKING:
     from ray.tune.stopper import Stopper
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
+
+SampleRange = Union[Domain, Dict[str, List], List]
 
 @dataclass
 @PublicAPI(stability="alpha")
@@ -40,11 +43,11 @@ class ScalingConfig:
         Strategies <pgroup-strategy>` for the possible options.
     """
 
-    trainer_resources: Optional[Dict] = None
-    num_workers: Optional[int] = None
-    use_gpu: bool = False
-    resources_per_worker: Optional[Dict] = None
-    placement_strategy: str = "PACK"
+    trainer_resources: Optional[Union[Dict, SampleRange]] = None
+    num_workers: Optional[Union[int, SampleRange]] = None
+    use_gpu: Union[bool, SampleRange] = False
+    resources_per_worker: Optional[Union[Dict, SampleRange]] = None
+    placement_strategy: Union[str, SampleRange] = "PACK"
 
     def __post_init__(self):
         self.resources_per_worker = (
