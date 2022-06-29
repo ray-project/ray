@@ -17,7 +17,7 @@ from ray.workflow.common import (
     validate_user_metadata,
 )
 from ray.workflow import workflow_context
-from ray.workflow.workflow_state import WorkflowExecutionState
+from ray.workflow.workflow_state import WorkflowExecutionState, Task
 
 
 def get_module(f):
@@ -153,14 +153,16 @@ def workflow_state_from_dag(
                 name = f"{get_module(node._body)}.{slugify(get_qualname(node._body))}"
             task_id = ray.get(mgr.gen_step_id.remote(workflow_id, name))
             state.add_dependencies(task_id, [s.task_id for s in workflow_refs])
-            state.task_names[task_id] = name
             state.task_input_args[task_id] = input_placeholder
-            state.task_func_body[task_id] = node._body
-            state.task_options[task_id] = step_options
+
             user_metadata = workflow_options.pop("metadata", {})
             validate_user_metadata(user_metadata)
-            state.task_user_metadata[task_id] = user_metadata
-
+            state.tasks[task_id] = Task(
+                name=name,
+                options=step_options,
+                user_metadata=user_metadata,
+                func_body=node._body,
+            )
             return WorkflowRef(task_id)
 
         if isinstance(node, InputAttributeNode):

@@ -277,25 +277,23 @@ class WorkflowStorage:
         """
         assert creator_task_id != state.output_task_id
 
-        for task_id in state.task_options.keys():
+        for task_id, task in state.tasks.items():
             # TODO (Alex): Handle the json case better?
             metadata = {
-                "name": state.task_names[task_id],
+                **task.to_dict(),
                 "workflow_refs": state.upstream_dependencies[task_id],
-                "step_options": state.task_options[task_id].to_dict(),
-                "user_metadata": state.task_user_metadata[task_id],
             }
             self._put(self._key_step_input_metadata(task_id), metadata, True)
             # TODO(suquark): The task user metadata duplicates.
             self._put(
                 self._key_step_user_metadata(task_id),
-                state.task_user_metadata[task_id],
+                task.user_metadata,
                 True,
             )
             workflow_id = self._workflow_id
             serialization.dump_to_storage(
                 self._key_step_function_body(task_id),
-                state.task_func_body[task_id],
+                task.func_body,
                 workflow_id,
                 self,
             )

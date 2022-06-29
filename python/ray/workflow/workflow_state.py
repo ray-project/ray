@@ -29,6 +29,23 @@ class TaskExecutionMetadata:
 
 
 @dataclasses.dataclass
+class Task:
+    """Data class for a workflow task."""
+
+    name: str
+    options: WorkflowStepRuntimeOptions
+    user_metadata: Dict
+    func_body: Optional[Callable]
+
+    def to_dict(self) -> Dict:
+        return {
+            "name": self.name,
+            "step_options": self.options.to_dict(),
+            "user_metadata": self.user_metadata,
+        }
+
+
+@dataclasses.dataclass
 class WorkflowExecutionState:
     """The execution state of a workflow. This dataclass helps with observation
     and debugging."""
@@ -55,18 +72,13 @@ class WorkflowExecutionState:
 
     # ------------------------------- task properties ------------------------------- #
 
-    # The name of the tasks.
-    task_names: Dict[StepID, str] = field(default_factory=dict)
+    # Workflow tasks.
+    tasks: Dict[StepID, Task] = field(default_factory=dict)
+
     # The arguments for the task.
     task_input_args: Dict[StepID, ray.ObjectRef] = field(default_factory=dict)
-    # The function body of the task.
-    task_func_body: Dict[StepID, Optional[Callable]] = field(default_factory=dict)
-    # The options of the task.
-    task_options: Dict[StepID, WorkflowStepRuntimeOptions] = field(default_factory=dict)
     # The context of the task.
     task_context: Dict[StepID, WorkflowStepContext] = field(default_factory=dict)
-    # The user metadata of the task.
-    task_user_metadata: Dict[StepID, Dict] = field(default_factory=dict)
     # The execution metadata of a task.
     task_execution_metadata: Dict[StepID, TaskExecutionMetadata] = field(
         default_factory=dict
@@ -183,8 +195,7 @@ class WorkflowExecutionState:
         self.upstream_dependencies.update(state.upstream_dependencies)
         self.downstream_dependencies.update(state.downstream_dependencies)
         self.task_input_args.update(state.task_input_args)
-        self.task_func_body.update(state.task_func_body)
-        self.task_options.update(state.task_options)
+        self.tasks.update(state.tasks)
         self.task_context.update(state.task_context)
         self.output_map.update(state.output_map)
         self.checkpoint_map.update(state.checkpoint_map)
@@ -225,14 +236,15 @@ class WorkflowExecutionState:
 
     def init_context(self, context: WorkflowStepContext) -> None:
         """Initialize the context of all tasks."""
-        for task_id, option in self.task_options.items():
+        for task_id, task in self.tasks.items():
+            options = task.options
             self.task_context.setdefault(
                 task_id,
                 dataclasses.replace(
                     context,
                     task_id=task_id,
                     creator_task_id=context.task_id,
-                    checkpoint=option.checkpoint,
-                    catch_exceptions=option.catch_exceptions,
+                    checkpoint=options.checkpoint,
+                    catch_exceptions=options.catch_exceptions,
                 ),
             )

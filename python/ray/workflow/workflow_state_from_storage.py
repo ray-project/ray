@@ -5,7 +5,7 @@ from ray.workflow import serialization
 from ray.workflow.common import StepID, WorkflowRef
 from ray.workflow.exceptions import WorkflowStepNotRecoverableError
 from ray.workflow import workflow_storage
-from ray.workflow.workflow_state import WorkflowExecutionState
+from ray.workflow.workflow_state import WorkflowExecutionState, Task
 
 
 def workflow_state_from_storage(
@@ -57,8 +57,14 @@ def workflow_state_from_storage(
             # transfer task info to state
             state.add_dependencies(task_id, r.workflow_refs)
             state.task_input_args[task_id] = reader.load_step_args(task_id)
-            state.task_func_body[task_id] = reader.load_step_func_body(task_id)
-            state.task_options[task_id] = r.step_options
+            # TODO(suquark): although not necessary, but for completeness,
+            #  we may also load name and metadata.
+            state.tasks[task_id] = Task(
+                name="",
+                options=r.step_options,
+                user_metadata={},
+                func_body=reader.load_step_func_body(task_id),
+            )
 
             dag_visit_queue.extend(r.workflow_refs)
 

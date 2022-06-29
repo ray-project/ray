@@ -1,4 +1,4 @@
-from typing import Dict, List, Iterator, Optional, TYPE_CHECKING
+from typing import Dict, List, Iterator, Optional, Tuple, TYPE_CHECKING
 
 import asyncio
 import logging
@@ -16,7 +16,11 @@ from ray.workflow.common import (
 )
 from ray.workflow.exceptions import WorkflowCancellationError, WorkflowExecutionError
 from ray.workflow.step_executor import get_step_executor, _BakedWorkflowInputs
-from ray.workflow.workflow_state import WorkflowExecutionState, TaskExecutionMetadata
+from ray.workflow.workflow_state import (
+    WorkflowExecutionState,
+    TaskExecutionMetadata,
+    Task,
+)
 
 if TYPE_CHECKING:
     from ray.workflow.workflow_context import WorkflowStepContext
@@ -154,15 +158,15 @@ class WorkflowExecutor:
                 state.get_input(d) for d in state.upstream_dependencies[task_id]
             ],
         )
-        task_options = state.task_options[task_id]
-        executor = get_step_executor(task_options)
+        task = state.tasks[task_id]
+        executor = get_step_executor(task.options)
         metadata_ref, output_ref = executor(
-            state.task_func_body[task_id],
+            task.func_body,
             state.task_context[task_id],
             job_id,
             task_id,
             baked_inputs,
-            task_options,
+            task.options,
         )
         # The input workflow is not a reference to an executed workflow.
         future = asyncio.wrap_future(metadata_ref.future())
@@ -179,7 +183,7 @@ class WorkflowExecutor:
         """Update dependencies and reference count etc. after task submission."""
         state = self._state
         if task_id in state.continuation_root:
-            if state.task_options[task_id].checkpoint:
+            if state.tasks[task_id].options.checkpoint:
                 store.update_continuation_output_link(
                     state.continuation_root[task_id], task_id
                 )
@@ -217,12 +221,12 @@ class WorkflowExecutor:
             ready_futures.append(cq.get_nowait())
         return ready_futures
 
-    def _iter_callstack(self, task_id: StepID) -> Iterator[StepID]:
+    def _iter_callstack(self, task_id: StepID) -> Iterator[Tuple[StepID, Task]]:
         state = self._state
         while task_id in state.task_context:
             task_id = state.task_context[task_id].creator_task_id
-            if task_id in state.task_options:
-                yield task_id
+            if task_id in state.tasks:
+                yield task_id, state.tasks[task_id]
             else:
                 break
 
@@ -269,8 +273,8 @@ class WorkflowExecutor:
             exception_catching_task_id = None
             # lookup a creator task that catches the exception
             if is_application_error:
-                for t in self._iter_callstack(task_id):
-                    if state.task_options[t].catch_exceptions:
+                for t, task in self._iter_callstack(task_id):
+                    if task.options.catch_exceptions:
                         exception_catching_task_id = t
                         break
 
@@ -324,7 +328,7 @@ class WorkflowExecutor:
         else:  # The task returns a normal object
             target_task_id = state.continuation_root.get(task_id, task_id)
             state.output_map[target_task_id] = output_ref
-            if state.task_options[task_id].checkpoint:
+            if state.tasks[task_id].options.checkpoint:
                 state.checkpoint_map[target_task_id] = WorkflowRef(task_id)
             state.done_tasks.add(target_task_id)
             # TODO(suquark): cleanup callbacks when a result is set?
