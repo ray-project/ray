@@ -266,6 +266,7 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                         logger.info(f"Connecting to ray with address={address}")
                         ray.init(
                             address=address,
+                            log_to_driver=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:
