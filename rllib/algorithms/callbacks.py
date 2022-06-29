@@ -12,7 +12,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import (
     is_overridden,
     PublicAPI,
-    OverrideToImplementCustomLogic
+    OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
 from ray.rllib.utils.exploration.random_encoder import (
