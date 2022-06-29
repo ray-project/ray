@@ -147,7 +147,7 @@ def test_pipeline_splitting_has_no_spilling_with_equal_splitting(shutdown_only):
     # The size of dataset is 50000*(80*80*4)*8B, about 10GiB, 50MiB/block.
     ds = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=200)
 
-    # 150Mib/window, which is 2 blocks/window, which means equal splitting
+    # 150Mib/window, which is 3 blocks/window, which means equal splitting
     # will need to split one block.
     p = ds.window(bytes_per_window=150 * 1024 * 1024).repeat()
     p1, p2 = p.split(2, equal=True)
