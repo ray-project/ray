@@ -59,6 +59,8 @@ class JobFileManager(FileManager):
             )
         )
 
+        
+        logger.info(f"Command result: {retcode}")
         if retcode != 0:
             raise FileDownloadError(f"Error downloading file {source} to {target}")
 
