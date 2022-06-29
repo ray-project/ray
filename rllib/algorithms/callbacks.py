@@ -12,6 +12,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import (
     is_overridden,
     PublicAPI,
+    OverrideToImplementCustomLogic
 )
 from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
 from ray.rllib.utils.exploration.random_encoder import (
@@ -312,6 +313,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @OverrideToImplementCustomLogic
     @Deprecated(error=True)
     def on_trainer_init(self, *args, **kwargs):
         raise DeprecationWarning
@@ -406,6 +408,7 @@ class MultiCallbacks(DefaultCallbacks):
 
         return self
 
+    @OverrideToImplementCustomLogic
     @Deprecated(error=True)
     def on_trainer_init(self, *args, **kwargs):
         raise DeprecationWarning
