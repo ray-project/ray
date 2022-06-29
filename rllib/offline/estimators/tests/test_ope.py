@@ -1,6 +1,5 @@
 import unittest
 import ray
-from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
@@ -9,6 +8,7 @@ from ray.rllib.offline.estimators import (
     DoublyRobust,
 )
 from ray.rllib.offline.json_reader import JsonReader
+from ray.rllib.policy.sample_batch import concat_samples
 from pathlib import Path
 import os
 import numpy as np
@@ -16,31 +16,23 @@ import gym
 
 
 class TestOPE(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=4)
-
-    def tearDown(self):
-        ray.shutdown()
-
     @classmethod
     def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=4)
         rllib_dir = Path(__file__).parent.parent.parent.parent
-        print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
+        eval_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        train_steps = 20000
+        train_steps = 200000
         n_batches = 20  # Approx. equal to n_episodes
-        n_eval_episodes = 100
+        n_eval_episodes = 20
 
         config = (
             DQNConfig()
             .environment(env=env_name)
             .training(gamma=cls.gamma)
-            .rollouts(num_rollout_workers=3)
+            .rollouts(num_rollout_workers=3, batch_mode="complete_episodes")
             .exploration(
                 explore=True,
                 exploration_config={
@@ -49,23 +41,40 @@ class TestOPE(unittest.TestCase):
                 },
             )
             .framework("torch")
-            .rollouts(batch_mode="complete_episodes")
+            .evaluation(
+                evaluation_interval=1,
+                evaluation_duration=n_eval_episodes,
+                evaluation_num_workers=1,
+                evaluation_duration_unit="episodes",
+                evaluation_config={
+                    "input": "dataset",
+                    "input_config": {"format": "json", "path": eval_data},
+                },
+                off_policy_estimation_methods={
+                    "is": {"type": ImportanceSampling},
+                    "wis": {"type": WeightedImportanceSampling},
+                    "dm": {
+                        "type": DirectMethod,
+                    },
+                    "dr": {
+                        "type": DoublyRobust,
+                    },
+                },
+            )
         )
         cls.algo = config.build()
 
         # Train DQN for evaluation policy
-        tune.run(
-            "DQN",
-            config=config.to_dict(),
-            stop={"timesteps_total": train_steps},
-            verbose=0,
-        )
+        timesteps_total = 0
+        while timesteps_total < train_steps:
+            results = cls.algo.train()
+            timesteps_total = results["timesteps_total"]
 
         # Read n_batches of data
-        reader = JsonReader(data_file)
+        reader = JsonReader(eval_data)
         cls.batch = reader.next()
         for _ in range(n_batches - 1):
-            cls.batch = cls.batch.concat(reader.next())
+            cls.batch = concat_samples([cls.batch, reader.next()])
         cls.n_episodes = len(cls.batch.split_by_episode())
         print("Episodes:", cls.n_episodes, "Steps:", cls.batch.count)
 
@@ -91,10 +100,6 @@ class TestOPE(unittest.TestCase):
         cls.mean_ret["simulation"] = np.mean(mc_ret)
         cls.std_ret["simulation"] = np.std(mc_ret)
 
-        # Optional configs for the model-based estimators
-        cls.model_config = {"train_test_split_val": 0.0, "k": 2, "n_iters": 10}
-        ray.shutdown()
-
     @classmethod
     def tearDownClass(cls):
         print("Mean:", cls.mean_ret)
@@ -108,10 +113,9 @@ class TestOPE(unittest.TestCase):
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
 
     def test_wis(self):
         name = "wis"
@@ -120,70 +124,42 @@ class TestOPE(unittest.TestCase):
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
 
-    def test_dm_qreg(self):
-        name = "dm_qreg"
+    def test_dm(self):
+        name = "dm"
         estimator = DirectMethod(
             name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
-            q_model_type="qreg",
-            **self.model_config,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
 
-    def test_dm_fqe(self):
-        name = "dm_fqe"
-        estimator = DirectMethod(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_type="fqe",
-            **self.model_config,
-        )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
-
-    def test_dr_qreg(self):
-        name = "dr_qreg"
+    def test_dr(self):
+        name = "dr"
         estimator = DoublyRobust(
             name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
-            q_model_type="qreg",
-            **self.model_config,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
-
-    def test_dr_fqe(self):
-        name = "dr_fqe"
-        estimator = DoublyRobust(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_type="fqe",
-            **self.model_config,
-        )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = estimates["v_new"]
+        self.std_ret[name] = estimates["v_new_std"]
 
     def test_ope_in_algo(self):
-        # TODO (rohan): Add performance tests for off_policy_estimation_methods,
-        # with fixed seeds and hyperparameters
+        results = self.algo.evaluate()
+        print(
+            *list(results["evaluation"]["off_policy_estimator"].items()),
+            sep="\n",
+            end="\n\n\n"
+        )
+
+    def test_multiple_inputs(self):
+        # TODO (Rohan138): Test with multiple input files
         pass
 
 

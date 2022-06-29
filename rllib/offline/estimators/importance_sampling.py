@@ -1,10 +1,8 @@
-from ray.rllib.offline.estimators.off_policy_estimator import (
-    OffPolicyEstimator,
-    OffPolicyEstimate,
-)
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+from ray.rllib.offline.estimators.utils import action_log_likelihood
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
-from typing import List
+from typing import Dict, Any
 import numpy as np
 
 
@@ -16,16 +14,16 @@ class ImportanceSampling(OffPolicyEstimator):
     https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
+    def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
         self.check_can_estimate_for(batch)
-        estimates = []
-        for sub_batch in batch.split_by_episode():
-            rewards, old_prob = sub_batch["rewards"], sub_batch["action_prob"]
-            new_prob = np.exp(self.action_log_likelihood(sub_batch))
+        estimates = {"v_old": [], "v_new": [], "v_gain": []}
+        for episode in batch.split_by_episode():
+            rewards, old_prob = episode["rewards"], episode["action_prob"]
+            new_prob = np.exp(action_log_likelihood(self.policy, episode))
 
             # calculate importance ratios
             p = []
-            for t in range(sub_batch.count):
+            for t in range(episode.count):
                 if t == 0:
                     pt_prev = 1.0
                 else:
@@ -35,18 +33,17 @@ class ImportanceSampling(OffPolicyEstimator):
             # calculate stepwise IS estimate
             v_old = 0.0
             v_new = 0.0
-            for t in range(sub_batch.count):
+            for t in range(episode.count):
                 v_old += rewards[t] * self.gamma ** t
                 v_new += p[t] * rewards[t] * self.gamma ** t
 
-            estimates.append(
-                OffPolicyEstimate(
-                    self.name,
-                    {
-                        "v_old": v_old,
-                        "v_new": v_new,
-                        "v_gain": v_new / max(1e-8, v_old),
-                    },
-                )
-            )
+            estimates["v_old"].append(v_old)
+            estimates["v_new"].append(v_new)
+            estimates["v_gain"].append(v_new / max(v_old, 1e-8))
+        estimates["v_old_std"] = np.std(estimates["v_old"])
+        estimates["v_old"] = np.mean(estimates["v_old"])
+        estimates["v_new_std"] = np.std(estimates["v_new"])
+        estimates["v_new"] = np.mean(estimates["v_new"])
+        estimates["v_gain_std"] = np.std(estimates["v_gain"])
+        estimates["v_gain"] = np.mean(estimates["v_gain"])
         return estimates
