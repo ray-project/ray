@@ -67,6 +67,7 @@ class DoublyRobust(OffPolicyEstimator):
             q_values = convert_to_numpy(q_values)
             v_values = self.state_value_fn(self.policy, episode)
             v_values = convert_to_numpy(v_values)
+            assert q_values.shape == v_values.shape == (episode.count,)
 
             for t in reversed(range(episode.count)):
                 v_old = rewards[t] + self.gamma * v_old

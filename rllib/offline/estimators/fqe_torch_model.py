@@ -179,14 +179,15 @@ class FQETorchModel:
         q_values, _ = self.q_model({"obs": obs}, [], None)
         actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
         q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
-        return q_values.detach()
+        return q_values
 
     def estimate_v(self, batch: SampleBatch) -> TensorType:
-        q_values = self.estimate_q(batch)
+        obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
+        q_values, _ = self.q_model({"obs": obs}, [], None)
         action_probs = action_log_likelihood(self.policy, batch)
         action_probs = torch.tensor(action_probs, device=self.device)
         v_values = torch.sum(q_values * action_probs, axis=-1)
-        return v_values.detach()
+        return v_values
 
     def update_target(self, tau=None):
         # Update_target will be called periodically to copy Q network to
