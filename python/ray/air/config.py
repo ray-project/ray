@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 SampleRange = Union[Domain, Dict[str, List], List]
 
+
 @dataclass
 @PublicAPI(stability="alpha")
 class ScalingConfig:
