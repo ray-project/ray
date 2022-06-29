@@ -89,6 +89,9 @@ class AwsVmClusterManager(ClusterManager):
             # TODO handle timeouts
             return_code = process.wait()
 
+
+        ''' Annoying terminal borking'''
+
     def get_cluster_address(self) -> str:
         command = ['ray', 'get-head-ip', 'cluster_launcher_config_aws.yaml']
         process = subprocess.Popen(command ,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
