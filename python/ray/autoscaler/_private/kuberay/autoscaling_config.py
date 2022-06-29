@@ -264,12 +264,8 @@ def _get_num_cpus(
     if "num_cpus" in ray_start_params:
         return int(ray_start_params["num_cpus"])
     elif "cpu" in k8s_resource_limits:
-        cpu_str = str(k8s_resource_limits["cpu"])
-        if cpu_str[-1] == "m":
-            # For example, '500m' rounds up to 1.
-            return math.ceil(int(cpu_str[:-1]) / 1000)
-        else:
-            return int(cpu_str)
+        cpu_quantity: str = k8s_resource_limits["cpu"]
+        return _round_up_k8s_quantity(cpu_quantity)
     else:
         # Getting the number of CPUs is important, so raise an error if we can't do it.
         raise ValueError(
