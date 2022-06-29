@@ -129,7 +129,7 @@ def lookup_action_value_fn(
     elif algo_name == "SimpleQ":
 
         def simpleq_action_value_fn(policy: Policy, batch: SampleBatch) -> TensorType:
-            q_values = policy._compute_q_values(policy.model, batch["obs"])
+            q_values = policy._compute_q_values(policy.model, batch[SampleBatch.OBS])
             if SampleBatch.ACTIONS in batch:
                 q_values = convert_to_numpy(q_values)
                 actions = convert_to_numpy(batch[SampleBatch.ACTIONS])

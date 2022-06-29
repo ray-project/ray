@@ -8,7 +8,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 import os
 from pathlib import Path
 
-DISCRETE = ["DQN", "APEX", "CRR", "SAC", "SimpleQ"]
+DISCRETE = ["DQN", "APEX", "CRR", "SAC"]#, "SimpleQ"]
 CONTINUOUS = ["APEX_DDPG", "DDPG", "TD3", "CRR", "SAC", "CQL"]
 rllib_dir = Path(__file__).parent.parent.parent.parent
 print("rllib dir={}".format(rllib_dir))
