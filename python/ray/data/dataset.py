@@ -3400,6 +3400,11 @@ class Dataset(Generic[T]):
                 left_metadata.append(ray.get(m0))
                 right_blocks.append(b1)
                 right_metadata.append(ray.get(m1))
+                # If return_right_half is requested, the input block b will be copied
+                # into b0 and b1. In such case, we can safely clear b if this is in
+                # lazy mode.
+                if return_right_half and self._lazy:
+                    ray._private.internal_api.free(b, local_only=False)
             count += num_rows
 
         split_duration = time.perf_counter() - start_time
