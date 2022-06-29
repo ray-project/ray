@@ -6,7 +6,7 @@ pendulum_crr:
       training_iteration: 500
     config:
         input:
-          - 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
+          - 'tests/data/pendulum/5922018bfea94f4c97c22ecc7e71ae56_000000.json'
         framework: torch
         gamma: 0.99
         train_batch_size: 1024
