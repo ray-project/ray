@@ -46,8 +46,13 @@ def assert_deployments_live(names: List[str]):
 
 @pytest.fixture
 def ray_start_stop():
-    subprocess.check_output(["ray", "start", "--head", "--dashboard-agent-listen-port", "52365"]
-    time.sleep(5)
+    subprocess.check_output(
+        ["ray", "start", "--head", "--dashboard-agent-listen-port", "52365"]
+    )
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/").status_code == 200,
+        timeout=15,
+    )
     yield
     subprocess.check_output(["ray", "stop", "--force"])
 
