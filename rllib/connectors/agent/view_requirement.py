@@ -98,7 +98,8 @@ class ViewRequirementAgentConnector(AgentConnector):
 
             # Create the batch of data from the different buffers.
             if col == SampleBatch.OBS:
-                # NEXT_OBS from the training sample is the current OBS to run Policy with.
+                # NEXT_OBS from the training sample is the current OBS
+                # to run Policy with.
                 data_col = SampleBatch.NEXT_OBS
             else:
                 data_col = req.data_col or col
