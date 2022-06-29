@@ -15,7 +15,7 @@ from ray.util.client import ray
 def connect(
     conn_str: str,
     secure: bool = False,
-    metadata: List[Tuple[str, str]] = None,
+    _metadata: List[Tuple[str, str]] = None,
     connection_retries: int = 3,
     job_config: JobConfig = None,
     namespace: str = None,
@@ -32,11 +32,11 @@ def connect(
 
     # Pull out metadata from kwargs and put into explicit metadata arg to connect
     if ray_init_kwargs is not None:
-        if "metadata" in ray_init_kwargs.keys():
-            if metadata is None:
-                metadata = []
-            metadata = metadata + ray_init_kwargs["metadata"]
-            del ray_init_kwargs["metadata"]
+        if "_metadata" in ray_init_kwargs.keys():
+            if _metadata is None:
+                _metadata = []
+            _metadata = _metadata + ray_init_kwargs["_metadata"]
+            del ray_init_kwargs["_metadata"]
 
     # Enable the same hooks that RAY_CLIENT_MODE does, as calling
     # ray.init("ray://<address>") is specifically for using client mode.
@@ -50,7 +50,7 @@ def connect(
         conn_str,
         job_config=job_config,
         secure=secure,
-        metadata=metadata,
+        metadata=_metadata,
         connection_retries=connection_retries,
         namespace=namespace,
         ignore_version=ignore_version,
