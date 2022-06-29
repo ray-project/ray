@@ -28,10 +28,10 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        train_steps = 2000
+        n_iters = 100
         n_batches = 20  # Approx. equal to n_episodes
         n_eval_episodes = 20
-        cls.q_model_config = {"n_iters": 10}
+        cls.q_model_config = {"n_iters": n_iters}
 
         config = (
             DQNConfig()
@@ -70,10 +70,8 @@ class TestOPE(unittest.TestCase):
         cls.algo = config.build()
 
         # Train DQN for evaluation policy
-        timesteps_total = 0
-        while timesteps_total < train_steps:
-            results = cls.algo.train()
-            timesteps_total = results["timesteps_total"]
+        for _ in range(n_iters):
+            cls.algo.train()
 
         # Read n_batches of data
         reader = JsonReader(eval_data)
@@ -108,8 +106,10 @@ class TestOPE(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        print("Mean:", cls.mean_ret)
-        print("Stddev:", cls.std_ret)
+        print("Mean:")
+        print(*list(cls.mean_ret.items()), sep="\n")
+        print("Stddev:")
+        print(*list(cls.std_ret.items()), sep="\n")
         print("Losses:", cls.losses)
         ray.shutdown()
 
