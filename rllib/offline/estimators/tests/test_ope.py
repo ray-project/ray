@@ -20,14 +20,11 @@ class TestOPE(unittest.TestCase):
     def setUpClass(cls):
         ray.init(num_cpus=4)
         rllib_dir = Path(__file__).parent.parent.parent.parent
-        print("rllib dir={}".format(rllib_dir))
-        train_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("train_data={} exists={}".format(train_data, os.path.isfile(train_data)))
-        eval_data = train_data
+        eval_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        train_steps = 2000000
+        train_steps = 200000
         n_batches = 20  # Approx. equal to n_episodes
         n_eval_episodes = 20
 
@@ -44,10 +41,6 @@ class TestOPE(unittest.TestCase):
                 },
             )
             .framework("torch")
-            .offline_data(
-                input_="dataset",
-                input_config={"format": "json", "path": train_data},
-            )
             .evaluation(
                 evaluation_interval=1,
                 evaluation_duration=n_eval_episodes,
@@ -78,7 +71,7 @@ class TestOPE(unittest.TestCase):
             timesteps_total = results["timesteps_total"]
 
         # Read n_batches of data
-        reader = JsonReader(train_data)
+        reader = JsonReader(eval_data)
         cls.batch = reader.next()
         for _ in range(n_batches - 1):
             cls.batch = concat_samples([cls.batch, reader.next()])

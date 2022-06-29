@@ -44,6 +44,10 @@ class DirectMethod(OffPolicyEstimator):
 
         super().__init__(name, policy, gamma)
         self.state_value_fn = state_value_fn or lookup_state_value_fn(policy)
+        assert policy.config["framework"] in [
+            "torch",
+            "tf2",
+        ], "DirectMethod estimator only works with torch|tf2"
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:

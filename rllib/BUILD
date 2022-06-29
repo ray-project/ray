@@ -1633,6 +1633,13 @@ py_test(
     srcs = ["offline/estimators/tests/test_ope.py"]
 )
 
+py_test(
+    name = "test_ope_utils",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/estimators/tests/test_utils.py"]
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/

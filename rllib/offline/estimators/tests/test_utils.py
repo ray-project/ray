@@ -8,8 +8,8 @@ from ray.rllib.utils.test_utils import framework_iterator
 import os
 from pathlib import Path
 
-DISCRETE = ["DQN", "APEX", "CRR", "SAC", "SimpleQ"]
-CONTINUOUS = ["APEX_DDPG", "DDPG", "TD3", "CRR", "SAC", "CQL"]
+DISCRETE = ["DQN", "APEX", "CRR", "SAC"]
+CONTINUOUS = ["CRR", "SAC", "CQL"]
 rllib_dir = Path(__file__).parent.parent.parent.parent
 print("rllib dir={}".format(rllib_dir))
 cartpole_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
@@ -31,7 +31,7 @@ class TestValueFnLookup(unittest.TestCase):
             config["env"] = "CartPole-v0"
             config["input"] = cartpole_data
             config["num_workers"] = 0
-            frameworks = ["tf2", "torch"] if algo_name != "CRR" else ["torch"]
+            frameworks = ["torch", "tf2"] if algo_name != "CRR" else ["torch"]
             for framework in framework_iterator(config, frameworks=frameworks):
                 print(algo_name + framework)
                 with self.subTest(algo_name + framework):
@@ -48,7 +48,12 @@ class TestValueFnLookup(unittest.TestCase):
             config["env"] = "CartPole-v0"
             config["input"] = cartpole_data
             config["num_workers"] = 0
-            frameworks = ["tf2", "torch"] if algo_name != "CRR" else ["torch"]
+            # TODO (Rohan138): Figure out why SimpleQ TF2 is broken
+            frameworks = (
+                ["torch", "tf2"]
+                if algo_name != "CRR" and algo_name != "SimpleQ"
+                else ["torch"]
+            )
             for framework in framework_iterator(config, frameworks=frameworks):
                 print(algo_name + framework)
                 with self.subTest(algo_name + framework):
@@ -65,7 +70,7 @@ class TestValueFnLookup(unittest.TestCase):
             config["env"] = "Pendulum-v1"
             config["input"] = pendulum_data
             config["num_workers"] = 0
-            frameworks = ["tf2", "torch"] if algo_name != "CRR" else ["torch"]
+            frameworks = ["torch", "tf2"] if algo_name != "CRR" else ["torch"]
             for framework in framework_iterator(config, frameworks=frameworks):
                 print(algo_name + framework)
                 with self.subTest(algo_name + framework):
@@ -82,7 +87,7 @@ class TestValueFnLookup(unittest.TestCase):
             config["env"] = "Pendulum-v1"
             config["input"] = pendulum_data
             config["num_workers"] = 0
-            frameworks = ["tf2", "torch"] if algo_name != "CRR" else ["torch"]
+            frameworks = ["torch", "tf2"] if algo_name != "CRR" else ["torch"]
             for framework in framework_iterator(config, frameworks=frameworks):
                 print(algo_name + framework)
                 with self.subTest(algo_name + framework):

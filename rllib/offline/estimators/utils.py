@@ -88,9 +88,9 @@ def lookup_action_value_fn(
 
         action_value_fn = dqn_action_value_fn
 
-    elif algo_name in ["CRR", "CQL", "DDPG", "ApexDDPG", "TD3"]:
+    elif algo_name in ["CRR", "DDPG", "ApexDDPG", "TD3"]:
 
-        def modelv2_action_value_fn(policy: Policy, batch: SampleBatch) -> TensorType:
+        def ddpg_action_value_fn(policy: Policy, batch: SampleBatch) -> TensorType:
             if policy.config["framework"] == "torch":
                 batch = convert_to_torch_tensor(batch, policy.device)
             model_out, _ = policy.model(batch)
@@ -98,7 +98,7 @@ def lookup_action_value_fn(
             q_values = convert_to_numpy(q_values).reshape([batch.count])
             return q_values
 
-        action_value_fn = modelv2_action_value_fn
+        action_value_fn = ddpg_action_value_fn
 
     elif algo_name in ["SAC", "CQL"]:
 
@@ -120,7 +120,7 @@ def lookup_action_value_fn(
             elif isinstance(policy.action_space, Box):
                 q_values = policy.model.get_q_values(
                     model_out, batch[SampleBatch.ACTIONS]
-                )
+                )[0]
                 q_values = convert_to_numpy(q_values).reshape([batch.count])
             return q_values
 
@@ -188,8 +188,13 @@ def lookup_state_value_fn(
     policy: Policy, n_samples=128
 ) -> Callable[[Policy, SampleBatch], TensorType]:
     state_value_fn = None
+    algo_name = policy.config["algo_class"].__name__
 
-    if isinstance(policy.action_space, Discrete):
+    if algo_name in ["DDPG", "ApexDDPG", "TD3"]:
+        # _sampling_state_value_fn does not work with DDPG
+        pass
+
+    elif isinstance(policy.action_space, Discrete):
         # If state_value_fn was not found, but the action space is discrete
         # try to sum over all possible actions using action_value_fn
         logger.log(
