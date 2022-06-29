@@ -21,8 +21,6 @@ def main():
     for _ in range(5):
         ray.get(counter.inc.remote())
         print(ray.get(counter.get_counter.remote()))
-    
-    
     print(requests.__version__)
 
 if __name__ == '__main__':
