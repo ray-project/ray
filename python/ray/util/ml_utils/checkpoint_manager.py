@@ -7,6 +7,7 @@ import numbers
 import os
 import shutil
 import tempfile
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -233,8 +234,11 @@ class CheckpointConfig:
             )
 
     @property
-    def checkpoint_score_attr(self) -> Optional[str]:
-        """Same as ``checkpoint_score_attr`` in ``tune.run``."""
+    def _tune_legacy_checkpoint_score_attr(self) -> Optional[str]:
+        """Same as ``checkpoint_score_attr`` in ``tune.run``.
+
+        Only used for Legacy API compatibility.
+        """
         if self.checkpoint_score_attribute is None:
             return self.checkpoint_score_attribute
         prefix = ""
@@ -256,7 +260,7 @@ deprecation_message = (
 @dataclass
 class CheckpointStrategy(CheckpointConfig):
     def __post_init__(self):
-        logger.warning(deprecation_message)
+        warnings.warn(deprecation_message)
         super().__post_init__()
 
 
