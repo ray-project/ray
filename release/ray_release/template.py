@@ -2,19 +2,20 @@ import copy
 import datetime
 import os
 import re
-from typing import Dict, Optional
+from typing import Optional, Dict
 
 import jinja2
 import yaml
 from ray_release.config import (
-    DEFAULT_PYTHON_VERSION,
-    RELEASE_PACKAGE_DIR,
     Test,
-    get_test_cloud_id,
+    RELEASE_PACKAGE_DIR,
     parse_python_version,
+    DEFAULT_PYTHON_VERSION,
+    get_test_cloud_id,
 )
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.util import python_version_str
+
 
 DEFAULT_ENV = {
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
