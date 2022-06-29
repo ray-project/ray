@@ -937,12 +937,12 @@ def set_runtime_env_plugins(request):
 
 
 @pytest.fixture
-def set_runtime_env_plugins_schemas(request):
-    runtime_env_plugins_schemas = getattr(request, "param", "0")
+def set_runtime_env_plugin_schemas(request):
+    runtime_env_plugin_schemas = getattr(request, "param", "0")
     try:
-        os.environ["RAY_RUNTIME_ENV_PLUGINS_SCHEMAS"] = runtime_env_plugins_schemas
+        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = runtime_env_plugin_schemas
         # Clear and reload schemas.
         RuntimeEnvPluginSchemaManager.clear()
-        yield runtime_env_plugins_schemas
+        yield runtime_env_plugin_schemas
     finally:
-        del os.environ["RAY_RUNTIME_ENV_PLUGINS_SCHEMAS"]
+        del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]

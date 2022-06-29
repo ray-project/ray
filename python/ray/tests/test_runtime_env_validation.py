@@ -16,6 +16,7 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_env_vars,
     parse_and_validate_py_modules,
 )
+from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray.runtime_env import RuntimeEnv
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
@@ -310,13 +311,13 @@ test_env_2 = os.path.join(
 
 
 @pytest.mark.parametrize(
-    "set_runtime_env_plugins_schemas",
+    "set_runtime_env_plugin_schemas",
     [schemas_dir, f"{test_env_1},{test_env_2}"],
     indirect=True,
 )
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 class TestValidateByJsonSchema:
-    def test_validate_pip(self, set_runtime_env_plugins_schemas):
+    def test_validate_pip(self, set_runtime_env_plugin_schemas):
         runtime_env = RuntimeEnv()
         runtime_env.set("pip", {"packages": ["requests"], "pip_check": True})
         with pytest.raises(jsonschema.exceptions.ValidationError, match="pip_check"):
@@ -325,7 +326,7 @@ class TestValidateByJsonSchema:
         with pytest.raises(jsonschema.exceptions.ValidationError, match="pip_check"):
             runtime_env["pip"] = {"packages": ["requests"], "pip_check": "1"}
 
-    def test_validate_working_dir(self, set_runtime_env_plugins_schemas):
+    def test_validate_working_dir(self, set_runtime_env_plugin_schemas):
         runtime_env = RuntimeEnv()
         runtime_env.set("working_dir", "https://abc/file.zip")
         with pytest.raises(jsonschema.exceptions.ValidationError, match="working_dir"):
@@ -334,17 +335,47 @@ class TestValidateByJsonSchema:
         with pytest.raises(jsonschema.exceptions.ValidationError, match="working_dir"):
             runtime_env["working_dir"] = ["https://abc/file.zip"]
 
-    def test_validate_test_env_1(self, set_runtime_env_plugins_schemas):
+    def test_validate_test_env_1(self, set_runtime_env_plugin_schemas):
         runtime_env = RuntimeEnv()
         runtime_env.set("test_env_1", {"array": ["123"], "bool": True})
         with pytest.raises(jsonschema.exceptions.ValidationError, match="bool"):
             runtime_env.set("test_env_1", {"array": ["123"], "bool": "1"})
 
-    def test_validate_test_env_2(self, set_runtime_env_plugins_schemas):
+    def test_validate_test_env_2(self, set_runtime_env_plugin_schemas):
         runtime_env = RuntimeEnv()
         runtime_env.set("test_env_2", "123")
         with pytest.raises(jsonschema.exceptions.ValidationError, match="test_env_2"):
             runtime_env.set("test_env_2", ["123"])
+
+
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+class TestRuntimeEnvPluginSchemaManager:
+    def test(self):
+        RuntimeEnvPluginSchemaManager.clear()
+        # No schemas when starts.
+        assert len(RuntimeEnvPluginSchemaManager.schemas) == 0
+        # When the `validate` is used first time, the schemas will be loaded lazily.
+        # The validation of pip is enabled.
+        with pytest.raises(jsonschema.exceptions.ValidationError, match="pip_check"):
+            RuntimeEnvPluginSchemaManager.validate(
+                "pip", {"packages": ["requests"], "pip_check": "123"}
+            )
+        # The validation of test_env_1 is disabled because we haven't set the env var.
+        RuntimeEnvPluginSchemaManager.validate(
+            "test_env_1", {"array": ["123"], "bool": "123"}
+        )
+        assert len(RuntimeEnvPluginSchemaManager.schemas) != 0
+        # Set the thirdparty schemas.
+        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = schemas_dir
+        # clear the loaded schemas to make sure the schemas chould be reloaded next
+        # time.
+        RuntimeEnvPluginSchemaManager.clear()
+        assert len(RuntimeEnvPluginSchemaManager.schemas) == 0
+        # The validation of test_env_1 is enabled.
+        with pytest.raises(jsonschema.exceptions.ValidationError, match="bool"):
+            RuntimeEnvPluginSchemaManager.validate(
+                "test_env_1", {"array": ["123"], "bool": "123"}
+            )
 
 
 if __name__ == "__main__":
