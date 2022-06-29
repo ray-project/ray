@@ -700,7 +700,7 @@ class Impala(Algorithm):
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
         if config["after_train_step"]:
-            merged_op = merged_op.for_each(lambda t: t[1]).for_each(
+            merged_op = merged_op.for_each(lambda t: t[2]).for_each(
                 config["after_train_step"](workers, config)
             )
 

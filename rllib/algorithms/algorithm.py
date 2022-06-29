@@ -594,14 +594,6 @@ class Algorithm(Trainable):
         if evaluate_this_iter and not self.config["evaluation_parallel_to_training"]:
             results.update(self._run_one_evaluation(train_future=None))
 
-        # Collect rollout worker metrics.
-        episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
-            local_worker,
-            self._remote_workers_for_metrics,
-            self._episodes_to_be_collected,
-            timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
-        )
-
         # Attach latest available evaluation results to train results,
         # if necessary.
         if not evaluate_this_iter and self.config["always_attach_evaluation_results"]:
@@ -618,9 +610,14 @@ class Algorithm(Trainable):
                     "sync_filters_on_rollout_workers_timeout_s"
                 ],
             )
-
             # Collect worker metrics and add combine them with `results`.
             if self.config["_disable_execution_plan_api"]:
+                episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
+                    local_worker,
+                    self._remote_workers_for_metrics,
+                    self._episodes_to_be_collected,
+                    timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
+                )
                 results = self._compile_iteration_results(
                     episodes_this_iter=episodes_this_iter,
                     step_ctx=train_iter_ctx,
@@ -2270,7 +2267,7 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the training iteration.
         """
-        results = {}
+        results = None
         # Create a step context ...
         with TrainIterCtx(algo=self) as train_iter_ctx:
             # .. so we can query it whether we should stop the iteration loop (e.g.
@@ -2535,7 +2532,7 @@ class TrainIterCtx:
         self.algo = algo
 
     def __enter__(self):
-        self.started = False
+        #self.started = False
         # Before first call to `step()`, `results` is expected to be None ->
         # Start with self.failures=-1 -> set to 0 before the very first call
         # to `self.step()`.
@@ -2559,8 +2556,8 @@ class TrainIterCtx:
     def should_stop(self, results):
 
         # Before first call to `step()`.
-        if self.started is False:
-            self.started = True
+        if results is None:
+            #self.started = True
             # Fail after n retries.
             self.failures += 1
             if self.failures > self.failure_tolerance:
@@ -2604,8 +2601,8 @@ class TrainIterCtx:
             # env|train timesteps have been processed (or these min
             # values are not provided by the user).
             if (
-                results is not None
-                and (not min_t or time.time() - self.time_start >= min_t)
+                #results is not None
+                (not min_t or time.time() - self.time_start >= min_t)
                 and (not min_sample_ts or self.sampled >= min_sample_ts)
                 and (not min_train_ts or self.trained >= min_train_ts)
             ):
