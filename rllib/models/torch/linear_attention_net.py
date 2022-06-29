@@ -30,7 +30,11 @@ except ImportError:
 
 
 class LinearAttentionWrapper(RecurrentNetwork, nn.Module):
-    """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm."""
+    """Linear attention modeled in an autoregressive fashion, as
+    described in https://arxiv.org/pdf/2006.16236.pdf. Unlike regular
+    attention/transformers with O(N^2) memory complexity, this had
+    O(KN) linear memory complexity, allowing for significantly longer
+    sequences/episodes."""
 
     def __init__(
         self,
@@ -44,14 +48,20 @@ class LinearAttentionWrapper(RecurrentNetwork, nn.Module):
         nn.Module.__init__(self)
         super().__init__(obs_space, action_space, None, model_config, name)
 
-        # At this point, self.num_outputs is the number of nodes coming
-        # from the wrapped (underlying) model. In other words, self.num_outputs
+        # At this point, self.num_inputs is the number of nodes coming
+        # from the wrapped (underlying) model. In other words, self.num_inputs
         # is the input size for the LSTM layer.
         # If None, set it to the observation space.
-        if self.num_outputs is None:
-            self.num_outputs = int(np.product(self.obs_space.shape))
+        self.num_inputs = (
+            self.num_outputs
+            if self.num_outputs is not None
+            else int(np.product(self.obs_space.shape))
+        )
 
         self.attn_hidden_size = model_config.get("linear_attn_hidden_size", 128)
+        # Embedding seems to hurt in RL in many cases, but
+        # give the user the option anyways
+        self.use_embedding = model_config.get("linear_attn_use_embedding", True)
         self.time_major = model_config.get("_time_major", False)
         if self.time_major:
             raise NotImplementedError()
@@ -73,33 +83,29 @@ class LinearAttentionWrapper(RecurrentNetwork, nn.Module):
 
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action:
-            self.num_outputs += self.action_dim
+            self.num_inputs += self.action_dim
         if self.use_prev_reward:
-            self.num_outputs += 1
+            self.num_inputs += 1
 
-        # Define actual LSTM layer (with num_outputs being the nodes coming
-        # from the wrapped (underlying) layer).
-        self.embedding = RelativePositionEmbedding(self.num_outputs)
+        # Define attention layers
+        if self.use_embedding:
+            self.embedding = RelativePositionEmbedding(self.num_inputs)
         builder = builders.RecurrentEncoderBuilder()
         builder.attention_type = "linear"
         builder.n_layers = 1
         builder.n_heads = 1
         builder.feed_forward_dimensions = self.attn_hidden_size
-        builder.query_dimensions = self.num_outputs
+        builder.query_dimensions = self.num_inputs
         # The value_dimensions determines the input shape of the xformer
-        builder.value_dimensions = self.num_outputs
+        builder.value_dimensions = self.num_inputs
         builder.dropout = 0
         self.xformer = builder.get()
-        # self.lstm = nn.LSTM(
-        #    self.num_outputs, self.cell_size, batch_first=not self.time_major
-        # )
 
         # Set self.num_outputs to the number of output nodes desired by the
         # caller of this constructor.
-        self.num_inputs = self.num_outputs
         self.num_outputs = num_outputs
 
-        # Postprocess LSTM output with another hidden layer and compute values.
+        # Postprocess attention output with another hidden layer and compute values.
         self._logits_branch = SlimFC(
             in_size=self.num_inputs,
             out_size=self.num_outputs,
@@ -131,7 +137,7 @@ class LinearAttentionWrapper(RecurrentNetwork, nn.Module):
         input_dict: Dict[str, TensorType],
         state: List[TensorType],
         seq_lens: TensorType,
-    ) -> (TensorType, List[TensorType]):
+    ) -> Tuple[TensorType, List[TensorType]]:
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
@@ -182,28 +188,38 @@ class LinearAttentionWrapper(RecurrentNetwork, nn.Module):
             (B, seq_lens.max(), self.num_inputs), device=inputs.device
         )
         si, zi, count = state
-        # import ray; ray.util.pdb.set_trace()
-        for t in range(seq_lens.max()):
+        count = count.reshape(-1)
+        # TODO: seq_lens.max() should work here but does not
+        # should investigate rnn padding
+        max_seq_len = inputs.shape[0] // seq_lens.numel()
+        embedding = self.embedding(max_seq_len + count.max())
+
+        for t in range(max_seq_len):
             # Mask out right-justified zero-padding
             batch_mask = t < seq_lens
+            num_valid_seqs = batch_mask.nonzero().numel()
+            if num_valid_seqs < 1:
+                # If for some reason dynamic_max is disabled
+                # break out early once only padding remains
+                break
+            network_in = inputs[batch_mask, t]
+            if self.use_embedding:
+                if self.training:
+                    network_in = network_in + embedding[count].reshape(
+                        num_valid_seqs, -1
+                    )
             feat, [[si_out, zi_out]] = self.xformer(
-                inputs[batch_mask, t].clone(),
-                [[si[batch_mask].clone(), zi[batch_mask].clone()]],
+                network_in,
+                [[si[batch_mask], zi[batch_mask]]],
             )
-            # if self.training:
-            # import ray; ray.util.pdb.set_trace()
-            self._features[batch_mask, t] = feat.reshape(
-                batch_mask.nonzero().numel(), -1
-            )
-            # Fucking autograd
-            si = si.clone()
-            zi = zi.clone()
-            si[batch_mask] = si_out.clone()
-            zi[batch_mask] = zi_out.clone()
-        count = count + seq_lens
-        state = [si, zi, count]
+            self._features[batch_mask, t] = feat.reshape(num_valid_seqs, -1)
+            si[batch_mask] = si_out
+            zi[batch_mask] = zi_out
+            count[batch_mask] += 1
+
+        state = [si, zi, count.unsqueeze(1)]
+        # Fucking autograd
         model_out = self._logits_branch(self._features.clone())
-        # print(B, seq_lens.max(), model_out.shape)
         return model_out, state
 
     @override(ModelV2)
@@ -211,7 +227,8 @@ class LinearAttentionWrapper(RecurrentNetwork, nn.Module):
         # Place hidden states on same device as model.
         si = torch.zeros(1, self.num_inputs, self.num_inputs)
         zi = torch.zeros(1, self.num_inputs)
-        count = torch.zeros(1)
+        # int64 required for tensor indexing
+        count = gym.spaces.Box(shape=(1,), low=0, high=2**31 - 1, dtype=np.int64)
         return [si, zi, count]
 
     @override(ModelV2)

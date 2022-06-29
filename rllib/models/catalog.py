@@ -161,9 +161,13 @@ MODEL_DEFAULTS: ModelConfigDict = {
 
     # == Linear-complexity transformer/attention networks (experimental)
     "use_linear_attention": False,
+    # Size of the key/query/value mappings
+    # and following MLP
     "linear_attn_hidden_size": 128,
-
-
+    # Whether or not to add a positional embedding
+    # we find that while transformers generally use these
+    # it can sometimes cause learning issues in RL
+    "linear_attn_use_embedding": False,
 
     # == Atari ==
     # Set to True to enable 4x stacking behavior.
