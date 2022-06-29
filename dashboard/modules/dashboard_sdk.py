@@ -186,7 +186,7 @@ class SubmissionClient:
     ):
 
         # Remove any trailing slashes
-        if address.endswith("/"):
+        if address is not None and address.endswith("/"):
             address = address.rstrip("/")
             logger.debug(
                 "The submission address cannot contain trailing slashes. Removing "
