@@ -8,8 +8,8 @@ import wandb
 from ray import tune
 from ray.air import session
 from ray.tune import Trainable
+from ray.air.callbacks.wandb import WandbLoggerCallback
 from ray.tune.integration.wandb import (
-    WandbLoggerCallback,
     WandbTrainableMixin,
     wandb_mixin,
 )
