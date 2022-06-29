@@ -22,7 +22,10 @@ def ray_start_stop():
         ["ray", "start", "--head", "--dashboard-agent-listen-port", "52365"]
     )
     wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/serve/deployments/").status_code == 200,
+        lambda: requests.get(
+            "http://localhost:52365/api/serve/deployments/"
+        ).status_code
+        == 200,
         timeout=15,
     )
     yield
@@ -43,6 +46,7 @@ def deploy_and_check_config(config: Dict):
     assert get_response.status_code == 200
     assert get_response.json() == config
     print("GET request returned correct config.")
+
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
@@ -112,6 +116,7 @@ def test_put_get(ray_start_stop):
         )
         print("Deployments are live and reachable over HTTP.\n")
 
+
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
@@ -180,6 +185,7 @@ def test_delete(ray_start_stop):
             requests.post("http://localhost:8000/", json=["SUB", 1]).raise_for_status()
         print("Deployments have been deleted and are not reachable.\n")
 
+
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
@@ -231,6 +237,7 @@ def test_get_status(ray_start_stop):
     assert serve_status["app_status"]["deployment_timestamp"] > 0
     assert serve_status["app_status"]["message"] == ""
     print("Serve app status is correct.")
+
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
