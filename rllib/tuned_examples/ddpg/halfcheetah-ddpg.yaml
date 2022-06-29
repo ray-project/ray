@@ -25,7 +25,7 @@ halfcheetah-ddpg:
             ou_theta: 0.15
             ou_sigma: 0.2
 
-        min_sample_timesteps_per_reporting: 1000
+        min_sample_timesteps_per_iteration: 1000
         target_network_update_freq: 0
         tau: 0.001
 
@@ -55,4 +55,4 @@ halfcheetah-ddpg:
 
         # === Evaluation ===
         evaluation_interval: 5
-        evaluation_num_episodes: 10
+        evaluation_duration: 10

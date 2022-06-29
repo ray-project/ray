@@ -10,21 +10,20 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import zipfile
-
-from itertools import chain
-from enum import Enum
-
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
+from enum import Enum
+from itertools import chain
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
-SUPPORTED_BAZEL = (4, 2, 1)
+
+SUPPORTED_BAZEL = (4, 2, 2)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -255,11 +254,14 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    setup_spec.extras["train"] = setup_spec.extras["tune"]
+
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
         set(
             setup_spec.extras["tune"]
             + setup_spec.extras["data"]
+            + setup_spec.extras["train"]
             + setup_spec.extras["serve"]
         )
     )
@@ -287,6 +289,9 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "requests",
+        # Light weight requirement, can be replaced with "typing" once
+        # we deprecate Python 3.7 (this will take a while).
+        "typing_extensions; python_version < '3.8'",
         "virtualenv",  # For pip runtime env.
     ]
 
@@ -747,7 +752,7 @@ setuptools.setup(
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
-            "tune=ray.tune.scripts:cli",
+            "tune=ray.tune.cli.scripts:cli",
             "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]

@@ -56,13 +56,13 @@ class RayDaskCallback(Callback):
                 value will be used as the would-be task's result value.
 
                 Args:
-                    task (tuple): A Dask task, where the first tuple item is
+                    task: A Dask task, where the first tuple item is
                         the task function, and the remaining tuple items are
                         the task arguments (either the actual argument values,
                         or Dask keys into the deps dictionary whose
                         corresponding values are the argument values).
-                    key (str): The Dask graph key for the given task.
-                    deps (dict): The dependencies of this task.
+                    key: The Dask graph key for the given task.
+                    deps: The dependencies of this task.
 
                 Returns:
                     Either None, in which case a Ray task will be submitted, or
@@ -74,13 +74,13 @@ class RayDaskCallback(Callback):
                 Run after submitting a Ray task.
 
                 Args:
-                    task (tuple): A Dask task, where the first tuple item is
+                    task: A Dask task, where the first tuple item is
                         the task function, and the remaining tuple items are
                         the task arguments (either the actual argument values,
                         or Dask keys into the deps dictionary whose
                         corresponding values are the argument values).
-                    key (str): The Dask graph key for the given task.
-                    deps (dict): The dependencies of this task.
+                    key: The Dask graph key for the given task.
+                    deps: The dependencies of this task.
                     object_ref (ray.ObjectRef): The object reference for the
                         return value of the Ray task.
 
@@ -91,7 +91,7 @@ class RayDaskCallback(Callback):
                 _ray_posttask callback, if provided.
 
                 Args:
-                    key (str): The Dask graph key for the Dask task.
+                    key: The Dask graph key for the Dask task.
                     object_refs (List[ray.ObjectRef]): The object references
                         for the arguments of the Ray task.
 
@@ -105,9 +105,9 @@ class RayDaskCallback(Callback):
                 value of the _ray_pretask callback, if provided.
 
                 Args:
-                    key (str): The Dask graph key for the Dask task.
-                    result (object): The task result value.
-                    pre_state (object): The return value of the corresponding
+                    key: The Dask graph key for the Dask task.
+                    result: The task result value.
+                    pre_state: The return value of the corresponding
                         _ray_pretask callback, if said callback is defined.
 
             - def _ray_postsubmit_all(object_refs, dsk):
@@ -116,14 +116,14 @@ class RayDaskCallback(Callback):
                 Args:
                     object_refs (List[ray.ObjectRef]): The object references
                         for the output (leaf) Ray tasks of the task graph.
-                    dsk (dict): The Dask graph.
+                    dsk: The Dask graph.
 
             - def _ray_finish(result):
                 Run after all Ray tasks have finished executing and the final
                 result has been returned.
 
                 Args:
-                    result (object): The final result (output) of the Dask
+                    result: The final result (output) of the Dask
                         computation, before any repackaging is done by
                         Dask collection-specific post-compute callbacks.
         """

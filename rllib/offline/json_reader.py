@@ -1,6 +1,8 @@
 import glob
 import json
 import logging
+import math
+
 import numpy as np
 import os
 from pathlib import Path
@@ -23,6 +25,7 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
     SampleBatch,
+    concat_samples,
 )
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import unpack_if_needed
@@ -47,11 +50,17 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
     Providing nested lists w/o this preprocessing step would
     confuse a SampleBatch constructor.
     """
-    for k, v in policy.view_requirements.items():
-        if k not in json_data:
-            continue
+    for k, v in json_data.items():
+        data_col = (
+            policy.view_requirements[k].data_col
+            if k in policy.view_requirements
+            else ""
+        )
         if policy.config.get("_disable_action_flattening") and (
-            k == SampleBatch.ACTIONS or v.data_col == SampleBatch.ACTIONS
+            k == SampleBatch.ACTIONS
+            or data_col == SampleBatch.ACTIONS
+            or k == SampleBatch.PREV_ACTIONS
+            or data_col == SampleBatch.PREV_ACTIONS
         ):
             json_data[k] = tree.map_structure_up_to(
                 policy.action_space_struct,
@@ -60,7 +69,10 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
                 check_types=False,
             )
         elif policy.config.get("_disable_preprocessor_api") and (
-            k == SampleBatch.OBS or v.data_col == SampleBatch.OBS
+            k == SampleBatch.OBS
+            or data_col == SampleBatch.OBS
+            or k == SampleBatch.NEXT_OBS
+            or data_col == SampleBatch.NEXT_OBS
         ):
             json_data[k] = tree.map_structure_up_to(
                 policy.observation_space_struct,
@@ -136,6 +148,13 @@ class JsonReader(InputReader):
 
         self.ioctx = ioctx or IOContext()
         self.default_policy = self.policy_map = None
+        self.batch_size = 1
+        if self.ioctx:
+            self.batch_size = self.ioctx.config.get("train_batch_size", 1)
+            num_workers = self.ioctx.config.get("num_workers", 0)
+            if num_workers:
+                self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)
+
         if self.ioctx.worker is not None:
             self.policy_map = self.ioctx.worker.policy_map
             self.default_policy = self.policy_map.get(DEFAULT_POLICY_ID)
@@ -171,20 +190,26 @@ class JsonReader(InputReader):
 
     @override(InputReader)
     def next(self) -> SampleBatchType:
-        batch = self._try_parse(self._next_line())
-        tries = 0
-        while not batch and tries < 100:
-            tries += 1
-            logger.debug("Skipping empty line in {}".format(self.cur_file))
+        ret = []
+        count = 0
+        while count < self.batch_size:
             batch = self._try_parse(self._next_line())
-        if not batch:
-            raise ValueError(
-                "Failed to read valid experience batch from file: {}".format(
-                    self.cur_file
+            tries = 0
+            while not batch and tries < 100:
+                tries += 1
+                logger.debug("Skipping empty line in {}".format(self.cur_file))
+                batch = self._try_parse(self._next_line())
+            if not batch:
+                raise ValueError(
+                    "Failed to read valid experience batch from file: {}".format(
+                        self.cur_file
+                    )
                 )
-            )
-
-        return self._postprocess_if_needed(batch)
+            batch = self._postprocess_if_needed(batch)
+            count += batch.count
+            ret.append(batch)
+        ret = concat_samples(ret)
+        return ret
 
     def read_all_files(self) -> SampleBatchType:
         """Reads through all files and yields one SampleBatchType per line.
@@ -214,7 +239,7 @@ class JsonReader(InputReader):
             out = []
             for sub_batch in batch.split_by_episode():
                 out.append(self.default_policy.postprocess_trajectory(sub_batch))
-            return SampleBatch.concat_samples(out)
+            return concat_samples(out)
         else:
             # TODO(ekl) this is trickier since the alignments between agent
             #  trajectories in the episode are not available any more.
@@ -267,6 +292,8 @@ class JsonReader(InputReader):
 
         # Clip actions (from any values into env's bounds), if necessary.
         cfg = self.ioctx.config
+        # TODO(jungong) : we should not clip_action in input reader.
+        # Use connector to handle this.
         if cfg.get("clip_actions") and self.ioctx.worker is not None:
             if isinstance(batch, SampleBatch):
                 batch[SampleBatch.ACTIONS] = clip_action(

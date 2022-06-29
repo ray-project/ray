@@ -4,6 +4,7 @@ import os
 from typing import List
 
 import numpy as np
+
 import ray
 from ray.util.collective import types
 
@@ -122,10 +123,10 @@ def init_collective_group(
     """Initialize a collective group inside an actor process.
 
     Args:
-        world_size (int): the total number of processes in the group.
-        rank (int): the rank of the current process.
+        world_size: the total number of processes in the group.
+        rank: the rank of the current process.
         backend: the CCL backend to use, NCCL or GLOO.
-        group_name (str): the name of the collective group.
+        group_name: the name of the collective group.
 
     Returns:
         None
@@ -159,11 +160,11 @@ def create_collective_group(
     Note: This function should be called in a driver process.
 
     Args:
-        actors (list): a list of actors to be set in a collective group.
-        world_size (int): the total number of processes in the group.
+        actors: a list of actors to be set in a collective group.
+        world_size: the total number of processes in the group.
         ranks (List[int]): the rank of each actor.
         backend: the CCL backend to use, NCCL or GLOO.
-        group_name (str): the name of the collective group.
+        group_name: the name of the collective group.
 
     Returns:
         None
@@ -223,7 +224,7 @@ def get_rank(group_name: str = "default") -> int:
     """Return the rank of this process in the given group.
 
     Args:
-        group_name (str): the name of the group to query
+        group_name: the name of the group to query
 
     Returns:
         the rank of this process in the named group,
@@ -259,7 +260,7 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
 
     Args:
         tensor: the tensor to be all-reduced on this process.
-        group_name (str): the collective group name to perform allreduce.
+        group_name: the collective group name to perform allreduce.
         op: The reduce operation.
 
     Returns:
@@ -280,7 +281,7 @@ def allreduce_multigpu(
     Args:
         tensor_list (List[tensor]): list of tensors to be allreduced,
             each on a GPU.
-        group_name (str): the collective group name to perform allreduce.
+        group_name: the collective group name to perform allreduce.
 
     Returns:
         None
@@ -298,7 +299,7 @@ def barrier(group_name: str = "default"):
     """Barrier all processes in the collective group.
 
     Args:
-        group_name (str): the name of the group to barrier.
+        group_name: the name of the group to barrier.
 
     Returns:
         None
@@ -314,8 +315,8 @@ def reduce(
 
     Args:
         tensor: the tensor to be reduced on this process.
-        dst_rank (int): the rank of the destination process.
-        group_name (str): the collective group name to perform reduce.
+        dst_rank: the rank of the destination process.
+        group_name: the collective group name to perform reduce.
         op: The reduce operation.
 
     Returns:
@@ -346,9 +347,9 @@ def reduce_multigpu(
     Args:
         tensor_list: the list of tensors to be reduced on this process;
             each tensor located on a GPU.
-        dst_rank (int): the rank of the destination process.
+        dst_rank: the rank of the destination process.
         dst_tensor: the index of GPU at the destination.
-        group_name (str): the collective group name to perform reduce.
+        group_name: the collective group name to perform reduce.
         op: The reduce operation.
 
     Returns:
@@ -374,8 +375,8 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
 
     Args:
         tensor: the tensor to be broadcasted (src) or received (destination).
-        src_rank (int): the rank of the source process.
-        group_name (str): the collective group name to perform broadcast.
+        src_rank: the rank of the source process.
+        group_name: the collective group name to perform broadcast.
 
     Returns:
         None
@@ -398,9 +399,9 @@ def broadcast_multigpu(
 
     Args:
         tensor_list: the tensors to broadcast (src) or receive (dst).
-        src_rank (int): the rank of the source process.
-        src_tensor (int): the index of the source GPU on the source process.
-        group_name (str): the collective group name to perform broadcast.
+        src_rank: the rank of the source process.
+        src_tensor: the index of the source GPU on the source process.
+        group_name: the collective group name to perform broadcast.
 
     Returns:
         None
@@ -423,9 +424,9 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     """Allgather tensors from each process of the group into a list.
 
     Args:
-        tensor_list (list): the results, stored as a list of tensors.
+        tensor_list: the results, stored as a list of tensors.
         tensor: the tensor (to be gathered) in the current process
-        group_name (str): the name of the collective group.
+        group_name: the name of the collective group.
 
     Returns:
         None
@@ -454,7 +455,7 @@ def allgather_multigpu(
             must be num_gpus * world_size * shape(tensor).
         input_tensor_list: (List[tensor]): a list of tensors, with shape
             num_gpus * shape(tensor).
-        group_name (str): the name of the collective group.
+        group_name: the name of the collective group.
 
     Returns:
         None
@@ -478,8 +479,8 @@ def reducescatter(
 
     Args:
         tensor: the resulted tensor on this process.
-        tensor_list (list): The list of tensors to be reduced and scattered.
-        group_name (str): the name of the collective group.
+        tensor_list: The list of tensors to be reduced and scattered.
+        group_name: the name of the collective group.
         op: The reduce operation.
 
     Returns:
@@ -511,7 +512,7 @@ def reducescatter_multigpu(
             shape: num_gpus * shape(tensor).
         input_tensor_lists: the original tensors, with shape:
             num_gpus * world_size * shape(tensor).
-        group_name (str): the name of the collective group.
+        group_name: the name of the collective group.
         op: The reduce operation.
 
     Returns:
@@ -532,8 +533,8 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
 
     Args:
         tensor: the tensor to send.
-        dst_rank (int): the rank of the destination process.
-        group_name (str): the name of the collective group.
+        dst_rank: the rank of the destination process.
+        group_name: the name of the collective group.
 
     Returns:
         None
@@ -562,10 +563,10 @@ def send_multigpu(
 
     Args:
         tensor: the tensor to send, located on a GPU.
-        dst_rank (int): the rank of the destination process.
-        dst_gpu_index (int): the destination gpu index.
-        group_name (str): the name of the collective group.
-        n_elements (int): if specified, send the next n elements
+        dst_rank: the rank of the destination process.
+        dst_gpu_index: the destination gpu index.
+        group_name: the name of the collective group.
+        n_elements: if specified, send the next n elements
             from the starting address of tensor.
 
     Returns:
@@ -595,8 +596,8 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
 
     Args:
         tensor: the received tensor.
-        src_rank (int): the rank of the source process.
-        group_name (str): the name of the collective group.
+        src_rank: the rank of the source process.
+        group_name: the name of the collective group.
 
     Returns:
         None
@@ -625,9 +626,9 @@ def recv_multigpu(
 
     Args:
         tensor: the received tensor, located on a GPU.
-        src_rank (int): the rank of the source process.
+        src_rank: the rank of the source process.
         src_gpu_index (int)： the index of the source gpu on the src process.
-        group_name (str): the name of the collective group.
+        group_name: the name of the collective group.
 
     Returns:
         None
@@ -655,7 +656,7 @@ def synchronize(gpu_id: int):
     """Synchronize the current process to a give device.
 
     Args:
-        gpu_id (int): the GPU device id to synchronize.
+        gpu_id: the GPU device id to synchronize.
 
     Returns:
         None
@@ -679,7 +680,7 @@ def _check_and_get_group(group_name):
             name = "info_" + group_name
             mgr = ray.get_actor(name=name)
             ids, world_size, rank, backend = ray.get(mgr.get_info.remote())
-            worker = ray.worker.global_worker
+            worker = ray._private.worker.global_worker
             id_ = worker.core_worker.get_actor_id()
             r = rank[ids.index(id_)]
             _group_mgr.create_collective_group(backend, world_size, r, group_name)
@@ -732,7 +733,7 @@ def _check_backend_availability(backend: types.Backend):
 
 def _check_inside_actor():
     """Check if currently it is inside a Ray actor/task."""
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     if worker.mode == ray.WORKER_MODE:
         return
     else:

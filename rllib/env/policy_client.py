@@ -66,8 +66,8 @@ class PolicyClient:
         """Create a PolicyClient instance.
 
         Args:
-            address (str): Server to connect to (e.g., "localhost:9090").
-            inference_mode (str): Whether to use 'local' or 'remote' policy
+            address: Server to connect to (e.g., "localhost:9090").
+            inference_mode: Whether to use 'local' or 'remote' policy
                 inference for computing actions.
             update_interval (float or None): If using 'local' inference mode,
                 the policy is refreshed after this many seconds have passed,
@@ -92,11 +92,11 @@ class PolicyClient:
         Args:
             episode_id (Optional[str]): Unique string id for the episode or
                 None for it to be auto-assigned.
-            training_enabled (bool): Whether to use experiences for this
+            training_enabled: Whether to use experiences for this
                 episode to improve the policy.
 
         Returns:
-            episode_id (str): Unique string id for the episode.
+            episode_id: Unique string id for the episode.
         """
 
         if self.local:
@@ -118,11 +118,11 @@ class PolicyClient:
         """Record an observation and get the on-policy action.
 
         Args:
-            episode_id (str): Episode id returned from start_episode().
-            observation (obj): Current environment observation.
+            episode_id: Episode id returned from start_episode().
+            observation: Current environment observation.
 
         Returns:
-            action (obj): Action from the env action space.
+            action: Action from the env action space.
         """
 
         if self.local:
@@ -154,9 +154,9 @@ class PolicyClient:
         """Record an observation and (off-policy) action taken.
 
         Args:
-            episode_id (str): Episode id returned from start_episode().
-            observation (obj): Current environment observation.
-            action (obj): Action for the observation.
+            episode_id: Episode id returned from start_episode().
+            observation: Current environment observation.
+            action: Action for the observation.
         """
 
         if self.local:
@@ -219,8 +219,8 @@ class PolicyClient:
         """Record the end of an episode.
 
         Args:
-            episode_id (str): Episode id returned from start_episode().
-            observation (obj): Current environment observation.
+            episode_id: Episode id returned from start_episode().
+            observation: Current environment observation.
         """
 
         if self.local:
@@ -328,7 +328,7 @@ def _auto_wrap_external(real_env_creator):
     """Wrap an environment in the ExternalEnv interface if needed.
 
     Args:
-        real_env_creator (fn): Create an env given the env_config.
+        real_env_creator: Create an env given the env_config.
     """
 
     def wrapped_creator(env_config):
@@ -367,8 +367,8 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     """Create a local rollout worker and a thread that samples from it.
 
     Args:
-        kwargs (dict): args for the RolloutWorker constructor.
-        send_fn (fn): function to send a JSON request to the server.
+        kwargs: args for the RolloutWorker constructor.
+        send_fn: function to send a JSON request to the server.
     """
 
     # Since the server acts as an input datasource, we have to reset the

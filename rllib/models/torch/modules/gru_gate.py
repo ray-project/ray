@@ -10,7 +10,7 @@ class GRUGate(nn.Module):
     def __init__(self, dim: int, init_bias: int = 0.0, **kwargs):
         """
         input_shape (torch.Tensor): dimension of the input
-        init_bias (int): Bias added to every input to stabilize training
+        init_bias: Bias added to every input to stabilize training
         """
         super().__init__(**kwargs)
         # Xavier initialization of torch tensors

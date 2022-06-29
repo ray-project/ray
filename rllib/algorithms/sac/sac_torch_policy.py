@@ -42,7 +42,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelInputDict,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 torch, nn = try_import_torch()
@@ -52,14 +52,14 @@ logger = logging.getLogger(__name__)
 
 
 def _get_dist_class(
-    policy: Policy, config: TrainerConfigDict, action_space: gym.spaces.Space
+    policy: Policy, config: AlgorithmConfigDict, action_space: gym.spaces.Space
 ) -> Type[TorchDistributionWrapper]:
     """Helper function to return a dist class based on config and action space.
 
     Args:
-        policy (Policy): The policy for which to return the action
+        policy: The policy for which to return the action
             dist class.
-        config (TrainerConfigDict): The Trainer's config dict.
+        config: The Algorithm's config dict.
         action_space (gym.spaces.Space): The action space used.
 
     Returns:
@@ -92,15 +92,15 @@ def build_sac_model_and_action_dist(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
     """Constructs the necessary ModelV2 and action dist class for the Policy.
 
     Args:
-        policy (Policy): The TFPolicy that will use the models.
+        policy: The TFPolicy that will use the models.
         obs_space (gym.spaces.Space): The observation space.
         action_space (gym.spaces.Space): The action space.
-        config (TrainerConfigDict): The SAC trainer's config dict.
+        config: The SAC trainer's config dict.
 
     Returns:
         ModelV2: The ModelV2 to be used by the Policy. Note: An additional
@@ -134,12 +134,12 @@ def action_distribution_fn(
     will be made on it to generate actions.
 
     Args:
-        policy (Policy): The Policy being queried for actions and calling this
+        policy: The Policy being queried for actions and calling this
             function.
         model (TorchModelV2): The SAC specific model to use to generate the
             distribution inputs (see sac_tf|torch_model.py). Must support the
             `get_action_model_outputs` method.
-        input_dict (ModelInputDict): The input-dict to be used for the model
+        input_dict: The input-dict to be used for the model
             call.
         state_batches (Optional[List[TensorType]]): The list of internal state
             tensor batches.
@@ -179,10 +179,10 @@ def actor_critic_loss(
     """Constructs the loss for the Soft Actor Critic.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
         dist_class (Type[TorchDistributionWrapper]: The action distr. class.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
@@ -361,8 +361,8 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Stats function for SAC. Returns a dict with important loss stats.
 
     Args:
-        policy (Policy): The Policy to generate stats for.
-        train_batch (SampleBatch): The SampleBatch (already) used for training.
+        policy: The Policy to generate stats for.
+        train_batch: The SampleBatch (already) used for training.
 
     Returns:
         Dict[str, TensorType]: The stats dict.
@@ -385,15 +385,15 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     }
 
 
-def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> Tuple[LocalOptimizer]:
+def optimizer_fn(policy: Policy, config: AlgorithmConfigDict) -> Tuple[LocalOptimizer]:
     """Creates all necessary optimizers for SAC learning.
 
     The 3 or 4 (twin_q=True) optimizers returned here correspond to the
     number of loss terms returned by the loss function.
 
     Args:
-        policy (Policy): The policy object to be trained.
-        config (TrainerConfigDict): The Trainer's config dict.
+        policy: The policy object to be trained.
+        config: The Algorithm's config dict.
 
     Returns:
         Tuple[LocalOptimizer]: The local optimizers to use for policy training.
@@ -432,6 +432,7 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> Tuple[LocalOptimi
     return tuple([policy.actor_optim] + policy.critic_optims + [policy.alpha_optim])
 
 
+# TODO: Unify with DDPG's ComputeTDErrorMixin when SAC policy subclasses PolicyV2
 class ComputeTDErrorMixin:
     """Mixin class calculating TD-error (part of critic loss) per batch item.
 
@@ -465,6 +466,7 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
+# TODO: Unify with DDPG's TargetNetworkMixin when SAC policy subclasses PolicyV2
 class TargetNetworkMixin:
     """Mixin class adding a method for (soft) target net(s) synchronizations.
 
@@ -506,7 +508,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call mixin classes' constructors after Policy initialization.
 
@@ -521,10 +523,10 @@ def setup_late_mixins(
     respective "main" Q-metworks, based on tau (smooth, partial updating).
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)

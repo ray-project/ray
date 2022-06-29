@@ -1,18 +1,18 @@
 # coding: utf-8
 import logging
+import subprocess
 import sys
 import time
-import subprocess
+from pathlib import Path
 
 import numpy as np
 import pytest
 
+import ray
 import ray.cluster_utils
 from ray._private.test_utils import wait_for_condition
 from ray.autoscaler._private.constants import RAY_PROCESSES
-from pathlib import Path
 
-import ray
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ def test_worker_startup_count(ray_start_cluster):
         slow_function.options(num_cpus=num_cpus).remote()
 
     # Check "debug_state.txt" to ensure no extra workers were started.
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     debug_state_path = session_path / "logs" / "debug_state.txt"
 
@@ -138,8 +138,8 @@ def test_fork_support(shutdown_only):
 
     @ray.remote
     def pool_factorial():
-        import multiprocessing
         import math
+        import multiprocessing
 
         ctx = multiprocessing.get_context("fork")
         with ctx.Pool(processes=4) as pool:
@@ -277,4 +277,9 @@ def test_fair_queueing(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

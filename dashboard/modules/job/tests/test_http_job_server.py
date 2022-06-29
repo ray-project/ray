@@ -1,33 +1,32 @@
+import json
 import logging
-from pathlib import Path
 import os
 import shutil
 import sys
-import json
-import yaml
 import tempfile
+from pathlib import Path
 from typing import Optional
-
-import pytest
 from unittest.mock import patch
 
+import pytest
+import yaml
+
 import ray
-from ray.job_submission import JobSubmissionClient, JobStatus
-from ray.dashboard.modules.job.common import CURRENT_VERSION, JobInfo
-from ray.dashboard.modules.dashboard_sdk import (
-    ClusterInfo,
-    parse_cluster_info,
-)
-from ray.dashboard.tests.conftest import *  # noqa
-from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (
     chdir,
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
 )
+from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
+from ray.dashboard.modules.job.common import CURRENT_VERSION, JobInfo
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.tests.conftest import _ray_start
 
 logger = logging.getLogger(__name__)
+
+DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 
 
 @pytest.fixture(scope="module")
@@ -273,6 +272,27 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     assert runtime_env_option["expected_logs"] in logs
 
 
+def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
+    run_cmd = "python per_task_runtime_env.py"
+    job_id = job_sdk_client.submit_job(
+        entrypoint=run_cmd,
+        runtime_env={"working_dir": DRIVER_SCRIPT_DIR},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=job_sdk_client, job_id=job_id)
+
+
+def test_ray_tune_basic(job_sdk_client: JobSubmissionClient):
+    run_cmd = "python ray_tune_basic.py"
+    job_id = job_sdk_client.submit_job(
+        entrypoint=run_cmd,
+        runtime_env={"working_dir": DRIVER_SCRIPT_DIR},
+    )
+    wait_for_condition(
+        _check_job_succeeded, timeout=30, client=job_sdk_client, job_id=job_id
+    )
+
+
 def test_http_bad_request(job_sdk_client):
     """
     Send bad requests to job http server and ensure right return code and
@@ -368,7 +388,7 @@ def test_job_metadata(job_sdk_client):
         'python -c"'
         "import ray;"
         "ray.init();"
-        "job_config=ray.worker.global_worker.core_worker.get_job_config();"
+        "job_config=ray._private.worker.global_worker.core_worker.get_job_config();"
         "print(dict(sorted(job_config.metadata.items())))"
         '"'
     )

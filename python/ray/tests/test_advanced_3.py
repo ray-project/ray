@@ -1,24 +1,21 @@
 # coding: utf-8
 import logging
 import os
-import sys
+import pickle
 import socket
+import sys
 import time
 
 import numpy as np
-import pickle
 import pytest
 
 import ray
-import ray.util.accelerators
 import ray._private.utils
 import ray.cluster_utils
-import setproctitle
+import ray.util.accelerators
+from ray._private.test_utils import check_call_ray, wait_for_num_actors
 
-from ray._private.test_utils import (
-    check_call_ray,
-    wait_for_num_actors,
-)
+import setproctitle
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +29,11 @@ def test_global_state_api(shutdown_only):
     assert ray.cluster_resources()["CustomResource"] == 1
 
     job_id = ray._private.utils.compute_job_id_from_driver(
-        ray.WorkerID(ray.worker.global_worker.worker_id)
+        ray.WorkerID(ray._private.worker.global_worker.worker_id)
     )
 
     client_table = ray.nodes()
-    node_ip_address = ray.worker.global_worker.node_ip_address
+    node_ip_address = ray._private.worker.global_worker.node_ip_address
 
     assert len(client_table) == 1
     assert client_table[0]["NodeManagerAddress"] == node_ip_address
@@ -50,7 +47,7 @@ def test_global_state_api(shutdown_only):
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray.state.actors()
+    actor_table = ray._private.state.actors()
     assert len(actor_table) == 1
 
     (actor_info,) = actor_table.values()
@@ -60,7 +57,7 @@ def test_global_state_api(shutdown_only):
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
 
-    job_table = ray.state.jobs()
+    job_table = ray._private.state.jobs()
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
@@ -158,7 +155,7 @@ def test_workers(shutdown_only):
 
     @ray.remote
     def f():
-        return id(ray.worker.global_worker), os.getpid()
+        return id(ray._private.worker.global_worker), os.getpid()
 
     # Wait until all of the workers have started.
     worker_ids = set()
@@ -194,7 +191,7 @@ def test_wait_reconstruction(shutdown_only):
     x_id = f.remote()
     ray.wait([x_id])
     ray.wait([f.remote()])
-    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
+    assert not ray._private.worker.global_worker.core_worker.object_exists(x_id)
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
 
@@ -325,7 +322,7 @@ def test_put_pins_object(ray_start_object_store_memory):
     del x_id
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
-    assert not ray.worker.global_worker.core_worker.object_exists(
+    assert not ray._private.worker.global_worker.core_worker.object_exists(
         ray.ObjectRef(x_binary)
     )
 
@@ -352,4 +349,7 @@ def test_decorated_function(ray_start_regular):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

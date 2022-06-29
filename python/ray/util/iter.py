@@ -1,11 +1,12 @@
-from contextlib import contextmanager
 import collections
 import random
 import threading
 import time
-from typing import TypeVar, Generic, Iterable, List, Callable, Any
+from contextlib import contextmanager
+from typing import Any, Callable, Generic, Iterable, List, TypeVar
 
 import ray
+from ray.util.annotations import Deprecated
 from ray.util.iter_metrics import MetricsContext, SharedMetrics
 
 # The type of an iterator element.
@@ -13,6 +14,7 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
+@Deprecated
 def from_items(
     items: List[T], num_shards: int = 2, repeat: bool = False
 ) -> "ParallelIterator[T]":
@@ -21,9 +23,9 @@ def from_items(
     The objects will be divided round-robin among the number of shards.
 
     Args:
-        items (list): The list of items to iterate over.
-        num_shards (int): The number of worker actors to create.
-        repeat (bool): Whether to cycle over the items forever.
+        items: The list of items to iterate over.
+        num_shards: The number of worker actors to create.
+        repeat: Whether to cycle over the items forever.
     """
     shards = [[] for _ in range(num_shards)]
     for i, item in enumerate(items):
@@ -37,6 +39,7 @@ def from_items(
     return from_iterators(shards, repeat=repeat, name=name)
 
 
+@Deprecated
 def from_range(
     n: int, num_shards: int = 2, repeat: bool = False
 ) -> "ParallelIterator[int]":
@@ -45,9 +48,9 @@ def from_range(
     The range will be partitioned sequentially among the number of shards.
 
     Args:
-        n (int): The max end of the range of numbers.
-        num_shards (int): The number of worker actors to create.
-        repeat (bool): Whether to cycle over the range forever.
+        n: The max end of the range of numbers.
+        num_shards: The number of worker actors to create.
+        repeat: Whether to cycle over the range forever.
     """
     generators = []
     shard_size = n // num_shards
@@ -68,6 +71,7 @@ def from_range(
     )
 
 
+@Deprecated
 def from_iterators(
     generators: List[Iterable[T]], repeat: bool = False, name=None
 ) -> "ParallelIterator[T]":
@@ -90,12 +94,12 @@ def from_iterators(
         >>> from_iterators([lambda: (x for x in range(100))])
 
     Args:
-        generators (list): A list of Python iterables or lambda
+        generators: A list of Python iterables or lambda
             functions that produce an iterable when called. We allow lambda
             functions since certain generators might not be serializable,
             but a lambda that returns it can be.
-        repeat (bool): Whether to cycle over the iterators forever.
-        name (str): Optional name to give the iterator.
+        repeat: Whether to cycle over the iterators forever.
+        name: Optional name to give the iterator.
     """
     worker_cls = ray.remote(ParallelIteratorWorker)
     actors = [worker_cls.remote(g, repeat) for g in generators]
@@ -106,6 +110,7 @@ def from_iterators(
     return from_actors(actors, name=name)
 
 
+@Deprecated
 def from_actors(
     actors: List["ray.actor.ActorHandle"], name=None
 ) -> "ParallelIterator[T]":
@@ -114,15 +119,16 @@ def from_actors(
     Each actor must subclass the ParallelIteratorWorker interface.
 
     Args:
-        actors (list): List of actors that each implement
+        actors: List of actors that each implement
             ParallelIteratorWorker.
-        name (str): Optional name to give the iterator.
+        name: Optional name to give the iterator.
     """
     if not name:
         name = f"from_actors[shards={len(actors)}]"
     return ParallelIterator([_ActorSet(actors, [])], name, parent_iterators=[])
 
 
+@Deprecated
 class ParallelIterator(Generic[T]):
     """A parallel iterator over a set of remote actors.
 
@@ -217,7 +223,7 @@ class ParallelIterator(Generic[T]):
         when possible for simplicity.
 
         Args:
-            fn (func): function to use to transform the iterator. The function
+            fn: function to use to transform the iterator. The function
                 should pass through instances of _NextValueNotReady that appear
                 in its input iterator. Note that this function is only called
                 **once** over the input iterator.
@@ -257,10 +263,10 @@ class ParallelIterator(Generic[T]):
         to `n + k - 1`
 
         Args:
-            fn (func): function to apply to each item.
-            max_concurrency (int): max number of concurrent calls to fn per
+            fn: function to apply to each item.
+            max_concurrency: max number of concurrent calls to fn per
                 shard. If 0, then apply all operations concurrently.
-            resources (dict): resources that the function requires to execute.
+            resources: resources that the function requires to execute.
                 This has the same default as `ray.remote` and is only used
                 when `max_concurrency > 1`.
 
@@ -287,7 +293,7 @@ class ParallelIterator(Generic[T]):
         """Remotely filter items from this iterator.
 
         Args:
-            fn (func): returns False for items to drop from the iterator.
+            fn: returns False for items to drop from the iterator.
 
         Examples:
             >>> it = from_items([0, 1, 2]).filter(lambda x: x > 0)
@@ -300,7 +306,7 @@ class ParallelIterator(Generic[T]):
         """Remotely batch together items in this iterator.
 
         Args:
-            n (int): Number of items to batch together.
+            n: Number of items to batch together.
 
         Examples:
             >>> next(from_range(10, 1).batch(4).gather_sync())
@@ -332,12 +338,12 @@ class ParallelIterator(Generic[T]):
         """Remotely shuffle items of each shard independently
 
         Args:
-            shuffle_buffer_size (int): The algorithm fills a buffer with
+            shuffle_buffer_size: The algorithm fills a buffer with
                 shuffle_buffer_size elements and randomly samples elements from
                 this buffer, replacing the selected elements with new elements.
                 For perfect shuffling, this argument should be greater than or
                 equal to the largest iterator size.
-            seed (int): Seed to use for
+            seed: Seed to use for
                 randomness. Default value is None.
 
         Returns:
@@ -373,9 +379,9 @@ class ParallelIterator(Generic[T]):
         the new ParallelIterator.
 
         Args:
-            num_partitions (int): The number of shards to use for the new
+            num_partitions: The number of shards to use for the new
                 ParallelIterator
-            batch_ms (int): Batches items for batch_ms milliseconds
+            batch_ms: Batches items for batch_ms milliseconds
                 on each shard before retrieving it.
                 Increasing batch_ms increases latency but improves throughput.
 
@@ -518,11 +524,11 @@ class ParallelIterator(Generic[T]):
         the previous one is computed. Items arrive in non-deterministic order.
 
         Arguments:
-            batch_ms (int): Batches items for batch_ms milliseconds
+            batch_ms: Batches items for batch_ms milliseconds
                 on each shard before retrieving it.
                 Increasing batch_ms increases latency but improves throughput.
                 If this value is 0, then items are returned immediately.
-            num_async (int): The max number of async requests in flight
+            num_async: The max number of async requests in flight
                 per actor. Increasing this improves the amount of pipeline
                 parallelism in the iterator.
 
@@ -647,12 +653,12 @@ class ParallelIterator(Generic[T]):
         remote tasks or actors.
 
         Arguments:
-            shard_index (int): Index of the shard to gather.
-            batch_ms (int): Batches items for batch_ms milliseconds
+            shard_index: Index of the shard to gather.
+            batch_ms: Batches items for batch_ms milliseconds
                 before retrieving it.
                 Increasing batch_ms increases latency but improves throughput.
                 If this value is 0, then items are returned immediately.
-            num_async (int): The max number of requests in flight.
+            num_async: The max number of requests in flight.
                 Increasing this improves the amount of pipeline
                 parallelism in the iterator.
         """
@@ -695,6 +701,7 @@ class ParallelIterator(Generic[T]):
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
 
+@Deprecated
 class LocalIterator(Generic[T]):
     """An iterator over a single shard of data.
 
@@ -723,20 +730,20 @@ class LocalIterator(Generic[T]):
         """Create a local iterator (this is an internal function).
 
         Args:
-            base_iterator (func): A function that produces the base iterator.
+            base_iterator: A function that produces the base iterator.
                 This is a function so that we can ensure LocalIterator is
                 serializable.
-            shared_metrics (SharedMetrics): Existing metrics context or a new
+            shared_metrics: Existing metrics context or a new
                 context. Should be the same for each chained iterator.
-            local_transforms (list): A list of transformation functions to be
+            local_transforms: A list of transformation functions to be
                 applied on top of the base iterator. When iteration begins, we
                 create the base iterator and apply these functions. This lazy
                 creation ensures LocalIterator is serializable until you start
                 iterating over it.
-            timeout (int): Optional timeout in seconds for this iterator, after
+            timeout: Optional timeout in seconds for this iterator, after
                 which _NextValueNotReady will be returned. This avoids
                 blocking.
-            name (str): Optional name for this iterator.
+            name: Optional name for this iterator.
         """
         assert isinstance(shared_metrics, SharedMetrics)
         self.base_iterator = base_iterator
@@ -919,12 +926,12 @@ class LocalIterator(Generic[T]):
         """Shuffle items of this iterator
 
         Args:
-            shuffle_buffer_size (int): The algorithm fills a buffer with
+            shuffle_buffer_size: The algorithm fills a buffer with
                 shuffle_buffer_size elements and randomly samples elements from
                 this buffer, replacing the selected elements with new elements.
                 For perfect shuffling, this argument should be greater than or
                 equal to the largest iterator size.
-            seed (int): Seed to use for
+            seed: Seed to use for
                 randomness. Default value is None.
 
         Returns:
@@ -1054,10 +1061,10 @@ class LocalIterator(Generic[T]):
         """Return an iterator that is the union of this and the others.
 
         Args:
-            deterministic (bool): If deterministic=True, we alternate between
+            deterministic: If deterministic=True, we alternate between
                 reading from one iterator and the others. Otherwise we return
                 items from iterators as they become ready.
-            round_robin_weights (list): List of weights to use for round robin
+            round_robin_weights: List of weights to use for round robin
                 mode. For example, [2, 1] will cause the iterator to pull twice
                 as many items from the first iterator as the second.
                 [2, 1, "*"] will cause as many items to be pulled as possible
@@ -1125,6 +1132,7 @@ class LocalIterator(Generic[T]):
         )
 
 
+@Deprecated
 class ParallelIteratorWorker(object):
     """Worker actor for a ParallelIterator.
 
@@ -1137,11 +1145,11 @@ class ParallelIteratorWorker(object):
         Subclasses must call this init function.
 
         Args:
-            item_generator (obj): A Python iterable or lambda function
+            item_generator: A Python iterable or lambda function
                 that produces a generator when called. We allow lambda
                 functions since the generator itself might not be serializable,
                 but a lambda that returns it can be.
-            repeat (bool): Whether to loop over the iterator forever.
+            repeat: Whether to loop over the iterator forever.
         """
 
         def make_iterator():
