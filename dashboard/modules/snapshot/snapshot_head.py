@@ -31,7 +31,7 @@ class RayActivityResponse:
     Dataclass used to inform if a particular Ray component can be considered
     active, and metadata about observation.
     """
-    
+
     # Whether the corresponding Ray component is considered active
     is_active: bool
     # Why the Ray component is considered active
