@@ -49,7 +49,7 @@ class _TuneSessionImpl(Session):
 
     @property
     def trial_resources(self) -> Dict[str, float]:
-        return self._status_reporter.trial_resources.required_resources
+        return self._status_reporter.trial_resources
 
 
 @PublicAPI
