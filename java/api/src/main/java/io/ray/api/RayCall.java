@@ -3,10 +3,12 @@
 package io.ray.api;
 
 import io.ray.api.call.ActorCreator;
+import io.ray.api.call.CppActorCreator;
 import io.ray.api.call.PyActorCreator;
 import io.ray.api.call.PyTaskCaller;
 import io.ray.api.call.TaskCaller;
 import io.ray.api.call.VoidTaskCaller;
+import io.ray.api.function.CppActorClass;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc0;
@@ -2010,6 +2012,41 @@ class RayCall {
   public static PyActorCreator actor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5) {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4, obj5};
     return new PyActorCreator(pyActorClass, args);
+  }
+
+  public static CppActorCreator actor(CppActorClass cppActorClass) {
+    Object[] args = new Object[]{};
+    return new CppActorCreator(cppActorClass, args);
+  }
+
+  public static CppActorCreator actor(CppActorClass cppActorClass, Object obj0) {
+    Object[] args = new Object[]{obj0};
+    return new CppActorCreator(cppActorClass, args);
+  }
+
+  public static CppActorCreator actor(CppActorClass cppActorClass, Object obj0, Object obj1) {
+    Object[] args = new Object[]{obj0, obj1};
+    return new CppActorCreator(cppActorClass, args);
+  }
+
+  public static CppActorCreator actor(CppActorClass cppActorClass, Object obj0, Object obj1, Object obj2) {
+    Object[] args = new Object[]{obj0, obj1, obj2};
+    return new CppActorCreator(cppActorClass, args);
+  }
+
+  public static CppActorCreator actor(CppActorClass cppActorClass, Object obj0, Object obj1, Object obj2, Object obj3) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3};
+    return new CppActorCreator(cppActorClass, args);
+  }
+
+  public static CppActorCreator actor(CppActorClass cppActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
+    return new CppActorCreator(cppActorClass, args);
+  }
+
+  public static CppActorCreator actor(CppActorClass cppActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5) {
+    Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4, obj5};
+    return new CppActorCreator(cppActorClass, args);
   }
 
 }

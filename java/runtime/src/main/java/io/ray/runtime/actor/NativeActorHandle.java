@@ -65,6 +65,8 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
         return new NativeJavaActorHandle(actorId);
       case PYTHON:
         return new NativePyActorHandle(actorId);
+      case CPP:
+        return new NativeCppActorHandle(actorId);
       default:
         throw new IllegalStateException("Unknown actor handle language: " + language);
     }
