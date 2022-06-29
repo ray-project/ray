@@ -37,9 +37,9 @@ def _get_snapshot(address: str):
 def test_successful_job_status(
     ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
 ):
-    address = ray_start_with_dashboard.address_info["webui_url"]
-    assert wait_until_server_available(address)
-    address += address_suffix
+    raw_address = ray_start_with_dashboard.address_info["webui_url"]
+    assert wait_until_server_available(raw_address)
+    address = raw_address + address_suffix
     address = format_web_url(address)
 
     job_sleep_time_s = 5
@@ -61,7 +61,7 @@ def test_successful_job_status(
     )
 
     def wait_for_job_to_succeed():
-        data = _get_snapshot(address)
+        data = _get_snapshot(raw_address)
         legacy_job_succeeded = False
         job_succeeded = False
 
@@ -103,9 +103,9 @@ def test_successful_job_status(
 def test_failed_job_status(
     ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
 ):
-    address = ray_start_with_dashboard.address_info["webui_url"]
-    assert wait_until_server_available(address)
-    address += address_suffix
+    raw_address = ray_start_with_dashboard.address_info["webui_url"]
+    assert wait_until_server_available(raw_address)
+    address = raw_address + address_suffix
     address = format_web_url(address)
 
     job_sleep_time_s = 5
@@ -128,7 +128,7 @@ def test_failed_job_status(
     )
 
     def wait_for_job_to_fail():
-        data = _get_snapshot(address)
+        data = _get_snapshot(raw_address)
 
         legacy_job_failed = False
         job_failed = False
