@@ -1,6 +1,7 @@
 # coding: utf-8
 import glob
 import logging
+import multiprocessing
 import os
 import sys
 import tempfile
@@ -299,7 +300,7 @@ def test_get_system_memory():
         )
     # cgroups v2, set
     with tempfile.NamedTemporaryFile("w") as memory_max_file:
-        memory_max_file.write("100")
+        memory_max_file.write("100\n")
         memory_max_file.flush()
         assert (
             ray._private.utils.get_system_memory(
@@ -321,6 +322,70 @@ def test_get_system_memory():
             )
             == psutil_memory_in_bytes
         )
+
+
+@pytest.mark.parametrize("in_k8s", [True, False])
+@pytest.mark.parametrize("env_disable", [True, False])
+@pytest.mark.parametrize("override_disable", [True, False])
+@pytest.mark.parametrize("got_docker_cpus", [True, False])
+def test_get_num_cpus(
+    in_k8s: bool,
+    env_disable: bool,
+    override_disable: bool,
+    got_docker_cpus: bool,
+    monkeypatch,
+):
+    """Tests
+    - Conditions under which ray._private.utils.get_num_cpus logs a warning about
+        docker.
+    - Fallback to multiprocessing.cpu_count if there's no docker count available.
+    """
+    # Shouldn't get the log warning if we're in K8s, the env variable is set,
+    # the flag arg to get_num_cpus is set, or getting docker cpus fails.
+    # Otherwise, should get the log message.
+    should_not_log = any([in_k8s, env_disable, override_disable, not got_docker_cpus])
+    expected_warning = (
+        "Detecting docker specified CPUs. In "
+        "previous versions of Ray, CPU detection in containers "
+        "was incorrect. Please ensure that Ray has enough CPUs "
+        "allocated. As a temporary workaround to revert to the "
+        "prior behavior, set "
+        "`RAY_USE_MULTIPROCESSING_CPU_COUNT=1` as an env var "
+        "before starting Ray. Set the env var: "
+        "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning."
+    )
+    if got_docker_cpus:
+        mock_get_docker_cpus = mock.Mock(return_value=128)
+    else:
+        mock_get_docker_cpus = mock.Mock(side_effect=Exception())
+
+    if in_k8s:
+        monkeypatch.setenv("KUBERNETES_SERVICE_HOST", 1)
+    else:
+        try:
+            monkeypatch.delenv("KUBERNETES_SERVICE_HOST")
+        except KeyError:
+            pass
+
+    with mock.patch.multiple(
+        "ray._private.utils",
+        _get_docker_cpus=mock_get_docker_cpus,
+        ENV_DISABLE_DOCKER_CPU_WARNING=env_disable,
+        logger=mock.DEFAULT,
+    ) as mocks:
+        num_cpus = ray._private.utils.get_num_cpus(override_disable)
+
+        if got_docker_cpus:
+            # Got the docker count of 128 CPUs in the giant mock container.
+            assert num_cpus == 128
+        else:
+            # Failed to get docker count and fell back to multiprocessing count.
+            assert num_cpus == multiprocessing.cpu_count()
+
+        if should_not_log:
+            mocks["logger"].warning.assert_not_called()
+        else:
+            mocks["logger"].warning.assert_called_with(expected_warning)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")

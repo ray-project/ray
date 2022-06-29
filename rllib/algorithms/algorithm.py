@@ -594,14 +594,6 @@ class Algorithm(Trainable):
         if evaluate_this_iter and not self.config["evaluation_parallel_to_training"]:
             results.update(self._run_one_evaluation(train_future=None))
 
-        # Collect rollout worker metrics.
-        episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
-            local_worker,
-            self._remote_workers_for_metrics,
-            self._episodes_to_be_collected,
-            timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
-        )
-
         # Attach latest available evaluation results to train results,
         # if necessary.
         if not evaluate_this_iter and self.config["always_attach_evaluation_results"]:
@@ -612,10 +604,20 @@ class Algorithm(Trainable):
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
-            self._sync_filters_if_needed(self.workers)
-
+            self._sync_filters_if_needed(
+                self.workers,
+                timeout_seconds=self.config[
+                    "sync_filters_on_rollout_workers_timeout_s"
+                ],
+            )
             # Collect worker metrics and add combine them with `results`.
             if self.config["_disable_execution_plan_api"]:
+                episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
+                    local_worker,
+                    self._remote_workers_for_metrics,
+                    self._episodes_to_be_collected,
+                    timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
+                )
                 results = self._compile_iteration_results(
                     episodes_this_iter=episodes_this_iter,
                     step_ctx=train_iter_ctx,
@@ -674,7 +676,12 @@ class Algorithm(Trainable):
             self.evaluation_workers.sync_weights(
                 from_worker=self.workers.local_worker()
             )
-            self._sync_filters_if_needed(self.evaluation_workers)
+            self._sync_filters_if_needed(
+                self.evaluation_workers,
+                timeout_seconds=self.config[
+                    "sync_filters_on_rollout_workers_timeout_s"
+                ],
+            )
 
         if self.config["custom_eval_function"]:
             logger.info(
@@ -787,6 +794,11 @@ class Algorithm(Trainable):
                     # 1 episode per returned batch.
                     if unit == "episodes":
                         num_units_done += len(batches)
+                        # Make sure all batches are exactly one episode.
+                        for ma_batch in batches:
+                            ma_batch = ma_batch.as_multi_agent()
+                            for batch in ma_batch.policy_batches.values():
+                                assert np.sum(batch[SampleBatch.DONES])
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
@@ -1597,12 +1609,15 @@ class Algorithm(Trainable):
                 '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
             )
 
-    def _sync_filters_if_needed(self, workers: WorkerSet):
+    def _sync_filters_if_needed(
+        self, workers: WorkerSet, timeout_seconds: Optional[float] = None
+    ):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
                 workers.local_worker().filters,
                 workers.remote_workers(),
                 update_remote=self.config["synchronize_filters"],
+                timeout_seconds=timeout_seconds,
             )
             logger.debug(
                 "synchronized filters: {}".format(workers.local_worker().filters)
@@ -2252,7 +2267,7 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the training iteration.
         """
-        results = {}
+        results = None
         # Create a step context ...
         with TrainIterCtx(algo=self) as train_iter_ctx:
             # .. so we can query it whether we should stop the iteration loop (e.g.
@@ -2273,6 +2288,7 @@ class Algorithm(Trainable):
                         ignore=self.config["ignore_worker_failures"],
                         recreate=self.config["recreate_failed_workers"],
                     )
+
         return results, train_iter_ctx
 
     def _run_one_evaluation(
@@ -2516,7 +2532,6 @@ class TrainIterCtx:
         self.algo = algo
 
     def __enter__(self):
-        self.started = False
         # Before first call to `step()`, `results` is expected to be None ->
         # Start with self.failures=-1 -> set to 0 before the very first call
         # to `self.step()`.
@@ -2540,8 +2555,7 @@ class TrainIterCtx:
     def should_stop(self, results):
 
         # Before first call to `step()`.
-        if self.started is False:
-            self.started = True
+        if results is None:
             # Fail after n retries.
             self.failures += 1
             if self.failures > self.failure_tolerance:
@@ -2585,8 +2599,7 @@ class TrainIterCtx:
             # env|train timesteps have been processed (or these min
             # values are not provided by the user).
             if (
-                results is not None
-                and (not min_t or time.time() - self.time_start >= min_t)
+                (not min_t or time.time() - self.time_start >= min_t)
                 and (not min_sample_ts or self.sampled >= min_sample_ts)
                 and (not min_train_ts or self.trained >= min_train_ts)
             ):
