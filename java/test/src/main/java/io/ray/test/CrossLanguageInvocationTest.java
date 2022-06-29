@@ -45,7 +45,8 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
     // Write the test Python file to the temp dir.
     InputStream in =
-        CrossLanguageInvocationTest.class.getResourceAsStream(File.separator + PYTHON_MODULE + ".py");
+        CrossLanguageInvocationTest.class.getResourceAsStream(
+            File.separator + PYTHON_MODULE + ".py");
     File pythonFile = new File(tempDir.getAbsolutePath() + File.separator + PYTHON_MODULE + ".py");
     try {
       FileUtils.copyInputStreamToFile(in, pythonFile);
@@ -55,7 +56,9 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
     // Write the test Cpp files to the temp dir.
     for (String lib : CPP_LIBRARYS) {
-      in = CrossLanguageInvocationTest.class.getResourceAsStream(File.separator + "cpp" + File.separator + lib + ".so");
+      in =
+          CrossLanguageInvocationTest.class.getResourceAsStream(
+              File.separator + "cpp" + File.separator + lib + ".so");
       File cppFile = new File(tempDir.getAbsolutePath() + File.separator + lib + ".so");
       try {
         FileUtils.copyInputStreamToFile(in, cppFile);
@@ -66,9 +69,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
     System.setProperty(
         "ray.job.code-search-path",
-        System.getProperty("java.class.path")
-            + File.pathSeparator
-            + tempDir.getAbsolutePath());
+        System.getProperty("java.class.path") + File.pathSeparator + tempDir.getAbsolutePath());
   }
 
   @Test
