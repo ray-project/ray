@@ -8,8 +8,9 @@ pendulum_crr:
         input: "dataset"
         input_config:
             format: "json"
-            path: '/Users/avnish/avnish_ray_2/rllib/tests/data/pendulum/55b2dd77f2f3483a9a44d56d2f7d00f1_000000.json'
+            path: '/Users/avnish/avnish_ray_2/rllib/tests/data/pendulum/pendulum_replay_v1.1.0.json'
         framework: torch
+        num_workers: 4
         gamma: 0.99
         train_batch_size: 1024
         critic_hidden_activation: 'relu'
