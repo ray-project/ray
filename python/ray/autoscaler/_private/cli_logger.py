@@ -437,7 +437,8 @@ class _CliLogger:
 
         # We aren't using standard python logging convention, so we hardcode
         # the log levels for now.
-        if _level_str in ["WARNING", "ERROR", "PANIC"]:
+        # TODO(cade) why did I have to add VINFO here? everything should go to stderr..
+        if _level_str in ["WARNING", "ERROR", "PANIC", "VINFO"]:
             stream = sys.stderr
         else:
             stream = sys.stdout
