@@ -30,6 +30,12 @@ public abstract class BaseTaskOptions implements Serializable {
                 entry.getKey(), entry.getValue()));
       }
     }
-    this.resources.putAll(resources);
+    /// Filter 0 resources
+    resources.forEach(
+        (key, value) -> {
+          if (value != 0) {
+            this.resources.put(key, value);
+          }
+        });
   }
 }
