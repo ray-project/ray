@@ -1629,7 +1629,7 @@ py_test(
 py_test(
     name = "test_ope",
     tags = ["team:rllib", "offline", "torch_only"],
-    size = "medium",
+    size = "large",
     srcs = ["offline/estimators/tests/test_ope.py"]
 )
 

@@ -8,6 +8,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 from ray.rllib.offline.estimators.utils import action_log_likelihood
+import numpy as np
 
 torch, nn = try_import_torch()
 
@@ -176,15 +177,25 @@ class FQETorchModel:
 
     def estimate_q(self, batch: SampleBatch) -> TensorType:
         obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
-        q_values, _ = self.q_model({"obs": obs}, [], None)
+        with torch.no_grad():
+            q_values, _ = self.q_model({"obs": obs}, [], None)
         actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
         q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
         return q_values
 
     def estimate_v(self, batch: SampleBatch) -> TensorType:
         obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
-        q_values, _ = self.q_model({"obs": obs}, [], None)
-        action_probs = action_log_likelihood(self.policy, batch)
+        with torch.no_grad():
+            q_values, _ = self.q_model({"obs": obs}, [], None)
+        action_probs = []
+        tmp_batch = batch.copy()
+        for i in range(self.policy.action_space.n):
+            tmp_batch[SampleBatch.ACTIONS] = (
+                np.zeros_like(batch[SampleBatch.ACTIONS]) + i
+            )
+            tmp_probs = np.exp(action_log_likelihood(self.policy, tmp_batch))
+            action_probs.append(tmp_probs)
+        action_probs = np.swapaxes(action_probs, 0, 1)
         action_probs = torch.tensor(action_probs, device=self.device)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values
