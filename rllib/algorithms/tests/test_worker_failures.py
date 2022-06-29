@@ -1,6 +1,5 @@
-import unittest
-
 import gym
+import unittest
 
 import ray
 from ray.rllib.algorithms.registry import get_algorithm_class
@@ -96,7 +95,7 @@ class TestWorkerFailure(unittest.TestCase):
             if not eval_only:
                 self.assertTrue(result["num_healthy_workers"] == 1)
             else:
-                self.assertTrue(result["num_healthy_workers"] == 2)
+                self.assertTrue(result["num_healthy_workers"] == 1)
                 self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
             algo.stop()
 
