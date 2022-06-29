@@ -5,7 +5,7 @@ import pytest
 import ray
 import ray.train as train
 from ray import tune
-from ray.air import Checkpoint
+from ray.air import Checkpoint, session
 from ray.air.config import FailureConfig, RunConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -154,13 +154,16 @@ def test_tune_checkpoint(ray_start_4_cpus):
 def test_reuse_checkpoint(ray_start_4_cpus):
     def train_func(config):
         itr = 0
-        ckpt = train.load_checkpoint()
+        ckpt = session.get_checkpoint()
         if ckpt is not None:
+            ckpt = ckpt.to_dict()
             itr = ckpt["iter"] + 1
 
         for i in range(itr, config["max_iter"]):
-            train.save_checkpoint(iter=i)
-            train.report(test=i, training_iteration=i)
+            session.report(
+                dict(test=i, training_iteration=i),
+                checkpoint=Checkpoint.from_dict(dict(iter=i)),
+            )
 
     trainer = DataParallelTrainer(
         train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)
@@ -185,17 +188,20 @@ def test_reuse_checkpoint(ray_start_4_cpus):
 
 def test_retry(ray_start_4_cpus):
     def train_func():
-        ckpt = train.load_checkpoint()
+        ckpt = session.get_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
         itr = 0
         if ckpt:
+            ckpt = ckpt.to_dict()
             itr = ckpt["iter"] + 1
 
         for i in range(itr, 4):
             if i == 2 and not restored:
                 raise Exception("try to fail me")
-            train.save_checkpoint(iter=i)
-            train.report(test=i, training_iteration=i)
+            session.report(
+                dict(test=i, training_iteration=i),
+                checkpoint=Checkpoint.from_dict(dict(iter=i)),
+            )
 
     trainer = DataParallelTrainer(
         train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)
