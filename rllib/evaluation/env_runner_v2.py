@@ -91,7 +91,7 @@ def _build_multi_agent_batch(
     batch_builder: _PolicyCollectorGroup,
     large_batch_threshold: int,
     multiple_episodes_in_batch: bool,
-) -> Union[SampleBatch, MultiAgentBatch]:
+) -> MultiAgentBatch:
     """Build MultiAgentBatch from a dict of _PolicyCollectors.
 
     Args:
@@ -99,7 +99,7 @@ def _build_multi_agent_batch(
         policy_collectors: collected training SampleBatchs by policy.
 
     Returns:
-        MultiAgentBatch. SampleBatch if this is a single-agent env.
+        Always returns a sample batch in MultiAgentBatch format.
     """
     ma_batch = {}
     for pid, collector in batch_builder.policy_collectors.items():
@@ -133,11 +133,8 @@ def _build_multi_agent_batch(
 
         ma_batch[pid] = collector.build()
 
-    # Create the batch.
-    ma_batch = MultiAgentBatch.wrap_as_needed(
-        ma_batch, env_steps=batch_builder.env_steps
-    )
-    return ma_batch
+    # Create the multi agent batch.
+    return MultiAgentBatch(policy_batches=ma_batch, env_steps=batch_builder.env_steps)
 
 
 def _batch_inference_sample_batches(eval_data: List[SampleBatch]) -> SampleBatch:
@@ -409,6 +406,8 @@ class EnvRunnerV2:
 
     def _get_rollout_metrics(self, episode: EpisodeV2) -> List[RolloutMetrics]:
         """Get rollout metrics from completed episode."""
+        # TODO(jungong) : why do we need to handle atari metrics differently?
+        # Can we unify atari and normal env metrics?
         atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(self._base_env)
         if atari_metrics is not None:
             for m in atari_metrics:

@@ -1,7 +1,6 @@
-import unittest
-
 import gym
 import numpy as np
+import unittest
 
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
@@ -108,7 +107,7 @@ class TestAgentConnector(unittest.TestCase):
         flattened = c([d])
         self.assertEqual(len(flattened), 1)
 
-        batch = flattened[0].data
+        batch = flattened[0].data.for_action
         self.assertTrue((batch[SampleBatch.NEXT_OBS] == [1, 1, 2, 2, 8.8]).all())
         self.assertEqual(batch[SampleBatch.REWARDS][0], 5.8)
         # Not flattened.

@@ -5,7 +5,6 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
@@ -13,9 +12,10 @@ from ray.rllib.utils.typing import (
     StateBatches,
     TensorStructType,
 )
+from ray.util.annotations import PublicAPI
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 def register_lambda_action_connector(
     name: str, fn: Callable[[TensorStructType, StateBatches, Dict], PolicyOutputType]
 ) -> Type[ActionConnector]:

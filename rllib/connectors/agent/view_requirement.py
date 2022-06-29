@@ -9,11 +9,11 @@ from ray.rllib.connectors.connector import (
     register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import AgentConnectorDataType, AgentConnectorsOutput
+from ray.util.annotations import PublicAPI
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class ViewRequirementAgentConnector(AgentConnector):
     """This connector does 2 things:
     1. It filters data columns based on view_requirements for training and inference.

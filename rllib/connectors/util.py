@@ -12,19 +12,19 @@ from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
 from ray.rllib.connectors.connector import Connector, ConnectorContext, get_connector
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 def get_connectors_from_cfg(config: dict) -> Dict[str, Connector]:
     return {k: get_connector(*v) for k, v in config.items()}
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 def get_agent_connectors_from_config(
     ctx: ConnectorContext,
     config: TrainerConfigDict,
@@ -50,7 +50,7 @@ def get_agent_connectors_from_config(
     return AgentConnectorPipeline(ctx, connectors)
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 def get_action_connectors_from_trainer_config(
     ctx: ConnectorContext,
     config: TrainerConfigDict,
@@ -70,7 +70,7 @@ def get_action_connectors_from_trainer_config(
     return ActionConnectorPipeline(ctx, connectors)
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     """Util to create agent and action connectors for a Policy.
 

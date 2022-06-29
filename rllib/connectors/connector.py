@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 import gym
 
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
@@ -16,6 +15,7 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class ConnectorContext:
     """Data bits that may be needed for running connectors.
 
@@ -77,7 +77,7 @@ class ConnectorContext:
         )
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class Connector(abc.ABC):
     """Connector base class.
 
@@ -128,7 +128,7 @@ class Connector(abc.ABC):
         return NotImplementedError
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class AgentConnector(Connector):
     """Connector connecting user environments to RLlib policies.
 
@@ -257,7 +257,7 @@ class AgentConnector(Connector):
         raise NotImplementedError
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class ActionConnector(Connector):
     """Action connector connects policy outputs including actions,
     to user environments.
@@ -307,7 +307,7 @@ class ActionConnector(Connector):
         raise NotImplementedError
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class ConnectorPipeline(abc.ABC):
     """Utility class for quick manipulation of a connector pipeline."""
 
@@ -380,7 +380,7 @@ class ConnectorPipeline(abc.ABC):
         )
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 def register_connector(name: str, cls: Connector):
     """Register a connector for use with RLlib.
 
@@ -393,7 +393,7 @@ def register_connector(name: str, cls: Connector):
     _global_registry.register(RLLIB_CONNECTOR, name, cls)
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 def get_connector(ctx: ConnectorContext, name: str, params: Tuple[Any]) -> Connector:
     """Get a connector by its name and serialized config.
 

@@ -48,7 +48,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list, merge_dicts
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
@@ -72,6 +72,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
+from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
 
@@ -1398,7 +1399,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.is_policy_to_train = is_policy_to_train
 
-    @ExperimentalAPI
+    @PublicAPI(stability="alpha")
     def get_policies_to_train(
         self, batch: Optional[SampleBatchType] = None
     ) -> Set[PolicyID]:

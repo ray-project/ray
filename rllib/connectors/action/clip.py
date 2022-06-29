@@ -5,12 +5,12 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.spaces.space_utils import clip_action, get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType
+from ray.util.annotations import PublicAPI
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class ClipActionsConnector(ActionConnector):
     def __init__(self, ctx: ConnectorContext):
         super().__init__(ctx)

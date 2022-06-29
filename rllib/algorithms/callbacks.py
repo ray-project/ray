@@ -187,6 +187,10 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+                In case of environment failures, episode may also be an Exception
+                that gets thrown from the environment before the episode finishes.
+                Users of this callback may then handle these error cases properly
+                with their custom logics.
             kwargs: Forward compatibility placeholder.
         """
 

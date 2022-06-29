@@ -57,6 +57,8 @@ class EpisodeV2:
         # Total # of steps take by all agents in this env.
         self.total_agent_steps: int = 0
         # Dict for user to add custom metrics.
+        # TODO(jungong) : we should probably unify custom_metrics, user_data, and hist_data
+        # into a single data container for user to track per-step metrics and states.
         self.custom_metrics: Dict[str, float] = {}
         # Temporary storage. E.g. storing data in between two custom
         # callbacks referring to the same episode.

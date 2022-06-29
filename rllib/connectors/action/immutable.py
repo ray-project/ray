@@ -7,12 +7,12 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.numpy import make_action_immutable
 from ray.rllib.utils.typing import ActionConnectorDataType
+from ray.util.annotations import PublicAPI
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class ImmutableActionsConnector(ActionConnector):
     def transform(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
         assert isinstance(

@@ -2,7 +2,6 @@ import unittest
 
 import gym
 import numpy as np
-import pytest
 
 from ray.rllib.connectors.action.clip import ClipActionsConnector
 from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
@@ -95,11 +94,12 @@ class TestActionConnector(unittest.TestCase):
 
         immutable = c(ac_data)
 
-        with pytest.raises(ValueError, match="assignment destination is read-only"):
+        with self.assertRaises(ValueError):
             immutable.output[0][0] = 5
 
 
 if __name__ == "__main__":
+    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -9,15 +9,15 @@ from ray.rllib.connectors.connector import (
     register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
     TensorStructType,
 )
+from ray.util.annotations import PublicAPI
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 def register_lambda_agent_connector(
     name: str, fn: Callable[[Any], Any]
 ) -> Type[AgentConnector]:
@@ -55,7 +55,7 @@ def register_lambda_agent_connector(
     return LambdaAgentConnector
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 def flatten_data(data: Dict[str, TensorStructType]):
     assert isinstance(
         data, dict

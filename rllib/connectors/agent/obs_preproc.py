@@ -7,14 +7,14 @@ from ray.rllib.connectors.connector import (
 )
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import AgentConnectorDataType
+from ray.util.annotations import PublicAPI
 
 
 # Bridging between current obs preprocessors and connector.
 # We should not introduce any new preprocessors.
 # TODO(jungong) : migrate and implement preprocessor library in Connector framework.
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class ObsPreprocessorConnector(AgentConnector):
     """A connector that wraps around existing RLlib observation preprocessors.
 

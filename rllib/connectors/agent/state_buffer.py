@@ -10,12 +10,12 @@ from ray.rllib.connectors.connector import (
     register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
+from ray.util.annotations import PublicAPI
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class StateBufferConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext):
         super().__init__(ctx)
