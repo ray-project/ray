@@ -313,7 +313,7 @@ class WorkerSet:
 
         Args:
             local_worker_for_synching: RolloutWorker to use to synchronize the weights
-                after recreation. If not provided, will try use `self._local_worker`.
+                after recreation.
 
         Returns:
             A tuple consisting of two items: The list of removed workers and the list of
