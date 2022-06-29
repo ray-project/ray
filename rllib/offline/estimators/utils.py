@@ -76,7 +76,7 @@ def lookup_action_value_fn(
                 batch,
                 state_batches,
                 batch.get(SampleBatch.SEQ_LENS),
-                )[0]
+            )[0]
             if SampleBatch.ACTIONS in batch:
                 q_values = convert_to_numpy(q_values)
                 actions = convert_to_numpy(batch[SampleBatch.ACTIONS])
@@ -101,6 +101,7 @@ def lookup_action_value_fn(
         action_value_fn = modelv2_action_value_fn
 
     elif algo_name in ["SAC", "CQL"]:
+
         def sac_action_value_fn(policy: Policy, batch: SampleBatch) -> TensorType:
             if policy.config["framework"] == "torch":
                 batch = convert_to_torch_tensor(batch, policy.device)
@@ -111,14 +112,18 @@ def lookup_action_value_fn(
                     q_values = convert_to_numpy(q_values)
                     actions = convert_to_numpy(batch[SampleBatch.ACTIONS])
                     q_values = np.squeeze(
-                        np.take_along_axis(q_values, np.expand_dims(actions, -1), axis=-1),
+                        np.take_along_axis(
+                            q_values, np.expand_dims(actions, -1), axis=-1
+                        ),
                         -1,
                     )
             elif isinstance(policy.action_space, Box):
-                q_values = policy.model.get_q_values(model_out, batch[SampleBatch.ACTIONS])
+                q_values = policy.model.get_q_values(
+                    model_out, batch[SampleBatch.ACTIONS]
+                )
                 q_values = convert_to_numpy(q_values).reshape([batch.count])
             return q_values
-        
+
         action_value_fn = sac_action_value_fn
 
     elif algo_name == "SimpleQ":
@@ -133,7 +138,7 @@ def lookup_action_value_fn(
                     -1,
                 )
             return q_values
-        
+
         action_value_fn = simpleq_action_value_fn
 
     if not action_value_fn:

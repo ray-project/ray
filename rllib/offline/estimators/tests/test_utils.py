@@ -1,6 +1,4 @@
-from rllib.offline.estimators.utils import (
-    lookup_state_value_fn, lookup_action_value_fn
-)
+from rllib.offline.estimators.utils import lookup_state_value_fn, lookup_action_value_fn
 import unittest
 import ray
 from ray.rllib.algorithms.registry import get_algorithm_class
@@ -17,20 +15,19 @@ print("rllib dir={}".format(rllib_dir))
 cartpole_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
 pendulum_data = os.path.join(rllib_dir, "tests/data/pendulum/small.json")
 
+
 class TestValueFnLookup(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init(num_cpus=4)
-    
+
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
 
     def test_discrete_action_value_fn(self):
         for algo_name in DISCRETE:
-            algo_class, config = get_algorithm_class(
-                algo_name, return_config=True
-            )
+            algo_class, config = get_algorithm_class(algo_name, return_config=True)
             config["env"] = "CartPole-v0"
             config["input"] = cartpole_data
             config["num_workers"] = 0
@@ -47,9 +44,7 @@ class TestValueFnLookup(unittest.TestCase):
 
     def test_discrete_state_value_fn(self):
         for algo_name in DISCRETE:
-            algo_class, config = get_algorithm_class(
-                algo_name, return_config=True
-            )
+            algo_class, config = get_algorithm_class(algo_name, return_config=True)
             config["env"] = "CartPole-v0"
             config["input"] = cartpole_data
             config["num_workers"] = 0
@@ -66,9 +61,7 @@ class TestValueFnLookup(unittest.TestCase):
 
     def test_continuous_action_value_fn(self):
         for algo_name in CONTINUOUS:
-            algo_class, config = get_algorithm_class(
-                algo_name, return_config=True
-            )
+            algo_class, config = get_algorithm_class(algo_name, return_config=True)
             config["env"] = "Pendulum-v1"
             config["input"] = pendulum_data
             config["num_workers"] = 0
@@ -85,9 +78,7 @@ class TestValueFnLookup(unittest.TestCase):
 
     def test_continuous_state_value_fn(self):
         for algo_name in CONTINUOUS:
-            algo_class, config = get_algorithm_class(
-                algo_name, return_config=True
-            )
+            algo_class, config = get_algorithm_class(algo_name, return_config=True)
             config["env"] = "Pendulum-v1"
             config["input"] = pendulum_data
             config["num_workers"] = 0
