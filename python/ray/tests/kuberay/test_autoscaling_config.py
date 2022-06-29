@@ -10,6 +10,7 @@ import yaml
 from ray.autoscaler._private.kuberay.autoscaling_config import (
     _derive_autoscaling_config_from_ray_cr,
     AutoscalingConfigProducer,
+    _round_up_k8s_quantity,
 )
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
@@ -44,6 +45,7 @@ def _get_basic_autoscaling_config() -> dict:
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
+                    "memory": 1000000000,
                     "Custom1": 1,
                     "Custom2": 5,
                 },
@@ -54,6 +56,7 @@ def _get_basic_autoscaling_config() -> dict:
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
+                    "memory": 536870912,
                     "Custom2": 5,
                     "Custom3": 1,
                 },
@@ -207,6 +210,14 @@ TEST_DATA = (
         ),
     ]
 )
+
+
+@pytest.mark.parametrize("input,output", [
+    # There's no particular discipline to these test cases.
+    ("100m", 1), ("15001m", 16), ("2", 2), ("100Mi", 104857600), ("1G", 1000000000)
+])
+def test_resource_quantity(input: str, output: int):
+    assert _round_up_k8s_quantity(input) == output, output
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
