@@ -75,12 +75,6 @@ class AwsVmClusterManager(ClusterManager):
         #print('enter any key to continue')
         #subprocess.Popen(['read', '-n', '1']).wait()
 
-        '''
-        Next steps:
-        * Error: returning files fails
-        ray_release.exception.FileDownloadError: Error downloading file /tmp/release_test_out.json to /var/folders/70/8_80x3vn6q3_23hgl__hzw7m0000gn/T/release-XXXXXXXXXX.tAvsWDtm/tmpaglq4nc_.json
-        '''
-
     def terminate_cluster(self, wait: bool):
 
         self.port_forward_proc.send_signal(signal.SIGTERM)
