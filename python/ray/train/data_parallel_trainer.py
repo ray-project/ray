@@ -8,7 +8,7 @@ import ray
 from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
@@ -18,7 +18,7 @@ from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -32,7 +32,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         self,
         preprocessor: "Preprocessor",
         run_dir: Optional[Path] = None,
-        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+        checkpoint_strategy: Optional[CheckpointConfig] = None,
     ):
         self.preprocessor = preprocessor
         super(_DataParallelCheckpointManager, self).__init__(

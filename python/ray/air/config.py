@@ -6,6 +6,9 @@ from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
 
+# Move here later when ml_utils is deprecated. Doing it now causes a circular import.
+from ray.util.ml_utils.checkpoint_manager import CheckpointConfig
+
 if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.tune.callback import Callback
@@ -298,8 +301,9 @@ class RunConfig:
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
-        failure_config: The failure mode configuration.
+        failure_config: Failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
+        checkpoint_config: Checkpointing configuration.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results. Defaults to 2.
@@ -312,4 +316,5 @@ class RunConfig:
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
+    checkpoint_config: Optional[CheckpointConfig] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS

@@ -4,6 +4,7 @@ import ray
 from ray.air import Checkpoint
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air.config import ScalingConfigDataClass
+from ray.air.config import CheckpointConfig
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import BaseTrainer
 
@@ -36,6 +37,29 @@ def test_run_config():
 
     # Succeed
     DummyTrainer(run_config=ray.air.RunConfig())
+
+
+def test_checkpointing_config():
+    with pytest.raises(ValueError):
+        CheckpointConfig(
+            checkpoint_score_attribute="metric", checkpoint_score_order="invalid"
+        )
+
+    checkpointing = CheckpointConfig()
+    assert checkpointing._tune_legacy_checkpoint_score_attr is None
+
+    checkpointing = CheckpointConfig(checkpoint_score_attribute="metric")
+    assert checkpointing._tune_legacy_checkpoint_score_attr == "metric"
+
+    checkpointing = CheckpointConfig(
+        checkpoint_score_attribute="metric", checkpoint_score_order="max"
+    )
+    assert checkpointing._tune_legacy_checkpoint_score_attr == "metric"
+
+    checkpointing = CheckpointConfig(
+        checkpoint_score_attribute="metric", checkpoint_score_order="min"
+    )
+    assert checkpointing._tune_legacy_checkpoint_score_attr == "min-metric"
 
 
 def test_scaling_config():
