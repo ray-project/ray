@@ -567,7 +567,7 @@ class Algorithm(Trainable):
                         "Off-policy estimation is not implemented for multi-agent. "
                     )
                 policy = self.get_policy()
-                gamma = config["gamma"]
+                gamma = self.config["gamma"]
                 self.reward_estimators.append(method_type(name, policy, gamma))
             else:
                 raise ValueError(
