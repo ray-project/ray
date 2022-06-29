@@ -1,17 +1,18 @@
 import abc
 import time
-from typing import Dict, Any, Optional
-
-from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.anyscale_util import get_project_name
-from ray_release.util import dict_hash, get_anyscale_sdk, anyscale_cluster_url
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS
+from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
+
+if TYPE_CHECKING:
+    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 
 class ClusterManager(abc.ABC):
     def __init__(
-        self, test_name: str, project_id: str, sdk: Optional[AnyscaleSDK] = None
+        self, test_name: str, project_id: str, sdk: Optional["AnyscaleSDK"] = None
     ):
         self.sdk = sdk or get_anyscale_sdk()
 

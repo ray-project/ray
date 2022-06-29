@@ -11,7 +11,6 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import (
     is_overridden,
-    OverrideToImplementCustomLogic,
     PublicAPI,
 )
 from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
@@ -53,7 +52,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             deprecation_warning(
                 old="on_trainer_init(trainer, **kwargs)",
                 new="on_algorithm_init(algorithm, **kwargs)",
-                error=True,
+                error=False,
             )
 
     def on_sub_environment_created(
@@ -313,7 +312,6 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
-    @OverrideToImplementCustomLogic
     @Deprecated(error=True)
     def on_trainer_init(self, *args, **kwargs):
         raise DeprecationWarning
@@ -407,6 +405,10 @@ class MultiCallbacks(DefaultCallbacks):
         ]
 
         return self
+
+    @Deprecated(error=True)
+    def on_trainer_init(self, *args, **kwargs):
+        raise DeprecationWarning
 
     def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
         for callback in self._callback_list:

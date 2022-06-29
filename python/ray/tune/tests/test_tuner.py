@@ -33,6 +33,16 @@ class DummyTrainer(BaseTrainer):
     ]
 
     def training_loop(self) -> None:
+        for i in range(5):
+            with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(str(i))
+            tune.report(step=i)
+
+
+class FailingTrainer(DummyTrainer):
+    def training_loop(self) -> None:
         raise RuntimeError("There is an error in trainer!")
 
 
@@ -189,7 +199,7 @@ class TunerTest(unittest.TestCase):
         assert len(results) == 4
 
     def test_tuner_trainer_fail(self):
-        trainer = DummyTrainer()
+        trainer = FailingTrainer()
         param_space = {
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),
