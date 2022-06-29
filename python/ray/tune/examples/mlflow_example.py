@@ -8,7 +8,8 @@ import time
 import mlflow
 
 from ray import tune
-from ray.tune.integration.mlflow import MLflowLoggerCallback, mlflow_mixin
+from ray.air.callbacks.mlflow import MLflowLoggerCallback
+from ray.tune.integration.mlflow import mlflow_mixin
 
 
 def evaluation_fn(step, width, height):
