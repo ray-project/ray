@@ -1,15 +1,17 @@
 import ray
 
 from typing import Union, List, Dict, Any, Optional, Callable
-from ray.rllib.policy.sample_batch import SampleBatchType
 from ray import ObjectRef
+from ray.rllib.policy.sample_batch import SampleBatchType
 from ray.rllib.utils.typing import T
+from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 
 
 # TODO: Implement Storage class after merging Storage class from Fwitter
 #  class CheckpointedStorage(Storage): [...]
 
-def _dereference(_object: Union[Any, ObjectRef], timeout) -> Any:
+
+def _maybe_dereference(_object: Union[Any, ObjectRef], timeout) -> Any:
     if type(_object) is ObjectRef:
         return ray.get(_object, timeout=timeout)
     else:
@@ -31,14 +33,15 @@ def get_distributed_buffer_class(base):
             Returns:
                 None
             """
-            batch = _dereference(batch)
+            batch = _maybe_dereference(batch)
             for key, arg in kwargs.items():
-                kwargs[key] = _dereference(arg)
+                kwargs[key] = _maybe_dereference(arg)
 
             super().add(batch, **kwargs)
 
-        def sample(self, num_items: int, as_object_ref: bool = False, **kwargs) -> \
-            Union[SampleBatchType, ObjectRef]:
+        def sample(
+            self, num_items: int, as_object_ref: bool = False, **kwargs
+        ) -> Union[SampleBatchType, ObjectRef]:
             """Calls the sample method of the underlying ReplayBuffer.
 
             Returns an ObjectRef to the sampled batch if `as_object_ref` is True.
@@ -53,7 +56,7 @@ def get_distributed_buffer_class(base):
                 The sampled batch, or references thereof.
             """
             for key, arg in kwargs.items():
-                kwargs[key] = _dereference(arg)
+                kwargs[key] = _maybe_dereference(arg)
 
             batch = super().sample(num_items, **kwargs)
 
@@ -66,7 +69,10 @@ def get_distributed_buffer_class(base):
 
 
 class ReplayReplayBufferManager:
-    def __init__(self, replay_buffers: list,):
+    def __init__(
+        self,
+        replay_buffers: list,
+    ):
         self.replay_buffers = replay_buffers
 
     def add(self, batch: Union[SampleBatchType, ObjectRef], **kwargs) -> None:
@@ -74,8 +80,9 @@ class ReplayReplayBufferManager:
         # Chooses a remote buffer to add batch to and passes an ObjectRef to the
         # remote buffer
 
-    def sample(self, num_items: int, as_object_ref: bool = False, **kwargs) -> Union[
-        SampleBatchType, ObjectRef]:
+    def sample(
+        self, num_items: int, as_object_ref: bool = False, **kwargs
+    ) -> Union[SampleBatchType, ObjectRef]:
         raise NotImplementedError
         # Chooses a remote buffer to sample from and return the batch itself or an
         # ObjectRef to it
@@ -96,7 +103,7 @@ class ReplayReplayBufferManager:
 
     def apply(
         self,
-        func: Callable[["ReplayBuffer", Optional[Any], Optional[Any]], T],
+        func: Callable[[ReplayBuffer, Optional[Any], Optional[Any]], T],
         *args,
         **kwargs,
     ) -> T:
