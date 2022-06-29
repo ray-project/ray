@@ -192,7 +192,8 @@ class LinearAttentionWrapper(RecurrentNetwork, nn.Module):
         # TODO: seq_lens.max() should work here but does not
         # should investigate rnn padding
         max_seq_len = inputs.shape[0] // seq_lens.numel()
-        embedding = self.embedding(max_seq_len + count.max())
+        if self.use_embedding:
+            embedding = self.embedding(max_seq_len + count.max())
 
         for t in range(max_seq_len):
             # Mask out right-justified zero-padding
@@ -204,10 +205,7 @@ class LinearAttentionWrapper(RecurrentNetwork, nn.Module):
                 break
             network_in = inputs[batch_mask, t]
             if self.use_embedding:
-                if self.training:
-                    network_in = network_in + embedding[count].reshape(
-                        num_valid_seqs, -1
-                    )
+                network_in = network_in + embedding[count].reshape(num_valid_seqs, -1)
             feat, [[si_out, zi_out]] = self.xformer(
                 network_in,
                 [[si[batch_mask], zi[batch_mask]]],
