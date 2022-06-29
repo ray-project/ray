@@ -90,7 +90,7 @@ class QRegTorchModel:
         """Resets/Reinintializes the model weights."""
         self.q_model.apply(self.initializer)
 
-    def train_q(self, batch: SampleBatch) -> TensorType:
+    def train(self, batch: SampleBatch) -> TensorType:
         """Trains self.q_model using Q-Reg loss on given batch.
 
         Args:
