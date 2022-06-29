@@ -4,7 +4,6 @@ import sys
 import shutil
 import tempfile
 import unittest
-import warnings
 
 import ray
 from ray.rllib import _register_all
@@ -592,20 +591,6 @@ class FunctionApiTest(unittest.TestCase):
 
         self.assertEqual(trial_1.last_result["m"], 4 + 9)
         self.assertEqual(trial_2.last_result["m"], 8 + 9)
-
-
-def test_checkpoint_dir_deprecation():
-    warnings.filterwarnings("always")
-
-    def train(config, checkpoint_dir=None):
-        for i in range(10):
-            tune.report({"foo": "bar"})
-
-    with warnings.catch_warnings(record=True) as w:
-        tune.run(train, num_samples=1)
-        assert len(w) == 1
-        assert issubclass(w[-1].category, DeprecationWarning)
-        assert "To save and load checkpoint in tune function" in str(w[-1].message)
 
 
 if __name__ == "__main__":
