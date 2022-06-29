@@ -68,9 +68,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
         "ray.job.code-search-path",
         System.getProperty("java.class.path")
             + File.pathSeparator
-            + tempDir.getAbsolutePath()
-            + File.pathSeparator
-            + cppFile.getAbsolutePath());
+            + tempDir.getAbsolutePath());
   }
 
   @Test
