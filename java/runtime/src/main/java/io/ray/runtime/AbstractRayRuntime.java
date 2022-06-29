@@ -11,6 +11,7 @@ import io.ray.api.WaitResult;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.CppActorClass;
 import io.ray.api.function.CppActorMethod;
+import io.ray.api.function.CppFunction;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -176,6 +177,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     // Python functions always have a return value, even if it's `None`.
     return callNormalFunction(
         functionDescriptor, args, /*returnType=*/ Optional.of(pyFunction.returnType), options);
+  }
+
+  @Override
+  public ObjectRef call(CppFunction cppFunction, Object[] args, CallOptions options) {
+    CppFunctionDescriptor functionDescriptor =
+        new CppFunctionDescriptor(cppFunction.functionName, "JAVA", "");
+    // Python functions always have a return value, even if it's `None`.
+    return callNormalFunction(
+        functionDescriptor, args, /*returnType=*/ Optional.of(cppFunction.returnType), options);
   }
 
   @Override
