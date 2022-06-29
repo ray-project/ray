@@ -140,12 +140,18 @@ if __name__ == "__main__":
         "--num-epochs", "-e", type=int, default=1, help="Number of epochs to read."
     )
     parser.add_argument(
-        "--prefetch-blocks", "-b", type=int, default=1, help="Number of blocks to prefetch when reading data."
+        "--prefetch-blocks",
+        "-b",
+        type=int,
+        default=1,
+        help="Number of blocks to prefetch when reading data.",
     )
 
     parser.add_argument(
-        "--use-stream-api", "-s", action="store_true",
-        help="If enabled, the input Dataset will be streamed (as a DatasetPipeline)."
+        "--use-stream-api",
+        "-s",
+        action="store_true",
+        help="If enabled, the input Dataset will be streamed (as a DatasetPipeline).",
     )
     args = parser.parse_args()
 
