@@ -53,12 +53,8 @@ class TestOPE(unittest.TestCase):
                 off_policy_estimation_methods={
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
-                    "dm": {
-                        "type": DirectMethod,
-                    },
-                    "dr": {
-                        "type": DoublyRobust,
-                    },
+                    "dm": {"type": DirectMethod},
+                    "dr": {"type": DoublyRobust},
                 },
             )
         )

@@ -7,6 +7,7 @@ import os
 import pickle
 import tempfile
 import time
+import importlib
 from collections import defaultdict
 from datetime import datetime
 from typing import (
@@ -555,9 +556,12 @@ class Algorithm(Trainable):
                     error=False,
                 )
                 method_type = ope_types[method_type]
-            # TODO: Allow for this to be a full classpath string as well,
-            # then construct this with our `from_config` util.
-            elif isinstance(method_type, type) and issubclass(
+            elif isinstance(method_type, str):
+                logger.log(0, "Trying to import from string: " + method_type)
+                mod, obj = method_type.rsplit(".", 1)
+                mod = importlib.import_module(mod)
+                method_type = getattr(mod, obj)
+            if isinstance(method_type, type) and issubclass(
                 method_type, OffPolicyEstimator
             ):
                 # Grab a reference to the current model
