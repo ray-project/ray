@@ -1,17 +1,18 @@
 import logging
 from typing import List, Optional, Type
 
-import numpy as np
-import tree
-
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import (LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES,
-                                     TARGET_NET_UPDATE_TIMER, NUM_AGENT_STEPS_SAMPLED,
-                                     NUM_ENV_STEPS_SAMPLED, )
+from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_TARGET_UPDATES,
+    TARGET_NET_UPDATE_TIMER,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+)
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
