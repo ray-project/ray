@@ -185,6 +185,14 @@ class SubmissionClient:
         headers: Optional[Dict[str, Any]] = None,
     ):
 
+        # Remove any trailing slashes
+        if address is not None and address.endswith("/"):
+            address = address.rstrip("/")
+            logger.debug(
+                "The submission address cannot contain trailing slashes. Removing "
+                f'them from the requested submission address of "{address}".'
+            )
+
         cluster_info = parse_cluster_info(
             address, create_cluster_if_needed, cookies, metadata, headers
         )

@@ -107,7 +107,7 @@ def test_deploy(ray_start_stop):
 
         print("Deploying arithmetic config.")
         deploy_response = subprocess.check_output(
-            ["serve", "deploy", arithmetic_file_name]
+            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:8265/"]
         )
         assert success_message_fragment in deploy_response
         print("Deploy request sent successfully.")
@@ -169,7 +169,9 @@ def test_status(ray_start_stop):
         return len(serve_status["deployment_statuses"])
 
     wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
-    status_response = subprocess.check_output(["serve", "status"])
+    status_response = subprocess.check_output(
+        ["serve", "status", "-a", "http://localhost:8265/"]
+    )
     serve_status = yaml.safe_load(status_response)
 
     expected_deployments = {
