@@ -4,7 +4,7 @@ from typing import Dict, List, Set, Optional, TYPE_CHECKING
 import ray
 
 from ray.workflow import common
-from ray.workflow.common import WorkflowStatus, StepID
+from ray.workflow.common import WorkflowStatus, TaskID
 from ray.workflow import workflow_state_from_storage
 from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
@@ -31,7 +31,7 @@ class SelfResolvingObject:
 
 
 @ray.remote(num_cpus=0)
-def load_step_output_from_storage(workflow_id: str, task_id: Optional[StepID]):
+def load_step_output_from_storage(workflow_id: str, task_id: Optional[TaskID]):
     wf_store = workflow_storage.WorkflowStorage(workflow_id)
     tid = wf_store.inspect_output(task_id)
     if tid is not None:
@@ -52,7 +52,7 @@ def load_step_output_from_storage(workflow_id: str, task_id: Optional[StepID]):
 def resume_workflow_step(
     job_id: str,
     workflow_id: str,
-    step_id: Optional[StepID] = None,
+    task_id: Optional[TaskID] = None,
 ) -> WorkflowExecutionState:
     """Resume a step of a workflow.
 
@@ -61,7 +61,7 @@ def resume_workflow_step(
         is used to identify the submitter of the workflow.
         workflow_id: The ID of the workflow job. The ID is used to identify
             the workflow.
-        step_id: The step to resume in the workflow.
+        task_id: The step to resume in the workflow.
 
     Raises:
         WorkflowNotResumableException: fail to resume the workflow.
@@ -72,7 +72,7 @@ def resume_workflow_step(
     with workflow_context.workflow_logging_context(job_id):
         try:
             return workflow_state_from_storage.workflow_state_from_storage(
-                workflow_id, step_id
+                workflow_id, task_id
             )
         except Exception as e:
             raise WorkflowNotResumableError(workflow_id) from e
@@ -181,7 +181,7 @@ class WorkflowManagementActor:
         return list(self._workflow_executors.keys())
 
     async def get_output(
-        self, workflow_id: str, name: Optional[StepID]
+        self, workflow_id: str, name: Optional[TaskID]
     ) -> ray.ObjectRef:
         """Get the output of a running workflow.
 

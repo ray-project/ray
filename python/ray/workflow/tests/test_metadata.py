@@ -263,7 +263,7 @@ def test_no_workflow_found(workflow_start_regular):
 
     with pytest.raises(ValueError) as excinfo:
         workflow.get_metadata("simple", "simple_step1")
-    assert str(excinfo.value) == "No such step_id simple_step1 in workflow simple"
+    assert str(excinfo.value) == "No such task_id simple_step1 in workflow simple"
 
 
 if __name__ == "__main__":
