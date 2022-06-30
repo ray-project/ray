@@ -1,6 +1,11 @@
-import logging
-import platform
 from abc import ABCMeta, abstractmethod
+from collections import namedtuple
+import gym
+from gym.spaces import Box
+import logging
+import numpy as np
+import platform
+import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,11 +17,6 @@ from typing import (
     Type,
     Union,
 )
-
-import gym
-import numpy as np
-import tree  # pip install dm_tree
-from gym.spaces import Box
 
 import ray
 from ray.actor import ActorHandle
@@ -185,6 +185,10 @@ class Policy(metaclass=ABCMeta):
         # Whether the Model's initial state (method) has been added
         # automatically based on the given view requirements of the model.
         self._model_init_state_automatically_added = False
+
+        # Connectors.
+        self.agent_connectors = None
+        self.action_connectors = None
 
     @DeveloperAPI
     def init_view_requirements(self):
@@ -934,6 +938,7 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
+            SampleBatch.T: ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(

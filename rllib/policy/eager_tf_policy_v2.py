@@ -252,15 +252,12 @@ class EagerTFPolicyV2(Policy):
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
-        policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
         grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy: The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
             optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
             grads: The gradient tensor to be applied.
