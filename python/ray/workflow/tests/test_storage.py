@@ -1,17 +1,20 @@
+import subprocess
+import time
+
 import pytest
+
 import ray
+from ray import workflow
 from ray._private import signature
 from ray.tests.conftest import *  # noqa
-from ray import workflow
 from ray.workflow import workflow_storage
 from ray.workflow.common import (
     StepType,
-    WorkflowStepRuntimeOptions,
     WorkflowNotFoundError,
+    WorkflowStepRuntimeOptions,
 )
+from ray.workflow import serialization_context
 from ray.workflow.tests import utils
-import subprocess
-import time
 
 
 def some_func(x):
@@ -23,7 +26,7 @@ def some_func2(x):
 
 
 def test_delete(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
+    from ray._private.storage import _storage_uri
 
     # Try deleting a random workflow that never existed.
     with pytest.raises(WorkflowNotFoundError):
@@ -54,8 +57,10 @@ def test_delete(workflow_start_regular):
 
     workflow.delete("never_finishes")
 
-    with pytest.raises(ValueError):
-        ouput = workflow.get_output("never_finishes")
+    with pytest.raises(ray.exceptions.RaySystemError):
+        # TODO(suquark): we should raise "ValueError" without
+        #  ray.get() over the result.
+        ray.get(workflow.get_output("never_finishes"))
 
     # TODO(Alex): Uncomment after
     # https://github.com/ray-project/ray/issues/19481.
@@ -77,8 +82,10 @@ def test_delete(workflow_start_regular):
 
     workflow.delete(workflow_id="finishes")
 
-    with pytest.raises(ValueError):
-        ouput = workflow.get_output("finishes")
+    with pytest.raises(ray.exceptions.RaySystemError):
+        # TODO(suquark): we should raise "ValueError" without
+        #  ray.get() over the result.
+        ray.get(workflow.get_output("finishes"))
 
     # TODO(Alex): Uncomment after
     # https://github.com/ray-project/ray/issues/19481.
@@ -112,10 +119,16 @@ def test_workflow_storage(workflow_start_regular):
     workflow_id = test_workflow_storage.__name__
     wf_storage = workflow_storage.WorkflowStorage(workflow_id)
     step_id = "some_step"
-    step_options = WorkflowStepRuntimeOptions.make(step_type=StepType.FUNCTION)
+    step_options = WorkflowStepRuntimeOptions(
+        step_type=StepType.FUNCTION,
+        catch_exceptions=False,
+        max_retries=0,
+        allow_inplace=False,
+        checkpoint=False,
+        ray_options={},
+    )
     input_metadata = {
         "name": "test_basic_workflows.append1",
-        "workflows": ["def"],
         "workflow_refs": ["some_ref"],
         "step_options": step_options.to_dict(),
     }
@@ -143,13 +156,17 @@ def test_workflow_storage(workflow_start_regular):
     wf_storage._put(wf_storage._key_step_output(step_id), output)
 
     assert wf_storage.load_step_output(step_id) == output
-    assert wf_storage.load_step_args(step_id, [], []) == args
+
+    with serialization_context.workflow_args_resolving_context([]):
+        assert (
+            signature.recover_args(ray.get(wf_storage.load_step_args(step_id))) == args
+        )
     assert wf_storage.load_step_func_body(step_id)(33) == 34
     assert ray.get(wf_storage.load_object_ref(obj_ref.hex())) == object_resolved
 
     # test s3 path
     # here we hardcode the path to make sure s3 path is parsed correctly
-    from ray.internal.storage import _storage_uri
+    from ray._private.storage import _storage_uri
 
     if _storage_uri.startswith("s3://"):
         assert wf_storage._get("steps/outputs.json", True) == root_output_metadata
@@ -183,7 +200,6 @@ def test_workflow_storage(workflow_start_regular):
     assert inspect_result == workflow_storage.StepInspectResult(
         args_valid=True,
         func_body_valid=True,
-        workflows=input_metadata["workflows"],
         workflow_refs=input_metadata["workflow_refs"],
         step_options=step_options,
     )
@@ -196,7 +212,6 @@ def test_workflow_storage(workflow_start_regular):
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         func_body_valid=True,
-        workflows=input_metadata["workflows"],
         workflow_refs=input_metadata["workflow_refs"],
         step_options=step_options,
     )
@@ -207,7 +222,6 @@ def test_workflow_storage(workflow_start_regular):
 
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
-        workflows=input_metadata["workflows"],
         workflow_refs=input_metadata["workflow_refs"],
         step_options=step_options,
     )
@@ -234,11 +248,11 @@ def test_cluster_storage_init(workflow_start_cluster, tmp_path):
 
     ray.init(address=address)
 
-    @workflow.step
+    @ray.remote
     def f():
         return 10
 
-    assert f.step().run() == 10
+    assert workflow.create(f.bind()).run() == 10
 
 
 if __name__ == "__main__":

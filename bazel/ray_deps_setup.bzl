@@ -88,9 +88,9 @@ def ray_deps_setup():
     # https://github.com/ray-project/ray/issues/14117
     http_archive(
         name = "com_google_protobuf",
-        strip_prefix = "protobuf-3.16.0",
-        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.16.0.tar.gz"],
-        sha256 = "7892a35d979304a404400a101c46ce90e85ec9e2a766a86041bb361f626247f5",
+        strip_prefix = "protobuf-3.19.4",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
+        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
     )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
@@ -314,8 +314,8 @@ def ray_deps_setup():
 
         # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
         # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
-        url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/cfd16a16cb4c4f27337ef652aa8510dcf1dd01ce.tar.gz",
-        strip_prefix = "bazel-compile-commands-extractor-cfd16a16cb4c4f27337ef652aa8510dcf1dd01ce",
+        url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/2e8b7654fa10c44b9937453fa4974ed2229d5366.tar.gz",
+        strip_prefix = "bazel-compile-commands-extractor-2e8b7654fa10c44b9937453fa4974ed2229d5366",
         # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
-        sha256 = "4c2753a8d446f561391b7968a6d0eed748e8bb0f40adeda51301c57e829c7696",
+        sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )

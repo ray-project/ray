@@ -119,4 +119,16 @@ public class NamespaceTest {
       Ray.shutdown();
     }
   }
+
+  public void testSpecifyNamespaceForActor() {
+    System.setProperty("ray.job.namespace", "namespace1");
+    try {
+      Ray.init();
+      ActorHandle<GetNamespaceActor> actor =
+          Ray.actor(GetNamespaceActor::new).setName("a", "namespace2").remote();
+      Assert.assertFalse(Ray.getActor("a").isPresent());
+    } finally {
+      Ray.shutdown();
+    }
+  }
 }

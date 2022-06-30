@@ -12,9 +12,9 @@ from ray import tune
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.resources import Resources
-from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.tune.trial import Trial
-from ray.tune import trial_runner
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.experiment import Trial
+from ray.tune.execution import trial_runner
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 
 CHECKPOINT_FILENAME = "model.xgb"
@@ -53,7 +53,7 @@ def train_breast_cancer(config: dict, checkpoint_dir=None):
         xgb_model.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
 
     # we can obtain current trial resources through
-    # tune.get_trial_resources()
+    # `tune.get_trial_resources()`
     config["nthread"] = int(tune.get_trial_resources().head_cpus)
     print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
     # Train the classifier, using the Tune callback

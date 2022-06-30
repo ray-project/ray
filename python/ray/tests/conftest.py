@@ -18,23 +18,24 @@ from unittest import mock
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
 from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
     wait_for_redis_to_start,
 )
 from ray._private.test_utils import (
+    get_and_run_node_killer,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
     teardown_tls,
-    get_and_run_node_killer,
     test_external_redis,
 )
-from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
 
 def get_default_fixure_system_config():
@@ -748,6 +749,10 @@ def append_short_test_summary(rep):
 
     test_name = rep.nodeid.replace(os.sep, "::")
 
+    if os.name == "nt":
+        # ":" is not legal in filenames in windows
+        test_name.replace(":", "$")
+
     header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
 
@@ -919,3 +924,25 @@ def start_http_proxy(request):
         if proxy:
             proxy.terminate()
             proxy.wait()
+
+
+@pytest.fixture
+def set_runtime_env_plugins(request):
+    runtime_env_plugins = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGINS"] = runtime_env_plugins
+        yield runtime_env_plugins
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGINS"]
+
+
+@pytest.fixture
+def set_runtime_env_plugin_schemas(request):
+    runtime_env_plugin_schemas = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = runtime_env_plugin_schemas
+        # Clear and reload schemas.
+        RuntimeEnvPluginSchemaManager.clear()
+        yield runtime_env_plugin_schemas
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]

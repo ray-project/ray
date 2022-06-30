@@ -1,12 +1,12 @@
 from pathlib import Path
 from typing import Any, Dict
 
+from ray.autoscaler._private.cli_logger import cli_logger
+
 try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
-
-from ray.autoscaler._private.cli_logger import cli_logger
 
 
 def _check_docker_file_mounts(file_mounts: Dict[str, str]) -> None:

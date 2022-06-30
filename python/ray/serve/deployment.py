@@ -1,5 +1,6 @@
 from copy import copy
 import inspect
+import logging
 from typing import (
     Any,
     Callable,
@@ -10,19 +11,23 @@ from typing import (
 )
 
 from ray.serve.context import get_global_client
-from ray.experimental.dag.class_node import ClassNode
-from ray.experimental.dag.function_node import FunctionNode
+from ray.dag.class_node import ClassNode
+from ray.dag.function_node import FunctionNode
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
+from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import DEFAULT, get_deployment_import_path
+from ray.serve.utils import DEFAULT
 from ray.util.annotations import PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
 )
+
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI
@@ -33,7 +38,6 @@ class Deployment:
         name: str,
         config: DeploymentConfig,
         version: Optional[str] = None,
-        prev_version: Optional[str] = None,
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Tuple[Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
@@ -58,8 +62,6 @@ class Deployment:
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
-        if not (prev_version is None or isinstance(prev_version, str)):
-            raise TypeError("prev_version must be a string.")
         if not (init_args is None or isinstance(init_args, (tuple, list))):
             raise TypeError("init_args must be a tuple.")
         if not (init_kwargs is None or isinstance(init_kwargs, dict)):
@@ -83,19 +85,9 @@ class Deployment:
         if init_kwargs is None:
             init_kwargs = {}
 
-        # TODO(architkulkarni): Enforce that autoscaling_config and
-        # user-provided num_replicas should be mutually exclusive.
-        if version is None and config.autoscaling_config is not None:
-            # TODO(architkulkarni): Remove this restriction.
-            raise ValueError(
-                "Currently autoscaling is only supported for "
-                "versioned deployments. Try @serve.deployment(version=...)."
-            )
-
         self._func_or_class = func_or_class
         self._name = name
         self._version = version
-        self._prev_version = prev_version
         self._config = config
         self._init_args = init_args
         self._init_kwargs = init_kwargs
@@ -114,15 +106,6 @@ class Deployment:
         If None, will be redeployed every time `.deploy()` is called.
         """
         return self._version
-
-    @property
-    def prev_version(self) -> Optional[str]:
-        """Existing version of deployment to target.
-
-        If prev_version does not match with existing deployment
-        version, the deployment will fail to be deployed.
-        """
-        return self._prev_version
 
     @property
     def func_or_class(self) -> Union[Callable, str]:
@@ -239,7 +222,6 @@ class Deployment:
             ray_actor_options=self._ray_actor_options,
             config=self._config,
             version=self._version,
-            prev_version=self._prev_version,
             route_prefix=self.route_prefix,
             url=self.url,
             _blocking=_blocking,
@@ -275,7 +257,6 @@ class Deployment:
         func_or_class: Optional[Callable] = None,
         name: Optional[str] = None,
         version: Optional[str] = None,
-        prev_version: Optional[str] = None,
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
@@ -321,9 +302,6 @@ class Deployment:
         if version is None:
             version = self._version
 
-        if prev_version is None:
-            prev_version = self._prev_version
-
         if init_args is None:
             init_args = self._init_args
 
@@ -357,7 +335,6 @@ class Deployment:
             name,
             new_config,
             version=version,
-            prev_version=prev_version,
             init_args=init_args,
             init_kwargs=init_kwargs,
             route_prefix=route_prefix,
@@ -371,7 +348,6 @@ class Deployment:
         func_or_class: Optional[Callable] = None,
         name: Optional[str] = None,
         version: Optional[str] = None,
-        prev_version: Optional[str] = None,
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
@@ -395,7 +371,6 @@ class Deployment:
             func_or_class=func_or_class,
             name=name,
             version=version,
-            prev_version=prev_version,
             init_args=init_args,
             init_kwargs=init_kwargs,
             route_prefix=route_prefix,
@@ -413,7 +388,6 @@ class Deployment:
         self._func_or_class = validated._func_or_class
         self._name = validated._name
         self._version = validated._version
-        self._prev_version = validated._prev_version
         self._init_args = validated._init_args
         self._init_kwargs = validated._init_kwargs
         self._route_prefix = validated._route_prefix
@@ -461,12 +435,11 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     return DeploymentSchema(
         name=d.name,
-        import_path=get_deployment_import_path(
-            d, enforce_importable=True, replace_main=True
-        ),
-        init_args=(),
-        init_kwargs={},
-        num_replicas=d.num_replicas,
+        # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
+        # because internally we use these two field for autoscale and deploy.
+        # We can improve the code after we separate the user faced deployment config and
+        # internal deployment config.
+        num_replicas=None if d._config.autoscaling_config else d.num_replicas,
         route_prefix=d.route_prefix,
         max_concurrent_queries=d.max_concurrent_queries,
         user_config=d.user_config,
@@ -480,6 +453,14 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    """Creates a deployment with parameters specified in schema.
+
+    The returned deployment CANNOT be deployed immediately. It's func_or_class
+    value is an empty string (""), which is not a valid import path. The
+    func_or_class value must be overwritten with a valid function or class
+    before the deployment can be deployed.
+    """
+
     if s.ray_actor_options is None:
         ray_actor_options = None
     else:
@@ -498,7 +479,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     )
 
     return Deployment(
-        func_or_class=s.import_path,
+        func_or_class="",
         name=s.name,
         config=config,
         init_args=(),

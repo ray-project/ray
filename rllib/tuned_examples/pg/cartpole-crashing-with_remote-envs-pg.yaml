@@ -10,7 +10,7 @@ cartpole-crashing-with-remote-envs-pg:
         env_config:
             config:
                 p_crash: 0.0
-                # Crash all envs always exactly after 30 steps.
+                # Crash all envs always exactly after n steps.
                 crash_after_n_steps: 60
                 # Time for the env to initialize when newly created.
                 # Every time a remote sub-environment crashes, a new env is created

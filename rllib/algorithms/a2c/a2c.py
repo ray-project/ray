@@ -2,12 +2,8 @@ import logging
 import math
 from typing import Optional
 
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_COUNTER,
-    STEPS_TRAINED_THIS_ITER_COUNTER,
-)
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -18,13 +14,15 @@ from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     COMPUTE_GRADS_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    NUM_ENV_STEPS_TRAINED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,7 +37,7 @@ class A2CConfig(A3CConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=2)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -62,7 +60,7 @@ class A2CConfig(A3CConfig):
 
     def __init__(self):
         """Initializes a A2CConfig instance."""
-        super().__init__(trainer_class=A2C)
+        super().__init__(algo_class=A2C)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -73,7 +71,7 @@ class A2CConfig(A3CConfig):
         # Override some of A3CConfig's default values with A2C-specific values.
         self.rollout_fragment_length = 20
         self.sample_async = False
-        self.min_time_s_per_reporting = 10
+        self.min_time_s_per_iteration = 10
         # __sphinx_doc_end__
         # fmt: on
 
@@ -93,7 +91,7 @@ class A2CConfig(A3CConfig):
                 memory. To enable, set this to a value less than the train batch size.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -107,11 +105,11 @@ class A2CConfig(A3CConfig):
 class A2C(A3C):
     @classmethod
     @override(A3C)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return A2CConfig().to_dict()
 
     @override(A3C)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -130,8 +128,8 @@ class A2C(A3C):
                     "Otherwise, microbatches of desired size won't be achievable."
                 )
 
-    @override(Trainer)
-    def setup(self, config: PartialTrainerConfigDict):
+    @override(Algorithm)
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         # Create a microbatch variable for collecting gradients on microbatches'.
@@ -145,12 +143,12 @@ class A2C(A3C):
             self._microbatches_counts = self._num_microbatches = 0
 
     @override(A3C)
-    def training_iteration(self) -> ResultDict:
-        # W/o microbatching: Identical to Trainer's default implementation.
-        # Only difference to a default Trainer being the value function loss term
+    def training_step(self) -> ResultDict:
+        # W/o microbatching: Identical to Algorithm's default implementation.
+        # Only difference to a default Algorithm being the value function loss term
         # and its value computations alongside each action.
         if self.config["microbatch_size"] is None:
-            return Trainer.training_iteration(self)
+            return Algorithm.training_step(self)
 
         # In microbatch mode, we want to compute gradients on experience
         # microbatches, average a number of these microbatches, and then
@@ -188,8 +186,8 @@ class A2C(A3C):
         )
         if self._num_microbatches >= num_microbatches:
             # Update counters.
-            self._counters[STEPS_TRAINED_COUNTER] += self._microbatches_counts
-            self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = self._microbatches_counts
+            self._counters[NUM_ENV_STEPS_TRAINED] += self._microbatches_counts
+            self._counters[NUM_AGENT_STEPS_TRAINED] += self._microbatches_counts
 
             # Apply gradients.
             apply_timer = self._timers[APPLY_GRADS_TIMER]
@@ -206,7 +204,7 @@ class A2C(A3C):
             global_vars = {
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             }
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
                     policies=self.workers.local_worker().get_policies_to_train(),
                     global_vars=global_vars,

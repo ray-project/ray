@@ -159,7 +159,7 @@ def get_marwil_tf_policy(base: type) -> type:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with MAMLTrainer.
+        A TF Policy to be used with MAML.
     """
 
     class MARWILTFPolicy(ValueNetworkMixin, PostprocessAdvantages, base):
@@ -174,7 +174,9 @@ def get_marwil_tf_policy(base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.marwil.marwil.DEFAULT_CONFIG, **config)
+            config = dict(
+                ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict(), **config
+            )
 
             # Initialize base class.
             base.__init__(
@@ -248,5 +250,5 @@ def get_marwil_tf_policy(base: type) -> type:
     return MARWILTFPolicy
 
 
-MARWILStaticGraphTFPolicy = get_marwil_tf_policy(DynamicTFPolicyV2)
-MARWILEagerTFPolicy = get_marwil_tf_policy(EagerTFPolicyV2)
+MARWILTF1Policy = get_marwil_tf_policy(DynamicTFPolicyV2)
+MARWILTF2Policy = get_marwil_tf_policy(EagerTFPolicyV2)

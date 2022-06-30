@@ -62,7 +62,7 @@ We've just covered the case in which you manually interrupt a Tune run.
 But you can also control when trials are stopped early by passing the ``stop`` argument to ``tune.run``.
 This argument takes, a dictionary, a function, or a :class:`Stopper <ray.tune.stopper.Stopper>` class as an argument.
 
-If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the
+If a dictionary is passed in, the keys may be any field in the return result of ``session.report`` in the
 Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
 
 Stopping with a dictionary
