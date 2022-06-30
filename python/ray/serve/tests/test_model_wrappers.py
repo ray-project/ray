@@ -215,8 +215,8 @@ def test_model_wrapper_reconfigure(serve_instance):
 
     predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
     additional_config = {
-        "checkpoint": { "increment": 5 },
-        "predictor_cls": "ray.serve.tests.test_model_wrappers.AdderPredictor"
+        "checkpoint": {"increment": 5},
+        "predictor_cls": "ray.serve.tests.test_model_wrappers.AdderPredictor",
     }
 
     with InputNode() as dag_input:
