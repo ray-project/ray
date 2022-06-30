@@ -1,5 +1,4 @@
 from abc import ABCMeta, abstractmethod
-from collections import namedtuple
 import gym
 from gym.spaces import Box
 import logging
