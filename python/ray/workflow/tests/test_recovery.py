@@ -349,8 +349,8 @@ def test_shortcut(workflow_start_regular):
     assert workflow.create(recursive_chain.bind(0)).run(workflow_id="shortcut") == 100
     # the shortcut points to the step with output checkpoint
     store = workflow_storage.get_workflow_storage("shortcut")
-    step_id = store.get_entrypoint_step_id()
-    output_step_id = store.inspect_step(step_id).output_step_id
+    task_id = store.get_entrypoint_step_id()
+    output_step_id = store.inspect_step(task_id).output_step_id
     assert store.inspect_step(output_step_id).output_object_valid
 
 
