@@ -579,7 +579,7 @@ def run_graph(
 
         for route_prefix in route_prefixes:
             if len(route_prefixes[route_prefix]) > 1:
-                logger.warning(
+                raise ValueError(
                     "Got more than one deployment with route_prefix "
                     f'"{route_prefix}": {route_prefixes[route_prefix]}. '
                     "One of these deployments will be accessible at "

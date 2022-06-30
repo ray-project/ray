@@ -6,6 +6,7 @@ import time
 from typing import Optional, Union
 
 import click
+from ray.serve.common import ApplicationStatus
 import yaml
 
 import ray
@@ -24,7 +25,7 @@ from ray.serve.constants import (
 )
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema, serve_status_to_schema
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -261,6 +262,25 @@ def run(
     try:
         if is_config:
             client.deploy_app(config)
+            cli_logger.info(f"Deploying config at {config_path}.")
+            status_info = client.get_serve_status()
+            while status_info.app_status.status == ApplicationStatus.DEPLOYING:
+                yaml.safe_dump(
+                    serve_status_to_schema(status_info).json(),
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
+                time.sleep(5)
+                status_info = client.get_serve_status()
+            if status_info.app_status.status == ApplicationStatus.DEPLOY_FAILED:
+                cli_logger.error("Deploy failed. Last logged status:")
+                yaml.safe_dump(
+                    serve_status_to_schema(status_info).json(),
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
+                cli_logger.error("Shutting down.")
+                raise KeyboardInterrupt
         else:
             serve.run(node, host=host, port=port)
         cli_logger.success("Deployed successfully.")
