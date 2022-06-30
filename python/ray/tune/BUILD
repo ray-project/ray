@@ -128,6 +128,13 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_F"],
 )
 
+py_test(
+    name = "test_function_api_legacy",
+    size = "medium",
+    srcs = ["tests/test_function_api_legacy.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_F"],
+)
 
 py_test(
     name = "test_legacy_import",

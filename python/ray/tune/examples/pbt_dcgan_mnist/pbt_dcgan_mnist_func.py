@@ -4,6 +4,8 @@ Example of training DCGAN on MNIST using PBT with Tune's function API.
 """
 import ray
 from ray import tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 import argparse
@@ -22,7 +24,7 @@ from common import Discriminator, Generator, Net
 
 
 # __Train_begin__
-def dcgan_train(config, checkpoint_dir=None):
+def dcgan_train(config):
     step = 0
     use_cuda = config.get("use_gpu") and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -40,14 +42,16 @@ def dcgan_train(config, checkpoint_dir=None):
     with FileLock(os.path.expanduser("~/.data.lock")):
         dataloader = get_data_loader()
 
-    if checkpoint_dir is not None:
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        checkpoint = torch.load(path)
-        netD.load_state_dict(checkpoint["netDmodel"])
-        netG.load_state_dict(checkpoint["netGmodel"])
-        optimizerD.load_state_dict(checkpoint["optimD"])
-        optimizerG.load_state_dict(checkpoint["optimG"])
-        step = checkpoint["step"]
+    if session.get_checkpoint():
+        loaded_checkpoint = session.get_checkpoint()
+        with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
+            path = os.path.join(loaded_checkpoint_dir, "checkpoint.pt")
+            checkpoint = torch.load(path)
+            netD.load_state_dict(checkpoint["netDmodel"])
+            netG.load_state_dict(checkpoint["netGmodel"])
+            optimizerD.load_state_dict(checkpoint["optimD"])
+            optimizerG.load_state_dict(checkpoint["optimG"])
+            step = checkpoint["step"]
 
         if "netD_lr" in config:
             for param_group in optimizerD.param_groups:
@@ -69,19 +73,22 @@ def dcgan_train(config, checkpoint_dir=None):
             config["mnist_model_ref"],
         )
         step += 1
-        with tune.checkpoint_dir(step=step) as checkpoint_dir:
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            torch.save(
-                {
-                    "netDmodel": netD.state_dict(),
-                    "netGmodel": netG.state_dict(),
-                    "optimD": optimizerD.state_dict(),
-                    "optimG": optimizerG.state_dict(),
-                    "step": step,
-                },
-                path,
-            )
-        tune.report(lossg=lossG, lossd=lossD, is_score=is_score)
+        os.makedirs("my_model", exist_ok=True)
+        torch.save(
+            {
+                "netDmodel": netD.state_dict(),
+                "netGmodel": netG.state_dict(),
+                "optimD": optimizerD.state_dict(),
+                "optimG": optimizerG.state_dict(),
+                "step": step,
+            },
+            "my_model/checkpoint.pt",
+        )
+
+        session.report(
+            {"lossg": lossG, "lossd": lossD, "is_score": is_score},
+            checkpoint=Checkpoint.from_directory("my_model"),
+        )
 
 
 # __Train_end__

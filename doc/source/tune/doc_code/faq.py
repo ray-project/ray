@@ -3,6 +3,7 @@
 # __reproducible_start__
 import numpy as np
 from ray import tune
+from ray.air import session
 
 
 def train(config):
@@ -12,7 +13,7 @@ def train(config):
     # is the same.
     np.random.seed(config["seed"])
     random_result = np.random.uniform(0, 100, size=1).item()
-    tune.report(result=random_result)
+    session.report({"result": random_result})
 
 
 # Set seed for Ray Tune's random search.
@@ -54,7 +55,7 @@ config = {
 
 def train(config):
     random_result = np.random.uniform(0, 100, size=1).item()
-    tune.report(result=random_result)
+    session.report({"result": random_result})
 
 
 train_fn = train
@@ -90,7 +91,7 @@ if not MOCK:
     def train_fn(config, checkpoint_dir=None):
         # some Modin operations here
         # import modin.pandas as pd
-        tune.report(metric=metric)
+        session.report({"metric": metric})
 
     tune.run(
         train_fn,

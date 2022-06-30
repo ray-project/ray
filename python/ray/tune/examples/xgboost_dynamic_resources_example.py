@@ -57,7 +57,7 @@ def train_breast_cancer(config: dict, checkpoint_dir=None):
         xgb_model.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
 
     # we can obtain current trial resources through
-    # tune.get_trial_resources()
+    # `tune.get_trial_resources()`
     config["nthread"] = int(tune.get_trial_resources().head_cpus)
     print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
     # Train the classifier, using the Tune callback

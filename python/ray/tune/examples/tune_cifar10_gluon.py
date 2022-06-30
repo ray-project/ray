@@ -15,6 +15,7 @@ from gluoncv.data import transforms as gcv_transforms
 
 from ray.tune.schedulers import create_scheduler
 from ray import tune
+from ray.air import session
 
 # Training settings
 parser = argparse.ArgumentParser(description="CIFAR-10 Example")
@@ -189,7 +190,7 @@ def train_cifar10(config):
     for epoch in range(1, args.epochs + 1):
         train(epoch)
         test_loss, test_acc = test()
-        tune.report(mean_loss=test_loss, mean_accuracy=test_acc)
+        session.report({"mean_loss": test_loss, "mean_accuracy": test_acc})
 
 
 if __name__ == "__main__":

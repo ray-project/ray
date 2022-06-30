@@ -1,6 +1,7 @@
 # flake8: noqa
 
 # __function_api_start__
+from ray.air import session
 
 
 def objective(x, a, b):  # Define an objective function.
@@ -12,7 +13,7 @@ def trainable(config):  # Pass a "config" dictionary into your trainable.
     for x in range(20):  # "Train" for 20 iterations and compute intermediate scores.
         score = objective(x, config["a"], config["b"])
 
-        tune.report(score=score)  # Send the score to Tune.
+        session.report({"score": score})  # Send the score to Tune.
 
 
 # __function_api_end__

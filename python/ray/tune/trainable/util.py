@@ -320,11 +320,12 @@ def with_parameters(trainable, **kwargs):
     .. code-block:: python
 
         from ray import tune
+        from ray.air import session
 
         def train(config, data=None):
             for sample in data:
                 loss = update_model(sample)
-                tune.report(loss=loss)
+                session.report(loss=loss)
 
         data = HugeDataset(download=True)
 

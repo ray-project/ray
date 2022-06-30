@@ -3,6 +3,7 @@
 It also checks that it is usable with a separate scheduler.
 """
 from ray import tune
+from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.automl import GeneticSearch
 from ray.tune.automl import ContinuousSpace, DiscreteSpace, SearchSpace
@@ -19,7 +20,7 @@ def michalewicz_function(config, reporter):
     y = np.dot(sin_x, sin_z)
 
     # Negate y since we want to minimize y value
-    tune.report(timesteps_total=1, neg_mean_loss=-y)
+    session.report({"timesteps_total": 1, "neg_mean_loss": -y})
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from torchvision import datasets, transforms
 
 import ray
 from ray import tune
+from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -103,7 +104,7 @@ def train_mnist(config):
         train(model, optimizer, train_loader, device)
         acc = test(model, test_loader, device)
         # Set this to run Tune.
-        tune.report(mean_accuracy=acc)
+        session.report({"mean_accuracy": acc})
 
 
 if __name__ == "__main__":

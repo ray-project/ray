@@ -1,13 +1,14 @@
 # If want to use checkpointing with a custom training function (not a Ray
-# integration like PyTorch or Tensorflow), you must expose a
-# ``checkpoint_dir`` argument in the function signature, and call
-# ``tune.checkpoint_dir``:
+# integration like PyTorch or Tensorflow), your function can read/write
+# checkpoint through ``ray.air.session`` APIs.
 import os
 import time
-import json
 import argparse
 
 from ray import tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_FILE_NAME
+from ray import cloudpickle as pickle
 
 
 def evaluation_fn(step, width, height):
@@ -15,25 +16,20 @@ def evaluation_fn(step, width, height):
     return (0.1 + width * step / 100) ** (-1) + height * 0.1
 
 
-def train_func(config, checkpoint_dir=None):
-    start = 0
+def train_func(config):
+    step = 0
     width, height = config["width"], config["height"]
 
-    if checkpoint_dir:
-        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
-            state = json.loads(f.read())
-            start = state["step"] + 1
+    if session.get_checkpoint():
+        loaded_checkpoint = session.get_checkpoint()
+        step = loaded_checkpoint.to_dict()["step"] + 1
 
-    for step in range(start, 100):
+    for step in range(step, 100):
         intermediate_score = evaluation_fn(step, width, height)
-
-        # Obtain a checkpoint directory
-        with tune.checkpoint_dir(step=step) as checkpoint_dir:
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(path, "w") as f:
-                f.write(json.dumps({"step": step}))
-
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        checkpoint = Checkpoint.from_dict({"step": step})
+        session.report(
+            {"iterations": step, "mean_loss": intermediate_score}, checkpoint=checkpoint
+        )
 
 
 # You can restore a single trial checkpoint by using
@@ -73,6 +69,8 @@ if __name__ == "__main__":
         },
     )
     print("Best hyperparameters: ", analysis.best_config)
-    print("Best checkpoint directory: ", analysis.best_checkpoint)
-    with open(os.path.join(analysis.best_checkpoint, "checkpoint"), "r") as f:
-        print("Best checkpoint: ", json.load(f))
+    best_checkpoint = analysis.best_checkpoint
+    with best_checkpoint.as_directory() as best_ckpt_dir:
+        print("Best checkpoint directory: ", best_ckpt_dir)
+        with open(os.path.join(best_ckpt_dir, _DICT_CHECKPOINT_FILE_NAME), "rb") as f:
+            print("Best checkpoint: ", pickle.load(f))

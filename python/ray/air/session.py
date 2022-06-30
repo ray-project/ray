@@ -64,44 +64,45 @@ def get_checkpoint() -> Optional[Checkpoint]:
 
     Returns:
         Checkpoint object if the session is currently being resumed.
-        Otherwise, return None.
+            Otherwise, return None.
 
     Example:
         .. code-block: python
 
-        ######## Using it in the *per worker* train loop (TrainSession) ######
-        from ray.air import session
-        from ray.air.checkpoint import Checkpoint
-        def train_func():
-            if session.get_checkpoint():
-                with session.get_checkpoint().as_directory() as
-                        loaded_checkpoint_dir:
-                    import tensorflow as tf
-                    model = tf.keras.models.load_model(loaded_checkpoint_dir)
-            else:
-                model = build_model()
+            ######## Using it in the *per worker* train loop (TrainSession) ######
+            from ray.air import session
+            from ray.air.checkpoint import Checkpoint
+            def train_func():
+                ckpt = session.get_checkpoint()
+                if ckpt:
+                    with ckpt.as_directory() as loaded_checkpoint_dir:
+                        import tensorflow as tf
 
-            model.save("my_model", overwrite=True)
-            session.report(
-                metrics={"iter": 1},
-                checkpoint=Checkpoint.from_directory("my_model")
+                        model = tf.keras.models.load_model(loaded_checkpoint_dir)
+                else:
+                    model = build_model()
+
+                model.save("my_model", overwrite=True)
+                session.report(
+                    metrics={"iter": 1},
+                    checkpoint=Checkpoint.from_directory("my_model")
+                )
+
+            scaling_config = {"num_workers": 2}
+            trainer = TensorflowTrainer(
+                train_loop_per_worker=train_func, scaling_config=scaling_config
             )
+            result = trainer.fit()
 
-        scaling_config = {"num_workers": 2}
-        trainer = TensorflowTrainer(
-            train_loop_per_worker=train_func, scaling_config=scaling_config
-        )
-        result = trainer.fit()
-
-        # trainer2 will pick up from the checkpoint saved by trainer1.
-        trainer2 = TensorflowTrainer(
-            train_loop_per_worker=train_func,
-            scaling_config=scaling_config,
-            # this is ultimately what is accessed through
-            # ``Session.get_checkpoint()``
-            resume_from_checkpoint=result.checkpoint,
-        )
-        result2 = trainer2.fit()
+            # trainer2 will pick up from the checkpoint saved by trainer1.
+            trainer2 = TensorflowTrainer(
+                train_loop_per_worker=train_func,
+                scaling_config=scaling_config,
+                # this is ultimately what is accessed through
+                # ``Session.get_checkpoint()``
+                resume_from_checkpoint=result.checkpoint,
+            )
+            result2 = trainer2.fit()
     """
 
     return _get_session().loaded_checkpoint

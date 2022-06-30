@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import uuid
+import warnings
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional
@@ -619,6 +620,27 @@ def wrap_function(
                 "certain schedulers. To enable, set the train function "
                 "arguments to be `func(config, checkpoint_dir=None)`."
             )
+
+    if use_checkpoint:
+        if log_once("tune_checkpoint_dir_deprecation") and warn:
+            with warnings.catch_warnings():
+                warnings.simplefilter("always")
+                warning_msg = (
+                    "`checkpoint_dir` in `func(config, checkpoint_dir)` is "
+                    "being deprecated. "
+                    "To save and load checkpoint in trainable functions, "
+                    "please use the `ray.air.session` API:\n\n"
+                    "from ray.air import session\n\n"
+                    "def train(config):\n"
+                    "    # ...\n"
+                    '    session.report({"metric": metric}, checkpoint=checkpoint)\n\n'
+                    "For more information please see "
+                    "https://docs.ray.io/en/master/ray-air/key-concepts.html#session\n"
+                )
+                warnings.warn(
+                    warning_msg,
+                    DeprecationWarning,
+                )
 
     class ImplicitFunc(*inherit_from):
         _name = name or (

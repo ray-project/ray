@@ -189,8 +189,10 @@ Your ``my_trainable`` is either a:
 
 2. **Custom training function**
 
-  * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature,
-    and call ``tune.checkpoint_dir``. See :doc:`this example </tune/examples/includes/custom_func_checkpointing>`,
+  * All this means is that your function needs to take care of saving and loading from checkpoint.
+    For saving, this is done through ``session.report()`` API, which can take in a ``Checkpoint`` object.
+    For loading, your function can access existing checkpoint through ``Session.get_checkpoint()`` API. 
+    See :doc:`this example </tune/examples/includes/custom_func_checkpointing>`,
     it's quite simple to do.
 
 Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster
@@ -319,7 +321,7 @@ On a multinode cluster, Tune automatically creates a copy of all trial checkpoin
 This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also
 requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing
+Note that you must use the ``session.report`` API to trigger syncing
 (or use a model type with a built-in Ray Tune integration as described here).
 See :doc:`/tune/examples/includes/custom_func_checkpointing` for an example.
 
