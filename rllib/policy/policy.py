@@ -76,6 +76,7 @@ class PolicySpec:
                 "pol2": PolicySpec(config={"lr": 0.001}),
             }
     """
+
     def __init__(
         self, policy_class=None, observation_space=None, action_space=None, config=None
     ):
