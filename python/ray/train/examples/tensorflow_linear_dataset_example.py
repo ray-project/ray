@@ -2,18 +2,13 @@ import argparse
 from typing import Dict, Tuple
 
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
+from ray.air.callbacks.keras import Callback as TrainReportCallback
 
 import ray
-import ray.train as train
+from ray.air import session
 from ray.air.config import DatasetConfig
 from ray.data import Dataset
 from ray.train.tensorflow import TensorflowTrainer, prepare_dataset_shard
-
-
-class TrainReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.report(**logs)
 
 
 def get_datasets_and_configs(
@@ -60,7 +55,7 @@ def train_func(config):
         # Model building/compiling need to be within `strategy.scope()`.
         multi_worker_model = build_and_compile_model(config)
 
-    dataset_pipeline = train.get_dataset_shard("train")
+    dataset_pipeline = session.get_dataset_shard("train")
     dataset_iterator = dataset_pipeline.iter_epochs()
 
     for _ in range(epochs):

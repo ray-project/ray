@@ -7,15 +7,9 @@ import os
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
+from ray.air.callbacks.keras import Callback as TrainReportCallback
 
-import ray.train as train
 from ray.train.tensorflow import TensorflowTrainer
-
-
-class TrainReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.report(**logs)
 
 
 def mnist_dataset(batch_size):
