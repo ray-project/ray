@@ -240,8 +240,12 @@ def test_deployment_error_handling(serve_instance):
         f.options(ray_actor_options={"runtime_env": {"working_dir": "."}}).deploy()
 
 
-def test_nonpicklable_user_config(serve_instance):
-    """See https://github.com/ray-project/ray/issues/25345."""
+def test_json_serialization_user_config(serve_instance):
+    """See https://github.com/ray-project/ray/issues/25345.
+
+    See https://github.com/ray-project/ray/pull/26235 for additional context
+    about this test.
+    """
 
     @serve.deployment(name="simple-deployment")
     class SimpleDeployment:
