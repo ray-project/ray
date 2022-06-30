@@ -17,7 +17,9 @@ def test_checkpoint_dir_deprecation():
         for _w in w:
             if issubclass(
                 _w.category, DeprecationWarning
-            ) and "To save and load checkpoint in tune function" in str(_w.message):
+            ) and "To save and load checkpoint in trainable function" in str(
+                _w.message
+            ):
                 found_pattern = True
                 break
         assert found_pattern

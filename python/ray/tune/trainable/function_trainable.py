@@ -623,12 +623,24 @@ def wrap_function(
 
     if use_checkpoint:
         if log_once("tune_checkpoint_dir_deprecation") and warn:
-            warnings.warn(
-                "`checkpoint_dir` in `func(config, checkpoint_dir)` is being "
-                "deprecated. To save and load checkpoint in tune function, "
-                "please use `ray.air.session` API.",
-                DeprecationWarning,
-            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("always")
+                warning_msg = (
+                    "`checkpoint_dir` in `func(config, checkpoint_dir)` is "
+                    "being deprecated. "
+                    "To save and load checkpoint in trainable functions, "
+                    "please use the `ray.air.session` API:\n\n"
+                    "from ray.air import session\n\n"
+                    "def train(config):\n"
+                    "    # ...\n"
+                    '    session.report({"metric": metric}, checkpoint=checkpoint)\n\n'
+                    "For more information please see "
+                    "https://docs.ray.io/en/master/ray-air/key-concepts.html#session\n"
+                )
+                warnings.warn(
+                    warning_msg,
+                    DeprecationWarning,
+                )
 
     class ImplicitFunc(*inherit_from):
         _name = name or (
