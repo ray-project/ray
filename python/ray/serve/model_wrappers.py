@@ -250,7 +250,7 @@ class ModelWrapper(SimpleSchemaIngress):
 
     def reconfigure(self, config):
         """Reconfigure Model from Config Checkpoint"""
-        predictor_cls = _load_predictor_cls(self.model)
+        predictor_cls = _load_predictor_cls(config['predictor_cls'])
         self.model = predictor_cls.from_checkpoint(
             Checkpoint.from_dict(config["checkpoint"])
         )
