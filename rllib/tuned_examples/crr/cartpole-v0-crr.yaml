@@ -37,7 +37,8 @@ cartpole_crr:
           learning_starts: 0
           capacity: 100000
         # specific to CRR
+        temperature: 1.0
         weight_type: bin
-        advantage_type: max
+        advantage_type: mean
         max_weight: 20.0
         n_action_sample: 4

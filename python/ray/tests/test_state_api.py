@@ -1,6 +1,6 @@
 import json
 import sys
-from dataclasses import fields
+from dataclasses import dataclass
 from typing import List, Tuple
 from unittest.mock import MagicMock
 
@@ -12,7 +12,10 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import (
+    wait_for_condition,
+    async_wait_for_condition_async_predicate,
+)
 from ray.cluster_utils import cluster_not_supported
 from ray.core.generated.common_pb2 import (
     Address,
@@ -35,7 +38,7 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllPlacementGroupReply,
     GetAllWorkerInfoReply,
 )
-from ray.core.generated.node_manager_pb2 import GetNodeStatsReply, GetTasksInfoReply
+from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -75,6 +78,9 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
+    MAX_LIMIT,
+    StateSchema,
+    state_column,
 )
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.experimental.state.state_cli import (
@@ -106,13 +112,15 @@ def state_api_manager():
     yield manager
 
 
-def verify_schema(state, result_dict: dict):
+def verify_schema(state, result_dict: dict, detail: bool = False):
     state_fields_columns = set()
-    for field in fields(state):
-        state_fields_columns.add(field.name)
+    if detail:
+        state_fields_columns = state.columns()
+    else:
+        state_fields_columns = state.base_columns()
 
-    for k in result_dict.keys():
-        assert k in state_fields_columns
+    for k in state_fields_columns:
+        assert k in result_dict
 
 
 def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
@@ -181,7 +189,8 @@ def generate_task_data(
             generate_task_entry(
                 id=id, name=name, func_or_class=func_or_class, state=state
             )
-        ]
+        ],
+        total=1,
     )
 
 
@@ -227,7 +236,8 @@ def generate_runtime_env_info(runtime_env, creation_time=None, success=True):
                 error=None,
                 creation_time_ms=creation_time,
             )
-        ]
+        ],
+        total=1,
     )
 
 
@@ -235,12 +245,76 @@ def create_api_options(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     limit: int = DEFAULT_LIMIT,
     filters: List[Tuple[str, SupportedFilterType]] = None,
+    detail: bool = False,
 ):
     if not filters:
         filters = []
     return ListApiOptions(
-        limit=limit, timeout=timeout, filters=filters, _server_timeout_multiplier=1.0
+        limit=limit,
+        timeout=timeout,
+        filters=filters,
+        _server_timeout_multiplier=1.0,
+        detail=detail,
     )
+
+
+def test_state_schema():
+    @dataclass
+    class TestSchema(StateSchema):
+        column_a: int
+        column_b: int = state_column(filterable=False)
+        column_c: int = state_column(filterable=True)
+        column_d: int = state_column(filterable=False, detail=False)
+        column_e: int = state_column(filterable=False, detail=True)
+        column_f: int = state_column(filterable=True, detail=False)
+        column_g: int = state_column(filterable=True, detail=True)
+
+    # Correct input validation should work without an exception.
+    TestSchema(
+        column_a=1,
+        column_b=1,
+        column_c=1,
+        column_d=1,
+        column_e=1,
+        column_f=1,
+        column_g=1,
+    )
+
+    # Incorrect input type.
+    with pytest.raises(AssertionError):
+        TestSchema(
+            column_a=1,
+            column_b=1,
+            column_c=1,
+            column_d=1,
+            column_e=1,
+            column_f=1,
+            column_g="a",
+        )
+
+    assert TestSchema.filterable_columns() == {
+        "column_c",
+        "column_f",
+        "column_g",
+    }
+
+    assert TestSchema.base_columns() == {
+        "column_a",
+        "column_b",
+        "column_c",
+        "column_d",
+        "column_f",
+    }
+
+    assert TestSchema.columns() == {
+        "column_a",
+        "column_b",
+        "column_c",
+        "column_d",
+        "column_e",
+        "column_f",
+        "column_g",
+    }
 
 
 def test_parse_filter():
@@ -321,12 +395,22 @@ async def test_api_manager_list_actors(state_api_manager):
         actor_table_data=[
             generate_actor_data(actor_id),
             generate_actor_data(b"12345", state=ActorTableData.ActorState.DEAD),
-        ]
+        ],
+        total=2,
     )
     result = await state_api_manager.list_actors(option=create_api_options())
     data = result.result
     actor_data = data[0]
     verify_schema(ActorState, actor_data)
+    assert result.total == 2
+
+    """
+    Test detail
+    """
+    result = await state_api_manager.list_actors(option=create_api_options(detail=True))
+    data = result.result
+    actor_data = data[0]
+    verify_schema(ActorState, actor_data, detail=True)
 
     """
     Test limit
@@ -335,6 +419,7 @@ async def test_api_manager_list_actors(state_api_manager):
     result = await state_api_manager.list_actors(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+    assert result.total == 2
 
     """
     Test filters
@@ -367,13 +452,25 @@ async def test_api_manager_list_pgs(state_api_manager):
             placement_group_table_data=[
                 generate_pg_data(id),
                 generate_pg_data(b"12345"),
-            ]
+            ],
+            total=2,
         )
     )
     result = await state_api_manager.list_placement_groups(option=create_api_options())
     data = result.result
     data = data[0]
     verify_schema(PlacementGroupState, data)
+    assert result.total == 2
+
+    """
+    Test detail
+    """
+    result = await state_api_manager.list_placement_groups(
+        option=create_api_options(detail=True)
+    )
+    data = result.result
+    data = data[0]
+    verify_schema(PlacementGroupState, data, detail=True)
 
     """
     Test limit
@@ -384,6 +481,7 @@ async def test_api_manager_list_pgs(state_api_manager):
     )
     data = result.result
     assert len(data) == 1
+    assert result.total == 2
 
     """
     Test filters
@@ -424,6 +522,15 @@ async def test_api_manager_list_nodes(state_api_manager):
     data = result.result
     data = data[0]
     verify_schema(NodeState, data)
+    assert result.total == 2
+
+    """
+    Test detail
+    """
+    result = await state_api_manager.list_nodes(option=create_api_options(detail=True))
+    data = result.result
+    data = data[0]
+    verify_schema(NodeState, data, detail=True)
 
     """
     Test limit
@@ -432,6 +539,7 @@ async def test_api_manager_list_nodes(state_api_manager):
     result = await state_api_manager.list_nodes(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+    assert result.total == 2
 
     """
     Test filters
@@ -463,12 +571,24 @@ async def test_api_manager_list_workers(state_api_manager):
         worker_table_data=[
             generate_worker_data(id, pid=1),
             generate_worker_data(b"12345", pid=2),
-        ]
+        ],
+        total=2,
     )
     result = await state_api_manager.list_workers(option=create_api_options())
     data = result.result
     data = data[0]
     verify_schema(WorkerState, data)
+    assert result.total == 2
+
+    """
+    Test detail
+    """
+    result = await state_api_manager.list_workers(
+        option=create_api_options(detail=True)
+    )
+    data = result.result
+    data = data[0]
+    verify_schema(WorkerState, data, detail=True)
 
     """
     Test limit
@@ -477,6 +597,7 @@ async def test_api_manager_list_workers(state_api_manager):
     result = await state_api_manager.list_workers(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+    assert result.total == 2
 
     """
     Test filters
@@ -531,8 +652,22 @@ async def test_api_manager_list_tasks(state_api_manager):
     data = result.result
     data = data
     assert len(data) == 2
+    assert result.total == 2
     verify_schema(TaskState, data[0])
     verify_schema(TaskState, data[1])
+
+    """
+    Test detail
+    """
+    data_source_client.get_task_info.side_effect = [
+        generate_task_data(id, first_task_name),
+        generate_task_data(b"2345", second_task_name),
+    ]
+    result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
+    data = result.result
+    data = data
+    verify_schema(TaskState, data[0], detail=True)
+    verify_schema(TaskState, data[1], detail=True)
 
     """
     Test limit
@@ -544,6 +679,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+    assert result.total == 2
 
     """
     Test filters
@@ -597,8 +733,12 @@ async def test_api_manager_list_objects(state_api_manager):
 
     data_source_client.get_object_info = AsyncMock()
     data_source_client.get_object_info.side_effect = [
-        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
-        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
+        GetObjectsInfoReply(
+            core_workers_stats=[generate_object_info(obj_1_id)], total=1
+        ),
+        GetObjectsInfoReply(
+            core_workers_stats=[generate_object_info(obj_2_id)], total=1
+        ),
     ]
     result = await state_api_manager.list_objects(option=create_api_options())
     data = result.result
@@ -612,24 +752,49 @@ async def test_api_manager_list_objects(state_api_manager):
     assert len(data) == 2
     verify_schema(ObjectState, data[0])
     verify_schema(ObjectState, data[1])
+    assert result.total == 2
+
+    """
+    Test detail
+    """
+    data_source_client.get_object_info.side_effect = [
+        GetObjectsInfoReply(
+            core_workers_stats=[generate_object_info(obj_1_id)], total=1
+        ),
+        GetObjectsInfoReply(
+            core_workers_stats=[generate_object_info(obj_2_id)], total=1
+        ),
+    ]
+    result = await state_api_manager.list_objects(
+        option=create_api_options(detail=True)
+    )
+    data = result.result
+    data = data
+    verify_schema(ObjectState, data[0], detail=True)
+    verify_schema(ObjectState, data[1], detail=True)
 
     """
     Test limit
     """
     data_source_client.get_object_info.side_effect = [
-        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
-        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
+        GetObjectsInfoReply(
+            core_workers_stats=[generate_object_info(obj_1_id)], total=1
+        ),
+        GetObjectsInfoReply(
+            core_workers_stats=[generate_object_info(obj_2_id)], total=1
+        ),
     ]
     result = await state_api_manager.list_objects(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+    assert result.total == 2
 
     """
     Test filters
     """
     data_source_client.get_object_info.side_effect = [
-        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
-        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
+        GetObjectsInfoReply(core_workers_stats=[generate_object_info(obj_1_id)]),
+        GetObjectsInfoReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
     result = await state_api_manager.list_objects(
         option=create_api_options(
@@ -643,7 +808,7 @@ async def test_api_manager_list_objects(state_api_manager):
     """
     data_source_client.get_object_info.side_effect = [
         DataSourceUnavailable(),
-        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
+        GetObjectsInfoReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
     result = await state_api_manager.list_objects(option=create_api_options(limit=1))
     # Make sure warnings are returned.
@@ -685,7 +850,6 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]}), creation_time=10),
     ]
     result = await state_api_manager.list_runtime_envs(option=create_api_options())
-    print(result)
     data = result.result
     data_source_client.get_runtime_envs_info.assert_any_await(
         "1", timeout=DEFAULT_RPC_TIMEOUT
@@ -701,10 +865,28 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     verify_schema(RuntimeEnvState, data[0])
     verify_schema(RuntimeEnvState, data[1])
     verify_schema(RuntimeEnvState, data[2])
+    assert result.total == 3
 
     # Make sure the higher creation time is sorted first.
-    assert "creation_time_ms" not in data[0]
     data[1]["creation_time_ms"] > data[2]["creation_time_ms"]
+
+    """
+    Test detail
+    """
+    data_source_client.get_runtime_envs_info.side_effect = [
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["requests"]})),
+        generate_runtime_env_info(
+            RuntimeEnv(**{"pip": ["tensorflow"]}), creation_time=15
+        ),
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]}), creation_time=10),
+    ]
+    result = await state_api_manager.list_runtime_envs(
+        option=create_api_options(detail=True)
+    )
+    data = result.result
+    verify_schema(RuntimeEnvState, data[0], detail=True)
+    verify_schema(RuntimeEnvState, data[1], detail=True)
+    verify_schema(RuntimeEnvState, data[2], detail=True)
 
     """
     Test limit
@@ -721,6 +903,7 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     )
     data = result.result
     assert len(data) == 1
+    assert result.total == 3
 
     """
     Test filters
@@ -902,7 +1085,7 @@ async def test_state_data_source_client(ray_start_cluster):
         port = int(node["NodeManagerPort"])
         client.register_raylet_client(node_id, ip, port)
         result = await client.get_object_info(node_id)
-        assert isinstance(result, GetNodeStatsReply)
+        assert isinstance(result, GetObjectsInfoReply)
 
     """
     Test runtime env
@@ -973,6 +1156,184 @@ async def test_state_data_source_client(ray_start_cluster):
         # Since the node_id is unregistered, the API should raise ValueError.
         with pytest.raises(ValueError):
             result = await client.get_object_info(node_id)
+
+
+@pytest.mark.asyncio
+async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
+    cluster = ray_start_cluster
+    # head
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    GRPC_CHANNEL_OPTIONS = (
+        *ray_constants.GLOBAL_GRPC_OPTIONS,
+        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    )
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
+    )
+    client = StateDataSourceClient(gcs_channel)
+
+    """
+    Test actor
+    """
+
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+    actors = [Actor.remote() for _ in range(3)]
+    for actor in actors:
+        ray.get(actor.ready.remote())
+
+    result = await client.get_all_actor_info(limit=2)
+    assert len(result.actor_table_data) == 2
+    assert result.total == 3
+
+    """
+    Test placement group
+    """
+    pgs = [ray.util.placement_group(bundles=[{"CPU": 0.001}]) for _ in range(3)]  # noqa
+    result = await client.get_all_placement_group_info(limit=2)
+    assert len(result.placement_group_table_data) == 2
+    assert result.total == 3
+
+    """
+    Test worker info
+    """
+    result = await client.get_all_worker_info(limit=2)
+    assert len(result.worker_table_data) == 2
+    # Driver + 3 workers for actors.
+    assert result.total == 4
+
+
+@pytest.mark.asyncio
+async def test_state_data_source_client_limit_distributed_sources(ray_start_cluster):
+    cluster = ray_start_cluster
+    # head
+    cluster.add_node(num_cpus=8)
+    ray.init(address=cluster.address)
+
+    GRPC_CHANNEL_OPTIONS = (
+        *ray_constants.GLOBAL_GRPC_OPTIONS,
+        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    )
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
+    )
+    client = StateDataSourceClient(gcs_channel)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+
+    """
+    Test tasks
+    """
+
+    @ray.remote
+    def long_running():
+        import time
+
+        time.sleep(300)
+
+    @ray.remote
+    def f():
+        ray.get([long_running.remote() for _ in range(2)])
+
+    # Driver: 2 * f
+    # Each worker: 2 * long_running
+    # -> 2 * f + 4 * long_running
+
+    refs = [f.remote() for _ in range(2)]  # noqa
+
+    async def verify():
+        result = await client.get_task_info(node_id, limit=2)
+        assert result.total == 6
+        assert len(result.owned_task_info_entries) == 2
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+    for ref in refs:
+        ray.cancel(ref, force=True, recursive=True)
+    del refs
+
+    """
+    Test objects
+    """
+
+    @ray.remote
+    def long_running_task(obj):  # noqa
+        objs = [ray.put(1) for _ in range(10)]  # noqa
+        import time
+
+        time.sleep(300)
+
+    objs = [ray.put(1) for _ in range(4)]
+    refs = [long_running_task.remote(obj) for obj in objs]
+
+    async def verify():
+        result = await client.get_object_info(node_id, limit=2)
+        # 4 objs (driver)
+        # 4 refs (driver)
+        # 4 pinned in memory for each task
+        # 40 for 4 tasks * 10 objects each
+        # 1 from the previous test (refs) is for some reasons not GC'ed. (driver)
+        assert result.total == 53
+        # Only 1 core worker stat is returned because data is truncated.
+        assert len(result.core_workers_stats) == 1
+
+        for c in result.core_workers_stats:
+            # The query will be always done in the consistent ordering
+            # and driver should always come first.
+            assert (
+                WorkerType.DESCRIPTOR.values_by_number[c.worker_type].name == "DRIVER"
+            )
+            assert c.objects_total == 9
+            assert len(c.object_refs) == 2
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+    for ref in refs:
+        ray.cancel(ref, force=True, recursive=True)
+    del refs
+
+    """
+    Test runtime env
+    """
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+
+        def get_port():
+            return ray.experimental.internal_kv._internal_kv_get(
+                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+            )
+
+        wait_for_condition(lambda: get_port() is not None)
+        # The second index is the gRPC port
+        port = json.loads(get_port())[1]
+        ip = node["NodeManagerAddress"]
+        client.register_agent_client(node_id, ip, port)
+
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+    actors = [
+        Actor.options(runtime_env={"env_vars": {"index": f"{i}"}}).remote()
+        for i in range(3)
+    ]
+    ray.get([actor.ready.remote() for actor in actors])
+
+    result = await client.get_runtime_envs_info(node_id, limit=2)
+    assert result.total == 3
+    assert len(result.runtime_env_states) == 2
 
 
 def is_hex(val):
@@ -1110,6 +1471,7 @@ def test_list_get_actors(shutdown_only):
         assert a._actor_id.hex() == actors[0]["actor_id"]
 
         # Test get
+        actors = list_actors(detail=True)
         for actor in actors:
             get_actor_data = get_actor(actor["actor_id"])
             assert get_actor_data is not None
@@ -1138,6 +1500,7 @@ def test_list_get_pgs(shutdown_only):
         assert pg.id.hex() == pgs[0]["placement_group_id"]
 
         # Test get
+        pgs = list_placement_groups(detail=True)
         for pg_data in pgs:
             get_pg_data = get_placement_group(pg_data["placement_group_id"])
             assert get_pg_data is not None
@@ -1173,6 +1536,7 @@ def test_list_get_nodes(shutdown_only):
             assert check_node["NodeName"] == node["node_name"]
 
         # Check the Get api
+        nodes = list_nodes(detail=True)
         for node in nodes:
             get_node_data = get_node(node["node_id"])
             assert get_node_data == node
@@ -1223,6 +1587,7 @@ def test_list_get_workers(shutdown_only):
         assert len(workers) == ray.cluster_resources()["CPU"] + 1
 
         # Test get worker returns the same result
+        workers = list_workers(detail=True)
         for worker in workers:
             got_worker = get_worker(worker["worker_id"])
             assert got_worker == worker
@@ -1292,6 +1657,7 @@ def test_list_get_tasks(shutdown_only):
         assert running == 2
 
         # Test get tasks
+        tasks = list_tasks(detail=True)
         for task in tasks:
             get_task_data = get_task(task["task_id"])
             assert get_task_data == task
@@ -1378,6 +1744,7 @@ def test_list_get_objects(shutdown_only):
         # For detailed output, the test is covered from `test_memstat.py`
         assert obj["object_id"] == plasma_obj.hex()
 
+        obj = list_objects(detail=True)[0]
         got_objs = get_objects(plasma_obj.hex())
         assert len(got_objs) == 1
         assert obj == got_objs[0]
@@ -1406,7 +1773,7 @@ def test_list_runtime_envs(shutdown_only):
         ray.get(b.ready.remote())
 
     def verify():
-        result = list_runtime_envs()
+        result = list_runtime_envs(detail=True)
         correct_num = len(result) == 2
 
         failed_runtime_env = result[0]
@@ -1490,7 +1857,7 @@ def test_network_partial_failures(ray_start_cluster):
     # Kill raylet so that list_tasks will have network error on querying raylets.
     cluster.remove_node(n, allow_graceful=False)
 
-    with pytest.warns(RuntimeWarning):
+    with pytest.warns(UserWarning):
         list_tasks(_explain=True)
 
     # Make sure when _explain == False, warning is not printed.
@@ -1633,6 +2000,72 @@ def test_filter(shutdown_only):
     assert result.exit_code == 0
     assert dead_actor_id not in result.output
     assert alive_actor_id in result.output
+
+
+def test_data_truncate(shutdown_only):
+    """
+    Verify the data is properly truncated when there are too many entries to return.
+    """
+    ray.init(num_cpus=16)
+
+    pgs = [  # noqa
+        ray.util.placement_group(bundles=[{"CPU": 0.001}]) for _ in range(MAX_LIMIT + 1)
+    ]
+    runner = CliRunner()
+    with pytest.warns(UserWarning) as record:
+        result = runner.invoke(cli_list, ["placement-groups"])
+    assert (
+        f"{DEFAULT_LIMIT} ({MAX_LIMIT + 1} total) placement_groups are returned. "
+        f"{MAX_LIMIT + 1 - DEFAULT_LIMIT} entries have been truncated."
+        in record[0].message.args[0]
+    )
+    assert result.exit_code == 0
+
+    # Make sure users cannot specify higher limit than 10000.
+    with pytest.raises(ValueError):
+        list_placement_groups(limit=MAX_LIMIT + 1)
+
+    # Make sure warning is not printed when truncation doesn't happen.
+    @ray.remote
+    class A:
+        def ready(self):
+            pass
+
+    a = A.remote()
+    ray.get(a.ready.remote())
+
+    with pytest.warns(None) as record:
+        result = runner.invoke(cli_list, ["actors"])
+    assert len(record) == 0
+
+
+def test_detail(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+
+    actor_state = list_actors()[0]
+    actor_state_in_detail = list_actors(detail=True)[0]
+
+    assert set(actor_state.keys()) == ActorState.base_columns()
+    assert set(actor_state_in_detail.keys()) == ActorState.columns()
+
+    """
+    Test CLI
+    """
+    runner = CliRunner()
+    result = runner.invoke(cli_list, ["actors", "--detail"])
+    assert result.exit_code == 0
+    # The column for --detail should be in the output.
+    assert "serialized_runtime_env" in result.output
+    assert "test_detail" in result.output
+    assert "actor_id" in result.output
 
 
 if __name__ == "__main__":

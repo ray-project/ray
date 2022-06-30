@@ -1426,7 +1426,7 @@ def get_runtime_env_info(
             raise TypeError(
                 f"eager_install must be a boolean. got {type(eager_install)}"
             )
-        proto_runtime_env_info.runtime_env_config.eager_install = eager_install
+        #proto_runtime_env_info.runtime_env_config.eager_install = eager_install
 
     proto_runtime_env_info.serialized_runtime_env = runtime_env.serialize()
 
