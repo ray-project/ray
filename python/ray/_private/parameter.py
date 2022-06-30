@@ -157,7 +157,9 @@ class RayParams:
         include_dashboard: Optional[bool] = None,
         dashboard_host: Optional[str] = ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port: Optional[bool] = ray_constants.DEFAULT_DASHBOARD_PORT,
-        dashboard_agent_listen_port: Optional[int] = ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+        dashboard_agent_listen_port: Optional[
+            int
+        ] = ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         plasma_store_socket_name: Optional[str] = None,
         raylet_socket_name: Optional[str] = None,
         temp_dir: Optional[str] = None,
