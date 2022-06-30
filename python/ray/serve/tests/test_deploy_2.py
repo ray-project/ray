@@ -3,6 +3,7 @@ import functools
 import os
 import sys
 import time
+from typing import Dict
 
 import pytest
 import requests
@@ -237,6 +238,31 @@ def test_deployment_error_handling(serve_instance):
         # code should be caught and reported back to the `deploy` caller.
 
         f.options(ray_actor_options={"runtime_env": {"working_dir": "."}}).deploy()
+
+
+def test_nonpicklable_user_config(serve_instance):
+    """See https://github.com/ray-project/ray/issues/25345."""
+
+    @serve.deployment(name="simple-deployment")
+    class SimpleDeployment:
+        _value: str
+
+        def reconfigure(self, config: Dict) -> None:
+            self._value = config["value"]
+
+        def say_hello(self) -> None:
+            return f"{self._value}!"
+
+    SimpleDeployment.options(
+        user_config={
+            "value": "Success",
+            "config_block_1": {"value": "Success"},
+        }
+    ).deploy()
+
+    handle = SimpleDeployment.get_handle()
+
+    assert ray.get(handle.say_hello.remote()) == "Success!"
 
 
 def test_http_proxy_request_cancellation(serve_instance):
