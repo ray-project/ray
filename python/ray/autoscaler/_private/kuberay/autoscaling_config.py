@@ -1,9 +1,7 @@
 import decimal
 import json
 import logging
-import math
 import time
-from contextlib import suppress
 from typing import Any, Dict, Optional
 
 import kubernetes
@@ -262,8 +260,8 @@ def _get_num_cpus(
     """Get CPU annotation from ray_start_params or k8s_resource_limits,
     with priority for ray_start_params.
     """
-    if "num_cpus" in ray_start_params:
-        return int(ray_start_params["num_cpus"])
+    if "num-cpus" in ray_start_params:
+        return int(ray_start_params["num-cpus"])
     elif "cpu" in k8s_resource_limits:
         cpu_quantity: str = k8s_resource_limits["cpu"]
         return _round_up_k8s_quantity(cpu_quantity)
@@ -299,8 +297,9 @@ def _round_up_k8s_quantity(quantity: str) -> int:
     Returns:
         The quantity, rounded up, as an integer.
     """
-    resource_decimal: decimal.Decimal = kubernetes.utils.quantity\
-        .parse_quantity(quantity)
+    resource_decimal: decimal.Decimal = kubernetes.utils.quantity.parse_quantity(
+        quantity
+    )
     rounded = resource_decimal.to_integral_value(rounding=decimal.ROUND_UP)
     return int(rounded)
 

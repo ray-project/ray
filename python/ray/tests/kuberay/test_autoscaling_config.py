@@ -30,8 +30,9 @@ def _get_basic_ray_cr() -> dict:
     config = yaml.safe_load(open(cr_path).read())
     gpu_group = copy.deepcopy(config["spec"]["workerGroupSpecs"][0])
     gpu_group["groupName"] = "gpu-group"
-    gpu_group["template"]["spec"]["containers"][0]["resources"][
-        "limits"].setdefault("nvidia.com/gpu", 3)
+    gpu_group["template"]["spec"]["containers"][0]["resources"]["limits"].setdefault(
+        "nvidia.com/gpu", 3
+    )
     config["spec"]["workerGroupSpecs"].append(gpu_group)
     return config
 
@@ -94,7 +95,7 @@ def _get_basic_autoscaling_config() -> dict:
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 5,
         "initialization_commands": [],
-        "max_workers": 300,
+        "max_workers": 600,
         "setup_commands": [],
         "upscaling_speed": 1,
         "worker_nodes": {},
@@ -182,6 +183,21 @@ def _get_autoscaling_config_with_options() -> dict:
     return config
 
 
+@pytest.mark.parametrize(
+    "input,output",
+    [
+        # There's no particular discipline to these test cases.
+        ("100m", 1),
+        ("15001m", 16),
+        ("2", 2),
+        ("100Mi", 104857600),
+        ("1G", 1000000000),
+    ],
+)
+def test_resource_quantity(input: str, output: int):
+    assert _round_up_k8s_quantity(input) == output, output
+
+
 PARAM_ARGS = ",".join(
     [
         "ray_cr_in",
@@ -232,14 +248,6 @@ TEST_DATA = (
 )
 
 
-@pytest.mark.parametrize("input,output", [
-    # There's no particular discipline to these test cases.
-    ("100m", 1), ("15001m", 16), ("2", 2), ("100Mi", 104857600), ("1G", 1000000000)
-])
-def test_resource_quantity(input: str, output: int):
-    assert _round_up_k8s_quantity(input) == output, output
-
-
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 @pytest.mark.parametrize(PARAM_ARGS, TEST_DATA)
 def test_autoscaling_config(
@@ -270,7 +278,8 @@ def test_cr_image_consistency():
     cr = _get_basic_ray_cr()
 
     group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
-    assert len(group_specs) == 2
+    # Head, CPU group, GPU group.
+    assert len(group_specs) == 3
 
     ray_containers = [
         group_spec["template"]["spec"]["containers"][0] for group_spec in group_specs
