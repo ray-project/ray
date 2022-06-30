@@ -1,8 +1,8 @@
 from typing import Dict, List, Optional
 
-from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
-from ray.tune.suggest.search_generator import SearchGenerator
-from ray.tune.trial import Trial
+from ray.tune.search import Searcher, ConcurrencyLimiter
+from ray.tune.search.search_generator import SearchGenerator
+from ray.tune.experiment import Trial
 
 
 class _MockSearcher(Searcher):
