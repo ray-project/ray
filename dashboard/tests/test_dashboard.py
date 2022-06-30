@@ -814,9 +814,8 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 
 
 def get_dashboard_agent_url(address: str, agent_listen_port: str):
-    index = address.index('.')
-    agent_url = address[:address] + agent_listen_port
-
+    index = address.index(':')
+    agent_url = address[:index+1] +  str(agent_listen_port)
     return agent_url
 
 
@@ -835,6 +834,7 @@ def test_dashboard_does_not_depend_on_serve():
     # Ensure standard dashboard features, like snapshot, still work
     response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
     assert response.status_code == 200
+
     assert response.json()["result"] is True
     assert "snapshot" in response.json()["data"]
 
