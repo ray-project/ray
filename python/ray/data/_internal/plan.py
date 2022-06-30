@@ -196,7 +196,17 @@ class ExecutionPlan:
         """
         if self._stages_after_snapshot:
             if fetch_if_missing:
-                self.execute()
+                if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
+                    # TODO(ekl): this is a hack to optimize the case where we have a
+                    # trailing randomize block stages. That stage has no effect and
+                    # so we don't need to execute all blocks to get the schema.
+                    a = self._stages_after_snapshot.pop()
+                    try:
+                        self.execute()
+                    finally:
+                        self._stages_after_snapshot.append(a)
+                else:
+                    self.execute()
             else:
                 return None
         # Snapshot is now guaranteed to be the output of the final stage or None.
