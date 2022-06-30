@@ -274,7 +274,7 @@ def read_datasource(
             )
         )
 
-    if len(read_tasks) < min_safe_parallelism:
+    if read_tasks and len(read_tasks) < min_safe_parallelism:
         perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
         logger.warning(
             f"The blocks of this dataset are estimated to be {perc}x larger than the "
