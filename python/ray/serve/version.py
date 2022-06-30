@@ -20,7 +20,7 @@ class DeploymentVersion:
 
         self.user_config = user_config
         # TODO(simon): make this xlang compatible
-        serialized_user_config = str.encode(json.dumps(user_config))
+        serialized_user_config = str.encode(json.dumps(user_config, sort_keys=True))
         self.user_config_hash = crc32(serialized_user_config)
         self._hash = crc32(serialized_user_config + self.code_version.encode("utf-8"))
 
