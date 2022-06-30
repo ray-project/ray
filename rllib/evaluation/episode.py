@@ -1,8 +1,9 @@
-from collections import defaultdict
-import numpy as np
 import random
+from collections import defaultdict
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.policy_map import PolicyMap
@@ -10,13 +11,13 @@ from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import (
-    SampleBatchType,
     AgentID,
-    PolicyID,
     EnvActionType,
     EnvID,
     EnvInfoDict,
     EnvObsType,
+    PolicyID,
+    SampleBatchType,
 )
 from ray.util import log_once
 
@@ -90,7 +91,7 @@ class Episode:
         self.episode_id: int = random.randrange(2e9)
         self.env_id = env_id
         self.worker = worker
-        self.agent_rewards: Dict[AgentID, float] = defaultdict(float)
+        self.agent_rewards: Dict[Tuple[AgentID, PolicyID], float] = defaultdict(float)
         self.custom_metrics: Dict[str, float] = {}
         self.user_data: Dict[str, Any] = {}
         self.hist_data: Dict[str, List[float]] = {}

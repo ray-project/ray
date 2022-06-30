@@ -3,19 +3,12 @@ import numpy as np
 import unittest
 
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
-from ray.rllib.connectors.agent.env_to_agent import EnvToAgentDataConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
-from ray.rllib.connectors.connector import (
-    ConnectorContext,
-    get_connector,
-)
+from ray.rllib.connectors.connector import ConnectorContext, get_connector
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.typing import (
-    AgentConnectorDataType,
-)
+from ray.rllib.utils.typing import AgentConnectorDataType
 
 
 class TestAgentConnector(unittest.TestCase):
@@ -27,63 +20,6 @@ class TestAgentConnector(unittest.TestCase):
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ClipRewardAgentConnector))
-
-    def test_env_to_per_agent_data_connector(self):
-        vrs = {
-            "infos": ViewRequirement(
-                "infos",
-                used_for_training=True,
-                used_for_compute_actions=False,
-            )
-        }
-        ctx = ConnectorContext(view_requirements=vrs)
-
-        c = EnvToAgentDataConnector(ctx)
-
-        name, params = c.to_config()
-        restored = get_connector(ctx, name, params)
-        self.assertTrue(isinstance(restored, EnvToAgentDataConnector))
-
-        d = AgentConnectorDataType(
-            0,
-            None,
-            [
-                # obs
-                {1: [8, 8], 2: [9, 9]},
-                # rewards
-                {
-                    1: 8.8,
-                    2: 9.9,
-                },
-                # dones
-                {
-                    1: False,
-                    2: False,
-                },
-                # infos
-                {
-                    1: {"random": "info"},
-                    2: {},
-                },
-                # training_episode_info
-                {
-                    1: {SampleBatch.DONES: True},
-                },
-            ],
-        )
-        per_agent = c(d)
-
-        self.assertEqual(len(per_agent), 2)
-
-        batch1 = per_agent[0].data
-        self.assertEqual(batch1[SampleBatch.NEXT_OBS], [8, 8])
-        self.assertTrue(batch1[SampleBatch.DONES])  # from training_episode_info
-        self.assertTrue(SampleBatch.INFOS in batch1)
-        self.assertEqual(batch1[SampleBatch.INFOS]["random"], "info")
-
-        batch2 = per_agent[1].data
-        self.assertEqual(batch2[SampleBatch.NEXT_OBS], [9, 9])
-        self.assertFalse(batch2[SampleBatch.DONES])
 
     def test_obs_preprocessor_connector(self):
         obs_space = gym.spaces.Dict(
@@ -114,7 +50,7 @@ class TestAgentConnector(unittest.TestCase):
                 SampleBatch.OBS: obs,
             },
         )
-        preprocessed = c(d)
+        preprocessed = c([d])
 
         # obs is completely flattened.
         self.assertTrue(
@@ -140,7 +76,7 @@ class TestAgentConnector(unittest.TestCase):
                 SampleBatch.REWARDS: 5.8,
             },
         )
-        clipped = restored(ac_data=d)
+        clipped = restored([d])
 
         self.assertEqual(len(clipped), 1)
         self.assertEqual(clipped[0].data[SampleBatch.REWARDS], 2.0)
@@ -168,10 +104,10 @@ class TestAgentConnector(unittest.TestCase):
             },
         )
 
-        flattened = c(d)
+        flattened = c([d])
         self.assertEqual(len(flattened), 1)
 
-        batch = flattened[0].data
+        batch = flattened[0].data.for_action
         self.assertTrue((batch[SampleBatch.NEXT_OBS] == [1, 1, 2, 2, 8.8]).all())
         self.assertEqual(batch[SampleBatch.REWARDS][0], 5.8)
         # Not flattened.
@@ -180,7 +116,8 @@ class TestAgentConnector(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

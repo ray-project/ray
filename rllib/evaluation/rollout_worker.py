@@ -48,7 +48,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list, merge_dicts
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
@@ -72,6 +72,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
+from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
 
@@ -478,7 +479,12 @@ class RolloutWorker(ParallelIteratorWorker):
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = (
-            False if policy_config.get("_disable_preprocessor_api") else True
+            False
+            if (
+                policy_config.get("_disable_preprocessor_api")
+                or policy_config.get("enable_connectors")
+            )
+            else True
         )
         self.observation_filter = observation_filter
         self.last_batch: Optional[SampleBatchType] = None
@@ -592,6 +598,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.set_is_policy_to_train(self.policies_to_train)
 
         self.policy_map: PolicyMap = None
+        # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
         # Check available number of GPUs.
@@ -659,6 +666,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!"
                 )
 
+        # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.filters: Dict[PolicyID, Filter] = {}
         for (policy_id, policy) in self.policy_map.items():
             filter_shape = tree.map_structure(
@@ -1391,7 +1399,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.is_policy_to_train = is_policy_to_train
 
-    @ExperimentalAPI
+    @PublicAPI(stability="alpha")
     def get_policies_to_train(
         self, batch: Optional[SampleBatchType] = None
     ) -> Set[PolicyID]:

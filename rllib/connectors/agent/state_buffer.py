@@ -1,53 +1,40 @@
 from collections import defaultdict
-import numpy as np
-import tree  # dm_tree
 from typing import Any, List
 
+import numpy as np
+import tree  # dm_tree
+
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     AgentConnector,
+    ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import (
-    AgentConnectorDataType,
-    PolicyOutputType,
-)
+from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
+from ray.util.annotations import PublicAPI
 
 
-@DeveloperAPI
-class _AgentState(object):
-    def __init__(self):
-        self.t = 0
-        self.action = None
-        self.states = None
-
-
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class StateBufferConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext):
         super().__init__(ctx)
 
+        self._soft_horizon = ctx.config.get("soft_horizon", False)
         self._initial_states = ctx.initial_states
         self._action_space_struct = get_base_struct_from_space(ctx.action_space)
-        self._states = defaultdict(lambda: defaultdict(_AgentState))
+        self._states = defaultdict(lambda: defaultdict(lambda: (None, None, None)))
 
     def reset(self, env_id: str):
-        del self._states[env_id]
+        # If soft horizon, states should be carried over between episodes.
+        if not self._soft_horizon:
+            del self._states[env_id]
 
-    def on_policy_output(self, env_id: str, agent_id: str, output: PolicyOutputType):
+    def on_policy_output(self, ac_data: ActionConnectorDataType):
         # Buffer latest output states for next input __call__.
-        action, states, _ = output
-        agent_state = self._states[env_id][agent_id]
-        agent_state.action = convert_to_numpy(action)
-        agent_state.states = convert_to_numpy(states)
+        self._states[ac_data.env_id][ac_data.agent_id] = ac_data.output
 
-    def __call__(
-        self, ctx: ConnectorContext, ac_data: AgentConnectorDataType
-    ) -> List[AgentConnectorDataType]:
+    def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
         assert (
             type(d) == dict
@@ -55,26 +42,14 @@ class StateBufferConnector(AgentConnector):
 
         env_id = ac_data.env_id
         agent_id = ac_data.agent_id
-        assert env_id and agent_id, "StateBufferConnector requires env_id and agent_id"
+        assert (
+            env_id is not None and agent_id is not None
+        ), f"StateBufferConnector requires env_id(f{env_id}) and agent_id(f{agent_id})"
 
-        agent_state = self._states[env_id][agent_id]
+        action, states, fetches = self._states[env_id][agent_id]
 
-        d.update(
-            {
-                SampleBatch.T: agent_state.t,
-                SampleBatch.ENV_ID: env_id,
-            }
-        )
-
-        if agent_state.states is not None:
-            states = agent_state.states
-        else:
-            states = self._initial_states
-        for i, v in enumerate(states):
-            d["state_out_{}".format(i)] = v
-
-        if agent_state.action is not None:
-            d[SampleBatch.ACTIONS] = agent_state.action  # Last action
+        if action is not None:
+            d[SampleBatch.ACTIONS] = action  # Last action
         else:
             # Default zero action.
             d[SampleBatch.ACTIONS] = tree.map_structure(
@@ -84,9 +59,16 @@ class StateBufferConnector(AgentConnector):
                 self._action_space_struct,
             )
 
-        agent_state.t += 1
+        if states is None:
+            states = self._initial_states
+        for i, v in enumerate(states):
+            d["state_out_{}".format(i)] = v
 
-        return [ac_data]
+        # Also add extra fetches if available.
+        if fetches:
+            d.update(fetches)
+
+        return ac_data
 
     def to_config(self):
         return StateBufferConnector.__name__, None

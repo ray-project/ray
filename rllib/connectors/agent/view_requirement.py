@@ -1,21 +1,19 @@
 from collections import defaultdict
-import numpy as np
 from typing import Any, List
 
+import numpy as np
+
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     AgentConnector,
+    ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import (
-    AgentConnectorDataType,
-    AgentConnectorsOutput,
-)
+from ray.rllib.utils.typing import AgentConnectorDataType, AgentConnectorsOutput
+from ray.util.annotations import PublicAPI
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class ViewRequirementAgentConnector(AgentConnector):
     """This connector does 2 things:
     1. It filters data columns based on view_requirements for training and inference.
@@ -48,46 +46,46 @@ class ViewRequirementAgentConnector(AgentConnector):
         # TODO(jungong) : actually support buildling input sample batch with all the
         #  view shift requirements, etc.
         # For now, we use some simple logics for demo purpose.
-        input_batch = SampleBatch()
+        input_dict = {}
         for k, v in view_requirements.items():
             if not v.used_for_compute_actions:
                 continue
             data_col = v.data_col or k
             if data_col not in agent_batch:
                 continue
-            input_batch[k] = agent_batch[data_col][-1:]
-        input_batch.count = 1
-        return input_batch
+            input_dict[k] = agent_batch[data_col][-1:]
+        return SampleBatch(input_dict, is_training=False)
 
-    def __call__(self, ac_data: AgentConnectorDataType) -> List[AgentConnectorDataType]:
-        d = ac_data.data
+    def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
+        assert isinstance(ac_data.data, AgentConnectorsOutput), (
+            "ViewRequirementAgentConnector operates on raw input dict and its"
+            "flattened SampleBatch."
+        )
+
+        d = ac_data.data.for_training
+        f = ac_data.data.for_action
         assert (
             type(d) == dict
         ), "Single agent data must be of type Dict[str, TensorStructType]"
 
         env_id = ac_data.env_id
         agent_id = ac_data.agent_id
-        assert env_id and agent_id, "StateBufferConnector requires env_id and agent_id"
+        assert env_id is not None and agent_id is not None, (
+            f"ViewRequirementAgentConnector requires env_id({env_id}) "
+            "and agent_id({agent_id})"
+        )
 
         vr = self._view_requirements
         assert vr, "ViewRequirements required by ViewRequirementConnector"
 
-        training_dict = {}
+        training_dict = None
         # We construct a proper per-timeslice dict in training mode,
-        # for Sampler to construct a complete episode for back propagation.
+        # for env runner to construct a complete episode.
         if self.is_training:
-            # Filter columns that are not needed for traing.
-            for col, req in vr.items():
-                # Not used for training.
-                if not req.used_for_training:
-                    continue
-
-                # Create the batch of data from the different buffers.
-                data_col = req.data_col or col
-                if data_col not in d:
-                    continue
-
-                training_dict[data_col] = d[data_col]
+            # Note(jungong) : we need to keep the entire input dict here.
+            # A column may be used by postprocessing (GAE) even if its
+            # iew_requirement.used_for_training is False.
+            training_dict = d
 
         # Agent batch is our buffer of necessary history for computing
         # a SampleBatch for policy forward pass.
@@ -99,22 +97,24 @@ class ViewRequirementAgentConnector(AgentConnector):
                 continue
 
             # Create the batch of data from the different buffers.
-            data_col = req.data_col or col
+            if col == SampleBatch.OBS:
+                # NEXT_OBS from the training sample is the current OBS
+                # to run Policy with.
+                data_col = SampleBatch.NEXT_OBS
+            else:
+                data_col = req.data_col or col
             if data_col not in d:
                 continue
 
-            # Add batch dim to this data_col.
-            d_col = np.expand_dims(d[data_col], axis=0)
-
             if col in agent_batch:
                 # Stack along batch dim.
-                agent_batch[data_col] = np.vstack((agent_batch[data_col], d_col))
+                agent_batch[col] = np.vstack((agent_batch[col], f[data_col]))
             else:
-                agent_batch[data_col] = d_col
+                agent_batch[col] = f[data_col]
             # Only keep the useful part of the history.
             h = req.shift_from if req.shift_from else -1
             assert h <= 0, "Can use future data to compute action"
-            agent_batch[data_col] = agent_batch[data_col][h:]
+            agent_batch[col] = agent_batch[col][h:]
 
         sample_batch = self._get_sample_batch_for_action(vr, agent_batch)
 
