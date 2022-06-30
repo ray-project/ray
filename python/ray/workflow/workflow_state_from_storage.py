@@ -1,0 +1,71 @@
+from typing import Optional
+from collections import deque
+
+from ray.workflow import serialization
+from ray.workflow.common import StepID, WorkflowRef
+from ray.workflow.exceptions import WorkflowStepNotRecoverableError
+from ray.workflow import workflow_storage
+from ray.workflow.workflow_state import WorkflowExecutionState, Task
+
+
+def workflow_state_from_storage(
+    workflow_id: str, step_id: Optional[StepID]
+) -> WorkflowExecutionState:
+    """Try to construct a workflow (step) that recovers the workflow step.
+    If the workflow step already has an output checkpointing file, we return
+    the workflow step id instead.
+
+    Args:
+        workflow_id: The ID of the workflow.
+        step_id: The ID of the output task. If None, it will be the entrypoint of
+            the workflow.
+
+    Returns:
+        A workflow that recovers the step, or the output of the step
+            if it has been checkpointed.
+    """
+    reader = workflow_storage.WorkflowStorage(workflow_id)
+    if step_id is None:
+        step_id = reader.get_entrypoint_step_id()
+
+    # Construct the workflow execution state.
+    state = WorkflowExecutionState(output_task_id=step_id)
+    state.output_task_id = step_id
+
+    visited_tasks = set()
+    dag_visit_queue = deque([step_id])
+    with serialization.objectref_cache():
+        while dag_visit_queue:
+            task_id: StepID = dag_visit_queue.popleft()
+            if task_id in visited_tasks:
+                continue
+            visited_tasks.add(task_id)
+            r = reader.inspect_step(task_id)
+            if not r.is_recoverable():
+                raise WorkflowStepNotRecoverableError(task_id)
+            if r.output_object_valid:
+                target = state.continuation_root.get(task_id, task_id)
+                state.checkpoint_map[target] = WorkflowRef(task_id)
+                continue
+            if isinstance(r.output_step_id, str):
+                # no input dependencies here because the task has already
+                # returned a continuation
+                state.upstream_dependencies[task_id] = []
+                state.append_continuation(task_id, r.output_step_id)
+                dag_visit_queue.append(r.output_step_id)
+                continue
+            # transfer task info to state
+            state.add_dependencies(task_id, r.workflow_refs)
+            state.task_input_args[task_id] = reader.load_step_args(task_id)
+            # TODO(suquark): although not necessary, but for completeness,
+            #  we may also load name and metadata.
+            state.tasks[task_id] = Task(
+                name="",
+                options=r.step_options,
+                user_metadata={},
+                func_body=reader.load_step_func_body(task_id),
+            )
+
+            dag_visit_queue.extend(r.workflow_refs)
+
+    return state

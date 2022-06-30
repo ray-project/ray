@@ -64,21 +64,8 @@ def test_objectref_outputs(workflow_start_regular_shared):
     assert ray.get(multi) == list(range(5))
 
 
-def test_object_input_dedup(workflow_start_regular_shared):
-    @workflow.step
-    def empty_list():
-        return [1]
-
-    @workflow.step
-    def deref_shared(x, y):
-        # x and y should share the same variable.
-        x.append(2)
-        return y == [1, 2]
-
-    x = empty_list.step()
-    assert deref_shared.step(x, x).run()
-
-
+# TODO(suquark): resume this test after Ray DAG bug fixing
+@pytest.mark.skip(reason="There is a bug in Ray DAG that makes it serializable.")
 def test_object_deref(workflow_start_regular_shared):
     @ray.remote
     def empty_list():

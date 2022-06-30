@@ -176,7 +176,7 @@ def test_failed_and_resumed_workflow(workflow_start_regular, tmp_path):
             raise ValueError()
         return 0
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         workflow.create(simple.bind()).run(workflow_id)
 
     workflow_metadata_failed = workflow.get_metadata(workflow_id)

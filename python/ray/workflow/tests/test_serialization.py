@@ -82,7 +82,7 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
 
     # One upload for the initial checkpoint, and one for the object ref after
     # resuming.
-    assert get_num_uploads() == 2
+    assert get_num_uploads() == 1
 
 
 def test_same_object_many_workflows(workflow_start_regular_shared):

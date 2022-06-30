@@ -6,7 +6,6 @@ from ray.tests.conftest import *  # noqa
 import numpy as np
 from ray import workflow
 from ray.workflow.tests import utils
-from ray.exceptions import RaySystemError
 
 
 SIZE = 2 ** 15
@@ -39,7 +38,7 @@ def test_checkpoint_dag_recovery_skip(workflow_start_regular_shared):
     utils.unset_global_mark()
 
     start = time.time()
-    with pytest.raises(RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         workflow.create(
             checkpoint_dag.options(**workflow.options(checkpoint=False)).bind(False)
         ).run(workflow_id="checkpoint_skip_recovery")
@@ -62,7 +61,7 @@ def test_checkpoint_dag_recovery_partial(workflow_start_regular_shared):
     utils.unset_global_mark()
 
     start = time.time()
-    with pytest.raises(RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         workflow.create(checkpoint_dag.bind(False)).run(
             workflow_id="checkpoint_partial_recovery"
         )
@@ -84,7 +83,7 @@ def test_checkpoint_dag_recovery_whole(workflow_start_regular_shared):
     utils.unset_global_mark()
 
     start = time.time()
-    with pytest.raises(RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         workflow.create(checkpoint_dag.bind(True)).run(
             workflow_id="checkpoint_whole_recovery"
         )
@@ -136,10 +135,10 @@ def test_checkpoint_dag_validation(workflow_start_regular):
 
     valid_checkpoint_dag_1.options(checkpoint=False).step().run()
     # check invalid configuration
-    with pytest.raises(RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         invalid_checkpoint_dag_1.options(checkpoint=False).step().run()
     # check invalid configuration
-    with pytest.raises(RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         invalid_checkpoint_dag_2.options(checkpoint=False).step().run()
 
 
