@@ -17,8 +17,8 @@
 #include <functional>
 #include <regex>
 
-#include "absl/strings/str_cat.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
 
@@ -155,11 +155,9 @@ RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
     : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
       redis_client_(std::move(redis_client)) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
-      << "Storage namespace (" << external_storage_namespace_
-      << ") shouldn't contain " << kClusterSeparator
-      << ".";
+      << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
+      << kClusterSeparator << ".";
 }
-
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,

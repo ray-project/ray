@@ -69,9 +69,8 @@ RedisInternalKV::RedisInternalKV(const RedisClientOptions &redis_options)
       external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
       work_(io_service_) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
-      << "Storage namespace (" << external_storage_namespace_
-      << ") shouldn't contain " << kClusterSeparator
-      << ".";
+      << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
+      << kClusterSeparator << ".";
   io_thread_ = std::make_unique<std::thread>([this] {
     SetThreadName("InternalKV");
     io_service_.run();
