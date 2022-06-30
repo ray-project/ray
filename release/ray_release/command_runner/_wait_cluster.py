@@ -45,7 +45,7 @@ while not curr_nodes >= args.num_nodes:
         next_feedback = now + args.feedback_interval_s
 
     time.sleep(5)
-    curr_nodes = len(ray.nodes())
+    curr_nodes = sum(1 for node in ray.nodes() if node["Alive"])
 
 passed = time.time() - start
 print(
