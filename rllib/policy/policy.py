@@ -91,6 +91,14 @@ class PolicySpec:
         # If None, use {}.
         self.config = config
 
+    def __eq__(self, other: "PolicySpec"):
+        return (
+            self.policy_class == other.policy_class
+            and self.observation_space == other.observation_space
+            and self.action_space == other.action_space
+            and self.config == other.config
+        )
+
     def serialize(self) -> Dict:
         return {
             # TODO(jungong) : try making the policy_class config durable.
