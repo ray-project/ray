@@ -306,7 +306,19 @@ class WorkerSet:
             )
         return removed_workers
 
-    def recreate_failed_workers(self) -> Tuple[List[ActorHandle], List[ActorHandle]]:
+    def recreate_failed_workers(
+        self, local_worker_for_synching: RolloutWorker
+    ) -> Tuple[List[ActorHandle], List[ActorHandle]]:
+        """Recreates any failed workers (after health check).
+
+        Args:
+            local_worker_for_synching: RolloutWorker to use to synchronize the weights
+                after recreation.
+
+        Returns:
+            A tuple consisting of two items: The list of removed workers and the list of
+            newly added ones.
+        """
         faulty_indices = self._worker_health_check()
         removed_workers = []
         new_workers = []
@@ -329,14 +341,17 @@ class WorkerSet:
                 recreated_worker=True,
                 config=self._remote_config,
             )
-            # Sync new worker from local one.
+
+            # Sync new worker from provided one (or local one).
             new_worker.set_weights.remote(
-                weights=self.local_worker().get_weights(),
-                global_vars=self.local_worker().get_global_vars(),
+                weights=local_worker_for_synching.get_weights(),
+                global_vars=local_worker_for_synching.get_global_vars(),
             )
+
             # Add new worker to list of remote workers.
             self._remote_workers[worker_index - 1] = new_worker
             new_workers.append(new_worker)
+
         return removed_workers, new_workers
 
     def stop(self) -> None:
