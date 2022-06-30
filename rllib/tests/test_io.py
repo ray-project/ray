@@ -288,6 +288,24 @@ class AgentIOTest(unittest.TestCase):
                 self.assertEqual(result["timesteps_total"], 250)
                 self.assertTrue(np.isnan(result["episode_reward_mean"]))
 
+    def test_multiple_output_workers(self):
+        ray.shutdown()
+        ray.init(num_cpus=4, ignore_reinit_error=True)
+        for fw in framework_iterator(frameworks=["tf", "torch"]):
+            agent = PG(
+                env="CartPole-v0",
+                config={
+                    "num_workers": 2,
+                    "output": self.test_dir + fw,
+                    "rollout_fragment_length": 250,
+                    "framework": fw,
+                },
+            )
+            agent.train()
+            self.assertEqual(len(os.listdir(self.test_dir + fw)), 2)
+            reader = JsonReader(self.test_dir + fw + "/*.json")
+            reader.next()
+
 
 class JsonIOTest(unittest.TestCase):
     def setUp(self):
