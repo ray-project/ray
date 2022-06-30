@@ -64,6 +64,9 @@ class ClientRunner(CommandRunner):
         except Exception as e:
             raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
+    def _num_nodes(self):
+        return sum(1 for node in ray.nodes() if node["Alive"])
+
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         import ray
 
@@ -77,26 +80,26 @@ class ClientRunner(CommandRunner):
             start_time = time.monotonic()
             timeout_at = start_time + timeout
             next_status = start_time + 30
-            nodes_up = len(ray.nodes())
+            nodes_up = self._num_nodes()
             while nodes_up < num_nodes:
                 now = time.monotonic()
                 if now >= timeout_at:
                     raise ClusterNodesWaitTimeout(
-                        f"Only {len(ray.nodes())}/{num_nodes} are up after "
+                        f"Only {nodes_up}/{num_nodes} are up after "
                         f"{timeout} seconds."
                     )
 
                 if now >= next_status:
                     logger.info(
                         f"Waiting for nodes to come up: "
-                        f"{len(ray.nodes())}/{num_nodes} "
+                        f"{nodes_up}/{num_nodes} "
                         f"({now - start_time:.2f} seconds, "
                         f"timeout: {timeout} seconds)."
                     )
                     next_status += 30
 
                 time.sleep(1)
-                nodes_up = len(ray.nodes())
+                nodes_up = self._num_nodes()
 
             ray.shutdown()
         except Exception as e:
