@@ -2574,66 +2574,75 @@ def test_groupby_tabular_count(
         ctx.use_push_based_shuffle = original
 
 
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
-    # Test built-in sum aggregation
-    seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_tabular_sum with: {seed}")
-    random.seed(seed)
-    xs = list(range(100))
-    random.shuffle(xs)
+def test_groupby_tabular_sum(ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle):
+    ctx = ray.data.context.DatasetContext.get_current()
 
-    def _to_pandas(ds):
-        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = use_push_based_shuffle
 
-    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
-        num_parts
-    )
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
+        # Test built-in sum aggregation
+        seed = int(time.time())
+        print(f"Seeding RNG for test_groupby_tabular_sum with: {seed}")
+        random.seed(seed)
+        xs = list(range(100))
+        random.shuffle(xs)
 
-    agg_ds = ds.groupby("A").sum("B")
-    assert agg_ds.count() == 3
-    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "sum(B)": 1683},
-        {"A": 1, "sum(B)": 1617},
-        {"A": 2, "sum(B)": 1650},
-    ]
+        def _to_pandas(ds):
+            return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
 
-    # Test built-in sum aggregation with nans
-    ds = ray.data.from_items(
-        [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
-    ).repartition(num_parts)
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
-    nan_grouped_ds = ds.groupby("A")
-    nan_agg_ds = nan_grouped_ds.sum("B")
-    assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "sum(B)": 1683},
-        {"A": 1, "sum(B)": 1617},
-        {"A": 2, "sum(B)": 1650},
-    ]
-    # Test ignore_nulls=False
-    nan_agg_ds = nan_grouped_ds.sum("B", ignore_nulls=False)
-    assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "sum(B)": None},
-        {"A": 1, "sum(B)": 1617},
-        {"A": 2, "sum(B)": 1650},
-    ]
-    # Test all nans
-    ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
-        num_parts
-    )
-    nan_agg_ds = ds.groupby("A").sum("B")
-    assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "sum(B)": None},
-        {"A": 1, "sum(B)": None},
-        {"A": 2, "sum(B)": None},
-    ]
+        ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+            num_parts
+        )
+        if ds_format == "pandas":
+            ds = _to_pandas(ds)
+
+        agg_ds = ds.groupby("A").sum("B")
+        assert agg_ds.count() == 3
+        assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
+            {"A": 0, "sum(B)": 1683},
+            {"A": 1, "sum(B)": 1617},
+            {"A": 2, "sum(B)": 1650},
+        ]
+
+        # Test built-in sum aggregation with nans
+        ds = ray.data.from_items(
+            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+        ).repartition(num_parts)
+        if ds_format == "pandas":
+            ds = _to_pandas(ds)
+        nan_grouped_ds = ds.groupby("A")
+        nan_agg_ds = nan_grouped_ds.sum("B")
+        assert nan_agg_ds.count() == 3
+        assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+            {"A": 0, "sum(B)": 1683},
+            {"A": 1, "sum(B)": 1617},
+            {"A": 2, "sum(B)": 1650},
+        ]
+        # Test ignore_nulls=False
+        nan_agg_ds = nan_grouped_ds.sum("B", ignore_nulls=False)
+        assert nan_agg_ds.count() == 3
+        assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+            {"A": 0, "sum(B)": None},
+            {"A": 1, "sum(B)": 1617},
+            {"A": 2, "sum(B)": 1650},
+        ]
+        # Test all nans
+        ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
+            num_parts
+        )
+        nan_agg_ds = ds.groupby("A").sum("B")
+        assert nan_agg_ds.count() == 3
+        assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+            {"A": 0, "sum(B)": None},
+            {"A": 1, "sum(B)": None},
+            {"A": 2, "sum(B)": None},
+        ]
+    finally:
+        ctx.use_push_based_shuffle = original
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
