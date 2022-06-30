@@ -57,6 +57,20 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "ray_cpp_lib",
+    srcs = [
+        "libray_api.so",
+    ],
+    hdrs = glob([
+        "include/ray/*.h",
+        "include/ray/**/*.h",
+        "include/ray/**/**/*.h",
+    ]),
+    strip_include_prefix = "include",
+    visibility = ["//visibility:public"],
+)
+
 cc_binary(
     name = "default_worker",
     srcs = glob([
@@ -64,9 +78,19 @@ cc_binary(
     ]),
     copts = COPTS,
     linkstatic = True,
-    deps = [
-        "ray_api",
-    ],
+    deps = select({
+        "@bazel_tools//src/conditions:windows": [
+            # TODO(SongGuyang): Change to use dynamic library
+            # "ray_cpp_lib" when we make it work on Windows.
+            "ray_api",
+        ],
+        "//conditions:default": [
+            "ray_cpp_lib",
+            "@boost//:callable_traits",
+            "@boost//:optional",
+            "@msgpack",
+        ],
+    }),
 )
 
 genrule(
@@ -206,7 +230,10 @@ cc_binary(
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        "ray_api",
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
     ],
 )
 
@@ -220,8 +247,14 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
+    # NOTE(WangTaoTheTonic): For java x-lang tests. See //java:all_tests
+    # and `CrossLanguageInvocationTest.java`.
+    visibility = ["//java:__subpackages__"],
     deps = [
-        "ray_api",
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
     ],
 )
 
@@ -230,13 +263,18 @@ cc_test(
     srcs = glob([
         "src/ray/test/examples/*.cc",
     ]),
+    args = [
+        "--ray_code_search_path=$(location simple_kv_store.so)",
+        "--ray_head_args '--include-dashboard false'",
+    ],
+    copts = COPTS,
     data = [
         "simple_kv_store.so",
     ],
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        ":ray_api",
+        "ray_api",
     ],
 )
 
@@ -246,10 +284,14 @@ cc_binary(
     srcs = glob([
         "src/ray/test/examples/*.cc",
     ]),
+    copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        ":ray_api",
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
     ],
 )
 

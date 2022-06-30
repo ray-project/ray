@@ -1,16 +1,19 @@
-import pytest
-import numpy as np
-import pandas as pd
 import os
 from typing import List
 
+import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pytest
+
 import ray
+from ray._private.internal_api import memory_summary
+from ray.data import Dataset
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
-from ray.internal.internal_api import memory_summary
-
 from ray.tests.conftest import *  # noqa
 
 
@@ -46,7 +49,14 @@ def expect_stages(pipe, num_stages_expected, stage_names):
     for name in stage_names:
         name = " " + name + ":"
         assert name in stats, (name, stats)
-    assert len(pipe._optimized_stages) == num_stages_expected, pipe._optimized_stages
+    if isinstance(pipe, Dataset):
+        assert (
+            len(pipe._plan._stages_before_snapshot) == num_stages_expected
+        ), pipe._plan._stages_before_snapshot
+    else:
+        assert (
+            len(pipe._optimized_stages) == num_stages_expected
+        ), pipe._optimized_stages
 
 
 def test_memory_sanity(shutdown_only):
@@ -292,6 +302,32 @@ def test_stage_linking(ray_start_regular_shared):
     _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
 
 
+def test_optimize_reorder(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_reorder_stages = True
+
+    ds = ray.data.range(10).randomize_block_order().map_batches(lambda x: x)
+    expect_stages(
+        ds,
+        2,
+        ["read->map_batches", "randomize_block_order"],
+    )
+
+    ds2 = (
+        ray.data.range(10)
+        .randomize_block_order()
+        .repartition(10)
+        .map_batches(lambda x: x)
+    )
+    expect_stages(
+        ds2,
+        3,
+        ["read", "randomize_block_order", "repartition", "map_batches"],
+    )
+
+
 def test_optimize_fuse(ray_start_regular_shared):
     context = DatasetContext.get_current()
 
@@ -424,6 +460,100 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
             "map_batches",
             "random_shuffle_map",
             "random_shuffle_reduce",
+        ],
+    )
+
+
+def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_fuse_shuffle_stages = True
+
+    # Set up.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    class CallableFn:
+        def __init__(self, a, b=None):
+            assert a == 1
+            assert b == 2
+            self.a = a
+            self.b = b
+
+        def __call__(self, x):
+            return self.b * x + self.a
+
+    # Test callable chain.
+    fn_constructor_args = (ray.put(1),)
+    fn_constructor_kwargs = {"b": ray.put(2)}
+    pipe = (
+        ray.data.read_parquet(str(tmp_path))
+        .repeat(2)
+        .map_batches(
+            CallableFn,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+        .map_batches(
+            CallableFn,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+    )
+    ds_list = pipe.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [7, 11, 15, 7, 11, 15]
+    values = [s["two"] for s in ds_list]
+    assert values == [11, 15, 19, 11, 15, 19]
+    expect_stages(
+        pipe,
+        1,
+        [
+            "read->map_batches->map_batches",
+        ],
+    )
+
+    # Test function + callable chain.
+    fn_constructor_args = (ray.put(1),)
+    fn_constructor_kwargs = {"b": ray.put(2)}
+    pipe = (
+        ray.data.read_parquet(str(tmp_path))
+        .repeat(2)
+        .map_batches(
+            lambda df, a, b=None: b * df + a,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_args=(ray.put(1),),
+            fn_kwargs={"b": ray.put(2)},
+        )
+        .map_batches(
+            CallableFn,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+    )
+    ds_list = pipe.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [7, 11, 15, 7, 11, 15]
+    values = [s["two"] for s in ds_list]
+    assert values == [11, 15, 19, 11, 15, 19]
+    expect_stages(
+        pipe,
+        1,
+        [
+            "read->map_batches->map_batches",
         ],
     )
 

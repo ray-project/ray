@@ -1,49 +1,47 @@
-import logging
 import inspect
-
+import logging
+from collections import defaultdict
 from functools import wraps
+from typing import Dict, List, Optional
 
 import grpc
-import ray
-
-from collections import defaultdict
-from typing import Dict, List, Optional
-from ray import ray_constants
-
 from grpc.aio._call import UnaryStreamCall
 
+import ray
+import ray.dashboard.modules.log.log_consts as log_consts
+from ray._private import ray_constants
+from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_service_pb2 import (
-    GetAllActorInfoRequest,
     GetAllActorInfoReply,
-    GetAllPlacementGroupRequest,
-    GetAllPlacementGroupReply,
-    GetAllNodeInfoRequest,
+    GetAllActorInfoRequest,
     GetAllNodeInfoReply,
-    GetAllWorkerInfoRequest,
+    GetAllNodeInfoRequest,
+    GetAllPlacementGroupReply,
+    GetAllPlacementGroupRequest,
     GetAllWorkerInfoReply,
+    GetAllWorkerInfoRequest,
 )
 from ray.core.generated.node_manager_pb2 import (
-    GetTasksInfoRequest,
+    GetObjectsInfoRequest,
+    GetObjectsInfoReply,
     GetTasksInfoReply,
-    GetNodeStatsRequest,
-    GetNodeStatsReply,
+    GetTasksInfoRequest,
 )
-from ray.core.generated.runtime_env_agent_pb2 import (
-    GetRuntimeEnvsInfoRequest,
-    GetRuntimeEnvsInfoReply,
-)
+from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
 from ray.core.generated.reporter_pb2 import (
     ListLogsReply,
-    StreamLogRequest,
     ListLogsRequest,
+    StreamLogRequest,
 )
 from ray.core.generated.reporter_pb2_grpc import LogServiceStub
+from ray.core.generated.runtime_env_agent_pb2 import (
+    GetRuntimeEnvsInfoReply,
+    GetRuntimeEnvsInfoRequest,
+)
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
-import ray.dashboard.modules.log.log_consts as log_consts
-from ray.dashboard.modules.job.common import JobInfoStorageClient, JobInfo
+from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
 from ray.experimental.state.exception import DataSourceUnavailable
+from ray.experimental.state.common import MAX_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -208,9 +206,12 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_actor_info(
-        self, timeout: int = None
+        self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllActorInfoReply]:
-        request = GetAllActorInfoRequest()
+        if not limit:
+            limit = MAX_LIMIT
+
+        request = GetAllActorInfoRequest(limit=limit)
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=timeout
         )
@@ -218,9 +219,12 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_placement_group_info(
-        self, timeout: int = None
+        self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllPlacementGroupReply]:
-        request = GetAllPlacementGroupRequest()
+        if not limit:
+            limit = MAX_LIMIT
+
+        request = GetAllPlacementGroupRequest(limit=limit)
         reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
             request, timeout=timeout
         )
@@ -236,9 +240,12 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_worker_info(
-        self, timeout: int = None
+        self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllWorkerInfoReply]:
-        request = GetAllWorkerInfoRequest()
+        if not limit:
+            limit = MAX_LIMIT
+
+        request = GetAllWorkerInfoRequest(limit=limit)
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
             request, timeout=timeout
         )
@@ -264,39 +271,50 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_task_info(
-        self, node_id: str, timeout: int = None
+        self, node_id: str, timeout: int = None, limit: int = None
     ) -> Optional[GetTasksInfoReply]:
+        if not limit:
+            limit = MAX_LIMIT
+
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
 
-        reply = await stub.GetTasksInfo(GetTasksInfoRequest(), timeout=timeout)
+        reply = await stub.GetTasksInfo(
+            GetTasksInfoRequest(limit=limit), timeout=timeout
+        )
         return reply
 
     @handle_grpc_network_errors
     async def get_object_info(
-        self, node_id: str, timeout: int = None
-    ) -> Optional[GetNodeStatsReply]:
+        self, node_id: str, timeout: int = None, limit: int = None
+    ) -> Optional[GetObjectsInfoReply]:
+        if not limit:
+            limit = MAX_LIMIT
+
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
 
-        reply = await stub.GetNodeStats(
-            GetNodeStatsRequest(include_memory_info=True),
+        reply = await stub.GetObjectsInfo(
+            GetObjectsInfoRequest(limit=limit),
             timeout=timeout,
         )
         return reply
 
     @handle_grpc_network_errors
     async def get_runtime_envs_info(
-        self, node_id: str, timeout: int = None
+        self, node_id: str, timeout: int = None, limit: int = None
     ) -> Optional[GetRuntimeEnvsInfoReply]:
+        if not limit:
+            limit = MAX_LIMIT
+
         stub = self._runtime_env_agent_stub.get(node_id)
         if not stub:
             raise ValueError(f"Agent for a node id, {node_id} doesn't exist.")
 
         reply = await stub.GetRuntimeEnvsInfo(
-            GetRuntimeEnvsInfoRequest(),
+            GetRuntimeEnvsInfoRequest(limit=limit),
             timeout=timeout,
         )
         return reply

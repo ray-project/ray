@@ -37,23 +37,7 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
         b = end.bind(lf, rt, b=dag_input.b)
 
     wf = workflow.create(b, 2, 3.14, a=10, b="ok")
-    assert len(list(wf._iter_workflows_in_dag())) == 4, "incorrect amount of steps"
     assert wf.run() == "left(23.14, hello, 10),right(23.14, ok, 2);ok"
-
-
-def test_dag_to_workflow_options(workflow_start_regular_shared):
-    """This test if the workflow inherits DAG options."""
-
-    @ray.remote
-    def no_resource():
-        pass
-
-    # TODO(suquark): The current Ray DAG is buggy, it failed to return the
-    # "original" options, we need to override "num_returns" to pass workflow check.
-    dag = no_resource.options(num_gpus=100, num_returns=1).bind()
-
-    wf = workflow.create(dag)
-    assert wf.data.step_options.ray_options["num_gpus"] == 100
 
 
 def test_dedupe_serialization_dag(workflow_start_regular_shared):
@@ -85,9 +69,8 @@ def test_dedupe_serialization_dag(workflow_start_regular_shared):
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
 
-    # One upload for the initial checkpoint, and one for the object ref after
-    # resuming.
-    assert get_num_uploads() == 2
+    # One upload for the initial checkpoint.
+    assert get_num_uploads() == 1
 
 
 def test_same_object_many_dags(workflow_start_regular_shared):

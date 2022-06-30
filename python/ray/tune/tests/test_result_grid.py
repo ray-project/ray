@@ -3,13 +3,14 @@ import os
 import pickle
 
 import pytest
+import pandas as pd
 
 import ray
 from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
@@ -38,6 +39,58 @@ def test_result_grid(ray_start_2_cpus):
     assert isinstance(result.config, dict)
     assert result.config == {"a": 1}
     assert result.metrics["config"] == result.config
+
+
+def test_result_grid_metric_mode(ray_start_2_cpus):
+    def f(config):
+        for i in range(2):
+            with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": i}))
+            tune.report(step=i)
+
+    analysis = tune.run(f, config={"a": 1}, metric="step", mode="min")
+    analysis._legacy_checkpoint = False
+    result_grid = ResultGrid(analysis)
+    result = result_grid[0]
+    assert isinstance(result.checkpoint, Checkpoint)
+    assert isinstance(result.best_checkpoints, list)
+    assert isinstance(result.metrics, dict)
+    assert isinstance(result.config, dict)
+    assert isinstance(result.metrics_dataframe, pd.DataFrame)
+    assert os.path.normpath(
+        result.checkpoint.get_internal_representation()[1]
+    ) != os.path.normpath(
+        min((x for x in result.best_checkpoints), key=lambda x: x[1]["step"])[
+            0
+        ].get_internal_representation()[1]
+    )
+    assert result.config == {"a": 1}
+    assert result.metrics["config"] == result.config
+    assert len(result.metrics_dataframe) == 2
+
+
+def test_result_grid_metric_mode_unset(ray_start_2_cpus):
+    def f(config):
+        for i in range(2):
+            with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": i}))
+            tune.report(step=i)
+
+    analysis = tune.run(f, config={"a": 1})
+    analysis._legacy_checkpoint = False
+    result_grid = ResultGrid(analysis)
+    result = result_grid[0]
+    assert isinstance(result.checkpoint, Checkpoint)
+    assert isinstance(result.metrics, dict)
+    assert isinstance(result.config, dict)
+    assert isinstance(result.metrics_dataframe, pd.DataFrame)
+    assert result.config == {"a": 1}
+    assert result.metrics["config"] == result.config
+    assert len(result.metrics_dataframe) == 2
 
 
 def test_result_grid_no_checkpoint(ray_start_2_cpus):
@@ -78,6 +131,7 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     assert isinstance(result.checkpoint, Checkpoint)
     assert isinstance(result.metrics, dict)
     assert isinstance(result.config, dict)
+    assert result.metrics_dataframe is None
     assert result.config == {"some_config": 1}
     assert result.metrics["config"] == result.config
 
@@ -98,6 +152,32 @@ def test_best_result(ray_start_2_cpus):
     best_result = result_grid.get_best_result(metric="x", mode="max")
     assert best_result.config["x"] == 2
     assert best_result.metrics["x"] == 2
+
+
+def test_best_result_checkpoint_history(ray_start_2_cpus):
+    def f(config):
+        for i in range(2):
+            with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps(dict(x=config["x"], step=i)))
+            tune.report(x=config["x"], step=i)
+
+    analysis = tune.run(f, config={"x": tune.grid_search([1, 3])})
+
+    # No checkpointing config. Use metric and mode
+    result_grid = ResultGrid(analysis)
+    best_result = result_grid.get_best_result(metric="x", mode="max")
+    assert best_result.metrics["x"] == 3
+    print(best_result.best_checkpoints)
+    print([x[0].get_internal_representation() for x in best_result.best_checkpoints])
+    assert len(best_result.best_checkpoints) == 2
+    i = 0
+    for checkpoint, metrics in best_result.best_checkpoints:
+        assert isinstance(checkpoint, Checkpoint)
+        assert metrics["x"] == 3
+        assert metrics["step"] == i
+        i += 1
 
 
 def test_best_result_no_report(ray_start_2_cpus):

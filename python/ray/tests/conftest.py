@@ -18,9 +18,10 @@ from unittest import mock
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
 from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
@@ -923,3 +924,25 @@ def start_http_proxy(request):
         if proxy:
             proxy.terminate()
             proxy.wait()
+
+
+@pytest.fixture
+def set_runtime_env_plugins(request):
+    runtime_env_plugins = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGINS"] = runtime_env_plugins
+        yield runtime_env_plugins
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGINS"]
+
+
+@pytest.fixture
+def set_runtime_env_plugin_schemas(request):
+    runtime_env_plugin_schemas = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = runtime_env_plugin_schemas
+        # Clear and reload schemas.
+        RuntimeEnvPluginSchemaManager.clear()
+        yield runtime_env_plugin_schemas
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]

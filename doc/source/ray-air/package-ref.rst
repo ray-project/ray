@@ -124,3 +124,4 @@ Configs
 .. automodule:: ray.air.config
     :members:
 
+.. autoclass:: ray.air.config.CheckpointConfig
