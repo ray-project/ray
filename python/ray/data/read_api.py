@@ -248,7 +248,7 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        requested_parallelism, read_tasks = _get_read_tasks(
+        requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
             datasource, ctx, cur_pg, parallelism, read_args
         )
     else:
@@ -262,7 +262,7 @@ def read_datasource(
         )
 
         _register_parquet_file_fragment_serialization()
-        requested_parallelism, read_tasks = ray.get(
+        requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
             get_read_tasks.remote(
                 datasource,
                 ctx,
@@ -272,7 +272,17 @@ def read_datasource(
             )
         )
 
-    if len(read_tasks) < requested_parallelism and (
+    if len(read_tasks) < min_safe_parallelism:
+        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
+        logger.warning(
+            f"The blocks of this dataset are estimated to be {perc}x larger than the "
+            "target block size "
+            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
+            "out-of-memory errors during processing. Consider reducing the size of "
+            "input files or using `.repartition(n)` to increase the number of "
+            "dataset blocks."
+        )
+    elif len(read_tasks) < requested_parallelism and (
         len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
@@ -1096,7 +1106,7 @@ def _get_read_tasks(
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     kwargs: dict,
-) -> (int, List[ReadTask]):
+) -> (int, int, List[ReadTask]):
     """Generates read tasks.
 
     Args:
@@ -1107,44 +1117,50 @@ def _get_read_tasks(
         kwargs: Additional kwargs to pass to the reader.
 
     Returns:
-        Request parallelism from the datasource, and the list of read tasks generated.
+        Request parallelism from the datasource, the min safe parallelism to avoid
+        OOM, and the list of read tasks generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
-    requested_parallelism = _autodetect_parallelism(parallelism, cur_pg, reader)
-    return requested_parallelism, reader.get_read_tasks(requested_parallelism)
+    requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
+        parallelism, cur_pg, reader
+    )
+    return (
+        requested_parallelism,
+        min_safe_parallelism,
+        reader.get_read_tasks(requested_parallelism),
+    )
 
 
 def _autodetect_parallelism(
     parallelism: int, cur_pg: Optional[PlacementGroup], reader: Optional[Reader] = None
-) -> int:
+) -> (int, int):
+    """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
     # Autodetect parallelism requested. The heuristic here are that we should try
     # to create as many blocks needed to saturate available resources, and also keep
     # block sizes below the target memory size, but no more. Creating too many
     # blocks is inefficient.
+    min_safe_parallelism = 1
+    ctx = DatasetContext.get_current()
+    if reader:
+        mem_size = reader.estimate_inmemory_data_size()
+        if mem_size is not None:
+            min_safe_parallelism = max(1, int(mem_size / ctx.target_max_block_size))
+    else:
+        mem_size = None
     if parallelism < 0:
-        ctx = DatasetContext.get_current()
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
         # Start with 2x the number of cores as a baseline, with a min floor.
         avail_cpus = _estimate_avail_cpus(cur_pg)
-        parallelism = max(ctx.min_parallelism, avail_cpus * 2)
-        if reader:
-            # Increase it to avoid overly-large blocks as needed.
-            mem_size = reader.estimate_inmemory_data_size()
-            if mem_size is not None:
-                parallelism = max(
-                    int(mem_size / ctx.target_max_block_size), parallelism
-                )
-        else:
-            mem_size = None
+        parallelism = max(ctx.min_parallelism, min_safe_parallelism, avail_cpus * 2)
         logger.debug(
             f"Autodetected parallelism={parallelism} based on "
             f"estimated_available_cpus={avail_cpus} and "
             f"estimated_data_size={mem_size}."
         )
-    return parallelism
+    return parallelism, min_safe_parallelism
 
 
 def _estimate_avail_cpus(cur_pg: Optional[PlacementGroup]) -> int:
