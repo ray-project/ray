@@ -1,14 +1,12 @@
 # If want to use checkpointing with a custom training function (not a Ray
 # integration like PyTorch or Tensorflow), your function can read/write
 # checkpoint through ``ray.air.session`` APIs.
-import os
 import time
 import argparse
 
 from ray import tune
 from ray.air import session
-from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_FILE_NAME
-from ray import cloudpickle as pickle
+from ray.air.checkpoint import Checkpoint
 
 
 def evaluation_fn(step, width, height):
@@ -70,7 +68,5 @@ if __name__ == "__main__":
     )
     print("Best hyperparameters: ", analysis.best_config)
     best_checkpoint = analysis.best_checkpoint
-    with best_checkpoint.as_directory() as best_ckpt_dir:
-        print("Best checkpoint directory: ", best_ckpt_dir)
-        with open(os.path.join(best_ckpt_dir, _DICT_CHECKPOINT_FILE_NAME), "rb") as f:
-            print("Best checkpoint: ", pickle.load(f))
+    checkpoint_data = best_checkpoint.to_dict()
+    print("Best checkpoint: ", checkpoint_data)
