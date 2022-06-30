@@ -149,6 +149,16 @@ class DeploymentConfig(BaseModel):
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
+    @validator("user_config", always=True)
+    def user_config_json_serializable(cls, v):
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"user_config is not JSON-serializable: {str(e)}.")
+
+        return v
+
     def to_proto(self):
         data = self.dict()
         if data.get("user_config"):
