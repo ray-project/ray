@@ -6,7 +6,6 @@ from pathlib import Path
 from ray import job_config
 import yaml
 import jsonschema
-import unittest
 
 from ray._private.runtime_env.validation import (
     parse_and_validate_excludes,
@@ -315,7 +314,7 @@ test_env_2 = os.path.join(
     [schemas_dir, f"{test_env_1},{test_env_2}"],
     indirect=True,
 )
-@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 class TestValidateByJsonSchema:
     def test_validate_pip(self, set_runtime_env_plugin_schemas):
         runtime_env = RuntimeEnv()
@@ -348,7 +347,7 @@ class TestValidateByJsonSchema:
             runtime_env.set("test_env_2", ["123"])
 
 
-@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 class TestRuntimeEnvPluginSchemaManager:
     def test(self):
         RuntimeEnvPluginSchemaManager.clear()
