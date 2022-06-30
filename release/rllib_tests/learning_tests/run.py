@@ -20,14 +20,16 @@ if __name__ == "__main__":
         help="Finish quickly for training.",
     )
     parser.add_argument(
-        "--yaml-sub-dir",
+        "--yaml",
         type=str,
         default="",
-        help="Sub directory under yaml_files/ to look for test files.",
+        help="Pattern for yaml files to match within the yaml_files/ dir. E.g. 'a-e/*' "
+             "matches all yaml files inside yaml_files/a-e/ and 'a-e/a2c*' matches "
+             "all A2C-related tests.",
     )
     args = parser.parse_args()
 
-    assert args.yaml_sub_dir, "--yaml-sub-dir can't be empty."
+    assert args.yaml, "--yaml can't be empty."
 
     # Get path of this very script to look for yaml files.
     abs_yaml_path = os.path.join(
