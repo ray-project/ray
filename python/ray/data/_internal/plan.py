@@ -329,6 +329,8 @@ class ExecutionPlan:
         """
         context = DatasetContext.get_current()
         blocks, stats, stages = self._get_source_blocks_and_stages()
+        if context.optimize_reorder_stages:
+            stages = _reorder_stages(stages)
         if context.optimize_fuse_stages:
             if context.optimize_fuse_read_stages:
                 # If using a lazy datasource, rewrite read stage into one-to-one stage
@@ -692,6 +694,18 @@ class AllToAllStage(Stage):
         return blocks, stage_info
 
 
+class RandomizeBlocksStage(AllToAllStage):
+    def __init__(self, seed: Optional[int]):
+        def do_randomize_block_order(block_list, *_):
+            num_blocks = block_list.executed_num_blocks()  # Blocking.
+            if num_blocks == 0:
+                return block_list, {}
+            randomized_block_list = block_list.randomize_block_order(seed)
+            return randomized_block_list, {}
+
+        super().__init__("randomize_block_order", None, do_randomize_block_order)
+
+
 def _rewrite_read_stages(
     blocks: BlockList,
     stats: DatasetStats,
@@ -739,6 +753,36 @@ def _rewrite_read_stage(
     stage = OneToOneStage("read", block_fn, "tasks", remote_args)
     stats = DatasetStats(stages={}, parent=None)
     return block_list, stats, stage
+
+
+def _reorder_stages(stages: List[Stage]) -> List[Stage]:
+    """Reorder randomize stages to the end to enable better stage fusion.
+
+    This applies to RandomizeBlockOrder stages specifically (issue #26057).
+
+    Args:
+        stages: Stages to try to reorder.
+
+    Returns:
+        Reordered stages.
+    """
+
+    output: List[Stage] = []
+    reorder_buf: List[RandomizeBlocksStage] = []
+
+    for s in stages:
+        if isinstance(s, RandomizeBlocksStage):
+            # Buffer it for later reordering.
+            reorder_buf.append(s)
+        else:
+            # Barrier: flush the reorder buffer.
+            if isinstance(s, AllToAllStage):
+                output.extend(reorder_buf)
+                reorder_buf = []
+            output.append(s)
+
+    output.extend(reorder_buf)
+    return output
 
 
 def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
