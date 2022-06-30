@@ -36,6 +36,8 @@ from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.exception import ServerUnavailable
+from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 
 import psutil
 
@@ -811,6 +813,13 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert dashboard_proc.wait(10) == 255
 
 
+def get_dashboard_agent_url(address: str, agent_listen_port: str):
+    index = address.index('.')
+    agent_url = address[:address] + agent_listen_port
+
+    return agent_url
+
+
 @pytest.mark.skipif(
     os.environ.get("RAY_DEFAULT") != "1",
     reason="This test only works for default installation.",
@@ -829,11 +838,67 @@ def test_dashboard_does_not_depend_on_serve():
     assert response.json()["result"] is True
     assert "snapshot" in response.json()["data"]
 
+    agent_url = get_dashboard_agent_url(
+        ctx.address_info["address"], ctx.address_info["dashboard_agent_listen_port"]
+    )
+
     # Check that Serve-dependent features fail
-    response = requests.get(f"http://{ctx.dashboard_url}/api/serve/deployments/")
+    response = requests.get(f"http://{agent_url}/api/serve/deployments/")
     assert response.status_code == 404
     assert "Not Found" in response.text
 
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_agent_does_not_depend_on_serve():
+    """Check that the dashboard agent can start without Serve."""
+
+    with pytest.raises(ImportError):
+        from ray import serve  # noqa: F401
+
+    ctx = ray.init(include_dashboard=True)
+
+    GRPC_CHANNEL_OPTIONS = (
+        *ray_constants.GLOBAL_GRPC_OPTIONS,
+        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    )
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        ctx.address_info["address"], GRPC_CHANNEL_OPTIONS, asynchronous=True
+    )
+    client = StateDataSourceClient(gcs_channel)
+    wait_for_condition(lambda: len(ray.nodes()) > 0)
+    # Ensure standard dashboard agent features work, like runtime envs info.
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+
+        def get_port():
+            return ray.experimental.internal_kv._internal_kv_get(
+                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+            )
+
+        wait_for_condition(lambda: get_port() is not None)
+        # The second index is the gRPC port
+        port = json.loads(get_port())[1]
+        ip = node["NodeManagerAddress"]
+        client.register_agent_client(node_id, ip, port)
+        result = await client.get_runtime_envs_info(node_id)
+        assert isinstance(result, GetRuntimeEnvsInfoReply)
+
+    logger.info("Agent grpc works.")
+
+    agent_url = get_dashboard_agent_url(
+        ctx.address_info["address"], ctx.address_info["dashboard_agent_listen_port"]
+    )
+
+    # Check that Serve-dependent features fail
+    response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+    assert response.status_code == 404
+    assert "Not Found" in response.text
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") != "1",
