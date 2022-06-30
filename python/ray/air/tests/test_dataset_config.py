@@ -268,7 +268,10 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         assert results[0] != results[1], results
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert "Stage 1 read->map_batches: 5/5 blocks executed " in stats, stats
+        assert (
+            "Stage 1 read->randomize_block_order->map_batches: 5/5 blocks executed "
+            in stats
+        ), stats
 
     test = TestStream(
         checker,
@@ -286,7 +289,10 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         assert results[0] != results[1], results
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert "Stage 1 read->map_batches: 1/1 blocks executed " in stats, stats
+        assert (
+            "Stage 1 read->randomize_block_order->map_batches: 1/1 blocks executed "
+            in stats
+        ), stats
 
     test = TestStream(
         checker,
@@ -303,7 +309,7 @@ def test_global_shuffle(ray_start_4_cpus):
         assert results[0] != results[1], results
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert "Stage 1 read->random_shuffle" in stats, stats
+        assert "Stage 1 read->randomize_block_order->random_shuffle" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestStream(
@@ -354,7 +360,7 @@ def test_randomize_block_order(ray_start_4_cpus):
     def checker(shard, results):
         assert len(results) == 5, results
         stats = shard.stats()
-        assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
+        assert "randomize_block_order: 5/5 blocks executed" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestBatch(
