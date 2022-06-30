@@ -1,16 +1,19 @@
-from typing import Callable, Dict, Optional, Union
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import ScalingConfigDataClass
+from ray.air.constants import TRAIN_DATASET_KEY
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.base_trainer import BaseTrainer
-from ray.train.gbdt_trainer import GBDTTrainer
+from ray.train.xgboost import XGBoostTrainer
+from sklearn.datasets import load_breast_cancer
+import pandas as pd
 import pytest
 import ray
 from ray import tune
-from ray.tune.schedulers.resource_changing_scheduler import DistributeResources, ResourceChangingScheduler
+from ray.tune.schedulers.resource_changing_scheduler import (
+    DistributeResources,
+    ResourceChangingScheduler,
+)
 from ray.tune.schedulers.async_hyperband import ASHAScheduler
 
 
@@ -36,7 +39,9 @@ def train_fn(config):
     # wrap the model in DDP
     for epoch in range(start_epoch, config["num_epochs"]):
         checkpoint = Checkpoint.from_dict(dict(epoch=epoch))
-        session.report({"metric": config["metric"] * epoch, "epoch": epoch}, checkpoint=checkpoint)
+        session.report(
+            {"metric": config["metric"] * epoch, "epoch": epoch}, checkpoint=checkpoint
+        )
 
 
 class DummyDataParallelTrainer(DataParallelTrainer):
@@ -44,7 +49,10 @@ class DummyDataParallelTrainer(DataParallelTrainer):
         scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
             self.scaling_config
         )
-        assert scaling_config_dataclass.as_placement_group_factory() == session.get_trial_resources()
+        assert (
+            scaling_config_dataclass.as_placement_group_factory()
+            == session.get_trial_resources()
+        )
         return super().training_loop()
 
 
@@ -61,7 +69,45 @@ def test_data_parallel_trainer(ray_start_8_cpus):
         tune_config=TuneConfig(
             mode="max",
             metric="metric",
-            scheduler=ResourceChangingScheduler(ASHAScheduler(), resources_allocation_function=DistributeResources(add_bundles=True)),
+            scheduler=ResourceChangingScheduler(
+                ASHAScheduler(),
+                resources_allocation_function=DistributeResources(add_bundles=True),
+            ),
+        ),
+    )
+    result_grid = tuner.fit()
+    assert not any(x.error for x in result_grid)
+
+
+def test_gbdt_trainer(ray_start_8_cpus):
+    data_raw = load_breast_cancer()
+    dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
+    dataset_df["target"] = data_raw["target"]
+    train_ds = ray.data.from_pandas(dataset_df).repartition(16)
+    trainer = XGBoostTrainer(
+        datasets={TRAIN_DATASET_KEY: train_ds},
+        label_column="target",
+        scaling_config=dict(num_workers=2),
+        params={
+            "objective": "binary:logistic",
+            "eval_metric": ["logloss", "error"],
+        },
+    )
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "num_boost_round": 200,
+            "params": {
+                "eta": tune.grid_search([0.28, 0.29, 0.3, 0.31, 0.32]),
+            },
+        },
+        tune_config=TuneConfig(
+            mode="min",
+            metric="train-logloss",
+            scheduler=ResourceChangingScheduler(
+                ASHAScheduler(),
+                resources_allocation_function=DistributeResources(add_bundles=True),
+            ),
         ),
     )
     result_grid = tuner.fit()
