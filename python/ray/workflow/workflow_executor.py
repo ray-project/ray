@@ -12,7 +12,7 @@ from ray.workflow.common import (
     WorkflowRef,
     WorkflowExecutionMetadata,
     WorkflowStatus,
-    StepID,
+    TaskID,
 )
 from ray.workflow.exceptions import WorkflowCancellationError, WorkflowExecutionError
 from ray.workflow.step_executor import get_step_executor, _BakedWorkflowInputs
@@ -54,7 +54,7 @@ class WorkflowExecutor:
         """
         self._state = state
         self._completion_queue = asyncio.Queue()
-        self._task_done_callbacks: Dict[StepID, List[asyncio.Future]] = defaultdict(
+        self._task_done_callbacks: Dict[TaskID, List[asyncio.Future]] = defaultdict(
             list
         )
 
@@ -66,7 +66,7 @@ class WorkflowExecutor:
         return self._state
 
     @property
-    def output_task_id(self) -> StepID:
+    def output_task_id(self) -> TaskID:
         return self._state.output_task_id
 
     async def run_until_complete(
@@ -140,7 +140,7 @@ class WorkflowExecutor:
             except Exception:
                 pass
 
-    def _poll_queued_tasks(self) -> List[StepID]:
+    def _poll_queued_tasks(self) -> List[TaskID]:
         tasks = []
         while True:
             task_id = self._state.pop_frontier_to_run()
@@ -149,7 +149,7 @@ class WorkflowExecutor:
             tasks.append(task_id)
         return tasks
 
-    def _submit_ray_task(self, task_id: StepID, job_id: str) -> None:
+    def _submit_ray_task(self, task_id: TaskID, job_id: str) -> None:
         """Submit a workflow task as a Ray task."""
         state = self._state
         baked_inputs = _BakedWorkflowInputs(
@@ -178,7 +178,7 @@ class WorkflowExecutor:
         )
 
     def _post_process_submit_task(
-        self, task_id: StepID, store: "WorkflowStorage"
+        self, task_id: TaskID, store: "WorkflowStorage"
     ) -> None:
         """Update dependencies and reference count etc. after task submission."""
         state = self._state
@@ -221,7 +221,7 @@ class WorkflowExecutor:
             ready_futures.append(cq.get_nowait())
         return ready_futures
 
-    def _iter_callstack(self, task_id: StepID) -> Iterator[Tuple[StepID, Task]]:
+    def _iter_callstack(self, task_id: TaskID) -> Iterator[Tuple[TaskID, Task]]:
         state = self._state
         while task_id in state.task_context:
             task_id = state.task_context[task_id].creator_task_id
@@ -304,7 +304,7 @@ class WorkflowExecutor:
 
     async def _post_process_ready_task(
         self,
-        task_id: StepID,
+        task_id: TaskID,
         metadata: WorkflowExecutionMetadata,
         output_ref: WorkflowRef,
     ) -> None:
@@ -347,7 +347,7 @@ class WorkflowExecutor:
                 if not fut.done():
                     fut.set_exception(err)
 
-    def get_task_output_async(self, task_id: Optional[StepID]) -> asyncio.Future:
+    def get_task_output_async(self, task_id: Optional[TaskID]) -> asyncio.Future:
         """Get the output of a task asynchronously.
 
         Args:

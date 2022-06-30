@@ -32,8 +32,8 @@ def checkpoint_dag(checkpoint):
     )
 
 
-def _assert_step_checkpoints(wf_storage, step_id, mode):
-    result = wf_storage.inspect_step(step_id)
+def _assert_step_checkpoints(wf_storage, task_id, mode):
+    result = wf_storage.inspect_step(task_id)
     if mode == "all_skipped":
         assert not result.output_object_valid
         assert result.output_step_id is None
