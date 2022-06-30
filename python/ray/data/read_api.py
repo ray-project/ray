@@ -78,10 +78,12 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
         Dataset holding the items.
     """
 
+    detected_parallelism, _ = _autodetect_parallelism(
+        parallelism, ray.util.get_current_placement_group()
+    )
     block_size = max(
         1,
-        len(items)
-        // _autodetect_parallelism(parallelism, ray.util.get_current_placement_group()),
+        len(items) // detected_parallelism,
     )
 
     blocks: List[ObjectRef[Block]] = []
