@@ -432,6 +432,7 @@ def optimizer_fn(policy: Policy, config: AlgorithmConfigDict) -> Tuple[LocalOpti
     return tuple([policy.actor_optim] + policy.critic_optims + [policy.alpha_optim])
 
 
+# TODO: Unify with DDPG's ComputeTDErrorMixin when SAC policy subclasses PolicyV2
 class ComputeTDErrorMixin:
     """Mixin class calculating TD-error (part of critic loss) per batch item.
 
@@ -465,6 +466,7 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
+# TODO: Unify with DDPG's TargetNetworkMixin when SAC policy subclasses PolicyV2
 class TargetNetworkMixin:
     """Mixin class adding a method for (soft) target net(s) synchronizations.
 
