@@ -37,9 +37,8 @@ def _get_snapshot(address: str):
 def test_successful_job_status(
     ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
 ):
-    raw_address = ray_start_with_dashboard.address_info["webui_url"]
-    assert wait_until_server_available(raw_address)
-    address = raw_address + address_suffix
+    address = ray_start_with_dashboard.address_info["webui_url"]
+    assert wait_until_server_available(address)
     address = format_web_url(address)
 
     job_sleep_time_s = 5
@@ -52,7 +51,7 @@ def test_successful_job_status(
         '"'
     )
 
-    client = JobSubmissionClient(address)
+    client = JobSubmissionClient(address + address_suffix)
     start_time_s = int(time.time())
     runtime_env = {"env_vars": {"RAY_TEST_123": "123"}}
     metadata = {"ray_test_456": "456"}
@@ -61,7 +60,7 @@ def test_successful_job_status(
     )
 
     def wait_for_job_to_succeed():
-        data = _get_snapshot(raw_address)
+        data = _get_snapshot(address)
         legacy_job_succeeded = False
         job_succeeded = False
 
@@ -94,18 +93,19 @@ def test_successful_job_status(
                         entry["endTime"] >= entry["startTime"] + job_sleep_time_s * 1000
                     )
 
+        print(f"Legacy job submission succeeded: {legacy_job_succeeded}")
+        print(f"Job submission succeeded: {job_succeeded}")
         return legacy_job_succeeded and job_succeeded
 
-    wait_for_condition(wait_for_job_to_succeed, timeout=30)
+    wait_for_condition(wait_for_job_to_succeed, timeout=45)
 
 
 @pytest.mark.parametrize("address_suffix", ["", "/"])  # Trailing slash should succeed
 def test_failed_job_status(
     ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
 ):
-    raw_address = ray_start_with_dashboard.address_info["webui_url"]
-    assert wait_until_server_available(raw_address)
-    address = raw_address + address_suffix
+    address = ray_start_with_dashboard.address_info["webui_url"]
+    assert wait_until_server_available(address)
     address = format_web_url(address)
 
     job_sleep_time_s = 5
@@ -120,7 +120,7 @@ def test_failed_job_status(
         '"'
     )
     start_time_s = int(time.time())
-    client = JobSubmissionClient(address)
+    client = JobSubmissionClient(address + address_suffix)
     runtime_env = {"env_vars": {"RAY_TEST_456": "456"}}
     metadata = {"ray_test_789": "789"}
     job_id = client.submit_job(
@@ -128,7 +128,7 @@ def test_failed_job_status(
     )
 
     def wait_for_job_to_fail():
-        data = _get_snapshot(raw_address)
+        data = _get_snapshot(address)
 
         legacy_job_failed = False
         job_failed = False
@@ -161,9 +161,12 @@ def test_failed_job_status(
                     assert (
                         entry["endTime"] >= entry["startTime"] + job_sleep_time_s * 1000
                     )
+
+        print(f"Legacy job submission failed: {legacy_job_failed}")
+        print(f"Job submission failed: {job_failed}")
         return legacy_job_failed and job_failed
 
-    wait_for_condition(wait_for_job_to_fail, timeout=25)
+    wait_for_condition(wait_for_job_to_fail, timeout=45)
 
 
 if __name__ == "__main__":
