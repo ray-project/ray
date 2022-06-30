@@ -687,7 +687,7 @@ class ComputeTDErrorMixin:
                     SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
                     SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
                     SampleBatch.DONES: tf.convert_to_tensor(done_mask),
-                    PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
+                    SampleBatch.PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
                 },
             )
             # `self.td_error` is set in loss_fn.

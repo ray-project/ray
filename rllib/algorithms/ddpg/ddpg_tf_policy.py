@@ -52,7 +52,7 @@ class ComputeTDErrorMixin:
                     SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
                     SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
                     SampleBatch.DONES: tf.convert_to_tensor(done_mask),
-                    PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
+                    SampleBatch.PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
                 }
             )
             # Do forward pass on loss to update td errors attribute

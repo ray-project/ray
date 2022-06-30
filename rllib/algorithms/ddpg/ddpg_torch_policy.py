@@ -52,7 +52,7 @@ class ComputeTDErrorMixin:
                         SampleBatch.REWARDS: rew_t,
                         SampleBatch.NEXT_OBS: obs_tp1,
                         SampleBatch.DONES: done_mask,
-                        PRIO_WEIGHTS: importance_weights,
+                        SampleBatch.PRIO_WEIGHTS: importance_weights,
                     }
                 )
             )
