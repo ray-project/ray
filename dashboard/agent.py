@@ -84,11 +84,7 @@ class DashboardAgent:
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
-        self.listen_port = (
-            listen_port
-            if listen_port != 0
-            else ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
-        )
+        self.listen_port = listen_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
         self.logging_params = logging_params
