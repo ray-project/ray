@@ -64,7 +64,6 @@ class ClientRunner(CommandRunner):
         except Exception as e:
             raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
-
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         import ray
 
