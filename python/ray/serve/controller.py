@@ -341,7 +341,7 @@ class ServeController:
         )
         version = deployment_config.version
         replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.need_pickle()
+            replica_config_proto_bytes, deployment_config.needs_pickle()
         )
 
         autoscaling_config = deployment_config.autoscaling_config
@@ -609,7 +609,10 @@ def run_graph(
 
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:
-    """
+    """A hack that proxy the creation of async actors from Java.
+
+    To be removed after https://github.com/ray-project/ray/pull/26037
+
     Java api can not support python async actor. If we use java api create
     python async actor. The async init method won't be executed. The async
     method will fail with pickle error. And the run_control_loop of controller

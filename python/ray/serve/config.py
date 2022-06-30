@@ -83,19 +83,16 @@ class AutoscalingConfig(BaseModel):
     # TODO(architkulkarni): Add reasonable defaults
 
 
-def _need_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
-    # TODO(yangxiaofeng): If there are three language types of serve,
-    #  this method will no work
-    if deployment_language == DeploymentLanguage.PYTHON:
-        if is_cross_language:
-            return False
-        else:
-            return True
+def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
+    """From Serve client API's perspective, decide whehter pickling is needed."""
+    if deployment_language == DeploymentLanguage.PYTHON and not is_cross_language:
+        # Python client deploying Python replicas.
+        return True
+    elif deployment_language == DeploymentLanguage.JAVA and is_cross_language:
+        # Python client deploying Java replicas, using xlang serialization via cloudpickle.
+        return True
     else:
-        if is_cross_language:
-            return True
-        else:
-            return False
+        return False
 
 
 class DeploymentConfig(BaseModel):
@@ -164,13 +161,13 @@ class DeploymentConfig(BaseModel):
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
-    def need_pickle(self):
-        return _need_pickle(self.deployment_language, self.is_cross_language)
+    def needs_pickle(self):
+        return _needs_pickle(self.deployment_language, self.is_cross_language)
 
     def to_proto(self):
         data = self.dict()
         if data.get("user_config"):
-            if self.need_pickle():
+            if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
@@ -199,8 +196,8 @@ class DeploymentConfig(BaseModel):
                 is_cross_language = (
                     data["is_cross_language"] if "is_cross_language" in data else False
                 )
-                need_pickle = _need_pickle(deployment_language, is_cross_language)
-                if need_pickle:
+                needs_pickle = _needs_pickle(deployment_language, is_cross_language)
+                if needs_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
                     # after MessageToDict, bytes data has been deal with base64
@@ -290,7 +287,7 @@ class ReplicaConfig:
         serialized_init_args: bytes,
         serialized_init_kwargs: bytes,
         ray_actor_options: Dict,
-        need_pickle: bool = True,
+        needs_pickle: bool = True,
     ):
         """Construct a ReplicaConfig with serialized properties.
 
@@ -317,7 +314,7 @@ class ReplicaConfig:
         # needs. It does NOT set the replica's resource usage. That's done by
         # the ray_actor_options.
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
-        self.need_pickle = need_pickle
+        self.needs_pickle = needs_pickle
 
     @classmethod
     def create(
@@ -414,7 +411,7 @@ class ReplicaConfig:
             - Class path (str)
         """
         if self._deployment_def is None:
-            if self.need_pickle:
+            if self.needs_pickle:
                 self._deployment_def = cloudpickle.loads(self.serialized_deployment_def)
             else:
                 self._deployment_def = self.serialized_deployment_def.decode(
@@ -431,7 +428,7 @@ class ReplicaConfig:
         Otherwise, it is None.
         """
         if self._init_args is None:
-            if self.need_pickle:
+            if self.needs_pickle:
                 self._init_args = cloudpickle.loads(self.serialized_init_args)
             else:
                 self._init_args = self.serialized_init_args
@@ -452,20 +449,20 @@ class ReplicaConfig:
         return self._init_kwargs
 
     @classmethod
-    def from_proto(cls, proto: ReplicaConfigProto, need_pickle: bool = True):
+    def from_proto(cls, proto: ReplicaConfigProto, needs_pickle: bool = True):
         return ReplicaConfig(
             proto.deployment_def_name,
             proto.deployment_def,
             proto.init_args,
             proto.init_kwargs,
             json.loads(proto.ray_actor_options),
-            need_pickle,
+            needs_pickle,
         )
 
     @classmethod
-    def from_proto_bytes(cls, proto_bytes: bytes, need_pickle: bool = True):
+    def from_proto_bytes(cls, proto_bytes: bytes, needs_pickle: bool = True):
         proto = ReplicaConfigProto.FromString(proto_bytes)
-        return cls.from_proto(proto, need_pickle)
+        return cls.from_proto(proto, needs_pickle)
 
     def to_proto(self):
         return ReplicaConfigProto(

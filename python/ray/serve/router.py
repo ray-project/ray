@@ -122,16 +122,16 @@ class ReplicaSet:
                 f"to replica {replica.replica_tag}."
             )
             if replica.is_cross_language:
-                # java replica
+                # Handling requests for Java replica
                 arg = query.args[0]
                 if query.metadata.http_arg_is_pickled:
                     assert isinstance(arg, bytes)
-                    arg = pickle.loads(arg)
-                    query_string = arg.scope.get("query_string")
-                    if query_string is not None and query_string != b"":
-                        arg = query_string.decode("iso8859-1").split("=", 1)[1]
-                    elif arg.body is not None and arg.body != b"":
-                        arg = arg.body.decode("iso8859-1")
+                    loaded_http_input = pickle.loads(arg)
+                    query_string = loaded_http_input.scope.get("query_string")
+                    if query_string:
+                        arg = query_string.decode().split("=", 1)[1]
+                    elif arg.body:
+                        arg = arg.body.decode()
                 user_ref = JavaActorHandleProxy(
                     replica.actor_handle
                 ).handle_request.remote(

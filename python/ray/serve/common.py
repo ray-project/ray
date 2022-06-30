@@ -215,7 +215,7 @@ class DeploymentInfo:
             "deployment_config": deployment_config,
             "replica_config": ReplicaConfig.from_proto(
                 proto.replica_config,
-                deployment_config.need_pickle() if deployment_config else True,
+                deployment_config.needs_pickle() if deployment_config else True,
             ),
             "start_time_ms": proto.start_time_ms,
             "actor_name": proto.actor_name if proto.actor_name != "" else None,
