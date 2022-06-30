@@ -46,7 +46,7 @@ class DQNTorchPolicy(
     LearningRateSchedule,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with SimpleQTrainer."""
+    """PyTorch policy class used with DQN."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.dqn.dqn.DQNConfig().to_dict(), **config)
