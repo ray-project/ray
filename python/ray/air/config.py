@@ -271,9 +271,26 @@ class FailureConfig:
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
+        fail_fast: Whether to fail upon the first error.
+            If fail_fast='raise' provided, Tune will automatically
+            raise the exception received by the Trainable. fail_fast='raise'
+            can easily leak resources and should be used with caution (it
+            is best used with `ray.init(local_mode=True)`).
     """
 
     max_failures: int = 0
+    fail_fast: Union[bool, str] = False
+
+    def __post_init__(self):
+        # Same check as in tune.run
+        if self.fail_fast and self.max_failures != 0:
+            raise ValueError("max_failures must be 0 if fail_fast=True.")
+
+        # Same check as in TrialRunner
+        if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() != "RAISE"):
+            raise ValueError(
+                "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
+            )
 
 
 @dataclass
