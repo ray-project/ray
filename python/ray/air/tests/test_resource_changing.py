@@ -1,5 +1,6 @@
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
+from ray.air.config import FailureConfig, RunConfig
 from ray.air.constants import TRAIN_DATASET_KEY
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -44,7 +45,7 @@ def train_fn(config):
         )
 
 
-class DummyDataParallelTrainer(DataParallelTrainer):
+class AssertingDataParallelTrainer(DataParallelTrainer):
     def training_loop(self) -> None:
         scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
             self.scaling_config
@@ -56,8 +57,21 @@ class DummyDataParallelTrainer(DataParallelTrainer):
         return super().training_loop()
 
 
+class AssertingXGBoostTrainer(XGBoostTrainer):
+    @property
+    def _ray_params(self):
+        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
+            self.scaling_config
+        )
+        assert (
+            scaling_config_dataclass.as_placement_group_factory()
+            == session.get_trial_resources()
+        )
+        return super()._ray_params
+
+
 def test_data_parallel_trainer(ray_start_8_cpus):
-    trainer = DummyDataParallelTrainer(train_fn, scaling_config=dict(num_workers=2))
+    trainer = AssertingDataParallelTrainer(train_fn, scaling_config=dict(num_workers=2))
     tuner = Tuner(
         trainer,
         param_space={
@@ -71,9 +85,12 @@ def test_data_parallel_trainer(ray_start_8_cpus):
             metric="metric",
             scheduler=ResourceChangingScheduler(
                 ASHAScheduler(),
-                resources_allocation_function=DistributeResources(add_bundles=True),
+                resources_allocation_function=DistributeResources(
+                    add_bundles=True, reserve_resources={"CPU": 1}
+                ),
             ),
         ),
+        run_config=RunConfig(failure_config=FailureConfig(fail_fast=True)),
     )
     result_grid = tuner.fit()
     assert not any(x.error for x in result_grid)
@@ -84,19 +101,19 @@ def test_gbdt_trainer(ray_start_8_cpus):
     dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
     dataset_df["target"] = data_raw["target"]
     train_ds = ray.data.from_pandas(dataset_df).repartition(16)
-    trainer = XGBoostTrainer(
+    trainer = AssertingXGBoostTrainer(
         datasets={TRAIN_DATASET_KEY: train_ds},
         label_column="target",
         scaling_config=dict(num_workers=2),
         params={
             "objective": "binary:logistic",
-            "eval_metric": ["logloss", "error"],
+            "eval_metric": ["logloss"],
         },
     )
     tuner = Tuner(
         trainer,
         param_space={
-            "num_boost_round": 200,
+            "num_boost_round": 100,
             "params": {
                 "eta": tune.grid_search([0.28, 0.29, 0.3, 0.31, 0.32]),
             },
@@ -106,9 +123,12 @@ def test_gbdt_trainer(ray_start_8_cpus):
             metric="train-logloss",
             scheduler=ResourceChangingScheduler(
                 ASHAScheduler(),
-                resources_allocation_function=DistributeResources(add_bundles=True),
+                resources_allocation_function=DistributeResources(
+                    add_bundles=True, reserve_resources={"CPU": 1}
+                ),
             ),
         ),
+        run_config=RunConfig(failure_config=FailureConfig(fail_fast=True)),
     )
     result_grid = tuner.fit()
     assert not any(x.error for x in result_grid)
