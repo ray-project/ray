@@ -218,8 +218,6 @@ class GBDTTrainer(BaseTrainer):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                if isinstance(updated_scaling_config, dict):
-                    updated_scaling_config = ScalingConfig(**updated_scaling_config)
                 validated_scaling_config = trainer_cls._validate_scaling_config(
                     updated_scaling_config
                 )
