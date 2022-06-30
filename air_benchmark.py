@@ -3,9 +3,9 @@ import time
 import argparse
 
 import ray
-from ray.air.preprocessors import BatchMapper
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictor import Predictor
+from ray.data.preprocessors import BatchMapper
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.predictor import Predictor
 from ray.air.util.check_ingest import DummyTrainer
 from ray.air.config import DatasetConfig
 from ray.air.checkpoint import Checkpoint
@@ -41,7 +41,7 @@ def run_ingest_bulk(dataset, num_workers):
         scaling_config={"num_workers": num_workers, "trainer_resources": {"CPU": 0}, "resources_per_worker": {"CPU": 3}},
         datasets={"train": dataset},
         preprocessor=dummy_prep,
-        runtime_seconds=30,
+        num_epochs=1,
         prefetch_blocks=1,
         dataset_config={"train": DatasetConfig(split=True)},
     )
@@ -54,7 +54,7 @@ def run_ingest_streaming(dataset, num_workers):
         scaling_config={"num_workers": num_workers, "trainer_resources": {"CPU": 0}, "resources_per_worker": {"CPU": 3}},
         datasets={"train": dataset},
         preprocessor=dummy_prep,
-        runtime_seconds=30,
+        num_epochs=1,
         prefetch_blocks=1,
         dataset_config={"train": DatasetConfig(split=True, use_stream_api=True, stream_window_size=num_workers * GiB)},
     )
