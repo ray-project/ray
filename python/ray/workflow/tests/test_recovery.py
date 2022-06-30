@@ -7,11 +7,11 @@ import pytest
 from filelock import FileLock
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
-from ray.exceptions import RaySystemError
 from ray import workflow
 from ray.workflow import workflow_storage
 from ray.workflow.storage.debug import DebugStorage
 from ray.workflow.tests import utils
+from ray.workflow.exceptions import WorkflowNotResumableError
 
 
 @ray.remote
@@ -135,7 +135,48 @@ def the_failed_step(x):
     return "foo(" + x + ")"
 
 
-def test_recovery_simple(workflow_start_regular):
+def test_recovery_simple_1(workflow_start_regular):
+    utils.unset_global_mark()
+    workflow_id = "test_recovery_simple_1"
+    with pytest.raises(workflow.WorkflowExecutionError):
+        # internally we get WorkerCrashedError
+        workflow.create(the_failed_step.bind("x")).run(workflow_id=workflow_id)
+
+    assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
+
+    utils.set_global_mark()
+    output = workflow.resume(workflow_id)
+    assert ray.get(output) == "foo(x)"
+    utils.unset_global_mark()
+    # resume from workflow output checkpoint
+    output = workflow.resume(workflow_id)
+    assert ray.get(output) == "foo(x)"
+
+
+def test_recovery_simple_2(workflow_start_regular):
+    @ray.remote
+    def simple(x):
+        return workflow.continuation(the_failed_step.bind(x))
+
+    utils.unset_global_mark()
+    workflow_id = "test_recovery_simple_2"
+    with pytest.raises(workflow.WorkflowExecutionError):
+        # internally we get WorkerCrashedError
+        workflow.create(simple.bind("x")).run(workflow_id=workflow_id)
+
+    assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
+
+    utils.set_global_mark()
+    output = workflow.resume(workflow_id)
+    assert ray.get(output) == "foo(x)"
+    utils.unset_global_mark()
+    # resume from workflow output checkpoint
+
+    output = workflow.resume(workflow_id)
+    assert ray.get(output) == "foo(x)"
+
+
+def test_recovery_simple_3(workflow_start_regular):
     @ray.remote
     def append1(x):
         return x + "[append1]"
@@ -152,12 +193,12 @@ def test_recovery_simple(workflow_start_regular):
         return workflow.continuation(z)
 
     utils.unset_global_mark()
-    workflow_id = "test_recovery_simple"
-    with pytest.raises(RaySystemError):
+    workflow_id = "test_recovery_simple_3"
+    with pytest.raises(workflow.WorkflowExecutionError):
         # internally we get WorkerCrashedError
         workflow.create(simple.bind("x")).run(workflow_id=workflow_id)
 
-    assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.RESUMABLE
+    assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
     utils.set_global_mark()
     output = workflow.resume(workflow_id)
@@ -197,9 +238,12 @@ def test_recovery_complex(workflow_start_regular):
 
     utils.unset_global_mark()
     workflow_id = "test_recovery_complex"
-    with pytest.raises(RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         # internally we get WorkerCrashedError
         workflow.create(complex.bind("x")).run(workflow_id=workflow_id)
+
+    assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
+
     utils.set_global_mark()
     output = workflow.resume(workflow_id)
     r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
@@ -212,11 +256,12 @@ def test_recovery_complex(workflow_start_regular):
 
 
 def test_recovery_non_exists_workflow(workflow_start_regular):
-    with pytest.raises(ValueError):
+    with pytest.raises(WorkflowNotResumableError):
         ray.get(workflow.resume("this_workflow_id_does_not_exist"))
 
 
-def test_recovery_cluster_failure(tmp_path):
+def test_recovery_cluster_failure(tmp_path, shutdown_only):
+    ray.shutdown()
     subprocess.check_call(["ray", "start", "--head"])
     time.sleep(1)
     proc = run_string_as_driver_nonblocking(
@@ -250,7 +295,9 @@ if __name__ == "__main__":
     ray.shutdown()
 
 
-def test_recovery_cluster_failure_resume_all(tmp_path):
+def test_recovery_cluster_failure_resume_all(tmp_path, shutdown_only):
+    ray.shutdown()
+
     tmp_path = tmp_path
     subprocess.check_call(["ray", "start", "--head"])
     time.sleep(1)
@@ -289,7 +336,6 @@ if __name__ == "__main__":
     (wid, obj_ref) = resumed[0]
     assert wid == "cluster_failure"
     assert ray.get(obj_ref) == 20
-    ray.shutdown()
 
 
 def test_shortcut(workflow_start_regular):

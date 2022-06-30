@@ -1,10 +1,8 @@
 # coding: utf-8
 import signal
-import subprocess
 from collections import Counter
 import multiprocessing
 import os
-import pytest
 import shutil
 import tempfile
 import threading
@@ -14,7 +12,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
+from ray._private.test_utils import recursive_fnmatch
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.tune import TuneError
@@ -572,26 +570,8 @@ class ResourceExhaustedTest(unittest.TestCase):
             tune.run(training_func)
 
 
-def test_stacktrace():
-    """Test proper stacktrace is printed for RayTaskError."""
-    CMD = """
-from ray import tune
-
-def train(config):
-    raise Exception("Inducing exception for testing purposes.")
-
-tune.run(train, num_samples=1)
-    """
-    asserted = False
-    try:
-        run_string_as_driver(CMD)
-    except subprocess.CalledProcessError as e:
-        assert "Inducing exception for testing purposes." in e.output
-        asserted = True
-    assert asserted
-
-
 if __name__ == "__main__":
+    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
