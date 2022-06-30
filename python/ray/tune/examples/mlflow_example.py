@@ -8,6 +8,7 @@ import time
 import mlflow
 
 from ray import tune
+from ray.air import session
 from ray.air.callbacks.mlflow import MLflowLoggerCallback
 from ray.tune.integration.mlflow import mlflow_mixin
 
@@ -24,7 +25,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        session.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
@@ -59,7 +60,7 @@ def decorated_easy_objective(config):
         # Log the metrics to mlflow
         mlflow.log_metrics(dict(mean_loss=intermediate_score), step=step)
         # Feed the score back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        session.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
