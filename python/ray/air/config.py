@@ -5,7 +5,7 @@ from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
-from ray.tune.sample import Domain
+from ray.tune.search.sample import Domain
 
 # Move here later when ml_utils is deprecated. Doing it now causes a circular import.
 from ray.util.ml_utils.checkpoint_manager import CheckpointConfig
