@@ -64,16 +64,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# A policy spec used in the "config.multiagent.policies" specification dict
-# as values (keys are the policy IDs (str)). E.g.:
-# config:
-#   multiagent:
-#     policies: {
-#       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
-#       "pol2": PolicySpec(config={"lr": 0.001}),
-#     }
 @PublicAPI
 class PolicySpec:
+    """A policy spec used in the "config.multiagent.policies" specification dict.
+
+    As values (keys are the policy IDs (str)). E.g.:
+    config:
+        multiagent:
+            policies: {
+                "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
+                "pol2": PolicySpec(config={"lr": 0.001}),
+            }
+    """
     def __init__(
         self, policy_class=None, observation_space=None, action_space=None, config=None
     ):
@@ -89,6 +91,14 @@ class PolicySpec:
         # Overrides defined keys in the main Algorithm config.
         # If None, use {}.
         self.config = config
+
+    def __eq__(self, other: "PolicySpec"):
+        return (
+            self.policy_class == other.policy_class
+            and self.observation_space == other.observation_space
+            and self.action_space == other.action_space
+            and self.config == other.config
+        )
 
     def serialize(self) -> Dict:
         return {
