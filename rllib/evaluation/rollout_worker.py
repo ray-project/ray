@@ -1533,9 +1533,15 @@ class RolloutWorker(ParallelIteratorWorker):
         filters = self.get_filters(flush_after=True)
         state = {}
         policy_specs = {}
+        connector_enabled = self.policy_config.get("enable_connectors", False)
         for pid in self.policy_map:
             state[pid] = self.policy_map[pid].get_state()
-            policy_specs[pid] = self.policy_map.policy_specs[pid]
+            policy_spec = self.policy_map.policy_specs[pid]
+            # If connectors are enabled, try serializing the policy spec
+            # instead of picking the spec object.
+            policy_specs[pid] = (
+                policy_spec.serialize() if connector_enabled else policy_spec
+            )
         return pickle.dumps(
             {
                 "filters": filters,
@@ -1561,10 +1567,11 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
+        connector_enabled = self.policy_config.get("enable_connectors", False)
         for pid, state in objs["state"].items():
             if pid not in self.policy_map:
-                pol_spec = objs.get("policy_specs", {}).get(pid)
-                if not pol_spec:
+                spec = objs.get("policy_specs", {}).get(pid)
+                if not spec:
                     logger.warning(
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
                         " part of the static `multagent.policies` config) and"
@@ -1572,12 +1579,15 @@ class RolloutWorker(ParallelIteratorWorker):
                         f"state. Will not add `{pid}`, but ignore it for now."
                     )
                 else:
+                    policy_spec = (
+                        PolicySpec.deserialize(spec) if connector_enabled else spec
+                    )
                     self.add_policy(
                         policy_id=pid,
-                        policy_cls=pol_spec.policy_class,
-                        observation_space=pol_spec.observation_space,
-                        action_space=pol_spec.action_space,
-                        config=pol_spec.config,
+                        policy_cls=policy_spec.policy_class,
+                        observation_space=policy_spec.observation_space,
+                        action_space=policy_spec.action_space,
+                        config=policy_spec.config,
                     )
             else:
                 self.policy_map[pid].set_state(state)
@@ -1807,15 +1817,18 @@ class RolloutWorker(ParallelIteratorWorker):
         self.preprocessors = self.preprocessors or {}
 
         # Loop through given policy-dict and add each entry to our map.
-        for name, (orig_cls, obs_space, act_space, conf) in sorted(policy_dict.items()):
+        for name, policy_spec in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
             # Update the general policy_config with the specific config
             # for this particular policy.
-            merged_conf = merge_dicts(policy_config, conf or {})
+            merged_conf = merge_dicts(policy_config, policy_spec.config or {})
+
             # Update num_workers and worker_index.
             merged_conf["num_workers"] = self.num_workers
             merged_conf["worker_index"] = self.worker_index
+
             # Preprocessors.
+            obs_space = policy_spec.observation_space
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model")
@@ -1825,9 +1838,15 @@ class RolloutWorker(ParallelIteratorWorker):
                     obs_space = preprocessor.observation_space
             else:
                 self.preprocessors[name] = None
+
             # Create the actual policy object.
             self.policy_map.create_policy(
-                name, orig_cls, obs_space, act_space, conf, merged_conf
+                name,
+                policy_spec.policy_class,
+                obs_space,
+                policy_spec.action_space,
+                policy_spec.config,  # overrides.
+                merged_conf,
             )
 
         if self.worker_index == 0:
@@ -2027,9 +2046,7 @@ def _determine_spaces_for_multi_agent_dict(
                     "`observation_space` specified in config!"
                 )
 
-            multi_agent_policies_dict[pid] = multi_agent_policies_dict[pid]._replace(
-                observation_space=obs_space
-            )
+            multi_agent_policies_dict[pid].observation_space = obs_space
 
         if policy_spec.action_space is None:
             if spaces is not None and pid in spaces:
@@ -2072,7 +2089,5 @@ def _determine_spaces_for_multi_agent_dict(
                     "no spaces received from other workers' env(s) OR no "
                     "`action_space` specified in config!"
                 )
-            multi_agent_policies_dict[pid] = multi_agent_policies_dict[pid]._replace(
-                action_space=act_space
-            )
+            multi_agent_policies_dict[pid].action_space = act_space
     return multi_agent_policies_dict
