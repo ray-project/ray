@@ -140,7 +140,7 @@ def get_autodetected_resources(container_data):
 def get_resource(container_resources, resource_name):
     request = _get_resource(container_resources, resource_name, field_name="requests")
     limit = _get_resource(container_resources, resource_name, field_name="limits")
-    resource = min(request, limit)
+    resource = max(request, limit)
     # float("inf") value means the resource wasn't detected in either
     # requests or limits
     return 0 if resource == float("inf") else int(resource)
