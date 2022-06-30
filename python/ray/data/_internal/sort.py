@@ -59,7 +59,10 @@ class _SortOp(ShuffleOp):
 
     @staticmethod
     def reduce(
-        key: SortKeyT, descending: bool, *mapper_outputs: List[Block]
+        key: SortKeyT,
+        descending: bool,
+        *mapper_outputs: List[Block],
+        partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
         return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
             mapper_outputs, key, descending

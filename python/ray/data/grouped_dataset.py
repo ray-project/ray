@@ -49,11 +49,14 @@ class _GroupbyOp(ShuffleOp):
 
     @staticmethod
     def reduce(
-        key: KeyFn, aggs: Tuple[AggregateFn], *mapper_outputs: List[Block]
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+        *mapper_outputs: List[Block],
+        partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
         """Aggregate sorted and partially combined blocks."""
         return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs
+            list(mapper_outputs), key, aggs, finalize=not partial_reduce
         )
 
 
@@ -138,9 +141,9 @@ class GroupedDataset(Generic[T]):
                 )
             ctx = DatasetContext.get_current()
             if ctx.use_push_based_shuffle:
-                shuffle_op_cls = SimpleShuffleGroupbyOp
-            else:
                 shuffle_op_cls = PushBasedGroupbyOp
+            else:
+                shuffle_op_cls = SimpleShuffleGroupbyOp
             shuffle_op = shuffle_op_cls(
                 map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
             )
