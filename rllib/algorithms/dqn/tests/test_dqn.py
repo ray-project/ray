@@ -25,13 +25,15 @@ class TestDQN(unittest.TestCase):
     def test_dqn_compilation(self):
         """Test whether DQN can be built on all frameworks."""
         num_iterations = 1
-        config = dqn.dqn.DQNConfig().rollouts(num_rollout_workers=2)
+        config = dqn.dqn.DQNConfig()\
+            .environment(env="CartPole-v0")\
+            .rollouts(num_rollout_workers=2)
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             # Double-dueling DQN.
             print("Double-dueling")
             plain_config = deepcopy(config)
-            trainer = dqn.DQN(config=plain_config, env="CartPole-v0")
+            trainer = plain_config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -45,7 +47,7 @@ class TestDQN(unittest.TestCase):
             rainbow_config = deepcopy(config).training(
                 num_atoms=10, noisy=True, double_q=True, dueling=True, n_step=5
             )
-            trainer = dqn.DQN(config=rainbow_config, env="CartPole-v0")
+            trainer = rainbow_config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)

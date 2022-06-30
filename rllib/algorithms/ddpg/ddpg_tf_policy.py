@@ -248,12 +248,14 @@ def get_ddpg_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) ->
             self,
             model: ModelV2,
             *,
-            obs_batch: TensorType,
+            input_dict: SampleBatch,
             state_batches: TensorType,
             is_training: bool = False,
             **kwargs,
         ) -> Tuple[TensorType, type, List[TensorType]]:
-            model_out, _ = model(SampleBatch(obs=obs_batch, _is_training=is_training))
+            model_out, _ = model(
+                SampleBatch(obs=input_dict[SampleBatch.OBS], _is_training=is_training)
+            )
             dist_inputs = model.get_policy_output(model_out)
 
             if isinstance(self.action_space, Simplex):

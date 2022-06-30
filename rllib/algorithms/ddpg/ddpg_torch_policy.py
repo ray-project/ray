@@ -3,9 +3,7 @@ import gym
 from typing import Dict, List, Optional, Any, Tuple, Type
 
 import ray
-from ray.rllib.algorithms.ddpg.ddpg_tf_policy import (
-    build_ddpg_models,
-)
+from ray.rllib.algorithms.ddpg.utils import make_ddpg_models, validate_spaces
 from ray.rllib.algorithms.dqn.utils import postprocess_nstep_and_prio
 from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.evaluation import Episode
@@ -35,7 +33,6 @@ from ray.rllib.utils.typing import (
     ModelGradients,
     TensorType,
 )
-from ray.rllib.algorithms.ddpg.utils import make_ddpg_models, validate_spaces
 
 torch, nn = try_import_torch()
 
@@ -182,13 +179,13 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         self,
         model: ModelV2,
         *,
-        obs_batch: TensorType,
+        input_dict: TensorType,
         state_batches: TensorType,
         is_training: bool = False,
         **kwargs
     ) -> Tuple[TensorType, type, List[TensorType]]:
         model_out, _ = model(
-            SampleBatch(obs=obs_batch[SampleBatch.CUR_OBS], _is_training=is_training)
+            SampleBatch(obs=input_dict[SampleBatch.CUR_OBS], _is_training=is_training)
         )
         dist_inputs = model.get_policy_output(model_out)
 
@@ -237,11 +234,7 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
         target_model_out_tp1, _ = target_model(input_dict_next, [], None)
 
         # Policy network evaluation.
-        # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
         policy_t = model.get_policy_output(model_out_t)
-        # policy_batchnorm_update_ops = list(
-        #    set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
-
         policy_tp1 = target_model.get_policy_output(target_model_out_tp1)
 
         # Action outputs.
