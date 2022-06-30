@@ -214,14 +214,14 @@ def test_model_wrapper_reconfigure(serve_instance):
     Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
     predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
+    additional_config = {"checkpoint": {"increment": 5}}
 
     with InputNode() as dag_input:
-        m1 = ModelWrapperDeployment.options(
-            user_config={"checkpoint": {"increment": 5}}
-        ).bind(
+        m1 = ModelWrapperDeployment.options(user_config=additional_config).bind(
             predictor_cls=predictor_cls,
             checkpoint=uri,
         )
+        m1.reconfigure.bind(additional_config)
         dag = m1.predict.bind(dag_input)
     deployments = build(Ingress.bind(dag))
     for d in deployments:
