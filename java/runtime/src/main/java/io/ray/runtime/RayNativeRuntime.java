@@ -298,6 +298,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native String nativeGetNamespace();
 
   private static native List<byte[]> nativeGetCurrentReturnIds(int numReturns, byte[] actorId);
-  
+
   private static native byte[] nativeGetCurrentNodeId();
 }
