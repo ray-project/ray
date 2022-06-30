@@ -88,8 +88,6 @@ message DeploymentConfig {
   AutoscalingConfig autoscaling_config = 10;
 
   string version = 11;
-
-  string prev_version = 12;
 }
 
 // Deployment language.
