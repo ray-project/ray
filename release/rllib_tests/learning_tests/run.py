@@ -23,14 +23,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--yaml",
         type=str,
-        default="",
+        default="*.yaml",
         help="Pattern for yaml files to match within the yaml_files/ dir. E.g. 'a-e/*' "
              "matches all yaml files inside yaml_files/a-e/ and 'a-e/a2c*' matches "
              "all A2C-related tests.",
     )
+    parser.add_argument(
+        "--frameworks",
+        type=str,
+        default=None,
+        help="Comma-separated list of framework strings to run, e.g. "
+             "'--frameworks=tf,torch'. If not provided, use the frameworks given in "
+             "the yaml file(s).",
+    )
     args = parser.parse_args()
-
-    assert args.yaml, "--yaml can't be empty."
 
     # Get path of this very script to look for yaml files.
     abs_yaml_path = os.path.join(str(Path(__file__).parent), "yaml_files")
@@ -47,6 +53,7 @@ if __name__ == "__main__":
         # Talk to jungong@ if you have questions about why we do this.
         use_pass_criteria_as_stop=False,
         smoke_test=args.smoke_test,
+        frameworks=args.frameworks.split(",") if args.frameworks else None,
     )
 
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json")

@@ -580,6 +580,7 @@ def run_learning_tests_from_yaml(
     max_num_repeats: int = 2,
     use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
+    frameworks: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Runs the given experiments in yaml_files and returns results dict.
 
@@ -592,6 +593,8 @@ def run_learning_tests_from_yaml(
         smoke_test: Whether this is just a smoke-test. If True,
             set time_total_s to 5min and don't early out due to rewards
             or timesteps reached.
+        frameworks: If provided, use the framework strings given in this list.
+            Otherwise, use the frameworks given in the yaml files or all frameworks.
 
     Returns:
         A results dict mapping strings (e.g. "time_taken", "stats", "passed") to
@@ -623,11 +626,14 @@ def run_learning_tests_from_yaml(
     for yaml_file in yaml_files:
         tf_experiments = yaml.safe_load(open(yaml_file).read())
 
-        # Add torch version of all experiments to the list.
+        # Add all frameworks to the experiments list.
         for k, e in tf_experiments.items():
+            # If frameworks given as arg, use that.
+            if frameworks is not None:
+                pass
             # If framework explicitly given, only test for that framework.
             # Some algos do not have both versions available.
-            if "frameworks" in e:
+            elif "frameworks" in e:
                 frameworks = e["frameworks"]
             else:
                 # By default we don't run tf2, because tf2's multi-gpu support
@@ -666,6 +672,7 @@ def run_learning_tests_from_yaml(
                 k_ = k + "-" + framework
                 ec = copy.deepcopy(e)
                 ec["config"]["framework"] = framework
+                # Always switch on tracing when using tf2.
                 if framework == "tf2":
                     ec["config"]["eager_tracing"] = True
 

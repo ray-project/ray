@@ -1,6 +1,5 @@
-# You can expect ~20 reward within 1.1m timesteps / 2.1 hours on a K80 GPU
-pong-deterministic-dqn:
-    env: PongDeterministic-v4
+dqn-pongnoframeskip-v4:
+    env: PongNoFrameskip-v4
     run: DQN
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
