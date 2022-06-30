@@ -142,7 +142,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         return RayActivityResponse(
             is_active=num_active_drivers > 0,
-            reason=f"Number of active drivers: {num_active_drivers}" if num_active_drivers else None,
+            reason=f"Number of active drivers: {num_active_drivers}"
+            if num_active_drivers
+            else None,
             timestamp=datetime.now().timestamp(),
         )
 

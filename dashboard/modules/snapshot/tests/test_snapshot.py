@@ -39,7 +39,7 @@ def test_inactive_component_activities(call_ray_start):
     # Validate ray_activity_response field can be cast to RayActivityResponse object
     driver_ray_activity_response = RayActivityResponse(**data["driver"])
     assert not driver_ray_activity_response.is_active
-    assert driver_ray_activity_response.reason == None
+    assert driver_ray_activity_response.reason is None
 
 
 def test_active_component_activities(ray_start_with_dashboard):
