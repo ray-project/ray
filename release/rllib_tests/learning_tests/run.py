@@ -3,6 +3,7 @@
 Runs Atari/PyBullet benchmarks for all major algorithms.
 """
 
+import glob
 import json
 import os
 from pathlib import Path
@@ -32,12 +33,8 @@ if __name__ == "__main__":
     assert args.yaml, "--yaml can't be empty."
 
     # Get path of this very script to look for yaml files.
-    abs_yaml_path = os.path.join(
-        str(Path(__file__).parent), "yaml_files", args.yaml_sub_dir
-    )
-    print("abs_yaml_path={}".format(abs_yaml_path))
-
-    yaml_files = Path(abs_yaml_path).rglob("*.yaml")
+    abs_yaml_path = os.path.join(str(Path(__file__).parent), "yaml_files")
+    yaml_files = Path(abs_yaml_path).rglob(args.yaml)
     yaml_files = sorted(
         map(lambda path: str(path.absolute()), yaml_files), reverse=True
     )
