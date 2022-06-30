@@ -34,10 +34,10 @@ class RayActivityResponse:
 
     # Whether the corresponding Ray component is considered active
     is_active: bool
-    # Why the Ray component is considered active
-    reason: str
+    # Reason if Ray component is considered active
+    reason: Optional[str] = None
     # Timestamp of when this observation about the Ray component was made
-    timestamp: Optional[float]
+    timestamp: Optional[float] = None
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
@@ -126,24 +126,23 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     async def _get_job_activity_info(self, timeout: int) -> RayActivityResponse:
         # Returns if there is Ray activity from drivers (job).
-        # Drivers in namespaces that start with _ray_internal are not
+        # Drivers in namespaces that start with _ray_internal_job_info_ are not
         # considered activity.
         request = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=timeout)
 
-        ray_internal_job_prefix = "_ray_internal"
         num_active_drivers = 0
         for job_table_entry in reply.job_info_list:
             is_dead = bool(job_table_entry.is_dead)
             in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
-                ray_internal_job_prefix
+                JobInfoStorageClient.JOB_DATA_KEY_PREFIX
             )
             if not is_dead and not in_internal_namespace:
                 num_active_drivers += 1
 
         return RayActivityResponse(
             is_active=num_active_drivers > 0,
-            reason=f"Number of active drivers: {num_active_drivers}",
+            reason=f"Number of active drivers: {num_active_drivers}" if num_active_drivers else None,
             timestamp=datetime.now().timestamp(),
         )
 

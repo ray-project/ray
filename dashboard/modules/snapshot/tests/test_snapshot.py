@@ -39,11 +39,11 @@ def test_inactive_component_activities(call_ray_start):
     # Validate ray_activity_response field can be cast to RayActivityResponse object
     driver_ray_activity_response = RayActivityResponse(**data["driver"])
     assert not driver_ray_activity_response.is_active
-    assert driver_ray_activity_response.reason == "Number of active drivers: 0"
+    assert driver_ray_activity_response.reason == None
 
 
 def test_active_component_activities(ray_start_with_dashboard):
-    # Verify drivers which don't have namespace starting with _ray_internal
+    # Verify drivers which don't have namespace starting with _ray_internal_job_info_
     # are considered active.
     driver_template = """
 import ray
@@ -53,7 +53,7 @@ ray.init(address="auto", namespace="{namespace}")
     run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
     run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
     run_string_as_driver_nonblocking(
-        driver_template.format(namespace="_ray_internal_dashboard")
+        driver_template.format(namespace="_ray_internal_job_info_id1")
     )
 
     # Wait 1 sec for drivers to start
@@ -78,7 +78,7 @@ ray.init(address="auto", namespace="{namespace}")
     driver_ray_activity_response = RayActivityResponse(**data["driver"])
 
     assert driver_ray_activity_response.is_active
-    # Drivers with namespace starting with "_ray_internal" are not
+    # Drivers with namespace starting with "_ray_internal_job_info_" are not
     # considered active drivers. Three active drivers are the two
     # run with namespace "my_namespace" and the one started
     # from ray_start_with_dashboard

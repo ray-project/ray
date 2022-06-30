@@ -10,7 +10,10 @@
           "type": "boolean"
         },
         "reason": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "timestamp": {
           "type": [
@@ -20,8 +23,7 @@
         }
       },
       "required": [
-        "is_active",
-        "reason"
+        "is_active"
       ]
     }
   }
