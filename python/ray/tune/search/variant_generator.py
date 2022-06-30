@@ -56,7 +56,11 @@ def generate_variants(
         constant_grid_search=constant_grid_search,
         random_state=random_state,
     ):
-        if isinstance(spec["config"].get("scaling_config"), dict):
+        if (
+            "config" in spec
+            and "scaling_config" in spec["config"]
+            and isinstance(spec["config"]["scaling_config"], dict)
+        ):
             spec["config"]["scaling_config"] = ScalingConfig(
                 **spec["config"]["scaling_config"]
             )
