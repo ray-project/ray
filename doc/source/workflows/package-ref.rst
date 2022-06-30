@@ -1,11 +1,6 @@
 Ray Workflows API
 =================
 
-Core API
----------
-.. autoclass:: ray.workflow.common.Workflow
-    :members:
-
 Management API
 --------------
 .. autofunction:: ray.workflow.resume_all

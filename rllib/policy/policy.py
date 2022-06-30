@@ -1,12 +1,9 @@
+import logging
+import platform
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
-import gym
-from gym.spaces import Box
-import logging
-import numpy as np
-import platform
-import tree  # pip install dm_tree
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -14,9 +11,13 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Box
 
 import ray
 from ray.actor import ActorHandle
@@ -25,19 +26,19 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.annotations import (
-    PublicAPI,
     DeveloperAPI,
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    PublicAPI,
     is_overridden,
 )
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
@@ -45,14 +46,14 @@ from ray.rllib.utils.spaces.space_utils import (
 )
 from ray.rllib.utils.typing import (
     AgentID,
+    AlgorithmConfigDict,
     ModelGradients,
     ModelWeights,
     PolicyID,
     PolicyState,
     T,
-    TensorType,
     TensorStructType,
-    AlgorithmConfigDict,
+    TensorType,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -167,6 +168,10 @@ class Policy(metaclass=ABCMeta):
         # Whether the Model's initial state (method) has been added
         # automatically based on the given view requirements of the model.
         self._model_init_state_automatically_added = False
+
+        # Connectors.
+        self.agent_connectors = None
+        self.action_connectors = None
 
     @DeveloperAPI
     def init_view_requirements(self):
@@ -881,6 +886,7 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
+            SampleBatch.T: ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(

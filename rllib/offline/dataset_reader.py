@@ -5,9 +5,11 @@ import ray.data
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
 from typing import List
+
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +115,12 @@ class DatasetReader(InputReader):
         """
         self._ioctx = ioctx
         self._dataset = ds
+        # the number of rows to return per call to next()
+        if self._ioctx:
+            self.batch_size = ioctx.config.get("train_batch_size", 1)
+            num_workers = ioctx.config.get("num_workers", 0)
+        if num_workers:
+            self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)
         # We allow the creation of a non-functioning None DatasetReader.
         # It's useful for example for a non-rollout local worker.
         if ds:
@@ -127,9 +135,13 @@ class DatasetReader(InputReader):
     def next(self) -> SampleBatchType:
         # next() should not get called on None DatasetReader.
         assert self._iter is not None
-
-        d = next(self._iter).as_pydict()
-        # Columns like obs are compressed when written by DatasetWriter.
-        d = from_json_data(d, self._ioctx.worker)
-
-        return d
+        ret = []
+        count = 0
+        while count < self.batch_size:
+            d = next(self._iter).as_pydict()
+            # Columns like obs are compressed when written by DatasetWriter.
+            d = from_json_data(d, self._ioctx.worker)
+            count += d.count
+            ret.append(d)
+        ret = concat_samples(ret)
+        return ret
