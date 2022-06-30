@@ -543,6 +543,9 @@ def run_graph(
         graph = import_attr(import_path)
         app = build(graph)
 
+        # Track route_prefixes and raise warning if user provides duplicates
+        route_prefixes: Dict[str, List[str]] = dict()
+
         # Override options for each deployment
         for options in deployment_override_options:
             name = options["name"]
@@ -566,6 +569,24 @@ def run_graph(
 
             # Update the deployment's options
             app.deployments[name].set_options(**options)
+
+            route_prefix = app.deployments[name].route_prefix
+            if route_prefix is not None:
+                if route_prefix in route_prefixes:
+                    route_prefixes[route_prefix].append(name)
+                else:
+                    route_prefixes[route_prefix] = [name]
+
+        for route_prefix in route_prefixes:
+            if len(route_prefixes[route_prefix]) > 1:
+                logger.warning(
+                    "Got more than one deployment with route_prefix "
+                    f'"{route_prefix}": {route_prefixes[route_prefix]}. '
+                    "One of these deployments will be accessible at "
+                    f'"{route_prefix}". The others will not have an HTTP '
+                    "endpoint. You can modify these deployments' prefixes in "
+                    "the deployment graph's code or the Serve config file."
+                )
 
         # Run the graph locally on the cluster
         serve.run(app)
