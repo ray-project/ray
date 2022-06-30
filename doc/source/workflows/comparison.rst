@@ -7,7 +7,10 @@ Workflows is built on top of Ray, and offers a mostly consistent subset of its A
 
 ``func.remote`` vs ``func.bind``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-With Ray tasks, ``func.remote`` will submit a remote task to run eagerly. In Ray workflows, ``func.bind`` is used to create a DAG, and the DAG is converted into a workflow. Execution of the workflow is deferred until ``.run(workflow_id="id")`` or ``.run_async(workflow_id="id")`` is called on the ``Workflow``. Specifying the workflow id allows for resuming of the workflow by its id in case of cluster failure.
+With Ray tasks, ``func.remote`` will submit a remote task to run eagerly.
+In Ray workflows, ``func.bind`` is used to create a DAG, and the DAG is converted into a workflow.
+Execution of the workflow is deferred until ``workflow.run(dag, workflow_id=...)`` or ``workflow.run_async(dag, workflow_id=...)`` is called on the DAG.
+Specifying the workflow id allows for resuming of the workflow by its id in case of cluster failure.
 
 Other Workflow Engines
 ----------------------
