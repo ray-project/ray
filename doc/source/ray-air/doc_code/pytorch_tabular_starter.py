@@ -32,6 +32,7 @@ def concat_for_tensor(dataframe):
 
 # Create a preprocessor to scale some columns
 columns_to_scale = ["mean radius", "mean texture"]
+
 preprocessor = Chain(
     StandardScaler(columns=columns_to_scale),
     BatchMapper(concat_for_tensor)
