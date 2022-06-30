@@ -166,6 +166,12 @@ class DatasetConfig:
     # False by default.
     global_shuffle: Optional[bool] = None
 
+    # Whether to randomize the iteration order over blocks. The main purpose of this
+    # is to prevent data fetching hotspots in the cluster when running many parallel
+    # workers / trials on the same data. We recommend enabling it always.
+    # True by default.
+    randomize_block_order: Optional[bool] = None
+
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
         return DatasetConfig(
@@ -178,6 +184,9 @@ class DatasetConfig:
             else 1024 * 1024 * 1024,
             global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
+            randomize_block_order=self.randomize_block_order
+            if self.randomize_block_order is not None
+            else True,
         )
 
     @staticmethod
@@ -257,6 +266,9 @@ class DatasetConfig:
             global_shuffle=self.global_shuffle
             if other.global_shuffle is None
             else other.global_shuffle,
+            randomize_block_order=self.randomize_block_order
+            if other.randomize_block_order is None
+            else other.randomize_block_order,
         )
         return new_config
 
