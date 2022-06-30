@@ -32,71 +32,57 @@ To get started, install Ray AIR via ``pip install -U "ray[air]"``
 Quick Start
 -----------
 
+Preprocess your data with a ``Preprocessor``.
+
 .. tabbed:: XGBoost
 
-    Preprocess your data with a ``Preprocessor``.
 
     .. literalinclude:: doc_code/xgboost_starter.py
         :language: python
         :start-after: __air_xgb_preprocess_start__
         :end-before: __air_xgb_preprocess_end__
 
-    Train a model with an ``XGBoostTrainer``.
+.. tabbed:: Pytorch
+
+    .. literalinclude:: doc_code/pytorch_tabular_starter.py
+        :language: python
+        :start-after: __air_pytorch_preprocess_start__
+        :end-before: __air_pytorch_preprocess_end__
+
+
+Train a model with an ``Trainer``.
+
+.. tabbed:: XGBoost
 
     .. literalinclude:: doc_code/xgboost_starter.py
         :language: python
         :start-after: __air_xgb_train_start__
         :end-before: __air_xgb_train_end__
 
+.. tabbed:: Pytorch
 
-    Use the trained model for batch prediction with a ``BatchPredictor``.
+    .. literalinclude:: doc_code/pytorch_tabular_starter.py
+        :language: python
+        :start-after: __air_pytorch_train_start__
+        :end-before: __air_pytorch_train_end__
+
+
+
+Use the trained model for batch prediction with a ``BatchPredictor``.
+
+.. tabbed:: XGBoost
 
     .. literalinclude:: doc_code/xgboost_starter.py
         :language: python
         :start-after: __air_xgb_batchpred_start__
         :end-before: __air_xgb_batchpred_end__
 
-
 .. tabbed:: Pytorch
 
-    Create your dataset.
-
-    .. literalinclude:: doc_code/pytorch_starter.py
+    .. literalinclude:: doc_code/pytorch_tabular_starter.py
         :language: python
-        :start-after: __air_pytorch_preprocess_start__
-        :end-before: __air_pytorch_preprocess_end__
-
-    Train a model with a ``TorchTrainer``.
-
-    .. literalinclude:: doc_code/pytorch_starter.py
-        :language: python
-        :start-after: __air_pytorch_train_start__
-        :end-before: __air_pytorch_train_end__
-
-
-.. tabbed:: Tensorflow
-
-    Create your ``Ray Dataset``.
-
-    .. literalinclude:: doc_code/tf_starter.py
-        :language: python
-        :start-after: __air_tf_preprocess_start__
-        :end-before: __air_tf_preprocess_end__
-
-    Train a model with a ``TensorflowTrainer``.
-
-    .. literalinclude:: doc_code/tf_starter.py
-        :language: python
-        :start-after: __air_tf_train_start__
-        :end-before: __air_tf_train_end__
-
-
-    Use the trained model for batch prediction with a ``BatchPredictor``.
-
-    .. literalinclude:: doc_code/tf_starter.py
-        :language: python
-        :start-after: __air_tf_batchpred_start__
-        :end-before: __air_tf_batchpred_end__
+        :start-after: __air_pytorch_batchpred_start__
+        :end-before: __air_pytorch_batchpred_end__
 
 See the :ref:`Key Concepts <air-key-concepts>` for more that Ray AIR has to offer.
 
@@ -109,24 +95,14 @@ There are so many machine learning frameworks, platforms, and tools nowadays. Wh
 We believe Ray AIR provides unique value deriving from Ray.
 
 
-.. dropdown:: Seamless development to production
-    :animate: fade-in-slide-down
-
-    Ray AIR reduces development friction going from development to production. Unlike in other frameworks, scaling Ray applications from a laptop to large clusters doesn't require a separate way of running -- the same code scales up seamlessly.
-    This means data scientists and ML practitioners spend less time fighting YAMLs and refactoring code. Smaller teams and companies that don’t have the resources to invest heavily on MLOps can now deploy ML models at a much faster rate with Ray AIR.
+**Seamless development to production**: Ray AIR reduces development friction going from development to production. Unlike in other frameworks, scaling Ray applications from a laptop to large clusters doesn't require a separate way of running -- the same code scales up seamlessly.
+This means data scientists and ML practitioners spend less time fighting YAMLs and refactoring code. Smaller teams and companies that don’t have the resources to invest heavily on MLOps can now deploy ML models at a much faster rate with Ray AIR.
 
 
-.. dropdown:: Multi-cloud and Framework-interoperable
-    :animate: fade-in-slide-down
+**Multi-cloud and Framework-interoperable**: Ray AIR is multi-cloud and framework-interoperable. The Ray compute layer and libraries freely operate with Cloud platforms and frameworks in the ecosystem, reducing lock-in to any particular choices of ML tech.
+Ex: why framework interoperability is unique to Ray--- it's easy to run Torch distributed or elastic Horovod within Ray, but not vice versa.
 
-    Ray AIR is multi-cloud and framework-interoperable. The Ray compute layer and libraries freely operate with Cloud platforms and frameworks in the ecosystem, reducing lock-in to any particular choices of ML tech.
-    Ex: why framework interoperability is unique to Ray--- it's easy to run Torch distributed or elastic Horovod within Ray, but not vice versa.
-
-.. dropdown:: Future-proof via flexibility and scalability
-    :animate: fade-in-slide-down
-
-    Ray's scalability and flexibility makes Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common patterns are being incorporated into libraries like Ray Serve.
-
+**Future-proof via flexibility and scalability**: Ray's scalability and flexibility makes Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common patterns are being incorporated into libraries like Ray Serve.
 
 Next Steps
 ----------
