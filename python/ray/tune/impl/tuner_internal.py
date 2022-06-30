@@ -115,7 +115,7 @@ class TunerInternal:
             pickle.dump(self._trainable, fp)
 
     def _process_scaling_config(self) -> None:
-        """Converts ``self._param_space["scaling_config"]`` back to a dict so
+        """Converts ``self._param_space["scaling_config"]`` to a dict so
         that it can be used to generate search space.
         """
         scaling_config = self._param_space.get("scaling_config")
