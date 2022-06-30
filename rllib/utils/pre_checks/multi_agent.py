@@ -82,7 +82,7 @@ def check_multi_agent(
 
         # Config is None -> Set to {}.
         if policies[pid].config is None:
-            policies[pid] = policies[pid]._replace(config={})
+            policies[pid].config = {}
         # Config not a dict.
         elif not isinstance(policies[pid].config, dict):
             raise ValueError(
