@@ -27,9 +27,7 @@ namespace gcs {
 
 class RedisStoreClient : public StoreClient {
  public:
-  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
-      : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-        redis_client_(std::move(redis_client)) {}
+  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
