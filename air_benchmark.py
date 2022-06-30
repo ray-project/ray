@@ -30,7 +30,7 @@ def make_ds(size_gb: int):
     record_dim = 1280
     record_size = record_dim * 8
     num_records = int(total_size / record_size)
-    dataset = ray.data.range_tensor(num_records, shape=(record_dim,), parallelism=200)
+    dataset = ray.data.range_tensor(num_records, shape=(record_dim,))
     print("Created dataset", dataset, "of size", dataset.size_bytes())
     return dataset
 
