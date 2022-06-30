@@ -202,4 +202,3 @@ each time `user_config` is updated.
 :::{note}
 The `user_config` and its contents must be JSON-serializable.
 :::
-
