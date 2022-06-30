@@ -118,10 +118,10 @@ async def test_kv_timeout_aio(ray_start_regular):
 @pytest.mark.skipif(
     not enable_external_redis(), reason="Only valid when start with an external redis"
 )
-def test_cluster_id_isolation(shutdown_only):
-    addr = ray.init(namespace="a", _system_config={"cluster_id": "c1"}).address_info[
-        "address"
-    ]
+def test_external_storage_namespace_isolation(shutdown_only):
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c1"}
+    ).address_info["address"]
     gcs_client = GcsClient(address=addr)
 
     assert gcs_client.internal_kv_put(b"ABC", b"DEF", True, None) == 1
@@ -130,9 +130,9 @@ def test_cluster_id_isolation(shutdown_only):
 
     ray.shutdown()
 
-    addr = ray.init(namespace="a", _system_config={"cluster_id": "c2"}).address_info[
-        "address"
-    ]
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c2"}
+    ).address_info["address"]
     gcs_client = GcsClient(address=addr)
     assert gcs_client.internal_kv_get(b"ABC", None) is None
     assert gcs_client.internal_kv_put(b"ABC", b"XYZ", True, None) == 1
@@ -140,9 +140,9 @@ def test_cluster_id_isolation(shutdown_only):
     assert gcs_client.internal_kv_get(b"ABC", None) == b"XYZ"
     ray.shutdown()
 
-    addr = ray.init(namespace="a", _system_config={"cluster_id": "c1"}).address_info[
-        "address"
-    ]
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c1"}
+    ).address_info["address"]
     gcs_client = GcsClient(address=addr)
     assert gcs_client.internal_kv_get(b"ABC", None) == b"DEF"
 

@@ -31,10 +31,14 @@ constexpr std::string_view kClusterSeparator = "@";
 std::string RedisInternalKV::MakeKey(const std::string &ns,
                                      const std::string &key) const {
   if (ns.empty()) {
-    return absl::StrCat(cluster_id_, kClusterSeparator, key);
+    return absl::StrCat(external_storage_namespace_, kClusterSeparator, key);
   }
-  return absl::StrCat(
-      cluster_id_, kClusterSeparator, kNamespacePrefix, ns, kNamespaceSep, key);
+  return absl::StrCat(external_storage_namespace_,
+                      kClusterSeparator,
+                      kNamespacePrefix,
+                      ns,
+                      kNamespaceSep,
+                      key);
 }
 
 Status RedisInternalKV::ValidateKey(const std::string &key) const {
@@ -46,7 +50,10 @@ Status RedisInternalKV::ValidateKey(const std::string &key) const {
 
 std::string RedisInternalKV::ExtractKey(const std::string &key) const {
   auto view = std::string_view(key);
-  view = view.substr(cluster_id_.size() + kClusterSeparator.size());
+  RAY_CHECK(absl::StartsWith(view, external_storage_namespace_))
+      << "Invalid key: " << view << ". It should start with "
+      << external_storage_namespace_;
+  view = view.substr(external_storage_namespace_.size() + kClusterSeparator.size());
   if (absl::StartsWith(view, kNamespacePrefix)) {
     std::vector<std::string> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
@@ -59,7 +66,7 @@ std::string RedisInternalKV::ExtractKey(const std::string &key) const {
 
 RedisInternalKV::RedisInternalKV(const RedisClientOptions &redis_options)
     : redis_options_(redis_options),
-      cluster_id_(::RayConfig::instance().cluster_id()),
+      external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
       work_(io_service_) {
   io_thread_ = std::make_unique<std::thread>([this] {
     SetThreadName("InternalKV");

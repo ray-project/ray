@@ -217,10 +217,15 @@ call_ray_start_2 = call_ray_start
 @pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
 @pytest.mark.parametrize(
     "call_ray_start,call_ray_start_2",
-    [({"env": {"RAY_cluster_id": "A1"}}, {"env": {"RAY_cluster_id": "A2"}})],
+    [
+        (
+            {"env": {"RAY_external_storage_namespace": "A1"}},
+            {"env": {"RAY_external_storage_namespace": "A2"}},
+        )
+    ],
     indirect=True,
 )
-def test_cluster_id_isolation(external_redis, call_ray_start, call_ray_start_2):
+def test_storage_isolation(external_redis, call_ray_start, call_ray_start_2):
     script = """
 import ray
 ray.init("{address}", namespace="a")

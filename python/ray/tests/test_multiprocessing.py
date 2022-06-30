@@ -87,7 +87,7 @@ def test_ray_init(monkeypatch, shutdown_only):
 
     # Set up the cluster id so that gcs is talking with a different
     # storage prefix
-    monkeypatch.setenv("RAY_cluster_id", "new_cluster")
+    monkeypatch.setenv("RAY_external_storage_namespace", "new_cluster")
     ray._raylet.Config.initialize("")
 
     # Check that starting a pool doesn't affect ray if there is a local
@@ -138,7 +138,7 @@ def test_connect_to_ray(monkeypatch, ray_start_cluster):
 
     # Set up the cluster id so that gcs is talking with a different
     # storage prefix
-    monkeypatch.setenv("RAY_cluster_id", "new_cluster")
+    monkeypatch.setenv("RAY_external_storage_namespace", "new_cluster")
     ray._raylet.Config.initialize("")
 
     # Check that starting a pool still starts ray if RAY_ADDRESS not set.
@@ -160,7 +160,7 @@ def test_connect_to_ray(monkeypatch, ray_start_cluster):
     pool.join()
     ray.shutdown()
 
-    monkeypatch.setenv("RAY_cluster_id", "new_cluster2")
+    monkeypatch.setenv("RAY_external_storage_namespace", "new_cluster2")
     ray._raylet.Config.initialize("")
 
     # Set RAY_ADDRESS, so pools should connect to the running ray cluster.

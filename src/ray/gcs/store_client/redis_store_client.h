@@ -28,7 +28,7 @@ namespace gcs {
 class RedisStoreClient : public StoreClient {
  public:
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
-      : cluster_id_(::RayConfig::instance().cluster_id()),
+      : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
         redis_client_(std::move(redis_client)) {}
 
   Status AsyncPut(const std::string &table_name,
@@ -75,7 +75,7 @@ class RedisStoreClient : public StoreClient {
   class RedisScanner {
    public:
     explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
-                          const std::string &cluster_id,
+                          const std::string &external_storage_namespace,
                           const std::string &table_name);
 
     Status ScanKeysAndValues(const std::string &match_pattern,
@@ -93,7 +93,7 @@ class RedisStoreClient : public StoreClient {
                         const StatusCallback &callback);
 
     std::string table_name_;
-    std::string cluster_id_;
+    std::string external_storage_namespace_;
 
     /// Mutex to protect the shard_to_cursor_ field and the keys_ field and the
     /// key_value_map_ field.
@@ -119,7 +119,7 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       std::function<void(int64_t)> callback);
 
-  std::string cluster_id_;
+  std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
 };
 

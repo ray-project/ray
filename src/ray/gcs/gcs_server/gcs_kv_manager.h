@@ -127,7 +127,7 @@ class RedisInternalKV : public InternalKVInterface {
   std::string ExtractKey(const std::string &key) const;
 
   RedisClientOptions redis_options_;
-  std::string cluster_id_;
+  std::string external_storage_namespace_;
   std::unique_ptr<RedisClient> redis_client_;
   // The io service used by internal kv.
   instrumented_io_context io_service_;
