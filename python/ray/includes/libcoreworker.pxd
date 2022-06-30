@@ -226,7 +226,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                 const unique_ptr[CAddress] &owner_address,
                                 const CActorID &global_owner_actor_id,
                                 c_string *checkpoint_url)
-        CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
+        CRayStatus Get(const c_vector[CObjectID] &ids,
+                       const c_vector[c_string] &checkpoint_urls,
+                       int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(
             const c_vector[CObjectID] &ids,

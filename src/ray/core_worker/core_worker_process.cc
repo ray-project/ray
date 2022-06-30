@@ -181,21 +181,17 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     auto grpc_client = rpc::NodeManagerWorkerClient::make(
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
     raylet::RayletClient raylet_client(grpc_client);
-    RAY_LOG(DEBUG) << "hejialing test: " << options_.raylet_ip_address << ":"
-                   << options_.node_manager_port << ", worker_pid: " << getpid();
+
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,
                                              &raylet_client,
                                              &promise,
                                              &io_service](int64_t num_attempts) {
-      RAY_LOG(DEBUG) << "hejialing test in get once: " << getpid()
-                     << ", num_attempts: " << num_attempts;
-      auto worker_pid = getpid();
       raylet_client.GetSystemConfig(
-          [this, num_attempts, &get_once, &promise, &io_service, worker_pid](
+          [this, num_attempts, &get_once, &promise, &io_service](
               const Status &status, const rpc::GetSystemConfigReply &reply) {
             RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
-                           << num_attempts << ", worker pid: " << worker_pid;
+                           << num_attempts;
             if (status.ok()) {
               promise.set_value(reply.system_config());
               io_service.stop();
@@ -230,16 +226,13 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
                 << status;
           });
     };
-    RAY_LOG(DEBUG) << "hejialing test-------1: ";
+
     get_once(RayConfig::instance().raylet_client_num_connect_attempts());
-    RAY_LOG(DEBUG) << "hejialing test-------2: ";
     io_service.run();
-    RAY_LOG(DEBUG) << "hejialing test-------3: ";
   });
   thread.join();
-  RAY_LOG(DEBUG) << "hejialing test-------4: ";
+
   RayConfig::instance().initialize(promise.get_future().get());
-  RAY_LOG(DEBUG) << "hejialing test-------5: ";
 }
 
 bool CoreWorkerProcessImpl::ShouldCreateGlobalWorkerOnConstruction() const {

@@ -78,6 +78,28 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
   return refs;
 }
 
+std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithCheckpointURLs(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
+    const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
+        &owner_addresses,
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &checkpoint_urls) {
+  RAY_CHECK(object_ids.size() == owner_addresses.size());
+  RAY_CHECK(checkpoint_urls.size() == object_ids.size());
+  std::vector<ray::rpc::ObjectReference> refs;
+  for (int64_t i = 0; i < object_ids.size(); i++) {
+    ray::rpc::ObjectReference ref;
+    ref.set_object_id(object_ids.Get(i)->str());
+    const auto &addr = owner_addresses.Get(i);
+    ref.mutable_owner_address()->set_raylet_id(addr->raylet_id()->str());
+    ref.mutable_owner_address()->set_ip_address(addr->ip_address()->str());
+    ref.mutable_owner_address()->set_port(addr->port());
+    ref.mutable_owner_address()->set_worker_id(addr->worker_id()->str());
+    ref.set_checkpoint_url(checkpoint_urls.Get(i)->str());
+    refs.emplace_back(std::move(ref));
+  }
+  return refs;
+}
+
 }  // namespace
 
 namespace ray {
@@ -223,6 +245,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           /*max_object_report_batch_size=*/
           RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
+            std::string checkpoint_url =
+                GetLocalObjectManager().GetObjectCheckpointURL(obj_id);
+            if (GetLocalObjectManager().AsyncLoadCheckpoint(
+                    obj_id, checkpoint_url, [](ray::Status status) {
+                      RAY_CHECK(status.ok());
+                    })) {
+              return;
+            }
+
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
@@ -1325,8 +1356,6 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
-  RAY_LOG(DEBUG) << "hejialing test HandleWorkerAvailable: worker id: "
-                 << worker->WorkerId();
   if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
     // Return the worker to the idle pool.
     worker_pool_.PushSpillWorker(worker);
@@ -1508,8 +1537,13 @@ void NodeManager::ProcessDisconnectClientMessage(
 void NodeManager::ProcessFetchOrReconstructMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
-  const auto refs =
-      FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  const auto refs = FlatbufferToObjectReferenceWithCheckpointURLs(
+      *message->object_ids(), *message->owner_addresses(), *message->checkpoint_urls());
+  for (const auto &ref : refs) {
+    std::string checkpoint_url = ref.checkpoint_url();
+    ObjectID object_id = ObjectID::FromBinary(ref.object_id());
+    GetLocalObjectManager().InsertObjectAndCheckpointURL(object_id, checkpoint_url);
+  }
   // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
   // non-direct call support.
   if (message->fetch_only()) {
@@ -2158,6 +2192,8 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
 
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
+
+  GetLocalObjectManager().MarkObjectSealed(object_id);
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = dependency_manager_.HandleObjectLocal(object_id);
   RAY_LOG(DEBUG) << "Object local " << object_id << ", "
@@ -2202,6 +2238,7 @@ bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
 
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
+  GetLocalObjectManager().EraseObjectAndCheckpointURL(object_id);
   const auto waiting_task_ids = dependency_manager_.HandleObjectMissing(object_id);
   std::stringstream result;
   result << "Object missing " << object_id << ", "
@@ -2228,7 +2265,6 @@ void NodeManager::ProcessSubscribePlasmaReady(
 
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
-
   if (dependency_manager_.CheckObjectLocal(id)) {
     // Object is already local, so we directly fire the callback to tell the core worker
     // that the plasma object is ready.
@@ -2392,7 +2428,7 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
     objects_to_dump.push_back(std::move(object_id));
     owner_addresses.push_back(std::move(request.owner_addresses()[i]));
   }
-  rpc::Address worker_address = request.worker_address();
+  size_t objects_number = objects_to_dump.size();
   local_object_manager_.DumpCheckpoints(
       objects_to_dump,
       owner_addresses,
@@ -2401,24 +2437,16 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
         RAY_CHECK(status.ok());
       },
       /* Send result to caller CoreWorker*/
-      [this, worker_address = std::move(worker_address), objects_to_dump](
+      [objects_number, send_reply_callback = std::move(send_reply_callback), reply](
           const std::vector<std::string> &checkpoint_urls) {
-        RAY_CHECK(objects_to_dump.size() == checkpoint_urls.size())
-          << "objects_to_dump size: " << objects_to_dump.size()
-          << ", checkpoint_urls size: " << checkpoint_urls.size();
-        auto conn = worker_rpc_pool_.GetOrConnect(worker_address);
-        rpc::SendCheckpointURLsRequest request;
+        RAY_CHECK(objects_number == checkpoint_urls.size())
+            << "objects number: " << objects_number
+            << ", checkpoint_urls size: " << checkpoint_urls.size();
         for (size_t i = 0; i < checkpoint_urls.size(); i++) {
-          request.add_object_ids(objects_to_dump[i].Binary());
-          request.add_checkpoint_urls(checkpoint_urls[i]);
+          reply->add_checkpoint_urls(std::move(checkpoint_urls[i]));
         }
-        conn->SendCheckpointURLs(
-            request, [](const Status &status, const rpc::SendCheckpointURLsReply &reply) {
-              // TO_BE_SOLVED: handle dump failed.
-              RAY_CHECK(status.ok());
-            });
+        send_reply_callback(Status::OK(), nullptr, nullptr);
       });
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,

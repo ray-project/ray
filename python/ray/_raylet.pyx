@@ -1201,15 +1201,18 @@ cdef class CoreWorker:
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
-    def get_objects(self, object_refs, TaskID current_task_id,
+    def get_objects(self, object_refs, checkpoint_urls, TaskID current_task_id,
                     int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
+            c_vector[c_string] c_checkpoint_urls
+        for checkpoint_url in checkpoint_urls:
+            c_checkpoint_urls.push_back(<c_string>checkpoint_url)
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results))
+                c_object_ids, c_checkpoint_urls, timeout_ms, &results))
 
         return RayObjectsToDataMetadataPairs(results)
 

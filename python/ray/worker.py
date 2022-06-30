@@ -373,10 +373,10 @@ class Worker:
                     f"Attempting to call `get` on the value {object_ref}, "
                     "which is not an ray.ObjectRef."
                 )
-
+        checkpoint_urls = list(map(lambda ref: ref.checkpoint_url(), object_refs))
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_refs, self.current_task_id, timeout_ms
+            object_refs, checkpoint_urls, self.current_task_id, timeout_ms
         )
         debugger_breakpoint = b""
         for (data, metadata) in data_metadata_pairs:

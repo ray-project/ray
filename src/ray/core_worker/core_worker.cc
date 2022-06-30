@@ -1079,27 +1079,24 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 std::string *checkpoint_url) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
 
-  rpc::Address real_owner_address = owner_address != nullptr ? *owner_address : rpc_address_;
+  rpc::Address real_owner_address =
+      owner_address != nullptr ? *owner_address : rpc_address_;
   if (checkpoint_url) {
-    RAY_LOG(DEBUG) << "Begin to dump checkpoint, object id: " << object_id;
-    auto result_promise = std::make_shared<std::promise<std::string>>();
-    {
-      absl::MutexLock lock(&object_checkpoint_url_mutex_);
-      RAY_CHECK(object_checkpoint_url_map_.find(object_id) ==
-                object_checkpoint_url_map_.end());
-      object_checkpoint_url_map_.emplace(object_id, result_promise);
-    }
+    std::promise<void> sync_promise;
+    auto future = sync_promise.get_future();
     local_raylet_client_->DumpCheckpoints(
         {object_id},
         {real_owner_address},
         rpc_address_,
-        [](const Status &status, const rpc::DumpCheckpointsReply &reply) {
+        [&sync_promise, checkpoint_url](const Status &status,
+                                        const rpc::DumpCheckpointsReply &reply) {
           RAY_CHECK(status.ok()) << "failed to dump checkpoint!";
+          RAY_CHECK(reply.checkpoint_urls_size() == 1);
+          *checkpoint_url = reply.checkpoint_urls()[0];
+          sync_promise.set_value();
         });
+    future.wait();
     RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
-    // RAY_LOG(DEBUG) << "hejialing test in seal existing:" << result_promise->get_future().get();
-    *checkpoint_url = result_promise->get_future().get();
-
   }
 
   if (pin_object && checkpoint_url == nullptr) {
@@ -1126,8 +1123,10 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
+                       const std::vector<std::string> &checkpoint_urls,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
+  RAY_CHECK(ids.size() == checkpoint_urls.size());
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -1135,6 +1134,10 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
 
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  absl::flat_hash_map<ObjectID, std::string> plasma_objects_id_to_url;
+  for (size_t i = 0; i < ids.size(); i++) {
+    plasma_objects_id_to_url.emplace(ids[i], checkpoint_urls[i]);
+  }
   auto start_time = current_time_ms();
 
   if (!memory_object_ids.empty()) {
@@ -1150,9 +1153,11 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       RAY_LOG(DEBUG) << current->first << " in plasma, doing fetch-and-get";
       plasma_object_ids.insert(current->first);
       result_map.erase(current);
+    } else {
+      plasma_objects_id_to_url.erase(current->first);
     }
   }
-
+  RAY_CHECK(plasma_objects_id_to_url.size() == plasma_object_ids.size());
   if (!got_exception) {
     // If any of the objects have been promoted to plasma, then we retry their
     // gets at the provider plasma. Once we get the objects from plasma, we flip
@@ -1164,6 +1169,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids,
+                                                  plasma_objects_id_to_url,
                                                   local_timeout_ms,
                                                   worker_context_,
                                                   &result_map,
@@ -2490,9 +2496,11 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                         // TODO(kfstorm): We need to update this.
                                         /*spilled_url=*/"",
                                         /*spilled_node_id=*/NodeID::Nil());
-
+  absl::flat_hash_map<ObjectID, std::string> plasma_objects_id_to_url;
+  // TO_BE_SOLVED: HA for return objects
+  plasma_objects_id_to_url.emplace(return_id, "");
   auto status = plasma_store_provider_->Get(
-      {return_id}, 0, worker_context_, &result_map, &got_exception);
+      {return_id}, plasma_objects_id_to_url, 0, worker_context_, &result_map, &got_exception);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 
@@ -2576,6 +2584,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 
   absl::flat_hash_set<ObjectID> by_ref_ids;
   absl::flat_hash_map<ObjectID, std::vector<size_t>> by_ref_indices;
+  absl::flat_hash_map<ObjectID, std::string> plasma_objects_id_to_url;
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     if (task.ArgByRef(i)) {
@@ -2588,6 +2597,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       const auto &arg_ref = task.ArgRef(i);
       const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
       by_ref_ids.insert(arg_id);
+      // TO_BE_SOLVED: HA for task arg
+      plasma_objects_id_to_url.emplace(arg_id, "");
       auto it = by_ref_indices.find(arg_id);
       if (it == by_ref_indices.end()) {
         by_ref_indices.emplace(arg_id, std::vector<size_t>({i}));
@@ -2652,7 +2663,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
         memory_store_->Get(by_ref_ids, -1, worker_context_, &result_map, &got_exception));
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-        by_ref_ids, -1, worker_context_, &result_map, &got_exception));
+        by_ref_ids, plasma_objects_id_to_url, -1, worker_context_, &result_map, &got_exception));
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
@@ -3270,6 +3281,35 @@ void CoreWorker::HandleDumpObjectsCheckpoint(
   }
 }
 
+void CoreWorker::HandleLoadCheckpoint(const rpc::LoadCheckpointRequest &request,
+                                      rpc::LoadCheckpointReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
+  if (options_.load_checkpoint_objects != nullptr) {
+    // Get a list of object ids.
+    std::vector<rpc::ObjectReference> object_refs_to_load;
+    object_refs_to_load.reserve(request.object_ids_to_load_size());
+    for (const auto &id_binary : request.object_ids_to_load()) {
+      rpc::ObjectReference ref;
+      ref.set_object_id(id_binary);
+      object_refs_to_load.push_back(std::move(ref));
+    }
+    // Get a list of spilled_object_urls.
+    std::vector<std::string> checkpoint_urls;
+    checkpoint_urls.reserve(request.checkpoint_urls_size());
+    for (const auto &url : request.checkpoint_urls()) {
+      checkpoint_urls.push_back(url);
+    }
+    auto total = options_.load_checkpoint_objects(object_refs_to_load, checkpoint_urls);
+    reply->set_bytes_load_total(total);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(
+        Status::NotImplemented("Restore spilled objects callback not defined"),
+        nullptr,
+        nullptr);
+  }
+}
+
 void CoreWorker::HandleRestoreSpilledObjects(
     const rpc::RestoreSpilledObjectsRequest &request,
     rpc::RestoreSpilledObjectsReply *reply,
@@ -3368,19 +3408,6 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void CoreWorker::HandleSendCheckpointURLs(const rpc::SendCheckpointURLsRequest &request,
-                                          rpc::SendCheckpointURLsReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
-  absl::MutexLock lock(&object_checkpoint_url_mutex_);
-  RAY_CHECK(request.object_ids_size() == request.checkpoint_urls_size());
-  for (size_t i = 0; i < request.object_ids_size(); i++) {
-    auto object_id = ObjectID::FromBinary(request.object_ids()[i]);
-    auto it = object_checkpoint_url_map_.find(object_id);
-    RAY_CHECK(it != object_checkpoint_url_map_.end());
-    it->second->set_value(std::move(request.checkpoint_urls()[i]));
-  }
-}
-
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
@@ -3420,7 +3447,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
+    if (Get(std::vector<ObjectID>{object_id}, std::vector<std::string>{""}, 0, &vec).ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";
       return success(vec.front(), object_id, py_future);
@@ -3574,6 +3601,7 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
 }
 
 void CoreWorker::SubscribeGlobalOwnerAddress(ActorID actor_id) {
+  if (reference_counter_->AlreadyWatchActor(actor_id)) return;
   RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
       actor_id,
       [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {

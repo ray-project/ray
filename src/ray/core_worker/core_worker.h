@@ -358,6 +358,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids,
+             const std::vector<std::string> &checkpoint_urls,
              const int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
 
@@ -771,6 +772,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                    rpc::DumpObjectsCheckpointReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleLoadCheckpoint(const rpc::LoadCheckpointRequest &request,
+                            rpc::LoadCheckpointReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,
@@ -793,9 +798,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::AssignObjectOwnerReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleSendCheckpointURLs(const rpc::SendCheckpointURLsRequest &request,
-                                rpc::SendCheckpointURLsReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -1296,10 +1298,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the checking and increasing of backpressure pending calls counter
   /// is not atomic, which may lead to under counting or over counting.
   absl::Mutex actor_task_mutex_;
-
-  absl::flat_hash_map<ObjectID, std::shared_ptr<std::promise<std::string>>>
-      object_checkpoint_url_map_ GUARDED_BY(object_checkpoint_url_mutex_);
-  absl::Mutex object_checkpoint_url_mutex_;
 };
 
 }  // namespace core

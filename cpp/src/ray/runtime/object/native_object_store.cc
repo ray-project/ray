@@ -91,7 +91,10 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
     const std::vector<ObjectID> &ids, int timeout_ms) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::vector<std::shared_ptr<::ray::RayObject>> results;
-  ::ray::Status status = core_worker.Get(ids, timeout_ms, &results);
+  std::vector<std::string> checkpoint_urls;
+  checkpoint_urls.resize(ids.size());
+
+  ::ray::Status status = core_worker.Get(ids, checkpoint_urls, timeout_ms, &results);
   if (!status.ok()) {
     throw RayException("Get object error: " + status.ToString());
   }

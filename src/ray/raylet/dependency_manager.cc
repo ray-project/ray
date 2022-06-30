@@ -128,7 +128,8 @@ void DependencyManager::StartOrUpdateGetRequest(
     for (auto &obj_id : get_request.first) {
       auto it = required_objects_.find(obj_id);
       RAY_CHECK(it != required_objects_.end());
-      refs.push_back(ObjectIdToRef(obj_id, it->second.owner_address));
+      auto ref = ObjectIdToRef(obj_id, it->second.owner_address);
+      refs.push_back(std::move(ref));
     }
     // Pull the new dependencies before canceling the old request, in case some
     // of the old dependencies are still being fetched.

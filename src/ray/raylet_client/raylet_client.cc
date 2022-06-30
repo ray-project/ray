@@ -203,16 +203,25 @@ Status raylet::RayletClient::TaskDone() {
 
 Status raylet::RayletClient::FetchOrReconstruct(
     const std::vector<ObjectID> &object_ids,
+    const absl::flat_hash_map<ObjectID, std::string> &object_to_url_map,
     const std::vector<rpc::Address> &owner_addresses,
     bool fetch_only,
     bool mark_worker_blocked,
     const TaskID &current_task_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
+  std::vector<std::string> checkpoint_urls;
+  for (const auto &object_id : object_ids) {
+    auto it = object_to_url_map.find(object_id);
+    RAY_CHECK(it != object_to_url_map.end());
+    checkpoint_urls.push_back(it->second);
+  }
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
+  auto checkpoint_urls_message = string_vec_to_flatbuf(fbb, checkpoint_urls);
   auto message =
       protocol::CreateFetchOrReconstruct(fbb,
                                          object_ids_message,
+                                         checkpoint_urls_message,
                                          AddressesToFlatbuffer(fbb, owner_addresses),
                                          fetch_only,
                                          mark_worker_blocked,
@@ -492,7 +501,6 @@ void raylet::RayletClient::DumpCheckpoints(
     request.add_object_ids(object_ids[i].Binary());
     request.add_owner_addresses()->CopyFrom(owner_addresses[i]);
   }
-  request.mutable_worker_address()->CopyFrom(worker_address);
   auto rpc_callback = [callback = std::move(callback)](
                           Status status, const rpc::DumpCheckpointsReply &reply) {
     callback(status, reply);

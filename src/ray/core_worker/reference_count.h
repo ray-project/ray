@@ -496,13 +496,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   void ModifyGlobalOwnerAddress(const ActorID &actor_id,
                                 const rpc::Address &global_owner_address)
-      LOCKS_EXCLUDED(mutex_);
+      LOCKS_EXCLUDED(global_owner_mutex_);
+
+  bool AlreadyWatchActor(const ActorID &actor_id) LOCKS_EXCLUDED(global_owner_mutex_);
 
  private:
-  void ModifyGlobalOwnerAddressInternal(const ActorID &actor_id,
-                                        const rpc::Address &global_owner_address)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {
     /// Object IDs that we own and that contain this object ID.
@@ -947,10 +945,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;
 
+  mutable absl::Mutex global_owner_mutex_;
+
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
 
-  absl::flat_hash_map<ActorID, rpc::Address> global_owner_address_map_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<ActorID, rpc::Address> global_owner_address_map_
+      GUARDED_BY(global_owner_mutex_);
 
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is

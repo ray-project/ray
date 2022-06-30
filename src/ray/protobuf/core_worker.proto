@@ -336,6 +336,15 @@ message DumpObjectsCheckpointReply {
   repeated string dumped_objects_url = 1;
 }
 
+message LoadCheckpointRequest {
+  repeated string checkpoint_urls = 1;
+  repeated string object_ids_to_load = 2;
+}
+
+message LoadCheckpointReply {
+  int64 bytes_load_total = 1;
+}
+
 message DeleteSpilledObjectsRequest {
   // The URLs of spilled objects.
   repeated string spilled_objects_url = 1;
@@ -370,13 +379,6 @@ message AssignObjectOwnerReply {}
 message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
-
-message SendCheckpointURLsRequest {
-  repeated bytes object_ids = 1;
-  repeated string checkpoint_urls = 2;
-}
-
-message SendCheckpointURLsReply {}
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
@@ -422,6 +424,8 @@ service CoreWorkerService {
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc DumpObjectsCheckpoint(DumpObjectsCheckpointRequest)
       returns (DumpObjectsCheckpointReply);
+  rpc LoadCheckpoint(LoadCheckpointRequest)
+      returns (LoadCheckpointReply);
   rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
       returns (RestoreSpilledObjectsReply);
   // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
@@ -433,5 +437,4 @@ service CoreWorkerService {
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
-  rpc SendCheckpointURLs(SendCheckpointURLsRequest) returns (SendCheckpointURLsReply);
 }

@@ -119,6 +119,10 @@ class LocalObjectManager {
                                  const std::string &object_url,
                                  std::function<void(const ray::Status &)> callback);
 
+  bool AsyncLoadCheckpoint(const ObjectID &object_id,
+                           const std::string &checkpoint_url,
+                           std::function<void(const ray::Status &)> callback);
+
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.
   void FlushFreeObjects();
@@ -161,6 +165,18 @@ class LocalObjectManager {
   int64_t GetPinnedBytes() const;
 
   std::string DebugString() const;
+
+  void InsertObjectAndCheckpointURL(const ObjectID &object_id,
+                                    const std::string &checkpoint_url)
+      LOCKS_EXCLUDED(object_map_mutex_);
+
+  void MarkObjectSealed(const ObjectID &object_id) LOCKS_EXCLUDED(object_map_mutex_);
+
+  void EraseObjectAndCheckpointURL(const ObjectID &object_id)
+      LOCKS_EXCLUDED(object_map_mutex_);
+
+  std::string GetObjectCheckpointURL(const ObjectID &object_id)
+      LOCKS_EXCLUDED(object_map_mutex_);
 
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
@@ -322,6 +338,10 @@ class LocalObjectManager {
 
   /// The object directory interface to access object information.
   IObjectDirectory *object_directory_;
+
+  mutable absl::Mutex object_map_mutex_;
+  absl::flat_hash_map<ObjectID, std::pair<std::string, bool>> get_object_to_url_map_
+      GUARDED_BY(object_map_mutex_);
 
   ///
   /// Stats

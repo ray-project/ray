@@ -325,11 +325,12 @@ message NotifyGCSRestartReply {}
 
 message DumpCheckpointsRequest {
   repeated bytes object_ids = 1;
-  Address worker_address = 2;
-  repeated Address owner_addresses = 3;
+  repeated Address owner_addresses = 2;
 }
 
-message DumpCheckpointsReply {}
+message DumpCheckpointsReply {
+  repeated string checkpoint_urls = 1;
+}
 
 // Service for inter-node-manager communication.
 service NodeManagerService {

@@ -90,6 +90,12 @@ def test_checkpoint(ray_start_cluster):
     checkpoint_url = ref.checkpoint_url()
     print("checkpoint_url:", checkpoint_url, "len:", len(checkpoint_url))
     print("ref:", ref)
+    print("data:", ray.get(ref))
+    ray.kill(owner)
+    print("wait 5 seconds for owner died.")
+    time.sleep(5)
+    print("data:", ray.get(ref))
+
 
 
 if __name__ == "__main__":

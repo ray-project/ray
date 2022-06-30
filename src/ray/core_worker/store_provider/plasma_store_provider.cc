@@ -164,6 +164,7 @@ Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_set<ObjectID> &remaining,
     const std::vector<ObjectID> &batch_ids,
+    const absl::flat_hash_map<ObjectID, std::string> &object_to_url_map,
     int64_t timeout_ms,
     bool fetch_only,
     bool in_direct_call,
@@ -173,6 +174,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
   RAY_RETURN_NOT_OK(
       raylet_client_->FetchOrReconstruct(batch_ids,
+                                         object_to_url_map,
                                          owner_addresses,
                                          fetch_only,
                                          /*mark_worker_blocked*/ !in_direct_call,
@@ -265,6 +267,7 @@ Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
 
 Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids,
+    const absl::flat_hash_map<ObjectID, std::string> &object_to_url_map,
     int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
@@ -283,6 +286,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
+                                                 object_to_url_map,
                                                  /*timeout_ms=*/0,
                                                  /*fetch_only=*/true,
                                                  ctx.CurrentTaskIsDirectCall(),
@@ -329,6 +333,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
+                                                 object_to_url_map,
                                                  batch_timeout,
                                                  /*fetch_only=*/false,
                                                  ctx.CurrentTaskIsDirectCall(),

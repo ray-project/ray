@@ -178,6 +178,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const DumpObjectsCheckpointRequest &request,
       const ClientCallback<DumpObjectsCheckpointReply> &callback) {}
 
+  virtual void LoadCheckpoint(const LoadCheckpointRequest &request,
+                              const ClientCallback<LoadCheckpointReply> &callback) {}
+
   virtual void RestoreSpilledObjects(
       const RestoreSpilledObjectsRequest &request,
       const ClientCallback<RestoreSpilledObjectsReply> &callback) {}
@@ -196,10 +199,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void AssignObjectOwner(const AssignObjectOwnerRequest &request,
                                  const ClientCallback<AssignObjectOwnerReply> &callback) {
   }
-
-  virtual void SendCheckpointURLs(
-      const SendCheckpointURLsRequest &request,
-      const ClientCallback<SendCheckpointURLsReply> &callback) {}
 
   virtual void RayletNotifyGCSRestart(
       const RayletNotifyGCSRestartRequest &request,
@@ -313,6 +312,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         LoadCheckpoint,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          RestoreSpilledObjects,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
@@ -341,12 +346,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          AssignObjectOwner,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
-
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         SendCheckpointURLs,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
