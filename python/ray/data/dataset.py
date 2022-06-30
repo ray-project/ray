@@ -35,7 +35,12 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage
+from ray.data._internal.plan import (
+    AllToAllStage,
+    ExecutionPlan,
+    OneToOneStage,
+    RandomizeBlocksStage,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import (
@@ -169,6 +174,8 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool,
+        *,
+        defer_execution: bool = False,
     ):
         """Construct a Dataset (internal API).
 
@@ -183,7 +190,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
         self._lazy = lazy
 
-        if not lazy:
+        if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
@@ -808,26 +815,11 @@ class Dataset(Generic[T]):
                 based on system randomness.
 
         Returns:
-            The shuffled dataset.
+            The block-shuffled dataset.
         """
 
-        def do_randomize_block_order(block_list, *_):
-            num_blocks = block_list.executed_num_blocks()  # Blocking.
-            if num_blocks == 0:
-                return block_list, {}
-
-            randomized_block_list = block_list.randomize_block_order(seed)
-
-            return randomized_block_list, {}
-
-        plan = self._plan.with_stage(
-            AllToAllStage(
-                "randomize_block_order",
-                None,
-                do_randomize_block_order,
-            )
-        )
-        return Dataset(plan, self._epoch, self._lazy)
+        plan = self._plan.with_stage(RandomizeBlocksStage(seed))
+        return Dataset(plan, self._epoch, self._lazy, defer_execution=True)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -2890,10 +2882,13 @@ class Dataset(Generic[T]):
             number of records.
         """
 
-        if self.count() > limit:
+        count = self.count()
+        if count > limit:
             raise ValueError(
-                "The dataset has more than the given limit of {} records. "
-                "Use ds.limit(N).to_pandas().".format(limit)
+                f"The dataset has more than the given limit of {limit} "
+                f"records: {count}. If you are sure that a DataFrame with "
+                f"{count} rows will fit in local memory, use "
+                f"ds.to_pandas(limit={count})."
             )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()

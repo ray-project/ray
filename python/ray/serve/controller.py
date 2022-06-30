@@ -547,7 +547,7 @@ class ServeController:
             return config
 
 
-@ray.remote(max_calls=1)
+@ray.remote(num_cpus=0, max_calls=1)
 def run_graph(
     import_path: str, graph_env: dict, deployment_override_options: List[Dict]
 ):
@@ -585,7 +585,6 @@ def run_graph(
             app.deployments[name].set_options(**options)
 
         # Run the graph locally on the cluster
-        serve.start()
         serve.run(app)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which

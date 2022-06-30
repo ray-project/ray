@@ -115,7 +115,7 @@ Here is an example of how to implement your own toy example of a ReplayBuffer cl
     :end-before: __sphinx_doc_replay_buffer_own_buffer__end__
 
 For a full implementation, you should consider other methods like ``get_state()`` and ``set_state()``.
-A more extensive example is our implementation of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__, the :py:class:`~ray.rllib.utils.replay_buffers.reservoir_replay_buffer.ReservoirReplayBuffer`.
+A more extensive example is `our implementation <https://github.com/ray-project/ray/blob/master/rllib/utils/replay_buffers/reservoir_replay_buffer.py>`__ of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__, the :py:class:`~ray.rllib.utils.replay_buffers.reservoir_replay_buffer.ReservoirReplayBuffer`.
 
 
 Advanced Usage

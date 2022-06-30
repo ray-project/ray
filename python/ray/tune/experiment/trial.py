@@ -38,7 +38,7 @@ from ray.tune.execution.placement_groups import (
     resource_dict_to_pg_factory,
 )
 from ray.tune.utils.serialization import TuneFunctionEncoder
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -763,6 +763,9 @@ class Trial:
         if self.stub:
             return None
         return get_trainable_cls(self.trainable_name)
+
+    def get_trial_checkpoints(self) -> List[_TrackedCheckpoint]:
+        return self.checkpoint_manager.best_checkpoints()
 
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]
