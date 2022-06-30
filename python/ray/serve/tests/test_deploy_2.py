@@ -245,24 +245,41 @@ def test_nonpicklable_user_config(serve_instance):
 
     @serve.deployment(name="simple-deployment")
     class SimpleDeployment:
-        _value: str
+        value: str
+        nested_value: str
 
         def reconfigure(self, config: Dict) -> None:
-            self._value = config["value"]
+            self.value = config["value"]
+            self.nested_value = config["nested"]["value"]
 
-        def say_hello(self) -> None:
-            return f"{self._value}!"
+        def get_value(self) -> None:
+            return self.value
+
+        def get_nested_value(self) -> None:
+            return self.nested_value
 
     SimpleDeployment.options(
         user_config={
-            "value": "Success",
-            "config_block_1": {"value": "Success"},
+            "value": "Success!",
+            "nested": {"value": "Success!"},
         }
     ).deploy()
 
     handle = SimpleDeployment.get_handle()
+    assert ray.get(handle.get_value.remote()) == "Success!"
+    assert ray.get(handle.get_nested_value.remote()) == "Success!"
 
-    assert ray.get(handle.say_hello.remote()) == "Success!"
+    SimpleDeployment.options(
+        user_config={
+            "value": "Failure!",
+            "another-value": "Failure!",
+            "nested": {"value": "Success!"},
+        }
+    ).deploy()
+
+    handle = SimpleDeployment.get_handle()
+    assert ray.get(handle.get_value.remote()) == "Failure!"
+    assert ray.get(handle.get_nested_value.remote()) == "Success!"
 
 
 def test_http_proxy_request_cancellation(serve_instance):
