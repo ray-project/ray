@@ -900,6 +900,7 @@ async def test_dashboard_agent_does_not_depend_on_serve():
     assert response.status_code == 404
     assert "Not Found" in response.text
 
+
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test only works for minimal installation.",
