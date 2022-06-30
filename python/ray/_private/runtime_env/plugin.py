@@ -1,10 +1,13 @@
 import logging
+import os
 from abc import ABC
 from typing import List
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
+from ray._private.runtime_env.constants import RAY_RUNTIME_ENV_PLUGINS_ENV_VAR
 from ray.util.annotations import DeveloperAPI
+from ray._private.utils import import_attr
 
 default_logger = logging.getLogger(__name__)
 
@@ -13,7 +16,7 @@ default_logger = logging.getLogger(__name__)
 class RuntimeEnvPlugin(ABC):
     """Abstract base class for runtime environment plugins."""
 
-    name: str
+    name: str = None
 
     @staticmethod
     def validate(runtime_env_dict: dict) -> str:
@@ -86,6 +89,45 @@ class RuntimeEnvPlugin(ABC):
             the amount of space reclaimed by the deletion.
         """
         return 0
+
+
+class RuntimeEnvPluginManager:
+    """This manager is used to load plugins in runtime env agent."""
+
+    def __init__(self):
+        self.plugins = {}
+        plugins_config = os.environ.get(RAY_RUNTIME_ENV_PLUGINS_ENV_VAR)
+        if plugins_config:
+            self.load_plugins(plugins_config.split(","))
+
+    def load_plugins(self, plugin_classes: List[str]):
+        """Load runtime env plugins"""
+        for plugin_class_path in plugin_classes:
+            plugin_class = import_attr(plugin_class_path)
+            if not issubclass(plugin_class, RuntimeEnvPlugin):
+                default_logger.warning(
+                    "Invalid runtime env plugin class %s. "
+                    "The plugin class must inherit "
+                    "ray._private.runtime_env.plugin.RuntimeEnvPlugin.",
+                    plugin_class,
+                )
+                continue
+            if not plugin_class.name:
+                default_logger.warning(
+                    "No valid name in runtime env plugin %s", plugin_class
+                )
+                continue
+            if plugin_class.name in self.plugins:
+                default_logger.warning(
+                    "The name of runtime env plugin %s conflicts with %s",
+                    plugin_class,
+                    self.plugins[plugin_class.name],
+                )
+                continue
+            self.plugins[plugin_class.name] = plugin_class()
+
+    def get_plugin(self, name: str):
+        return self.plugins.get(name)
 
 
 @DeveloperAPI

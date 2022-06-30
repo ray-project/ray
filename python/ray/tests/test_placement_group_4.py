@@ -19,9 +19,13 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH = (
     "ray.tests.test_placement_group_4.MockWorkerStartupSlowlyPlugin"  # noqa
 )
+MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_NAME = "MockWorkerStartupSlowlyPlugin"
 
 
 class MockWorkerStartupSlowlyPlugin(RuntimeEnvPlugin):
+
+    name = MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_NAME
+
     def validate(runtime_env_dict: dict) -> str:
         return "success"
 
@@ -110,7 +114,16 @@ def test_remove_placement_group(ray_start_cluster, connect_to_client):
             ray.get(task_ref)
 
 
-def test_remove_placement_group_worker_startup_slowly(ray_start_cluster):
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH,
+    ],
+    indirect=True,
+)
+def test_remove_placement_group_worker_startup_slowly(
+    set_runtime_env_plugins, ray_start_cluster
+):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
@@ -134,7 +147,7 @@ def test_remove_placement_group_worker_startup_slowly(ray_start_cluster):
     # runtime env to mock worker start up slowly.
     task_ref = long_running_task.options(
         placement_group=placement_group,
-        runtime_env={"plugins": {MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH: {}}},
+        runtime_env={MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_NAME: {}},
     ).remote()
     a = A.options(placement_group=placement_group).remote()
     assert ray.get(a.f.remote()) == 3

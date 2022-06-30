@@ -25,7 +25,7 @@ def gen_java_deps():
             "org.slf4j:slf4j-api:1.7.25",
             "com.lmax:disruptor:3.3.4",
             "org.yaml:snakeyaml:1.26",
-            "net.java.dev.jna:jna:5.5.0",
+            "net.java.dev.jna:jna:5.8.0",
             "org.apache.httpcomponents.client5:httpclient5:5.0.3",
             "org.apache.httpcomponents.core5:httpcore5:5.0.2",
             maven.artifact(

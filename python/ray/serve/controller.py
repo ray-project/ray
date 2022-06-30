@@ -340,26 +340,9 @@ class ServeController:
             deployment_config_proto_bytes
         )
         version = deployment_config.version
-        prev_version = deployment_config.prev_version
         replica_config = ReplicaConfig.from_proto_bytes(
             replica_config_proto_bytes, deployment_config.need_pickle()
         )
-
-        if prev_version is not None:
-            existing_deployment_info = self.deployment_state_manager.get_deployment(
-                name
-            )
-            if existing_deployment_info is None or not existing_deployment_info.version:
-                raise ValueError(
-                    f"prev_version '{prev_version}' is specified but "
-                    "there is no existing deployment."
-                )
-            if existing_deployment_info.version != prev_version:
-                raise ValueError(
-                    f"prev_version '{prev_version}' "
-                    "does not match with the existing "
-                    f"version '{existing_deployment_info.version}'."
-                )
 
         autoscaling_config = deployment_config.autoscaling_config
         if autoscaling_config is not None:
@@ -579,7 +562,7 @@ class ServeController:
             return config
 
 
-@ray.remote(max_calls=1)
+@ray.remote(num_cpus=0, max_calls=1)
 def run_graph(
     import_path: str, graph_env: dict, deployment_override_options: List[Dict]
 ):
