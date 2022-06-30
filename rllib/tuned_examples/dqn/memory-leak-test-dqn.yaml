@@ -11,3 +11,10 @@ memory-leak-test-dqn:
                 static_samples: true
         replay_buffer_config:
           capacity: 500  # use small buffer to catch memory leaks
+
+        # Include evaluation workers.
+        evaluation_num_workers: 2
+        evaluation_interval: 1
+        evaluation_parallel_to_training: true
+        evaluation_duration: 10
+        evaluation_duration_unit: episodes

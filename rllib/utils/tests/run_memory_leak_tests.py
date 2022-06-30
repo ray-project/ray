@@ -48,8 +48,8 @@ parser.add_argument(
 parser.add_argument(
     "--to-check",
     nargs="+",
-    default=["env", "policy", "rollout_worker"],
-    help="List of 'env', 'policy', 'rollout_worker', 'model'.",
+    default=["env", "policy", "rollout_worker", "algorithm"],
+    help="List of 'algorithm', 'env', 'policy', 'rollout_worker', 'model'.",
 )
 
 
@@ -109,7 +109,7 @@ if __name__ == "__main__":
         # Construct the trainer instance based on the given config.
         leaking = True
         try:
-            ray.init(num_cpus=5, local_mode=args.local_mode)
+            ray.init(num_cpus=7, local_mode=args.local_mode)
             trainer = get_algorithm_class(experiment["run"])(experiment["config"])
             results = check_memory_leaks(
                 trainer,

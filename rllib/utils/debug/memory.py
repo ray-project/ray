@@ -194,6 +194,32 @@ def check_memory_leaks(
         if test:
             results_per_category["rollout_worker"].extend(test)
 
+    # Test the entire Algorithm.
+    if "algorithm" in to_check:
+        print("Looking for leaks in Algorithm")
+
+        def code():
+            algorithm.train()
+            if (
+                hasattr(algorithm, "evaluation_workers")
+                and algorithm.evaluation_workers.remote_workers()
+            ):
+                algorithm.evaluate()
+
+        # Call `compute_actions_from_input_dict()` n times.
+        test = _test_some_code_for_memory_leaks(
+            desc="Calling `train()` and `evaluate()` (if eval workers available).",
+            init=None,
+            code=code,
+            # How many times to repeat the function call?
+            repeats=repeats or 10,
+            # How many times to re-try if we find a suspicious memory
+            # allocation?
+            max_num_trials=max_num_trials,
+        )
+        if test:
+            results_per_category["algorithm"].extend(test)
+
     return results_per_category
 
 

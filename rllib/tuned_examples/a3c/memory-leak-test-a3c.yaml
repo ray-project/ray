@@ -13,3 +13,10 @@ memory-leak-test-a3c:
                 static_samples: true
         num_workers: 4
         num_envs_per_worker: 5
+
+        # Include evaluation workers.
+        evaluation_num_workers: 2
+        evaluation_interval: 1
+        evaluation_parallel_to_training: true
+        evaluation_duration: 10
+        evaluation_duration_unit: episodes
