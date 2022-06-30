@@ -70,7 +70,6 @@ _METRICS = [
     "ray_gcs_placement_group_creation_latency_ms_sum",
     "ray_gcs_placement_group_scheduling_latency_ms_sum",
     "ray_gcs_placement_group_count",
-    "ray_gcs_new_resource_creation_latency_ms_sum",
     "ray_gcs_actors_count",
 ]
 
