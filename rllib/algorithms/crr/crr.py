@@ -9,11 +9,9 @@ from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import (
-    LAST_TARGET_UPDATE_TS,
-    NUM_TARGET_UPDATES,
-    TARGET_NET_UPDATE_TIMER,
-)
+from ray.rllib.utils.metrics import (LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES,
+                                     TARGET_NET_UPDATE_TIMER, NUM_AGENT_STEPS_SAMPLED,
+                                     NUM_ENV_STEPS_SAMPLED, )
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
@@ -61,6 +59,7 @@ class CRRConfig(AlgorithmConfig):
         # overriding the trainer config default
         self.num_workers = 4  # offline RL does not need rollout workers
         self.offline_sampling = True
+        self.min_iter_time_s = 10.0
 
     def training(
         self,
@@ -190,50 +189,40 @@ class CRR(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        # total_transitions = len(self.local_replay_buffer)
-        total_transitions = 99500
         bsize = self.config["train_batch_size"]
-        n_batches_per_epoch = total_transitions // bsize
 
-        results = []
-        for batch_iter in range(n_batches_per_epoch):
-            batch = synchronous_parallel_sample(worker_set=self.workers)
-            batch = batch.as_multi_agent()
-            self.local_replay_buffer.add(batch)
-            # Sample training batch from replay buffer.
-            train_batch = self.local_replay_buffer.sample(bsize)
+        batch = synchronous_parallel_sample(worker_set=self.workers)
+        batch = batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+        self.local_replay_buffer.add(batch)
+        # Sample training batch from replay buffer.
+        train_batch = self.local_replay_buffer.sample(bsize)
 
-            # Postprocess batch before we learn on it.
-            post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
-            train_batch = post_fn(train_batch, self.workers, self.config)
+        # Postprocess batch before we learn on it.
+        post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
+        train_batch = post_fn(train_batch, self.workers, self.config)
 
-            # Learn on training batch.
-            # Use simple optimizer (only for multi-agent or tf-eager; all other
-            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-            if self.config.get("simple_optimizer", False):
-                train_results = train_one_step(self, train_batch)
-            else:
-                train_results = multi_gpu_train_one_step(self, train_batch)
+        # Learn on training batch.
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        if self.config.get("simple_optimizer", False):
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
 
-            # update target every few gradient updates
-            cur_ts = self._counters[NUM_GRADIENT_UPDATES]
-            last_update = self._counters[LAST_TARGET_UPDATE_TS]
+        # update target every few gradient updates
+        cur_ts = self._counters[NUM_GRADIENT_UPDATES]
+        last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-            if cur_ts - last_update >= self.config["target_update_grad_intervals"]:
-                with self._timers[TARGET_NET_UPDATE_TIMER]:
-                    to_update = self.workers.local_worker().get_policies_to_train()
-                    self.workers.local_worker().foreach_policy_to_train(
-                        lambda p, pid: pid in to_update and p.update_target()
-                    )
-                self._counters[NUM_TARGET_UPDATES] += 1
-                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+        if cur_ts - last_update >= self.config["target_update_grad_intervals"]:
+            with self._timers[TARGET_NET_UPDATE_TIMER]:
+                to_update = self.workers.local_worker().get_policies_to_train()
+                self.workers.local_worker().foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
+            self._counters[NUM_TARGET_UPDATES] += 1
+            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-            self._counters[NUM_GRADIENT_UPDATES] += 1
-
-            results.append(train_results)
-
-        summary = tree.map_structure_with_path(
-            lambda path, *v: float(np.mean(v)), *results
-        )
-
-        return summary
+        self._counters[NUM_GRADIENT_UPDATES] += 1
+        return train_results

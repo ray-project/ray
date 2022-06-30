@@ -8,7 +8,7 @@ pendulum_crr:
         input: "dataset"
         input_config:
             format: "json"
-            path: '/Users/avnish/avnish_ray_2/rllib/tests/data/pendulum/pendulum_replay_v1.1.0.json'
+            path: 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
         framework: torch
         num_workers: 4
         gamma: 0.99
