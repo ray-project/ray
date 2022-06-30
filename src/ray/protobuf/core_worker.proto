@@ -372,6 +372,11 @@ message AssignObjectOwnerRequest {
   Address borrower_address = 4;
   // Description of the call site where the reference was created.
   string call_site = 5;
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 6;
+  // The node id of a node where the object is spilled.
+  bytes spilled_node_id = 7;
 }
 
 message AssignObjectOwnerReply {}

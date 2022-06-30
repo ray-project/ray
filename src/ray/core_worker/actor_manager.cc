@@ -132,6 +132,8 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                        /*inner_ids=*/{},
                                        caller_address,
                                        call_site,
+                                       /*spilled_url=*/"",
+                                       /*spilled_node_id=*/NodeID::Nil(),
                                        /*object_size*/ -1,
                                        /*is_reconstructable=*/true,
                                        /*add_local_ref=*/false);

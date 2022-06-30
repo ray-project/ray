@@ -157,6 +157,7 @@ from ray.worker import (  # noqa: E402,F401
     remote,
     shutdown,
     wait,
+    create_global_owners,
 )
 import ray.internal  # noqa: E402
 

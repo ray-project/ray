@@ -2057,7 +2057,7 @@ def wait(
                 "of objects provided to ray.wait."
             )
 
-        timeout = timeout if timeout is not None else 10 ** 6
+        timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
             object_refs,
@@ -2323,3 +2323,18 @@ def remote(*args, **kwargs):
         return _make_remote(args[0], {})
     assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
     return functools.partial(_make_remote, options=kwargs)
+
+
+@PublicAPI
+@client_mode_hook(auto_init=True)
+def create_global_owners(size: int):
+    @ray.remote
+    class DummyActor:
+        def ping(self):
+            return True
+
+    global_owners = [
+        DummyActor.options(name=f"_ray_global_owner_{i}", max_restarts=-1).remote()
+        for i in range(size)
+    ]
+    ray.get([o.ping.remote() for o in global_owners])
