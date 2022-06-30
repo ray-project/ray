@@ -43,6 +43,7 @@ BASE_IMAGES = {
     "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu18.04",
     "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu18.04",
     "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
+    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
     "cpu": "ubuntu:focal",
 }
 
@@ -52,6 +53,7 @@ CUDA_FULL = {
     "cu111": "CUDA 11.1",
     "cu110": "CUDA 11.0",
     "cu102": "CUDA 10.2",
+    "cu101": "CUDA 10.1",
 }
 
 # The CUDA version to use for the ML Docker image.
