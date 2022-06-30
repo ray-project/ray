@@ -332,9 +332,8 @@ Continuations can be used to implement something more complex, for example, recu
         if n == 1:
             return 1
         else:
-            return multiply(n, factorial.bind(n - 1))
+            return multiply(n, factorial(n - 1))
 
-    @ray.remote
     def multiply(a: int, b: int) -> int:
         return a * b
 
