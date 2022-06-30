@@ -110,14 +110,7 @@ class CountError(Exception):
     pass
 
 
-@pytest.mark.parametrize(
-    "retry_exceptions",
-    [[CountError], lambda e: isinstance(e, CountError)],
-)
-def test_retry_application_level_error_exception_filter(
-    ray_start_regular,
-    retry_exceptions,
-):
+def test_retry_application_level_error_exception_filter(ray_start_regular):
     @ray.remote
     class Counter:
         def __init__(self):
@@ -127,7 +120,7 @@ def test_retry_application_level_error_exception_filter(
             self.value += 1
             return self.value
 
-    @ray.remote(max_retries=1, retry_exceptions=retry_exceptions)
+    @ray.remote(max_retries=1, retry_exceptions=[CountError])
     def func(counter):
         if counter is None:
             raise ValueError()

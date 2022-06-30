@@ -56,8 +56,7 @@ retrying non-idempotent tasks when they have partially executed.
 However, if your tasks are idempotent, then you can enable application-level error
 retries with ``retry_exceptions=True``, or even retry a specific set of
 application-level errors (such as a class of exception types that you know to be
-transient) by providing an allowlist of exceptions, or an exception predicate that
-returns ``True`` when an exception should be retried:
+transient) by providing an allowlist of exceptions:
 
 .. code-block:: python
 
@@ -94,9 +93,7 @@ returns ``True`` when an exception should be retried:
         except RandomError:
             print('FAILURE')
 
-    # Provide the exceptions that we want to retry. This can be a list of exceptions
-    # or a function that takes an exception and returns whether we should retry on
-    # that exception.
+    # Provide the exceptions that we want to retry as an allowlis.
     retry_on_exception = potentially_fail.options(retry_exceptions=[RandomError])
     try:
         # This will fail since we're passing in -1 for the failure_probability,
@@ -128,9 +125,6 @@ The semantics for each of the potential ``retry_exceptions`` values are as follo
 
 * ``retry_exceptions=[Exc1, Exc2]``: Application-level errors that are instances of
   either ``Exc1`` or ``Exc2`` are retried.
-
-* ``retry_exceptions=lambda e: isinstance(e, SomeException)``: Application-level errors
-  for which ``predicate_fn(e)`` returns ``True`` are retried.
 
 .. _object-reconstruction:
 

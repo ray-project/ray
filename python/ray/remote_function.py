@@ -59,9 +59,7 @@ class RemoteFunction:
         _max_retries: The number of times this task may be retried
             on worker failure.
         _retry_exceptions: Whether application-level errors should be retried.
-            This can be a boolean, a list of exceptions that should be retried, or a
-            predicate function that takes an exception and returns whether that
-            particular exception should be retried.
+            This can be a boolean or a list of exceptions that should be retried.
         _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
@@ -255,17 +253,11 @@ class RemoteFunction:
         num_returns = task_options["num_returns"]
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
-        if isinstance(retry_exceptions, list):
-            # Convert allowlist of exceptions to an exception predicate.
-            retry_exceptions_ = retry_exceptions
-            retry_exceptions = lambda e: isinstance(  # noqa: E731
-                e, tuple(retry_exceptions_)
-            )
-        if inspect.isfunction(retry_exceptions):
-            retry_exception_predicate = retry_exceptions
+        if not isinstance(retry_exceptions, bool):
+            retry_exception_allowlist = tuple(retry_exceptions)
             retry_exceptions = True
         else:
-            retry_exception_predicate = None
+            retry_exception_allowlist = None
 
         resources = ray._private.utils.resources_from_ray_options(task_options)
 
@@ -336,7 +328,7 @@ class RemoteFunction:
                 resources,
                 max_retries,
                 retry_exceptions,
-                retry_exception_predicate,
+                retry_exception_allowlist,
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",

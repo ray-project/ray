@@ -1620,7 +1620,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_predicate) {
+    const std::string &serialized_retry_exception_allowlist) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1656,7 +1656,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.serialized_runtime_env_info);
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
-                            serialized_retry_exception_predicate,
+                            serialized_retry_exception_allowlist,
                             scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
@@ -2312,7 +2312,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       arg_refs,
       return_ids,
       task_spec.GetDebuggerBreakpoint(),
-      task_spec.GetSerializedRetryExceptionPredicate(),
+      task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
       creation_task_exception_pb_bytes,
       is_retryable_error,

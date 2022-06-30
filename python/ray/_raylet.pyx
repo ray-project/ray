@@ -487,7 +487,7 @@ cdef raise_if_dependency_failed(arg):
 
 cdef c_bool determine_if_retryable(
     Exception e,
-    const c_string serialized_retry_exception_predicate,
+    const c_string serialized_retry_exception_allowlist,
     FunctionDescriptor function_descriptor,
 ):
     """Determine if the provided exception is retryable, according to the
@@ -502,59 +502,39 @@ cdef c_bool determine_if_retryable(
         - Predicate function raises an error (RuntimeError)
         - Predicate function output is not a boolean (TypeError)
     """
-    if len(serialized_retry_exception_predicate) == 0:
-        # No exception predicate specified, default to all retryable.
+    if len(serialized_retry_exception_allowlist) == 0:
+        # No exception allowlist specified, default to all retryable.
         return True
 
-    # Deserialize exception predicate and apply it to exception e.
+    # Deserialize exception allowlist and check that e is in the allowlist.
     try:
-        exception_predicate = ray_pickle.loads(
-            serialized_retry_exception_predicate,
+        exception_allowlist = ray_pickle.loads(
+            serialized_retry_exception_allowlist,
         )
     except TypeError as inner_e:
-        # Exception predicate deserialization failed.
+        # Exception allowlist deserialization failed.
         msg = (
-            "Could not deserialize the retry exception predicate "
-            f"function {exception_predicate} for task "
-            f"{function_descriptor.repr}. "
+            "Could not deserialize the retry exception allowlist "
+            f"function for task {function_descriptor.repr}. "
             "Check "
             "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
             "for more information.")
         raise TypeError(msg) from inner_e
 
-    if exception_predicate is None:
-        # No exception predicate specified, default to all retryable.
+    if exception_allowlist is None:
+        # No exception allowlist specified, default to all retryable.
         return True
 
-    if not inspect.isfunction(exception_predicate):
-        # Exception predicate is not a function.
+    if not isinstance(exception_allowlist, tuple):
+        # Exception allowlist is not a tuple.
         raise TypeError(
-            "Exception predicate provided via retry_exceptions "
-            "must be a Callabe[[Exception], bool], but got: "
-            f"{type(exception_predicate)}, {exception_predicate}"
+            "Exception allowlist provided via retry_exceptions "
+            "must be a Tuple[Exception, ...], but got: "
+            f"{type(exception_allowlist)}, {exception_allowlist}"
         )
 
-    try:
-        predicate_result = exception_predicate(e)
-    except Exception as inner_e:
-        # Exception predicate invocation failed.
-        raise RuntimeError(
-            "Calling exception predicate provided via "
-            "retry_exceptions failed for predicate "
-            f"{exception_predicate}"
-        ) from inner_e
-
-    if not isinstance(predicate_result, bool):
-        # Exception predicate returned wrong type.
-        raise TypeError(
-            "Exception predicate provided via retry_exceptions "
-            "must be a function that takes an exception and "
-            "returns a boolean whether the exception is retryable, "
-            f"but instead returned: {type(predicate_result)}, "
-            f"{predicate_result}\nPredicate: {exception_predicate}"
-        )
-
-    return predicate_result
+    # Check that e is in allowlist.
+    return isinstance(e, exception_allowlist)
 
 
 cdef execute_task(
@@ -566,7 +546,7 @@ cdef execute_task(
         const c_vector[CObjectReference] &c_arg_refs,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
-        const c_string serialized_retry_exception_predicate,
+        const c_string serialized_retry_exception_allowlist,
         c_vector[shared_ptr[CRayObject]] *returns,
         c_bool *is_retryable_error,
         # This parameter is only used for actor creation task to define
@@ -771,7 +751,7 @@ cdef execute_task(
                 except Exception as e:
                     is_retryable_error[0] = determine_if_retryable(
                         e,
-                        serialized_retry_exception_predicate,
+                        serialized_retry_exception_allowlist,
                         function_descriptor,
                     )
                     if (
@@ -885,7 +865,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectReference] &c_arg_refs,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
-        const c_string serialized_retry_exception_predicate,
+        const c_string serialized_retry_exception_allowlist,
         c_vector[shared_ptr[CRayObject]] *returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
@@ -899,7 +879,7 @@ cdef CRayStatus task_execution_handler(
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_refs, c_return_ids,
                              debugger_breakpoint,
-                             serialized_retry_exception_predicate,
+                             serialized_retry_exception_allowlist,
                              returns,
                              is_retryable_error,
                              defined_concurrency_groups,
@@ -1614,7 +1594,7 @@ cdef class CoreWorker:
                     resources,
                     int max_retries,
                     c_bool retry_exceptions,
-                    retry_exception_predicate,
+                    retry_exception_allowlist,
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
@@ -1631,13 +1611,13 @@ cdef class CoreWorker:
             scheduling_strategy, &c_scheduling_strategy)
 
         try:
-            serialized_retry_exception_predicate = ray_pickle.dumps(
-                retry_exception_predicate,
+            serialized_retry_exception_allowlist = ray_pickle.dumps(
+                retry_exception_allowlist,
             )
         except TypeError as e:
             msg = (
-                "Could not serialize the retry exception predicate function "
-                f"{retry_exception_predicate} for task {function_descriptor.repr}. "
+                "Could not serialize the retry exception allowlist"
+                f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
                 "Check "
                 "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
                 "for more information.")
@@ -1662,7 +1642,7 @@ cdef class CoreWorker:
                 max_retries, retry_exceptions,
                 c_scheduling_strategy,
                 debugger_breakpoint,
-                serialized_retry_exception_predicate,
+                serialized_retry_exception_allowlist,
             )
 
             # These arguments were serialized and put into the local object

@@ -1,6 +1,5 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
 from dataclasses import dataclass
-import inspect
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
@@ -14,7 +13,7 @@ from ray.util.scheduling_strategies import (
 @dataclass
 class Option:
     # Type constraint of an option.
-    type_constraint: Optional[Union[type, Tuple[type], Callable[[Any], bool]]] = None
+    type_constraint: Optional[Union[type, Tuple[type]]] = None
     # Value constraint of an option.
     value_constraint: Optional[Callable[[Any], bool]] = None
     # Error message for value constraint.
@@ -25,11 +24,7 @@ class Option:
     def validate(self, keyword: str, value: Any):
         """Validate the option."""
         if self.type_constraint is not None:
-            if inspect.isfunction(self.type_constraint):
-                satisfies_type_constraint = self.type_constraint(value)
-            else:
-                satisfies_type_constraint = isinstance(value, self.type_constraint)
-            if not satisfies_type_constraint:
+            if not isinstance(value, self.type_constraint):
                 raise TypeError(
                     f"The type of keyword '{keyword}' must be {self.type_constraint}, "
                     f"but received type {type(value)}"
@@ -130,16 +125,12 @@ _task_only_options = {
         "Setting 'object_store_memory' is not implemented for tasks",
     ),
     "retry_exceptions": Option(
+        (bool, list),
         lambda x: (
             isinstance(x, bool)
             or (isinstance(x, list) and all(issubclass_safe(x_, Exception) for x_ in x))
-            or inspect.isfunction(x)
         ),
-        lambda x: (
-            not inspect.isfunction(x) or len(inspect.signature(x).parameters) == 1
-        ),
-        "retry_exceptions must be either a boolean, a list of exceptions, or a "
-        "predicate function that takes an exception and returns a boolean.",
+        "retry_exceptions must be either a boolean or a list of exceptions",
         default_value=False,
     ),
 }

@@ -141,12 +141,12 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetNormalTaskSpec(
       int max_retries,
       bool retry_exceptions,
-      const std::string &serialized_retry_exception_predicate,
+      const std::string &serialized_retry_exception_allowlist,
       const rpc::SchedulingStrategy &scheduling_strategy) {
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
-    message_->set_serialized_retry_exception_predicate(
-        serialized_retry_exception_predicate);
+    message_->set_serialized_retry_exception_allowlist(
+        serialized_retry_exception_allowlist);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     return *this;
   }
