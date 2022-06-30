@@ -3019,10 +3019,11 @@ class Dataset(Generic[T]):
         from ray.data.dataset_pipeline import DatasetPipeline
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
@@ -3138,10 +3139,11 @@ class Dataset(Generic[T]):
             blocks_per_window = 10
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
