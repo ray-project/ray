@@ -1,6 +1,6 @@
 :orphan:
 
-train_linear_dataset_example
+torch_linear_dataset_example
 ============================
 
-.. literalinclude:: /../../python/ray/train/examples/train_linear_dataset_example.py
+.. literalinclude:: /../../python/ray/train/examples/torch_linear_dataset_example.py

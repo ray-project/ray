@@ -1,6 +1,6 @@
 :orphan:
 
-train_fashion_mnist_example
+torch_fashion_mnist_example
 ===========================
 
-.. literalinclude:: /../../python/ray/train/examples/train_fashion_mnist_example.py
+.. literalinclude:: /../../python/ray/train/examples/torch_fashion_mnist_example.py

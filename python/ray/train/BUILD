@@ -64,10 +64,10 @@ py_test(
 )
 
 py_test(
-    name = "tune_cifar_pytorch_pbt_example",
+    name = "tune_cifar_torch_pbt_example",
     size = "medium",
-    main = "examples/tune_cifar_pytorch_pbt_example.py",
-    srcs = ["examples/tune_cifar_pytorch_pbt_example.py"],
+    main = "examples/tune_cifar_torch_pbt_example.py",
+    srcs = ["examples/tune_cifar_torch_pbt_example.py"],
     tags = ["team:ml", "exclusive", "pytorch", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test"]

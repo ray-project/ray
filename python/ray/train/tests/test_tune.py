@@ -13,7 +13,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.examples.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.train_fashion_mnist_example import (
+from ray.train.examples.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer

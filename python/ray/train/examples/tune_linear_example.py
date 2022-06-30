@@ -1,6 +1,6 @@
 import argparse
 
-from train_linear_example import train_func
+from torch_linear_example import train_func
 
 import ray
 from ray import tune

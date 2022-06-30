@@ -58,7 +58,6 @@ def validate_epoch(dataloader, model, loss_fn):
 
 
 def train_func(config):
-    # print(config)
     epochs = config.pop("epochs", 3)
     model = ResNet18(config)
     model = train.torch.prepare_model(model)

@@ -16,10 +16,10 @@ from ray.train.examples.tensorflow_quick_start import (
 from ray.train.examples.torch_quick_start import (
     train_func as torch_quick_start_train_func,
 )
-from ray.train.examples.train_fashion_mnist_example import (
+from ray.train.examples.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.examples.train_linear_example import train_func as linear_train_func
+from ray.train.examples.torch_linear_example import train_func as linear_train_func
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.tests.test_trainer import KillCallback
@@ -171,6 +171,10 @@ def test_horovod_torch_mnist(ray_start_4_cpus):
     results = trainer.fit()
     result = results.metrics
     assert result[TRAINING_ITERATION] == num_workers
+
+    loss = list(results.metrics_dataframe["loss"])
+    assert len(loss) == num_epochs
+    assert loss[-1] < loss[0]
 
 
 # TODO: Refactor as a backend test.
