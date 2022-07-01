@@ -830,7 +830,9 @@ def test_dashboard_does_not_depend_on_serve():
     assert response.json()["result"] is True
     assert "snapshot" in response.json()["data"]
 
-    agent_url = ctx.address_info["node_ip_address"] + ":" + ctx.address_info["dashboard_agent_listen_port"]
+    agent_url = ctx.address_info["node_ip_address"] + ":" + ctx.address_info[
+        "dashboard_agent_listen_port"
+    ]
 
     # Check that Serve-dependent features fail
     response = requests.get(f"http://{agent_url}/api/serve/deployments/")
