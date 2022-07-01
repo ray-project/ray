@@ -1798,7 +1798,7 @@ cdef class CoreWorker:
             CRayStatus status = CRayStatus.OK()
 
         status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
-                                            c_object_id, force_kill, recursive, no_retry)
+            c_object_id, force_kill, recursive, no_retry)
 
         if not status.ok():
             raise TypeError(status.message().decode())

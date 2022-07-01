@@ -3032,7 +3032,8 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
   }
   if (request.recursive()) {
-    auto recursive_cancel = CancelChildren(task_id, request.force_kill(), request.no_retry());
+    auto recursive_cancel =
+        CancelChildren(task_id, request.force_kill(), request.no_retry());
     if (!recursive_cancel.ok()) {
       RAY_LOG(ERROR) << "Recursive cancel failed for a task " << task_id
                      << " due to reason: " << recursive_cancel.ToString();
