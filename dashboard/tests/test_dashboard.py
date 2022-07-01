@@ -831,8 +831,10 @@ def test_dashboard_does_not_depend_on_serve():
     assert response.json()["result"] is True
     assert "snapshot" in response.json()["data"]
 
-    agent_url = ctx.address_info["node_ip_address"] + ":" + str(
-        ctx.address_info["dashboard_agent_listen_port"]
+    agent_url = (
+        ctx.address_info["node_ip_address"]
+        + ":"
+        + str(ctx.address_info["dashboard_agent_listen_port"])
     )
 
     # Check that Serve-dependent features fail
@@ -889,9 +891,8 @@ def test_agent_port_conflict():
     node = ray._private.worker._global_node
     agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
     wait_for_condition(
-        lambda:  requests.get(
-            f"http://{agent_url}/api/serve/deployments/"
-        ).status_code == 200
+        lambda: requests.get(f"http://{agent_url}/api/serve/deployments/").status_code
+        == 200
     )
     ray.shutdown()
 
@@ -901,7 +902,8 @@ def test_agent_port_conflict():
     wait_for_condition(
         lambda: s.connect_ex(
             ("localhost", ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
-        ) != 0
+        )
+        != 0
     )
 
     # start ray and the agent http server should fail
@@ -926,9 +928,10 @@ def test_agent_port_conflict():
     # Check that Serve-dependent features fail.
     try:
         wait_for_condition(
-            lambda:  requests.get(
+            lambda: requests.get(
                 f"http://{agent_url}/api/serve/deployments/"
-            ).status_code == 200
+            ).status_code
+            == 200
         )
         assert False
     except Exception as e:
