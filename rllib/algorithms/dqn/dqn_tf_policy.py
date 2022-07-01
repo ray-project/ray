@@ -101,20 +101,14 @@ def get_dqn_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> 
         def action_distribution_fn(
             self,
             model: ModelV2,
-            input_dict: SampleBatch,
             *,
-            explore: bool = True,
+            input_dict: SampleBatch,
+            state_batches=None,
+            seq_lens=None,
             **kwargs,
         ) -> Tuple[TensorType, type, List[TensorType]]:
-
-            q_vals = self._compute_q_values(
-                model, input_dict, state_batches=None, explore=explore
-            )
-            q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
-
-            self.q_values = q_vals
-
-            return self.q_values, Categorical, []  # state-out
+            self.q_values, _, _, state_out = self._compute_q_values(model, input_dict, state_batches=state_batches, seq_lens=seq_lens)
+            return self.q_values, Categorical, state_out
 
         @override(base)
         def extra_action_out_fn(self) -> Dict[str, TensorType]:
@@ -140,16 +134,12 @@ def get_dqn_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> 
             q_t, q_logits_t, q_dist_t, _ = self._compute_q_values(
                 model,
                 SampleBatch({"obs": train_batch[SampleBatch.CUR_OBS]}),
-                state_batches=None,
-                explore=False,
             )
 
             # target q network evalution
             q_tp1, q_logits_tp1, q_dist_tp1, _ = self._compute_q_values(
                 self.target_model,
                 SampleBatch({"obs": train_batch[SampleBatch.NEXT_OBS]}),
-                state_batches=None,
-                explore=False,
             )
             if not hasattr(self, "target_q_func_vars"):
                 self.target_q_func_vars = self.target_model.variables()
@@ -173,8 +163,6 @@ def get_dqn_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> 
                 ) = self._compute_q_values(
                     model,
                     SampleBatch({"obs": train_batch[SampleBatch.NEXT_OBS]}),
-                    state_batches=None,
-                    explore=False,
                 )
                 q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
                 q_tp1_best_one_hot_selection = tf.one_hot(
@@ -313,8 +301,6 @@ def get_dqn_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> 
             input_batch: SampleBatch,
             state_batches=None,
             seq_lens=None,
-            explore=None,
-            is_training: bool = False,
         ):
 
             model_out, state = model(input_batch, state_batches or [], seq_lens)

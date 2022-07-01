@@ -2,8 +2,6 @@ import logging
 from typing import Optional, Type
 
 from ray.rllib.algorithms.dqn import DQN, DQNConfig
-from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
-from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -193,9 +191,20 @@ class R2D2(DQN):
     @override(DQN)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
+            from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
+
             return R2D2TorchPolicy
+
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TF1Policy
+
+            return R2D2TF1Policy
+
         else:
-            return R2D2TFPolicy
+            from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TF2Policy
+
+            return R2D2TF2Policy
+
 
     @override(DQN)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

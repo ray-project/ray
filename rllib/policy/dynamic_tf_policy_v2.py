@@ -297,8 +297,6 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         model: ModelV2,
         input_dict: SampleBatch,
-        *,
-        state_batches: TensorType,
         **kwargs,
     ) -> Tuple[TensorType, type, List[TensorType]]:
         """Action distribution function for this Policy.

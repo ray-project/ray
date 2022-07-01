@@ -721,7 +721,7 @@ class SampleBatch(dict):
 
         dict.__setitem__(self, key, item)
         if key in self.intercepted_values:
-            self.intercepted_values[key] = item
+            del self.intercepted_values[key]
 
     @property
     def is_training(self):
@@ -809,8 +809,8 @@ class SampleBatch(dict):
     @DeveloperAPI
     def set_get_interceptor(self, fn):
         # If get-interceptor changes, must erase old intercepted values.
-        if fn is not self.get_interceptor:
-            self.intercepted_values = {}
+        #if fn is not self.get_interceptor:
+        self.intercepted_values = {}
         self.get_interceptor = fn
 
     def __repr__(self):
