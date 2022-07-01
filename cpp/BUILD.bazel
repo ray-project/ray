@@ -6,11 +6,24 @@ load("//bazel:ray.bzl", "COPTS")
 cc_binary(
     name = "libray_api.so",
     copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:darwin": [
+            "-Wl,-exported_symbols_list,$(location :symbols/ray_api_exported_symbols_mac.lds)",
+        ],
+        "@bazel_tools//src/conditions:windows": [
+            #TODO(larry): Hide the symbols when we make it work on Windows.
+        ],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location :symbols/ray_api_exported_symbols_linux.lds)",
+        ],
+    }),
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":ray_api",
+        ":symbols/ray_api_exported_symbols_linux.lds",
+        ":symbols/ray_api_exported_symbols_mac.lds",
     ],
 )
 
