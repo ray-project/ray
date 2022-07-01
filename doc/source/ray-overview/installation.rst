@@ -223,6 +223,12 @@ on the AUR page of ``python-ray`` `here`_.
 Installing Ray with Anaconda
 ----------------------------
 
+.. note::
+
+  Ray is not officially distributed and supported on conda. While using a
+  conda environment, it is recommended to install Ray itself from PyPi using
+  `pip install ray` in the newly created environment.
+
 If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
 
 .. code-block:: bash
@@ -230,14 +236,10 @@ If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a d
   conda config --env --add channels conda-forge
   conda env create -n ray  # works with mamba too
   conda activate ray
-  conda install ray-core
+  pip install ray  # or `conda install ray-core`
 
-For a complete list of available ``ray`` libraries, have a look at: https://github.com/conda-forge/ray-packages-feedstock
-
-.. note::
-
-  At this time, Ray is not yet distributed on Conda-forge for macOS.
-  Hence you need to use `pip install ray` in the newly created environment.
+For a complete list of available ``ray`` libraries on Conda-forge, have a look
+at: https://github.com/conda-forge/ray-packages-feedstock
 
 .. _`Anaconda`: https://www.anaconda.com/
 .. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
