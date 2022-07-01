@@ -312,7 +312,7 @@ py_test(
     name = "test_torch_predictor",
     size = "small",
     srcs = ["tests/test_torch_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu_only"],
     deps = [":train_lib"]
 )
 
