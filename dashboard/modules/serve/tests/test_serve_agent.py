@@ -30,10 +30,6 @@ def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
-)
 def deploy_and_check_config(config: Dict):
     put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=30)
     assert put_response.status_code == 200
