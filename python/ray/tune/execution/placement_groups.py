@@ -505,7 +505,6 @@ class _PlacementGroupManager:
             num_cpus = head_bundle.pop("CPU", 0)
             num_gpus = head_bundle.pop("GPU", 0)
             memory = head_bundle.pop("memory", None)
-            object_store_memory = head_bundle.pop("object_store_memory", None)
 
             # Only custom resources remain in `head_bundle`
             resources = head_bundle
@@ -516,7 +515,6 @@ class _PlacementGroupManager:
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
                 memory=memory,
-                object_store_memory=object_store_memory,
                 resources=resources,
             )
         else:

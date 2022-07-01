@@ -302,7 +302,6 @@ class _ActorClassMetadata:
         num_gpus: The default number of GPUs required by the actor creation
             task.
         memory: The heap memory quota for this actor.
-        object_store_memory: The object store memory quota for this actor.
         resources: The default resources required by the actor creation task.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
@@ -328,7 +327,6 @@ class _ActorClassMetadata:
         num_cpus,
         num_gpus,
         memory,
-        object_store_memory,
         resources,
         accelerator_type,
         runtime_env,
@@ -346,7 +344,6 @@ class _ActorClassMetadata:
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
-        self.object_store_memory = object_store_memory
         self.resources = resources
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
@@ -600,8 +597,6 @@ class ActorClass:
             num_cpus: The number of CPUs required by the actor creation task.
             num_gpus: The number of GPUs required by the actor creation task.
             memory: Restrict the heap memory usage of this actor.
-            object_store_memory: Restrict the object store memory used by
-                this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
             max_concurrency: The max number of concurrent calls to allow for
@@ -785,7 +780,7 @@ class ActorClass:
         # TODO(suquark): In the original code, memory is not considered as resources,
         # when deciding the default CPUs. It is strange, but we keep the original
         # semantics in case that it breaks user applications & tests.
-        if not set(resources.keys()).difference({"memory", "object_store_memory"}):
+        if not set(resources.keys()).difference({"memory"}):
             # In the default case, actors acquire no resources for
             # their lifetime, and actor methods will require 1 CPU.
             resources.setdefault("CPU", ray_constants.DEFAULT_ACTOR_CREATION_CPU_SIMPLE)
