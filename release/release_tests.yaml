@@ -3608,6 +3608,29 @@
     type: sdk_command
     file_manager: sdk
 
+- name: dataset_shuffle_push_based_random_shuffle_100tb
+  group: core-dataset-tests
+  working_dir: nightly_tests
+  legacy:
+    test_name: dataset_shuffle_push_based_random_shuffle_100tb
+    test_suite: dataset_test
+
+  stable: false
+
+  frequency: weekly
+  team: core
+  cluster:
+    cluster_env: shuffle/100tb_shuffle_app_config.yaml
+    cluster_compute: shuffle/100tb_shuffle_compute.yaml
+
+  run:
+    timeout: 28800
+    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
+    wait_for_nodes:
+      num_nodes: 100
+    type: sdk_command
+    file_manager: sdk
+
 ##################
 # Core Chaos tests
 ##################
