@@ -47,7 +47,8 @@ import torch.nn as nn
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
 from ray import train
-from ray.train.torch import TorchTrainer
+from ray.air import session
+from ray.train.torch import TorchTrainer, to_air_checkpoint
 
 
 def create_model(input_features):
@@ -103,7 +104,7 @@ def train_loop_per_worker(config):
     loss_fn = nn.BCELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    for _ in range(epochs):
+    for cur_epoch in range(epochs):
         for inputs, labels in to_tensor_iterator(train_iterator):
             optimizer.zero_grad()
             predictions = model(inputs)
@@ -112,12 +113,7 @@ def train_loop_per_worker(config):
             optimizer.step()
 
         loss = validate_epoch(to_tensor_iterator(val_dataloader), model, loss_fn)
-        train.report(loss=loss)
-
-        # Checkpoint model after every epoch.
-        state_dict = model.state_dict()
-        consume_prefix_in_state_dict_if_present(state_dict, "module.")
-        train.save_checkpoint(model=state_dict)
+        session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
 
 num_features = len(schema_order)
 
@@ -156,8 +152,8 @@ from ray.tune.tuner import Tuner, TuneConfig
 
 tuner = Tuner(
     trainer,
-    param_space={"params": {"lr": tune.uniform(0.001, 0.01)}},
-    tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
+    param_space={"train_loop_config": {"lr": tune.uniform(0.001, 0.01)}},
+    tune_config=TuneConfig(num_samples=1, metric="loss", mode="min"),
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
@@ -171,7 +167,6 @@ from ray.train.torch import TorchPredictor
 batch_predictor = BatchPredictor.from_checkpoint(
     result.checkpoint, TorchPredictor, model=create_model(num_features)
 )
-
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
 print("PREDICTED PROBABILITIES")
