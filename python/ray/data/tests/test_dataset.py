@@ -1657,16 +1657,6 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     with pytest.raises(ValueError):
         list(ray.data.range(100).iter_batches(shuffle=True))
 
-    # Shuffle buffer capacity must be at least as large as batch size.
-    with pytest.raises(ValueError):
-        list(
-            ray.data.range(100).iter_batches(
-                batch_size=10,
-                shuffle=True,
-                shuffle_buffer_capacity=5,
-            )
-        )
-
     # Shuffle buffer min size must be at least as large as batch size.
     with pytest.raises(ValueError):
         list(
@@ -1707,7 +1697,7 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
 
     base = range(100).take_all()
 
-    # Implicit shuffle buffer capacity and minimum size.
+    # Implicit shuffle buffer minimum size.
     r1 = unbatch(range(100, parallelism=10).iter_batches(batch_size=3, shuffle=True))
     r2 = unbatch(range(100, parallelism=10).iter_batches(batch_size=3, shuffle=True))
     # Check randomness of shuffle.
@@ -1718,12 +1708,11 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     assert sort(r1) == sort(base)
     assert sort(r2) == sort(base)
 
-    # Explicit shuffle buffer capacity and minimum size.
+    # Explicit shuffle buffer minimum size.
     r1 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=3,
             shuffle=True,
-            shuffle_buffer_capacity=50,
             shuffle_buffer_min_size=25,
         )
     )
@@ -1731,7 +1720,6 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
         range(100, parallelism=10).iter_batches(
             batch_size=3,
             shuffle=True,
-            shuffle_buffer_capacity=50,
             shuffle_buffer_min_size=25,
         )
     )
@@ -1791,7 +1779,6 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
         range(100, parallelism=10).iter_batches(
             batch_size=3,
             shuffle=True,
-            shuffle_buffer_capacity=1000,
             shuffle_buffer_min_size=200,
         )
     )
@@ -1799,7 +1786,6 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
         range(100, parallelism=10).iter_batches(
             batch_size=3,
             shuffle=True,
-            shuffle_buffer_capacity=1000,
             shuffle_buffer_min_size=200,
         )
     )
