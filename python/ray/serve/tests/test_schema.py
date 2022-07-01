@@ -132,7 +132,6 @@ class TestRayActorOptionsSchema:
             "num_cpus": 0.2,
             "num_gpus": 50,
             "memory": 3,
-            "object_store_memory": 64,
             "resources": {"custom_asic": 12},
             "accelerator_type": NVIDIA_TESLA_V100,
         }
@@ -147,7 +146,7 @@ class TestRayActorOptionsSchema:
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
-        ge_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
+        ge_zero_fields = ["num_cpus", "num_gpus", "memory"]
         for field in ge_zero_fields:
             with pytest.raises(ValidationError):
                 RayActorOptionsSchema.parse_obj({field: -1})
@@ -177,7 +176,6 @@ class TestRayActorOptionsSchema:
             "num_cpus": None,
             "num_gpus": None,
             "memory": None,
-            "object_store_memory": None,
             "resources": {},
             "accelerator_type": None,
         }
@@ -220,7 +218,6 @@ class TestDeploymentSchema:
                 "num_cpus": None,
                 "num_gpus": None,
                 "memory": None,
-                "object_store_memory": None,
                 "resources": {},
                 "accelerator_type": None,
             },
@@ -256,7 +253,6 @@ class TestDeploymentSchema:
                 "num_cpus": 3,
                 "num_gpus": 4.2,
                 "memory": 5,
-                "object_store_memory": 3,
                 "resources": {"custom_asic": 8},
                 "accelerator_type": NVIDIA_TESLA_P4,
             },
@@ -396,7 +392,6 @@ class TestServeApplicationSchema:
                         "num_cpus": 3,
                         "num_gpus": 4.2,
                         "memory": 5,
-                        "object_store_memory": 3,
                         "resources": {"custom_asic": 8},
                         "accelerator_type": NVIDIA_TESLA_P4,
                     },
@@ -417,7 +412,6 @@ class TestServeApplicationSchema:
                         "num_cpus": None,
                         "num_gpus": None,
                         "memory": None,
-                        "object_store_memory": None,
                         "resources": {},
                         "accelerator_type": None,
                     },
