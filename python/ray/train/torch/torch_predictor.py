@@ -27,6 +27,7 @@ class TorchPredictor(Predictor):
         self, model: torch.nn.Module, preprocessor: Optional["Preprocessor"] = None
     ):
         self.model = model
+        self.model.eval()
         self.preprocessor = preprocessor
 
     @classmethod
@@ -51,10 +52,20 @@ class TorchPredictor(Predictor):
     def _predict_pandas(
         self,
         data: pd.DataFrame,
+        use_gpu: bool = False,
         dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> pd.DataFrame:
         def tensorize(numpy_array, dtype):
-            torch_tensor = torch.from_numpy(numpy_array).to(dtype)
+            if use_gpu:
+                torch_tensor = torch.from_numpy(numpy_array).to(
+                    device="cuda", dtype=dtype
+                )
+                # TODO (jiaodong): #26249 Use multiple GPU devices with sharded
+                # input
+                # Ensure input tensor and model live on GPU for GPU inference
+                self.model.to(torch.device("cuda"))
+            else:
+                torch_tensor = torch.from_numpy(numpy_array).to(dtype)
 
             # Off-the-shelf torch Modules expect the input size to have at least 2
             # dimensions (batch_size, feature_size). If the tensor for the column
@@ -80,11 +91,10 @@ class TorchPredictor(Predictor):
             }
 
         with torch.no_grad():
-            self.model.eval()
             output = self.model(model_input)
 
         def untensorize(torch_tensor):
-            numpy_array = torch_tensor.cpu().detach().numpy()
+            numpy_array = torch_tensor.detach().cpu().numpy()
             return TensorArray(numpy_array)
 
         # Handle model multi-output. For example if model outputs 2 images.
@@ -104,6 +114,7 @@ class TorchPredictor(Predictor):
     def predict(
         self,
         data: DataBatchType,
+        use_gpu: bool = False,
         dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
@@ -163,4 +174,6 @@ class TorchPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        return super(TorchPredictor, self).predict(data=data, dtype=dtype)
+        return super(TorchPredictor, self).predict(
+            data=data, use_gpu=use_gpu, dtype=dtype
+        )

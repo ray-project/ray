@@ -62,6 +62,7 @@ class TensorflowPredictor(Predictor):
     def predict(
         self,
         data: DataBatchType,
+        use_gpu: bool = False,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
         dtype: Optional[tf.dtypes.DType] = None,
     ) -> DataBatchType:

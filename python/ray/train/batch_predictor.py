@@ -97,6 +97,8 @@ class BatchPredictor:
         predictor_cls = self.predictor_cls
         checkpoint_ref = self.checkpoint_ref
         predictor_kwargs = self.predictor_kwargs
+        # Automatic set use_gpu in predict() call if user provided explict val
+        predict_kwargs["use_gpu"] = num_gpus_per_worker > 0
 
         class ScoringWrapper:
             def __init__(self):
