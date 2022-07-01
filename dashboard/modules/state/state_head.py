@@ -99,7 +99,8 @@ class StateHead(dashboard_utils.DashboardHeadModule):
                         "Max number of in-progress requests="
                         f"{self._max_http_req_in_progress} reached."
                         "To set a higher limit, set environment variable: "
-                        f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='1000'"
+                        f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='1000'."
+                        f"Max allowed = {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED}"
                     ),
                     result=None,
                 )
