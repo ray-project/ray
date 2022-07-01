@@ -94,10 +94,10 @@ def batch_blocks(
     """
     if shuffle:
         batcher = ShufflingBatcher(
-            batch_size,
-            shuffle_buffer_capacity,
-            shuffle_buffer_min_size,
-            shuffle_seed,
+            batch_size=batch_size,
+            shuffle_buffer_capacity=shuffle_buffer_capacity,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
         )
     else:
         batcher = Batcher(batch_size=batch_size)
@@ -107,7 +107,8 @@ def batch_blocks(
             with stats.iter_get_s.timer():
                 block = ray.get(block)
             # NOTE: Since we add one block at a time and then immediately consume
-            # batches, we don't check batcher.can_add() before adding the block.
+            # batches, we don't need to check batcher.can_add() before adding the block;
+            # it will always be True, and batcher.add() will assert this internally.
             batcher.add(block)
         else:
             batcher.done_adding()

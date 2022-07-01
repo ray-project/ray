@@ -39,16 +39,14 @@ class BatcherInterface:
 
 
 class Batcher(BatcherInterface):
-    """Chunks blocks into batches.
+    """Chunks blocks into batches."""
 
-    Implementation Note: When there are multiple batches per block,
-    this batcher will slice off and return each batch and add the
-    remaining block back to the buffer instead of optimally slicing and
-    returning all batches from the block at once. This will result in
-    extra (and nested) block slicing. However, since slices are
-    zero-copy views, we sacrifice what should be a small performance
-    hit for better readability.
-    """
+    # Implementation Note: When there are multiple batches per block, this batcher will
+    # slice off and return each batch and add the remaining block back to the buffer
+    # instead of optimally slicing and returning all batches from the block at once.
+    # This will result in extra (and nested) block slicing. However, since slices are
+    # zero-copy views, we sacrifice what should be a small performance hit for better
+    # readability.
 
     def __init__(self, batch_size: Optional[int]):
         self._batch_size = batch_size
@@ -62,12 +60,13 @@ class Batcher(BatcherInterface):
         Args:
             block: Block to add to the block buffer.
         """
+        assert self.can_add(block)
         self._buffer.append(block)
         self._buffer_size += BlockAccessor.for_block(block).num_rows()
 
     def can_add(self, block: Block) -> bool:
         """Whether the block can be added to the buffer."""
-        return True
+        return not self._done_adding
 
     def done_adding(self) -> bool:
         self._done_adding = True
@@ -120,6 +119,7 @@ class Batcher(BatcherInterface):
         # Move the leftovers into the block buffer so they're the first
         # blocks consumed on the next batch extraction.
         self._buffer = leftover
+        self._buffer_size -= self._batch_size
         return output.build()
 
 
@@ -259,10 +259,8 @@ class ShufflingBatcher(BatcherInterface):
         buffer_size = self._buffer_size()
         # If still adding blocks, ensure that removing a batch wouldn't cause the
         # shuffle buffer to dip beneath its configured minimum size.
-        return (
-            buffer_size - self._batch_size >= self._buffer_min_size
-            or self._done_adding
-            and buffer_size >= self._batch_size
+        return buffer_size - self._batch_size >= self._buffer_min_size or (
+            self._done_adding and buffer_size >= self._batch_size
         )
 
     def _buffer_size(self) -> int:
@@ -314,7 +312,7 @@ class ShufflingBatcher(BatcherInterface):
             self._shuffle_indices = list(range(buffer_size))
             random.shuffle(self._shuffle_indices)
 
-        # Get the shuffle indices for htis batch.
+        # Get the shuffle indices for this batch.
         batch_indices = self._shuffle_indices[
             self._batch_head : self._batch_head + batch_size
         ]
