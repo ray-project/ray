@@ -329,6 +329,12 @@ class TuneReporterBase(ProgressReporter):
             fmt: Table format. See `tablefmt` in tabulate API.
             delim: Delimiter between messages.
         """
+        if self._sort_by_metric and (self._metric is None or self._mode is None):
+            self._sort_by_metric = False
+            warnings.warn(
+                "Both 'metric' and 'mode' must be set to be able "
+                "to sort by metric. No sorting is performed."
+            )
         if not self._metrics_override:
             user_metrics = self._infer_user_metrics(trials, self._infer_limit)
             self._metric_columns.update(user_metrics)
@@ -352,12 +358,6 @@ class TuneReporterBase(ProgressReporter):
             )
 
         if has_verbosity(Verbosity.V1_EXPERIMENT):
-            if self._sort_by_metric and (self._metric is None or self._mode is None):
-                self._sort_by_metric = False
-                warnings.warn(
-                    "Both 'metric' and 'mode' must be set to be able "
-                    "to sort by metric. No sorting is performed."
-                )
             # Will filter the table in `trial_progress_str`
             messages.append(
                 trial_progress_str(
