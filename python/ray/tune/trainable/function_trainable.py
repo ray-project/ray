@@ -623,7 +623,6 @@ def wrap_function(
 
     if use_checkpoint:
         import traceback
-
         tb_list = traceback.format_list(traceback.extract_stack())
         # Do not warn user if "base_trainer" is in the stacktrace!!
         # TODO(xwjiang): Remove this, when our internal impl is using new API.
