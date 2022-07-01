@@ -2,7 +2,7 @@ import json
 import sys
 from dataclasses import dataclass
 from typing import List, Tuple
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -2085,6 +2085,10 @@ def test_state_api_server_enforce_concurrent_http_requests(api_func):
     import time
     import multiprocessing as mp
     import queue
+    import os
+
+    # Set environment
+    os.environ["RAY_STATE_SERVER_MAX_HTTP_REQUEST"] = "1"
 
     ray.shutdown()
     ray.init()
@@ -2107,7 +2111,7 @@ def test_state_api_server_enforce_concurrent_http_requests(api_func):
     ).remote()
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
-    objs_ = [ray.put(x) for x in range(10)]
+    _objs = [ray.put(x) for x in range(10)]  # noqa
 
     # Wait for results to be populate on the cluster
     time.sleep(3)
@@ -2127,7 +2131,7 @@ def test_state_api_server_enforce_concurrent_http_requests(api_func):
             q.put(0)
 
     q = mp.Queue()
-    num_procs = 5000
+    num_procs = 200
     procs = [mp.Process(target=try_state_query, args=(q,)) for _ in range(num_procs)]
 
     [p.start() for p in procs]

@@ -6,6 +6,7 @@ import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.consts import RAY_STATE_SERVER_MAX_HTTP_REQUEST
 from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.optional_utils import rest_response
@@ -19,7 +20,6 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
-    DEFAULT_MAX_HTTP_REQ_IN_PROGRESS,
 )
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -40,7 +40,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         self,
         dashboard_head,
     ):
-        """Initialize the State Head for handling RESTful requests from State API Client"""
+        """Initialize for handling RESTful requests from State API Client"""
         super().__init__(dashboard_head)
         self._state_api_data_source_client = None
         self._state_api = None
@@ -48,10 +48,8 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
         # Rate limiting related fields
         self._num_requests_in_progress = 0
-        # TODO(rickyyx): We might want to allow this to be set from external.
-        # It is currently hard w/o refactoring since the __init__ function only
-        # takes in the dashboard_head as like other head modules.
-        self._max_http_req_in_progress = DEFAULT_MAX_HTTP_REQ_IN_PROGRESS
+        self._max_http_req_in_progress = RAY_STATE_SERVER_MAX_HTTP_REQUEST
+        logger.info(f"val={self._max_http_req_in_progress}")
 
         DataSource.nodes.signal.append(self._update_raylet_stubs)
         DataSource.agents.signal.append(self._update_agent_stubs)

@@ -1,9 +1,5 @@
 import os
 import pytest
-from unittest.mock import AsyncMock, MagicMock, create_autospec
-from ray.experimental.state.state_manager import StateDataSourceClient
-from ray.dashboard.dashboard import Dashboard
-from ray.tests.conftest import *
 
 from dashboard.head import DashboardHead  # noqa
 

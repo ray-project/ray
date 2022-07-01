@@ -1,6 +1,3 @@
-from typing import Optional
-
-
 """Internal Error"""
 
 

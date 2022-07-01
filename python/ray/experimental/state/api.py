@@ -2,7 +2,6 @@ import urllib
 import warnings
 from dataclasses import fields
 from typing import Dict, Generator, List, Optional, Tuple, Union
-from httplib2 import ServerNotFoundError
 
 import requests
 

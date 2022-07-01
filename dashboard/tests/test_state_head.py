@@ -45,7 +45,5 @@ async def test_max_concurrent_in_progress_query(extra_req_num):
     assert state_head._num_requests_in_progress == 0, "All requests should be done"
 
 
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
