@@ -5,7 +5,6 @@ It supports both traced and non-traced eager execution modes.
 
 import gym
 import logging
-import numpy as np
 import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
@@ -297,6 +296,7 @@ class EagerTFPolicyV2(Policy):
     def action_distribution_fn(
         self,
         model: ModelV2,
+        *,
         input_dict: SampleBatch,
         **kwargs,
     ) -> Tuple[TensorType, type, List[TensorType]]:
@@ -443,24 +443,19 @@ class EagerTFPolicyV2(Policy):
         if isinstance(timestep, tf.Tensor):
             timestep = int(timestep.numpy())
 
+        # Pass lazy (eager) tensor dict to Model as `input_dict`.
+        input_dict = self._lazy_tensor_dict(input_dict)
+        input_dict.set_training(False)
+
         # Pack internal state inputs into (separate) list.
         state_batches = []
         i = 0
         while f"state_in_{i}" in input_dict:
             state_batches.append(input_dict[f"state_in_{i}"])
             i += 1
+
         self._state_in = state_batches
         self._is_recurrent = state_batches != []
-
-        # Calculate RNN sequence lengths.
-        seq_lens = None
-        if state_batches:
-            batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
-            seq_lens = tf.ones(batch_size, dtype=tf.int32)
-
-        # Pass lazy (eager) tensor dict to Model as `input_dict`.
-        input_dict = self._lazy_tensor_dict(input_dict)
-        input_dict.set_training(False)
 
         # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(
@@ -470,7 +465,6 @@ class EagerTFPolicyV2(Policy):
         ret = self._compute_actions_helper(
             input_dict,
             state_batches,
-            seq_lens,
             # TODO: Passing episodes into a traced method does not work.
             None if self.config["eager_tracing"] else episodes,
             explore,
@@ -730,7 +724,6 @@ class EagerTFPolicyV2(Policy):
         self,
         input_dict,
         state_batches,
-        seq_lens,
         episodes,
         explore,
         timestep,
@@ -741,6 +734,10 @@ class EagerTFPolicyV2(Policy):
         # incremented during the @tf.function trace operations, never when
         # calling the already traced function after that.
         self._re_trace_counter += 1
+
+        # Calculate RNN sequence lengths.
+        batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
+        seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches else None
 
         # Add default and custom fetches.
         extra_fetches = {}

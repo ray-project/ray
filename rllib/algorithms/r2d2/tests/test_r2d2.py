@@ -47,7 +47,7 @@ def check_batch_sizes(train_results):
 class TestR2D2(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -77,7 +77,7 @@ class TestR2D2(unittest.TestCase):
         num_iterations = 1
 
         # Test building an R2D2 agent in all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True, frameworks="tf2"):#TODO
+        for _ in framework_iterator(config, with_eager_tracing=True):
             algo = config.build(env="CartPole-v0")
             for i in range(num_iterations):
                 results = algo.train()
