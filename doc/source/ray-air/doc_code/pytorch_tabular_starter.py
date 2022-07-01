@@ -86,15 +86,14 @@ def train_loop_per_worker(config):
 
     # Get the Ray Dataset shard for this data parallel worker,
     # and convert it to a PyTorch Dataset.
-    train_iterator = train.get_dataset_shard("train").iter_batches(
-        batch_format="numpy", batch_size=batch_size
-    )
-    val_dataloader = train.get_dataset_shard("validate").iter_batches(
-        batch_format="numpy", batch_size=batch_size
-    )
+    train_data = train.get_dataset_shard("train")
+    val_data = train.get_dataset_shard("validate")
 
-    def to_tensor_iterator(dict_iterator):
-        for d in dict_iterator:
+    def to_tensor_iterator(dataset, batch_size):
+        data_iterator = dataset.iter_batches(
+            batch_format="numpy", batch_size=batch_size)
+
+        for d in data_iterator:
             yield torch.Tensor(d["input"]).float(), torch.Tensor(d["target"]).float()
 
     # Create model.
@@ -105,14 +104,13 @@ def train_loop_per_worker(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
     for cur_epoch in range(epochs):
-        for inputs, labels in to_tensor_iterator(train_iterator):
+        for inputs, labels in to_tensor_iterator(train_data, batch_size):
             optimizer.zero_grad()
             predictions = model(inputs)
             train_loss = loss_fn(predictions, labels.unsqueeze(1))
             train_loss.backward()
             optimizer.step()
-
-        loss = validate_epoch(to_tensor_iterator(val_dataloader), model, loss_fn)
+        loss = validate_epoch(to_tensor_iterator(val_data, batch_size), model, loss_fn)
         session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
 
 num_features = len(schema_order)
@@ -144,20 +142,27 @@ trainer = TorchTrainer(
 
 result = trainer.fit()
 print(f"Last result: {result.metrics}")
+# Last result: {'loss': 0.6559339960416158, 
+import ipdb; ipdb.set_trace()
 # __air_pytorch_train_end__
 
 # __air_pytorch_tuner_start__
 from ray import tune
 from ray.tune.tuner import Tuner, TuneConfig
+from ray.air.config import RunConfig
 
 tuner = Tuner(
     trainer,
     param_space={"train_loop_config": {"lr": tune.uniform(0.001, 0.01)}},
     tune_config=TuneConfig(num_samples=1, metric="loss", mode="min"),
+    run_config=RunConfig(verbose=3)
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
 print(best_result)
+# Result(metrics={'loss': 26.278409322102863, ...})
+
+checkpoint = best_result.checkpoint
 # __air_pytorch_tuner_end__
 
 # __air_pytorch_batchpred_start__
@@ -165,11 +170,40 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(
-    result.checkpoint, TorchPredictor, model=create_model(num_features)
+    checkpoint, TorchPredictor, model=create_model(num_features)
 )
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
 print("PREDICTED PROBABILITIES")
 predicted_probabilities.show()
-
+# {'predictions': array([1.], dtype=float32)}
+# {'predictions': array([0.], dtype=float32)}
 # __air_pytorch_batchpred_end__
+
+# __air_pytorch_online_predict_start__
+from ray import serve
+from ray.serve.model_wrappers import ModelWrapperDeployment
+
+from fastapi import Request
+import requests
+
+async def adapter(request: Request):
+    content = await request.json()
+    print(content)
+    return pd.DataFrame.from_dict(content)
+
+serve.start(detached=True)
+deployment = ModelWrapperDeployment.options(name="my-deployment")
+# deployment.deploy(
+#     TorchPredictor, 
+#     checkpoint, 
+#     batching_params=False, 
+#     http_adapter=adapter,
+#     model=create_model(num_features))
+
+# sample_input = test_dataset.take(1)
+# sample_input = dict(sample_input[0])
+
+# output = requests.post(deployment.url, json=[sample_input]).json()
+# print(output)
+# __air_pytorch_online_predict_end__
