@@ -562,9 +562,7 @@ class PushBasedShufflePlan(ShuffleOp):
         size_bytes = 0
         schema = None
         for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
-            block, meta = reduce_fn(
-                *reduce_args, *mapper_outputs, partial_reduce=True
-            )
+            block, meta = reduce_fn(*reduce_args, *mapper_outputs, partial_reduce=True)
             yield block
 
             block = BlockAccessor.for_block(block)

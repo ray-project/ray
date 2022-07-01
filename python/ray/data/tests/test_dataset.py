@@ -2577,7 +2577,9 @@ def test_groupby_tabular_count(
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_sum(ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle):
+def test_groupby_tabular_sum(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
