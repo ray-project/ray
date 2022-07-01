@@ -35,7 +35,12 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage
+from ray.data._internal.plan import (
+    AllToAllStage,
+    ExecutionPlan,
+    OneToOneStage,
+    RandomizeBlocksStage,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import (
@@ -169,6 +174,8 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool,
+        *,
+        defer_execution: bool = False,
     ):
         """Construct a Dataset (internal API).
 
@@ -183,7 +190,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
         self._lazy = lazy
 
-        if not lazy:
+        if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
@@ -808,26 +815,11 @@ class Dataset(Generic[T]):
                 based on system randomness.
 
         Returns:
-            The shuffled dataset.
+            The block-shuffled dataset.
         """
 
-        def do_randomize_block_order(block_list, *_):
-            num_blocks = block_list.executed_num_blocks()  # Blocking.
-            if num_blocks == 0:
-                return block_list, {}
-
-            randomized_block_list = block_list.randomize_block_order(seed)
-
-            return randomized_block_list, {}
-
-        plan = self._plan.with_stage(
-            AllToAllStage(
-                "randomize_block_order",
-                None,
-                do_randomize_block_order,
-            )
-        )
-        return Dataset(plan, self._epoch, self._lazy)
+        plan = self._plan.with_stage(RandomizeBlocksStage(seed))
+        return Dataset(plan, self._epoch, self._lazy, defer_execution=True)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -3027,10 +3019,11 @@ class Dataset(Generic[T]):
         from ray.data.dataset_pipeline import DatasetPipeline
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
@@ -3146,10 +3139,11 @@ class Dataset(Generic[T]):
             blocks_per_window = 10
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
