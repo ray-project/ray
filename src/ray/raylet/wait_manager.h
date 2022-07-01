@@ -74,7 +74,7 @@ class WaitManager {
     /// The number of required objects.
     const uint64_t num_required_objects;
     /// The objects that have been locally available.
-    std::unordered_set<ObjectID> ready;
+    std::vector<ObjectID> ready;
   };
 
   /// Completion handler for Wait.

@@ -34,7 +34,7 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids,
   auto &wait_request = wait_requests_.at(wait_id);
   for (const auto &object_id : object_ids) {
     if (is_object_local_(object_id)) {
-      wait_request.ready.emplace(object_id);
+      wait_request.ready.push_back(object_id);
     }
   }
 
@@ -67,7 +67,12 @@ void WaitManager::WaitComplete(uint64_t wait_id) {
   auto &wait_request = map_find_or_die(wait_requests_, wait_id);
 
   for (const auto &object_id : wait_request.object_ids) {
-    auto &requests = object_to_wait_requests_.at(object_id);
+    auto it = object_to_wait_requests_.find(object_id);
+    if (it == object_to_wait_requests_.end()) {
+      // It's possible that a wait request contains duplicate object IDs.
+      continue;
+    }
+    auto &requests = it->second;
     requests.erase(wait_id);
     if (requests.empty()) {
       object_to_wait_requests_.erase(object_id);
@@ -77,9 +82,11 @@ void WaitManager::WaitComplete(uint64_t wait_id) {
   // Order objects according to input order.
   std::vector<ObjectID> ready;
   std::vector<ObjectID> remaining;
+  std::unordered_set<ObjectID> ready_set(wait_request.ready.begin(),
+                                         wait_request.ready.end());
   for (const auto &object_id : wait_request.object_ids) {
     if (ready.size() < wait_request.num_required_objects &&
-        wait_request.ready.count(object_id) > 0) {
+        ready_set.count(object_id) > 0) {
       ready.push_back(object_id);
     } else {
       remaining.push_back(object_id);
@@ -99,7 +106,7 @@ void WaitManager::HandleObjectLocal(const ray::ObjectID &object_id) {
   std::vector<uint64_t> complete_waits;
   for (const auto &wait_id : object_to_wait_requests_.at(object_id)) {
     auto &wait_request = map_find_or_die(wait_requests_, wait_id);
-    wait_request.ready.emplace(object_id);
+    wait_request.ready.push_back(object_id);
     if (wait_request.ready.size() >= wait_request.num_required_objects) {
       complete_waits.emplace_back(wait_id);
     }
