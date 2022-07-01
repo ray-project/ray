@@ -41,28 +41,26 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
-import os
-import uuid
-import sys
+import glob
 import json
 import logging
+import os
+import re
+import sys
 import time
+import uuid
+from dataclasses import asdict, dataclass
+from enum import Enum, auto
+from pathlib import Path
+from typing import List, Optional
+
+import requests
 import yaml
 
-from dataclasses import dataclass, asdict
-from typing import Optional, List
-from pathlib import Path
-from enum import Enum, auto
-
 import ray
-import requests
-
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
-from ray.experimental.internal_kv import (
-    _internal_kv_put,
-    _internal_kv_initialized,
-)
+from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +160,52 @@ class UsageStatsEnabledness(Enum):
 _recorded_library_usages = set()
 
 
+# NOTE: Do not change the write / read protocol. That will cause
+# version incompatibility issues.
+class LibUsageRecorder:
+    """A class to put/get the library usage to the ray tmp folder.
+
+    See https://github.com/ray-project/ray/pull/25842 for more details.
+    """
+
+    def __init__(self, temp_dir_path: str):
+        self._lib_usage_dir = Path(temp_dir_path)
+        self._lib_usage_prefix = "_ray_lib_usage-"
+        self._lib_usage_filename_match = re.compile(
+            f"{self._lib_usage_prefix}([0-9a-zA-Z_]+).txt"
+        )
+
+    def put_lib_usage(self, lib_name: str):
+        """Put the library usage to the ray tmp folder."""
+        lib_usage_file = self._lib_usage_dir / self._lib_usage_filename(lib_name)
+        lib_usage_file.touch(exist_ok=True)
+
+    def read_lib_usages(self) -> List[str]:
+        """Read a list of library usages from the ray tmp folder."""
+        # For checking if the file exists, it is okay to have a minor chance of
+        # having race condition.
+        lib_usages = []
+        file_paths = glob.glob(f"{self._lib_usage_dir}/{self._lib_usage_prefix}*")
+        for file_path in file_paths:
+            file_path = Path(file_path)
+            if file_path.exists():
+                lib_usages.append(self._get_lib_usage_from_filename(file_path.name))
+        return lib_usages
+
+    def delete_lib_usages(self):
+        """Delete all usage files. Test only"""
+        file_paths = glob.glob(f"{self._lib_usage_dir}/{self._lib_usage_prefix}*")
+        for file_path in file_paths:
+            file_path = Path(file_path)
+            file_path.unlink()
+
+    def _lib_usage_filename(self, lib_name: str) -> str:
+        return f"{self._lib_usage_prefix}{lib_name}.txt"
+
+    def _get_lib_usage_from_filename(self, filename: str) -> str:
+        return self._lib_usage_filename_match.match(filename).group(1)
+
+
 def _put_library_usage(library_usage: str):
     assert _internal_kv_initialized()
     try:
@@ -173,32 +217,53 @@ def _put_library_usage(library_usage: str):
     except Exception as e:
         logger.debug(f"Failed to put library usage, {e}")
 
+    # Record the library usage to the temp (e.g., /tmp/ray) folder.
+    # Note that although we always write this file, it is not
+    # reported when the usage stats is disabled.
+    if ray._private.worker.global_worker.mode == ray.SCRIPT_MODE:
+        try:
+            lib_usage_recorder = LibUsageRecorder(ray._private.utils.get_ray_temp_dir())
+            lib_usage_recorder.put_lib_usage(library_usage)
+        except Exception as e:
+            logger.debug(f"Failed to write a library usage to the home folder, {e}")
+
 
 def record_library_usage(library_usage: str):
     """Record library usage (e.g. which library is used)"""
     if library_usage in _recorded_library_usages:
         return
+    if "-" in library_usage:
+        # - is not permitted since it should be used as a separator
+        # of the lib usage file name. See LibUsageRecorder.
+        raise ValueError("The library name contains a char - which is not permitted.")
     _recorded_library_usages.add(library_usage)
 
     if not _internal_kv_initialized():
         # This happens if the library is imported before ray.init
         return
 
-    # Only report library usage from driver to reduce
-    # the load to kv store.
-    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
+    # Only report lib usage for driver / workers. Otherwise,
+    # it can be reported if the library is imported from
+    # e.g., API server.
+    if (
+        ray._private.worker.global_worker.mode == ray.SCRIPT_MODE
+        or ray._private.worker.global_worker.mode == ray.WORKER_MODE
+    ):
         _put_library_usage(library_usage)
 
 
 def _put_pre_init_library_usages():
     assert _internal_kv_initialized()
-    if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
+    # NOTE: When the lib is imported from a worker, ray should
+    # always be initialized, so there's no need to register the
+    # pre init hook.
+    if ray._private.worker.global_worker.mode != ray.SCRIPT_MODE:
         return
     for library_usage in _recorded_library_usages:
         _put_library_usage(library_usage)
 
 
-ray.worker._post_init_hooks.append(_put_pre_init_library_usages)
+ray._private.worker._post_init_hooks.append(_put_pre_init_library_usages)
 
 
 def _usage_stats_report_url():
@@ -396,6 +461,16 @@ def get_library_usages_to_report(gcs_client, num_retries: int) -> List[str]:
         for library_usage in library_usages:
             library_usage = library_usage.decode("utf-8")
             result.append(library_usage[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
+
+        try:
+            historical_lib_usages = LibUsageRecorder(
+                ray._private.utils.get_ray_temp_dir()
+            ).read_lib_usages()
+            for library_usage in historical_lib_usages:
+                if library_usage not in result:
+                    result.append(library_usage)
+        except Exception as e:
+            logger.info(f"Failed to read historical library usage {e}")
         return result
     except Exception as e:
         logger.info(f"Failed to get library usages to report {e}")
@@ -417,7 +492,7 @@ def get_cluster_status_to_report(gcs_client, num_retries: int) -> ClusterStatusT
     try:
         cluster_status = ray._private.utils.internal_kv_get_with_retry(
             gcs_client,
-            ray.ray_constants.DEBUG_AUTOSCALING_STATUS,
+            ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS,
             namespace=None,
             num_retries=num_retries,
         )

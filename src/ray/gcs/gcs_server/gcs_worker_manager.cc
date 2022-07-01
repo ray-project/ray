@@ -115,10 +115,21 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
     const rpc::GetAllWorkerInfoRequest &request,
     rpc::GetAllWorkerInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto limit = request.has_limit() ? request.limit() : -1;
+
   RAY_LOG(DEBUG) << "Getting all worker info.";
-  auto on_done = [reply, send_reply_callback](
+  auto on_done = [reply, send_reply_callback, limit](
                      const absl::flat_hash_map<WorkerID, WorkerTableData> &result) {
+    auto total_workers = result.size();
+    reply->set_total(total_workers);
+
+    auto count = 0;
     for (auto &data : result) {
+      if (limit != -1 && count >= limit) {
+        break;
+      }
+      count += 1;
+
       reply->add_worker_table_data()->CopyFrom(data.second);
     }
     RAY_LOG(DEBUG) << "Finished getting all worker info.";

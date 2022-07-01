@@ -1,4 +1,4 @@
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 RUNTIME_ENV_RETRY_TIMES = ray_constants.env_integer("RUNTIME_ENV_RETRY_TIMES", 3)
 

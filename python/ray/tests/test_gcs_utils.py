@@ -1,17 +1,19 @@
-import os
-import sys
 import contextlib
+import os
 import signal
-import pytest
+import sys
+
 import grpc
-import ray._private.gcs_utils as gcs_utils
+import pytest
+
 import ray
+import ray._private.gcs_utils as gcs_utils
 
 
 @contextlib.contextmanager
 def stop_gcs_server():
-    process = ray.worker._global_node.all_processes[
-        ray.ray_constants.PROCESS_TYPE_GCS_SERVER
+    process = ray._private.worker._global_node.all_processes[
+        ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER
     ][0].process
     pid = process.pid
     os.kill(pid, signal.SIGSTOP)
@@ -20,7 +22,7 @@ def stop_gcs_server():
 
 
 def test_kv_basic(ray_start_regular):
-    gcs_address = ray.worker.global_worker.gcs_client.address
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
 
     assert gcs_client.internal_kv_get(b"A", b"NS") is None
@@ -43,7 +45,7 @@ def test_kv_basic(ray_start_regular):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
 def test_kv_timeout(ray_start_regular):
-    gcs_address = ray.worker.global_worker.gcs_client.address
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
 
     assert gcs_client.internal_kv_put(b"A", b"", False, b"") == 1
@@ -65,7 +67,7 @@ def test_kv_timeout(ray_start_regular):
 @pytest.mark.asyncio
 async def test_kv_basic_aio(ray_start_regular):
     gcs_client = gcs_utils.GcsAioClient(
-        address=ray.worker.global_worker.gcs_client.address
+        address=ray._private.worker.global_worker.gcs_client.address
     )
 
     assert await gcs_client.internal_kv_get(b"A", b"NS") is None
@@ -92,7 +94,7 @@ async def test_kv_basic_aio(ray_start_regular):
 @pytest.mark.asyncio
 async def test_kv_timeout_aio(ray_start_regular):
     gcs_client = gcs_utils.GcsAioClient(
-        address=ray.worker.global_worker.gcs_client.address
+        address=ray._private.worker.global_worker.gcs_client.address
     )
     # Make sure gcs_client is connected
     assert await gcs_client.internal_kv_put(b"A", b"", False, b"") == 1
@@ -112,7 +114,9 @@ async def test_kv_timeout_aio(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

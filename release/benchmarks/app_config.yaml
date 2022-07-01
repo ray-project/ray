@@ -1,5 +1,8 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
-env_vars: {}
+env_vars: {"LD_PRELOAD": "/usr/lib/x86_64-linux-gnu/libjemalloc.so"}
+
+debian_packages:
+- libjemalloc-dev
 
 python:
   pip_packages: []

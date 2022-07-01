@@ -591,7 +591,7 @@ void GcsPlacementGroupScheduler::AcquireBundleResources(
 absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMap(
     const std::shared_ptr<BundleLocations> &bundle_locations) {
   absl::flat_hash_map<scheduling::NodeID, ResourceRequest> node_bundle_resources_map;
-  for (auto &bundle : *bundle_locations) {
+  for (const auto &bundle : *bundle_locations) {
     auto node_id = scheduling::NodeID(bundle.second.first.Binary());
     const auto &bundle_spec = *bundle.second.second;
     auto bundle_resource_request = ResourceMapToResourceRequest(
@@ -632,6 +632,9 @@ void GcsPlacementGroupScheduler::ReturnBundleResources(
     for (const auto &entry : bundle_spec.GetFormattedResources()) {
       bundle_resource_ids.emplace_back(scheduling::ResourceID(entry.first));
     }
+
+    // It will affect nothing if the resource_id to be deleted does not exist in the
+    // cluster_resource_manager_.
     cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
     // Add reserved bundle resources back to the node.
     cluster_resource_manager.AddNodeAvailableResources(

@@ -265,6 +265,65 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
   }
 
+  void AddTwoNodes() {
+    auto node0 = Mocker::GenNodeInfo(0);
+    auto node1 = Mocker::GenNodeInfo(1);
+    AddNode(node0);
+    AddNode(node1);
+  }
+
+  bool EnsureClusterResourcesAreNotInUse() {
+    const auto &cluster_resource_manager =
+        cluster_resource_scheduler_->GetClusterResourceManager();
+    auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
+    // Make sure the resources are not used.
+    for (const auto &[node_id, node] : resource_view_before_scheduling) {
+      if (node.GetLocalView().total != node.GetLocalView().available) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void ScheduleUnplacedBundles(
+      const std::shared_ptr<gcs::GcsPlacementGroup> &placement_group) {
+    scheduler_->ScheduleUnplacedBundles(
+        placement_group,
+        [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
+               bool is_insfeasble) {
+          absl::MutexLock lock(&placement_group_requests_mutex_);
+          failure_placement_groups_.emplace_back(std::move(placement_group));
+        },
+        [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+          absl::MutexLock lock(&placement_group_requests_mutex_);
+          success_placement_groups_.emplace_back(std::move(placement_group));
+        });
+  }
+
+  void GrantPrepareBundleResources(const std::pair<bool, Status> &grant0,
+                                   const std::pair<bool, Status> &grant1) {
+    // node0 grants the schedule request.
+    ASSERT_TRUE(
+        raylet_clients_[0]->GrantPrepareBundleResources(grant0.first, grant0.second));
+
+    // node1 is dead and the callback of status is Status::IOError
+    ASSERT_TRUE(
+        raylet_clients_[1]->GrantPrepareBundleResources(grant1.first, grant1.second));
+  }
+
+  void GrantCommitBundleResources(const std::pair<bool, Status> &grant0,
+                                  const std::pair<bool, Status> &grant1) {
+    WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+    // node0 grants the schedule request.
+    ASSERT_TRUE(
+        raylet_clients_[0]->GrantCommitBundleResources(grant0.first, grant0.second));
+
+    WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+    // node1 is dead and the callback of status is Status::IOError
+    ASSERT_TRUE(
+        raylet_clients_[1]->GrantCommitBundleResources(grant1.first, grant1.second));
+  }
+
  protected:
   const std::chrono::milliseconds timeout_ms_{6000};
   absl::Mutex placement_group_requests_mutex_;
@@ -1156,6 +1215,97 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()][0]);
 }
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromDeadNodes) {
+  // Add two nodes to the cluster.
+  AddTwoNodes();
+
+  // Make sure the cluster resources are not in use.
+  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+
+  // Create a placement group.
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(
+      Mocker::GenCreatePlacementGroupRequest(), "");
+
+  // Schedule the unplaced bundles of the placement_group.
+  ScheduleUnplacedBundles(placement_group);
+
+  // Make sure the cluster resources are acquired at the GCS side.
+  ASSERT_FALSE(EnsureClusterResourcesAreNotInUse());
+
+  // Grant the prepare of bundle resources.
+  // node0 grants the schedule request with success=true and status=Status::OK()
+  // node1 grants the schedule request with success=false and status=Status::IOError("")
+  GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
+                              /*grant1=*/{false, Status::IOError("")});
+
+  // Make sure the resources are returned to the cluster_resource_manager at the GCS
+  // side.
+  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromNodeWithInsufficientResources) {
+  // Add two nodes to the cluster.
+  AddTwoNodes();
+
+  // Make sure the cluster resources are not in use.
+  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+
+  // Create a placement group.
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(
+      Mocker::GenCreatePlacementGroupRequest(), "");
+
+  // Schedule the unplaced bundles of the placement_group.
+  ScheduleUnplacedBundles(placement_group);
+
+  // Make sure the cluster resources are acquired at the GCS side.
+  ASSERT_FALSE(EnsureClusterResourcesAreNotInUse());
+
+  // Grant the prepare of bundle resources.
+  // node0 grants the schedule request with success=true and status=Status::OK()
+  // node1 grants the schedule request with success=false and status=Status::OK()
+  GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
+                              /*grant1=*/{false, Status::OK()});
+
+  // Make sure the resources are returned to the cluster_resource_manager at the GCS
+  // side.
+  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
+  // Add two nodes to the cluster.
+  AddTwoNodes();
+
+  // Make sure the cluster resources are not in use.
+  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+
+  // Create a placement group.
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(
+      Mocker::GenCreatePlacementGroupRequest(), "");
+
+  // Schedule the unplaced bundles of the placement_group.
+  ScheduleUnplacedBundles(placement_group);
+
+  // Make sure the cluster resources are acquired at the GCS side.
+  ASSERT_FALSE(EnsureClusterResourcesAreNotInUse());
+
+  // Grant the prepare of bundle resources.
+  // node0 grants the schedule request with success=true and status=Status::OK()
+  // node1 grants the schedule request with success=true and status=Status::OK()
+  GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
+                              /*grant1=*/{true, Status::OK()});
+
+  // Grant the prepare of bundle resources.
+  // node0 grants the schedule request with success=false and status=Status::IOError("")
+  // node1 grants the schedule request with success=false and status=Status::IOError("")
+  GrantCommitBundleResources(/*grant0=*/{false, Status::IOError("")},
+                             /*grant1=*/{false, Status::IOError("")});
+
+  // Make sure the resources are returned to the cluster_resource_manager at the GCS
+  // side.
+  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

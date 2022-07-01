@@ -1,26 +1,22 @@
-import os
-import logging
-from typing import Dict, List, Optional, Tuple, Any, Set, Union
 import json
-from google.protobuf import json_format
+import logging
+import os
 from copy import deepcopy
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
+from google.protobuf import json_format
 
 import ray
+from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+from ray._private.runtime_env.conda import get_uri as get_conda_uri
+from ray._private.runtime_env.pip import get_uri as get_pip_uri
+from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
+from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
+from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
 from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnv as ProtoRuntimeEnv,
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
 )
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
-from ray._private.utils import import_attr
-from ray._private.runtime_env.conda import (
-    get_uri as get_conda_uri,
-)
-
-from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray.util.annotations import PublicAPI
-from ray.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
-
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +84,8 @@ def _parse_proto_plugin_runtime_env(
 ):
     """Parse plugin runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("plugin_runtime_env"):
-        runtime_env_dict["plugins"] = dict()
         for plugin in runtime_env.python_runtime_env.plugin_runtime_env.plugins:
-            runtime_env_dict["plugins"][plugin.class_path] = json.loads(plugin.config)
+            runtime_env_dict[plugin.class_path] = json.loads(plugin.config)
 
 
 @PublicAPI(stability="beta")
@@ -107,16 +102,22 @@ class RuntimeEnvConfig(dict):
             timeout logic, except `-1`, `setup_timeout_seconds` cannot be
             less than or equal to 0. The default value of `setup_timeout_seconds`
             is 600 seconds.
+        eager_install(bool): Indicates whether to install the runtime environment
+            on the cluster at `ray.init()` time, before the workers are leased.
+            This flag is set to `True` by default.
     """
 
-    known_fields: Set[str] = {"setup_timeout_seconds"}
+    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install"}
 
     _default_config: Dict = {
         "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+        "eager_install": True,
     }
 
     def __init__(
-        self, setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+        self,
+        setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+        eager_install: bool = True,
     ):
         super().__init__()
         if not isinstance(setup_timeout_seconds, int):
@@ -130,6 +131,12 @@ class RuntimeEnvConfig(dict):
                 f"or equals to -1, got: {setup_timeout_seconds}"
             )
         self["setup_timeout_seconds"] = setup_timeout_seconds
+
+        if not isinstance(eager_install, bool):
+            raise TypeError(
+                f"eager_install must be a boolean. got {type(eager_install)}"
+            )
+        self["eager_install"] = eager_install
 
     @staticmethod
     def parse_and_validate_runtime_env_config(
@@ -162,6 +169,7 @@ class RuntimeEnvConfig(dict):
     def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
         runtime_env_config = ProtoRuntimeEnvConfig()
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
+        runtime_env_config.eager_install = self["eager_install"]
         return runtime_env_config
 
     @classmethod
@@ -174,7 +182,10 @@ class RuntimeEnvConfig(dict):
         # assign the default value to setup_timeout_seconds.
         if setup_timeout_seconds == 0:
             setup_timeout_seconds = cls._default_config["setup_timeout_seconds"]
-        return cls(setup_timeout_seconds=setup_timeout_seconds)
+        return cls(
+            setup_timeout_seconds=setup_timeout_seconds,
+            eager_install=runtime_env_config.eager_install,
+        )
 
 
 # Due to circular reference, field config can only be assigned a value here
@@ -246,7 +257,7 @@ class RuntimeEnv(dict):
         # Example for using container
         RuntimeEnv(
             container={"image": "anyscale/ray-ml:nightly-py38-cpu",
-            "worker_path": "/root/python/ray/workers/default_worker.py",
+            "worker_path": "/root/python/ray/_private/workers/default_worker.py",
             "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
 
         # Example for set env_vars
@@ -306,9 +317,12 @@ class RuntimeEnv(dict):
         "_ray_release",
         "_ray_commit",
         "_inject_current_ray",
-        "plugins",
-        "eager_install",
         "config",
+        # TODO(SongGuyang): We add this because the test
+        # `test_experimental_package_github` set a `docker`
+        # field which is not supported. We should remove it
+        # with the test.
+        "docker",
     }
 
     extensions_fields: Set[str] = {
@@ -351,19 +365,20 @@ class RuntimeEnv(dict):
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")
 
+        self.update(runtime_env)
+
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the
         # deserialization codepath.
         if not _validate:
-            self.update(runtime_env)
             return
 
-        if runtime_env.get("conda") and runtime_env.get("pip"):
+        if self.get("conda") and self.get("pip"):
             raise ValueError(
                 "The 'pip' field and 'conda' field of "
                 "runtime_env cannot both be specified.\n"
-                f"specified pip field: {runtime_env['pip']}\n"
-                f"specified conda field: {runtime_env['conda']}\n"
+                f"specified pip field: {self['pip']}\n"
+                f"specified conda field: {self['conda']}\n"
                 "To use pip with conda, please only set the 'conda' "
                 "field, and specify your pip dependencies "
                 "within the conda YAML config dict: see "
@@ -373,48 +388,21 @@ class RuntimeEnv(dict):
             )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
-            option_val = runtime_env.get(option)
+            option_val = self.get(option)
             if option_val is not None:
+                del self[option]
                 self[option] = option_val
 
-        if "_ray_release" in runtime_env:
-            self["_ray_release"] = runtime_env["_ray_release"]
-
-        if "_ray_commit" in runtime_env:
-            self["_ray_commit"] = runtime_env["_ray_commit"]
-        else:
+        if "_ray_commit" not in self:
             if self.get("pip") or self.get("conda"):
                 self["_ray_commit"] = ray.__commit__
 
         # Used for testing wheels that have not yet been merged into master.
         # If this is set to True, then we do not inject Ray into the conda
         # or pip dependencies.
-        if "_inject_current_ray" in runtime_env:
-            self["_inject_current_ray"] = runtime_env["_inject_current_ray"]
-        elif "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
-            self["_inject_current_ray"] = True
-        if "plugins" in runtime_env:
-            self["plugins"] = dict()
-            for class_path, plugin_field in runtime_env["plugins"].items():
-                plugin_class: RuntimeEnvPlugin = import_attr(class_path)
-                if not issubclass(plugin_class, RuntimeEnvPlugin):
-                    # TODO(simon): move the inferface to public once ready.
-                    raise TypeError(
-                        f"{class_path} must be inherit from "
-                        "ray._private.runtime_env.plugin.RuntimeEnvPlugin."
-                    )
-                # TODO(simon): implement uri support.
-                _ = plugin_class.validate(runtime_env)
-                # Validation passed, add the entry to parsed runtime env.
-                self["plugins"][class_path] = plugin_field
-
-        unknown_fields = set(runtime_env.keys()) - RuntimeEnv.known_fields
-        if len(unknown_fields):
-            logger.warning(
-                "The following unknown entries in the runtime_env dictionary "
-                f"will be ignored: {unknown_fields}. If you intended to use "
-                "them as plugins, they must be nested in the `plugins` field."
-            )
+        if "_inject_current_ray" not in self:
+            if "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
+                self["_inject_current_ray"] = True
 
         # NOTE(architkulkarni): This allows worker caching code in C++ to check
         # if a runtime env is empty without deserializing it.  This is a catch-
@@ -443,19 +431,16 @@ class RuntimeEnv(dict):
         return plugin_uris
 
     def __setitem__(self, key: str, value: Any) -> None:
-        if key not in RuntimeEnv.known_fields:
-            logger.warning(
-                "The following unknown entries in the runtime_env dictionary "
-                f"will be ignored: {key}. If you intended to use "
-                "them as plugins, they must be nested in the `plugins` field."
-            )
-            return
         res_value = value
-        if key in OPTION_TO_VALIDATION_FN:
+        RuntimeEnvPluginSchemaManager.validate(key, res_value)
+        if key in RuntimeEnv.known_fields and key in OPTION_TO_VALIDATION_FN:
             res_value = OPTION_TO_VALIDATION_FN[key](value)
             if res_value is None:
                 return
         return super().__setitem__(key, res_value)
+
+    def set(self, name: str, value: Any) -> None:
+        self.__setitem__(name, value)
 
     @classmethod
     def deserialize(cls, serialized_runtime_env: str) -> "RuntimeEnv":  # noqa: F821
@@ -492,16 +477,6 @@ class RuntimeEnv(dict):
             proto_runtime_env.python_runtime_env.py_modules.extend(py_modules_uris)
             # set py_modules uris
             proto_runtime_env.uris.py_modules_uris.extend(py_modules_uris)
-
-        # set conda uri
-        conda_uri = self.conda_uri()
-        if conda_uri is not None:
-            proto_runtime_env.uris.conda_uri = conda_uri
-
-        # set pip uri
-        pip_uri = self.pip_uri()
-        if pip_uri is not None:
-            proto_runtime_env.uris.pip_uri = pip_uri
 
         # set env_vars
         env_vars = self.env_vars()
@@ -653,16 +628,11 @@ class RuntimeEnv(dict):
             return None
         return self["container"].get("run_options", [])
 
-    def has_plugins(self) -> bool:
-        if self.get("plugins"):
-            return True
-        return False
-
     def plugins(self) -> List[Tuple[str, str]]:
         result = list()
-        if self.has_plugins():
-            for class_path, plugin_field in self["plugins"].items():
-                result.append((class_path, json.dumps(plugin_field, sort_keys=True)))
+        for key, value in self.items():
+            if key not in self.known_fields:
+                result.append((key, json.dumps(value, sort_keys=True)))
         return result
 
     def _build_proto_pip_runtime_env(self, runtime_env: ProtoRuntimeEnv):
@@ -718,8 +688,7 @@ class RuntimeEnv(dict):
 
     def _build_proto_plugin_runtime_env(self, runtime_env: ProtoRuntimeEnv):
         """Construct plugin runtime env protobuf from runtime env dict."""
-        if self.has_plugins():
-            for class_path, plugin_field in self.plugins():
-                plugin = runtime_env.python_runtime_env.plugin_runtime_env.plugins.add()
-                plugin.class_path = class_path
-                plugin.config = plugin_field
+        for class_path, plugin_field in self.plugins():
+            plugin = runtime_env.python_runtime_env.plugin_runtime_env.plugins.add()
+            plugin.class_path = class_path
+            plugin.config = plugin_field

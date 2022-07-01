@@ -123,24 +123,24 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: Trainer Tests (generic)"
+- label: ":brain: RLlib: Algorithm Tests (generic)"
   conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
-    # Test all tests in the `agents` (soon to be "trainers") dir:
+    # Test all tests in the `algorithms` dir:
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=algorithms_dir_generic,-multi_gpu
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: Trainer Tests (specific algos)"
+- label: ":brain: RLlib: Algorithm Tests (specific algos)"
   conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
-    # Test all tests in the `agents` (soon to be "trainers") dir:
+    # Test all tests in the `algorithms` dir:
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=algorithms_dir,-algorithms_dir_generic,-multi_gpu

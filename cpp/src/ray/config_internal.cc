@@ -70,8 +70,29 @@ ABSL_FLAG(int64_t,
           -1,
           "The startup token assigned to this worker process by the raylet.");
 
+ABSL_FLAG(std::string,
+          ray_default_actor_lifetime,
+          "",
+          "The default actor lifetime type, `detached` or `non_detached`.");
+
 namespace ray {
 namespace internal {
+
+rpc::JobConfig_ActorLifetime ParseDefaultActorLifetimeType(
+    const std::string &default_actor_lifetime_origin) {
+  std::string default_actor_lifetime;
+  default_actor_lifetime.resize(default_actor_lifetime_origin.size());
+  transform(default_actor_lifetime_origin.begin(),
+            default_actor_lifetime_origin.end(),
+            default_actor_lifetime.begin(),
+            ::tolower);
+  RAY_CHECK(default_actor_lifetime == "non_detached" ||
+            default_actor_lifetime == "detached")
+      << "The default_actor_lifetime_string config must be `detached` or `non_detached`.";
+  return default_actor_lifetime == "non_detached"
+             ? rpc::JobConfig_ActorLifetime_NON_DETACHED
+             : rpc::JobConfig_ActorLifetime_DETACHED;
+}
 
 void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.address.empty()) {
@@ -87,6 +108,10 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.head_args.empty()) {
     head_args = config.head_args;
   }
+  if (config.default_actor_lifetime == ActorLifetime::DETACHED) {
+    default_actor_lifetime = rpc::JobConfig_ActorLifetime_DETACHED;
+  }
+
   if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
     absl::ParseCommandLine(argc, argv);
@@ -129,7 +154,12 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       head_args.insert(head_args.end(), args.begin(), args.end());
     }
     startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
+    if (!FLAGS_ray_default_actor_lifetime.CurrentValue().empty()) {
+      default_actor_lifetime =
+          ParseDefaultActorLifetimeType(FLAGS_ray_default_actor_lifetime.CurrentValue());
+    }
   }
+  worker_type = config.is_worker_ ? WorkerType::WORKER : WorkerType::DRIVER;
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (bootstrap_ip.empty()) {
       auto ray_address_env = std::getenv("RAY_ADDRESS");
