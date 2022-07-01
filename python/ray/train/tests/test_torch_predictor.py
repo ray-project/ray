@@ -53,20 +53,20 @@ def test_init(model, preprocessor):
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_model_not_training(model, use_gpu):
-    predictor = TorchPredictor(model=model)
+    predictor = TorchPredictor(model=model, use_gpu=use_gpu)
 
     data_batch = np.array([1])
-    predictor.predict(data_batch, use_gpu=use_gpu)
+    predictor.predict(data_batch)
 
     assert not predictor.model.training
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array(model, use_gpu):
-    predictor = TorchPredictor(model=model)
+    predictor = TorchPredictor(model=model, use_gpu=use_gpu)
 
     data_batch = np.asarray([[1], [2], [3]])
-    predictions = predictor.predict(data_batch, use_gpu=use_gpu)
+    predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
     assert predictions.flatten().tolist() == [2, 4, 6]
@@ -74,10 +74,10 @@ def test_predict_array(model, use_gpu):
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
-    predictor = TorchPredictor(model=model, preprocessor=preprocessor)
+    predictor = TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
     data_batch = np.array([[1], [2], [3]])
-    predictions = predictor.predict(data_batch, use_gpu=use_gpu)
+    predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
     assert predictions.flatten().tolist() == [4, 8, 12]
@@ -85,10 +85,10 @@ def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_dataframe(use_gpu):
-    predictor = TorchPredictor(model=DummyModelMultiInput())
+    predictor = TorchPredictor(model=DummyModelMultiInput(), use_gpu=use_gpu)
 
     data_batch = pd.DataFrame({"X0": [0.0, 0.0, 0.0], "X1": [1.0, 2.0, 3.0]})
-    predictions = predictor.predict(data_batch, use_gpu=use_gpu, dtype=torch.float)
+    predictions = predictor.predict(data_batch, dtype=torch.float)
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
@@ -96,10 +96,10 @@ def test_predict_dataframe(use_gpu):
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_multi_output(use_gpu):
-    predictor = TorchPredictor(model=DummyModelMultiOutput())
+    predictor = TorchPredictor(model=DummyModelMultiOutput(), use_gpu=use_gpu)
 
     data_batch = np.array([[1], [2], [3]])
-    predictions = predictor.predict(data_batch, use_gpu=use_gpu)
+    predictions = predictor.predict(data_batch)
 
     # Model outputs two tensors
     assert len(predictions) == 2
@@ -122,10 +122,10 @@ def test_predict_multi_output(use_gpu):
 def test_predict_array_with_different_dtypes(
     model, input_dtype, expected_output_dtype, use_gpu
 ):
-    predictor = TorchPredictor(model=model)
+    predictor = TorchPredictor(model=model, use_gpu=use_gpu)
 
     data_batch = np.array([[1], [2], [3]])
-    predictions = predictor.predict(data_batch, use_gpu=use_gpu, dtype=input_dtype)
+    predictions = predictor.predict(data_batch, dtype=input_dtype)
 
     assert predictions.dtype == expected_output_dtype
 
@@ -133,10 +133,10 @@ def test_predict_array_with_different_dtypes(
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array_no_training(model, use_gpu):
     checkpoint = to_air_checkpoint(model)
-    predictor = TorchPredictor.from_checkpoint(checkpoint)
+    predictor = TorchPredictor.from_checkpoint(checkpoint, use_gpu=use_gpu)
 
     data_batch = np.array([[1], [2], [3]])
-    predictions = predictor.predict(data_batch, use_gpu=use_gpu)
+    predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
     assert predictions.flatten().tolist() == [2, 4, 6]
@@ -145,10 +145,10 @@ def test_predict_array_no_training(model, use_gpu):
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_array_real_model(use_gpu):
     model = torch.nn.Linear(2, 1)
-    predictor = TorchPredictor(model=model)
+    predictor = TorchPredictor(model=model, use_gpu=use_gpu)
 
     data = np.array([[1, 2], [3, 4]])
-    predictions = predictor.predict(data, use_gpu=use_gpu, dtype=torch.float)
+    predictions = predictor.predict(data, dtype=torch.float)
     assert len(predictions) == 2
 
 
@@ -165,11 +165,11 @@ def test_multi_modal_real_model(use_gpu):
             out2 = self.linear2(input_dict["B"])
             return out1 + out2
 
-    predictor = TorchPredictor(model=CustomModule())
+    predictor = TorchPredictor(model=CustomModule(), use_gpu=use_gpu)
 
     data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
 
-    predictions = predictor.predict(data, use_gpu=use_gpu, dtype=torch.float)
+    predictions = predictor.predict(data, dtype=torch.float)
     assert len(predictions) == 2
 
 

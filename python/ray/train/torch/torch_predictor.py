@@ -21,18 +21,32 @@ class TorchPredictor(Predictor):
         model: The torch module to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
+        use_gpu: If prediction is done on GPU where model will be moved to
+            GPU device upon instantiation.
     """
 
     def __init__(
-        self, model: torch.nn.Module, preprocessor: Optional["Preprocessor"] = None
+        self,
+        model: torch.nn.Module,
+        preprocessor: Optional["Preprocessor"] = None,
+        use_gpu: bool = False,
     ):
         self.model = model
         self.model.eval()
         self.preprocessor = preprocessor
 
+        # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
+        self.use_gpu = use_gpu
+        if use_gpu:
+            # Ensure input tensor and model live on GPU for GPU inference
+            self.model.to(torch.device("cuda"))
+
     @classmethod
     def from_checkpoint(
-        cls, checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
+        cls,
+        checkpoint: Checkpoint,
+        model: Optional[torch.nn.Module] = None,
+        use_gpu: bool = False,
     ) -> "TorchPredictor":
         """Instantiate the predictor from a Checkpoint.
 
@@ -45,25 +59,22 @@ class TorchPredictor(Predictor):
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
                 ``model``.
+            use_gpu: If prediction is done on GPU where model will be moved to
+                GPU device upon instantiation.
         """
         model, preprocessor = load_checkpoint(checkpoint, model)
-        return TorchPredictor(model=model, preprocessor=preprocessor)
+        return TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
     def _predict_pandas(
         self,
         data: pd.DataFrame,
-        use_gpu: bool = False,
         dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> pd.DataFrame:
         def tensorize(numpy_array, dtype):
-            if use_gpu:
+            if self.use_gpu:
                 torch_tensor = torch.from_numpy(numpy_array).to(
                     device="cuda", dtype=dtype
                 )
-                # TODO (jiaodong): #26249 Use multiple GPU devices with sharded
-                # input
-                # Ensure input tensor and model live on GPU for GPU inference
-                self.model.to(torch.device("cuda"))
             else:
                 torch_tensor = torch.from_numpy(numpy_array).to(dtype)
 
@@ -114,7 +125,6 @@ class TorchPredictor(Predictor):
     def predict(
         self,
         data: DataBatchType,
-        use_gpu: bool = False,
         dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
@@ -174,6 +184,4 @@ class TorchPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        return super(TorchPredictor, self).predict(
-            data=data, use_gpu=use_gpu, dtype=dtype
-        )
+        return super(TorchPredictor, self).predict(data=data, dtype=dtype)
