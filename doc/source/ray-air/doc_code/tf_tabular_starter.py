@@ -1,6 +1,6 @@
 # isort: skip_file
 
-# __air_pytorch_preprocess_start__
+# __air_tf_preprocess_start__
 import numpy as np
 import ray
 from ray.data.preprocessors import StandardScaler, BatchMapper, Chain
@@ -38,30 +38,55 @@ columns_to_scale = ["mean radius", "mean texture"]
 preprocessor = Chain(
     StandardScaler(columns=columns_to_scale), BatchMapper(concat_for_tensor)
 )
-# __air_pytorch_preprocess_end__
+# __air_tf_preprocess_end__
 
 
-# __air_pytorch_train_start__
+# __air_tf_train_start__
 import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
 from tensorflow import keras
 from tensorflow.keras import layers
 
 from ray import train
 from ray.air import session
-from ray.train.tensorflow import TensorflowTrainer, to_air_checkpoint
+from ray.train.tensorflow import (
+    TensorflowTrainer,
+    to_air_checkpoint,
+    prepare_dataset_shard,
+)
 
 
 def create_keras_model(input_features):
-    return keras.Sequential(
+    return keras.Sequential([
         keras.Input(shape=(input_features,)),
         layers.Dense(16, activation="relu"),
         layers.Dense(16, activation="relu"),
-        layers.Dense(16, activation="sigmod"),
-    )
+        layers.Dense(1),
+    ])
+
 
 class TrainCheckpointReportCallback(Callback):
     def on_epoch_end(self, epoch, logs=None):
-        train.report(logs, checkpoint=to_air_checkpoint(self.model))
+        session.report(logs, checkpoint=to_air_checkpoint(self.model))
+
+
+def to_tf_dataset(dataset, batch_size):
+    def to_tensor_iterator():
+        data_iterator = dataset.iter_batches(batch_format="numpy", batch_size=batch_size)
+        for d in data_iterator:
+            yield  (
+                tf.convert_to_tensor(d["input"], dtype=tf.float32),
+                tf.convert_to_tensor(d["target"], dtype=tf.float32),
+            )
+
+    output_signature = (
+        tf.TensorSpec(shape=(None, num_features), dtype=tf.float32),
+        tf.TensorSpec(shape=(None), dtype=tf.float32),
+    )
+    tf_dataset = tf.data.Dataset.from_generator(
+        to_tensor_iterator, output_signature=output_signature
+    )
+    return prepare_dataset_shard(tf_dataset)
 
 
 def train_loop_per_worker(config):
@@ -72,12 +97,8 @@ def train_loop_per_worker(config):
 
     # Get the Ray Dataset shard for this data parallel worker,
     # and convert it to a Tensorflow Dataset.
-    train_iterator = train.get_dataset_shard("train").iter_batches(
-        batch_format="numpy", batch_size=batch_size
-    )
-    val_dataloader = train.get_dataset_shard("validate").iter_batches(
-        batch_format="numpy", batch_size=batch_size
-    )
+    train_data = train.get_dataset_shard("train")
+    val_data = train.get_dataset_shard("validate")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():
@@ -85,39 +106,29 @@ def train_loop_per_worker(config):
         multi_worker_model = create_keras_model(num_features)
         multi_worker_model.compile(
             optimizer=tf.keras.optimizers.SGD(learning_rate=lr),
-            loss=tf.keras.losses.BinaryCrossentropy,
+            loss="binary_crossentropy",
             metrics=[tf.keras.metrics.BinaryCrossentropy(name="loss")],
         )
 
-    dataset = train.get_dataset_shard("train")
-
     results = []
     for _ in range(epochs):
-        tf_dataset = prepare_dataset_shard(
-            dataset.to_tf(
-                label_column="y",
-                output_signature=(
-                    tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None), dtype=tf.float32),
-                ),
-                batch_size=batch_size,
-            )
-        )
+        tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size)
         history = multi_worker_model.fit(
             tf_dataset, callbacks=[TrainCheckpointReportCallback()]
-        )
+        ) # TODO: does this refitting actually do anything?
         results.append(history.history)
-    return results
+    return results  # TODO: How do I fetch these results?
+
 
 num_features = len(schema_order)
 
-trainer = TorchTrainer(
+trainer = TensorflowTrainer(
     train_loop_per_worker=train_loop_per_worker,
     train_loop_config={
         # Training batch size
-        "batch_size": 32,
+        "batch_size": 128,
         # Number of epochs to train each task for.
-        "num_epochs": 4,
+        "num_epochs": 10,
         # Number of columns of datset
         "num_features": num_features,
         # Optimizer args.
@@ -138,9 +149,10 @@ trainer = TorchTrainer(
 
 result = trainer.fit()
 print(f"Last result: {result.metrics}")
-# __air_pytorch_train_end__
+# Last result: {'loss': 8.997025489807129, ...}
+# __air_tf_train_end__
 
-# __air_pytorch_tuner_start__
+# __air_tf_tuner_start__
 from ray import tune
 from ray.tune.tuner import Tuner, TuneConfig
 
