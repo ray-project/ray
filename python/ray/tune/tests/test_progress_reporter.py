@@ -1,3 +1,4 @@
+from turtle import done
 import pytest
 import collections
 import os
@@ -586,6 +587,14 @@ class ProgressReporterTest(unittest.TestCase):
         reporter5 = TestReporter(max_progress_rows=4, mode="max", sort_by_metric=True)
         reporter5.report(trials, done=False)
         assert EXPECTED_SORT_RESULT_UNSORTED in reporter5._output
+
+        # Sort by metric when metric is passed using reporter.setup (called from tune.run) 
+        # calling repoter.set_search_properties
+        reporter6 = TestReporter(max_progress_rows=4, sort_by_metric=True)
+        reporter6.set_search_properties(metric="metric_1", mode="max")
+        reporter6.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_DESC in reporter6._output
+        
 
     def testEndToEndReporting(self):
         try:
