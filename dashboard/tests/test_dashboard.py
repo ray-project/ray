@@ -31,13 +31,11 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
-from ray.dashboard import dashboard
+from ray.dashboard import dashboard, agent
 from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.exception import ServerUnavailable
-from ray.experimental.state.state_manager import StateDataSourceClient
-from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 
 import psutil
 
@@ -813,12 +811,6 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert dashboard_proc.wait(10) == 255
 
 
-def get_dashboard_agent_url(address: str, agent_listen_port: str):
-    index = address.index(":")
-    agent_url = address[: index + 1] + str(agent_listen_port)
-    return agent_url
-
-
 @pytest.mark.skipif(
     os.environ.get("RAY_DEFAULT") != "1",
     reason="This test only works for default installation.",
@@ -838,9 +830,7 @@ def test_dashboard_does_not_depend_on_serve():
     assert response.json()["result"] is True
     assert "snapshot" in response.json()["data"]
 
-    agent_url = get_dashboard_agent_url(
-        ctx.address_info["address"], ctx.address_info["dashboard_agent_listen_port"]
-    )
+    agent_url = ctx.address_info["node_ip_address"] + ":" + ctx.address_info["dashboard_agent_listen_port"]
 
     # Check that Serve-dependent features fail
     response = requests.get(f"http://{agent_url}/api/serve/deployments/")
@@ -852,53 +842,83 @@ def test_dashboard_does_not_depend_on_serve():
     os.environ.get("RAY_DEFAULT") != "1",
     reason="This test only works for default installation.",
 )
-@pytest.mark.asyncio
-async def test_dashboard_agent_does_not_depend_on_serve():
-    """Check that the dashboard agent can start without Serve."""
+def test_agent_does_not_depend_on_serve(shutdown_only):
+    """Test agent reports Raylet death if it is not SIGTERM."""
+    ray.init(include_dashboard=True)
 
-    with pytest.raises(ImportError):
-        from ray import serve  # noqa: F401
+    node = ray._private.worker._global_node
+    all_processes = node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    ctx = ray.init(include_dashboard=True)
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
 
-    GRPC_CHANNEL_OPTIONS = (
-        *ray_constants.GLOBAL_GRPC_OPTIONS,
-        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    )
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        ctx.address_info["address"], GRPC_CHANNEL_OPTIONS, asynchronous=True
-    )
-    client = StateDataSourceClient(gcs_channel)
-    wait_for_condition(lambda: len(ray.nodes()) > 0)
-    # Ensure standard dashboard agent features work, like runtime envs info.
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+    check_agent_register(raylet_proc, agent_pid)
 
-        def get_port():
-            return ray.experimental.internal_kv._internal_kv_get(
-                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-            )
+    logger.info("Agent works.")
 
-        wait_for_condition(lambda: get_port() is not None)
-        # The second index is the gRPC port
-        port = json.loads(get_port())[1]
-        ip = node["NodeManagerAddress"]
-        client.register_agent_client(node_id, ip, port)
-        result = await client.get_runtime_envs_info(node_id)
-        assert isinstance(result, GetRuntimeEnvsInfoReply)
-
-    logger.info("Agent grpc works.")
-
-    agent_url = get_dashboard_agent_url(
-        ctx.address_info["address"], ctx.address_info["dashboard_agent_listen_port"]
-    )
+    agent_url = node.node_ip_address + ":" + node.dashboard_agent_listen_port
 
     # Check that Serve-dependent features fail
     response = requests.get(f"http://{agent_url}/api/serve/deployments/")
     assert response.status_code == 404
     assert "Not Found" in response.text
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_agent_port_conflict():
+    ray.init(include_dashboard=True)
+
+    node = ray._private.worker._global_node
+    all_processes = node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
+
+    check_agent_register(raylet_proc, agent_pid)
+
+    temp_dir = "/tmp/ray"
+    session_dir = "/tmp/ray/session_latest"
+    log_dir = "/tmp/ray/session_latest/logs"
+    resource_dir = "/tmp/ray/session_latest/runtime_resources"
+
+    agent_cmd = [
+        sys.executable,
+        agent.__file__,
+        f"--node-ip-address={node.node_ip_address}",
+        f"--metrics-export-port={node.metrics_export_port}",
+        f"--dashboard-agent-port={node.metrics_agent_port}",
+        f"--listen-port={node.dashboard_agent_listen_port}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--object-store-name={node.plasma_store_socket_name}",
+        f"--raylet-name={node.raylet_socket_name}",
+        f"--temp-dir={temp_dir}",
+        f"--session-dir={session_dir}",
+        f"--runtime-env-dir={resource_dir}",
+        f"--log-dir={log_dir}",
+        f"--gcs-address={node.gcs_address}",
+    ]
+
+    logger.info("The dashboard agent should be exit: %s", agent_cmd)
+
+    try:
+        subprocess.check_output(agent_cmd)
+        assert False
+    except subprocess.CalledProcessError as e:
+        logger.info("The dashboard agent exits", e)
 
 
 @pytest.mark.skipif(
