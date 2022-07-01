@@ -306,6 +306,23 @@ def test_recursive_cancel(shutdown_only, use_force):
     assert ray.get(many_fut, timeout=30)
 
 
+@pytest.mark.parametrize("use_force", [True, False])
+def test_cancel_allow_retry(ray_start_regular, use_force):
+    signaler = SignalActor.remote()
+
+    @ray.remote
+    def foo():
+        ray.get(signaler.wait.remote())
+
+    obj = foo.remote()
+    with pytest.raises(GetTimeoutError):
+        ray.get(obj, timeout=5)
+    ray.cancel(obj, force=use_force, no_retry=False)
+    ray.get(signaler.send.remote())
+
+    ray.get(obj, timeout=5)
+
+
 if __name__ == "__main__":
     import os
 
