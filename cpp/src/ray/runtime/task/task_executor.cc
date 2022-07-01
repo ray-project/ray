@@ -133,7 +133,7 @@ Status TaskExecutor::ExecuteTask(
     const std::vector<rpc::ObjectReference> &arg_refs,
     const std::vector<ObjectID> &return_ids,
     const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_predicate,
+    const std::string &serialized_retry_exception_allowlist,
     std::vector<std::shared_ptr<ray::RayObject>> *results,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_retryable_error,
@@ -149,7 +149,7 @@ Status TaskExecutor::ExecuteTask(
   std::string func_name = typed_descriptor->FunctionName();
   bool cross_lang = !typed_descriptor->Caller().empty();
   // TODO(Clark): Support retrying application-level errors for C++.
-  // TODO(Clark): Support exception predicates for retrying application-level
+  // TODO(Clark): Support exception allowlist for retrying application-level
   // errors for C++.
   *is_retryable_error = false;
 

@@ -86,7 +86,7 @@ class TaskExecutor {
       const std::vector<rpc::ObjectReference> &arg_refs,
       const std::vector<ObjectID> &return_ids,
       const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_predicate,
+      const std::string &serialized_retry_exception_allowlist,
       std::vector<std::shared_ptr<ray::RayObject>> *results,
       std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,

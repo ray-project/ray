@@ -491,22 +491,20 @@ cdef c_bool determine_if_retryable(
     FunctionDescriptor function_descriptor,
 ):
     """Determine if the provided exception is retryable, according to the
-    (possibly null) serialized predicate function.
+    (possibly null) serialized exception allowlist.
 
-    If the serialized predicate function is an empty string or is None once
+    If the serialized exception allowlist is an empty string or is None once
     deserialized, the exception is considered retryable and we return True.
 
-    This method can raise exceptions in several cases:
-        - Deserialization fails (TypeError)
-        - Deserialized predicate function is not a function (TypeError)
-        - Predicate function raises an error (RuntimeError)
-        - Predicate function output is not a boolean (TypeError)
+    This method can raise an exception if:
+        - Deserialization of exception allowlist fails (TypeError)
+        - Exception allowlist is not None and not a tuple (AssertionError)
     """
     if len(serialized_retry_exception_allowlist) == 0:
         # No exception allowlist specified, default to all retryable.
         return True
 
-    # Deserialize exception allowlist and check that e is in the allowlist.
+    # Deserialize exception allowlist and check that the exception is in the allowlist.
     try:
         exception_allowlist = ray_pickle.loads(
             serialized_retry_exception_allowlist,
@@ -515,7 +513,7 @@ cdef c_bool determine_if_retryable(
         # Exception allowlist deserialization failed.
         msg = (
             "Could not deserialize the retry exception allowlist "
-            f"function for task {function_descriptor.repr}. "
+            f"for task {function_descriptor.repr}. "
             "Check "
             "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
             "for more information.")
@@ -525,13 +523,8 @@ cdef c_bool determine_if_retryable(
         # No exception allowlist specified, default to all retryable.
         return True
 
-    if not isinstance(exception_allowlist, tuple):
-        # Exception allowlist is not a tuple.
-        raise TypeError(
-            "Exception allowlist provided via retry_exceptions "
-            "must be a Tuple[Exception, ...], but got: "
-            f"{type(exception_allowlist)}, {exception_allowlist}"
-        )
+    # Python API should have converted the list of exceptions to a tuple.
+    assert isinstance(exception_allowlist, tuple)
 
     # Check that e is in allowlist.
     return isinstance(e, exception_allowlist)

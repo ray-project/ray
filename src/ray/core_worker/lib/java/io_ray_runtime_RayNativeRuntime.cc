@@ -116,7 +116,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          const std::vector<rpc::ObjectReference> &arg_refs,
          const std::vector<ObjectID> &return_ids,
          const std::string &debugger_breakpoint,
-         const std::string &serialized_retry_exception_predicate,
+         const std::string &serialized_retry_exception_allowlist,
          std::vector<std::shared_ptr<RayObject>> *results,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
          bool *is_retryable_error,
@@ -127,7 +127,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         RAY_UNUSED(defined_concurrency_groups);
         RAY_UNUSED(name_of_concurrency_group_to_execute);
         // TODO(jjyao): Support retrying application-level errors for Java
-        // TODO(Clark): Support exception predicates for retrying application-level
+        // TODO(Clark): Support exception allowlist for retrying application-level
         // errors for Java.
         *is_retryable_error = false;
 

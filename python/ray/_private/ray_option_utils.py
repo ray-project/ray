@@ -125,10 +125,13 @@ _task_only_options = {
         "Setting 'object_store_memory' is not implemented for tasks",
     ),
     "retry_exceptions": Option(
-        (bool, list),
+        (bool, list, tuple),
         lambda x: (
             isinstance(x, bool)
-            or (isinstance(x, list) and all(issubclass_safe(x_, Exception) for x_ in x))
+            or (
+                isinstance(x, (list, tuple))
+                and all(issubclass_safe(x_, Exception) for x_ in x)
+            )
         ),
         "retry_exceptions must be either a boolean or a list of exceptions",
         default_value=False,

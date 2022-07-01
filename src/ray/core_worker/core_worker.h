@@ -458,10 +458,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
-  /// \param[in] serialized_retry_exception_allowlist An serialized exception predicate
-  /// function that takes a frontend-language exception/error and returns whether the
-  /// exception should be retried. Default is an empty string, which will be treated as
-  /// a null predicate function in the language worker.
+  /// \param[in] serialized_retry_exception_allowlist A serialized exception list
+  /// that serves as an allowlist of frontend-language exceptions/errors that should be
+  /// retried. Default is an empty string, which will be treated as an allow-all in the
+  /// language worker.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
