@@ -37,7 +37,7 @@ def auto_http_archive(
     If strip_prefix == True , it is auto-deduced.
     """
     DOUBLE_SUFFIXES_LOWERCASE = [("tar", "bz2"), ("tar", "gz"), ("tar", "xz")]
-    mirror_prefixes = ["https://mirror.bazel.build/"]
+    mirror_prefixes = ["https://mirror.bazel.build/", "https://storage.googleapis.com/bazel-mirror"]
 
     canonical_url = url if url != None else urls[0]
     url_parts = urlsplit(canonical_url)
@@ -305,4 +305,17 @@ def ray_deps_setup():
             "https://github.com/bazelbuild/platforms/releases/download/0.0.5/platforms-0.0.5.tar.gz",
         ],
         sha256 = "379113459b0feaf6bfbb584a91874c065078aa673222846ac765f86661c27407",
+    )
+
+    # Hedron's Compile Commands Extractor for Bazel
+    # https://github.com/hedronvision/bazel-compile-commands-extractor
+    http_archive(
+        name = "hedron_compile_commands",
+
+        # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
+        # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+        url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/2e8b7654fa10c44b9937453fa4974ed2229d5366.tar.gz",
+        strip_prefix = "bazel-compile-commands-extractor-2e8b7654fa10c44b9937453fa4974ed2229d5366",
+        # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
+        sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )

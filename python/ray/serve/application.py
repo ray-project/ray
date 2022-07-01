@@ -106,7 +106,7 @@ class Application:
         it to an application containing those deployments.
 
         Args:
-            d (Dict): A dictionary containing the deployments' data that matches
+            d: A dictionary containing the deployments' data that matches
                 the Serve REST API schema.
 
         Returns:

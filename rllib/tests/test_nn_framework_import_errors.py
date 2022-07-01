@@ -2,7 +2,7 @@
 import os
 import pytest
 
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -18,7 +18,7 @@ def test_dont_import_tf_error():
         with pytest.raises(
             ImportError, match="However, there was no installation found."
         ):
-            ppo.PPOTrainer(config, env="CartPole-v1")
+            ppo.PPO(config, env="CartPole-v1")
 
 
 def test_dont_import_torch_error():
@@ -29,7 +29,7 @@ def test_dont_import_torch_error():
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
     config = {"framework": "torch"}
     with pytest.raises(ImportError, match="However, there was no installation found."):
-        ppo.PPOTrainer(config, env="CartPole-v1")
+        ppo.PPO(config, env="CartPole-v1")
 
 
 if __name__ == "__main__":

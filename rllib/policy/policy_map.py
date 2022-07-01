@@ -6,11 +6,15 @@ import threading
 from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import PartialTrainerConfigDict, PolicyID, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    PartialAlgorithmConfigDict,
+    PolicyID,
+    AlgorithmConfigDict,
+)
 from ray.tune.utils.util import merge_dicts
 
 if TYPE_CHECKING:
@@ -19,12 +23,13 @@ if TYPE_CHECKING:
 tf1, tf, tfv = try_import_tf()
 
 
+@PublicAPI
 class PolicyMap(dict):
     """Maps policy IDs to Policy objects.
 
     Thereby, keeps n policies in memory and - when capacity is reached -
     writes the least recently used to disk. This allows adding 100s of
-    policies to a Trainer for league-based setups w/o running out of memory.
+    policies to a Algorithm for league-based setups w/o running out of memory.
     """
 
     def __init__(
@@ -33,7 +38,7 @@ class PolicyMap(dict):
         num_workers: int,
         capacity: Optional[int] = None,
         path: Optional[str] = None,
-        policy_config: Optional[TrainerConfigDict] = None,
+        policy_config: Optional[AlgorithmConfigDict] = None,
         session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ):
@@ -49,7 +54,7 @@ class PolicyMap(dict):
                 when needed.
             path: The path to store the policy pickle files to. Files
                 will have the name: [policy_id].[worker idx].policy.pkl.
-            policy_config: The Trainer's base config dict.
+            policy_config: The Algorithm's base config dict.
             session_creator: An optional
                 tf1.Session creation callable.
             seed: An optional seed (used to seed tf policies).
@@ -75,7 +80,7 @@ class PolicyMap(dict):
         self.path = path or "."
         # The core config to use. Each single policy's config override is
         # added on top of this.
-        self.policy_config: TrainerConfigDict = policy_config or {}
+        self.policy_config: AlgorithmConfigDict = policy_config or {}
         # The orig classes/obs+act spaces, and config overrides of the
         # Policies.
         self.policy_specs: Dict[PolicyID, PolicySpec] = {}
@@ -91,8 +96,8 @@ class PolicyMap(dict):
         policy_cls: Type["Policy"],
         observation_space: gym.Space,
         action_space: gym.Space,
-        config_override: PartialTrainerConfigDict,
-        merged_config: TrainerConfigDict,
+        config_override: PartialAlgorithmConfigDict,
+        merged_config: AlgorithmConfigDict,
     ) -> None:
         """Creates a new policy and stores it to the cache.
 

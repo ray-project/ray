@@ -51,16 +51,16 @@ class MLflowLoggerUtil:
         creates new experiment if it does not exist.
 
         Args:
-            tracking_uri (str): The tracking URI for the MLflow tracking
+            tracking_uri: The tracking URI for the MLflow tracking
                 server.
-            registry_uri (str): The registry URI for the MLflow model registry.
-            experiment_id (str): The id of an already existing MLflow
+            registry_uri: The registry URI for the MLflow model registry.
+            experiment_id: The id of an already existing MLflow
                 experiment to use for logging. If None is passed in
                 here and the MFLOW_EXPERIMENT_ID is not set, or the
                 experiment with this id does not exist,
                 ``experiment_name`` will be used instead. This argument takes
                 precedence over ``experiment_name`` if both are passed in.
-            experiment_name (str): The experiment name to use for logging.
+            experiment_name: The experiment name to use for logging.
                 If None is passed in here, the
                 the MLFLOW_EXPERIMENT_NAME environment variables is used to
                 determine the experiment name.
@@ -68,7 +68,7 @@ class MLflowLoggerUtil:
                 it will be reused. If not, a new experiment will be created
                 with the provided name if
                 ``create_experiment_if_not_exists`` is set to True.
-            create_experiment_if_not_exists (bool): Whether to create an
+            create_experiment_if_not_exists: Whether to create an
                 experiment with the provided name if it does not already
                 exist. Defaults to True.
 
@@ -152,7 +152,7 @@ class MLflowLoggerUtil:
         logging parameters or artifacts.
 
         Args:
-            dict_to_log (Dict): The dictionary containing the metrics to log.
+            dict_to_log: The dictionary containing the metrics to log.
 
         Returns:
             A dictionary containing the metrics to log with all values being
@@ -182,7 +182,7 @@ class MLflowLoggerUtil:
 
         Args:
             tags (Optional[Dict]): Tags to set for the new run.
-            set_active (bool): Whether to set the new run as the active run.
+            set_active: Whether to set the new run as the active run.
                 If an active run already exists, then that run is returned.
 
         Returns:
@@ -243,7 +243,7 @@ class MLflowLoggerUtil:
         the active run.
 
         Args:
-            params_to_log (Dict): Dictionary of parameters to log.
+            params_to_log: Dictionary of parameters to log.
             run_id (Optional[str]): The ID of the run to log to.
         """
 
@@ -265,7 +265,7 @@ class MLflowLoggerUtil:
         the active run.
 
         Args:
-            metrics_to_log (Dict): Dictionary of metrics to log.
+            metrics_to_log: Dictionary of metrics to log.
             run_id (Optional[str]): The ID of the run to log to.
         """
         metrics_to_log = self._parse_dict(metrics_to_log)
@@ -287,7 +287,7 @@ class MLflowLoggerUtil:
         the active run.
 
         Args:
-            dir (str): Path to directory containing the files to save.
+            dir: Path to directory containing the files to save.
             run_id (Optional[str]): The ID of the run to log to.
         """
         if run_id and self._run_exists(run_id):

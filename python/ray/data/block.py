@@ -19,14 +19,14 @@ import numpy as np
 if TYPE_CHECKING:
     import pandas
     import pyarrow
-    from ray.data.impl.block_builder import BlockBuilder
+    from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
     from ray.data import Dataset
 
 import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
-from ray.data.impl.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -270,7 +270,7 @@ class BlockAccessor(Generic[T]):
     def batch_to_block(batch: DataBatch) -> Block:
         """Create a block from user-facing data formats."""
         if isinstance(batch, np.ndarray):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.numpy_to_block(batch)
         return batch
@@ -283,19 +283,19 @@ class BlockAccessor(Generic[T]):
         import pandas
 
         if isinstance(block, pyarrow.Table):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor(block)
         elif isinstance(block, pandas.DataFrame):
-            from ray.data.impl.pandas_block import PandasBlockAccessor
+            from ray.data._internal.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
-            from ray.data.impl.simple_block import SimpleBlockAccessor
+            from ray.data._internal.simple_block import SimpleBlockAccessor
 
             return SimpleBlockAccessor(block)
         else:

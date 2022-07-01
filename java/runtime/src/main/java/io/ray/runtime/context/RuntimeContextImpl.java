@@ -8,7 +8,7 @@ import io.ray.api.id.TaskId;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.util.ResourceUtil;
 import java.util.ArrayList;
@@ -21,9 +21,9 @@ import java.util.stream.Collectors;
 
 public class RuntimeContextImpl implements RuntimeContext {
 
-  private RayRuntimeInternal runtime;
+  private AbstractRayRuntime runtime;
 
-  public RuntimeContextImpl(RayRuntimeInternal runtime) {
+  public RuntimeContextImpl(AbstractRayRuntime runtime) {
     this.runtime = runtime;
   }
 

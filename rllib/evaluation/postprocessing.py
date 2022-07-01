@@ -9,6 +9,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import AgentID
 
 
+@DeveloperAPI
 class Postprocessing:
     """Constant definitions for postprocessing."""
 
@@ -16,6 +17,7 @@ class Postprocessing:
     VALUE_TARGETS = "value_targets"
 
 
+@DeveloperAPI
 def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
     """Rewrites `batch` to encode n-step rewards, dones, and next-obs.
 
@@ -134,6 +136,7 @@ def compute_advantages(
     return rollout
 
 
+@DeveloperAPI
 def compute_gae_for_sample_batch(
     policy: Policy,
     sample_batch: SampleBatch,
@@ -191,6 +194,7 @@ def compute_gae_for_sample_batch(
     return batch
 
 
+@DeveloperAPI
 def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
     """Calculates the discounted cumulative sum over a reward sequence `x`.
 

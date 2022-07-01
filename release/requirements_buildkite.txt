@@ -2,6 +2,7 @@ anyscale
 click
 boto3
 jinja2
+protobuf<4
 pydantic
 pyyaml
 requests

@@ -6,8 +6,11 @@ from functools import wraps
 import grpc
 import ray
 
-from typing import Dict, List
+from collections import defaultdict
+from typing import Dict, List, Optional
 from ray import ray_constants
+
+from grpc.aio._call import UnaryStreamCall
 
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoRequest,
@@ -29,23 +32,24 @@ from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoRequest,
     GetRuntimeEnvsInfoReply,
 )
+from ray.core.generated.reporter_pb2 import (
+    ListLogsReply,
+    StreamLogRequest,
+    ListLogsRequest,
+)
+from ray.core.generated.reporter_pb2_grpc import LogServiceStub
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
+import ray.dashboard.modules.log.log_consts as log_consts
 from ray.dashboard.modules.job.common import JobInfoStorageClient, JobInfo
+from ray.experimental.state.exception import DataSourceUnavailable
 
 logger = logging.getLogger(__name__)
 
 
-class StateSourceNetworkException(Exception):
-    """Exceptions raised when there's a network error from data source query."""
-
-    pass
-
-
-def handle_network_errors(func):
-    """Apply the network error handling logic to each APIs,
-        such as retry or exception policies.
+def handle_grpc_network_errors(func):
+    """Decorator to add a network handling logic.
 
     It is a helper method for `StateDataSourceClient`.
     The method can only be used for async methods.
@@ -54,22 +58,67 @@ def handle_network_errors(func):
 
     @wraps(func)
     async def api_with_network_error_handler(*args, **kwargs):
+        """Apply the network error handling logic to each APIs,
+        such as retry or exception policies.
+
+        Returns:
+            If RPC succeeds, it returns what the original function returns.
+            If RPC fails, it raises exceptions.
+        Exceptions:
+            DataSourceUnavailable: if the source is unavailable because it is down
+                or there's a slow network issue causing timeout.
+            Otherwise, the raw network exceptions (e.g., gRPC) will be raised.
+        """
         # TODO(sang): Add a retry policy.
         try:
             return await func(*args, **kwargs)
-        except (
-            # https://grpc.github.io/grpc/python/grpc_asyncio.html#grpc-exceptions
-            grpc.aio.AioRpcError,
-            grpc.aio.InternalError,
-            grpc.aio.AbortError,
-            grpc.aio.BaseError,
-            grpc.aio.UsageError,
-        ) as e:
-            raise StateSourceNetworkException(
-                f"Failed to query the data source, {func}"
-            ) from e
+        except grpc.aio.AioRpcError as e:
+            if (
+                e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
+                or e.code() == grpc.StatusCode.UNAVAILABLE
+            ):
+                raise DataSourceUnavailable(
+                    "Failed to query the data source. "
+                    "It is either there's a network issue, or the source is down."
+                )
+            else:
+                logger.exception(e)
+                raise e
 
     return api_with_network_error_handler
+
+
+class IdToIpMap:
+    def __init__(self):
+        # Node IP to node ID mapping.
+        self._ip_to_node_id = defaultdict(str)
+        # Node ID to node IP mapping.
+        self._node_id_to_ip = defaultdict(str)
+
+    def put(self, node_id: str, address: str):
+        self._ip_to_node_id[address] = node_id
+        self._node_id_to_ip[node_id] = address
+
+    def get_ip(self, node_id: str):
+        return self._node_id_to_ip.get(node_id)
+
+    def get_node_id(self, address: str):
+        return self._ip_to_node_id.get(address)
+
+    def pop(self, node_id: str):
+        """Pop the given node id.
+
+        Returns:
+            False if the corresponding node id doesn't exist.
+            True if it pops correctly.
+        """
+        ip = self._node_id_to_ip.get(node_id)
+        if not ip:
+            return None
+        assert ip in self._ip_to_node_id
+        self._node_id_to_ip.pop(node_id)
+        self._ip_to_node_id.pop(ip)
+        return True
 
 
 class StateDataSourceClient:
@@ -81,15 +130,18 @@ class StateDataSourceClient:
     finding services and register stubs through `register*` APIs.
 
     Non `register*` APIs
+    - Return the protobuf directly if it succeeds to query the source.
+    - Raises an exception if there's any network issue.
     - throw a ValueError if it cannot find the source.
-    - throw `StateSourceNetworkException` if there's any network errors.
     """
 
     def __init__(self, gcs_channel: grpc.aio.Channel):
         self.register_gcs_client(gcs_channel)
         self._raylet_stubs = {}
-        self._agent_stubs = {}
+        self._runtime_env_agent_stub = {}
+        self._log_agent_stub = {}
         self._job_client = JobInfoStorageClient()
+        self._id_id_map = IdToIpMap()
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
@@ -112,70 +164,108 @@ class StateDataSourceClient:
             full_addr, options, asynchronous=True
         )
         self._raylet_stubs[node_id] = NodeManagerServiceStub(channel)
+        self._id_id_map.put(node_id, address)
 
     def unregister_raylet_client(self, node_id: str):
         self._raylet_stubs.pop(node_id)
+        self._id_id_map.pop(node_id)
 
     def register_agent_client(self, node_id, address: str, port: int):
         options = ray_constants.GLOBAL_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             f"{address}:{port}", options=options, asynchronous=True
         )
-        self._agent_stubs[node_id] = RuntimeEnvServiceStub(channel)
+        self._runtime_env_agent_stub[node_id] = RuntimeEnvServiceStub(channel)
+        self._log_agent_stub[node_id] = LogServiceStub(channel)
+        self._id_id_map.put(node_id, address)
 
     def unregister_agent_client(self, node_id: str):
-        self._agent_stubs.pop(node_id)
+        self._runtime_env_agent_stub.pop(node_id)
+        self._log_agent_stub.pop(node_id)
+        self._id_id_map.pop(node_id)
 
     def get_all_registered_raylet_ids(self) -> List[str]:
         return self._raylet_stubs.keys()
 
     def get_all_registered_agent_ids(self) -> List[str]:
-        return self._agent_stubs.keys()
+        assert len(self._log_agent_stub) == len(self._runtime_env_agent_stub)
+        return self._runtime_env_agent_stub.keys()
 
-    @handle_network_errors
-    async def get_all_actor_info(self, timeout: int = None) -> GetAllActorInfoReply:
+    def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
+        """Return the node id that corresponds to the given ip.
+
+        Args:
+            ip: The ip address.
+
+        Returns:
+            None if the corresponding id doesn't exist.
+            Node id otherwise. If None node_ip is given,
+            it will also return None.
+        """
+        if not ip:
+            return None
+        return self._id_id_map.get_node_id(ip)
+
+    @handle_grpc_network_errors
+    async def get_all_actor_info(
+        self, timeout: int = None
+    ) -> Optional[GetAllActorInfoReply]:
         request = GetAllActorInfoRequest()
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=timeout
         )
         return reply
 
-    @handle_network_errors
+    @handle_grpc_network_errors
     async def get_all_placement_group_info(
         self, timeout: int = None
-    ) -> GetAllPlacementGroupReply:
+    ) -> Optional[GetAllPlacementGroupReply]:
         request = GetAllPlacementGroupRequest()
         reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
             request, timeout=timeout
         )
         return reply
 
-    @handle_network_errors
-    async def get_all_node_info(self, timeout: int = None) -> GetAllNodeInfoReply:
+    @handle_grpc_network_errors
+    async def get_all_node_info(
+        self, timeout: int = None
+    ) -> Optional[GetAllNodeInfoReply]:
         request = GetAllNodeInfoRequest()
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
-    @handle_network_errors
-    async def get_all_worker_info(self, timeout: int = None) -> GetAllWorkerInfoReply:
+    @handle_grpc_network_errors
+    async def get_all_worker_info(
+        self, timeout: int = None
+    ) -> Optional[GetAllWorkerInfoReply]:
         request = GetAllWorkerInfoRequest()
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
             request, timeout=timeout
         )
         return reply
 
-    def get_job_info(self) -> Dict[str, JobInfo]:
-        # Cannot use @handle_network_errors because async def is not supported yet.
+    def get_job_info(self) -> Optional[Dict[str, JobInfo]]:
+        # Cannot use @handle_grpc_network_errors because async def is not supported yet.
         # TODO(sang): Support timeout & make it async
         try:
             return self._job_client.get_all_jobs()
-        except Exception as e:
-            raise StateSourceNetworkException("Failed to query the job info.") from e
+        except grpc.aio.AioRpcError as e:
+            if (
+                e.code == grpc.StatusCode.DEADLINE_EXCEEDED
+                or e.code == grpc.StatusCode.UNAVAILABLE
+            ):
+                raise DataSourceUnavailable(
+                    "Failed to query the data source. "
+                    "It is either there's a network issue, or the source is down."
+                )
+            else:
+                logger.exception(e)
+                raise e
 
-    @handle_network_errors
+    @handle_grpc_network_errors
     async def get_task_info(
         self, node_id: str, timeout: int = None
-    ) -> GetTasksInfoReply:
+    ) -> Optional[GetTasksInfoReply]:
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
@@ -183,10 +273,10 @@ class StateDataSourceClient:
         reply = await stub.GetTasksInfo(GetTasksInfoRequest(), timeout=timeout)
         return reply
 
-    @handle_network_errors
+    @handle_grpc_network_errors
     async def get_object_info(
         self, node_id: str, timeout: int = None
-    ) -> GetNodeStatsReply:
+    ) -> Optional[GetNodeStatsReply]:
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
@@ -197,11 +287,11 @@ class StateDataSourceClient:
         )
         return reply
 
-    @handle_network_errors
+    @handle_grpc_network_errors
     async def get_runtime_envs_info(
         self, node_id: str, timeout: int = None
-    ) -> GetRuntimeEnvsInfoReply:
-        stub = self._agent_stubs.get(node_id)
+    ) -> Optional[GetRuntimeEnvsInfoReply]:
+        stub = self._runtime_env_agent_stub.get(node_id)
         if not stub:
             raise ValueError(f"Agent for a node id, {node_id} doesn't exist.")
 
@@ -210,3 +300,45 @@ class StateDataSourceClient:
             timeout=timeout,
         )
         return reply
+
+    @handle_grpc_network_errors
+    async def list_logs(
+        self, node_id: str, glob_filter: str, timeout: int = None
+    ) -> ListLogsReply:
+        stub = self._log_agent_stub.get(node_id)
+        if not stub:
+            raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
+        return await stub.ListLogs(
+            ListLogsRequest(glob_filter=glob_filter), timeout=timeout
+        )
+
+    @handle_grpc_network_errors
+    async def stream_log(
+        self,
+        node_id: str,
+        log_file_name: str,
+        keep_alive: bool,
+        lines: int,
+        interval: Optional[float],
+        timeout: int,
+    ) -> UnaryStreamCall:
+        stub = self._log_agent_stub.get(node_id)
+        if not stub:
+            raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
+        stream = stub.StreamLog(
+            StreamLogRequest(
+                keep_alive=keep_alive,
+                log_file_name=log_file_name,
+                lines=lines,
+                interval=interval,
+            ),
+            timeout=timeout,
+        )
+        await self._validate_stream(stream)
+        return stream
+
+    @staticmethod
+    async def _validate_stream(stream):
+        metadata = await stream.initial_metadata()
+        if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
+            raise ValueError('File "{log_file_name}" not found on node {node_id}')

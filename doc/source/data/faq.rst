@@ -276,7 +276,7 @@ out of such a gradient rut. In the distributed data-parallel training case, the 
 status quo solution is typically to have a per-shard in-memory shuffle buffer that you
 fill up and pop random batches from, without mixing data across shards between epochs.
 Ray Datasets also offers fully global random shuffling via
-:meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle()`, and doing so on an
+:meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle()>`, and doing so on an
 epoch-repeated dataset pipeline to provide global per-epoch shuffling is as simple as
 ``ray.data.read().repeat().random_shuffle_each_window()``. But when should you opt for
 global per-epoch shuffling instead of local shuffle buffer shuffling?

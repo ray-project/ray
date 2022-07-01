@@ -7,7 +7,38 @@ parts:
       - file: ray-overview/installation
       - file: ray-overview/ray-libraries
 
-  - caption: Ray ML
+  - caption: Ray AI Runtime
+    chapters:
+    - file: ray-air/getting-started
+      title: "What is Ray AI Runtime (AIR)?"
+    - file: ray-air/key-concepts
+    - file: ray-air/user-guides
+      sections:
+        - file: ray-air/preprocessors
+        - file: ray-air/check-ingest
+        - file: ray-air/examples/analyze_tuning_results
+        - file: ray-air/examples/upload_to_comet_ml
+        - file: ray-air/examples/upload_to_wandb
+        - file: ray-air/examples/serving_guide
+        - file: ray-air/deployment
+        - file: ray-air/use-pretrained-model
+    - file: ray-air/examples/index
+      sections:
+        - file: ray-air/examples/torch_image_example
+        - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
+        - file: ray-air/examples/tfx_tabular_train_to_serve
+        - file: ray-air/examples/huggingface_text_classification
+        - file: ray-air/examples/sklearn_example
+        - file: ray-air/examples/xgboost_example
+        - file: ray-air/examples/lightgbm_example
+        - file: ray-air/examples/torch_incremental_learning
+        - file: ray-air/examples/rl_serving_example
+        - file: ray-air/examples/rl_online_example
+        - file: ray-air/examples/rl_offline_example
+        - file: ray-air/examples/feast_example
+    - file: ray-air/package-ref
+
+  - caption: AIR Libraries
     chapters:
       - file: data/dataset
         title: Ray Data
@@ -138,6 +169,9 @@ parts:
                   - file: serve/deployment-graph/deployment-graph-e2e-tutorial
                   - file: serve/deployment-graph/chain_nodes_same_class_different_args
                   - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
+                  - file: serve/deployment-graph/control_flow_based_on_user_inputs
+                  - file: serve/deployment-graph/visualize_dag_during_development
+                  - file: serve/deployment-graph/http_endpoint_for_dag_graph
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq
@@ -155,45 +189,15 @@ parts:
               - file: rllib/rllib-models
               - file: rllib/rllib-concepts
               - file: rllib/rllib-sample-collection
+              - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
               - file: rllib/rllib-dev
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index
 
-      - file: workflows/concepts
-        title: Ray Workflows
-        sections:
-          - file: workflows/basics
-          - file: workflows/management
-          - file: workflows/actors
-          - file: workflows/metadata
-          - file: workflows/events
-          - file: workflows/comparison
-          - file: workflows/advanced
-          - file: workflows/package-ref
       - file: ray-more-libs/index
-        title: More Ray ML Libraries
+        title: More Libraries
         sections:
-          - file: ray-air/getting-started
-            sections:
-              - file: ray-air/key-concepts
-              - file: ray-air/deployment
-              - file: ray-air/check-ingest
-              - file: ray-air/examples/index
-                sections:
-                  - file: ray-air/examples/analyze_tuning_results
-                    title: "Analyze hyperparameter tuning results"
-                  - file: ray-air/examples/rl_serving_example
-                  - file: ray-air/examples/upload_to_comet_ml
-                  - file: ray-air/examples/upload_to_wandb
-                  - file: ray-air/examples/lightgbm_example
-                  - file: ray-air/examples/rl_online_example
-                  - file: ray-air/examples/rl_offline_example
-                  - file: ray-air/examples/sklearn_example
-                  - file: ray-air/examples/xgboost_example
-                  - file: ray-air/examples/huggingface_text_classification
-                    title: "Fine-tune a 🤗 Transformers model"
-              - file: ray-air/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
           - file: ray-more-libs/multiprocessing
@@ -203,6 +207,16 @@ parts:
           - file: ray-more-libs/xgboost-ray
           - file: ray-core/examples/dask_xgboost/dask_xgboost
           - file: ray-core/examples/modin_xgboost/modin_xgboost
+          - file: workflows/concepts
+            title: Ray Workflows
+            sections:
+              - file: workflows/basics
+              - file: workflows/management
+              - file: workflows/metadata
+              - file: workflows/events
+              - file: workflows/comparison
+              - file: workflows/advanced
+              - file: workflows/package-ref
 
   - caption: Ray Core
     chapters:
@@ -220,11 +234,14 @@ parts:
           - file: ray-core/examples/plot_hyperparameter
           - file: ray-core/examples/plot_parameter_server
           - file: ray-core/examples/plot_pong_example
+          - file: ray-core/examples/highly_parallel
       - file: ray-core/package-ref
 
   - caption: Ray Clusters
     chapters:
+      - file: cluster/index
       - file: cluster/quickstart
+      - file: cluster/key-concepts
       - file: cluster/user-guide
       - file: cluster/cloud
       - file: cluster/deploy
@@ -237,6 +254,7 @@ parts:
 
   - caption: Developer Guides
     chapters:
+      - file: ray-contribute/stability
       - file: ray-contribute/getting-involved
         sections:
           - file: ray-contribute/development

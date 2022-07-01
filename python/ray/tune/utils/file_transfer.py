@@ -2,11 +2,11 @@ import io
 import os
 import shutil
 import tarfile
-from filelock import FileLock
 
 from typing import Optional, Tuple, Dict, Generator, Union
 
 import ray
+from ray.util.ml_utils.filelock import TempFileLock
 
 
 _DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024  # 500 MiB
@@ -102,7 +102,7 @@ def _sync_dir_on_same_node(
         None, or future of the copy task.
 
     """
-    copy_on_node = _copy_dir.options(
+    copy_on_node = _remote_copy_dir.options(
         num_cpus=0, resources={f"node:{ip}": 0.01}, placement_group=None
     )
     copy_future = copy_on_node.remote(source_dir=source_path, target_dir=target_path)
@@ -349,12 +349,33 @@ def _iter_remote(actor: ray.ActorID) -> Generator[bytes, None, None]:
         yield buffer
 
 
-def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
+def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> None:
     """Unpack tarfile stream into target directory."""
     stream.seek(0)
-    with FileLock(f"{target_dir}.lock"):
-        with tarfile.open(fileobj=stream) as tar:
-            tar.extractall(target_dir)
+    target_dir = os.path.normpath(target_dir)
+    try:
+        # Timeout 0 means there will be only one attempt to acquire
+        # the file lock. If it cannot be aquired, a TimeoutError
+        # will be thrown.
+        with TempFileLock(f"{target_dir}.lock", timeout=0):
+            with tarfile.open(fileobj=stream) as tar:
+                tar.extractall(target_dir)
+    except TimeoutError:
+        # wait, but do not do anything
+        with TempFileLock(f"{target_dir}.lock"):
+            pass
+        # if the dir was locked due to being deleted,
+        # recreate
+        if not os.path.exists(target_dir):
+            if _retry:
+                _unpack_dir(stream, target_dir, _retry=False)
+            else:
+                raise RuntimeError(
+                    f"Target directory {target_dir} does not exist "
+                    "and couldn't be recreated. "
+                    "Please raise an issue on GitHub: "
+                    "https://github.com/ray-project/ray/issues"
+                )
 
 
 @ray.remote
@@ -366,17 +387,42 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
     _unpack_dir(stream, target_dir=target_dir)
 
 
-@ray.remote
-def _copy_dir(source_dir: str, target_dir: str) -> None:
+def _copy_dir(source_dir: str, target_dir: str, *, _retry: bool = True) -> None:
     """Copy dir with shutil on the actor."""
-    with FileLock(f"{target_dir}.lock"):
-        _delete_path_unsafe(target_dir)
-        shutil.copytree(source_dir, target_dir)
+    target_dir = os.path.normpath(target_dir)
+    try:
+        # Timeout 0 means there will be only one attempt to acquire
+        # the file lock. If it cannot be aquired, a TimeoutError
+        # will be thrown.
+        with TempFileLock(f"{target_dir}.lock", timeout=0):
+            _delete_path_unsafe(target_dir)
+            shutil.copytree(source_dir, target_dir)
+    except TimeoutError:
+        # wait, but do not do anything
+        with TempFileLock(f"{target_dir}.lock"):
+            pass
+        # if the dir was locked due to being deleted,
+        # recreate
+        if not os.path.exists(target_dir):
+            if _retry:
+                _copy_dir(source_dir, target_dir, _retry=False)
+            else:
+                raise RuntimeError(
+                    f"Target directory {target_dir} does not exist "
+                    "and couldn't be recreated. "
+                    "Please raise an issue on GitHub: "
+                    "https://github.com/ray-project/ray/issues"
+                )
 
 
-def _delete_path(target_path: str, filelock: bool = True) -> bool:
+# Only export once
+_remote_copy_dir = ray.remote(_copy_dir)
+
+
+def _delete_path(target_path: str) -> bool:
     """Delete path (files and directories)"""
-    with FileLock(f"{filelock}.lock"):
+    target_path = os.path.normpath(target_path)
+    with TempFileLock(f"{target_path}.lock"):
         return _delete_path_unsafe(target_path)
 
 

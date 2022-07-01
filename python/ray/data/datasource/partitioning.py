@@ -22,10 +22,12 @@ class PartitionStyle(str, Enum):
 
     Examples:
         >>> # Serialize to JSON text.
-        >>> json.dumps(PartitionStyle.HIVE)  # "hive"
+        >>> json.dumps(PartitionStyle.HIVE)  # doctest: +SKIP
+        '"hive"'
 
         >>> # Deserialize from JSON text.
-        >>> PartitionStyle(json.loads('"hive"'))  # PartitionStyle.HIVE
+        >>> PartitionStyle(json.loads('"hive"'))  # doctest: +SKIP
+        <PartitionStyle.HIVE: 'hive'>
     """
 
     HIVE = "hive"
@@ -151,6 +153,7 @@ class PathPartitionEncoder:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> "PathPartitionEncoder":
         """Creates a new partition path encoder.
+
         Args:
             style: The partition style - may be either HIVE or DIRECTORY.
             base_dir: "/"-delimited base directory that all partition paths will be
@@ -427,13 +430,26 @@ class PathPartitionFilter:
                 partition or `False` to skip it. Partition keys and values are always
                 strings read from the filesystem path. For example, this removes all
                 unpartitioned files:
-                ``lambda d: True if d else False``
+
+                .. code:: python
+
+                    lambda d: True if d else False
+
                 This raises an assertion error for any unpartitioned file found:
-                ``def do_assert(val, msg):
-                    assert val, msg
-                  lambda d: do_assert(d, "Expected all files to be partitioned!")``
+
+                .. code:: python
+
+                    def do_assert(val, msg):
+                        assert val, msg
+
+                    lambda d: do_assert(d, "Expected all files to be partitioned!")
+
                 And this only reads files from January, 2022 partitions:
-                ``lambda d: d["month"] == "January" and d["year"] == "2022"``
+
+                .. code:: python
+
+                    lambda d: d["month"] == "January" and d["year"] == "2022"
+
             style: The partition style - may be either HIVE or DIRECTORY.
             base_dir: "/"-delimited base directory to start searching for partitions
                 (exclusive). File paths outside of this directory will be considered

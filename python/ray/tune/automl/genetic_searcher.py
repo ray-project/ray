@@ -31,7 +31,7 @@ class GeneticSearch(AutoMLSearcher):
         Initialize GeneticSearcher.
 
         Args:
-            search_space (SearchSpace): The space to search.
+            search_space: The space to search.
             reward_attr: The attribute name of the reward in the result.
             max_generation: Max iteration number of genetic search.
             population_size: Number of trials of the initial generation.

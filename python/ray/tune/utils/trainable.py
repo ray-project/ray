@@ -12,11 +12,13 @@ import ray.cloudpickle as pickle
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
+from ray.util.annotations import DeveloperAPI
 from six import string_types
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class TrainableUtil:
     @staticmethod
     def process_checkpoint(
@@ -136,14 +138,14 @@ class TrainableUtil:
 
         Note, the assumption here is `logdir` should be the prefix of
         `checkpoint_path`.
-        For example, returns `checkpoint00000/`.
+        For example, returns `checkpoint00000`.
         """
         assert checkpoint_path.startswith(
             logdir
         ), "expecting `logdir` to be a prefix of `checkpoint_path`"
         rel_path = os.path.relpath(checkpoint_path, logdir)
         tokens = rel_path.split(os.sep)
-        return os.path.join(tokens[0], "")
+        return os.path.join(tokens[0])
 
     @staticmethod
     def make_checkpoint_dir(
@@ -239,6 +241,7 @@ class TrainableUtil:
         return chkpt_df
 
 
+@DeveloperAPI
 class PlacementGroupUtil:
     @staticmethod
     def get_remote_worker_options(

@@ -31,7 +31,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 if TYPE_CHECKING:
@@ -54,7 +54,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
         existing_model: Optional[ModelV2] = None,
@@ -143,7 +143,7 @@ class DynamicTFPolicyV2(TFPolicy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def get_default_config(self) -> TrainerConfigDict:
+    def get_default_config(self) -> AlgorithmConfigDict:
         return {}
 
     @DeveloperAPI
@@ -152,7 +152,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         return {}
 
@@ -233,11 +233,11 @@ class DynamicTFPolicyV2(TFPolicy):
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
+            policy: The Policy object that generated the loss tensor and
                 that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            loss (TensorType): The loss tensor for which gradients should be
+            loss: The loss tensor for which gradients should be
                 calculated.
 
         Returns:
@@ -257,11 +257,11 @@ class DynamicTFPolicyV2(TFPolicy):
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
+            policy: The Policy object that generated the loss tensor and
                 that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            grads (ModelGradients): The gradient tensor to be applied.
+            grads: The gradient tensor to be applied.
 
         Returns:
             "tf.Operation": TF operation that applies supplied gradients.
@@ -504,7 +504,7 @@ class DynamicTFPolicyV2(TFPolicy):
         Input_dict: Str -> tf.placeholders, dummy_batch: str -> np.arrays.
 
         Args:
-            view_requirements (ViewReqs): The view requirements dict.
+            view_requirements: The view requirements dict.
             existing_inputs (Dict[str, tf.placeholder]): A dict of already
                 existing placeholders.
 
@@ -1045,4 +1045,4 @@ class DynamicTFPolicyV2(TFPolicy):
             else:
                 return self.compute_gradients_fn(optimizers[0], losses[0])
         else:
-            return super().gradients(self, optimizers, losses)
+            return super().gradients(optimizers, losses)
