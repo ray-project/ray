@@ -19,6 +19,7 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
+    DEFAULT_MAX_HTTP_REQ_IN_PROGRESS,
 )
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -35,13 +36,73 @@ class StateHead(dashboard_utils.DashboardHeadModule):
     ray.list_actors(), ray.get_actor(), ray.summary_actors().
     """
 
-    def __init__(self, dashboard_head):
+    def __init__(
+        self,
+        dashboard_head,
+    ):
+        """Initialize the State Head for handling RESTful requests from State API Client"""
         super().__init__(dashboard_head)
         self._state_api_data_source_client = None
         self._state_api = None
         self._log_api = None
+
+        # Rate limiting related fields
+        self._num_requests_in_progress = 0
+        # TODO(rickyyx): We might want to allow this to be set from external.
+        # It is currently hard w/o refactoring since the __init__ function only
+        # takes in the dashboard_head as like other head modules.
+        self._max_http_req_in_progress = DEFAULT_MAX_HTTP_REQ_IN_PROGRESS
+
         DataSource.nodes.signal.append(self._update_raylet_stubs)
         DataSource.agents.signal.append(self._update_agent_stubs)
+
+    def enforce_max_concurrent_calls(func):
+        """
+        Returning closure here to avoid passing 'self' to the
+        'enforce_max_concurrent_calls' decorator.
+
+        Applying this as a decorator will enforce max concurrent invocations
+        of the async functions being decorated.
+        Examples:
+            ```
+            @enforce_max_concurrent_calls
+            async def fn(self):
+              ...
+            ```
+        When decorating functions already with @routes.get(...), this must be
+        added below then the routes decorators:
+            ```
+            @routes.get('/')
+            @enforce_max_concurrent_calls
+            async def fn(self):
+                ...
+
+            ```
+        """
+
+        async def async_wrapper(self, *args, **kwargs):
+            if (
+                self._max_http_req_in_progress >= 0
+                and self._num_requests_in_progress >= self._max_http_req_in_progress
+            ):
+                return self._reply(
+                    success=False,
+                    error_message=(
+                        "Max number of in-progress requests="
+                        f"{self._max_http_req_in_progress} reached."
+                        "To set a higher limit, pass XXXX in "  # TODO(rickyyx)
+                    ),
+                    result=None,
+                )
+            logger.debug(f"concurrent = {self._num_requests_in_progress}")
+            self._num_requests_in_progress += 1
+            try:
+                ret = await func(self, *args, **kwargs)
+            finally:
+                self._num_requests_in_progress -= 1
+            return ret
+
+        return async_wrapper
 
     def _options_from_req(self, req: aiohttp.web.Request) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
@@ -135,10 +196,12 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/actors")
+    @enforce_max_concurrent_calls
     async def list_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_actors, req)
 
     @routes.get("/api/v0/jobs")
+    @enforce_max_concurrent_calls
     async def list_jobs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         try:
             result = self._state_api.list_jobs(option=self._options_from_req(req))
@@ -151,32 +214,39 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/nodes")
+    @enforce_max_concurrent_calls
     async def list_nodes(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_nodes, req)
 
     @routes.get("/api/v0/placement_groups")
+    @enforce_max_concurrent_calls
     async def list_placement_groups(
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_placement_groups, req)
 
     @routes.get("/api/v0/workers")
+    @enforce_max_concurrent_calls
     async def list_workers(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_workers, req)
 
     @routes.get("/api/v0/tasks")
+    @enforce_max_concurrent_calls
     async def list_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_tasks, req)
 
     @routes.get("/api/v0/objects")
+    @enforce_max_concurrent_calls
     async def list_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_objects, req)
 
+    @enforce_max_concurrent_calls
     @routes.get("/api/v0/runtime_envs")
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
     @routes.get("/api/v0/logs")
+    @enforce_max_concurrent_calls
     async def list_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Return a list of log files on a given node id.
 
@@ -219,6 +289,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         return self._reply(success=True, error_message="", result=result)
 
     @routes.get("/api/v0/logs/{media_type}")
+    @enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
         # TODO(sang): We need a better error handling for streaming
         # when we refactor the server framework.
@@ -273,14 +344,17 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/v0/tasks/summarize")
+    @enforce_max_concurrent_calls
     async def summarize_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_summary_api(self._state_api.summarize_tasks, req)
 
     @routes.get("/api/v0/actors/summarize")
+    @enforce_max_concurrent_calls
     async def summarize_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_summary_api(self._state_api.summarize_actors, req)
 
     @routes.get("/api/v0/objects/summarize")
+    @enforce_max_concurrent_calls
     async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_summary_api(self._state_api.summarize_objects, req)
 
@@ -293,3 +367,6 @@ class StateHead(dashboard_utils.DashboardHeadModule):
     @staticmethod
     def is_minimal_module():
         return False
+
+    # NOTE(rickyyx): This is needed so that it could be used in test
+    enforce_max_concurrent_calls = staticmethod(enforce_max_concurrent_calls)

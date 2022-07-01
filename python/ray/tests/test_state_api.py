@@ -2,7 +2,7 @@ import json
 import sys
 from dataclasses import dataclass
 from typing import List, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -2066,6 +2066,90 @@ def test_detail(shutdown_only):
     assert "serialized_runtime_env" in result.output
     assert "test_detail" in result.output
     assert "actor_id" in result.output
+
+
+@pytest.mark.parametrize(
+    "api_func",
+    [
+        # NOTE(rickyyx): arbitrary list, not exhaust.
+        # Each test takes a while so probably not a good idea to
+        # test all of them?
+        list_objects,
+        list_tasks,
+        list_actors,
+        list_nodes,
+        list_placement_groups,
+    ],
+)
+def test_state_api_server_enforce_concurrent_http_requests(api_func):
+    import time
+    import multiprocessing as mp
+    import queue
+
+    ray.shutdown()
+    ray.init()
+
+    # Set up scripts
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    @ray.remote
+    class Actor:
+        pass
+
+    task = f.remote()  # noqa
+    actor = Actor.remote()  # noqa
+    actor_runtime_env = Actor.options(  # noqa
+        runtime_env={"pip": ["requests"]}
+    ).remote()
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
+
+    objs_ = [ray.put(x) for x in range(10)]
+
+    # Wait for results to be populate on the cluster
+    time.sleep(3)
+
+    def try_state_query(q):
+        try:
+            api_func()
+        except RayStateApiException as e:
+            # Other exceptions will be thrown
+            if "Max number of in-progress requests" in str(e):
+                q.put(1)
+            else:
+                q.put(e)
+        except Exception as e:
+            q.put(e)
+        else:
+            q.put(0)
+
+    q = mp.Queue()
+    num_procs = 5000
+    procs = [mp.Process(target=try_state_query, args=(q,)) for _ in range(num_procs)]
+
+    [p.start() for p in procs]
+    max_concurrent_reqs_error = 0
+    for _ in range(num_procs):
+        try:
+            res = q.get(timeout=5)
+            if isinstance(res, Exception):
+                assert False, f"Error when list_objects: {res}"
+            elif isinstance(res, int):
+                max_concurrent_reqs_error += res
+            else:
+                raise ValueError(res)
+        except queue.Empty:
+            assert False, "Failed to get some results from a subprocess"
+
+    # We should run into max in-progress requests errors
+    assert max_concurrent_reqs_error > 0
+    [p.join(5) for p in procs]
+    for proc in procs:
+        assert proc.exitcode is not None, "Some processes still running."
+        assert proc.exitcode == 0, f"Some processes exit {proc.exitcode}"
 
 
 if __name__ == "__main__":
