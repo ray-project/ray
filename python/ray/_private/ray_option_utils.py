@@ -1,4 +1,5 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
@@ -74,6 +75,7 @@ _common_options = {
     "name": Option((str, type(None))),
     "num_cpus": _resource_option("num_cpus"),
     "num_gpus": _resource_option("num_gpus"),
+    "object_store_memory": _counting_option("object_store_memory", False),
     # TODO(suquark): "placement_group", "placement_group_bundle_index"
     # and "placement_group_capture_child_tasks" are deprecated,
     # use "scheduling_strategy" instead.
@@ -111,6 +113,11 @@ _task_only_options = {
     # override "_common_options"
     "num_cpus": _resource_option("num_cpus", default_value=1),
     "num_returns": _counting_option("num_returns", False, default_value=1),
+    "object_store_memory": Option(  # override "_common_options"
+        (int, type(None)),
+        lambda x: x is None,
+        "Setting 'object_store_memory' is not implemented for tasks",
+    ),
     "retry_exceptions": Option(bool, default_value=False),
 }
 
@@ -218,6 +225,13 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
 
     if options.get("get_if_exists") and not options.get("name"):
         raise ValueError("The actor name must be specified to use `get_if_exists`.")
+
+    if "object_store_memory" in options:
+        warnings.warn(
+            "DeprecationWarning: Setting 'object_store_memory'"
+            " for actors is deprecated and will be removed"
+        )
+
     _check_deprecate_placement_group(options)
 
 

@@ -327,6 +327,7 @@ class _ActorClassMetadata:
         num_cpus,
         num_gpus,
         memory,
+        object_store_memory,
         resources,
         accelerator_type,
         runtime_env,
@@ -344,6 +345,7 @@ class _ActorClassMetadata:
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
+        self.object_store_memory = object_store_memory
         self.resources = resources
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
@@ -780,7 +782,7 @@ class ActorClass:
         # TODO(suquark): In the original code, memory is not considered as resources,
         # when deciding the default CPUs. It is strange, but we keep the original
         # semantics in case that it breaks user applications & tests.
-        if not set(resources.keys()).difference({"memory"}):
+        if not set(resources.keys()).difference({"memory", "object_store_memory"}):
             # In the default case, actors acquire no resources for
             # their lifetime, and actor methods will require 1 CPU.
             resources.setdefault("CPU", ray_constants.DEFAULT_ACTOR_CREATION_CPU_SIMPLE)

@@ -1,3 +1,4 @@
+import warnings
 from typing import Dict, List, Optional, Union
 
 import ray
@@ -176,6 +177,12 @@ def placement_group(
             # Make sure the memory resource can be
             # transformed to memory unit.
             to_memory_units(bundle["memory"], True)
+
+        if "object_store_memory" in bundle.keys():
+            warnings.warn(
+                "DeprecationWarning: Setting 'object_store_memory'"
+                " for placement group bundle is deprecated and will be removed"
+            )
 
     if lifetime is None:
         detached = False
