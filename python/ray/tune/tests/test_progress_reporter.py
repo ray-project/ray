@@ -1,14 +1,12 @@
-from turtle import done
-import pytest
 import collections
 import os
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
-from ray.tune.trial import Trial
-from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
@@ -16,9 +14,11 @@ from ray.tune.progress_reporter import (
     _fair_filter_trials,
     best_trial_str,
     detect_reporter,
-    trial_progress_str,
     time_passed_str,
+    trial_progress_str,
 )
+from ray.tune.result import AUTO_RESULT_KEYS
+from ray.tune.trial import Trial
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -588,13 +588,13 @@ class ProgressReporterTest(unittest.TestCase):
         reporter5.report(trials, done=False)
         assert EXPECTED_SORT_RESULT_UNSORTED in reporter5._output
 
-        # Sort by metric when metric is passed using reporter.setup (called from tune.run) 
+        # Sort by metric when metric is passed using
+        # reporter.setup (called from tune.run)
         # calling repoter.set_search_properties
         reporter6 = TestReporter(max_progress_rows=4, sort_by_metric=True)
         reporter6.set_search_properties(metric="metric_1", mode="max")
         reporter6.report(trials, done=False)
         assert EXPECTED_SORT_RESULT_DESC in reporter6._output
-        
 
     def testEndToEndReporting(self):
         try:
