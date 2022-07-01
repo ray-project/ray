@@ -14,11 +14,9 @@ async def test_max_concurrent_in_progress_query(extra_req_num):
     import json
 
     dashboard_mock = MagicMock()
-    client_mock = MagicMock()
     max_req = 10
-    state_head = StateHead(
-        dashboard_mock, client_mock, max_http_req_in_progress=max_req
-    )
+    state_head = StateHead(dashboard_mock)
+    state_head._max_http_req_in_progress = max_req
 
     # Decorator with states
     @state_head.enforce_max_concurrent_calls
@@ -39,7 +37,7 @@ async def test_max_concurrent_in_progress_query(extra_req_num):
     expected_fail_cnt = max(0, extra_req_num)
     assert fail_cnt == expected_fail_cnt, (
         f"{expected_fail_cnt} out of {max_req + extra_req_num} "
-        "concurrent runs should fail with max={max_req}"
+        f"concurrent runs should fail with max={max_req} but {fail_cnt}."
     )
 
     assert state_head._num_requests_in_progress == 0, "All requests should be done"
