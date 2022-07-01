@@ -39,7 +39,7 @@ RAY_INIT_ADDRESS_HELP_STR = (
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
     "Address to use to query the Ray dashboard agent (defaults to "
     "http://localhost:52365). Can also be specified using the "
-    "RAY_ADDRESS environment variable."
+    "RAY_AGENT_ADDRESS environment variable."
 )
 
 
