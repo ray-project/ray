@@ -357,7 +357,7 @@ class SimpleBlockAccessor(BlockAccessor):
         key: KeyFn,
         aggs: Tuple[AggregateFn],
         finalize: bool,
-    ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
+    ) -> Tuple[Block[Tuple[KeyType, Union[U, AggType]]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,
