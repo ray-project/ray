@@ -1,6 +1,6 @@
 import os
 import pytest
-
+from ray.tests.conftest import *  # noqa
 from dashboard.head import DashboardHead  # noqa
 
 
