@@ -2,14 +2,14 @@ from typing import Optional
 from collections import deque
 
 from ray.workflow import serialization
-from ray.workflow.common import StepID, WorkflowRef
+from ray.workflow.common import TaskID, WorkflowRef
 from ray.workflow.exceptions import WorkflowStepNotRecoverableError
 from ray.workflow import workflow_storage
 from ray.workflow.workflow_state import WorkflowExecutionState, Task
 
 
 def workflow_state_from_storage(
-    workflow_id: str, step_id: Optional[StepID]
+    workflow_id: str, task_id: Optional[TaskID]
 ) -> WorkflowExecutionState:
     """Try to construct a workflow (step) that recovers the workflow step.
     If the workflow step already has an output checkpointing file, we return
@@ -17,7 +17,7 @@ def workflow_state_from_storage(
 
     Args:
         workflow_id: The ID of the workflow.
-        step_id: The ID of the output task. If None, it will be the entrypoint of
+        task_id: The ID of the output task. If None, it will be the entrypoint of
             the workflow.
 
     Returns:
@@ -25,18 +25,18 @@ def workflow_state_from_storage(
             if it has been checkpointed.
     """
     reader = workflow_storage.WorkflowStorage(workflow_id)
-    if step_id is None:
-        step_id = reader.get_entrypoint_step_id()
+    if task_id is None:
+        task_id = reader.get_entrypoint_step_id()
 
     # Construct the workflow execution state.
-    state = WorkflowExecutionState(output_task_id=step_id)
-    state.output_task_id = step_id
+    state = WorkflowExecutionState(output_task_id=task_id)
+    state.output_task_id = task_id
 
     visited_tasks = set()
-    dag_visit_queue = deque([step_id])
+    dag_visit_queue = deque([task_id])
     with serialization.objectref_cache():
         while dag_visit_queue:
-            task_id: StepID = dag_visit_queue.popleft()
+            task_id: TaskID = dag_visit_queue.popleft()
             if task_id in visited_tasks:
                 continue
             visited_tasks.add(task_id)

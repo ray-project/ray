@@ -15,7 +15,7 @@ from ray.util.annotations import PublicAPI
 
 # Alias types
 Event = Any
-StepID = str
+TaskID = str
 WorkflowOutputType = ObjectRef
 
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
@@ -61,7 +61,7 @@ class WorkflowRef:
     """
 
     # The ID of the step that produces the output of the workflow.
-    task_id: StepID
+    task_id: TaskID
     # The ObjectRef of the output. If it is "None", then the output has been
     # saved in the storage, and we need to check the workflow management actor
     # for the object ref.
