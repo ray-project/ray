@@ -74,6 +74,7 @@ _common_options = {
     "name": Option((str, type(None))),
     "num_cpus": _resource_option("num_cpus"),
     "num_gpus": _resource_option("num_gpus"),
+    "object_store_memory": _counting_option("object_store_memory", False),
     # TODO(suquark): "placement_group", "placement_group_bundle_index"
     # and "placement_group_capture_child_tasks" are deprecated,
     # use "scheduling_strategy" instead.
@@ -111,6 +112,11 @@ _task_only_options = {
     # override "_common_options"
     "num_cpus": _resource_option("num_cpus", default_value=1),
     "num_returns": _counting_option("num_returns", False, default_value=1),
+    "object_store_memory": Option(  # override "_common_options"
+        (int, type(None)),
+        lambda x: x is None,
+        "Setting 'object_store_memory' is not implemented for tasks",
+    ),
     "retry_exceptions": Option(bool, default_value=False),
 }
 

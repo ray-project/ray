@@ -89,13 +89,15 @@ class _ResourceUpdater:
         if self._last_resource_refresh > 0:
             status = (
                 "Resources requested: {}/{} CPUs, {}/{} GPUs, "
-                "{}/{} GiB heap".format(
+                "{}/{} GiB heap, {}/{} GiB objects".format(
                     total_resources.pop("CPU", 0),
                     self._avail_resources.cpu,
                     total_resources.pop("GPU", 0),
                     self._avail_resources.gpu,
                     _to_gb(total_resources.pop("memory", 0.0)),
                     _to_gb(self._avail_resources.memory),
+                    _to_gb(total_resources.pop("object_store_memory", 0.0)),
+                    _to_gb(self._avail_resources.object_store_memory),
                 )
             )
             customs = ", ".join(
