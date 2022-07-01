@@ -6,7 +6,11 @@ import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.consts import RAY_STATE_SERVER_MAX_HTTP_REQUEST
+from ray.dashboard.consts import (
+    RAY_STATE_SERVER_MAX_HTTP_REQUEST,
+    RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
+    RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
+)
 from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.optional_utils import rest_response
@@ -24,6 +28,7 @@ from ray.experimental.state.common import (
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
 from ray.experimental.state.util import convert_string_to_type
+
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -49,7 +54,9 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         # Rate limiting related fields
         self._num_requests_in_progress = 0
         self._max_http_req_in_progress = RAY_STATE_SERVER_MAX_HTTP_REQUEST
-        logger.info(f"val={self._max_http_req_in_progress}")
+        if self._max_http_req_in_progress > RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED:
+            # We don't allow users to configure too high a rate limit
+            self._max_http_req_in_progress = RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED
 
         DataSource.nodes.signal.append(self._update_raylet_stubs)
         DataSource.agents.signal.append(self._update_agent_stubs)
@@ -83,16 +90,19 @@ class StateHead(dashboard_utils.DashboardHeadModule):
                 self._max_http_req_in_progress >= 0
                 and self._num_requests_in_progress >= self._max_http_req_in_progress
             ):
+                logger.debug(
+                    f"Max concurrent requests reached = {self._num_requests_in_progress}"
+                )
                 return self._reply(
                     success=False,
                     error_message=(
                         "Max number of in-progress requests="
                         f"{self._max_http_req_in_progress} reached."
-                        "To set a higher limit, pass XXXX in "  # TODO(rickyyx)
+                        "To set a higher limit, set environment variable: "
+                        f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='1000'"
                     ),
                     result=None,
                 )
-            logger.debug(f"concurrent = {self._num_requests_in_progress}")
             self._num_requests_in_progress += 1
             try:
                 ret = await func(self, *args, **kwargs)
