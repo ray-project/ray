@@ -32,7 +32,10 @@ To get started, install Ray AIR via ``pip install -U "ray[air]"``
 Quick Start
 -----------
 
-Preprocess your data with a ``Preprocessor``.
+Below, we demonstrate how you can use the Ray libraries in a seamless flow
+between distributed frameworks (e.g., XGBoost, Pytorch, and Tensorflow): 
+
+Below, let's start by preprocessing your data with Ray AIR's ``Preprocessors``:
 
 .. tabbed:: XGBoost
 

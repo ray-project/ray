@@ -7,11 +7,13 @@ from ray.data.preprocessors import StandardScaler
 
 import pandas as pd
 
+# Load the data from S3.
 dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
-train_dataset, valid_dataset = train_test_split(
-    dataset, test_size=0.3)
+# Split the data into training and validation sets.
+train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
 test_dataset = valid_dataset.map_batches(
-    lambda df: df.drop("target", axis=1), batch_format="pandas")
+    lambda df: df.drop("target", axis=1), batch_format="pandas"
+)
 
 # Create a preprocessor to scale some columns
 columns_to_scale = ["mean radius", "mean texture"]
@@ -25,7 +27,7 @@ from ray.train.xgboost import XGBoostTrainer
 trainer = XGBoostTrainer(
     scaling_config={
         # Number of workers to use for data parallelism.
-        "num_workers": 2, 
+        "num_workers": 2,
         # Whether to use GPU acceleration.
         "use_gpu": False,
     },
@@ -51,22 +53,18 @@ from ray.tune.tuner import Tuner, TuneConfig
 tuner = Tuner(
     trainer,
     param_space={"params": {"max_depth": tune.randint(1, 9)}},
-    tune_config=TuneConfig(
-        num_samples=5, 
-        metric="train-logloss", 
-        mode="min"),
+    tune_config=TuneConfig(num_samples=5, metric="train-logloss", mode="min"),
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
-print(best_result)
+print("Best results", best_result)
 # __air_xgb_tuner_end__
 
 # __air_xgb_batchpred_start__
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostPredictor
 
-batch_predictor = BatchPredictor.from_checkpoint(
-    result.checkpoint, XGBoostPredictor)
+batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
 print("PREDICTED PROBABILITIES")
