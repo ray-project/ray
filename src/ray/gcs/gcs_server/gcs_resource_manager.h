@@ -37,7 +37,7 @@ namespace gcs {
 /// from being too large to review.
 ///
 /// 1). Remove `node_resource_usages_` related code as it could be calculated from
-/// `cluster_resource_manager`
+/// `cluseter_resource_mananger`
 /// 2). Move all resource-write-related logic out from `gcs_resource_manager`
 /// 3). Move `placement_group_load_` from `gcs_resource_manager` to
 /// `placement_group_manager` and make `gcs_resource_manager` depend on
