@@ -136,7 +136,7 @@ py_test(
     name = "test_batch_predictor",
     size = "small",
     srcs = ["tests/test_batch_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib"]
 )
 
