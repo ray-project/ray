@@ -319,7 +319,11 @@ def _get_num_gpus(
         for key in k8s_resource_limits:
             # e.g. nvidia.com/gpu
             if key.endswith("/gpu"):
-                num_gpus = int(k8s_resource_limits[key])
+                # Typically, this is a string representing an interger, e.g. "1".
+                gpu_resource_quantity = k8s_resource_limits[key]
+                # Convert to int, making no assumptions on the gpu_resource_quantity,
+                # besides that it's valid as a K8s resource quantity.
+                num_gpus = _round_up_k8s_quantity(gpu_resource_quantity)
                 if num_gpus > 0:
                     # Only one GPU type supported for now, break out on first
                     # "/gpu" match.
