@@ -2450,7 +2450,7 @@ def test_block_builder_for_block(ray_start_regular_shared):
         BlockBuilder.for_block(str())
 
 
-def test_groupby_arrow(ray_start_regular_shared):
+def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
     # Test empty dataset.
     agg_ds = (
         ray.data.range_table(10)
@@ -2529,7 +2529,9 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_count(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_count(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
     # Test built-in count aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
@@ -2556,7 +2558,9 @@ def test_groupby_tabular_count(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_sum(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
     # Test built-in sum aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_sum with: {seed}")
@@ -3932,67 +3936,58 @@ def test_random_block_order(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
-    ctx = ray.data.context.DatasetContext.get_current()
-
-    try:
-        original = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
-
-        def range(n, parallelism=200):
-            ds = ray.data.range(n, parallelism=parallelism)
-            if pipelined:
-                pipe = ds.repeat(2)
-                pipe.random_shuffle = pipe.random_shuffle_each_window
-                return pipe
-            else:
-                return ds
-
-        r1 = range(100).random_shuffle().take(999)
-        r2 = range(100).random_shuffle().take(999)
-        assert r1 != r2, (r1, r2)
-
-        r1 = range(100, parallelism=1).random_shuffle().take(999)
-        r2 = range(100, parallelism=1).random_shuffle().take(999)
-        assert r1 != r2, (r1, r2)
-
-        r1 = range(100).random_shuffle(num_blocks=1).take(999)
-        r2 = range(100).random_shuffle(num_blocks=1).take(999)
-        assert r1 != r2, (r1, r2)
-
-        r0 = range(100, parallelism=5).take(999)
-        r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
-        assert r1 == r2, (r1, r2)
-        assert r1 != r0, (r1, r0)
-        assert r1 != r3, (r1, r3)
-
-        r0 = ray.data.range_table(100, parallelism=5).take(999)
-        r1 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r2 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
-        assert r1 == r2, (r1, r2)
-        assert r1 != r0, (r1, r0)
-
-        # Test move.
-        ds = range(100, parallelism=2)
-        r1 = ds.random_shuffle().take(999)
+    def range(n, parallelism=200):
+        ds = ray.data.range(n, parallelism=parallelism)
         if pipelined:
-            with pytest.raises(RuntimeError):
-                ds = ds.map(lambda x: x).take(999)
+            pipe = ds.repeat(2)
+            pipe.random_shuffle = pipe.random_shuffle_each_window
+            return pipe
         else:
-            ds = ds.map(lambda x: x).take(999)
-        r2 = range(100).random_shuffle().take(999)
-        assert r1 != r2, (r1, r2)
+            return ds
 
-        # Test empty dataset.
-        ds = ray.data.from_items([])
-        r1 = ds.random_shuffle()
-        assert r1.count() == 0
-        assert r1.take() == ds.take()
-    finally:
-        ctx.use_push_based_shuffle = original
+    r1 = range(100).random_shuffle().take(999)
+    r2 = range(100).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    r1 = range(100, parallelism=1).random_shuffle().take(999)
+    r2 = range(100, parallelism=1).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    r1 = range(100).random_shuffle(num_blocks=1).take(999)
+    r2 = range(100).random_shuffle(num_blocks=1).take(999)
+    assert r1 != r2, (r1, r2)
+
+    r0 = range(100, parallelism=5).take(999)
+    r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+    assert r1 != r3, (r1, r3)
+
+    r0 = ray.data.range_table(100, parallelism=5).take(999)
+    r1 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r2 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+
+    # Test move.
+    ds = range(100, parallelism=2)
+    r1 = ds.random_shuffle().take(999)
+    if pipelined:
+        with pytest.raises(RuntimeError):
+            ds = ds.map(lambda x: x).take(999)
+    else:
+        ds = ds.map(lambda x: x).take(999)
+    r2 = range(100).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    r1 = ds.random_shuffle()
+    assert r1.count() == 0
+    assert r1.take() == ds.take()
 
 
 def test_random_shuffle_check_random(shutdown_only):
@@ -4043,47 +4038,38 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
-    ctx = ray.data.context.DatasetContext.get_current()
-    try:
-        original = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
-        cluster = ray_start_cluster
-        cluster.add_node(
-            resources={"bar:1": 100},
-            num_cpus=10,
-            _system_config={"max_direct_call_object_size": 0},
-        )
-        cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
-        cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+    ray.init(cluster.address)
 
-        ray.init(cluster.address)
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
 
-        @ray.remote
-        def get_node_id():
-            return ray.get_runtime_context().node_id.hex()
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
-        node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
-        node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+    ds = ray.data.range(100, parallelism=2).random_shuffle()
+    blocks = ds.get_internal_block_refs()
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert "2 nodes used" in ds.stats()
 
-        ds = ray.data.range(100, parallelism=2).random_shuffle()
-        blocks = ds.get_internal_block_refs()
-        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-        location_data = ray.experimental.get_object_locations(blocks)
-        locations = []
-        for block in blocks:
-            locations.extend(location_data[block]["node_ids"])
-        assert "2 nodes used" in ds.stats()
-
-        if not use_push_based_shuffle:
-            # We don't check this for push-based shuffle since it will try to
-            # colocate reduce tasks to improve locality.
-            assert set(locations) == {node1_id, node2_id}
-
-    finally:
-        ctx.use_push_based_shuffle = original
+    if not use_push_based_shuffle:
+        # We don't check this for push-based shuffle since it will try to
+        # colocate reduce tasks to improve locality.
+        assert set(locations) == {node1_id, node2_id}
 
 
 def test_parquet_read_spread(ray_start_cluster, tmp_path):

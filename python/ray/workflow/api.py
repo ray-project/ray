@@ -8,19 +8,16 @@ from ray.dag.input_node import DAGInputData
 from ray.remote_function import RemoteFunction
 
 from ray.workflow import execution
-from ray.workflow.step_function import WorkflowStepFunction
 
 # avoid collision with arguments & APIs
 
 from ray.workflow.common import (
     WorkflowStatus,
-    Workflow,
     Event,
     WorkflowRunningError,
     WorkflowNotFoundError,
-    WorkflowStepRuntimeOptions,
-    StepType,
     asyncio_run,
+    validate_user_metadata,
 )
 from ray.workflow import serialization
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
@@ -59,59 +56,6 @@ def init() -> None:
 def _ensure_workflow_initialized() -> None:
     if not _is_workflow_initialized or not ray.is_initialized():
         init()
-
-
-def make_step_decorator(
-    step_options: "WorkflowStepRuntimeOptions",
-    name: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-):
-    def decorator(func):
-        return WorkflowStepFunction(
-            func, step_options=step_options, name=name, metadata=metadata
-        )
-
-    return decorator
-
-
-@PublicAPI(stability="beta")
-def step(*args, **kwargs):
-    """A decorator used for creating workflow steps.
-
-    Examples:
-        >>> from ray import workflow
-        >>> Flight, Hotel = ... # doctest: +SKIP
-        >>> @workflow.step # doctest: +SKIP
-        ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
-        ...    return Flight(...) # doctest: +SKIP
-
-        >>> @workflow.step(max_retries=3, catch_exceptions=True) # doctest: +SKIP
-        ... def book_hotel(dest: str) -> Hotel: # doctest: +SKIP
-        ...    return Hotel(...) # doctest: +SKIP
-
-    """
-    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        options = WorkflowStepRuntimeOptions.make(step_type=StepType.FUNCTION)
-        return make_step_decorator(options)(args[0])
-    if len(args) != 0:
-        raise ValueError(f"Invalid arguments for step decorator {args}")
-    max_retries = kwargs.pop("max_retries", None)
-    catch_exceptions = kwargs.pop("catch_exceptions", None)
-    name = kwargs.pop("name", None)
-    metadata = kwargs.pop("metadata", None)
-    allow_inplace = kwargs.pop("allow_inplace", False)
-    checkpoint = kwargs.pop("checkpoint", None)
-    ray_options = kwargs
-
-    options = WorkflowStepRuntimeOptions.make(
-        step_type=StepType.FUNCTION,
-        catch_exceptions=catch_exceptions,
-        max_retries=max_retries,
-        allow_inplace=allow_inplace,
-        checkpoint=checkpoint,
-        ray_options=ray_options,
-    )
-    return make_step_decorator(options, name, metadata)
 
 
 @PublicAPI(stability="beta")
@@ -434,105 +378,89 @@ def delete(workflow_id: str) -> None:
     wf_storage.delete_workflow()
 
 
-WaitResult = Tuple[List[Any], List[Workflow]]
-
-
 @PublicAPI(stability="beta")
-def wait(
-    workflows: List[Workflow], num_returns: int = 1, timeout: Optional[float] = None
-) -> Workflow[WaitResult]:
-    """Return a list of result of workflows that are ready and a list of
-    workflows that are pending.
+def create(dag_node: "DAGNode", *args, **kwargs) -> "DAGNode":
+    """Converts a DAG into a workflow.
+
+    TODO(suquark): deprecate this API.
 
     Examples:
+        >>> import ray
         >>> from ray import workflow
-        >>> task, forever = ... # doctest: +SKIP
-        >>> tasks = [task.step() for _ in range(3)] # doctest: +SKIP
-        >>> wait_step = workflow.wait(tasks, num_returns=1) # doctest: +SKIP
-        >>> print(wait_step.run()) # doctest: +SKIP
-        ([result_1], [<Workflow object>, <Workflow object>])
+        >>> Flight, Reservation, Trip = ... # doctest: +SKIP
+        >>> @ray.remote # doctest: +SKIP
+        ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
+        ...    return Flight(...) # doctest: +SKIP
+        >>> @ray.remote # doctest: +SKIP
+        ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
+        ...    return Reservation(...) # doctest: +SKIP
+        >>> @ray.remote # doctest: +SKIP
+        ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
+        ...    return Trip(...) # doctest: +SKIP
 
-        >>> tasks = [task.step() for _ in range(2)] + [forever.step()] # doctest: +SKIP
-        >>> wait_step = workflow.wait(tasks, num_returns=3, timeout=10) # doctest: +SKIP
-        >>> print(wait_step.run()) # doctest: +SKIP
-        ([result_1, result_2], [<Workflow object>])
-
-    If timeout is set, the function returns either when the requested number of
-    workflows are ready or when the timeout is reached, whichever occurs first.
-    If it is not set, the function simply waits until that number of workflows
-    is ready and returns that exact number of workflows.
-
-    This method returns two lists. The first list consists of workflows
-    references that correspond to workflows that are ready. The second
-    list corresponds to the rest of the workflows (which may or may not be
-    ready).
-
-    Ordering of the input list of workflows is preserved. That is, if A
-    precedes B in the input list, and both are in the ready list, then A will
-    precede B in the ready list. This also holds true if A and B are both in
-    the remaining list.
-
-    This method will issue a warning if it's running inside an async context.
-
-    Args:
-        workflows: List of workflows that may
-            or may not be ready. Note that these workflows must be unique.
-        num_returns: The number of workflows that should be returned.
-        timeout: The maximum amount of time in seconds to wait before
-            returning.
-
-    Returns:
-        A list of ready workflow results that are ready and a list of the
-        remaining workflows.
-    """
-    from ray.workflow import serialization_context
-    from ray.workflow.common import WorkflowData
-
-    for w in workflows:
-        if not isinstance(w, Workflow):
-            raise TypeError("The input of workflow.wait should be a list of workflows.")
-    wait_inputs = serialization_context.make_workflow_inputs(workflows)
-    step_options = WorkflowStepRuntimeOptions.make(
-        step_type=StepType.WAIT,
-        # Pass the options through Ray options. "num_returns" conflicts with
-        # the "num_returns" for Ray remote functions, so we need to wrap it
-        # under "wait_options".
-        ray_options={
-            "wait_options": {
-                "num_returns": num_returns,
-                "timeout": timeout,
-            }
-        },
-    )
-    workflow_data = WorkflowData(
-        func_body=None,
-        inputs=wait_inputs,
-        step_options=step_options,
-        name="workflow.wait",
-        user_metadata={},
-    )
-    return Workflow(workflow_data)
-
-
-@PublicAPI(stability="beta")
-def create(dag_node: "DAGNode", *args, **kwargs) -> Workflow:
-    """Converts a DAG into a workflow.
+        >>> flight1 = book_flight.bind("OAK", "SAN") # doctest: +SKIP
+        >>> flight2 = book_flight.bind("SAN", "OAK") # doctest: +SKIP
+        >>> hotel = book_hotel.bind("SAN") # doctest: +SKIP
+        >>> trip = finalize_trip.bind([flight1, flight2, hotel]) # doctest: +SKIP
+        >>> result = workflow.create(trip).run() # doctest: +SKIP
 
     Args:
         dag_node: The DAG to be converted.
         args: Positional arguments of the DAG input node.
         kwargs: Keyword arguments of the DAG input node.
     """
-    from ray.workflow.dag_to_workflow import transform_ray_dag_to_workflow
-
     if not isinstance(dag_node, DAGNode):
         raise TypeError("Input should be a DAG.")
-    input_context = DAGInputData(*args, **kwargs)
-    return transform_ray_dag_to_workflow(dag_node, input_context)
+    input_data = DAGInputData(*args, **kwargs)
+
+    def run_async(
+        workflow_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None
+    ):
+        """Run a workflow asynchronously.
+
+        If the workflow with the given id already exists, it will be resumed.
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+            metadata: The metadata to add to the workflow. It has to be able
+                to serialize to json.
+
+        Returns:
+           The running result as ray.ObjectRef.
+
+        """
+        _ensure_workflow_initialized()
+        return execution.run(dag_node, input_data, workflow_id, metadata)
+
+    def run(
+        workflow_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Run a workflow.
+
+        If the workflow with the given id already exists, it will be resumed.
+
+
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+            metadata: The metadata to add to the workflow. It has to be able
+                to serialize to json.
+
+        Returns:
+            The running result.
+        """
+        return ray.get(run_async(workflow_id, metadata))
+
+    dag_node.run_async = run_async
+    dag_node.run = run
+    return dag_node
 
 
 @PublicAPI(stability="beta")
-def continuation(dag_node: "DAGNode") -> Union[Workflow, ray.ObjectRef]:
+def continuation(dag_node: "DAGNode") -> Union["DAGNode", Any]:
     """Converts a DAG into a continuation.
 
     The result depends on the context. If it is inside a workflow, it
@@ -589,6 +517,8 @@ class options:
             )
         from ray.workflow.common import WORKFLOW_OPTIONS
 
+        validate_user_metadata(workflow_options.get("metadata"))
+
         self.options = {"_metadata": {WORKFLOW_OPTIONS: workflow_options}}
 
     def keys(self):
@@ -605,7 +535,6 @@ class options:
 
 
 __all__ = (
-    "step",
     "resume",
     "get_output",
     "resume_all",
