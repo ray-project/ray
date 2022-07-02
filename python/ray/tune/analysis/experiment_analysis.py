@@ -29,12 +29,12 @@ from ray.tune.result import (
     CONFIG_PREFIX,
     TRAINING_ITERATION,
 )
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import (
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import (
     find_newest_experiment_checkpoint,
     load_trial_from_checkpoint,
 )
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
 from ray.util.annotations import PublicAPI
@@ -366,7 +366,11 @@ class ExperimentAnalysis:
 
     @property
     def trial_dataframes(self) -> Dict[str, DataFrame]:
-        """List of all dataframes of the trials."""
+        """List of all dataframes of the trials.
+
+        Each dataframe is indexed by iterations and contains reported
+        metrics.
+        """
         return self._trial_dataframes
 
     def dataframe(
@@ -436,7 +440,7 @@ class ExperimentAnalysis:
             )
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
-            checkpoints = trial.checkpoint_manager.best_checkpoints()
+            checkpoints = trial.get_trial_checkpoints()
             # Support metrics given as paths, e.g.
             # "info/learner/default_policy/policy_loss".
             return [

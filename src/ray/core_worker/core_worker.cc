@@ -1497,17 +1497,6 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   for (const auto &uri : runtime_env->uris().py_modules_uris()) {
     result.emplace_back(uri);
   }
-  if (!runtime_env->uris().conda_uri().empty()) {
-    const auto &uri = runtime_env->uris().conda_uri();
-    result.emplace_back(uri);
-  }
-  if (!runtime_env->uris().pip_uri().empty()) {
-    const auto &uri = runtime_env->uris().pip_uri();
-    result.emplace_back(uri);
-  }
-  for (const auto &uri : runtime_env->uris().plugin_uris()) {
-    result.emplace_back(uri);
-  }
   return result;
 }
 
@@ -3098,6 +3087,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
+  auto limit = request.has_limit() ? request.limit() : -1;
   auto stats = reply->mutable_core_worker_stats();
   // TODO(swang): Differentiate between tasks that are currently pending
   // execution and tasks that have finished but may be retried.
@@ -3134,13 +3124,13 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
 
   if (request.include_memory_info()) {
-    reference_counter_->AddObjectRefStats(plasma_store_provider_->UsedObjectsList(),
-                                          stats);
+    reference_counter_->AddObjectRefStats(
+        plasma_store_provider_->UsedObjectsList(), stats, limit);
     task_manager_->AddTaskStatusInfo(stats);
   }
 
   if (request.include_task_info()) {
-    task_manager_->FillTaskInfo(reply);
+    task_manager_->FillTaskInfo(reply, limit);
     for (const auto &current_running_task : current_tasks_) {
       reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
     }

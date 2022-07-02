@@ -28,6 +28,7 @@ from ray.serve.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
     SERVE_ROOT_URL_ENV_KEY,
+    SERVE_NAMESPACE,
 )
 from ray.serve.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve.endpoint_state import EndpointState
@@ -79,10 +80,8 @@ class ServeController:
     async def __init__(
         self,
         controller_name: str,
-        *,
         http_config: HTTPOptions,
         checkpoint_path: str,
-        head_node_id: str,
         detached: bool = False,
     ):
         configure_component_logger(
@@ -110,18 +109,24 @@ class ServeController:
             controller_name,
             detached,
             http_config,
-            head_node_id,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
+
         # Fetch all running actors in current cluster as source of current
         # replica state for controller failure recovery
-        all_current_actor_names = ray.util.list_named_actors()
+        all_current_actors = ray.util.list_named_actors(all_namespaces=True)
+        all_serve_actor_names = [
+            actor["name"]
+            for actor in all_current_actors
+            if actor["namespace"] == SERVE_NAMESPACE
+        ]
+
         self.deployment_state_manager = DeploymentStateManager(
             controller_name,
             detached,
             self.kv_store,
             self.long_poll_host,
-            all_current_actor_names,
+            all_serve_actor_names,
         )
 
         # Reference to Ray task executing most recent deployment request
@@ -306,26 +311,9 @@ class ServeController:
             deployment_config_proto_bytes
         )
         version = deployment_config.version
-        prev_version = deployment_config.prev_version
         replica_config = ReplicaConfig.from_proto_bytes(
             replica_config_proto_bytes, deployment_config.deployment_language
         )
-
-        if prev_version is not None:
-            existing_deployment_info = self.deployment_state_manager.get_deployment(
-                name
-            )
-            if existing_deployment_info is None or not existing_deployment_info.version:
-                raise ValueError(
-                    f"prev_version '{prev_version}' is specified but "
-                    "there is no existing deployment."
-                )
-            if existing_deployment_info.version != prev_version:
-                raise ValueError(
-                    f"prev_version '{prev_version}' "
-                    "does not match with the existing "
-                    f"version '{existing_deployment_info.version}'."
-                )
 
         autoscaling_config = deployment_config.autoscaling_config
         if autoscaling_config is not None:
@@ -348,7 +336,6 @@ class ServeController:
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
-
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
@@ -543,7 +530,7 @@ class ServeController:
             return config
 
 
-@ray.remote(max_calls=1)
+@ray.remote(num_cpus=0, max_calls=1)
 def run_graph(
     import_path: str, graph_env: dict, deployment_override_options: List[Dict]
 ):
@@ -581,7 +568,6 @@ def run_graph(
             app.deployments[name].set_options(**options)
 
         # Run the graph locally on the cluster
-        serve.start()
         serve.run(app)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which

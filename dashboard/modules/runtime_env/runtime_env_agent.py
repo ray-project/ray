@@ -1,40 +1,38 @@
 import asyncio
-import traceback
-from dataclasses import dataclass
 import json
 import logging
 import os
 import time
-from typing import Dict, Set, List, Tuple, Callable
-from enum import Enum
+import traceback
 from collections import defaultdict
-from ray._private.runtime_env.plugin import PluginCacheManager
-from ray._private.runtime_env.uri_cache import URICache
+from dataclasses import dataclass
+from enum import Enum
+from typing import Callable, Dict, List, Set, Tuple
 
-from ray._private.utils import import_attr
-from ray.core.generated import runtime_env_agent_pb2
-from ray.core.generated import runtime_env_agent_pb2_grpc
-from ray.core.generated import agent_manager_pb2
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.runtime_env.runtime_env_consts as runtime_env_consts
-from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
-    _initialize_internal_kv,
-)
-from ray._private.ray_logging import setup_component_logger
+import ray.dashboard.utils as dashboard_utils
 from ray._private.async_compat import create_task
-from ray._private.runtime_env.pip import PipPlugin
+from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.py_modules import PyModulesPlugin
-from ray._private.runtime_env.java_jars import JavaJarsPlugin
-from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.container import ContainerManager
-from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.java_jars import JavaJarsPlugin
+from ray._private.runtime_env.pip import PipPlugin
+from ray._private.runtime_env.plugin import PluginCacheManager
+from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
+from ray._private.runtime_env.py_modules import PyModulesPlugin
+from ray._private.runtime_env.uri_cache import URICache
+from ray._private.runtime_env.working_dir import WorkingDirPlugin
+from ray.core.generated import (
+    agent_manager_pb2,
+    runtime_env_agent_pb2,
+    runtime_env_agent_pb2_grpc,
+)
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)
 
@@ -55,11 +53,11 @@ class CreatedEnvResult:
 
 
 class UriType(Enum):
-    WORKING_DIR = 1
-    PY_MODULES = 2
-    PIP = 3
-    CONDA = 4
-    JAVA_JARS = 5
+    WORKING_DIR = "working_dir"
+    PY_MODULES = "py_modules"
+    PIP = "pip"
+    CONDA = "conda"
+    JAVA_JARS = "java_jars"
 
 
 class ReferenceTable:
@@ -181,14 +179,19 @@ class RuntimeEnvAgent(
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        _initialize_internal_kv(self._dashboard_agent.gcs_client)
-        assert _internal_kv_initialized()
+        self._gcs_aio_client = self._dashboard_agent.gcs_aio_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
-        self._py_modules_plugin = PyModulesPlugin(self._runtime_env_dir)
-        self._java_jars_plugin = JavaJarsPlugin(self._runtime_env_dir)
-        self._working_dir_plugin = WorkingDirPlugin(self._runtime_env_dir)
+        self._py_modules_plugin = PyModulesPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
+        self._java_jars_plugin = JavaJarsPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
+        self._working_dir_plugin = WorkingDirPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
@@ -221,40 +224,21 @@ class RuntimeEnvAgent(
             self.unused_uris_processor,
             self.unused_runtime_env_processor,
         )
+        self._runtime_env_plugin_manager = RuntimeEnvPluginManager()
 
         self._logger = default_logger
 
     def uris_parser(self, runtime_env):
         result = list()
-        uri = self._working_dir_plugin.get_uri(runtime_env)
-        if uri:
-            result.append((uri, UriType.WORKING_DIR))
-        uris = self._py_modules_plugin.get_uris(runtime_env)
-        for uri in uris:
-            result.append((uri, UriType.PY_MODULES))
-        uri = self._pip_plugin.get_uri(runtime_env)
-        if uri:
-            result.append((uri, UriType.PIP))
-        uri = self._conda_plugin.get_uri(runtime_env)
-        if uri:
-            result.append((uri, UriType.CONDA))
-        uris = self._java_jars_plugin.get_uris(runtime_env)
-        for uri in uris:
-            result.append((uri, UriType.JAVA_JARS))
+        for plugin in self._base_plugins:
+            uris = plugin.get_uris(runtime_env)
+            for uri in uris:
+                result.append((uri, UriType(plugin.name)))
         return result
 
     def unused_uris_processor(self, unused_uris: List[Tuple[str, UriType]]) -> None:
         for uri, uri_type in unused_uris:
-            if uri_type == UriType.WORKING_DIR:
-                self._uri_caches["working_dir"].mark_unused(uri)
-            elif uri_type == UriType.PY_MODULES:
-                self._uri_caches["py_modules"].mark_unused(uri)
-            elif uri_type == UriType.JAVA_JARS:
-                self._uri_caches["java_jars"].mark_unused(uri)
-            elif uri_type == UriType.CONDA:
-                self._uri_caches["conda"].mark_unused(uri)
-            elif uri_type == UriType.PIP:
-                self._uri_caches["pip"].mark_unused(uri)
+            self._uri_caches[uri_type.value].mark_unused(uri)
 
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():
@@ -312,13 +296,13 @@ class RuntimeEnvAgent(
 
             def setup_plugins():
                 # Run setup function from all the plugins
-                for plugin_class_path, config in runtime_env.plugins():
-                    per_job_logger.debug(
-                        f"Setting up runtime env plugin {plugin_class_path}"
-                    )
-                    plugin_class = import_attr(plugin_class_path)
-                    plugin = plugin_class()
+                for name, config in runtime_env.plugins():
+                    per_job_logger.debug(f"Setting up runtime env plugin {name}")
+                    plugin = self._runtime_env_plugin_manager.get_plugin(name)
+                    if plugin is None:
+                        raise RuntimeError(f"runtime env plugin {name} not found.")
                     # TODO(architkulkarni): implement uri support
+                    plugin.validate(runtime_env)
                     plugin.create("uri not implemented", json.loads(config), context)
                     plugin.modify_context(
                         "uri not implemented",
@@ -541,6 +525,7 @@ class RuntimeEnvAgent(
         # Cache information
         # Metrics (creation time & success)
         # Deleted URIs
+        limit = request.limit if request.HasField("limit") else -1
         runtime_env_states = defaultdict(ProtoRuntimeEnvState)
         runtime_env_refs = self._reference_table.runtime_env_refs
         for runtime_env, ref_cnt in runtime_env_refs.items():
@@ -554,9 +539,13 @@ class RuntimeEnvAgent(
             runtime_env_states[runtime_env].creation_time_ms = result.creation_time_ms
 
         reply = runtime_env_agent_pb2.GetRuntimeEnvsInfoReply()
+        count = 0
         for runtime_env_state in runtime_env_states.values():
+            if limit != -1 and count >= limit:
+                break
+            count += 1
             reply.runtime_env_states.append(runtime_env_state)
-
+        reply.total = len(runtime_env_states)
         return reply
 
     async def run(self, server):

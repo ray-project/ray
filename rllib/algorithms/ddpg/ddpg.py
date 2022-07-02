@@ -3,7 +3,6 @@ from typing import List, Optional, Type
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
-from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import AlgorithmConfigDict
@@ -266,8 +265,14 @@ class DDPG(SimpleQ):
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 
             return DDPGTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF1Policy
+
+            return DDPGTF1Policy
         else:
-            return DDPGTFPolicy
+            from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF2Policy
+
+            return DDPGTF2Policy
 
     @override(SimpleQ)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

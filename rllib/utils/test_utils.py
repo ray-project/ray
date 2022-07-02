@@ -1,14 +1,15 @@
-from collections import Counter
 import copy
-from gym.spaces import Box
 import logging
-import numpy as np
 import random
 import re
 import time
+from collections import Counter
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
+
+import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 import yaml
+from gym.spaces import Box
 
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
@@ -855,7 +856,7 @@ def check_same_batch(batch1, batch2) -> None:
         batch2: Batch to compare against batch1
     """
     # Avoids circular import
-    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 
     assert type(batch1) == type(
         batch2
