@@ -6,7 +6,9 @@ from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
+from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
 from ray.rllib.connectors.connector import ConnectorContext, get_connector
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentConnectorDataType
 
@@ -113,6 +115,35 @@ class TestAgentConnector(unittest.TestCase):
         # Not flattened.
         self.assertEqual(len(batch[SampleBatch.ACTIONS]), 2)
         self.assertEqual(batch[SampleBatch.INFOS]["random"], "info")
+
+    def test_view_requirement_connector(self):
+        view_requirements = {
+            "obs": ViewRequirement(used_for_training=True, used_for_compute_actions=True),
+            "prev_actions": ViewRequirement(
+                data_col="actions", shift=-1, used_for_training=True, used_for_compute_actions=True
+            ),
+        }
+        ctx = ConnectorContext(view_requirements=view_requirements)
+
+        f = FlattenDataAgentConnector(ctx)
+        c = ViewRequirementAgentConnector(ctx)
+
+        d = AgentConnectorDataType(
+            0,
+            1,
+            {
+                SampleBatch.NEXT_OBS: {
+                    "sensor1": [[1, 1], [2, 2]],
+                    "sensor2": 8.8,
+                },
+                SampleBatch.ACTIONS: np.array(0),
+            },
+        )
+        # FlattenAgentConnector, then ViewRequirementAgentConnector.
+        processed = c(f([d]))
+
+        self.assertTrue("obs" in processed.data.for_action)
+        self.assertTrue("prev_actions" in processed.data.for_action)
 
 
 if __name__ == "__main__":

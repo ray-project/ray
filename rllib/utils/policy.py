@@ -86,6 +86,15 @@ def create_policy_for_framework(
 def parse_policy_specs_from_checkpoint(
     path: str
 ) -> Tuple[PartialAlgorithmConfigDict, Dict[str, PolicySpec], Dict[str, PolicyState]]:
+    """Read and parse policy specifications from a checkpoint file.
+
+    Args:
+        path: Path to a policy checkpoint.
+
+    Returns:
+        A tuple of: base policy config, dictionary of policy specs, and
+        dictionary of policy states.
+    """
     with open(path, "rb") as f:
         checkpoint_dict = pickle.load(f)
     # Policy data is contained as a serialized binary blob under their
@@ -98,7 +107,10 @@ def parse_policy_specs_from_checkpoint(
         "with connectors enabled."
     )
     policy_states = w["state"]
-    policy_specs = w["policy_specs"]
+    serialized_policy_specs = w["policy_specs"]
+    policy_specs = {
+        id: PolicySpec.deserialize(spec) for id, spec in serialized_policy_specs.items()
+    }
 
     return policy_config, policy_specs, policy_states
 
@@ -120,12 +132,11 @@ def load_policies_from_checkpoint(
     policy_config, policy_specs, policy_states = parse_policy_specs_from_checkpoint(path)
 
     policies = {}
-    for id, spec in policy_specs.items():
+    for id, policy_spec in policy_specs.items():
         if policy_ids and id not in policy_ids:
             # User want specific policies, and this is not one of them.
             continue
 
-        policy_spec = PolicySpec.deserialize(spec)
         merged_config = merge_dicts(policy_config, policy_spec.config or {})
         policy = create_policy_for_framework(
             id,
@@ -148,7 +159,11 @@ def policy_inference(
     agent_id: str,
     obs: TensorStructType,
 ) -> List[PolicyOutputType]:
-    """Run a connector enabled policy using input_dict.
+    """Run a connector enabled policy using environment observation.
+
+    policy_inference manages policy and agent/action connectors,
+    so the user does not have to care about RNN state buffering or
+    extra fetch dictionaries.
 
     Args:
         policy: Policy.

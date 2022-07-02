@@ -37,8 +37,8 @@ def get_agent_connectors_from_config(
         [
             ObsPreprocessorConnector(ctx),
             StateBufferConnector(ctx),
-            FlattenDataAgentConnector(ctx),  # Creates batch dimension.
             ViewRequirementAgentConnector(ctx),
+            FlattenDataAgentConnector(ctx),  # Creates batch dimension.
         ]
     )
 
