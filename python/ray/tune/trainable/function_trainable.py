@@ -622,16 +622,7 @@ def wrap_function(
             )
 
     if use_checkpoint:
-        import traceback
-        tb_list = traceback.format_list(traceback.extract_stack())
-        # Do not warn user if "base_trainer" is in the stacktrace!!
-        # TODO(xwjiang): Remove this, when our internal impl is using new API.
-        has_base_trainer = any("base_trainer" in tb for tb in tb_list)
-        if (
-            log_once("tune_checkpoint_dir_deprecation")
-            and warn
-            and not has_base_trainer
-        ):
+        if log_once("tune_checkpoint_dir_deprecation") and warn:
             with warnings.catch_warnings():
                 warnings.simplefilter("always")
                 warning_msg = (
