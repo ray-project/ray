@@ -324,6 +324,10 @@ bool TaskSpecification::IsSpreadSchedulingStrategy() const {
          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
+const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() const {
+  return message_->serialized_retry_exception_allowlist();
+}
+
 // === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {
@@ -458,8 +462,12 @@ std::string TaskSpecification::DebugString() const {
       // Erase the last ":"
       stream.seekp(-1, std::ios_base::end);
     }
-    stream << ", runtime_env_eager_install="
-           << runtime_env_info.runtime_env_eager_install();
+    if (runtime_env_info.has_runtime_env_config()) {
+      stream << ", eager_install="
+             << runtime_env_info.runtime_env_config().eager_install();
+      stream << ", setup_timeout_seconds="
+             << runtime_env_info.runtime_env_config().setup_timeout_seconds();
+    }
   }
 
   return stream.str();

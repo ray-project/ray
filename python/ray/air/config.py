@@ -1,31 +1,25 @@
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Tuple,
-    Mapping,
-    Optional,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
 
 from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
-from ray.util import PublicAPI
+from ray.util.annotations import PublicAPI
+
+# Move here later when ml_utils is deprecated. Doing it now causes a circular import.
+from ray.util.ml_utils.checkpoint_manager import CheckpointConfig
 
 if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.tune.callback import Callback
     from ray.tune.stopper import Stopper
-    from ray.tune.trainable import PlacementGroupFactory
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 ScalingConfig = Dict[str, Any]
 
 
 @dataclass
+@PublicAPI(stability="alpha")
 class ScalingConfigDataClass:
     """Configuration for scaling training.
 
@@ -98,7 +92,7 @@ class ScalingConfigDataClass:
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
         """Returns a PlacementGroupFactory to specify resources for Tune."""
-        from ray.tune.trainable import PlacementGroupFactory
+        from ray.tune.execution.placement_groups import PlacementGroupFactory
 
         trainer_resources = (
             self.trainer_resources if self.trainer_resources else {"CPU": 1}
@@ -146,24 +140,37 @@ class DatasetConfig:
     split: Optional[bool] = None
 
     # Whether to raise an error if the Dataset isn't provided by the user.
-    # True by default for the "train" dataset only.
+    # False by default.
     required: Optional[bool] = None
-
-    # Whether the dataset can be streamed into memory using pipelined reads.
-    # When enabled, get_dataset_shard() returns DatasetPipeline instead of Dataset.
-    # Note that streaming isn't enabled unless you set stream_window_size too.
-    # False by default for all datasets.
-    streamable: Optional[bool] = None
 
     # Whether to transform the dataset with the fitted preprocessor. This must be
     # enabled at least for the dataset that is fit.
-    # True by default for all datasets.
+    # True by default.
     transform: Optional[bool] = None
 
-    # List of fields that the user cannot override in ``dataset_config``.
-    _noncustomizable_fields: Tuple[str] = ()
+    # Whether the dataset should be streamed into memory using pipelined reads.
+    # When enabled, get_dataset_shard() returns DatasetPipeline instead of Dataset.
+    # The amount of memory to use is controlled by `stream_window_size`.
+    # False by default.
+    use_stream_api: Optional[bool] = None
 
-    # TODO: add stream_window_size, global/local shuffle options
+    # Configure the streaming window size in bytes. A good value is something like
+    # 20% of object store memory. If set to -1, then an infinite window size will be
+    # used (similar to bulk ingest). This only has an effect if use_stream_api is set.
+    # Set to 1.0 GiB by default.
+    stream_window_size: Optional[float] = None
+
+    # Whether to enable global shuffle (per pipeline window in streaming mode). Note
+    # that this is an expensive all-to-all operation, and most likely you want to use
+    # local shuffle instead. See https://docs.ray.io/en/master/data/faq.html
+    # False by default.
+    global_shuffle: Optional[bool] = None
+
+    # Whether to randomize the iteration order over blocks. The main purpose of this
+    # is to prevent data fetching hotspots in the cluster when running many parallel
+    # workers / trials on the same data. We recommend enabling it always.
+    # True by default.
+    randomize_block_order: Optional[bool] = None
 
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
@@ -171,9 +178,15 @@ class DatasetConfig:
             fit=self.fit or False,
             split=self.split or False,
             required=self.required or False,
-            streamable=self.streamable or False,
+            use_stream_api=self.use_stream_api or False,
+            stream_window_size=self.stream_window_size
+            if self.stream_window_size is not None
+            else 1024 * 1024 * 1024,
+            global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
-            _noncustomizable_fields=self._noncustomizable_fields,
+            randomize_block_order=self.randomize_block_order
+            if self.randomize_block_order is not None
+            else True,
         )
 
     @staticmethod
@@ -183,7 +196,7 @@ class DatasetConfig:
         """Merge two given DatasetConfigs, the second taking precedence.
 
         Raises:
-            ValueError if any noncustomizable fields were specified to be updated.
+            ValueError if validation fails on the merged configs.
         """
         has_wildcard = WILDCARD_KEY in a
         result = a.copy()
@@ -238,29 +251,29 @@ class DatasetConfig:
         return result
 
     def _merge(self, other: "DatasetConfig") -> "DatasetConfig":
-        """Merge the given DatasetConfig into this one.
-
-        Raises:
-            ValueError if any noncustomizable fields were specified to be updated.
-        """
-        for field in self._noncustomizable_fields:
-            if getattr(other, field) is not None:
-                raise ValueError(
-                    f"Cannot override noncustomizable field `{field}` in the "
-                    "dataset config."
-                )
-        return DatasetConfig(
+        """Merge the given DatasetConfig into this one."""
+        new_config = DatasetConfig(
             fit=self.fit if other.fit is None else other.fit,
             split=self.split if other.split is None else other.split,
             required=self.required if other.required is None else other.required,
-            streamable=self.streamable
-            if other.streamable is None
-            else other.streamable,
             transform=self.transform if other.transform is None else other.transform,
-            _noncustomizable_fields=self._noncustomizable_fields,
+            use_stream_api=self.use_stream_api
+            if other.use_stream_api is None
+            else other.use_stream_api,
+            stream_window_size=self.stream_window_size
+            if other.stream_window_size is None
+            else other.stream_window_size,
+            global_shuffle=self.global_shuffle
+            if other.global_shuffle is None
+            else other.global_shuffle,
+            randomize_block_order=self.randomize_block_order
+            if other.randomize_block_order is None
+            else other.randomize_block_order,
         )
+        return new_config
 
 
+@dataclass
 @PublicAPI(stability="alpha")
 class FailureConfig:
     """Configuration related to failure handling of each run/trial.
@@ -300,8 +313,9 @@ class RunConfig:
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
-        failure: The failure mode configuration.
+        failure_config: Failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
+        checkpoint_config: Checkpointing configuration.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results. Defaults to 2.
@@ -312,6 +326,7 @@ class RunConfig:
     local_dir: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
-    failure: Optional[FailureConfig] = None
+    failure_config: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
+    checkpoint_config: Optional[CheckpointConfig] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS

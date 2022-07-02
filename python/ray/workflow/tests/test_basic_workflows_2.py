@@ -82,21 +82,131 @@ def test_get_output_3(workflow_start_regular, tmp_path):
             raise ValueError()
         return 10
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         workflow.create(incr.options(**workflow.options(max_retries=0)).bind()).run(
             "incr"
         )
 
     assert cnt_file.read_text() == "1"
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    from ray.exceptions import RaySystemError
+
+    # TODO(suquark): We should prevent Ray from raising "RaySystemError",
+    #   in workflow, because "RaySystemError" does not inherit the underlying
+    #   error, so users and developers cannot catch the expected error.
+    #   I feel this issue is a very annoying.
+    with pytest.raises((RaySystemError, ValueError)):
         ray.get(workflow.get_output("incr"))
 
     assert cnt_file.read_text() == "1"
     error_flag.unlink()
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises((RaySystemError, ValueError)):
         ray.get(workflow.get_output("incr"))
     assert ray.get(workflow.resume("incr")) == 10
+
+
+def test_get_output_4(workflow_start_regular, tmp_path):
+    """Test getting output of a workflow tasks that are dynamically generated."""
+    lock_path = str(tmp_path / "lock")
+    lock = FileLock(lock_path)
+
+    @ray.remote
+    def recursive(n):
+        if n <= 0:
+            with FileLock(lock_path):
+                return 42
+        return workflow.continuation(
+            recursive.options(**workflow.options(name=str(n - 1))).bind(n - 1)
+        )
+
+    workflow_id = "test_get_output_4"
+    lock.acquire()
+    obj = workflow.create(
+        recursive.options(**workflow.options(name="10")).bind(10)
+    ).run_async(workflow_id)
+
+    outputs = [workflow.get_output(workflow_id, name=str(i)) for i in range(11)]
+    outputs.append(obj)
+
+    import time
+
+    # wait so that 'get_output' is scheduled before executing the workflow
+    time.sleep(3)
+    lock.release()
+    assert ray.get(outputs) == [42] * len(outputs)
+
+
+def test_get_output_5(workflow_start_regular, tmp_path):
+    """Test getting output of a workflow task immediately after executing it
+    asynchronously."""
+
+    @ray.remote
+    def simple():
+        return 314
+
+    workflow_id = "test_get_output_5_{}"
+
+    outputs = []
+    for i in range(20):
+        workflow.create(simple.bind()).run_async(workflow_id.format(i))
+        outputs.append(workflow.get_output(workflow_id.format(i)))
+
+    assert ray.get(outputs) == [314] * len(outputs)
+
+
+def test_output_with_name(workflow_start_regular):
+    @ray.remote
+    def double(v):
+        return 2 * v
+
+    inner_task = double.options(**workflow.options(name="inner")).bind(1)
+    outer_task = double.options(**workflow.options(name="outer")).bind(inner_task)
+    result = workflow.create(outer_task).run_async("double")
+    inner = workflow.get_output("double", name="inner")
+    outer = workflow.get_output("double", name="outer")
+
+    assert ray.get(inner) == 2
+    assert ray.get(outer) == 4
+    assert ray.get(result) == 4
+
+    @workflow.options(name="double")
+    @ray.remote
+    def double_2(s):
+        return s * 2
+
+    inner_task = double_2.bind(1)
+    outer_task = double_2.bind(inner_task)
+    workflow_id = "double_2"
+    result = workflow.create(outer_task).run_async(workflow_id)
+
+    inner = workflow.get_output(workflow_id, name="double")
+    outer = workflow.get_output(workflow_id, name="double_1")
+
+    assert ray.get(inner) == 2
+    assert ray.get(outer) == 4
+    assert ray.get(result) == 4
+
+
+def test_get_non_exist_output(workflow_start_regular, tmp_path):
+    lock_path = str(tmp_path / "lock")
+
+    @ray.remote
+    def simple():
+        with FileLock(lock_path):
+            return "hello"
+
+    workflow_id = "test_get_non_exist_output"
+
+    with FileLock(lock_path):
+        dag = simple.options(**workflow.options(name="simple")).bind()
+        ret = workflow.create(dag).run_async(workflow_id=workflow_id)
+        exist = workflow.get_output(workflow_id, name="simple")
+        non_exist = workflow.get_output(workflow_id, name="non_exist")
+
+    assert ray.get(ret) == "hello"
+    assert ray.get(exist) == "hello"
+    with pytest.raises(ValueError, match="non_exist"):
+        ray.get(non_exist)
 
 
 def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
@@ -150,22 +260,11 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
 
     # Once job finished, we'll be able to get the result.
     lock.release()
-    assert 4 == ray.get(output)
-
-    # Here sometimes inner will not be generated when we call
-    # run_async. So there is a race condition here.
-    try:
-        v = ray.get(inner)
-    except Exception:
-        v = None
-    if v is not None:
-        assert 2 == v
-    assert 4 == ray.get(outer)
+    assert [4, 2, 4] == ray.get([output, inner, outer])
 
     inner = workflow.get_output("double-2", name="inner")
     outer = workflow.get_output("double-2", name="outer")
-    assert 2 == ray.get(inner)
-    assert 4 == ray.get(outer)
+    assert [2, 4] == ray.get([inner, outer])
 
 
 def test_get_named_step_output_error(workflow_start_regular, tmp_path):
@@ -222,10 +321,10 @@ def test_get_named_step_duplicate(workflow_start_regular):
     outer = f.bind(20, inner)
     assert 20 == workflow.create(outer).run("duplicate")
     # The outer will be checkpointed first. So there is no suffix for the name
-    assert ray.get(workflow.get_output("duplicate", name="f")) == 20
+    assert ray.get(workflow.get_output("duplicate", name="f")) == 10
     # The inner will be checkpointed after the outer. And there is a duplicate
     # for the name. suffix _1 is added automatically
-    assert ray.get(workflow.get_output("duplicate", name="f_1")) == 10
+    assert ray.get(workflow.get_output("duplicate", name="f_1")) == 20
 
 
 def test_no_init_run(shutdown_only):

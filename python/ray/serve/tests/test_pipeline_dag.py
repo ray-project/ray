@@ -11,7 +11,7 @@ from ray import serve
 from ray.serve.application import Application
 from ray.serve.api import build as build_app
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.pipeline.api import build as pipeline_build
+from ray.serve.deployment_graph_build import build as pipeline_build
 from ray.serve.deployment_graph import ClassNode, InputNode
 from ray.serve.drivers import DAGDriver
 import starlette.requests
@@ -23,7 +23,7 @@ NESTED_HANDLE_KEY = "nested_handle"
 
 def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNode]:
     if use_build:
-        return Application.from_dict(build_app(node).to_dict())
+        return build_app(node)
     else:
         return node
 

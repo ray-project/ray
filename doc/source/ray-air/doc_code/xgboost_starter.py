@@ -1,8 +1,9 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_xgb_preprocess_start__
 import ray
-from ray.air.preprocessors import StandardScaler
+from ray.data.preprocessors import StandardScaler
 
 import pandas as pd
 
@@ -25,7 +26,7 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 
 
 # __air_xgb_train_start__
-from ray.air.train.integrations.xgboost import XGBoostTrainer
+from ray.train.xgboost import XGBoostTrainer
 
 # XGBoost specific params
 params = {
@@ -53,22 +54,16 @@ print(result.metrics)
 # __air_xgb_train_end__
 
 # __air_xgb_batchpred_start__
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.xgboost import XGBoostPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 
-predicted_labels = (
-    batch_predictor.predict(test_dataset)
-    .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
-    .to_pandas(limit=float("inf"))
-)
-print("PREDICTED LABELS")
-print(f"{predicted_labels}")
+predicted_probabilities = batch_predictor.predict(test_dataset)
+print("PREDICTED PROBABILITIES")
+predicted_probabilities.show()
 
-shap_values = batch_predictor.predict(test_dataset, pred_contribs=True).to_pandas(
-    limit=float("inf")
-)
+shap_values = batch_predictor.predict(test_dataset, pred_contribs=True)
 print("SHAP VALUES")
-print(f"{shap_values}")
+shap_values.show()
 # __air_xgb_batchpred_end__

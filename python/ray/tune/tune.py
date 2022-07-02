@@ -1,67 +1,60 @@
-import threading
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
-
 import datetime
 import logging
 import os
 import signal
 import sys
+import threading
 import time
 import warnings
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
-from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.node import force_on_current_node
-from ray.util.queue import Queue, Empty
-
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.progress_reporter import (
+    ProgressReporter,
     RemoteReporterMixin,
     detect_reporter,
-    ProgressReporter,
 )
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
+
+# Must come last to avoid circular imports
 from ray.tune.schedulers import (
+    FIFOScheduler,
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
     ResourceChangingScheduler,
-)
-from ray.tune.stopper import Stopper
-from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
-from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
-
-# Turn off black here, as it will format the lines to be longer than 88 chars
-# fmt: off
-from ray.tune.suggest.util import (
-    set_search_properties_backwards_compatible
-    as searcher_set_search_properties_backwards_compatible,
+    TrialScheduler,
 )
 from ray.tune.schedulers.util import (
-    set_search_properties_backwards_compatible
-    as scheduler_set_search_properties_backwards_compatible,
+    set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
-# fmt: on
-
-from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.syncer import (
-    SyncConfig,
-    set_sync_periods,
-    wait_for_sync,
-    validate_upload_dir,
+from ray.tune.stopper import Stopper
+from ray.tune.search import (
+    BasicVariantGenerator,
+    SearchAlgorithm,
+    SearchGenerator,
+    ConcurrencyLimiter,
+    Searcher,
+    create_searcher,
 )
+from ray.tune.search.util import (
+    set_search_properties_backwards_compatible as searcher_set_search_props,
+)
+from ray.tune.search.variant_generator import has_unresolved_values
+from ray.tune.syncer import SyncConfig, SyncerCallback, _validate_upload_dir
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-
-# Must come last to avoid circular imports
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.util.annotations import PublicAPI
+from ray.util.ml_utils.node import force_on_current_node
+from ray.util.queue import Empty, Queue
 
 logger = logging.getLogger(__name__)
 
@@ -428,8 +421,7 @@ def run(
 
     config = config or {}
     sync_config = sync_config or SyncConfig()
-    validate_upload_dir(sync_config)
-    set_sync_periods(sync_config)
+    _validate_upload_dir(sync_config)
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -535,13 +527,10 @@ def run(
         raise ValueError("max_failures must be 0 if fail_fast=True.")
 
     if isinstance(search_alg, str):
-        # importing at top level causes a recursive dependency
-        from ray.tune.suggest import create_searcher
-
         search_alg = create_searcher(search_alg)
 
     # if local_mode=True is set during ray.init().
-    is_local_mode = ray.worker._mode() == ray.worker.LOCAL_MODE
+    is_local_mode = ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
 
     if is_local_mode:
         max_concurrent_trials = 1
@@ -587,7 +576,7 @@ def run(
     if isinstance(search_alg, Searcher):
         search_alg = SearchGenerator(search_alg)
 
-    if config and not searcher_set_search_properties_backwards_compatible(
+    if config and not searcher_set_search_props(
         search_alg.set_search_properties,
         metric,
         mode,
@@ -603,7 +592,7 @@ def run(
                 "them in the search algorithm's search space if necessary."
             )
 
-    if not scheduler_set_search_properties_backwards_compatible(
+    if not scheduler_set_search_props(
         scheduler.set_search_properties, metric, mode, **experiments[0].public_spec
     ):
         raise ValueError(
@@ -722,7 +711,14 @@ def run(
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
 
-    wait_for_sync()
+    # Wait for syncing to finish
+    for callback in callbacks:
+        if isinstance(callback, SyncerCallback):
+            try:
+                callback.wait_for_all()
+            except TuneError as e:
+                logger.error(e)
+
     runner.cleanup()
 
     incomplete_trials = []

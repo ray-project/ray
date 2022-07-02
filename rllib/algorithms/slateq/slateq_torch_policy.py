@@ -23,7 +23,7 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     huber_loss,
 )
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
 
 torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def build_slateq_model_and_distribution(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
     """Build models for SlateQ
 
@@ -41,7 +41,7 @@ def build_slateq_model_and_distribution(
         policy: The policy, which will use the model for optimization.
         obs_space: The policy's observation space.
         action_space: The policy's action space.
-        config: The Trainer's config dict.
+        config: The Algorithm's config dict.
 
     Returns:
         Tuple consisting of 1) Q-model and 2) an action distribution class.
@@ -370,7 +370,7 @@ def setup_early(policy, obs_space, action_space, config):
 
 
 def optimizer_fn(
-    policy: Policy, config: TrainerConfigDict
+    policy: Policy, config: AlgorithmConfigDict
 ) -> Tuple["torch.optim.Optimizer"]:
     optimizer_choice = torch.optim.Adam(
         policy.model.choice_model.parameters(), lr=config["lr_choice_model"]
@@ -405,7 +405,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call all mixin classes' constructors before SlateQTorchPolicy initialization.
 

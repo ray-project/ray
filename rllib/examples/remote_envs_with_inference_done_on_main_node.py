@@ -14,7 +14,7 @@ import os
 
 import ray
 from ray.rllib.algorithms.ppo import PPO
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray import tune
@@ -75,13 +75,13 @@ def get_cli_args():
     return args
 
 
-# The modified Trainer class we will use. This is the exact same
-# as a PPO, but with the additional default_resource_request
-# override, telling tune that it's ok (not mandatory) to place our
-# n remote envs on a different node (each env using 1 CPU).
-class PPOTrainerRemoteInference(PPO):
+# The modified Algorithm class we will use:
+# Subclassing from PPO, our algo will only modity `default_resource_request`,
+# telling Ray Tune that it's ok (not mandatory) to place our n remote envs on a
+# different node (each env using 1 CPU).
+class PPORemoteInference(PPO):
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
@@ -133,10 +133,10 @@ if __name__ == "__main__":
     # Run as manual training loop.
     if args.no_tune:
         # manual training loop using PPO and manually keeping track of state
-        trainer = PPOTrainerRemoteInference(config=config)
+        algo = PPORemoteInference(config=config)
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
-            result = trainer.train()
+            result = algo.train()
             print(pretty_print(result))
             # Stop training if the target train steps or reward are reached.
             if (
@@ -145,7 +145,7 @@ if __name__ == "__main__":
             ):
                 break
 
-    # Run with Tune for auto env and trainer creation and TensorBoard.
+    # Run with Tune for auto env and algorithm creation and TensorBoard.
     else:
         stop = {
             "training_iteration": args.stop_iters,
@@ -153,9 +153,7 @@ if __name__ == "__main__":
             "episode_reward_mean": args.stop_reward,
         }
 
-        results = tune.run(
-            PPOTrainerRemoteInference, config=config, stop=stop, verbose=1
-        )
+        results = tune.run(PPORemoteInference, config=config, stop=stop, verbose=1)
 
         if args.as_test:
             check_learning_achieved(results, args.stop_reward)

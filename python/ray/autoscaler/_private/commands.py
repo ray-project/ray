@@ -1,5 +1,4 @@
 import copy
-from concurrent.futures import ThreadPoolExecutor
 import datetime
 import hashlib
 import json
@@ -7,60 +6,24 @@ import logging
 import os
 import random
 import shutil
-import sys
 import subprocess
+import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import click
 import yaml
 
-try:  # py3
-    from shlex import quote
-except ImportError:  # py2
-    from pipes import quote
-
 import ray
-from ray._private.usage import usage_lib
-from ray.experimental.internal_kv import _internal_kv_put
 import ray._private.services as services
-from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler._private.constants import (
-    AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-    MAX_PARALLEL_SHUTDOWN_WORKERS,
-)
-from ray.autoscaler._private.util import (
-    validate_config,
-    hash_runtime_conf,
-    hash_launch_conf,
-    prepare_config,
-)
-from ray.autoscaler._private.providers import (
-    _get_node_provider,
-    _NODE_PROVIDERS,
-    _PROVIDER_PRETTY_NAMES,
-)
-from ray.autoscaler.tags import (
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_LAUNCH_CONFIG,
-    TAG_RAY_NODE_NAME,
-    NODE_KIND_WORKER,
-    NODE_KIND_HEAD,
-    TAG_RAY_USER_NODE_TYPE,
-    STATUS_UNINITIALIZED,
-    STATUS_UP_TO_DATE,
-    TAG_RAY_NODE_STATUS,
-)
-from ray.autoscaler._private.cli_logger import cli_logger, cf
-from ray.autoscaler._private.updater import NodeUpdaterThread
-from ray.autoscaler._private.command_runner import (
-    set_using_login_shells,
-    set_rsync_silent,
-)
-from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
-from ray.autoscaler._private.log_timer import LogTimer
+from ray._private.usage import usage_lib
+from ray._private.worker import global_worker  # type: ignore
+from ray.autoscaler._private import subprocess_output_util as cmd_output_util
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.cluster_dump import (
     Archive,
     GetParameters,
@@ -70,14 +33,50 @@ from ray.autoscaler._private.cluster_dump import (
     create_archive_for_remote_nodes,
     get_all_local_data,
 )
-
-from ray.worker import global_worker  # type: ignore
+from ray.autoscaler._private.command_runner import (
+    set_rsync_silent,
+    set_using_login_shells,
+)
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+    MAX_PARALLEL_SHUTDOWN_WORKERS,
+)
+from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
+from ray.autoscaler._private.log_timer import LogTimer
+from ray.autoscaler._private.providers import (
+    _NODE_PROVIDERS,
+    _PROVIDER_PRETTY_NAMES,
+    _get_node_provider,
+)
+from ray.autoscaler._private.updater import NodeUpdaterThread
+from ray.autoscaler._private.util import (
+    LoadMetricsSummary,
+    format_info_string,
+    hash_launch_conf,
+    hash_runtime_conf,
+    prepare_config,
+    validate_config,
+)
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    STATUS_UNINITIALIZED,
+    STATUS_UP_TO_DATE,
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
+)
+from ray.experimental.internal_kv import _internal_kv_put
 from ray.util.debug import log_once
 
-from ray.autoscaler._private import subprocess_output_util as cmd_output_util
-from ray.autoscaler._private.util import LoadMetricsSummary
-from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler._private.util import format_info_string
+try:  # py3
+    from shlex import quote
+except ImportError:  # py2
+    from pipes import quote
+
 
 logger = logging.getLogger(__name__)
 

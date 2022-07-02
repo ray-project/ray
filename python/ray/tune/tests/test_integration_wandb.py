@@ -7,18 +7,20 @@ import unittest
 import numpy as np
 
 from ray.tune import Trainable
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
 from ray.tune.integration.wandb import (
+    WandbTrainableMixin,
+    wandb_mixin,
+)
+from ray.air.callbacks.wandb import (
     WandbLoggerCallback,
     _WandbLoggingProcess,
     WANDB_ENV_VAR,
-    WandbTrainableMixin,
-    wandb_mixin,
     _QueueItem,
 )
 from ray.tune.result import TRIAL_INFO
-from ray.tune.trial import _TrialInfo
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.experiment.trial import _TrialInfo
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class Trial(

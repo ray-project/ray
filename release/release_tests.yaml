@@ -128,6 +128,7 @@
 
   frequency: weekly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: horovod/app_config_master.yaml
@@ -165,6 +166,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -191,6 +193,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -218,6 +221,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config_gpu.yaml
@@ -245,6 +249,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -271,6 +276,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -298,6 +304,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -325,6 +332,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -352,6 +360,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -379,6 +388,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -409,6 +419,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -434,6 +445,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -460,6 +472,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -487,6 +500,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -514,6 +528,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -540,6 +555,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -566,6 +582,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -596,6 +613,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: horovod/app_config.yaml
@@ -619,6 +637,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: horovod/app_config_master.yaml
@@ -642,6 +661,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: train/app_config.yaml
@@ -665,6 +685,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: train/app_config.yaml
@@ -688,6 +709,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: xgboost/app_config_gpu.yaml
@@ -710,6 +732,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: xgboost/app_config_gpu_master.yaml
@@ -732,6 +755,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: ray-lightning/app_config.yaml
@@ -755,6 +779,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: ray-lightning/app_config_master.yaml
@@ -778,6 +803,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -798,7 +824,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: aws_no_sync_down
@@ -806,6 +832,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -827,7 +854,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: aws_ssh_sync
@@ -835,6 +862,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -856,7 +884,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: aws_durable_upload
@@ -864,6 +892,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -893,6 +922,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config_ml.yaml
@@ -924,6 +954,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config_ml.yaml
@@ -946,7 +977,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: gcp_k8s_no_sync_down
@@ -954,11 +985,13 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
     cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+    autosuspend_mins: 60
 
   run:
     timeout: 600
@@ -974,7 +1007,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: gcp_k8s_ssh_sync
@@ -982,11 +1015,13 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
     cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+    autosuspend_mins: 60
 
   run:
     timeout: 600
@@ -1002,7 +1037,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: gcp_k8s_durable_upload
@@ -1010,11 +1045,13 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
     cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+    autosuspend_mins: 60
 
   run:
     timeout: 600
@@ -1041,6 +1078,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -1064,6 +1102,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -1090,6 +1129,7 @@
 
   frequency: weekly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -1119,6 +1159,7 @@
 
   frequency: weekly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -1158,6 +1199,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -1185,6 +1227,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -1208,6 +1251,7 @@
 
   frequency: weekly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config_data.yaml
@@ -1239,6 +1283,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: dask_xgboost_app_config.yaml
@@ -1264,6 +1309,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: modin_xgboost_app_config.yaml
@@ -1289,6 +1335,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: torch_tune_serve_app_config.yaml
@@ -1344,6 +1391,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_3.yaml
@@ -1375,6 +1423,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
   cluster:
     cluster_env: app_config_np.yaml
     cluster_compute: tpl_cpu_1_large.yaml
@@ -1461,6 +1510,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: many_ppo.yaml
@@ -1579,6 +1629,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
@@ -1670,6 +1721,7 @@
 
   frequency: weekly
   team: ml
+  env: staging
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl.yaml
@@ -2107,6 +2159,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -2128,7 +2181,7 @@
 # RLlib tests
 ########################
 
-- name: rllib_learning_tests
+- name: rllib_learning_tests_a_to_e
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2138,14 +2191,39 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 8gpus_64cpus.yaml
+    cluster_compute: 12gpus_192cpus.yaml
 
   run:
-    timeout: 14400
-    script: python learning_tests/run.py
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=a-e
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_f_to_z
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 8gpus_96cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=f-z
     type: sdk_command
     file_manager: job
 
@@ -2161,6 +2239,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -2184,6 +2263,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -2207,6 +2287,7 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -2230,6 +2311,7 @@
 
   frequency: weekly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -2580,6 +2662,7 @@
   team: core
   frequency: nightly
   working_dir: microbenchmark
+  env: prod
 
   python: "3.7"
 
@@ -2594,6 +2677,25 @@
   run:
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+
+
+- name: microbenchmark_staging
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+  env: staging
+
+  python: "3.7"
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+
 
 - name: microbenchmark_38
   group: core-daily-test
@@ -3111,6 +3213,8 @@
 - name: many_nodes
   group: core-scalability-test
   working_dir: benchmarks
+  env: staging
+
   legacy:
     test_name: many_nodes
     test_suite: benchmark_tests
@@ -3525,6 +3629,29 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
+
+- name: dataset_shuffle_push_based_random_shuffle_100tb
+  group: core-dataset-tests
+  working_dir: nightly_tests
+  legacy:
+    test_name: dataset_shuffle_push_based_random_shuffle_100tb
+    test_suite: dataset_test
+
+  stable: false
+
+  frequency: weekly
+  team: core
+  cluster:
+    cluster_env: shuffle/100tb_shuffle_app_config.yaml
+    cluster_compute: shuffle/100tb_shuffle_compute.yaml
+
+  run:
+    timeout: 28800
+    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
+    wait_for_nodes:
+      num_nodes: 100
     type: sdk_command
     file_manager: sdk
 
