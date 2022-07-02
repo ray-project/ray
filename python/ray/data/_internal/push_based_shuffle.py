@@ -317,7 +317,7 @@ class _ReduceStageIterator:
             **self._ray_remote_args,
             **self._stage.get_merge_task_options(merge_idx),
             num_returns=2,
-        ).remote(*self._reduce_args, *reduce_arg_blocks)
+        ).remote(*self._reduce_args, *reduce_arg_blocks, partial_reduce=False)
         self._reduce_results.append((reduce_idx, block))
         return meta
 
@@ -562,7 +562,7 @@ class PushBasedShufflePlan(ShuffleOp):
         size_bytes = 0
         schema = None
         for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
-            block, meta = reduce_fn(*reduce_args, *mapper_outputs)
+            block, meta = reduce_fn(*reduce_args, *mapper_outputs, partial_reduce=True)
             yield block
 
             block = BlockAccessor.for_block(block)

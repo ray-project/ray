@@ -292,10 +292,16 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List["pandas.DataFrame"], key: KeyFn, aggs: Tuple[AggregateFn]
+        blocks: List["pandas.DataFrame"],
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+        finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.aggregate_combined_blocks(
-            [BlockAccessor.for_block(block).to_arrow() for block in blocks], key, aggs
+            [BlockAccessor.for_block(block).to_arrow() for block in blocks],
+            key,
+            aggs,
+            finalize,
         )
         return BlockAccessor.for_block(block).to_pandas(), metadata
