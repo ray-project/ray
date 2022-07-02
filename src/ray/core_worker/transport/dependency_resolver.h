@@ -44,14 +44,51 @@ class LocalDependencyResolver {
   ///
   /// Postcondition: all direct call id arguments that haven't been spilled to plasma
   /// are converted to values and all remaining arguments are arguments in the task spec.
+  ///
+  /// \param[in] task The task whose dependencies we should resolve.
+  /// \param[in] on_complete A callback to call once the task's dependencies
+  /// have been resolved. Note that we will not call this if the dependency
+  /// resolution is cancelled.
   void ResolveDependencies(TaskSpecification &task,
                            std::function<void(Status)> on_complete);
+
+  /// Cancel resolution of the given task's dependencies. Its registered
+  /// callback will not be called.
+  void CancelResolveDependencies(const TaskID &task_id);
 
   /// Return the number of tasks pending dependency resolution.
   /// TODO(ekl) this should be exposed in worker stats.
   int NumPendingTasks() const { return num_pending_; }
 
  private:
+  struct TaskState {
+    TaskState(TaskSpecification t,
+              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> deps,
+              std::vector<ActorID> actor_ids,
+              std::function<void(Status)> on_complete
+              )
+        : task(t),
+          local_dependencies(std::move(deps)),
+          actor_dependencies(std::move(actor_ids)),
+          status(Status::OK()),
+          on_complete(on_complete) {
+      obj_dependencies_remaining = local_dependencies.size();
+      actor_dependencies_remaining = actor_dependencies.size();
+    }
+    /// The task to be run.
+    TaskSpecification task;
+    /// The local dependencies to resolve for this task. Objects are nullptr if not yet
+    /// resolved.
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
+    std::vector<ActorID> actor_dependencies;
+    /// Number of local dependencies that aren't yet resolved (have nullptrs in the above
+    /// map).
+    size_t actor_dependencies_remaining;
+    size_t obj_dependencies_remaining;
+    Status status;
+    std::function<void(Status)> on_complete;
+  };
+
   /// The in-memory store.
   CoreWorkerMemoryStore &in_memory_store_;
 
@@ -61,6 +98,8 @@ class LocalDependencyResolver {
   ActorCreatorInterface &actor_creator_;
   /// Number of tasks pending dependency resolution.
   std::atomic<int> num_pending_;
+
+  absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_;
 
   /// Protects against concurrent access to internal state.
   absl::Mutex mu_;
