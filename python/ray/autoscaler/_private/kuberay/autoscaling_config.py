@@ -288,22 +288,6 @@ def _get_memory(
     return None
 
 
-def _round_up_k8s_quantity(quantity: str) -> int:
-    """Rounds a Kubernetes resource quantity up to the nearest integer.
-
-    Args:
-        quantity: Resource quantity as a string in the canonical K8s form.
-
-    Returns:
-        The quantity, rounded up, as an integer.
-    """
-    resource_decimal: decimal.Decimal = kubernetes.utils.quantity.parse_quantity(
-        quantity
-    )
-    rounded = resource_decimal.to_integral_value(rounding=decimal.ROUND_UP)
-    return int(rounded)
-
-
 def _get_num_gpus(
     ray_start_params: Dict[str, str],
     k8s_resource_limits: Dict[str, Any],
@@ -329,6 +313,22 @@ def _get_num_gpus(
                     # "/gpu" match.
                     return num_gpus
     return None
+
+
+def _round_up_k8s_quantity(quantity: str) -> int:
+    """Rounds a Kubernetes resource quantity up to the nearest integer.
+
+    Args:
+        quantity: Resource quantity as a string in the canonical K8s form.
+
+    Returns:
+        The quantity, rounded up, as an integer.
+    """
+    resource_decimal: decimal.Decimal = kubernetes.utils.quantity.parse_quantity(
+        quantity
+    )
+    rounded = resource_decimal.to_integral_value(rounding=decimal.ROUND_UP)
+    return int(rounded)
 
 
 def _get_custom_resources(
