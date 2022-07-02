@@ -91,7 +91,8 @@ def train_loop_per_worker(config):
 
     def to_tensor_iterator(dataset, batch_size):
         data_iterator = dataset.iter_batches(
-            batch_format="numpy", batch_size=batch_size)
+            batch_format="numpy", batch_size=batch_size
+        )
 
         for d in data_iterator:
             yield torch.Tensor(d["input"]).float(), torch.Tensor(d["target"]).float()
@@ -112,6 +113,7 @@ def train_loop_per_worker(config):
             optimizer.step()
         loss = validate_epoch(to_tensor_iterator(val_data, batch_size), model, loss_fn)
         session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
+
 
 num_features = len(schema_order)
 
