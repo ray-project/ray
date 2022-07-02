@@ -46,7 +46,7 @@ Dataset Pipelines
 -----------------
 
 
-Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <data-pipelines-quick-start>`__.
+Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <package-ref.html#datasetpipeline-api>`__.
 
 A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets, each of which represents a *window* over the original data. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset window on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
 
@@ -87,6 +87,9 @@ files, enabling inspection functions like :meth:`ds.schema() <ray.data.Dataset.s
 and :meth:`ds.show() <ray.data.Dataset.show>` to be used right away. Executing further
 transformations on the Dataset will trigger execution of all read tasks.
 
+See the :ref:`Creating Datasets guide <creating_datasets>` for details on how to read
+data into datasets.
+
 Dataset Transforms
 ==================
 
@@ -101,6 +104,9 @@ Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for
 
 ..
   https://docs.google.com/drawings/d/1MGlGsPyTOgBXswJyLZemqJO1Mf7d-WiEFptIulvcfWE/edit
+
+See the :ref:`Transforming Datasets guide <transforming_datasets>` for an in-depth guide
+on transforming datasets.
 
 Shuffling Data
 ==============
