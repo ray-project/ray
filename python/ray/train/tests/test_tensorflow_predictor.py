@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import pytest
 
 import ray
 from ray.air.checkpoint import Checkpoint
@@ -45,10 +46,14 @@ def test_init():
     assert checkpoint_predictor.preprocessor == predictor.preprocessor
 
 
-def test_predict_array_with_preprocessor():
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_predict_array_with_preprocessor(use_gpu):
     preprocessor = DummyPreprocessor()
     predictor = TensorflowPredictor(
-        model_definition=build_model, preprocessor=preprocessor, model_weights=weights
+        model_definition=build_model,
+        preprocessor=preprocessor,
+        model_weights=weights,
+        use_gpu=use_gpu,
     )
 
     data_batch = np.array([[1], [2], [3]])
@@ -59,23 +64,13 @@ def test_predict_array_with_preprocessor():
     assert hasattr(predictor.preprocessor, "_batch_transformed")
 
 
-def test_predict_array_with_input_shape_unspecified():
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_predict_array_with_input_shape_unspecified(use_gpu):
     def model_definition():
         return tf.keras.models.Sequential(tf.keras.layers.Lambda(lambda tensor: tensor))
 
-    predictor = TensorflowPredictor(model_definition=model_definition, model_weights=[])
-
-    data_batch = np.array([[1], [2], [3]])
-    predictions = predictor.predict(data_batch)
-
-    assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
-
-
-def test_predict_array():
-    checkpoint = {MODEL_KEY: weights}
-    predictor = TensorflowPredictor.from_checkpoint(
-        Checkpoint.from_dict(checkpoint), build_model
+    predictor = TensorflowPredictor(
+        model_definition=model_definition, model_weights=[], use_gpu=use_gpu
     )
 
     data_batch = np.array([[1], [2], [3]])
@@ -85,8 +80,25 @@ def test_predict_array():
     assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
 
 
-def test_predict_dataframe_with_feature_columns():
-    predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_predict_array(use_gpu):
+    checkpoint = {MODEL_KEY: weights}
+    predictor = TensorflowPredictor.from_checkpoint(
+        Checkpoint.from_dict(checkpoint), build_model, use_gpu=use_gpu
+    )
+
+    data_batch = np.array([[1], [2], [3]])
+    predictions = predictor.predict(data_batch)
+
+    assert len(predictions) == 3
+    assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
+
+
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_predict_dataframe_with_feature_columns(use_gpu):
+    predictor = TensorflowPredictor(
+        model_definition=build_model, model_weights=weights, use_gpu=use_gpu
+    )
 
     data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
     predictions = predictor.predict(data, feature_columns=["A"])
@@ -95,11 +107,12 @@ def test_predict_dataframe_with_feature_columns():
     assert predictions.to_numpy().flatten().tolist() == [1, 3]
 
 
-def test_tensorflow_predictor_no_training():
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_tensorflow_predictor_no_training(use_gpu):
     model = build_model()
     checkpoint = to_air_checkpoint(model)
     batch_predictor = BatchPredictor.from_checkpoint(
-        checkpoint, TensorflowPredictor, model_definition=build_model
+        checkpoint, TensorflowPredictor, model_definition=build_model, use_gpu=use_gpu
     )
     predict_dataset = ray.data.range(3)
     predictions = batch_predictor.predict(predict_dataset)

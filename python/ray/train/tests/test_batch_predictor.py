@@ -88,6 +88,21 @@ def test_batch_prediction_fs():
     )
 
 
+def test_automatic_enable_gpu_from_num_gpus_per_worker():
+    """
+    Test we automatically set underlying Predictor creation use_gpu to True if
+    we found num_gpus_per_worker > 0 in BatchPredictor's predict() call.
+    """
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+    )
+
+    test_dataset = ray.data.range(4)
+    ds = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
+    # TODO (jiaodong): Why ModuleNotFoundError: No module named 'test_batch_predictor' ?
+    print(ds)
+
+
 if __name__ == "__main__":
     import sys
 

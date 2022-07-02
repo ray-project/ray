@@ -98,7 +98,7 @@ class BatchPredictor:
         checkpoint_ref = self.checkpoint_ref
         predictor_kwargs = self.predictor_kwargs
         # Automatic set use_gpu in predictor constructor if user provided
-        # explict GPU resources
+        # explicit GPU resources
         predictor_kwargs["use_gpu"] = num_gpus_per_worker > 0
 
         class ScoringWrapper:

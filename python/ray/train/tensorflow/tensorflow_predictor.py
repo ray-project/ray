@@ -21,6 +21,8 @@ class TensorflowPredictor(Predictor):
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
         model_weights: List of weights to use for the model.
+        use_gpu: If prediction is done on GPU where model will be moved to
+            GPU device upon instantiation.
     """
 
     def __init__(
@@ -28,16 +30,29 @@ class TensorflowPredictor(Predictor):
         model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
         preprocessor: Optional["Preprocessor"] = None,
         model_weights: Optional[list] = None,
+        use_gpu: bool = False,
     ):
         self.model_definition = model_definition
         self.model_weights = model_weights
         self.preprocessor = preprocessor
+
+        self.use_gpu = use_gpu
+        # TensorFlow model objects cannot be pickled, therefore we use
+        # a callable that returns the model and initialize it here,
+        # instead of having an initialized model object as an attribute.
+        if use_gpu:
+            # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
+            with tf.device("GPU:0"):
+                self.model = self.model_definition()
+        else:
+            self.model = self.model_definition()
 
     @classmethod
     def from_checkpoint(
         cls,
         checkpoint: Checkpoint,
         model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
+        use_gpu: bool = False,
     ) -> "TensorflowPredictor":
         """Instantiate the predictor from a Checkpoint.
 
@@ -57,12 +72,12 @@ class TensorflowPredictor(Predictor):
             model_definition=model_definition,
             model_weights=model_weights,
             preprocessor=preprocessor,
+            use_gpu=use_gpu,
         )
 
     def predict(
         self,
         data: DataBatchType,
-        use_gpu: bool = False,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
         dtype: Optional[tf.dtypes.DType] = None,
     ) -> DataBatchType:
@@ -129,29 +144,37 @@ class TensorflowPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
+
+        def predict_func(data):
+            """Helper function to run prediction to faciliate GPU inference
+            under tf.device context manager.
+            """
+            if isinstance(data, pd.DataFrame):
+                if feature_columns:
+                    data = data[feature_columns]
+                tensor = convert_pandas_to_tf_tensor(data, dtype=dtype)
+            else:
+                tensor = tf.convert_to_tensor(data, dtype=dtype)
+
+            if self.model_weights is not None:
+                input_shape = list(tensor.shape)
+                # The batch axis can contain varying number of elements, so we set
+                # the shape along the axis to `None`.
+                input_shape[0] = None
+
+                self.model.build(input_shape=input_shape)
+                self.model.set_weights(self.model_weights)
+
+            prediction = list(self.model(tensor).numpy())
+            return prediction
+
         if self.preprocessor:
             data = self.preprocessor.transform_batch(data)
 
-        if isinstance(data, pd.DataFrame):
-            if feature_columns:
-                data = data[feature_columns]
-            tensor = convert_pandas_to_tf_tensor(data, dtype=dtype)
+        if self.use_gpu:
+            with tf.device("GPU:0"):
+                prediction = predict_func(data)
         else:
-            tensor = tf.convert_to_tensor(data, dtype=dtype)
+            prediction = predict_func(data)
 
-        # TensorFlow model objects cannot be pickled, therefore we use
-        # a callable that returns the model and initialize it here,
-        # instead of having an initialized model object as an attribute.
-        model = self.model_definition()
-
-        if self.model_weights is not None:
-            input_shape = list(tensor.shape)
-            # The batch axis can contain varying number of elements, so we set
-            # the shape along the axis to `None`.
-            input_shape[0] = None
-
-            model.build(input_shape=input_shape)
-            model.set_weights(self.model_weights)
-
-        prediction = list(model(tensor).numpy())
         return pd.DataFrame({"predictions": prediction}, columns=["predictions"])
