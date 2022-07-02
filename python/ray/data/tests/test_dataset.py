@@ -4258,7 +4258,7 @@ def test_actorpoolstrategy_apply_interrupt(shutdown_only):
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
 
 
-def test_actorpoolstrategy_default_max_actors(shutdown_only):
+def test_actorpoolstrategy_default_num_actors(shutdown_only):
     def f(x):
         import time
 
@@ -4273,8 +4273,9 @@ def test_actorpoolstrategy_default_max_actors(shutdown_only):
         num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
     )
     assert (
-        compute_strategy.num_workers <= expected_max_num_workers
-    ), "Number of actors exceeds maximal limit"
+        compute_strategy.num_workers >= num_cpus
+        and compute_strategy.num_workers <= expected_max_num_workers
+    ), "Number of actors is out of the expected bound"
 
 
 if __name__ == "__main__":
