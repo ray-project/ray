@@ -57,7 +57,7 @@ void InlineDependencies(
   RAY_CHECK(found >= dependencies.size());
 }
 
-void LocalDependencyResolver::CancelResolveDependencies(const TaskID &task_id) {
+void LocalDependencyResolver::CancelDependencyResolution(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
   pending_tasks_.erase(task_id);
 }
@@ -90,7 +90,6 @@ void LocalDependencyResolver::ResolveDependencies(
   auto inserted = pending_tasks_.emplace(task_id, new TaskState(task, std::move(local_dependencies), std::move(actor_dependences), on_complete));
   RAY_CHECK(inserted.second);
   auto &state = inserted.first->second;
-  num_pending_ += 1;
 
   for (const auto &it : state->local_dependencies) {
     const ObjectID &obj_id = it.first;
@@ -118,7 +117,6 @@ void LocalDependencyResolver::ResolveDependencies(
               if (state->actor_dependencies_remaining == 0) {
                 resolved_task_state = std::move(state);
                 pending_tasks_.erase(it);
-                num_pending_ -= 1;
               }
             }
           }
@@ -153,7 +151,6 @@ void LocalDependencyResolver::ResolveDependencies(
                 state->obj_dependencies_remaining == 0) {
               resolved_task_state = std::move(state);
               pending_tasks_.erase(it);
-              num_pending_--;
             }
           }
 

@@ -54,11 +54,14 @@ class LocalDependencyResolver {
 
   /// Cancel resolution of the given task's dependencies. Its registered
   /// callback will not be called.
-  void CancelResolveDependencies(const TaskID &task_id);
+  void CancelDependencyResolution(const TaskID &task_id);
 
   /// Return the number of tasks pending dependency resolution.
   /// TODO(ekl) this should be exposed in worker stats.
-  int NumPendingTasks() const { return num_pending_; }
+  int64_t NumPendingTasks() const {
+    absl::MutexLock lock(&mu_);
+    return pending_tasks_.size();
+  }
 
  private:
   struct TaskState {
@@ -102,7 +105,7 @@ class LocalDependencyResolver {
   absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_;
 
   /// Protects against concurrent access to internal state.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 };
 
 }  // namespace core
