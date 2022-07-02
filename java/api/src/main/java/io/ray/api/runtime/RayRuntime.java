@@ -2,10 +2,13 @@ package io.ray.api.runtime;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.CppActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
+import io.ray.api.function.CppActorClass;
+import io.ray.api.function.CppActorMethod;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -13,6 +16,7 @@ import io.ray.api.function.RayFunc;
 import io.ray.api.function.RayFuncR;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
+import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
@@ -175,6 +179,16 @@ public interface RayRuntime {
   ObjectRef callActor(PyActorHandle pyActor, PyActorMethod pyActorMethod, Object[] args);
 
   /**
+   * Invoke a remote Cpp function on an actor.
+   *
+   * @param cppActor A handle to the actor.
+   * @param cppActorMethod The actor method.
+   * @param args Arguments of the function.
+   * @return The result object.
+   */
+  ObjectRef callActor(CppActorHandle cppActor, CppActorMethod cppActorMethod, Object[] args);
+
+  /**
    * Create an actor on a remote node.
    *
    * @param actorFactoryFunc A remote function whose return value is the actor object.
@@ -195,6 +209,17 @@ public interface RayRuntime {
    * @return A handle to the actor.
    */
   PyActorHandle createActor(PyActorClass pyActorClass, Object[] args, ActorCreationOptions options);
+
+  /**
+   * Create a Cpp actor on a remote node.
+   *
+   * @param cppActorClass The Cpp actor class.
+   * @param args Arguments of the actor constructor.
+   * @param options The options for creating actor.
+   * @return A handle to the actor.
+   */
+  CppActorHandle createActor(
+      CppActorClass cppActorClass, Object[] args, ActorCreationOptions options);
 
   /**
    * Create a placement group on remote nodes.
@@ -218,6 +243,8 @@ public interface RayRuntime {
 
   /** Get the namespace of this job. */
   String getNamespace();
+
+  UniqueId getCurrentNodeId();
 
   /**
    * Get a placement group by id.

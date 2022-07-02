@@ -1,15 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-    overload,
-)
+from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
@@ -20,51 +12,44 @@ import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
 from ray._private.usage import usage_lib
-from ray.util.annotations import PublicAPI
 
 from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient
-from ray.serve.config import (
-    AutoscalingConfig,
-    DeploymentConfig,
-    HTTPOptions,
-)
+from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve.constants import (
+    CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_CHECKPOINT_PATH,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
-    CONTROLLER_MAX_CONCURRENCY,
-    DEFAULT_HTTP_HOST,
-    DEFAULT_HTTP_PORT,
 )
 from ray.serve.context import (
-    set_global_client,
+    ReplicaContext,
     get_global_client,
     get_internal_replica_context,
-    ReplicaContext,
+    set_global_client,
 )
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment_graph_build import build as pipeline_build
+from ray.serve.deployment_graph_build import get_and_validate_ingress_deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.logging_utils import LoggingContext
-from ray.serve.deployment_graph_build import (
-    build as pipeline_build,
-    get_and_validate_ingress_deployment,
-)
 from ray.serve.utils import (
+    DEFAULT,
     ensure_serialization_context,
     format_actor_name,
     get_current_node_resource_key,
     get_random_letters,
     in_interactive_shell,
-    DEFAULT,
     install_serve_encoders_to_fastapi,
 )
-
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__file__)
 
@@ -125,7 +110,7 @@ def start(
                 f'{{"{key}": {kwargs[key]}}}) instead.'
             )
     # Initialize ray if needed.
-    ray.worker.global_worker.filter_logs_by_job = False
+    ray._private.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
@@ -343,7 +328,6 @@ def deployment(func_or_class: Callable) -> Deployment:
 def deployment(
     name: Optional[str] = None,
     version: Optional[str] = None,
-    prev_version: Optional[str] = None,
     num_replicas: Optional[int] = None,
     init_args: Optional[Tuple[Any]] = None,
     init_kwargs: Optional[Dict[Any, Any]] = None,
@@ -365,7 +349,6 @@ def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Optional[str] = None,
     version: Optional[str] = None,
-    prev_version: Optional[str] = None,
     num_replicas: Optional[int] = None,
     init_args: Optional[Tuple[Any]] = None,
     init_kwargs: Optional[Dict[Any, Any]] = None,
@@ -389,11 +372,6 @@ def deployment(
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
             new version.
-        prev_version (Optional[str]): Version of the existing deployment which
-            is used as a precondition for the next deployment. If prev_version
-            does not match with the existing deployment's version, the
-            deployment will fail. If not provided, deployment procedure will
-            not check the existing deployment's version.
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
         init_args (Optional[Tuple]): Positional args to be passed to the class
@@ -466,7 +444,6 @@ def deployment(
             name if name is not None else _func_or_class.__name__,
             config,
             version=version,
-            prev_version=prev_version,
             init_args=init_args,
             init_kwargs=init_kwargs,
             route_prefix=route_prefix,
@@ -616,7 +593,6 @@ def run(
             "ray_actor_options": deployment._ray_actor_options,
             "config": deployment._config,
             "version": deployment._version,
-            "prev_version": deployment._prev_version,
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
         }

@@ -1,58 +1,59 @@
-from typing import Optional, Set
-
-import click
 import copy
-from datetime import datetime
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
 import urllib
 import urllib.parse
+from datetime import datetime
+from distutils.dir_util import copy_tree
+from typing import Optional, Set
+
+import click
+import psutil
 import yaml
 
 import ray
-import psutil
-from ray._private.usage import usage_lib
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-import ray.ray_constants as ray_constants
 import ray._private.utils
-from ray.util.annotations import PublicAPI
+from ray._private.internal_api import memory_summary
+from ray._private.storage import _load_class
+from ray._private.usage import usage_lib
+from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
+    RUN_ENV_TYPES,
     attach_cluster,
-    exec_cluster,
     create_or_update_cluster,
+    debug_status,
+    exec_cluster,
+    get_cluster_dump_archive,
+    get_head_node_ip,
+    get_local_dump_archive,
+    get_worker_node_ips,
+    kill_node,
     monitor_cluster,
     rsync,
     teardown_cluster,
-    get_head_node_ip,
-    kill_node,
-    get_worker_node_ips,
-    get_local_dump_archive,
-    get_cluster_dump_archive,
-    debug_status,
-    RUN_ENV_TYPES,
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
-from ray.internal.internal_api import memory_summary
-from ray.internal.storage import _load_class
-from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
-from ray.experimental.state.state_cli import list as cli_list
-from ray.experimental.state.api import (
-    get_log,
-    list_logs,
-)
+from ray.experimental.state.api import get_log, list_logs
+from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
+from ray.util.annotations import PublicAPI
+
 from ray.experimental.state.state_cli import (
+    get as state_cli_get,
+    list as state_cli_list,
     get_api_server_url,
-    get_state_api_output_to_print,
+    output_with_format,
+    summary_state_cli_group,
 )
-from ray.experimental.state.common import DEFAULT_LIMIT
-from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port, no_config_ca
         ]
         click.echo(
             "Attempting to establish dashboard locally at"
-            " localhost:{} connected to"
+            " http://localhost:{}/ connected to"
             " remote port {}".format(port, remote_port)
         )
         # We want to probe with a no-op that returns quickly to avoid
@@ -178,7 +179,7 @@ def continue_debug_session(live_jobs: Set[str]):
                         )
                         return
                     host, port = session["pdb_address"].split(":")
-                    ray.util.rpdb.connect_pdb_client(host, int(port))
+                    ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
                     )
@@ -209,7 +210,9 @@ def debug(address):
     ray.init(address=address, log_to_driver=False)
     while True:
         # Used to filter out and clean up entries from dead jobs.
-        live_jobs = {job["JobID"] for job in ray.state.jobs() if not job["IsDead"]}
+        live_jobs = {
+            job["JobID"] for job in ray._private.state.jobs() if not job["IsDead"]
+        }
         continue_debug_session(live_jobs)
 
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
@@ -264,7 +267,7 @@ def debug(address):
                 )
             )
             host, port = session["pdb_address"].split(":")
-            ray.util.rpdb.connect_pdb_client(host, int(port))
+            ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
 @cli.command()
@@ -743,7 +746,7 @@ def start(
                     " flag of `ray start` command."
                 )
 
-        node = ray.node.Node(
+        node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )
 
@@ -889,7 +892,7 @@ def start(
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
-        node = ray.node.Node(
+        node = ray._private.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
 
@@ -911,33 +914,55 @@ def start(
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
-                "This command will now block until terminated by a signal."
+                "This command will now block forever until terminated by a signal."
             )
             cli_logger.print(
                 "Running subprocesses are monitored and a message will be "
-                "printed if any of them terminate unexpectedly."
+                "printed if any of them terminate unexpectedly. Subprocesses "
+                "exit with SIGTERM will be treated as graceful, thus NOT reported."
             )
             cli_logger.flush()
 
         while True:
             time.sleep(1)
             deceased = node.dead_processes()
-            if len(deceased) > 0:
+
+            # Report unexpected exits of subprocesses with unexpected return codes.
+            # We are explicitly expecting SIGTERM because this is how `ray stop` sends
+            # shutdown signal to subprocesses, i.e. log_monitor, raylet...
+            # NOTE(rickyyx): We are treating 128+15 as an expected return code since
+            # this is what autoscaler/_private/monitor.py does upon SIGTERM
+            # handling.
+            expected_return_codes = [
+                0,
+                signal.SIGTERM,
+                -1 * signal.SIGTERM,
+                128 + signal.SIGTERM,
+            ]
+            unexpected_deceased = [
+                (process_type, process)
+                for process_type, process in deceased
+                if process.returncode not in expected_return_codes
+            ]
+            if len(unexpected_deceased) > 0:
                 cli_logger.newline()
-                cli_logger.error("Some Ray subprcesses exited unexpectedly:")
+                cli_logger.error("Some Ray subprocesses exited unexpectedly:")
 
                 with cli_logger.indented():
-                    for process_type, process in deceased:
+                    for process_type, process in unexpected_deceased:
                         cli_logger.error(
                             "{}",
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)},
                         )
 
-                # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
-                sys.exit(1)
+                # explicitly kill all processes since atexit handlers
+                # will not exit with errors.
+                node.kill_all_processes(check_alive=False, allow_graceful=False)
+                os._exit(1)
+        # not-reachable
 
 
 @cli.command()
@@ -2015,6 +2040,15 @@ def local_dump(
     help="The interval to print new logs when `--follow` is specified.",
     hidden=True,
 )
+@click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=(
+        "Timeout in seconds for the API requests. "
+        f"Default is {DEFAULT_RPC_TIMEOUT}. If --follow is specified, "
+        "this option will be ignored."
+    ),
+)
 def logs(
     glob_filter,
     node_ip: str,
@@ -2025,6 +2059,7 @@ def logs(
     follow: bool,
     tail: int,
     interval: float,
+    timeout: int,
 ):
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
@@ -2046,6 +2081,7 @@ def logs(
             node_id=node_id,
             node_ip=node_ip,
             glob_filter=glob_filter,
+            timeout=timeout,
         )
         log_files_found = []
         for _, log_files in logs.items():
@@ -2062,12 +2098,12 @@ def logs(
                 print(f"Node ID: {node_id}")
             elif node_ip:
                 print(f"Node IP: {node_ip}")
-            print(get_state_api_output_to_print(logs))
+            print(output_with_format(logs))
 
     # If there's an unique match, print the log file.
     if match_unique:
         if not tail:
-            tail = 0 if follow else DEFAULT_LIMIT
+            tail = 0 if follow else DEFAULT_LOG_LIMIT
 
             if tail > 0:
                 print(
@@ -2086,6 +2122,7 @@ def logs(
             tail=tail,
             follow=follow,
             _interval=interval,
+            timeout=timeout,
         ):
             print(chunk, end="", flush=True)
 
@@ -2229,7 +2266,7 @@ def global_gc(address):
     address = services.canonicalize_bootstrap_address(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
-    ray.internal.internal_api.global_gc()
+    ray._private.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
 
 
@@ -2312,7 +2349,7 @@ def healthcheck(address, redis_password, component):
 
     # If the status is too old, the service has probably already died.
     delta = cur_time - report_time
-    time_ok = delta < ray.ray_constants.HEALTHCHECK_EXPIRATION_S
+    time_ok = delta < ray._private.ray_constants.HEALTHCHECK_EXPIRATION_S
 
     if time_ok:
         sys.exit(0)
@@ -2480,7 +2517,9 @@ cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
-cli.add_command(cli_list)
+cli.add_command(state_cli_list)
+cli.add_command(state_cli_get)
+add_command_alias(summary_state_cli_group, name="summary", hidden=True)
 
 try:
     from ray.serve.scripts import serve_cli

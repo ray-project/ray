@@ -1,6 +1,6 @@
-from typing import Optional
-import threading
 import os
+import threading
+from typing import Optional
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -23,6 +23,9 @@ DEFAULT_ENABLE_PANDAS_BLOCK = True
 # Whether to enable stage-fusion optimizations for dataset pipelines.
 DEFAULT_OPTIMIZE_FUSE_STAGES = True
 
+# Whether to enable stage-reorder optimizations for dataset pipelines.
+DEFAULT_OPTIMIZE_REORDER_STAGES = True
+
 # Whether to furthermore fuse read stages. When this is enabled, data will also be
 # re-read from the base dataset in each repetition of a DatasetPipeline.
 DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
@@ -40,6 +43,9 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 
 # The default global scheduling strategy.
 DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
+
+# Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
+DEFAULT_USE_POLARS = False
 
 
 @DeveloperAPI
@@ -59,9 +65,12 @@ class DatasetContext:
         optimize_fuse_stages: bool,
         optimize_fuse_read_stages: bool,
         optimize_fuse_shuffle_stages: bool,
+        optimize_reorder_stages: bool,
         actor_prefetcher_enabled: bool,
         use_push_based_shuffle: bool,
+        pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
+        use_polars: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
@@ -71,9 +80,14 @@ class DatasetContext:
         self.optimize_fuse_stages = optimize_fuse_stages
         self.optimize_fuse_read_stages = optimize_fuse_read_stages
         self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
+        self.optimize_reorder_stages = optimize_reorder_stages
         self.actor_prefetcher_enabled = actor_prefetcher_enabled
         self.use_push_based_shuffle = use_push_based_shuffle
+        self.pipeline_push_based_shuffle_reduce_tasks = (
+            pipeline_push_based_shuffle_reduce_tasks
+        )
         self.scheduling_strategy = scheduling_strategy
+        self.use_polars = use_polars
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -95,9 +109,15 @@ class DatasetContext:
                     optimize_fuse_stages=DEFAULT_OPTIMIZE_FUSE_STAGES,
                     optimize_fuse_read_stages=DEFAULT_OPTIMIZE_FUSE_READ_STAGES,
                     optimize_fuse_shuffle_stages=DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES,
+                    optimize_reorder_stages=DEFAULT_OPTIMIZE_REORDER_STAGES,
                     actor_prefetcher_enabled=DEFAULT_ACTOR_PREFETCHER_ENABLED,
                     use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
+                    # NOTE(swang): We have to pipeline reduce tasks right now
+                    # because of a scheduling bug at large scale.
+                    # See https://github.com/ray-project/ray/issues/25412.
+                    pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
+                    use_polars=DEFAULT_USE_POLARS,
                 )
 
             if (
@@ -115,7 +135,7 @@ class DatasetContext:
                     if _default_context:
                         _default_context.block_owner = None
 
-                ray.worker._post_init_hooks.append(clear_owner)
+                ray._private.worker._post_init_hooks.append(clear_owner)
                 _default_context.block_owner = owner
 
             return _default_context

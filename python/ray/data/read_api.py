@@ -353,7 +353,9 @@ def read_parquet_bulk(
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: BaseFileMetadataProvider = FastFileMetadataProvider(),
-    partition_filter: PathPartitionFilter = None,
+    partition_filter: Optional[PathPartitionFilter] = (
+        ParquetBaseDatasource.file_extension_filter()
+    ),
     **arrow_parquet_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a large number (e.g. >1K) of parquet files quickly.
@@ -411,6 +413,8 @@ def read_parquet_bulk(
             provider if directory expansion and/or file metadata resolution is required.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match "*.parquet*".
         arrow_parquet_args: Other parquet read options to pass to pyarrow.
 
     Returns:
@@ -443,7 +447,9 @@ def read_json(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partition_filter: PathPartitionFilter = None,
+    partition_filter: Optional[
+        PathPartitionFilter
+    ] = JSONDatasource.file_extension_filter(),
     **arrow_json_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
@@ -473,6 +479,8 @@ def read_json(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match "*.json*".
         arrow_json_args: Other json read options to pass to pyarrow.
 
     Returns:
@@ -500,7 +508,9 @@ def read_csv(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partition_filter: PathPartitionFilter = None,
+    partition_filter: Optional[
+        PathPartitionFilter
+    ] = CSVDatasource.file_extension_filter(),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
@@ -530,6 +540,8 @@ def read_csv(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match "*.csv*".
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
@@ -557,9 +569,10 @@ def read_text(
     drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partition_filter: PathPartitionFilter = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -579,12 +592,17 @@ def read_text(
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
+        ray_remote_args: Kwargs passed to ray.remote in the read tasks and
+            in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
+            By default, this does not filter out any files.
+            If wishing to filter out all file paths except those whose file extension
+            matches e.g. "*.txt*", a ``FileXtensionFilter("txt")`` can be provided.
 
     Returns:
         Dataset holding lines of text read from the specified paths.
@@ -600,10 +618,11 @@ def read_text(
         paths,
         filesystem=filesystem,
         parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
         arrow_open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
-    ).flat_map(to_text)
+    ).flat_map(to_text, **(ray_remote_args or {}))
 
 
 @PublicAPI
@@ -614,7 +633,9 @@ def read_numpy(
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partition_filter: PathPartitionFilter = None,
+    partition_filter: Optional[
+        PathPartitionFilter
+    ] = NumpyDatasource.file_extension_filter(),
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
@@ -644,6 +665,8 @@ def read_numpy(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match "*.npy*".
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """
@@ -669,7 +692,7 @@ def read_binary_files(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partition_filter: PathPartitionFilter = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -697,6 +720,7 @@ def read_binary_files(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
+            By default, this does not filter out any files.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.

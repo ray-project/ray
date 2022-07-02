@@ -1,24 +1,27 @@
-from functools import wraps
 import inspect
 import logging
-import uuid
 import os
+import uuid
+from functools import wraps
 
-from ray import cloudpickle as pickle
-from ray.util.annotations import DeveloperAPI
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray._raylet import PythonFunctionDescriptor
-from ray import cross_language, Language
-from ray._private.client_mode_hook import client_mode_convert_function
-from ray._private.client_mode_hook import client_mode_should_convert
-from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
-from ray.utils import get_runtime_env_info, parse_runtime_env
-from ray.util.tracing.tracing_helper import (
-    _tracing_task_invocation,
-    _inject_tracing_into_function,
-)
+from ray import Language
+from ray import cloudpickle as pickle
+from ray import cross_language
 from ray._private import ray_option_utils
+from ray._private.client_mode_hook import (
+    client_mode_convert_function,
+    client_mode_should_convert,
+)
+from ray._private.utils import get_runtime_env_info, parse_runtime_env
+from ray._raylet import PythonFunctionDescriptor
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.placement_group import _configure_placement_group_based_on_context
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.tracing.tracing_helper import (
+    _inject_tracing_into_function,
+    _tracing_task_invocation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ logger = logging.getLogger(__name__)
 _task_launch_hook = None
 
 
+@PublicAPI
 class RemoteFunction:
     """A remote function.
 
@@ -55,6 +59,7 @@ class RemoteFunction:
         _max_retries: The number of times this task may be retried
             on worker failure.
         _retry_exceptions: Whether application-level errors should be retried.
+            This can be a boolean or a list/tuple of exceptions that should be retried.
         _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
@@ -183,7 +188,7 @@ class RemoteFunction:
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(self, args, kwargs, **task_options)
 
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.check_connected()
 
         # If this function was not exported in this session and job, we need to
@@ -248,6 +253,11 @@ class RemoteFunction:
         num_returns = task_options["num_returns"]
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
+        if isinstance(retry_exceptions, (list, tuple)):
+            retry_exception_allowlist = tuple(retry_exceptions)
+            retry_exceptions = True
+        else:
+            retry_exception_allowlist = None
 
         resources = ray._private.utils.resources_from_ray_options(task_options)
 
@@ -267,7 +277,7 @@ class RemoteFunction:
                 placement_group_capture_child_tasks = (
                     worker.should_capture_child_tasks_in_placement_group
                 )
-            placement_group = configure_placement_group_based_on_context(
+            placement_group = _configure_placement_group_based_on_context(
                 placement_group_capture_child_tasks,
                 placement_group_bundle_index,
                 resources,
@@ -297,7 +307,7 @@ class RemoteFunction:
 
         def invocation(args, kwargs):
             if self._is_cross_language:
-                list_args = cross_language.format_args(worker, args, kwargs)
+                list_args = cross_language._format_args(worker, args, kwargs)
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
@@ -305,7 +315,7 @@ class RemoteFunction:
                     self._function_signature, args, kwargs
                 )
 
-            if worker.mode == ray.worker.LOCAL_MODE:
+            if worker.mode == ray._private.worker.LOCAL_MODE:
                 assert (
                     not self._is_cross_language
                 ), "Cross language remote function cannot be executed locally."
@@ -318,6 +328,7 @@ class RemoteFunction:
                 resources,
                 max_retries,
                 retry_exceptions,
+                retry_exception_allowlist,
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
