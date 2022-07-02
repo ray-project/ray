@@ -27,9 +27,7 @@ class AsyncRequestsManager:
     Example:
         >>> import time
         >>> import ray
-        >>> from ray.rllib.execution.parallel_requests_manager import (
-        ...     AsyncRequestsManager
-        ... )
+        >>> from ray.rllib.execution.parallel_requests import AsyncRequestsManager
         >>>
         >>> @ray.remote
         ... class MyActor:
