@@ -1,35 +1,35 @@
 from __future__ import print_function
 
+import collections
 import datetime
 import numbers
-from typing import Any, Dict, List, Optional, Union
-
-import collections
 import os
 import sys
-import numpy as np
 import time
+import warnings
+from typing import Any, Dict, List, Optional, Union
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.util.queue import Queue
+import numpy as np
 
 from ray.tune.callback import Callback
-from ray.tune.logger import pretty_print, logger
+from ray.tune.logger import logger, pretty_print
 from ray.tune.result import (
+    AUTO_RESULT_KEYS,
     DEFAULT_METRIC,
     EPISODE_REWARD_MEAN,
     MEAN_ACCURACY,
     MEAN_LOSS,
     NODE_IP,
     PID,
-    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
-    AUTO_RESULT_KEYS,
+    TRAINING_ITERATION,
 )
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.queue import Queue
 
 try:
     from collections.abc import Mapping, MutableMapping
@@ -208,11 +208,7 @@ class TuneReporterBase(ProgressReporter):
 
         self._metric = metric
         self._mode = mode
-
-        if metric is None or mode is None:
-            self._sort_by_metric = False
-        else:
-            self._sort_by_metric = sort_by_metric
+        self._sort_by_metric = sort_by_metric
 
     def setup(
         self,
@@ -333,6 +329,12 @@ class TuneReporterBase(ProgressReporter):
             fmt: Table format. See `tablefmt` in tabulate API.
             delim: Delimiter between messages.
         """
+        if self._sort_by_metric and (self._metric is None or self._mode is None):
+            self._sort_by_metric = False
+            warnings.warn(
+                "Both 'metric' and 'mode' must be set to be able "
+                "to sort by metric. No sorting is performed."
+            )
         if not self._metrics_override:
             user_metrics = self._infer_user_metrics(trials, self._infer_limit)
             self._metric_columns.update(user_metrics)
@@ -546,7 +548,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
             self.display(progress_str)
 
     def display(self, string: str) -> None:
-        from IPython.display import display, HTML, clear_output
+        from IPython.display import HTML, clear_output, display
 
         if not self._display_handle:
             if self._overwrite:
@@ -634,6 +636,7 @@ class CLIReporter(TuneReporterBase):
 def memory_debug_str():
     try:
         import ray  # noqa F401
+
         import psutil
 
         total_gb = psutil.virtual_memory().total / (1024 ** 3)
