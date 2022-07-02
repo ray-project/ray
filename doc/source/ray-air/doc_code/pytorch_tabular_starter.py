@@ -111,7 +111,8 @@ def train_loop_per_worker(config):
             train_loss = loss_fn(predictions, labels.unsqueeze(1))
             train_loss.backward()
             optimizer.step()
-        loss = validate_epoch(to_tensor_iterator(val_data, batch_size), model, loss_fn)
+        validation_iterator = to_tensor_iterator(val_data, batch_size)
+        loss = validate_epoch(validation_iterator, model, loss_fn)
         session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
 
 
@@ -144,8 +145,7 @@ trainer = TorchTrainer(
 
 result = trainer.fit()
 print(f"Last result: {result.metrics}")
-# Last result: {'loss': 0.6559339960416158, 
-import ipdb; ipdb.set_trace()
+# Last result: {'loss': 0.6559339960416158, ...}
 # __air_pytorch_train_end__
 
 # __air_pytorch_tuner_start__
@@ -156,13 +156,12 @@ from ray.air.config import RunConfig
 tuner = Tuner(
     trainer,
     param_space={"train_loop_config": {"lr": tune.uniform(0.001, 0.01)}},
-    tune_config=TuneConfig(num_samples=1, metric="loss", mode="min"),
-    run_config=RunConfig(verbose=3)
+    tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
-print(best_result)
-# Result(metrics={'loss': 26.278409322102863, ...})
+print("Best Result:", best_result)
+# Best Result: Result(metrics={'loss': 0.278409322102863, ...})
 
 checkpoint = best_result.checkpoint
 # __air_pytorch_tuner_end__
@@ -189,17 +188,19 @@ from ray.serve.model_wrappers import ModelWrapperDeployment
 from fastapi import Request
 import requests
 
+
 async def adapter(request: Request):
     content = await request.json()
     print(content)
     return pd.DataFrame.from_dict(content)
 
+
 serve.start(detached=True)
 deployment = ModelWrapperDeployment.options(name="my-deployment")
 # deployment.deploy(
-#     TorchPredictor, 
-#     checkpoint, 
-#     batching_params=False, 
+#     TorchPredictor,
+#     checkpoint,
+#     batching_params=False,
 #     http_adapter=adapter,
 #     model=create_model(num_features))
 

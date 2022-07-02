@@ -163,19 +163,55 @@ tuner = Tuner(
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
-print(best_result)
-# __air_pytorch_tuner_end__
+print("Best Result:", best_result)
+# Best Result: Result(metrics={'loss': 8.997025489807129, ...)
+# __air_tf_tuner_end__
 
-# __air_pytorch_batchpred_start__
+# __air_tf_batchpred_start__
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.torch import TorchPredictor
+from ray.train.tensorflow import TensorflowPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(
-    result.checkpoint, TorchPredictor, model=create_model(num_features)
+    result.checkpoint, 
+    TensorflowPredictor,
+    model_definition=lambda: create_keras_model(num_features)
 )
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
 print("PREDICTED PROBABILITIES")
 predicted_probabilities.show()
+# {'predictions': -226.1644744873047}
+# {'predictions': -256.8736267089844}
+# ...
+# __air_tf_batchpred_end__
 
-# __air_pytorch_batchpred_end__
+# __air_tf_online_predict_start__
+from ray import serve
+from ray.serve.model_wrappers import ModelWrapperDeployment
+
+from fastapi import Request
+import requests
+
+
+async def adapter(request: Request):
+    content = await request.json()
+    print(content)
+    return pd.DataFrame.from_dict(content)
+
+
+serve.start(detached=True)
+deployment = ModelWrapperDeployment.options(name="my-deployment")
+# deployment.deploy(
+#     TorchPredictor,
+#     checkpoint,
+#     batching_params=False,
+#     http_adapter=adapter,
+#     model=create_model(num_features))
+
+# sample_input = test_dataset.take(1)
+# sample_input = dict(sample_input[0])
+
+# output = requests.post(deployment.url, json=[sample_input]).json()
+# print(output)
+
+# __air_tf_online_predict_end__

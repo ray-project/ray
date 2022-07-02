@@ -52,8 +52,14 @@ Below, let's start by preprocessing your data with Ray AIR's ``Preprocessors``:
         :start-after: __air_pytorch_preprocess_start__
         :end-before: __air_pytorch_preprocess_end__
 
+.. tabbed:: Tensorflow
 
-Train a model with an ``Trainer``.
+    .. literalinclude:: doc_code/tf_tabular_starter.py
+        :language: python
+        :start-after: __air_tf_preprocess_start__
+        :end-before: __air_tf_preprocess_end__
+
+Train a model with a ``Trainer``.
 
 .. tabbed:: XGBoost
 
@@ -69,7 +75,35 @@ Train a model with an ``Trainer``.
         :start-after: __air_pytorch_train_start__
         :end-before: __air_pytorch_train_end__
 
+.. tabbed:: Tensorflow
 
+    .. literalinclude:: doc_code/tf_tabular_starter.py
+        :language: python
+        :start-after: __air_tf_train_start__
+        :end-before: __air_tf_train_end__
+
+Find the best hyperparameters with a ``Tuner``.
+
+.. tabbed:: XGBoost
+
+    .. literalinclude:: doc_code/xgboost_starter.py
+        :language: python
+        :start-after: __air_xgb_tuner_start__
+        :end-before: __air_xgb_tuner_end__
+
+.. tabbed:: Pytorch
+
+    .. literalinclude:: doc_code/pytorch_tabular_starter.py
+        :language: python
+        :start-after: __air_pytorch_tuner_start__
+        :end-before: __air_pytorch_tuner_end__
+
+.. tabbed:: Tensorflow
+
+    .. literalinclude:: doc_code/tf_tabular_starter.py
+        :language: python
+        :start-after: __air_tf_tuner_start__
+        :end-before: __air_tf_tuner_end__
 
 Use the trained model for batch prediction with a ``BatchPredictor``.
 
@@ -86,6 +120,14 @@ Use the trained model for batch prediction with a ``BatchPredictor``.
         :language: python
         :start-after: __air_pytorch_batchpred_start__
         :end-before: __air_pytorch_batchpred_end__
+
+.. tabbed:: Tensorflow
+
+    .. literalinclude:: doc_code/tf_tabular_starter.py
+        :language: python
+        :start-after: __air_tf_batchpred_start__
+        :end-before: __air_tf_batchpred_end__
+
 
 See the :ref:`Key Concepts <air-key-concepts>` for more that Ray AIR has to offer.
 
