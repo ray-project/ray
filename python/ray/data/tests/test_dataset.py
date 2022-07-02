@@ -4233,7 +4233,7 @@ def test_polars_lazy_import(shutdown_only):
         ctx.use_polars = original_use_polars
 
 
-def test_actorpoolstrategy_apply_interrupt(shutdown_only):
+def test_actor_pool_strategy_apply_interrupt(shutdown_only):
     """Test that _apply kills the actor pool if an interrupt is raised."""
     ray.init(include_dashboard=False, num_cpus=1)
 
@@ -4258,7 +4258,7 @@ def test_actorpoolstrategy_apply_interrupt(shutdown_only):
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
 
 
-def test_actorpoolstrategy_default_num_actors(shutdown_only):
+def test_actor_pool_strategy_default_num_actors(shutdown_only):
     def f(x):
         import time
 
