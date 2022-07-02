@@ -68,8 +68,7 @@ class LocalDependencyResolver {
     TaskState(TaskSpecification t,
               absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> deps,
               std::vector<ActorID> actor_ids,
-              std::function<void(Status)> on_complete
-              )
+              std::function<void(Status)> on_complete)
         : task(t),
           local_dependencies(std::move(deps)),
           actor_dependencies(std::move(actor_ids)),

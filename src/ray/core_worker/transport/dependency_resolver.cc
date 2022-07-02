@@ -87,7 +87,11 @@ void LocalDependencyResolver::ResolveDependencies(
 
   // This is deleted when the last dependency fetch callback finishes.
   const auto task_id = task.TaskId();
-  auto inserted = pending_tasks_.emplace(task_id, new TaskState(task, std::move(local_dependencies), std::move(actor_dependences), on_complete));
+  auto inserted = pending_tasks_.emplace(task_id,
+                                         new TaskState(task,
+                                                       std::move(local_dependencies),
+                                                       std::move(actor_dependences),
+                                                       on_complete));
   RAY_CHECK(inserted.second);
   auto &state = inserted.first->second;
 
