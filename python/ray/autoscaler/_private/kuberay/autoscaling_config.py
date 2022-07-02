@@ -1,10 +1,10 @@
+import decimal
 import json
 import logging
-import math
 import time
-from contextlib import suppress
 from typing import Any, Dict, Optional
 
+import kubernetes
 import requests
 
 from ray.autoscaler._private.constants import (
@@ -28,8 +28,6 @@ RAYCLUSTER_FETCH_RETRY_S = 5
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
 _HEAD_GROUP_NAME = "head-group"
-
-_GPU_WARNING_LOGGED = False
 
 
 class AutoscalingConfigProducer:
@@ -259,15 +257,14 @@ def _get_num_cpus(
     k8s_resource_limits: Dict[str, str],
     group_name: str,
 ) -> int:
-    if "num_cpus" in ray_start_params:
-        return int(ray_start_params["num_cpus"])
+    """Get CPU annotation from ray_start_params or k8s_resource_limits,
+    with priority for ray_start_params.
+    """
+    if "num-cpus" in ray_start_params:
+        return int(ray_start_params["num-cpus"])
     elif "cpu" in k8s_resource_limits:
-        cpu_str = str(k8s_resource_limits["cpu"])
-        if cpu_str[-1] == "m":
-            # For example, '500m' rounds up to 1.
-            return math.ceil(int(cpu_str[:-1]) / 1000)
-        else:
-            return int(cpu_str)
+        cpu_quantity: str = k8s_resource_limits["cpu"]
+        return _round_up_k8s_quantity(cpu_quantity)
     else:
         # Getting the number of CPUs is important, so raise an error if we can't do it.
         raise ValueError(
@@ -280,13 +277,14 @@ def _get_num_cpus(
 def _get_memory(
     ray_start_params: Dict[str, str], k8s_resource_limits: Dict[str, Any]
 ) -> Optional[int]:
-    """Get memory resource annotation from ray_start_params, if it is set there.
-
-    TODO, maybe: Consider container resource limits as in
-    https://github.com/ray-project/ray/pull/14567/files
+    """Get memory resource annotation from ray_start_params or k8s_resource_limits,
+    with priority for ray_start_params.
     """
     if "memory" in ray_start_params:
         return int(ray_start_params["memory"])
+    elif "memory" in k8s_resource_limits:
+        memory_quantity: str = k8s_resource_limits["memory"]
+        return _round_up_k8s_quantity(memory_quantity)
     return None
 
 
@@ -295,32 +293,42 @@ def _get_num_gpus(
     k8s_resource_limits: Dict[str, Any],
     group_name: str,
 ) -> Optional[int]:
-    """Read the number of GPUs from the Ray start params.
-
-    Potential TODO: Read GPU info from the container spec, here and in the
-    Ray Operator.
+    """Get memory resource annotation from ray_start_params or k8s_resource_limits,
+    with priority for ray_start_params.
     """
 
     if "num-gpus" in ray_start_params:
         return int(ray_start_params["num-gpus"])
-
-    # Issue a warning if GPUs are present in the container spec but not in the
-    # ray start params.
-    # TODO: Consider reading GPU info from container spec.
-    for key in k8s_resource_limits:
-        global _GPU_WARNING_LOGGED
-        if "gpu" in key and not _GPU_WARNING_LOGGED:
-            with suppress(Exception):
-                if int(k8s_resource_limits[key]) > 0:
-                    logger.warning(
-                        f"Detected GPUs in container resources for group {group_name}."
-                        "To ensure Ray and the autoscaler are aware of the GPUs,"
-                        " set the `--num-gpus` rayStartParam."
-                    )
-                    _GPU_WARNING_LOGGED = True
-            break
-
+    else:
+        for key in k8s_resource_limits:
+            # e.g. nvidia.com/gpu
+            if key.endswith("gpu"):
+                # Typically, this is a string representing an interger, e.g. "1".
+                gpu_resource_quantity = k8s_resource_limits[key]
+                # Convert to int, making no assumptions on the gpu_resource_quantity,
+                # besides that it's valid as a K8s resource quantity.
+                num_gpus = _round_up_k8s_quantity(gpu_resource_quantity)
+                if num_gpus > 0:
+                    # Only one GPU type supported for now, break out on first
+                    # "/gpu" match.
+                    return num_gpus
     return None
+
+
+def _round_up_k8s_quantity(quantity: str) -> int:
+    """Rounds a Kubernetes resource quantity up to the nearest integer.
+
+    Args:
+        quantity: Resource quantity as a string in the canonical K8s form.
+
+    Returns:
+        The quantity, rounded up, as an integer.
+    """
+    resource_decimal: decimal.Decimal = kubernetes.utils.quantity.parse_quantity(
+        quantity
+    )
+    rounded = resource_decimal.to_integral_value(rounding=decimal.ROUND_UP)
+    return int(rounded)
 
 
 def _get_custom_resources(
