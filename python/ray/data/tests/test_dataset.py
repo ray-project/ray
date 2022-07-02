@@ -4233,7 +4233,7 @@ def test_polars_lazy_import(shutdown_only):
         ctx.use_polars = original_use_polars
 
 
-def test_actorpoolstrategy_apply_interrupt():
+def test_actorpoolstrategy_apply_interrupt(shutdown_only):
     """Test that _apply kills the actor pool if an interrupt is raised."""
     ray.init(include_dashboard=False, num_cpus=1)
 
@@ -4256,6 +4256,25 @@ def test_actorpoolstrategy_apply_interrupt():
 
     # Check that all actors have been killed by counting the available CPUs
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
+
+
+def test_actorpoolstrategy_default_max_actors(shutdown_only):
+    def f(x):
+        import time
+
+        time.sleep(1)
+        return x
+
+    num_cpus = 5
+    ray.init(num_cpus=num_cpus)
+    compute_strategy = ray.data.ActorPoolStrategy()
+    ray.data.range(10, parallelism=10).map_batches(f, compute=compute_strategy)
+    expected_max_num_workers = math.ceil(
+        num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
+    )
+    assert (
+        compute_strategy.num_workers <= expected_max_num_workers
+    ), "Number of actors exceeds maximal limit"
 
 
 if __name__ == "__main__":
