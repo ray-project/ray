@@ -159,12 +159,12 @@ from ray.tune.tuner import Tuner, TuneConfig
 tuner = Tuner(
     trainer,
     param_space={"train_loop_config": {"lr": tune.uniform(0.001, 0.01)}},
-    tune_config=TuneConfig(num_samples=1, metric="loss", mode="min"),
+    tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
-# Best Result: Result(metrics={'loss': 8.997025489807129, ...)
+# Best Result: Result(metrics={'loss': 4.997025489807129, ...)
 # __air_tf_tuner_end__
 
 # __air_tf_batchpred_start__
