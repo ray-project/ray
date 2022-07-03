@@ -1,17 +1,18 @@
 from ray.workflow.api import (
     init,
+    run,
+    run_async,
+    continuation,
+    resume,
+    resume_all,
+    cancel,
+    list_all,
+    delete,
     get_output,
     get_status,
     get_metadata,
-    resume,
-    cancel,
-    list_all,
-    resume_all,
-    wait_for_event,
     sleep,
-    delete,
-    create,
-    continuation,
+    wait_for_event,
     options,
 )
 from ray.workflow.exceptions import (
@@ -23,6 +24,8 @@ from ray.workflow.common import WorkflowStatus
 from ray.workflow.event_listener import EventListener
 
 __all__ = [
+    "run",
+    "run_async",
     "resume",
     "get_output",
     "WorkflowError",
@@ -38,7 +41,6 @@ __all__ = [
     "sleep",
     "EventListener",
     "delete",
-    "create",
     "continuation",
     "options",
 ]

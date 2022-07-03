@@ -37,12 +37,7 @@ def custom_retry_strategy(func: Any, num_retries: int, delay_s: int) -> str:
 
 
 if __name__ == "__main__":
-    workflow.init()
     # Default retry strategy.
-    print(
-        workflow.create(
-            flaky_step.options(**workflow.options(max_retries=10)).bind()
-        ).run()
-    )
+    print(workflow.run(flaky_step.options(**workflow.options(max_retries=10)).bind()))
     # Custom strategy.
-    print(workflow.create(custom_retry_strategy.bind(flaky_step, 10, 1)).run())
+    print(workflow.run(custom_retry_strategy.bind(flaky_step, 10, 1)))

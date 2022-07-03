@@ -73,11 +73,10 @@ def test_workflow_with_pressure(workflow_start_regular_shared):
     ]
 
     ans = ray.get([d.execute() for d in dags])
-    workflows = [workflow.create(d) for d in dags]
     outputs = []
     for _ in range(pressure_level):
-        for w in workflows:
-            outputs.append(w.run_async())
+        for w in dags:
+            outputs.append(workflow.run_async(w))
 
     assert ray.get(outputs) == ans * pressure_level
 

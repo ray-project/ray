@@ -39,7 +39,7 @@ def test_delete(workflow_start_regular):
         time.sleep(1000000)
         return x
 
-    workflow.create(never_ends.bind("hello world")).run_async("never_finishes")
+    workflow.run_async(never_ends.bind("hello world"), workflow_id="never_finishes")
 
     # Make sure the step is actualy executing before killing the cluster
     while not utils.check_global_mark():
@@ -75,7 +75,7 @@ def test_delete(workflow_start_regular):
     def basic_step(arg):
         return arg
 
-    result = workflow.create(basic_step.bind("hello world")).run(workflow_id="finishes")
+    result = workflow.run(basic_step.bind("hello world"), workflow_id="finishes")
     assert result == "hello world"
     ouput = workflow.get_output("finishes")
     assert ray.get(ouput) == "hello world"
@@ -98,7 +98,7 @@ def test_delete(workflow_start_regular):
     assert workflow.list_all() == []
 
     # The workflow can be re-run as if it was never run before.
-    assert workflow.create(basic_step.bind("123")).run(workflow_id="finishes") == "123"
+    assert workflow.run(basic_step.bind("123"), workflow_id="finishes") == "123"
 
     # utils.unset_global_mark()
     # never_ends.step("123").run_async(workflow_id="never_finishes")
@@ -252,7 +252,7 @@ def test_cluster_storage_init(workflow_start_cluster, tmp_path):
     def f():
         return 10
 
-    assert workflow.create(f.bind()).run() == 10
+    assert workflow.run(f.bind()) == 10
 
 
 if __name__ == "__main__":

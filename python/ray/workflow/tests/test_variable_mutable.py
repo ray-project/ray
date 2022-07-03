@@ -19,7 +19,7 @@ def test_variable_mutable(workflow_start_regular):
     a = identity.bind(x)
     x.append(1)
     b = identity.bind(x)
-    assert workflow.create(projection.bind(a, b)).run() == []
+    assert workflow.run(projection.bind(a, b)) == []
 
 
 if __name__ == "__main__":

@@ -1,6 +1,13 @@
 Ray Workflows API
 =================
 
+Workflow Execution API
+----------------------
+
+.. autofunction:: ray.workflow.run
+.. autofunction:: ray.workflow.run_async
+
+
 Management API
 --------------
 .. autofunction:: ray.workflow.resume_all

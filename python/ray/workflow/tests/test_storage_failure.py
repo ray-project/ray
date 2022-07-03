@@ -49,7 +49,7 @@ def construct_workflow(length: int):
     for i in range(length):
         x0, x1, x2 = results[-2], results[-1], str(i)
         results.append(scan.bind(x0, x1, x2))
-    return workflow.create(results[-1])
+    return results[-1]
 
 
 def _locate_initial_commit(debug_store: DebugStorage) -> int:

@@ -33,7 +33,7 @@ def test_step_resources(workflow_start_regular, tmp_path):
 
     lock = FileLock(lock_path)
     lock.acquire()
-    ret = workflow.create(step_run.options(num_cpus=2).bind()).run_async()
+    ret = workflow.run_async(step_run.options(num_cpus=2).bind())
     ray.wait([signal_actor.wait.remote()])
     obj = remote_run.remote()
     with pytest.raises(ray.exceptions.GetTimeoutError):
@@ -48,7 +48,7 @@ def test_get_output_1(workflow_start_regular, tmp_path):
     def simple(v):
         return v
 
-    assert 0 == workflow.create(simple.bind(0)).run("simple")
+    assert 0 == workflow.run(simple.bind(0), workflow_id="simple")
     assert 0 == ray.get(workflow.get_output("simple"))
 
 
@@ -62,7 +62,7 @@ def test_get_output_2(workflow_start_regular, tmp_path):
             return v
 
     lock.acquire()
-    obj = workflow.create(simple.bind(0)).run_async("simple")
+    obj = workflow.run_async(simple.bind(0), workflow_id="simple")
     obj2 = workflow.get_output("simple")
     lock.release()
     assert ray.get([obj, obj2]) == [0, 0]
@@ -83,8 +83,8 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         return 10
 
     with pytest.raises(workflow.WorkflowExecutionError):
-        workflow.create(incr.options(**workflow.options(max_retries=0)).bind()).run(
-            "incr"
+        workflow.run(
+            incr.options(**workflow.options(max_retries=0)).bind(), workflow_id="incr"
         )
 
     assert cnt_file.read_text() == "1"
@@ -121,9 +121,10 @@ def test_get_output_4(workflow_start_regular, tmp_path):
 
     workflow_id = "test_get_output_4"
     lock.acquire()
-    obj = workflow.create(
-        recursive.options(**workflow.options(name="10")).bind(10)
-    ).run_async(workflow_id)
+    obj = workflow.run_async(
+        recursive.options(**workflow.options(name="10")).bind(10),
+        workflow_id=workflow_id,
+    )
 
     outputs = [workflow.get_output(workflow_id, name=str(i)) for i in range(11)]
     outputs.append(obj)
@@ -148,7 +149,7 @@ def test_get_output_5(workflow_start_regular, tmp_path):
 
     outputs = []
     for i in range(20):
-        workflow.create(simple.bind()).run_async(workflow_id.format(i))
+        workflow.run_async(simple.bind(), workflow_id=workflow_id.format(i))
         outputs.append(workflow.get_output(workflow_id.format(i)))
 
     assert ray.get(outputs) == [314] * len(outputs)
@@ -161,7 +162,7 @@ def test_output_with_name(workflow_start_regular):
 
     inner_task = double.options(**workflow.options(name="inner")).bind(1)
     outer_task = double.options(**workflow.options(name="outer")).bind(inner_task)
-    result = workflow.create(outer_task).run_async("double")
+    result = workflow.run_async(outer_task, workflow_id="double")
     inner = workflow.get_output("double", name="inner")
     outer = workflow.get_output("double", name="outer")
 
@@ -177,7 +178,7 @@ def test_output_with_name(workflow_start_regular):
     inner_task = double_2.bind(1)
     outer_task = double_2.bind(inner_task)
     workflow_id = "double_2"
-    result = workflow.create(outer_task).run_async(workflow_id)
+    result = workflow.run_async(outer_task, workflow_id=workflow_id)
 
     inner = workflow.get_output(workflow_id, name="double")
     outer = workflow.get_output(workflow_id, name="double_1")
@@ -199,7 +200,7 @@ def test_get_non_exist_output(workflow_start_regular, tmp_path):
 
     with FileLock(lock_path):
         dag = simple.options(**workflow.options(name="simple")).bind()
-        ret = workflow.create(dag).run_async(workflow_id=workflow_id)
+        ret = workflow.run_async(dag, workflow_id=workflow_id)
         exist = workflow.get_output(workflow_id, name="simple")
         non_exist = workflow.get_output(workflow_id, name="non_exist")
 
@@ -215,11 +216,12 @@ def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
         return 2 * v
 
     # Get the result from named step after workflow finished
-    assert 4 == workflow.create(
+    assert 4 == workflow.run(
         double.options(**workflow.options(name="outer")).bind(
             double.options(**workflow.options(name="inner")).bind(1)
-        )
-    ).run("double")
+        ),
+        workflow_id="double",
+    )
     assert ray.get(workflow.get_output("double", name="inner")) == 2
     assert ray.get(workflow.get_output("double", name="outer")) == 4
 
@@ -237,12 +239,13 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     lock = FileLock(lock_path)
     lock.acquire()
-    output = workflow.create(
+    output = workflow.run_async(
         double.options(**workflow.options(name="outer")).bind(
             double.options(**workflow.options(name="inner")).bind(1, lock_path),
             lock_path,
-        )
-    ).run_async("double-2")
+        ),
+        workflow_id="double-2",
+    )
 
     inner = workflow.get_output("double-2", name="inner")
     outer = workflow.get_output("double-2", name="outer")
@@ -276,11 +279,12 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
 
     # Force it to fail for the outer step
     with pytest.raises(Exception):
-        workflow.create(
+        workflow.run(
             double.options(**workflow.options(name="outer")).bind(
                 double.options(**workflow.options(name="inner")).bind(1, False), True
-            )
-        ).run("double")
+            ),
+            workflow_id="double",
+        )
 
     # For the inner step, it should have already been executed.
     assert 2 == ray.get(workflow.get_output("double", name="inner"))
@@ -298,7 +302,7 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
 
     import math
 
-    assert math.factorial(5) == workflow.create(factorial.bind(5)).run("factorial")
+    assert math.factorial(5) == workflow.run(factorial.bind(5), workflow_id="factorial")
     for i in range(5):
         step_name = (
             "test_basic_workflows_2.test_get_named_step_default.locals.factorial"
@@ -319,7 +323,7 @@ def test_get_named_step_duplicate(workflow_start_regular):
 
     inner = f.bind(10, None)
     outer = f.bind(20, inner)
-    assert 20 == workflow.create(outer).run("duplicate")
+    assert 20 == workflow.run(outer, workflow_id="duplicate")
     # The outer will be checkpointed first. So there is no suffix for the name
     assert ray.get(workflow.get_output("duplicate", name="f")) == 10
     # The inner will be checkpointed after the outer. And there is a duplicate
@@ -332,7 +336,7 @@ def test_no_init_run(shutdown_only):
     def f():
         pass
 
-    workflow.create(f.bind()).run()
+    workflow.run(f.bind())
 
 
 def test_no_init_api(shutdown_only):
