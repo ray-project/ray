@@ -154,7 +154,7 @@ from ray.air.config import RunConfig
 
 tuner = Tuner(
     trainer,
-    param_space={"train_loop_config": {"lr": tune.uniform(0.01, 0.0001)}},
+    param_space={"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}},
     tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
 )
 result_grid = tuner.fit()

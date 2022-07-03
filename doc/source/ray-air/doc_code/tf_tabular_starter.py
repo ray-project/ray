@@ -183,33 +183,3 @@ predicted_probabilities.show()
 # ...
 # __air_tf_batchpred_end__
 
-# __air_tf_online_predict_start__
-from ray import serve
-from ray.serve.model_wrappers import ModelWrapperDeployment
-
-from fastapi import Request
-import requests
-
-
-async def adapter(request: Request):
-    content = await request.json()
-    print(content)
-    return pd.DataFrame.from_dict(content)
-
-
-serve.start(detached=True)
-deployment = ModelWrapperDeployment.options(name="my-deployment")
-# deployment.deploy(
-#     TorchPredictor,
-#     checkpoint,
-#     batching_params=False,
-#     http_adapter=adapter,
-#     model=create_model(num_features))
-
-# sample_input = test_dataset.take(1)
-# sample_input = dict(sample_input[0])
-
-# output = requests.post(deployment.url, json=[sample_input]).json()
-# print(output)
-
-# __air_tf_online_predict_end__
