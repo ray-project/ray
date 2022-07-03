@@ -15,6 +15,7 @@
 #pragma once
 
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/ray_config.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -26,8 +27,7 @@ namespace gcs {
 
 class RedisStoreClient : public StoreClient {
  public:
-  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
-      : redis_client_(std::move(redis_client)) {}
+  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
@@ -73,6 +73,7 @@ class RedisStoreClient : public StoreClient {
   class RedisScanner {
    public:
     explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
+                          const std::string &external_storage_namespace,
                           const std::string &table_name);
 
     Status ScanKeysAndValues(const std::string &match_pattern,
@@ -90,6 +91,7 @@ class RedisStoreClient : public StoreClient {
                         const StatusCallback &callback);
 
     std::string table_name_;
+    std::string external_storage_namespace_;
 
     /// Mutex to protect the shard_to_cursor_ field and the keys_ field and the
     /// key_value_map_ field.
@@ -115,44 +117,7 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       std::function<void(int64_t)> callback);
 
-  /// The return value is a map, whose key is the shard and the value is a list of batch
-  /// operations.
-  static absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
-  GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
-                      const std::string &command,
-                      const std::vector<std::string> &keys,
-                      int *count);
-
-  /// The separator is used when building redis key.
-  static std::string table_separator_;
-  static std::string index_table_separator_;
-
-  static std::string GenRedisKey(const std::string &table_name, const std::string &key);
-
-  static std::string GenRedisKey(const std::string &table_name,
-                                 const std::string &key,
-                                 const std::string &index_key);
-
-  static std::string GenKeyRedisMatchPattern(const std::string &table_name);
-
-  static std::string GenKeyRedisMatchPattern(const std::string &table_name,
-                                             const std::string &key);
-
-  static std::string GenIndexRedisMatchPattern(const std::string &table_name,
-                                               const std::string &index_key);
-
-  static std::string GetKeyFromRedisKey(const std::string &redis_key,
-                                        const std::string &table_name);
-
-  static std::string GetKeyFromRedisKey(const std::string &redis_key,
-                                        const std::string &table_name,
-                                        const std::string &index_key);
-
-  static Status MGetValues(std::shared_ptr<RedisClient> redis_client,
-                           const std::string &table_name,
-                           const std::vector<std::string> &keys,
-                           const MapCallback<std::string, std::string> &callback);
-
+  std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
 };
 

@@ -7,7 +7,9 @@ import grpc
 import pytest
 
 import ray
+from ray._private.gcs_utils import GcsClient
 import ray._private.gcs_utils as gcs_utils
+from ray._private.test_utils import enable_external_redis
 
 
 @contextlib.contextmanager
@@ -111,6 +113,38 @@ async def test_kv_timeout_aio(ray_start_regular):
 
         with pytest.raises(grpc.RpcError, match="Deadline Exceeded"):
             await gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
+
+
+@pytest.mark.skipif(
+    not enable_external_redis(), reason="Only valid when start with an external redis"
+)
+def test_external_storage_namespace_isolation(shutdown_only):
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c1"}
+    ).address_info["address"]
+    gcs_client = GcsClient(address=addr)
+
+    assert gcs_client.internal_kv_put(b"ABC", b"DEF", True, None) == 1
+
+    assert gcs_client.internal_kv_get(b"ABC", None) == b"DEF"
+
+    ray.shutdown()
+
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c2"}
+    ).address_info["address"]
+    gcs_client = GcsClient(address=addr)
+    assert gcs_client.internal_kv_get(b"ABC", None) is None
+    assert gcs_client.internal_kv_put(b"ABC", b"XYZ", True, None) == 1
+
+    assert gcs_client.internal_kv_get(b"ABC", None) == b"XYZ"
+    ray.shutdown()
+
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c1"}
+    ).address_info["address"]
+    gcs_client = GcsClient(address=addr)
+    assert gcs_client.internal_kv_get(b"ABC", None) == b"DEF"
 
 
 if __name__ == "__main__":
