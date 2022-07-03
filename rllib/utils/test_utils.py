@@ -488,8 +488,8 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
     ]
     best_avg_reward = max(avg_rewards)
     if best_avg_reward < min_reward:
-        raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
-    print("ok")
+        raise ValueError(f"`stop-reward` of {min_reward} not reached!")
+    print(f"`stop-reward` of {min_reward} reached! ok")
 
 
 def check_train_results(train_results):

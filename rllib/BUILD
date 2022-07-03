@@ -2479,6 +2479,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_eval_parallel_to_training_torch",
+    main = "examples/custom_eval.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_UtoZ"],
+    size = "medium",
+    srcs = ["examples/custom_eval.py"],
+    args = ["--num-cpus=4", "--as-test", "--framework=torch", "--evaluation-parallel-to-training"]
+)
+
+py_test(
     name = "examples/custom_experiment",
     main = "examples/custom_experiment.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_UtoZ"],
