@@ -122,14 +122,13 @@ trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
     train_loop_config={
         # Training batch size
-        "batch_size": 32,
+        "batch_size": 128,
         # Number of epochs to train each task for.
-        "num_epochs": 4,
+        "num_epochs": 20,
         # Number of columns of datset
         "num_features": num_features,
         # Optimizer args.
         "lr": 0.001,
-        "momentum": 0.9,
     },
     scaling_config={
         # Number of workers to use for data parallelism.
@@ -155,7 +154,7 @@ from ray.air.config import RunConfig
 
 tuner = Tuner(
     trainer,
-    param_space={"train_loop_config": {"lr": tune.uniform(0.001, 0.01)}},
+    param_space={"train_loop_config": {"lr": tune.uniform(0.01, 0.0001)}},
     tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
 )
 result_grid = tuner.fit()

@@ -106,17 +106,16 @@ def train_loop_per_worker(config):
         multi_worker_model = create_keras_model(num_features)
         multi_worker_model.compile(
             optimizer=tf.keras.optimizers.SGD(learning_rate=lr),
-            loss="binary_crossentropy",
-            metrics=[tf.keras.metrics.BinaryCrossentropy(name="loss")],
+            loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
+            metrics=[tf.keras.metrics.BinaryCrossentropy(name="loss", )],
         )
 
     results = []
     for _ in range(epochs):
         tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size)
         history = multi_worker_model.fit(
-            tf_dataset, callbacks=[TrainCheckpointReportCallback()]
-        ) # TODO: does this refitting actually do anything?
-        results.append(history.history)
+            tf_dataset, callbacks=[TrainCheckpointReportCallback()], verbose=0,
+        )
     return results  # TODO: How do I fetch these results?
 
 
@@ -128,12 +127,11 @@ trainer = TensorflowTrainer(
         # Training batch size
         "batch_size": 128,
         # Number of epochs to train each task for.
-        "num_epochs": 10,
+        "num_epochs": 20,
         # Number of columns of datset
         "num_features": num_features,
         # Optimizer args.
-        "lr": 0.001,
-        "momentum": 0.9,
+        "lr": 0.0001,
     },
     scaling_config={
         # Number of workers to use for data parallelism.
@@ -158,7 +156,7 @@ from ray.tune.tuner import Tuner, TuneConfig
 
 tuner = Tuner(
     trainer,
-    param_space={"train_loop_config": {"lr": tune.uniform(0.001, 0.01)}},
+    param_space={"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}},
     tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
 )
 result_grid = tuner.fit()
