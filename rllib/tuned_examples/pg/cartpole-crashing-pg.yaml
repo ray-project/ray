@@ -28,6 +28,8 @@ cartpole-crashing-pg:
 
         evaluation_num_workers: 2
         evaluation_interval: 1
+        evaluation_duration: 20
+        evaluation_duration_unit: episodes
         evaluation_parallel_to_training: true
         evaluation_config:
           explore: false

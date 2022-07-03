@@ -101,15 +101,15 @@ parser.add_argument(
 )
 
 
-def custom_eval_function(trainer, eval_workers):
+def custom_eval_function(algorithm, eval_workers):
     """Example of a custom evaluation function.
 
     Args:
-        trainer: trainer class to evaluate.
-        eval_workers: evaluation workers.
+        algorithm: Algorithm class to evaluate.
+        eval_workers: Evaluation WorkerSet.
 
     Returns:
-        metrics: evaluation metrics dict.
+        metrics: Evaluation metrics dict.
     """
 
     # We configured 2 eval workers in the training config.
