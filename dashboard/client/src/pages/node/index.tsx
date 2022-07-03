@@ -10,7 +10,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Tooltip,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
@@ -25,6 +24,7 @@ import TitleCard from "../../components/TitleCard";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
 import { useNodeList } from "./hook/useNodeList";
+import { NodeRows } from "./NodeRow";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -35,10 +35,11 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const columns = [
+  "", // Expand button
   "State",
   "ID",
-  "Host",
-  "IP",
+  "Host / Cmd Line",
+  "IP / PID",
   "CPU Usage",
   "Memory",
   "Object Store Memory",
@@ -177,7 +178,7 @@ const Nodes = () => {
         <br />
         Request Status: {msg}
       </TitleCard>
-      <TitleCard title="Statistics">
+      <TitleCard title="Node Statistics">
         <StateCounter type="node" list={nodeList} />
       </TitleCard>
       <TitleCard title="Node List">
@@ -272,86 +273,9 @@ const Nodes = () => {
                     (page.pageNo - 1) * page.pageSize,
                     page.pageNo * page.pageSize,
                   )
-                  .map(
-                    (
-                      {
-                        hostname = "",
-                        ip = "",
-                        cpu = 0,
-                        mem = [],
-                        disk,
-                        networkSpeed = [0, 0],
-                        raylet,
-                        logUrl,
-                      }: NodeDetail,
-                      i,
-                    ) => (
-                      <TableRow key={hostname + i}>
-                        <TableCell>
-                          <StatusChip type="node" status={raylet.state} />
-                        </TableCell>
-                        <TableCell align="center">
-                          <Tooltip title={raylet.nodeId} arrow interactive>
-                            <Link to={`/node/${raylet.nodeId}`}>
-                              {raylet.nodeId.slice(0, 5)}
-                            </Link>
-                          </Tooltip>
-                        </TableCell>
-                        <TableCell align="center">{hostname}</TableCell>
-                        <TableCell align="center">{ip}</TableCell>
-                        <TableCell>
-                          <PercentageBar num={Number(cpu)} total={100}>
-                            {cpu}%
-                          </PercentageBar>
-                        </TableCell>
-                        <TableCell>
-                          <PercentageBar
-                            num={Number(mem[0] - mem[1])}
-                            total={mem[0]}
-                          >
-                            {memoryConverter(mem[0] - mem[1])}/
-                            {memoryConverter(mem[0])}({mem[2]}%)
-                          </PercentageBar>
-                        </TableCell>
-                        <TableCell>
-                          {raylet && (
-                            <PercentageBar
-                              num={raylet.objectStoreUsedMemory}
-                              total={raylet.objectStoreAvailableMemory}
-                            >
-                              {memoryConverter(raylet.objectStoreUsedMemory)}/
-                              {memoryConverter(
-                                raylet.objectStoreAvailableMemory,
-                              )}
-                            </PercentageBar>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {disk && disk["/"] && (
-                            <PercentageBar
-                              num={Number(disk["/"].used)}
-                              total={disk["/"].total}
-                            >
-                              {memoryConverter(disk["/"].used)}/
-                              {memoryConverter(disk["/"].total)}(
-                              {disk["/"].percent}%)
-                            </PercentageBar>
-                          )}
-                        </TableCell>
-                        <TableCell align="center">
-                          {memoryConverter(networkSpeed[0])}/s
-                        </TableCell>
-                        <TableCell align="center">
-                          {memoryConverter(networkSpeed[1])}/s
-                        </TableCell>
-                        <TableCell>
-                          <Link to={`/log/${encodeURIComponent(logUrl)}`}>
-                            Log
-                          </Link>
-                        </TableCell>
-                      </TableRow>
-                    ),
-                  )}
+                  .map((node, i) => (
+                    <NodeRows node={node} rowIndex={i} />
+                  ))}
               </TableBody>
             </Table>
           </TableContainer>

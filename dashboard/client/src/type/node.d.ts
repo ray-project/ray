@@ -45,6 +45,14 @@ export type NodeListRsp = {
   msg: string;
 };
 
+export type NodeWithWorkersListRsp = {
+  data: {
+    clients: NodeDetailExtend[];
+  };
+  result: boolean;
+  msg: string;
+};
+
 export type NodeDetailExtend = {
   workers: Worker[];
   raylet: Raylet;
