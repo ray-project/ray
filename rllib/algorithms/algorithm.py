@@ -825,6 +825,11 @@ class Algorithm(Trainable):
             # TODO: Revmoe this key atv some point. Here for backward compatibility.
             metrics["timesteps_this_iter"] = env_steps_this_iter
 
+        # Add number of healthy evaluation workers after this iteration.
+        metrics["num_healthy_workers"] = len(
+            self.evaluation_workers.remote_workers()
+        )
+
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
@@ -2398,9 +2403,6 @@ class Algorithm(Trainable):
         # Evaluation results.
         if "evaluation" in iteration_results:
             results["evaluation"] = iteration_results.pop("evaluation")
-            results["evaluation"]["num_healthy_workers"] = len(
-                self.evaluation_workers.remote_workers()
-            )
 
         # Custom metrics and episode media.
         results["custom_metrics"] = iteration_results.pop("custom_metrics", {})
