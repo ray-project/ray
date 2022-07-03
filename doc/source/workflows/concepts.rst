@@ -61,18 +61,24 @@ Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on
 Workflows
 ~~~~~~~~~
 
-It takes a single line of code to turn a DAG into a workflow DAG:
+It takes a single line of code to run a workflow DAG:
 
 .. code-block:: python
-    :caption: Turning the DAG into a workflow DAG:
+    :caption: Run a workflow DAG:
 
     from ray import workflow
 
-    output: "Workflow[int]" = workflow.create(dag)
+    # Run the workflow until it completes and returns the output
+    assert workflow.run(dag) == 101
 
-Execute the workflow DAG by ``<workflow>.run()`` or ``<workflow>.run_async()``. Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
+    # Or you can run it asynchronously and fetching the output via 'ray.get'
+    output_ref = workflow.run_async(dag)
+    assert ray.get(output_ref) == 101
 
-When executing the workflow DAG, remote functions are retried on failure, but once they finish successfully and the results are persisted by the workflow engine, they will never be run again.
+
+Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
+
+When executing the workflow DAG, workflow tasks are retried on failure, but once they finish successfully and the results are persisted by the workflow engine, they will never be run again.
 
 .. code-block:: python
     :caption: Run the workflow:
@@ -108,7 +114,7 @@ Large data objects can be stored in the Ray object store. References to these ob
     def concat(words: List[ray.ObjectRef]) -> str:
         return " ".join([ray.get(w) for w in words])
 
-    assert workflow.create(concat.bind(words.bind())).run() == "hello world"
+    assert workflow.run(concat.bind(words.bind())) == "hello world"
 
 Dynamic Workflows
 ~~~~~~~~~~~~~~~~~
@@ -130,7 +136,7 @@ The continuation feature enables nesting, looping, and recursion within workflow
         # return a continuation of a DAG
         return workflow.continuation(add.bind(fib.bind(n - 1), fib.bind(n - 2)))
 
-    assert workflow.create(fib.bind(10)).run() == 55
+    assert workflow.run(fib.bind(10)) == 55
 
 
 Events
@@ -151,4 +157,4 @@ Workflows can be efficiently triggered by timers or external events using the ev
         return args
 
     # If a task's arguments include events, the task won't be executed until all of the events have occured.
-    workflow.create(gather.bind(sleep_task, event_task, "hello world")).run()
+    workflow.run(gather.bind(sleep_task, event_task, "hello world"))

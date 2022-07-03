@@ -133,7 +133,6 @@ class DeploymentConfig(BaseModel):
     deployment_language: Any = DeploymentLanguage.PYTHON
 
     version: Optional[str] = None
-    prev_version: Optional[str] = None
 
     class Config:
         validate_assignment = True
@@ -178,9 +177,6 @@ class DeploymentConfig(BaseModel):
                 data["user_config"] = None
         if "autoscaling_config" in data:
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
-        if "prev_version" in data:
-            if data["prev_version"] == "":
-                data["prev_version"] = None
         if "version" in data:
             if data["version"] == "":
                 data["version"] = None

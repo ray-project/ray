@@ -4,10 +4,10 @@
     API does not really have a signature to just describe.
 .. TODO: Reusing actors and advanced resources allocation seem ill-placed.
 
-Training (tune.Trainable, tune.report)
-======================================
+Training (tune.Trainable, session.report)
+==========================================
 
-Training can be done with either a **Class API** (``tune.Trainable``) or **function API** (``tune.report``).
+Training can be done with either a **Class API** (``tune.Trainable``) or **function API** (``session.report``).
 
 For the sake of example, let's maximize this objective function:
 
@@ -21,7 +21,7 @@ For the sake of example, let's maximize this objective function:
 Function API
 ------------
 
-With the Function API, you can report intermediate metrics by simply calling ``tune.report`` within the provided function.
+With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the provided function.
 
 .. code-block:: python
 
@@ -31,7 +31,7 @@ With the Function API, you can report intermediate metrics by simply calling ``t
         for x in range(20):
             intermediate_score = objective(x, config["a"], config["b"])
 
-            tune.report(score=intermediate_score)  # This sends the score to Tune.
+            session.report({"score": intermediate_score})  # This sends the score to Tune.
 
     analysis = tune.run(
         trainable,
@@ -40,42 +40,12 @@ With the Function API, you can report intermediate metrics by simply calling ``t
 
     print("best config: ", analysis.get_best_config(metric="score", mode="max"))
 
-.. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
+.. tip:: Do not use ``session.report`` within a ``Trainable`` class.
 
 Tune will run this function on a separate thread in a Ray actor process.
 
 You'll notice that Ray Tune will output extra values in addition to the user reported metrics,
 such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
-
-Function API return and yield values
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Instead of using ``tune.report()``, you can also use Python's ``yield``
-statement to report metrics to Ray Tune:
-
-
-.. code-block:: python
-
-    def trainable(config):
-        # config (dict): A dict of hyperparameters.
-
-        for x in range(20):
-            intermediate_score = objective(x, config["a"], config["b"])
-
-            yield {"score": intermediate_score}  # This sends the score to Tune.
-
-    analysis = tune.run(
-        trainable,
-        config={"a": 2, "b": 4}
-    )
-
-    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
-
-If you yield a dictionary object, this will work just as ``tune.report()``.
-If you yield a number, if will be reported to Ray Tune with the key ``_metric``, i.e.
-as if you had called ``tune.report(_metric=value)``.
-
-Ray Tune supports the same functionality for return values if you only
-report metrics at the end of each run:
 
 .. code-block:: python
 
@@ -102,30 +72,27 @@ Function API Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance.
-To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature,
-and call ``tune.checkpoint_dir`` :
+You can save and load checkpoint in Ray Tune in the following manner:
 
 .. code-block:: python
 
         import time
         from ray import tune
+        from ray.air import session
+        from ray.air.checkpoint import Checkpoint
 
-        def train_func(config, checkpoint_dir=None):
-            start = 0
-            if checkpoint_dir:
-                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
-                    state = json.loads(f.read())
-                    start = state["step"] + 1
+        def train_func(config):
+            step = 0
+            loaded_checkpoint = session.get_checkpoint()
+            if loaded_checkpoint:
+                last_step = loaded_checkpoint.to_dict()["step"]
+                step = last_step + 1
 
-            for iter in range(start, 100):
+            for iter in range(step, 100):
                 time.sleep(1)
 
-                with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                    path = os.path.join(checkpoint_dir, "checkpoint")
-                    with open(path, "w") as f:
-                        f.write(json.dumps({"step": start}))
-
-                tune.report(hello="world", ray="tune")
+                checkpoint = Checkpoint.from_dict({"step": step})
+                session.report({"message": "Hello world Ray Tune!"}, checkpoint=checkpoint)
 
         tune.run(train_func)
 
@@ -153,7 +120,7 @@ it is important not to depend on absolute paths in the implementation of ``save`
 Trainable Class API
 -------------------
 
-.. caution:: Do not use ``tune.report`` within a ``Trainable`` class.
+.. caution:: Do not use ``session.report`` within a ``Trainable`` class.
 
 The Trainable **class API** will require users to subclass ``ray.tune.Trainable``. Here's a naive example of this API:
 
@@ -343,18 +310,23 @@ It is also possible to specify memory (``"memory"``, in bytes) and custom resour
 
 .. _tune-function-docstring:
 
-tune.report / tune.checkpoint (Function API)
---------------------------------------------
+session (Function API)
+----------------------
 
-.. autofunction:: ray.tune.report
+.. autofunction:: ray.air.session.report
+    :noindex:
 
-.. autofunction:: ray.tune.checkpoint_dir
+.. autofunction:: ray.air.session.get_checkpoint
+    :noindex:
 
-.. autofunction:: ray.tune.get_trial_dir
+.. autofunction:: ray.air.session.get_trial_name
+    :noindex:
 
-.. autofunction:: ray.tune.get_trial_name
+.. autofunction:: ray.air.session.get_trial_id
+    :noindex:
 
-.. autofunction:: ray.tune.get_trial_id
+.. autofunction:: ray.air.session.get_trial_resources
+    :noindex:
 
 tune.Trainable (Class API)
 --------------------------
