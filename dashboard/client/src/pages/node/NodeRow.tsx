@@ -27,13 +27,21 @@ const useNodeRowStyles = makeStyles((theme) =>
   }),
 );
 
-type NodeRowProps = {
-  node: NodeDetailExtend;
-  rowIndex: number;
+type NodeRowProps = NodeRowsProps & {
+  /**
+   * Whether the node has been expanded to show workers
+   */
   expanded: boolean;
+  /**
+   * Click handler for when one clicks on the expand/unexpand button in this row.
+   */
   onExpandButtonClick: () => void;
 };
 
+/**
+ * A single row that represents the node information only.
+ * Does not show any data about the node's workers.
+ */
 const NodeRow = ({
   node,
   rowIndex,
@@ -117,10 +125,19 @@ const NodeRow = ({
 };
 
 type WorkerRowProps = {
-  node: NodeDetailExtend;
+  /**
+   * Details of the worker
+   */
   worker: Worker;
+  /**
+   * Detail of the node the worker is inside.
+   */
+  node: NodeDetailExtend;
 };
 
+/**
+ * A single row that represents the data of a Worker
+ */
 const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const classes = useNodeRowStyles();
 
@@ -179,7 +196,13 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
 };
 
 type NodeRowsProps = {
+  /**
+   * Details of the node
+   */
   node: NodeDetailExtend;
+  /**
+   * The index of the table. Needed to guarantee key uniqueness.
+   */
   rowIndex: number;
 };
 
