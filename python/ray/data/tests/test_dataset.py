@@ -1739,6 +1739,25 @@ def test_add_column(ray_start_regular_shared):
         ds = ray.data.range(5).add_column("value", 0)
 
 
+def test_drop_columns(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds1 = ray.data.from_pandas(df)
+    ds1.write_parquet(str(tmp_path))
+    ds2 = ray.data.read_parquet(str(tmp_path))
+
+    for ds in [ds1, ds2]:
+        assert ds.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
+        assert ds.drop_columns(["col1", "col3"]).take(1) == [{"col2": 2}]
+        assert ds.drop_columns([]).take(1) == [{"col1": 1, "col2": 2, "col3": 3}]
+        assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == [{}]
+        assert ds.drop_columns(["col1", "col1", "col2", "col1"]).take(1) == [
+            {"col3": 3}
+        ]
+        # Test dropping non-existent column
+        with pytest.raises(KeyError):
+            ds.drop_columns(["dummy_col", "col1", "col2"])
+
+
 def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     # Test input validation
     ds = ray.data.range(5)
