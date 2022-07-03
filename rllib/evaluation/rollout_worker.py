@@ -1647,6 +1647,29 @@ class RolloutWorker(ParallelIteratorWorker):
         }
 
     @DeveloperAPI
+    def get_exploration_weights(
+        self, policies: Optional[Container[PolicyID]] = None
+    ) -> ModelWeights:
+        """Returns each Policy's exploration model weights.
+
+        Args:
+            policies: List of PolicyIDs to get the weights from.
+                Use None for all policies.
+
+        Returns:
+            Dict mapping PolicyIDs to ModelWeights.
+        """
+        if policies is None:
+            policies = list(self.policy_map.keys())
+        policies = force_list(policies)
+
+        return {
+            pid: self.policy_map[pid].get_exploration_weights()
+            for pid in self.policy_map.keys()
+            if pid in policies
+        }
+
+    @DeveloperAPI
     def set_weights(
         self, weights: Dict[PolicyID, ModelWeights], global_vars: Optional[Dict] = None
     ) -> None:
@@ -1674,6 +1697,20 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map[pid].set_weights(w)
         if global_vars:
             self.set_global_vars(global_vars)
+
+    @DeveloperAPI
+    def set_exploration_weights(self, weights: ModelWeights):
+        """Sets each Policy's exploration model weights of this worker.
+
+        Args:
+            weights: Dict mapping PolicyIDs to the new weights to be used.
+        """
+        if weights and isinstance(next(iter(weights.values())), ObjectRef):
+            actual_weights = ray.get(list(weights.values()))
+            weights = {pid: actual_weights[i] for i, pid in enumerate(weights.key())}
+
+        for pid, w in weights.items():
+            self.policy_map[pid].set_exploration_weights(w)
 
     @DeveloperAPI
     def get_global_vars(self) -> dict:

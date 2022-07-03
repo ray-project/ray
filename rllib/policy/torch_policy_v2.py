@@ -12,6 +12,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -421,7 +422,29 @@ class TorchPolicyV2(Policy):
             optimizers = [torch.optim.Adam(self.model.parameters())]
         if getattr(self, "exploration", None):
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
+            # Check, if exploration needs to update its parameters together with
+            # policy in each iteration.
+            if self.exploration.global_update:
+                self.add_exploration_update()
         return optimizers
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def add_exploration_update(self):
+        self.policy_loss = self.loss.__get__(self, type(self))
+
+        def loss(
+            self,
+            model: ModelV2,
+            dist_class: ActionDistribution,
+            train_batch: SampleBatch,
+        ) -> Union[TensorType, List[TensorType]]:
+
+            # Update the weights of the exploration model(s), if necessary.
+            self.exploration.compute_loss_and_update(train_batch, self)
+            return self.policy_loss(model, dist_class, train_batch)
+
+        self.loss = loss.__get__(self, type(self))
 
     def _init_model_and_dist_class(self):
         if is_overridden(self.make_model) and is_overridden(
@@ -856,6 +879,16 @@ class TorchPolicyV2(Policy):
     def set_weights(self, weights: ModelWeights) -> None:
         weights = convert_to_torch_tensor(weights, device=self.device)
         self.model.load_state_dict(weights)
+
+    @override(Policy)
+    @DeveloperAPI
+    def get_exploration_weights(self) -> ModelWeights:
+        return self.exploration.get_weights()
+
+    @override(Policy)
+    @DeveloperAPI
+    def set_exploration_weights(self, weights: ModelWeights):
+        self.exploration.set_weights(weights)
 
     @override(Policy)
     @DeveloperAPI

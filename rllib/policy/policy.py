@@ -687,6 +687,28 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
+    def get_exploration_weights(self) -> ModelWeights:
+        """Returns exploration model weights.
+
+        Note: The implementation of the exploration model weights is
+        done in the exploration module.
+
+        Returns:
+            Serializable copy or view of exploration model weights,
+            if existent. Otherwise nothing.
+        """
+        return self.exploration.get_weights()
+
+    @DeveloperAPI
+    def set_exploration_weights(self, weights: ModelWeights):
+        """Sets the Exploration module's model weights, if necessary.
+
+        Note: The implementation of the exploration model weights is
+        done in the exploration module.
+        """
+        return self.exploration.set_weights(weights)
+
+    @DeveloperAPI
     def get_exploration_state(self) -> Dict[str, TensorType]:
         """Returns the state of this Policy's exploration component.
 

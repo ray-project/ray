@@ -8,7 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch, TensorType
-from ray.rllib.utils.typing import LocalOptimizer, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, LocalOptimizer, ModelWeights
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -53,6 +53,9 @@ class Exploration:
         self.num_workers = num_workers
         self.worker_index = worker_index
         self.framework = framework
+        # If the exploration module needs to update its parameters globally
+        # i.e. during the policy training iteration.
+        self.global_update = False
         # The device on which the Model has been placed.
         # This Exploration will be on the same device.
         self.device = None
@@ -84,11 +87,13 @@ class Exploration:
     # __sphinx_doc_begin_get_exploration_action__
 
     @DeveloperAPI
-    def get_exploration_action(self,
-                               *,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[TensorType, int],
-                               explore: bool = True):
+    def get_exploration_action(
+        self,
+        *,
+        action_distribution: ActionDistribution,
+        timestep: Union[TensorType, int],
+        explore: bool = True
+    ):
         """Returns a (possibly) exploratory action and its log-likelihood.
 
         Given the Model's logits outputs and action distribution, returns an
@@ -189,6 +194,42 @@ class Exploration:
             loss terms.
         """
         return optimizers
+
+    @DeveloperAPI
+    def compute_loss_and_update(
+        self,
+        sample_batch: SampleBatch,
+        policy: "Policy",
+    ):
+        """May compute a loss term and update parameters.
+
+        Exploration modules might contain one or more models that need to be
+        trained during each iteration. Note, this function is only activated,
+        if `global_update` is set to `True`.
+
+        Args:
+            sample_batch: The sample batch with the examples to be trained on.
+            policy: The `Policy` object that called this function.
+        """
+        pass
+
+    @DeveloperAPI
+    def get_weights(self) -> ModelWeights:
+        """Returns the current exploration model's weights.
+
+        Returns:
+            The model weights if existent.
+        """
+        pass
+
+    @DeveloperAPI
+    def set_weights(self, weights: ModelWeights):
+        """Sets the exploration model's weights.
+
+        Args:
+            weights: Model weights.
+        """
+        pass
 
     @DeveloperAPI
     def get_state(self, sess: Optional["tf.Session"] = None) -> Dict[str, TensorType]:
