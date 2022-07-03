@@ -149,47 +149,64 @@ class TunerInternal:
 
         return ResultGrid(analysis)
 
-    def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
-        """Fitting for a fresh Tuner."""
-        analysis = run(
-            trainable,
-            config={**param_space},
+    def _get_tune_run_arguments(self) -> Dict[str, Any]:
+        """Get tune.run arguments common for both new and resumed runs."""
+        return dict(
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
-            num_samples=self._tune_config.num_samples,
-            search_alg=self._tune_config.search_alg,
-            scheduler=self._tune_config.scheduler,
-            name=self._run_config.name,
             callbacks=self._run_config.callbacks,
             sync_config=self._run_config.sync_config,
             stop=self._run_config.stop,
             max_failures=(
-                self._run_config.failure.max_failures if self._run_config.failure else 0
+                self._run_config.failure_config.max_failures
+                if self._run_config.failure_config
+                else 0
+            ),
+            keep_checkpoints_num=(
+                self._run_config.checkpoint_config.num_to_keep
+                if self._run_config.checkpoint_config
+                else None
+            ),
+            checkpoint_score_attr=(
+                self._run_config.checkpoint_config._tune_legacy_checkpoint_score_attr
+                if self._run_config.checkpoint_config
+                else None
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             verbose=self._run_config.verbose,
+        )
+
+    def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
+        """Fitting for a fresh Tuner."""
+        args = {
+            **self._get_tune_run_arguments(),
+            **dict(
+                run_or_experiment=trainable,
+                config={**param_space},
+                num_samples=self._tune_config.num_samples,
+                search_alg=self._tune_config.search_alg,
+                scheduler=self._tune_config.scheduler,
+                name=self._run_config.name,
+            ),
             **self._tuner_kwargs,
+        }
+        analysis = run(
+            **args,
         )
         return analysis
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
-        analysis = run(
-            trainable,
-            resume=True,
-            mode=self._tune_config.mode,
-            metric=self._tune_config.metric,
-            callbacks=self._run_config.callbacks,
-            sync_config=self._run_config.sync_config,
-            stop=self._run_config.stop,
-            max_failures=(
-                self._run_config.failure.max_failures if self._run_config.failure else 0
+        args = {
+            **self._get_tune_run_arguments(),
+            **dict(
+                run_or_experiment=trainable,
+                resume=True,
             ),
-            _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
-            raise_on_failed_trial=False,
             **self._tuner_kwargs,
-        )
+        }
+        analysis = run(**args)
         return analysis
 
     def __getstate__(self):

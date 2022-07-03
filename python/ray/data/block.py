@@ -1,4 +1,4 @@
-import resource
+import os
 import time
 from dataclasses import dataclass
 from typing import (
@@ -21,6 +21,14 @@ import ray
 from ray.data._internal.util import _check_pyarrow_version
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
+
+import psutil
+
+try:
+    import resource
+except ImportError:
+    resource = None
+
 
 if TYPE_CHECKING:
     import pandas
@@ -88,7 +96,30 @@ Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union[Block, np.ndarray]
+DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
+
+# A class type that implements __call__.
+CallableClass = type
+
+# A UDF on data batches.
+BatchUDF = Union[
+    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
+    # UDF type.
+    # Callable[[DataBatch, ...], DataBatch]
+    Callable[[DataBatch], DataBatch],
+    Callable[..., DataBatch],
+    CallableClass,
+]
+
+# A UDF on data rows.
+RowUDF = Union[
+    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
+    # UDF type.
+    # Callable[[T, ...], U]
+    Callable[[T], U],
+    Callable[..., U],
+    CallableClass,
+]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
@@ -101,6 +132,8 @@ BlockPartitionMetadata = "BlockMetadata"
 # TODO(ekl) replace this with just `BlockPartition` once block splitting is on
 # by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, BlockPartition]
+
+VALID_BATCH_FORMATS = ["native", "pandas", "pyarrow", "numpy"]
 
 
 @DeveloperAPI
@@ -150,9 +183,16 @@ class _BlockExecStatsBuilder:
         stats = BlockExecStats()
         stats.wall_time_s = time.perf_counter() - self.start_time
         stats.cpu_time_s = time.process_time() - self.start_cpu
-        stats.max_rss_bytes = int(
-            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
-        )
+        if resource is None:
+            # NOTE(swang): resource package is not supported on Windows. This
+            # is only the memory usage at the end of the task, not the peak
+            # memory.
+            process = psutil.Process(os.getpid())
+            stats.max_rss_bytes = int(process.memory_info().rss)
+        else:
+            stats.max_rss_bytes = int(
+                resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
+            )
         return stats
 
 
@@ -246,6 +286,29 @@ class BlockAccessor(Generic[T]):
         """Return the native data format for this accessor."""
         return self.to_block()
 
+    def to_batch_format(self, batch_format: str) -> DataBatch:
+        """Convert this block into the provided batch format.
+
+        Args:
+            batch_format: The batch format to convert this block to.
+
+        Returns:
+            This block formatted as the provided batch format.
+        """
+        if batch_format == "native":
+            return self.to_native()
+        elif batch_format == "pandas":
+            return self.to_pandas()
+        elif batch_format == "pyarrow":
+            return self.to_arrow()
+        elif batch_format == "numpy":
+            return self.to_numpy()
+        else:
+            raise ValueError(
+                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
+                f"{batch_format}"
+            )
+
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
         raise NotImplementedError
@@ -278,7 +341,7 @@ class BlockAccessor(Generic[T]):
     @staticmethod
     def batch_to_block(batch: DataBatch) -> Block:
         """Create a block from user-facing data formats."""
-        if isinstance(batch, np.ndarray):
+        if isinstance(batch, (np.ndarray, dict)):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.numpy_to_block(batch)

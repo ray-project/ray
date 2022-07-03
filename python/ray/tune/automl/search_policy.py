@@ -2,11 +2,11 @@ import time
 import copy
 import logging
 
-from ray.tune.trial import Trial
-from ray.tune.suggest import SearchAlgorithm
+from ray.tune.experiment import Trial
+from ray.tune.search import SearchAlgorithm
 from ray.tune.experiment import convert_to_experiment_list
-from ray.tune.suggest.variant_generator import generate_variants
-from ray.tune.config_parser import make_parser, create_trial_from_spec
+from ray.tune.search.variant_generator import generate_variants
+from ray.tune.experiment.config_parser import make_parser, create_trial_from_spec
 
 logger = logging.getLogger(__name__)
 

@@ -1,35 +1,24 @@
 import inspect
 import logging
+import os
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-    Type,
-    TYPE_CHECKING,
-)
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import ray
 from ray import tune
-from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
-from ray.train.constants import (
-    TRAIN_DATASET_KEY,
-    WILDCARD_KEY,
-)
-from ray.train.trainer import BaseTrainer
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
-from ray.train.trainer import GenDataset
+from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
+from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train import BackendConfig, TrainingIterator
-from ray.train._internal.backend_executor import BackendExecutor
+from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
+from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train._internal.utils import construct_train_func
+from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
+from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -43,7 +32,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         self,
         preprocessor: "Preprocessor",
         run_dir: Optional[Path] = None,
-        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+        checkpoint_strategy: Optional[CheckpointConfig] = None,
     ):
         self.preprocessor = preprocessor
         super(_DataParallelCheckpointManager, self).__init__(
@@ -335,8 +324,16 @@ class DataParallelTrainer(BaseTrainer):
             scaling_config_dataclass.additional_resources_per_worker
         )
 
+        trial_info = TrialInfo(
+            name=session.get_trial_name(),
+            id=session.get_trial_id(),
+            resources=session.get_trial_resources(),
+            logdir=os.getcwd(),
+        )
+
         backend_executor = BackendExecutor(
             backend_config=self._backend_config,
+            trial_info=trial_info,
             num_workers=scaling_config_dataclass.num_workers,
             num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
             num_gpus_per_worker=scaling_config_dataclass.num_gpus_per_worker,
@@ -351,20 +348,13 @@ class DataParallelTrainer(BaseTrainer):
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)
 
-        if self.resume_from_checkpoint:
-            resume_checkpoint_dict = self.resume_from_checkpoint.to_dict()
-        else:
-            resume_checkpoint_dict = None
-
-        # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
-        #  of just a Dict.
         training_iterator = TrainingIterator(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
             dataset_spec=self._ingest_spec,
             checkpoint_manager=checkpoint_manager,
-            checkpoint=resume_checkpoint_dict,
+            checkpoint=self.resume_from_checkpoint,
             checkpoint_strategy=None,
         )
 
