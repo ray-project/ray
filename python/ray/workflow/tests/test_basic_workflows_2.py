@@ -62,7 +62,7 @@ def test_get_output_2(workflow_start_regular, tmp_path):
             return v
 
     lock.acquire()
-    obj = workflow.run(simple.bind(0), workflow_id="simple")
+    obj = workflow.run_async(simple.bind(0), workflow_id="simple")
     obj2 = workflow.get_output("simple")
     lock.release()
     assert ray.get([obj, obj2]) == [0, 0]
