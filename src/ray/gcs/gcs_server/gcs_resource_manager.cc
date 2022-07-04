@@ -148,54 +148,60 @@ void GcsResourceManager::HandleReportResourceUsage(
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
+void FillAggregateLoad(const rpc::ResourcesData &resources_data,
+                       std::unordered_map<google::protobuf::Map<std::string, double>,
+                                          rpc::ResourceDemand> *aggregate_load) {
+  auto load = resources_data.resource_load_by_shape();
+  for (const auto &demand : load.resource_demands()) {
+    auto &aggregate_demand = (*aggregate_load)[demand.shape()];
+    aggregate_demand.set_num_ready_requests_queued(
+        aggregate_demand.num_ready_requests_queued() +
+        demand.num_ready_requests_queued());
+    aggregate_demand.set_num_infeasible_requests_queued(
+        aggregate_demand.num_infeasible_requests_queued() +
+        demand.num_infeasible_requests_queued());
+    aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                      demand.backlog_size());
+  }
+}
+
 void GcsResourceManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  rpc::ResourceUsageBatchData batch;
+  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+      aggregate_load;
+  rpc::ResourcesData resources_data;
   if (cluster_task_manager_ && RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    rpc::ResourcesData resources_data;
     cluster_task_manager_->FillPendingActorInfo(resources_data);
-    node_resource_usages_[local_node_id_].CopyFrom(resources_data);
   }
-  if (!node_resource_usages_.empty()) {
-    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
-    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-        aggregate_load;
-    for (const auto &usage : node_resource_usages_) {
-      // Aggregate the load reported by each raylet.
-      auto load = usage.second.resource_load_by_shape();
-      for (const auto &demand : load.resource_demands()) {
-        auto &aggregate_demand = aggregate_load[demand.shape()];
-        aggregate_demand.set_num_ready_requests_queued(
-            aggregate_demand.num_ready_requests_queued() +
-            demand.num_ready_requests_queued());
-        aggregate_demand.set_num_infeasible_requests_queued(
-            aggregate_demand.num_infeasible_requests_queued() +
-            demand.num_infeasible_requests_queued());
-        aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                          demand.backlog_size());
-      }
+  // Aggregate the load of the gcs (head) node.
+  FillAggregateLoad(resources_data, &aggregate_load);
 
-      batch->add_batch()->CopyFrom(usage.second);
-    }
-
-    for (const auto &demand : aggregate_load) {
-      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
-      demand_proto->CopyFrom(demand.second);
-      for (const auto &resource_pair : demand.first) {
-        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
-      }
-    }
-
-    // Update placement group load to heartbeat batch.
-    // This is updated only one per second.
-    if (placement_group_load_.has_value()) {
-      auto placement_group_load = placement_group_load_.value();
-      auto placement_group_load_proto = batch->mutable_placement_group_load();
-      placement_group_load_proto->CopyFrom(*placement_group_load.get());
-    }
-    reply->mutable_resource_usage_data()->CopyFrom(*batch);
+  for (const auto &usage : node_resource_usages_) {
+    // Aggregate the load reported by each raylet.
+    FillAggregateLoad(usage.second, &aggregate_load);
+    batch.add_batch()->CopyFrom(usage.second);
   }
+
+  for (const auto &demand : aggregate_load) {
+    auto demand_proto = batch.mutable_resource_load_by_shape()->add_resource_demands();
+    demand_proto->CopyFrom(demand.second);
+    for (const auto &resource_pair : demand.first) {
+      (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+    }
+  }
+
+  // Update placement group load to heartbeat batch.
+  // This is updated only one per second.
+  if (placement_group_load_.has_value()) {
+    auto placement_group_load = placement_group_load_.value();
+    auto placement_group_load_proto = batch.mutable_placement_group_load();
+    placement_group_load_proto->CopyFrom(*placement_group_load.get());
+  }
+
+  reply->mutable_resource_usage_data()->CopyFrom(batch);
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
