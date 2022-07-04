@@ -161,6 +161,7 @@ class LocalObjectManager {
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxSpillingSize);
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
@@ -350,9 +351,10 @@ class LocalObjectManager {
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
 
-  friend class LocalObjectManagerTestWithMinSpillingSize;
+  friend class LocalObjectManagerTestWithConfig;
   friend class LocalObjectManagerTest;
   friend class LocalObjectManagerFusedTest;
+  friend class LocalObjectManagerMaxSpillingTest;
 };
 
 };  // namespace raylet
