@@ -33,7 +33,7 @@ namespace ray {
 
 namespace raylet {
 
-const uint64_t MAX_SPILLING_SIZE = 4L * 1024 * 1024 * 1024;
+const uint64_t DEFAULT_MAX_SPILLING_SIZE = 4L * 1024 * 1024 * 1024;
 
 using ::testing::_;
 
@@ -297,10 +297,11 @@ class MockObjectBuffer : public Buffer {
   std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins_;
 };
 
-class LocalObjectManagerTestWithMinSpillingSize {
+class LocalObjectManagerTestWithConfig {
  public:
-  LocalObjectManagerTestWithMinSpillingSize(int64_t min_spilling_size,
-                                            int64_t max_fused_object_count)
+  LocalObjectManagerTestWithConfig(int64_t min_spilling_size,
+                                   int max_spilling_size,
+                                   int64_t max_fused_object_count)
       : subscriber_(std::make_shared<MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
@@ -324,7 +325,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
             client_pool,
             /*max_io_workers=*/2,
             /*min_spilling_size=*/min_spilling_size,
-            /*min_spilling_size=*/MAX_SPILLING_SIZE,
+            /*min_spilling_size=*/max_spilling_size,
             /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
             /*on_objects_freed=*/
@@ -384,16 +385,24 @@ class LocalObjectManagerTestWithMinSpillingSize {
   std::unordered_set<ObjectID> unevictable_objects_;
 };
 
-class LocalObjectManagerTest : public LocalObjectManagerTestWithMinSpillingSize,
+class LocalObjectManagerTest : public LocalObjectManagerTestWithConfig,
                                public ::testing::Test {
  public:
-  LocalObjectManagerTest() : LocalObjectManagerTestWithMinSpillingSize(0, 1) {}
+  LocalObjectManagerTest()
+      : LocalObjectManagerTestWithConfig(0, DEFAULT_MAX_SPILLING_SIZE, 1) {}
 };
 
-class LocalObjectManagerFusedTest : public LocalObjectManagerTestWithMinSpillingSize,
+class LocalObjectManagerFusedTest : public LocalObjectManagerTestWithConfig,
                                     public ::testing::Test {
  public:
-  LocalObjectManagerFusedTest() : LocalObjectManagerTestWithMinSpillingSize(100, 15) {}
+  LocalObjectManagerFusedTest()
+      : LocalObjectManagerTestWithConfig(100, DEFAULT_MAX_SPILLING_SIZE, 15) {}
+};
+
+class LocalObjectManagerMaxSpillingTest : public LocalObjectManagerTestWithConfig,
+                                          public ::testing::Test {
+ public:
+  LocalObjectManagerTest() : LocalObjectManagerTestWithConfig(0, 1000, 1000) {}
 };
 
 TEST_F(LocalObjectManagerTest, TestPin) {
@@ -656,6 +665,55 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(owner_client->object_urls.size(), max_fused_object_count_);
+  for (auto &object_url : owner_client->object_urls) {
+    auto it = std::find(urls.begin(), urls.end(), object_url.second);
+    ASSERT_TRUE(it != urls.end());
+    ASSERT_EQ((*unpins)[object_url.first], 1);
+  }
+}
+
+TEST_F(LocalObjectManagerMaxSpillingTest, TestSpillUptoMaxSpillingSize) {
+  ///
+  /// Test objects are only fused up to max_spilling_size.
+  ///
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  int64_t total_size = 0;
+  int64_t object_size = 100;
+  const int expected_spill_count = 10;
+
+  for (size_t i = 0; i < expected_spill_count + 5; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    total_size += object_size;
+    auto object = std::make_unique<RayObject>(
+        data_buffer, nullptr, std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+  ASSERT_TRUE(manager.SpillObjectsOfSize(total_size, MAX_SPILLING_SIZE));
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  for (const auto &id : object_ids) {
+    ASSERT_EQ((*unpins)[id], 0);
+  }
+
+  // Make sure only 10 objects are spilled although we requested to spill as much as total
+  // size. It is because we limit the max spilling size to 1000 bytes.
+  std::vector<std::string> urls;
+  for (size_t i = 0; i < expected_spill_count; i++) {
+    urls.push_back(BuildURL("url" + std::to_string(i)));
+  }
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
+  // Objects should get freed even though we didn't wait for the owner's notice
+  // to evict.
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ(owner_client->object_urls.size(), expected_spill_count);
   for (auto &object_url : owner_client->object_urls) {
     auto it = std::find(urls.begin(), urls.end(), object_url.second);
     ASSERT_TRUE(it != urls.end());
@@ -1294,6 +1352,63 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
 }
 
 TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSize) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  int64_t total_size = 0;
+  int64_t object_size = 52;
+
+  for (size_t i = 0; i < 3; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    total_size += object_size;
+    auto object = std::make_unique<RayObject>(
+        data_buffer, nullptr, std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+  manager.SpillObjectUptoMaxThroughput();
+  // Only 2 of the objects should be spilled.
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+  for (const auto &id : object_ids) {
+    ASSERT_EQ((*unpins)[id], 0);
+  }
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+
+  // Check that half the objects get spilled and the URLs get added to the
+  // global object directory.
+  std::vector<std::string> urls;
+  urls.push_back(BuildURL("url1"));
+  urls.push_back(BuildURL("url2"));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
+  // Objects should get freed even though we didn't wait for the owner's notice
+  // to evict.
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  }
+  ASSERT_EQ(owner_client->object_urls.size(), 2);
+  int num_unpinned = 0;
+  for (const auto &id : object_ids) {
+    if ((*unpins)[id] == 1) {
+      num_unpinned++;
+    }
+  }
+  ASSERT_EQ(num_unpinned, 2);
+
+  // We will spill the last object, even though we're under the min spilling
+  // size, because they are the only spillable objects.
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+}
+
+TEST_F(LocalObjectManagerMaxSpillingTest, TestMaxSpillingSize) {
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
 
