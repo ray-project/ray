@@ -287,7 +287,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     Args:
         name (Optional[str]): One of "relu" (default), "tanh", "swish", or
             "linear" or None.
-        framework (str): One of "tf" or "torch".
+        framework: One of "tf" or "torch".
 
     Returns:
         A framework-specific activtion function. e.g. tf.nn.tanh or

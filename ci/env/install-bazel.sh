@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -x
 set -euo pipefail
-
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 
 arg1="${1-}"
 

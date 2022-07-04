@@ -1,31 +1,37 @@
-from functools import wraps
+import copy
 import importlib
-from itertools import groupby
+import inspect
+import os
 import pickle
 import random
 import string
 import time
-from typing import Iterable, List, Tuple
-import os
 import traceback
 from enum import Enum
-import __main__
-from ray.actor import ActorHandle
+from functools import wraps
+from itertools import groupby
+from typing import Dict, Iterable, List, Tuple
 
-import requests
+import fastapi.encoders
 import numpy as np
 import pydantic
 import pydantic.json
-import fastapi.encoders
+import requests
 
 import ray
-import ray.serialization_addons
+import ray.util.serialization_addons
+from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
+from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.serve.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
-from ray.serve.constants import (
-    HTTP_PROXY_TIMEOUT,
-)
+
+import __main__
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -69,12 +75,20 @@ class _ServeCustomEncoders:
         assert isinstance(obj, Exception)
         return str(obj)
 
+    @staticmethod
+    def encode_pandas_dataframe(obj):
+        assert isinstance(obj, pd.DataFrame)
+        return obj.to_dict(orient="records")
+
 
 serve_encoders = {
     np.ndarray: _ServeCustomEncoders.encode_np_array,
     np.generic: _ServeCustomEncoders.encode_np_scaler,
     Exception: _ServeCustomEncoders.encode_exception,
 }
+
+if pd is not None:
+    serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
 
 
 def install_serve_encoders_to_fastapi():
@@ -145,7 +159,7 @@ def get_all_node_ids():
     # We need to use the node_id and index here because we could
     # have multiple virtual nodes on the same host. In that case
     # they will have the same IP and therefore node_id.
-    for _, node_id_group in groupby(sorted(ray.state.node_ids())):
+    for _, node_id_group in groupby(sorted(ray._private.state.node_ids())):
         for index, node_id in enumerate(node_id_group):
             node_ids.append(("{}-{}".format(node_id, index), node_id))
 
@@ -166,7 +180,9 @@ def node_id_to_ip_addr(node_id: str):
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
-    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
+    return ray._private.state.actors()[actor_handle._actor_id.hex()]["Address"][
+        "NodeID"
+    ]
 
 
 def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
@@ -226,7 +242,7 @@ def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
-    ray.serialization_addons.apply(ctx)
+    ray.util.serialization_addons.apply(ctx)
 
 
 def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
@@ -241,7 +257,7 @@ def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
 
 
 def msgpack_serialize(obj):
-    ctx = ray.worker.global_worker.get_serialization_context()
+    ctx = ray._private.worker.global_worker.get_serialization_context()
     buffer = ctx.serialize(obj)
     serialized = buffer.to_bytes()
     return serialized
@@ -313,6 +329,53 @@ def parse_import_path(import_path: str):
     return ".".join(nodes[:-1]), nodes[-1]
 
 
+def override_runtime_envs_except_env_vars(parent_env: Dict, child_env: Dict) -> Dict:
+    """Creates a runtime_env dict by merging a parent and child environment.
+
+    This method is not destructive. It leaves the parent and child envs
+    the same.
+
+    The merge is a shallow update where the child environment inherits the
+    parent environment's settings. If the child environment specifies any
+    env settings, those settings take precdence over the parent.
+        - Note: env_vars are a special case. The child's env_vars are combined
+            with the parent.
+
+    Args:
+        parent_env: The environment to inherit settings from.
+        child_env: The environment with override settings.
+
+    Returns: A new dictionary containing the merged runtime_env settings.
+
+    Raises:
+        TypeError: If a dictionary is not passed in for parent_env or child_env.
+    """
+
+    if not isinstance(parent_env, Dict):
+        raise TypeError(
+            f'Got unexpected type "{type(parent_env)}" for parent_env. '
+            "parent_env must be a dictionary."
+        )
+    if not isinstance(child_env, Dict):
+        raise TypeError(
+            f'Got unexpected type "{type(child_env)}" for child_env. '
+            "child_env must be a dictionary."
+        )
+
+    defaults = copy.deepcopy(parent_env)
+    overrides = copy.deepcopy(child_env)
+
+    default_env_vars = defaults.get("env_vars", {})
+    override_env_vars = overrides.get("env_vars", {})
+
+    defaults.update(overrides)
+    default_env_vars.update(override_env_vars)
+
+    defaults["env_vars"] = default_env_vars
+
+    return defaults
+
+
 class JavaActorHandleProxy:
     """Wraps actor handle and translate snake_case to camelCase."""
 
@@ -344,8 +407,7 @@ def require_packages(packages: List[str]):
     """
 
     def decorator(func):
-        @wraps(func)
-        def wrapped(*args, **kwargs):
+        def check_import_once():
             if not hasattr(func, "_require_packages_checked"):
                 missing_packages = []
                 for package in packages:
@@ -361,7 +423,23 @@ def require_packages(packages: List[str]):
                         "`runtime_env`."
                     )
                 setattr(func, "_require_packages_checked", True)
-            return func(*args, **kwargs)
+
+        if inspect.iscoroutinefunction(func):
+
+            @wraps(func)
+            async def wrapped(*args, **kwargs):
+                check_import_once()
+                return await func(*args, **kwargs)
+
+        elif inspect.isroutine(func):
+
+            @wraps(func)
+            def wrapped(*args, **kwargs):
+                check_import_once()
+                return func(*args, **kwargs)
+
+        else:
+            raise ValueError("Decorator expect callable functions.")
 
         return wrapped
 

@@ -1,7 +1,7 @@
 import os
+import threading
 from contextlib import contextmanager
 from functools import partial, wraps
-import threading
 
 # Attr set on func defs to mark they have been converted to client mode.
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
@@ -77,26 +77,26 @@ def enable_client_mode():
         _explicitly_disable_client_mode()
 
 
-def client_mode_hook(func=None, *, auto_init: bool):
+def client_mode_hook(func: callable = None, *, auto_init: bool):
     """Decorator for whether to use the 'regular' ray version of a function,
     or the Ray Client version of that function.
 
     Args:
-    func (callable): This function. This is set when this function is used
-        as a decorator.
-    auto_init (bool): Whether `ray.init()` should be transparently called when
-        the wrapped function is called. This should be `True` for functions
-        that are *NOT* part of the initialization path (e.g. `init` or
-        `is_initialized`) or for functions that do not require Ray to be
-        initialized (e.g., KV operations, `shutdown`).
+        func: This function. This is set when this function is used
+            as a decorator.
+        auto_init: Whether `ray.init()` should be transparently called when
+            the wrapped function is called. This should be `True` for functions
+            that are *NOT* part of the initialization path (e.g. `init` or
+            `is_initialized`) or for functions that do not require Ray to be
+            initialized (e.g., KV operations, `shutdown`).
     """
     if func is None:
         return partial(client_mode_hook, auto_init=auto_init)
 
-    from ray.util.client import ray
-
     @wraps(func)
     def wrapper(*args, **kwargs):
+        from ray.util.client import ray
+
         if client_mode_should_convert(auto_init=auto_init):
             # Legacy code
             # we only convert init function if RAY_CLIENT_MODE=1
@@ -141,10 +141,11 @@ def client_mode_wrap(func):
     side, this function is wrapped in a task to facilitate interaction with
     the GCS.
     """
-    from ray.util.client import ray
 
     @wraps(func)
     def wrapper(*args, **kwargs):
+        from ray.util.client import ray
+
         # Directly pass this through since `client_mode_wrap` is for
         # Placement Group APIs
         if client_mode_should_convert(auto_init=True):

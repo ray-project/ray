@@ -1,7 +1,7 @@
-import numpy as np
 import os
-import scipy.optimize
 
+import numpy as np
+import scipy.optimize
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -30,7 +30,7 @@ class LinearModel(object):
         cross_entropy (tf.Operation): Final layer of network.
         cross_entropy_grads (tf.Operation): Gradient computation.
         sess (tf.Session): Session used for training.
-        variables (TensorFlowVariables): Extracted variables and methods to
+        variables: Extracted variables and methods to
             manipulate them.
     """
 

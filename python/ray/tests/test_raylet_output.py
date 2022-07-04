@@ -1,12 +1,11 @@
+import glob
 import os
 import sys
-import glob
 
 import pytest
+
 import ray
-from ray._private.test_utils import (
-    wait_for_condition,
-)
+from ray._private.test_utils import wait_for_condition
 
 
 def enable_export_loglevel(func):
@@ -19,7 +18,7 @@ def enable_export_loglevel(func):
 
 @enable_export_loglevel
 def test_ray_log_redirected(ray_start_regular):
-    session_dir = ray.worker._global_node.get_session_dir_path()
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Session dir not found."
     raylet_out_path = "{}/logs/raylet.out".format(session_dir)
     raylet_err_path = "{}/logs/raylet.err".format(session_dir)
@@ -58,4 +57,7 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

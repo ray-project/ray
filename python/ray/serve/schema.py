@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, Tuple, List, Dict
+from typing import Union, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.common import (
     DeploymentStatusInfo,
@@ -78,32 +78,11 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         return v
 
 
-class DeploymentSchema(BaseModel, extra=Extra.forbid):
+class DeploymentSchema(
+    BaseModel, extra=Extra.forbid, allow_population_by_field_name=True
+):
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
-    )
-    import_path: str = Field(
-        default=None,
-        description=(
-            "The application's full import path. Should be of the "
-            'form "module.submodule_1...submodule_n.'
-            'MyClassOrFunction." This is equivalent to '
-            '"from module.submodule_1...submodule_n import '
-            'MyClassOrFunction". Only works with Python '
-            "applications."
-        ),
-    )
-    init_args: Union[Tuple, List] = Field(
-        default=None,
-        description=(
-            "The application's init_args. Only works with Python applications."
-        ),
-    )
-    init_kwargs: Dict = Field(
-        default=None,
-        description=(
-            "The application's init_args. Only works with Python applications."
-        ),
     )
     num_replicas: int = Field(
         default=None,
@@ -153,6 +132,7 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             "replicas; the number of replicas will be fixed at "
             "num_replicas."
         ),
+        alias="_autoscaling_config",
     )
     graceful_shutdown_wait_loop_s: float = Field(
         default=None,
@@ -162,6 +142,7 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             "default if null."
         ),
         ge=0,
+        alias="_graceful_shutdown_wait_loop_s",
     )
     graceful_shutdown_timeout_s: float = Field(
         default=None,
@@ -171,6 +152,7 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             "default if null."
         ),
         ge=0,
+        alias="_graceful_shutdown_timeout_s",
     )
     health_check_period_s: float = Field(
         default=None,
@@ -179,6 +161,7 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             "replicas. Uses a default if null."
         ),
         gt=0,
+        alias="_health_check_period_s",
     )
     health_check_timeout_s: float = Field(
         default=None,
@@ -188,65 +171,11 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             "unhealthy. Uses a default if null."
         ),
         gt=0,
+        alias="_health_check_timeout_s",
     )
     ray_actor_options: RayActorOptionsSchema = Field(
         default=None, description="Options set for each replica actor."
     )
-
-    @root_validator
-    def application_sufficiently_specified(cls, values):
-        """
-        Some application information, such as the path to the function or class
-        must be specified. Additionally, some attributes only work in specific
-        languages (e.g. init_args and init_kwargs make sense in Python but not
-        Java). Specifying attributes that belong to different languages is
-        invalid.
-        """
-
-        # Ensure that an application path is set
-        application_paths = {"import_path"}
-
-        specified_path = None
-        for path in application_paths:
-            if path in values and values[path] is not None:
-                specified_path = path
-
-        if specified_path is None:
-            raise ValueError(
-                "A path to the application's class or function must be specified."
-            )
-
-        # Ensure that only attributes belonging to the application path's
-        # language are specified.
-
-        # language_attributes contains all attributes in this schema related to
-        # the application's language
-        language_attributes = {"import_path", "init_args", "init_kwargs"}
-
-        # corresponding_attributes maps application_path attributes to all the
-        # attributes that may be set in that path's language
-        corresponding_attributes = {
-            # Python
-            "import_path": {"import_path", "init_args", "init_kwargs"}
-        }
-
-        possible_attributes = corresponding_attributes[specified_path]
-        for attribute in values:
-            if (
-                attribute not in possible_attributes
-                and attribute in language_attributes
-            ):
-                raise ValueError(
-                    f'Got "{values[specified_path]}" for '
-                    f"{specified_path} and {values[attribute]} "
-                    f"for {attribute}. {specified_path} and "
-                    f"{attribute} do not belong to the same "
-                    f"language and cannot be specified at the "
-                    f"same time. Expected one of these to be "
-                    f"null."
-                )
-
-        return values
 
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
@@ -294,35 +223,6 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
 
         return v
 
-    @validator("import_path")
-    def import_path_format_valid(cls, v: str):
-        if ":" in v:
-            if v.count(":") > 1:
-                raise ValueError(
-                    f'Got invalid import path "{v}". An '
-                    "import path may have at most one colon."
-                )
-            if v.rfind(":") == 0 or v.rfind(":") == len(v) - 1:
-                raise ValueError(
-                    f'Got invalid import path "{v}". An '
-                    "import path may not start or end with a colon."
-                )
-            return v
-        else:
-            if v.count(".") == 0:
-                raise ValueError(
-                    f'Got invalid import path "{v}". An '
-                    "import path must contain at least one dot or colon "
-                    "separating the module (and potentially submodules) from "
-                    'the deployment graph. E.g.: "module.deployment_graph".'
-                )
-            if v.rfind(".") == 0 or v.rfind(".") == len(v) - 1:
-                raise ValueError(
-                    f'Got invalid import path "{v}". An '
-                    "import path may not start or end with a dot."
-                )
-        return v
-
 
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     import_path: str = Field(
@@ -345,7 +245,10 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "and py_modules may contain only remote URIs."
         ),
     )
-    deployments: List[DeploymentSchema] = Field(...)
+    deployments: List[DeploymentSchema] = Field(
+        default=[],
+        description=("Deployment options that override options specified in the code."),
+    )
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
@@ -395,6 +298,8 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
                     f'Got invalid import path "{v}". An '
                     "import path may not start or end with a dot."
                 )
+
+        return v
 
 
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):

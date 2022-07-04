@@ -1,32 +1,57 @@
 # flake8: noqa
 
 # fmt: off
-# __resource_allocation_begin__
+# __resource_allocation_1_begin__
 import ray
+from ray import tune
+
+# This Dataset workload will use spare cluster resources for execution.
+def objective(*args):
+    ray.data.range(10).show()
+
+# Create a cluster with 4 CPU slots available.
+ray.init(num_cpus=4)
+
+# This runs, since Tune schedules one trial on 1 CPU, leaving 3 spare CPUs in the
+# cluster for Dataset execution. However, deadlock can occur if you set num_samples=4,
+# which would leave no extra CPUs for Datasets! To resolve these issues, see the
+# "Inside Trial Placement Group" example tab.
+tune.run(objective, num_samples=1, resources_per_trial={"cpu": 1})
+# __resource_allocation_1_end__
+# fmt: on
+
+# fmt: off
+# __resource_allocation_2_begin__
+import ray
+from ray import tune
 from ray.data.context import DatasetContext
+from ray.tune.error import TuneError
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-# Create a single-CPU local cluster.
-ray.init(num_cpus=1)
-ctx = DatasetContext.get_current()
-# Create a placement group that takes up the single core on the cluster.
-placement_group = ray.util.placement_group(
-    name="core_hog",
-    strategy="SPREAD",
-    bundles=[
-        {"CPU": 1},
-    ],
+# Tune launches its trainable functions in placement groups.
+def objective(*args):
+    # Tell Datasets to use the current placement group for all Datasets tasks.
+    ctx = DatasetContext.get_current()
+    ctx.scheduling_strategy = PlacementGroupSchedulingStrategy(
+        ray.util.get_current_placement_group())
+    # This Dataset workload will use that placement group for all read and map tasks.
+    ray.data.range(10).show()
+
+# Create a cluster with 4 CPU slots available.
+ray.init(num_cpus=4)
+
+# This will error, since Tune has no resources reserved for Dataset tasks.
+try:
+    tune.run(objective)
+except TuneError:
+    print("This failed as expected")
+
+# This runs fine, since there are 4 CPUs in the trial's placement group. The first
+# CPU slot is used to run the objective function, leaving 3 for Dataset tasks.
+tune.run(
+    objective, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 1}] * 4),
 )
-ray.get(placement_group.ready())
-
-# Tell Datasets to use the placement group for all Datasets tasks.
-ctx.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
-# This Dataset workload will use that placement group for all read and map tasks.
-ds = ray.data.range(100, parallelism=2) \
-    .map(lambda x: x + 1)
-
-assert ds.take_all() == list(range(1, 101))
-# __resource_allocation_end__
+# __resource_allocation_2_end__
 # fmt: on
 
 # fmt: off
@@ -43,7 +68,7 @@ def map_udf(df):
 
 ds = ray.data.read_parquet("example://iris.parquet") \
     .experimental_lazy() \
-    .map_batches(map_df) \
+    .map_batches(map_udf) \
     .filter(lambda row: row["sepal.area"] > 15)
 # __block_move_end__
 # fmt: on
@@ -55,7 +80,7 @@ import ray
 # ML ingest re-reading from storage on every epoch.
 torch_ds = ray.data.read_parquet("example://iris.parquet") \
     .repeat() \
-    .random_shuffle() \
+    .random_shuffle_each_window() \
     .to_torch()
 
 # Streaming batch inference pipeline that pipelines the transforming of a single

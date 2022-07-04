@@ -2,12 +2,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from abc import ABCMeta
 import warnings
 
-from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial
+    from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
+    from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 
 class _CallbackMeta(ABCMeta):
@@ -56,7 +56,13 @@ class _CallbackMeta(ABCMeta):
 
     @classmethod
     def need_override_by_subclass(mcs, attr_name: str, attr: Any) -> bool:
-        return (attr_name.startswith("on_") or attr_name == "setup") and callable(attr)
+        return (
+            (
+                attr_name.startswith("on_")
+                and not attr_name.startswith("on_trainer_init")
+            )
+            or attr_name == "setup"
+        ) and callable(attr)
 
 
 @PublicAPI(stability="beta")
@@ -245,7 +251,7 @@ class Callback(metaclass=_CallbackMeta):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: _TuneCheckpoint,
+        checkpoint: "_TrackedCheckpoint",
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.
