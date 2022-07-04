@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING
-from typing import Optional, Dict, Union
 import warnings
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
+from ray.train._internal.session import get_session
 from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
-from ray.train._internal.session import (
-    get_session,
-)
 from ray.util import PublicAPI, log_once
 
 if TYPE_CHECKING:
@@ -118,7 +115,7 @@ def report(**kwargs) -> None:
     if session is None:
         _warn_session_misuse(report.__name__)
         return
-    session.report(**kwargs)
+    session._report_legacy(**kwargs)
 
 
 @PublicAPI(stability="beta")

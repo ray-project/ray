@@ -4,10 +4,13 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.CppActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
+import io.ray.api.function.CppActorClass;
+import io.ray.api.function.CppActorMethod;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -28,6 +31,7 @@ import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.functionmanager.CppFunctionDescriptor;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
@@ -198,6 +202,19 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
+  public ObjectRef callActor(
+      CppActorHandle cppActor, CppActorMethod cppActorMethod, Object[] args) {
+    CppFunctionDescriptor functionDescriptor =
+        new CppFunctionDescriptor(cppActorMethod.methodName, "JAVA", cppActor.getClassName());
+    return callActorFunction(
+        cppActor,
+        functionDescriptor,
+        args,
+        /*returnType=*/ Optional.of(cppActorMethod.returnType),
+        new CallOptions.Builder().build());
+  }
+
+  @Override
   @SuppressWarnings("unchecked")
   public <T> ActorHandle<T> createActor(
       RayFunc actorFactoryFunc, Object[] args, ActorCreationOptions options) {
@@ -213,6 +230,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         new PyFunctionDescriptor(
             pyActorClass.moduleName, pyActorClass.className, PYTHON_INIT_METHOD_NAME);
     return (PyActorHandle) createActorImpl(functionDescriptor, args, options);
+  }
+
+  @Override
+  public CppActorHandle createActor(
+      CppActorClass cppActorClass, Object[] args, ActorCreationOptions options) {
+    CppFunctionDescriptor functionDescriptor =
+        new CppFunctionDescriptor(
+            cppActorClass.createFunctionName, "JAVA", cppActorClass.className);
+    return (CppActorHandle) createActorImpl(functionDescriptor, args, options);
   }
 
   @Override

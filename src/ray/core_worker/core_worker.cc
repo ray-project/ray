@@ -1447,38 +1447,6 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
       });
 }
 
-std::unordered_map<std::string, double> AddPlacementGroupConstraint(
-    const std::unordered_map<std::string, double> &resources,
-    const rpc::SchedulingStrategy &scheduling_strategy) {
-  auto placement_group_id = PlacementGroupID::Nil();
-  auto bundle_index = -1;
-  if (scheduling_strategy.scheduling_strategy_case() ==
-      rpc::SchedulingStrategy::SchedulingStrategyCase::
-          kPlacementGroupSchedulingStrategy) {
-    placement_group_id = PlacementGroupID::FromBinary(
-        scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
-    bundle_index = scheduling_strategy.placement_group_scheduling_strategy()
-                       .placement_group_bundle_index();
-  }
-  if (bundle_index < 0) {
-    RAY_CHECK(bundle_index == -1) << "Invalid bundle index " << bundle_index;
-  }
-  std::unordered_map<std::string, double> new_resources;
-  if (placement_group_id != PlacementGroupID::Nil()) {
-    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
-      auto new_name = FormatPlacementGroupResource(iter->first, placement_group_id, -1);
-      new_resources[new_name] = iter->second;
-      if (bundle_index >= 0) {
-        auto index_name =
-            FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
-        new_resources[index_name] = iter->second;
-      }
-    }
-    return new_resources;
-  }
-  return resources;
-}
-
 rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
     const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
   // By default, the child runtime env inherits non-specified options from the
@@ -1527,17 +1495,6 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
     result.emplace_back(uri);
   }
   for (const auto &uri : runtime_env->uris().py_modules_uris()) {
-    result.emplace_back(uri);
-  }
-  if (!runtime_env->uris().conda_uri().empty()) {
-    const auto &uri = runtime_env->uris().conda_uri();
-    result.emplace_back(uri);
-  }
-  if (!runtime_env->uris().pip_uri().empty()) {
-    const auto &uri = runtime_env->uris().pip_uri();
-    result.emplace_back(uri);
-  }
-  for (const auto &uri : runtime_env->uris().plugin_uris()) {
     result.emplace_back(uri);
   }
   return result;
@@ -1662,7 +1619,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     int max_retries,
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
-    const std::string &debugger_breakpoint) {
+    const std::string &debugger_breakpoint,
+    const std::string &serialized_retry_exception_allowlist) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1696,7 +1654,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info);
-  builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
+  builder.SetNormalTaskSpec(max_retries,
+                            retry_exceptions,
+                            serialized_retry_exception_allowlist,
+                            scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
@@ -2267,7 +2228,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs,
-                               bool *is_application_level_error) {
+                               bool *is_retryable_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2351,9 +2312,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       arg_refs,
       return_ids,
       task_spec.GetDebuggerBreakpoint(),
+      task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
       creation_task_exception_pb_bytes,
-      is_application_level_error,
+      is_retryable_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute);
 
@@ -2524,12 +2486,9 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
-  bool is_application_level_error;
-  RAY_UNUSED(ExecuteTask(task_spec,
-                         resource_ids,
-                         &return_objects,
-                         &borrowed_refs,
-                         &is_application_level_error));
+  bool is_retryable_error;
+  RAY_UNUSED(ExecuteTask(
+      task_spec, resource_ids, &return_objects, &borrowed_refs, &is_retryable_error));
   SetActorId(old_id);
   return returned_refs;
 }
@@ -3130,6 +3089,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
+  auto limit = request.has_limit() ? request.limit() : -1;
   auto stats = reply->mutable_core_worker_stats();
   // TODO(swang): Differentiate between tasks that are currently pending
   // execution and tasks that have finished but may be retried.
@@ -3166,13 +3126,13 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
 
   if (request.include_memory_info()) {
-    reference_counter_->AddObjectRefStats(plasma_store_provider_->UsedObjectsList(),
-                                          stats);
+    reference_counter_->AddObjectRefStats(
+        plasma_store_provider_->UsedObjectsList(), stats, limit);
     task_manager_->AddTaskStatusInfo(stats);
   }
 
   if (request.include_task_info()) {
-    task_manager_->FillTaskInfo(reply);
+    task_manager_->FillTaskInfo(reply, limit);
     for (const auto &current_running_task : current_tasks_) {
       reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
     }

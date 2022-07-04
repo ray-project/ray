@@ -5,14 +5,14 @@ from typing import List, Union
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class FQETorchModel:
     """Pytorch implementation of the Fitted Q-Evaluation (FQE) model from
     https://arxiv.org/pdf/1911.06854.pdf
@@ -153,7 +153,7 @@ class FQETorchModel:
                 )
 
                 q_values, _ = self.q_model({"obs": obs}, [], None)
-                q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
+                q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
                 with torch.no_grad():
                     next_q_values, _ = self.target_q_model({"obs": next_obs}, [], None)
                 next_v = torch.sum(next_q_values * next_action_prob, axis=-1)
@@ -188,7 +188,7 @@ class FQETorchModel:
         q_values, _ = self.q_model({"obs": obs}, [], None)
         if actions is not None:
             actions = torch.tensor(actions, device=self.device, dtype=int)
-            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
+            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
         return q_values.detach()
 
     def estimate_v(

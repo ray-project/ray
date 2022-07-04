@@ -1,13 +1,12 @@
 from dataclasses import dataclass
-from typing import Optional, Union, Dict, Callable, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
-
 from ray.air.config import DatasetConfig
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
@@ -124,6 +123,14 @@ class DataParallelIngestSpec:
         Returns:
             Dict of transformed datasets.
         """
+
+        for key, dataset in list(datasets.items()):
+            conf = self._config(key)
+            # If globally shuffling, don't randomize unless using the stream API.
+            local_window = conf.use_stream_api and conf.stream_window_size > 0
+            if conf.randomize_block_order and (not conf.global_shuffle or local_window):
+                datasets[key] = dataset.randomize_block_order()
+
         if prep:
             ds_to_fit = None
             for k, conf in self.dataset_config.items():
@@ -179,15 +186,24 @@ class DataParallelIngestSpec:
                     ).repeat()
                     # In windowed mode, we re-apply the preprocessor on each iteration.
                     if self.preprocessor:
+                        # TODO: Replace with self.preprocessor.transform when possible.
                         prep = self.preprocessor.transform_batch
                         dataset = dataset.map_batches(prep, batch_format="pandas")
                 else:
                     # If the window size is infinity, the preprocessor is cached and
                     # we don't need to re-apply it each time.
                     dataset = dataset.repeat()
+                # Always re-randomize each window; this doesn't help with reducing
+                # cluster hot-spots since we already randomized the based blocks, but
+                # can help with improving randomness in combination with local shuffle.
+                if config.randomize_block_order and not config.global_shuffle:
+                    dataset = dataset.randomize_block_order_each_window()
 
             if config.global_shuffle:
-                dataset = dataset.random_shuffle_each_window()
+                if config.use_stream_api:
+                    dataset = dataset.random_shuffle_each_window()
+                else:
+                    dataset = dataset.random_shuffle()
 
             if config.split:
                 dataset_splits = dataset.split(

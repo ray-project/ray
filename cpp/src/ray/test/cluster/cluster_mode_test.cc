@@ -37,6 +37,24 @@ TEST(RayClusterModeTest, Initialized) {
   EXPECT_TRUE(!ray::IsInitialized());
 }
 
+TEST(RayClusterModeTest, DefaultActorLifetimeTest) {
+  ray::RayConfig config;
+  config.default_actor_lifetime = ray::ActorLifetime::DETACHED;
+  ray::Init(config, cmd_argc, cmd_argv);
+  ray::ActorHandle<Counter> parent_actor =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  std::string child_actor_name = "child_actor_name";
+  parent_actor.Task(&Counter::CreateChildActor).Remote(child_actor_name).Get();
+  auto child_actor_optional = ray::GetActor<Counter>(child_actor_name);
+  EXPECT_TRUE(child_actor_optional);
+  auto child_actor = *child_actor_optional;
+  EXPECT_EQ(1, *child_actor.Task(&Counter::Plus1).Remote().Get());
+  parent_actor.Kill();
+  sleep(4);
+  EXPECT_EQ(2, *child_actor.Task(&Counter::Plus1).Remote().Get());
+  ray::Shutdown();
+}
+
 struct Person {
   std::string name;
   int age;
@@ -78,6 +96,8 @@ TEST(RayClusterModeTest, FullTest) {
                                         .SetMaxRestarts(1)
                                         .SetName("named_actor")
                                         .Remote();
+  auto initialized_obj = actor.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj.Get());
   auto named_actor_obj = actor.Task(&Counter::Plus1)
                              .SetName("named_actor_task")
                              .SetResources({{"CPU", 1.0}})
@@ -291,6 +311,11 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
 
 TEST(RayClusterModeTest, ExceptionTest) {
   EXPECT_THROW(ray::Task(ThrowTask).Remote().Get(), ray::internal::RayTaskException);
+  try {
+    ray::Task(ThrowTask).Remote().Get();
+  } catch (ray::internal::RayTaskException &e) {
+    EXPECT_TRUE(std::string(e.what()).find("std::logic_error") != std::string::npos);
+  }
 
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto object1 = actor1.Task(&Counter::ExceptionFunc).Remote();
