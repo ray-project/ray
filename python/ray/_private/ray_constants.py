@@ -371,3 +371,7 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 # Default max_retries option in @ray.remote for non-actor
 # tasks.
 DEFAULT_TASK_MAX_RETRIES = 3
+
+
+def gcs_actor_scheduling_enabled():
+    return not os.environ.get("RAY_gcs_actor_scheduling_enabled") == "false"

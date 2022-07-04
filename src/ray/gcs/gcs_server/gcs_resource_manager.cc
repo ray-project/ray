@@ -96,12 +96,12 @@ void GcsResourceManager::HandleGetAllAvailableResources(
         if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
           resource.mutable_resources_available()->insert(
               {resource_name, resource_iter->second});
-          continue;
         }
+      } else {
+        const auto &resource_value = node_resources.available.Get(resource_id);
+        resource.mutable_resources_available()->insert(
+            {resource_name, resource_value.Double()});
       }
-      const auto &resource_value = node_resources.available.Get(resource_id);
-      resource.mutable_resources_available()->insert(
-          {resource_name, resource_value.Double()});
     }
     reply->add_resources_list()->CopyFrom(resource);
   }
@@ -215,6 +215,10 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
   } else {
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
+      // Nodes' resource capacity has been updated, so schedule pending actors.
+      if (RayConfig::instance().gcs_actor_scheduling_enabled() && cluster_task_manager_) {
+        cluster_task_manager_->ScheduleAndDispatchTasks();
+      }
     }
     if (resources.resources_available_changed()) {
       (*iter->second.mutable_resources_available()) = resources.resources_available();

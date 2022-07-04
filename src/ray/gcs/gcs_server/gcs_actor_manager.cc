@@ -1448,12 +1448,16 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
   if (!canceled_actor_id.IsNil()) {
     // The actor was being scheduled and has now been canceled.
     RAY_CHECK(canceled_actor_id == actor_id);
+    // Return the actor's acquired resources.
+    gcs_actor_scheduler_->OnActorDestruction(actor);
   } else if (!RemovePendingActor(actor)) {
     // When actor creation request of this actor id is pending in raylet,
     // it doesn't responds, and the actor should be still in leasing state.
     // NOTE: We will cancel outstanding lease request by calling
     // `raylet_client->CancelWorkerLease`.
     gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
+    // Return the actor's acquired resources.
+    gcs_actor_scheduler_->OnActorDestruction(actor);
   }
 }
 
