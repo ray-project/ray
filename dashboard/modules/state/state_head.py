@@ -91,7 +91,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
                 and self._num_requests_in_progress >= self._max_http_req_in_progress
             ):
                 logger.debug(
-                    f"Max concurrent requests reached = {self._num_requests_in_progress}"
+                    f"Max concurrent requests reached={self._num_requests_in_progress}"
                 )
                 return self._reply(
                     success=False,
@@ -249,8 +249,8 @@ class StateHead(dashboard_utils.DashboardHeadModule):
     async def list_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_objects, req)
 
-    @enforce_max_concurrent_calls
     @routes.get("/api/v0/runtime_envs")
+    @enforce_max_concurrent_calls
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 

@@ -2071,9 +2071,7 @@ def test_detail(shutdown_only):
 @pytest.mark.parametrize(
     "api_func",
     [
-        # NOTE(rickyyx): arbitrary list, not exhaust.
-        # Each test takes a while so probably not a good idea to
-        # test all of them?
+        # NOTE(rickyyx): arbitrary list of APIs, not exhaustive.
         list_objects,
         list_tasks,
         list_actors,
