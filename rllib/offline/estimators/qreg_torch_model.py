@@ -1,6 +1,7 @@
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
 import numpy as np
+from gym.spaces import Discrete
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -52,6 +53,12 @@ class QRegTorchModel:
             batch_size = 32,
         """
         self.policy = policy
+        assert isinstance(
+            policy.action_space, Discrete
+        ), f"{self.__class__.__name__} only supports discrete action spaces!"
+        assert (
+            policy.config["batch_mode"] == "complete_episodes"
+        ), f"{self.__class__.__name__} only supports `batch_mode`=`complete_episodes`"
         self.gamma = gamma
         self.observation_space = policy.observation_space
         self.action_space = policy.action_space

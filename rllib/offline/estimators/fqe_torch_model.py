@@ -9,6 +9,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 from ray.rllib.offline.estimators.utils import action_log_likelihood
 import numpy as np
+from gym.spaces import Discrete
 
 torch, nn = try_import_torch()
 
@@ -55,6 +56,12 @@ class FQETorchModel:
             tau = 0.05
         """
         self.policy = policy
+        assert isinstance(
+            policy.action_space, Discrete
+        ), f"{self.__class__.__name__} only supports discrete action spaces!"
+        assert (
+            policy.config["batch_mode"] == "complete_episodes"
+        ), f"{self.__class__.__name__} only supports `batch_mode`=`complete_episodes`"
         self.gamma = gamma
         self.observation_space = policy.observation_space
         self.action_space = policy.action_space

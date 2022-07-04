@@ -1,5 +1,5 @@
 import logging
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import TensorType, SampleBatchType
@@ -58,10 +58,15 @@ class OffPolicyEstimator:
         """
 
         if isinstance(batch, MultiAgentBatch):
-            raise ValueError(
-                "Off-Policy Estimation is not implemented for multi-agent batches. "
-                "You can set `off_policy_estimation_methods: {}` to resolve this."
-            )
+            policy_keys = batch.policy_batches.keys()
+            if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
+                batch = batch.policy_batches[DEFAULT_POLICY_ID]
+            else:
+                raise ValueError(
+                    "Off-Policy Estimation is not implemented for "
+                    "multi-agent batches. You can set "
+                    "`off_policy_estimation_methods: {}` to resolve this."
+                )
 
         if "action_prob" not in batch:
             raise ValueError(
