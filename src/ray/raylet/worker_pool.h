@@ -115,7 +115,7 @@ class WorkerPoolInterface {
   /// \param filter_dead_workers whether or not if this method will filter dead workers
   /// that are still registered. \return A list containing all the workers.
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false) const = 0;
+      bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
   virtual ~WorkerPoolInterface(){};
 };
@@ -369,7 +369,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param filter_dead_workers whether or not if this method will filter dead workers
   /// that are still registered. \return A list containing all the workers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false) const;
+      bool filter_dead_workers = false, bool filter_io_workers = false) const;
 
   /// Get all the registered drivers.
   ///
@@ -610,7 +610,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
   /// worker types (SPILL_WORKER and RESTORE_WORKER).
-  bool IsIOWorkerType(const rpc::WorkerType &worker_type);
+  bool IsIOWorkerType(const rpc::WorkerType &worker_type) const;
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
   /// different stack.
