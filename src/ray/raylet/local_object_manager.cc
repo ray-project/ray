@@ -348,8 +348,8 @@ void LocalObjectManager::SpillObjectsInternal(
               // Object spilling is always done in the order of the request.
               // For example, if an object succeeded, it'll guarentee that all objects
               // before this will succeed.
-              RAY_LOG(FATAL) << num_objects_spilled << " "
-                             << equested_objects_to_spill.size();
+              RAY_LOG(INFO) << num_objects_spilled << " "
+                            << requested_objects_to_spill.size();
               RAY_CHECK(num_objects_spilled <= requested_objects_to_spill.size());
               for (size_t i = num_objects_spilled; i != requested_objects_to_spill.size();
                    ++i) {
