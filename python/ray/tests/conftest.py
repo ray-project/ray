@@ -946,3 +946,12 @@ def set_runtime_env_plugin_schemas(request):
         yield runtime_env_plugin_schemas
     finally:
         del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
+
+
+@pytest.fixture
+def enable_runtime_env_schema_validation():
+    try:
+        os.environ["RAY_RUNTIME_ENV_SCHEMA_VALIDATION"] = "true"
+        yield "true"
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_SCHEMA_VALIDATION"]

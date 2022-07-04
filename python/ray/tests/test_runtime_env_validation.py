@@ -316,7 +316,9 @@ test_env_2 = os.path.join(
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 class TestValidateByJsonSchema:
-    def test_validate_pip(self, set_runtime_env_plugin_schemas):
+    def test_validate_pip(
+        self, enable_runtime_env_schema_validation, set_runtime_env_plugin_schemas
+    ):
         runtime_env = RuntimeEnv()
         runtime_env.set("pip", {"packages": ["requests"], "pip_check": True})
         with pytest.raises(jsonschema.exceptions.ValidationError, match="pip_check"):
@@ -325,7 +327,9 @@ class TestValidateByJsonSchema:
         with pytest.raises(jsonschema.exceptions.ValidationError, match="pip_check"):
             runtime_env["pip"] = {"packages": ["requests"], "pip_check": "1"}
 
-    def test_validate_working_dir(self, set_runtime_env_plugin_schemas):
+    def test_validate_working_dir(
+        self, enable_runtime_env_schema_validation, set_runtime_env_plugin_schemas
+    ):
         runtime_env = RuntimeEnv()
         runtime_env.set("working_dir", "https://abc/file.zip")
         with pytest.raises(jsonschema.exceptions.ValidationError, match="working_dir"):
@@ -334,13 +338,17 @@ class TestValidateByJsonSchema:
         with pytest.raises(jsonschema.exceptions.ValidationError, match="working_dir"):
             runtime_env["working_dir"] = ["https://abc/file.zip"]
 
-    def test_validate_test_env_1(self, set_runtime_env_plugin_schemas):
+    def test_validate_test_env_1(
+        self, enable_runtime_env_schema_validation, set_runtime_env_plugin_schemas
+    ):
         runtime_env = RuntimeEnv()
         runtime_env.set("test_env_1", {"array": ["123"], "bool": True})
         with pytest.raises(jsonschema.exceptions.ValidationError, match="bool"):
             runtime_env.set("test_env_1", {"array": ["123"], "bool": "1"})
 
-    def test_validate_test_env_2(self, set_runtime_env_plugin_schemas):
+    def test_validate_test_env_2(
+        self, enable_runtime_env_schema_validation, set_runtime_env_plugin_schemas
+    ):
         runtime_env = RuntimeEnv()
         runtime_env.set("test_env_2", "123")
         with pytest.raises(jsonschema.exceptions.ValidationError, match="test_env_2"):
@@ -349,7 +357,7 @@ class TestValidateByJsonSchema:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 class TestRuntimeEnvPluginSchemaManager:
-    def test(self):
+    def test(self, enable_runtime_env_schema_validation):
         RuntimeEnvPluginSchemaManager.clear()
         # No schemas when starts.
         assert len(RuntimeEnvPluginSchemaManager.schemas) == 0

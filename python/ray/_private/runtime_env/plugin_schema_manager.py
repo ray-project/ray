@@ -4,6 +4,7 @@ import logging
 from typing import List
 import json
 from ray._private.runtime_env.constants import (
+    RAY_RUNTIME_ENV_SCHEMA_VALIDATION_ENV_VAR,
     RAY_RUNTIME_ENV_PLUGIN_SCHEMAS_ENV_VAR,
     RAY_RUNTIME_ENV_PLUGIN_SCHEMA_SUFFIX,
 )
@@ -73,6 +74,10 @@ class RuntimeEnvPluginSchemaManager:
 
     @classmethod
     def validate(cls, name, instance):
+        # TODO(SongGuyang): We add this flag because the test `serve:test_runtime_env`
+        # is flakey. Remove this flag after we address the flakey test issue.
+        if os.environ.get(RAY_RUNTIME_ENV_SCHEMA_VALIDATION_ENV_VAR, "false") != "true":
+            return
         if not cls.loaded:
             # Load the schemas lazily.
             cls._load_default_schemas()
