@@ -1,10 +1,12 @@
 Ray Workflows API
 =================
 
-Core API
----------
-.. autoclass:: ray.workflow.common.Workflow
-    :members:
+Workflow Execution API
+----------------------
+
+.. autofunction:: ray.workflow.run
+.. autofunction:: ray.workflow.run_async
+
 
 Management API
 --------------

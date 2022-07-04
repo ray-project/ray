@@ -27,7 +27,7 @@ from ray.tune import (
 )
 from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
@@ -56,11 +56,10 @@ from ray.tune.stopper import (
     TrialPlateauStopper,
     ExperimentPlateauStopper,
 )
-from ray.tune.suggest import BasicVariantGenerator, grid_search
-from ray.tune.suggest._mock import _MockSuggestionAlgorithm
-from ray.tune.suggest.ax import AxSearch
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.suggest.suggestion import ConcurrencyLimiter
+from ray.tune.search import BasicVariantGenerator, grid_search, ConcurrencyLimiter
+from ray.tune.search._mock import _MockSuggestionAlgorithm
+from ray.tune.search.ax import AxSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.syncer import Syncer
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
@@ -879,8 +878,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Re-run the same trials but with added delay. This is to catch some
         # inconsistent timestep counting that was present in the multi-threaded
-        # FunctionRunner. This part of the test can be removed once the
-        # multi-threaded FunctionRunner is removed from ray/tune.
+        # FunctionTrainable. This part of the test can be removed once the
+        # multi-threaded FunctionTrainable is removed from ray/tune.
         # TODO: remove once the multi-threaded function runner is gone.
         logs2, _ = self.checkAndReturnConsistentLogs(results2, 0.5)
 
@@ -981,7 +980,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(test_trainable.state["hi"], 1)
         else:
             # Cannot re-use function trainable, create new
-            tune.session.shutdown()
+            tune.trainable.session.shutdown()
             test_trainable = trainable(
                 logger_creator=log_creator,
                 remote_checkpoint_dir=remote_checkpoint_dir,

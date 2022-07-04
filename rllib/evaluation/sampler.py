@@ -1,58 +1,63 @@
-from abc import abstractmethod, ABCMeta
-from collections import defaultdict, namedtuple
 import logging
-import numpy as np
 import queue
 import threading
 import time
-import tree  # pip install dm_tree
+from abc import ABCMeta, abstractmethod
+from collections import defaultdict, namedtuple
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
-    List,
     Iterator,
+    List,
     Optional,
     Set,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
-from ray.util.debug import log_once
+import numpy as np
+import tree  # pip install dm_tree
+
+from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv, convert_to_base_env
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
+from ray.rllib.evaluation.env_runner_v2 import (
+    EnvRunnerV2,
+    _fetch_atari_metrics,
+    _get_or_raise,
+    _PerfStats,
+)
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.env.base_env import BaseEnv, convert_to_base_env, ASYNC_RESET_RETURN
-from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, MonitorEnv
-from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import convert_to_numpy, make_action_immutable
-from ray.rllib.utils.spaces.space_utils import clip_action, unsquash_action, unbatch
+from ray.rllib.utils.spaces.space_utils import clip_action, unbatch, unsquash_action
 from ray.rllib.utils.typing import (
-    SampleBatchType,
     AgentID,
-    PolicyID,
-    EnvObsType,
-    EnvInfoDict,
-    EnvID,
-    MultiEnvDict,
     EnvActionType,
+    EnvID,
+    EnvInfoDict,
+    EnvObsType,
+    MultiEnvDict,
+    PolicyID,
+    SampleBatchType,
     TensorStructType,
 )
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from gym.envs.classic_control.rendering import SimpleImageViewer
+
     from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -76,34 +81,6 @@ class _NewEpisodeDefaultDict(defaultdict):
         else:
             ret = self[env_id] = self.default_factory(env_id)
             return ret
-
-
-class _PerfStats:
-    """Sampler perf stats that will be included in rollout metrics."""
-
-    def __init__(self):
-        self.iters = 0
-        self.raw_obs_processing_time = 0.0
-        self.inference_time = 0.0
-        self.action_processing_time = 0.0
-        self.env_wait_time = 0.0
-        self.env_render_time = 0.0
-
-    def get(self):
-        # Mean multiplicator (1000 = ms -> sec).
-        factor = 1000 / self.iters
-        return {
-            # Raw observation preprocessing.
-            "mean_raw_obs_processing_ms": self.raw_obs_processing_time * factor,
-            # Computing actions through policy.
-            "mean_inference_ms": self.inference_time * factor,
-            # Processing actions (to be sent to env, e.g. clipping).
-            "mean_action_processing_ms": self.action_processing_time * factor,
-            # Waiting for environment (during poll).
-            "mean_env_wait_ms": self.env_wait_time * factor,
-            # Environment rendering (False by default).
-            "mean_env_render_ms": self.env_render_time * factor,
-        }
 
 
 @DeveloperAPI
@@ -263,23 +240,37 @@ class SyncSampler(SamplerInput):
         )
         self.render = render
 
-        # Create the rollout generator to use for calls to `get_data()`.
-        self._env_runner = _env_runner(
-            worker,
-            self.base_env,
-            self.extra_batches.put,
-            self.horizon,
-            normalize_actions,
-            clip_actions,
-            multiple_episodes_in_batch,
-            callbacks,
-            self.perf_stats,
-            soft_horizon,
-            no_done_at_end,
-            observation_fn,
-            self.sample_collector,
-            self.render,
-        )
+        if worker.policy_config.get("enable_connectors", False):
+            self._env_runner = EnvRunnerV2(
+                worker,
+                self.base_env,
+                self.horizon,
+                multiple_episodes_in_batch,
+                callbacks,
+                self.perf_stats,
+                soft_horizon,
+                no_done_at_end,
+                rollout_fragment_length,
+                self.render,
+            ).run()
+        else:
+            # Create the rollout generator to use for calls to `get_data()`.
+            self._env_runner = _env_runner(
+                worker,
+                self.base_env,
+                self.extra_batches.put,
+                self.horizon,
+                normalize_actions,
+                clip_actions,
+                multiple_episodes_in_batch,
+                callbacks,
+                self.perf_stats,
+                soft_horizon,
+                no_done_at_end,
+                observation_fn,
+                self.sample_collector,
+                self.render,
+            )
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
@@ -465,22 +456,36 @@ class AsyncSampler(threading.Thread, SamplerInput):
         else:
             queue_putter = self.queue.put
             extra_batches_putter = lambda x: self.extra_batches.put(x, timeout=600.0)
-        env_runner = _env_runner(
-            self.worker,
-            self.base_env,
-            extra_batches_putter,
-            self.horizon,
-            self.normalize_actions,
-            self.clip_actions,
-            self.multiple_episodes_in_batch,
-            self.callbacks,
-            self.perf_stats,
-            self.soft_horizon,
-            self.no_done_at_end,
-            self.observation_fn,
-            self.sample_collector,
-            self.render,
-        )
+        if self.worker.policy_config.get("enable_connectors", False):
+            env_runner = EnvRunnerV2(
+                self.worker,
+                self.base_env,
+                self.horizon,
+                self.multiple_episodes_in_batch,
+                self.callbacks,
+                self.perf_stats,
+                self.soft_horizon,
+                self.no_done_at_end,
+                self.rollout_fragment_length,
+                self.render,
+            ).run()
+        else:
+            env_runner = _env_runner(
+                self.worker,
+                self.base_env,
+                extra_batches_putter,
+                self.horizon,
+                self.normalize_actions,
+                self.clip_actions,
+                self.multiple_episodes_in_batch,
+                self.callbacks,
+                self.perf_stats,
+                self.soft_horizon,
+                self.no_done_at_end,
+                self.observation_fn,
+                self.sample_collector,
+                self.render,
+            )
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -848,7 +853,10 @@ def _process_observations(
                 if atari_metrics is not None:
                     for m in atari_metrics:
                         outputs.append(
-                            m._replace(custom_metrics=episode.custom_metrics)
+                            m._replace(
+                                custom_metrics=episode.custom_metrics,
+                                hist_data=episode.hist_data,
+                            )
                         )
                 else:
                     outputs.append(
@@ -1279,49 +1287,6 @@ def _process_policy_eval_results(
     return actions_to_send
 
 
-def _fetch_atari_metrics(base_env: BaseEnv) -> List[RolloutMetrics]:
-    """Atari games have multiple logical episodes, one per life.
-
-    However, for metrics reporting we count full episodes, all lives included.
-    """
-    sub_environments = base_env.get_sub_environments()
-    if not sub_environments:
-        return None
-    atari_out = []
-    for sub_env in sub_environments:
-        monitor = get_wrapper_by_cls(sub_env, MonitorEnv)
-        if not monitor:
-            return None
-        for eps_rew, eps_len in monitor.next_episode_results():
-            atari_out.append(RolloutMetrics(eps_len, eps_rew))
-    return atari_out
-
-
 def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:
     num_cols = len(rnn_state_rows[0])
     return [[row[i] for row in rnn_state_rows] for i in range(num_cols)]
-
-
-def _get_or_raise(
-    mapping: Dict[PolicyID, Union[Policy, Preprocessor, Filter]], policy_id: PolicyID
-) -> Union[Policy, Preprocessor, Filter]:
-    """Returns an object under key `policy_id` in `mapping`.
-
-    Args:
-        mapping (Dict[PolicyID, Union[Policy, Preprocessor, Filter]]): The
-            mapping dict from policy id (str) to actual object (Policy,
-            Preprocessor, etc.).
-        policy_id: The policy ID to lookup.
-
-    Returns:
-        Union[Policy, Preprocessor, Filter]: The found object.
-
-    Raises:
-        ValueError: If `policy_id` cannot be found in `mapping`.
-    """
-    if policy_id not in mapping:
-        raise ValueError(
-            "Could not find policy for agent: PolicyID `{}` not found "
-            "in policy map, whose keys are `{}`.".format(policy_id, mapping.keys())
-        )
-    return mapping[policy_id]
