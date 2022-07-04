@@ -9,4 +9,4 @@ def hello(msg: str) -> None:
 
 
 if __name__ == "__main__":
-    workflow.create(hello.bind("hello world")).run()
+    workflow.run(hello.bind("hello world"))
