@@ -65,7 +65,8 @@ ObjectManager::ObjectManager(
     AddObjectCallback add_object_callback,
     DeleteObjectCallback delete_object_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-    const std::function<void(const ObjectID &)> fail_pull_request)
+    const std::function<void(const ObjectID &)> fail_pull_request,
+    const std::function<bool(const ObjectID &)> load_checkpoint_callback)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -147,7 +148,8 @@ ObjectManager::ObjectManager(
                                       config.pull_timeout_ms,
                                       available_memory,
                                       pin_object,
-                                      get_spilled_object_url));
+                                      get_spilled_object_url,
+                                      load_checkpoint_callback));
 
   RAY_CHECK_OK(
       buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 0, 300));

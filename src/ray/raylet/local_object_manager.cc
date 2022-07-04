@@ -548,35 +548,37 @@ bool LocalObjectManager::AsyncLoadCheckpoint(
     absl::MutexLock guard(&object_map_mutex_);
     auto it = get_object_to_url_map_.find(object_id);
     RAY_CHECK(it != get_object_to_url_map_.end());
-    is_sealed = it->second.second;
+    is_sealed = std::get<1>(it->second);
   }
   if (is_sealed) return true;
-  io_worker_pool_.PopLoadCheckpointWorker([this, object_id, checkpoint_url, callback](
-                                        std::shared_ptr<WorkerInterface> io_worker) {
-    auto start_time = absl::GetCurrentTimeNanos();
-    RAY_LOG(DEBUG) << "Sending restore spilled object request";
-    rpc::LoadCheckpointRequest request;
-    request.add_checkpoint_urls(std::move(checkpoint_url));
-    request.add_object_ids_to_load(object_id.Binary());
-    io_worker->rpc_client()->LoadCheckpoint(
-        request,
-        [this, start_time, object_id, callback, io_worker](
-            const ray::Status &status, const rpc::LoadCheckpointReply &r) {
-          io_worker_pool_.PushLoadCheckpointWorker(io_worker);
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send load checkpoint object request: "
-                           << status.ToString();
-          } else {
-            auto now = absl::GetCurrentTimeNanos();
-            auto restored_bytes = r.bytes_load_total();
-            RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
-                           << (now - start_time) / 1e6 << "ms. Object id:" << object_id;
-          }
-          if (callback) {
-            callback(status);
-          }
-        });
-  });
+  io_worker_pool_.PopLoadCheckpointWorker(
+      [this, object_id, checkpoint_url, callback](
+          std::shared_ptr<WorkerInterface> io_worker) {
+        auto start_time = absl::GetCurrentTimeNanos();
+        RAY_LOG(DEBUG) << "Sending restore spilled object request";
+        rpc::LoadCheckpointRequest request;
+        request.add_checkpoint_urls(std::move(checkpoint_url));
+        request.add_object_ids_to_load(object_id.Binary());
+        io_worker->rpc_client()->LoadCheckpoint(
+            request,
+            [this, start_time, object_id, callback, io_worker](
+                const ray::Status &status, const rpc::LoadCheckpointReply &r) {
+              io_worker_pool_.PushLoadCheckpointWorker(io_worker);
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to send load checkpoint object request: "
+                               << status.ToString();
+              } else {
+                auto now = absl::GetCurrentTimeNanos();
+                auto restored_bytes = r.bytes_load_total();
+                RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
+                               << (now - start_time) / 1e6
+                               << "ms. Object id:" << object_id;
+              }
+              if (callback) {
+                callback(status);
+              }
+            });
+      });
   return true;
 }
 
@@ -718,16 +720,21 @@ std::string LocalObjectManager::DebugString() const {
 }
 
 void LocalObjectManager::InsertObjectAndCheckpointURL(const ObjectID &object_id,
-                                                      const std::string &checkpoint_url) {
+                                                      const std::string &checkpoint_url,
+                                                      const bool is_sealed,
+                                                      const ActorID &actor_id) {
   absl::MutexLock guard(&object_map_mutex_);
-  get_object_to_url_map_.emplace(object_id, std::make_pair(checkpoint_url, false));
+  auto it = get_object_to_url_map_.find(object_id);
+  if (it != get_object_to_url_map_.end()) return;
+  get_object_to_url_map_.emplace(object_id, std::make_tuple(checkpoint_url, is_sealed, actor_id));
 }
 
 void LocalObjectManager::MarkObjectSealed(const ObjectID &object_id) {
   absl::MutexLock guard(&object_map_mutex_);
   auto it = get_object_to_url_map_.find(object_id);
+  // TO_BE_SOLVED(buniu): we do not insert it when ray.wait
   if (it == get_object_to_url_map_.end()) return;
-  it->second.second = true;
+  it->second = std::make_tuple(std::get<0>(it->second), true, std::get<2>(it->second));
 }
 
 void LocalObjectManager::EraseObjectAndCheckpointURL(const ObjectID &object_id) {
@@ -738,8 +745,15 @@ void LocalObjectManager::EraseObjectAndCheckpointURL(const ObjectID &object_id) 
 std::string LocalObjectManager::GetObjectCheckpointURL(const ObjectID &object_id) {
   absl::MutexLock guard(&object_map_mutex_);
   auto it = get_object_to_url_map_.find(object_id);
-  RAY_CHECK(it != get_object_to_url_map_.end());
-  return it->second.first;
+  if (it == get_object_to_url_map_.end()) return std::string("");
+  return std::get(0)(it->second);
+}
+
+ActorID LocalObjectManager::GetObjectGlobalOwnerID(const ObjectID &object_id) {
+  absl::MutexLock guard(&object_map_mutex_);
+  auto it = get_object_to_url_map_.find(object_id);
+  if (it == get_object_to_url_map_.end()) return ActorID::Nil();
+  return std::get(2)(it->second);
 }
 
 };  // namespace raylet

@@ -82,7 +82,8 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithCheckpoint
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
     const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
         &owner_addresses,
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &checkpoint_urls) {
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
+        &checkpoint_urls) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   RAY_CHECK(checkpoint_urls.size() == object_ids.size());
   std::vector<ray::rpc::ObjectReference> refs;
@@ -247,10 +248,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             std::string checkpoint_url =
                 GetLocalObjectManager().GetObjectCheckpointURL(obj_id);
-            if (GetLocalObjectManager().AsyncLoadCheckpoint(
-                    obj_id, checkpoint_url, [](ray::Status status) {
-                      RAY_CHECK(status.ok());
-                    })) {
+            if (checkpoint_url.size() > 0) {
+              RAY_LOG(DEBUG) << "the owner of object(" << obj_id
+                             << ") is dead, but this object has checkpoint"
+                             << "object directory will ignore it.";
               return;
             }
 
@@ -310,6 +311,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             ref.set_object_id(object_id.Binary());
             MarkObjectsAsFailed(
                 rpc::ErrorType::OBJECT_FETCH_TIMED_OUT, {ref}, JobID::Nil());
+          },
+          /*load_checkpoint_callback*/
+          [this](const ObjectID &obj_id) {
+            std::string checkpoint_url =
+                GetLocalObjectManager().GetObjectCheckpointURL(obj_id);
+            return GetLocalObjectManager().AsyncLoadCheckpoint(
+                obj_id, checkpoint_url, [](ray::Status status) {
+                  RAY_CHECK(status.ok());
+                });
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -1542,7 +1552,8 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   for (const auto &ref : refs) {
     std::string checkpoint_url = ref.checkpoint_url();
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
-    GetLocalObjectManager().InsertObjectAndCheckpointURL(object_id, checkpoint_url);
+    GetLocalObjectManager().InsertObjectAndCheckpointURL(
+        object_id, checkpoint_url, false);
   }
   // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
   // non-direct call support.
@@ -2224,6 +2235,17 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
           }
         });
   }
+  auto global_owner_id = GetLocalObjectManager().GetObjectGlobalOwnerID(object_id);
+  {
+    absl::MutexLock guard(&objects_need_to_report_mutex_);
+    auto it = objects_need_to_report_.find(global_owner_id);
+    if (it == objects_need_to_report_.end()) {
+      it = objects_need_to_report_.emplace(global_owner_id, absl::flat_hash_set<ObjectID>());
+    }
+    if (it->second.insert(object_id).second) {
+      object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+    }
+  }
 }
 
 bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
@@ -2238,6 +2260,14 @@ bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
 
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
+  auto global_owner_id = GetLocalObjectManager().GetObjectGlobalOwnerID(object_id);
+  {
+    absl::MutexLock guard(&objects_need_to_report_mutex_);
+    auto it = objects_need_to_report_.find(global_owner_id);
+    if (it != objects_need_to_report_.end() && it->second.count(object_id)) {
+      it->second.erase(object_id);
+    }
+  }
   GetLocalObjectManager().EraseObjectAndCheckpointURL(object_id);
   const auto waiting_task_ids = dependency_manager_.HandleObjectMissing(object_id);
   std::stringstream result;
@@ -2428,7 +2458,6 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
     objects_to_dump.push_back(std::move(object_id));
     owner_addresses.push_back(std::move(request.owner_addresses()[i]));
   }
-  size_t objects_number = objects_to_dump.size();
   local_object_manager_.DumpCheckpoints(
       objects_to_dump,
       owner_addresses,
@@ -2437,12 +2466,16 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
         RAY_CHECK(status.ok());
       },
       /* Send result to caller CoreWorker*/
-      [objects_number, send_reply_callback = std::move(send_reply_callback), reply](
-          const std::vector<std::string> &checkpoint_urls) {
-        RAY_CHECK(objects_number == checkpoint_urls.size())
-            << "objects number: " << objects_number
+      [this,
+       objects_to_dump,
+       send_reply_callback = std::move(send_reply_callback),
+       reply](const std::vector<std::string> &checkpoint_urls) {
+        RAY_CHECK(objects_to_dump.size() == checkpoint_urls.size())
+            << "objects number: " << objects_to_dump.size()
             << ", checkpoint_urls size: " << checkpoint_urls.size();
         for (size_t i = 0; i < checkpoint_urls.size(); i++) {
+          GetLocalObjectManager().InsertObjectAndCheckpointURL(
+              objects_to_dump[i], checkpoint_urls[i], true);
           reply->add_checkpoint_urls(std::move(checkpoint_urls[i]));
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2846,6 +2879,43 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }
+}
+
+void NodeManager::SubscribeGlobalOwnerAddress(ActorID actor_id) {
+  if (reference_counter_->AlreadyWatchActor(actor_id)) return;
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+      actor_id,
+      [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
+        RAY_LOG(DEBUG) << "Actor(" << actor_id << ") state: " << actor_data.state()
+                       << ", address: " << actor_data.address().ip_address() << ":"
+                       << actor_data.address().port()
+                       << ", actor_name: " << actor_data.address().actor_name();
+        if (actor_data.state() == rpc::ActorTableData::ALIVE) {
+          {
+            absl::MutexLock guard(&global_owner_mutex_);
+            global_owner_address_.emplace(actor_id, actor_data.address());
+          }
+          {
+            absl::MutexLock guard(&objects_need_to_report_mutex_);
+            const ActorID actor_id = ActorID::FromBinary(actor_data.actor_id());
+            auto it = objects_need_to_report_.find(actor_id);
+            if (it == objects_need_to_report_.end()) return;
+            for (const auto &object_id : it->second) {
+              ObjectInfo object_info;
+              object_info.object_id = object_id;
+              object_info.owner_raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
+              object_info.owner_ip_address = actor_data.address().ip_address();
+              object_info.owner_port = actor_data.address().port();
+              object_info.owner_worker_id = actor_data.address().worker_id();
+              object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+            }
+          }
+        }
+      },
+      [](Status status) {
+        // TO_BE_SOLVED(buniu): handler subscribe failed.
+        RAY_CHECK(status.ok()) << "CoreWorker Subscribe failed!";
+      }));
 }
 
 }  // namespace raylet

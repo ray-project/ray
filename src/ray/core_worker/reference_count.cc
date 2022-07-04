@@ -238,7 +238,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
     it->second.spilled_node_id = spilled_node_id;
     auto location_updates = std::move(pending_object_location_updates_[object_id]);
     pending_object_location_updates_.erase(object_id);
-    for (auto [location, is_add]: location_updates) {
+    for (auto [location, is_add] : location_updates) {
       if (is_add) {
         AddObjectLocationInternal(it, location);
       } else {

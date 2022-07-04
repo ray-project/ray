@@ -2503,8 +2503,12 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   absl::flat_hash_map<ObjectID, std::string> plasma_objects_id_to_url;
   // TO_BE_SOLVED: HA for return objects
   plasma_objects_id_to_url.emplace(return_id, "");
-  auto status = plasma_store_provider_->Get(
-      {return_id}, plasma_objects_id_to_url, 0, worker_context_, &result_map, &got_exception);
+  auto status = plasma_store_provider_->Get({return_id},
+                                            plasma_objects_id_to_url,
+                                            0,
+                                            worker_context_,
+                                            &result_map,
+                                            &got_exception);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 
@@ -2668,8 +2672,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
     RAY_RETURN_NOT_OK(
         memory_store_->Get(by_ref_ids, -1, worker_context_, &result_map, &got_exception));
   } else {
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-        by_ref_ids, plasma_objects_id_to_url, -1, worker_context_, &result_map, &got_exception));
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(by_ref_ids,
+                                                  plasma_objects_id_to_url,
+                                                  -1,
+                                                  worker_context_,
+                                                  &result_map,
+                                                  &got_exception));
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
@@ -3457,7 +3465,8 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    if (Get(std::vector<ObjectID>{object_id}, std::vector<std::string>{""}, 0, &vec).ok()) {
+    if (Get(std::vector<ObjectID>{object_id}, std::vector<std::string>{""}, 0, &vec)
+            .ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";
       return success(vec.front(), object_id, py_future);
@@ -3624,11 +3633,8 @@ void CoreWorker::SubscribeGlobalOwnerAddress(ActorID actor_id) {
         }
       },
       [](Status status) {
-        if (status.ok()) {
-          RAY_LOG(DEBUG) << "Subscribe success!";
-        } else {
-          RAY_LOG(DEBUG) << "Subscribe failed!";
-        }
+        // TO_BE_SOLVED(buniu): handler subscribe failed.
+        RAY_CHECK(status.ok()) << "CoreWorker Subscribe failed!";
       }));
 }
 

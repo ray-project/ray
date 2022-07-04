@@ -1003,7 +1003,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// recovered.
   std::vector<ObjectID> objects_to_recover_ GUARDED_BY(mutex_);
 
-  absl::flat_hash_map<ObjectID, std::vector<std::pair<NodeID, bool>>> pending_object_location_updates_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<ObjectID, std::vector<std::pair<NodeID, bool>>>
+      pending_object_location_updates_ GUARDED_BY(mutex_);
 };
 
 }  // namespace core

@@ -31,7 +31,8 @@ PullManager::PullManager(
     int pull_timeout_ms,
     int64_t num_bytes_available,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
-    std::function<std::string(const ObjectID &)> get_locally_spilled_object_url)
+    std::function<std::string(const ObjectID &)> get_locally_spilled_object_url,
+    const std::function<bool(const ObjectID &)> load_checkpoint_callback)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
@@ -43,6 +44,7 @@ PullManager::PullManager(
       pin_object_(pin_object),
       get_locally_spilled_object_url_(get_locally_spilled_object_url),
       fail_pull_request_(fail_pull_request),
+      load_checkpoint_callback_(load_checkpoint_callback),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -487,6 +489,9 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   }
 
   RAY_CHECK(!request.pending_object_creation);
+
+  bool did_load = load_checkpoint_callback_(object_id);
+  if (did_load) return;
   if (request.expiration_time_seconds == 0) {
     RAY_LOG(WARNING) << "Object neither in memory nor external storage "
                      << object_id.Hex();

@@ -70,7 +70,8 @@ class PullManager {
       int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
+      std::function<std::string(const ObjectID &)> get_locally_spilled_object_url,
+      const std::function<bool(const ObjectID &)> load_checkpoint_callback);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -468,6 +469,8 @@ class PullManager {
 
   // A callback to fail a hung pull request.
   std::function<void(const ObjectID &)> fail_pull_request_;
+
+  std::function<bool(const ObjectID &)> load_checkpoint_callback_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

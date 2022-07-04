@@ -173,7 +173,8 @@ class ObjectManager : public ObjectManagerInterface,
       AddObjectCallback add_object_callback,
       DeleteObjectCallback delete_object_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      const std::function<void(const ObjectID &)> fail_pull_request);
+      const std::function<void(const ObjectID &)> fail_pull_request,
+      const std::function<bool(const ObjectID &)> load_checkpoint_callback);
 
   ~ObjectManager();
 
@@ -245,6 +246,8 @@ class ObjectManager : public ObjectManagerInterface,
   }
 
   bool PullManagerHasPullsQueued() const { return pull_manager_->HasPullsQueued(); }
+
+  void InsertObjectToReport
 
  private:
   friend class TestObjectManager;

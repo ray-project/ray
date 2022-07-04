@@ -97,7 +97,6 @@ def test_checkpoint(ray_start_cluster):
     print("data:", ray.get(ref))
 
 
-
 if __name__ == "__main__":
     import pytest
     import sys

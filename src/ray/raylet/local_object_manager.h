@@ -167,7 +167,9 @@ class LocalObjectManager {
   std::string DebugString() const;
 
   void InsertObjectAndCheckpointURL(const ObjectID &object_id,
-                                    const std::string &checkpoint_url)
+                                    const std::string &checkpoint_url,
+                                    const bool is_sealed,
+                                    const ActorID &actor_id)
       LOCKS_EXCLUDED(object_map_mutex_);
 
   void MarkObjectSealed(const ObjectID &object_id) LOCKS_EXCLUDED(object_map_mutex_);
@@ -176,6 +178,9 @@ class LocalObjectManager {
       LOCKS_EXCLUDED(object_map_mutex_);
 
   std::string GetObjectCheckpointURL(const ObjectID &object_id)
+      LOCKS_EXCLUDED(object_map_mutex_);
+
+  ActorID LocalObjectManager::GetObjectGlobalOwnerID(const ObjectID &object_id)
       LOCKS_EXCLUDED(object_map_mutex_);
 
  private:
@@ -340,7 +345,7 @@ class LocalObjectManager {
   IObjectDirectory *object_directory_;
 
   mutable absl::Mutex object_map_mutex_;
-  absl::flat_hash_map<ObjectID, std::pair<std::string, bool>> get_object_to_url_map_
+  absl::flat_hash_map<ObjectID, std::tuple<std::string, bool, ActorID>> get_object_to_url_map_
       GUARDED_BY(object_map_mutex_);
 
   ///
