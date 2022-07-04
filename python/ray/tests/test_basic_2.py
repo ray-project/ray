@@ -649,6 +649,7 @@ def test_duplicate_args(ray_start_regular_shared):
     arg2 = ray.put([2])
     ray.get(f.remote(arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
+    # Test by-reference arguments on an actor task.
     @ray.remote
     class Actor:
         def f(
