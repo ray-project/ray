@@ -600,7 +600,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool no_retry) {
   RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
                 << " force_kill: " << force_kill << " recursive: " << recursive
-                << "no_retry: " << no_retry;
+                << " no_retry: " << no_retry;
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(),
       task_spec.GetDependencyIds(),
