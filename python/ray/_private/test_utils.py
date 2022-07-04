@@ -58,7 +58,7 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
-def test_external_redis():
+def enable_external_redis():
     import os
 
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
@@ -225,10 +225,7 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
         if proc.returncode:
             print(ray._private.utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
-                proc.returncode,
-                proc.args,
-                ray._private.utils.decode(output, encode_type=encode),
-                proc.stderr,
+                proc.returncode, proc.args, output, proc.stderr
             )
         out = ray._private.utils.decode(output, encode_type=encode)
     return out
