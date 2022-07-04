@@ -223,12 +223,6 @@ on the AUR page of ``python-ray`` `here`_.
 Installing Ray with Anaconda
 ----------------------------
 
-.. note::
-
-  Ray is not officially distributed and supported on conda. While using a
-  conda environment, it is recommended to install Ray itself from PyPi using
-  `pip install ray` in the newly created environment.
-
 If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
 
 .. code-block:: bash
@@ -241,11 +235,14 @@ If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a d
 For a complete list of available ``ray`` libraries on Conda-forge, have a look
 at: https://github.com/conda-forge/ray-packages-feedstock
 
+.. note::
+
+  Ray conda packages are maintained by the community, not the Ray team. While
+  using a conda environment, it is recommended to install Ray from PyPi using
+  `pip install ray` in the newly created environment.
+
 .. _`Anaconda`: https://www.anaconda.com/
 .. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
-
-
-
 
 Building Ray from Source
 ------------------------
