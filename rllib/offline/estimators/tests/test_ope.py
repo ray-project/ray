@@ -28,7 +28,7 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        n_iters = 100
+        n_iters = 20
         n_batches = 20  # Approx. equal to n_episodes
         n_eval_episodes = 20
         cls.q_model_config = {"n_iters": n_iters}
