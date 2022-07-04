@@ -201,6 +201,8 @@ extern jfieldID java_actor_creation_options_bundle_index;
 extern jfieldID java_actor_creation_options_concurrency_groups;
 /// serializedRuntimeEnv field of ActorCreatrionOptions class
 extern jfieldID java_actor_creation_options_serialized_runtime_env;
+/// namespace field of ActorCreatrionOptions class
+extern jfieldID java_actor_creation_options_namespace;
 /// maxPendingCalls field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_pending_calls;
 /// ActorLifetime enum class
@@ -648,6 +650,13 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
         typed_descriptor->ClassName(),
         typed_descriptor->FunctionName(),
         typed_descriptor->FunctionHash()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  } else if (function_descriptor->Type() ==
+             ray::FunctionDescriptorType::kCppFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {typed_descriptor->FunctionName(),
+                                                         typed_descriptor->Caller(),
+                                                         typed_descriptor->ClassName()};
     return NativeStringVectorToJavaStringList(env, function_descriptor_list);
   }
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
