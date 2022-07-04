@@ -22,6 +22,8 @@ import ray
 from ray import serve
 from ray.serve.generated.serve_pb2 import DeploymentRouteList
 
+import numpy as np
+
 
 class TestCalculateDesiredNumReplicas:
     def test_bounds_checking(self):
@@ -512,7 +514,7 @@ def test_imbalanced_replicas(ongoing_requests):
     # the target_num_ongoing_requests_per_replica, the number of replicas
     # stays the same
     if (
-        sum(ongoing_requests) / len(ongoing_requests)
+        np.mean(ongoing_requests)
         == config.target_num_ongoing_requests_per_replica
     ):
         new_num_replicas = policy.get_decision_num_replicas(
@@ -525,7 +527,7 @@ def test_imbalanced_replicas(ongoing_requests):
     # Check downscaling behavior when average number of requests
     # is lower than target_num_ongoing_requests_per_replica
     elif (
-        sum(ongoing_requests) / len(ongoing_requests)
+        np.mean(ongoing_requests)
         < config.target_num_ongoing_requests_per_replica
     ):
         new_num_replicas = policy.get_decision_num_replicas(
@@ -536,7 +538,7 @@ def test_imbalanced_replicas(ongoing_requests):
 
         if (
             config.target_num_ongoing_requests_per_replica
-            - sum(ongoing_requests) / len(ongoing_requests)
+            - np.mean(ongoing_requests)
             <= 1
         ):
             # Autoscaling uses a ceiling operator, which means a slightly low
