@@ -300,7 +300,7 @@ class MockObjectBuffer : public Buffer {
 class LocalObjectManagerTestWithConfig {
  public:
   LocalObjectManagerTestWithConfig(int64_t min_spilling_size,
-                                   int max_spilling_size,
+                                   int64_t max_spilling_size,
                                    int64_t max_fused_object_count)
       : subscriber_(std::make_shared<MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
