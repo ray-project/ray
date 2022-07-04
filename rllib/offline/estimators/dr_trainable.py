@@ -35,15 +35,10 @@ class DRTrainable(DoublyRobust):
             name: string to save OPE results under
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
-            q_model_type: Either "fqe" for Fitted Q-Evaluation
-                or "qreg" for Q-Regression, or a custom model that implements:
-                - `estimate_q(states, actions)`
-                - `estimate_v(states, action_probs)`
             q_model_config: Arguments to specify the Q-model.
         """
 
         super().__init__(name, policy, gamma)
-        q_model_config = q_model_config or {"type": "fqe"}
         model_cls = q_model_config.pop("type")
 
         self.model = model_cls(
@@ -72,4 +67,4 @@ class DRTrainable(DoublyRobust):
                     "`off_policy_estimation_methods: {}` to resolve this."
                 )
         losses = self.model.train(batch)
-        return {self.name + "_loss", np.mean(losses)}
+        return {self.name + "_loss": np.mean(losses)}

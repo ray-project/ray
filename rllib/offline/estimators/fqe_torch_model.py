@@ -107,10 +107,6 @@ class FQETorchModel:
 
         self.initializer = f
 
-    def reset(self) -> None:
-        """Resets/Reinintializes the model weights."""
-        self.q_model.apply(self.initializer)
-
     def train(self, batch: SampleBatch) -> TensorType:
         """Trains self.q_model using FQE loss on given batch.
 
@@ -128,7 +124,9 @@ class FQETorchModel:
                 minibatch = batch[idx : idx + self.batch_size]
                 obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
                 actions = torch.tensor(
-                    minibatch[SampleBatch.ACTIONS], device=self.device
+                    minibatch[SampleBatch.ACTIONS],
+                    device=self.device,
+                    dtype=int,
                 )
                 rewards = torch.tensor(
                     minibatch[SampleBatch.REWARDS], device=self.device
@@ -146,8 +144,10 @@ class FQETorchModel:
                 state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
 
                 # Compute action_probs for next_obs as in FQE
-                all_actions = torch.zeros([minibatch.count, self.policy.action_space.n])
-                all_actions[:] = torch.arange(self.policy.action_space.n)
+                all_actions = torch.zeros(
+                    [minibatch.count, self.policy.action_space.n], dtype=int
+                )
+                all_actions[:] = torch.arange(self.policy.action_space.n, dtype=int)
                 next_action_prob = self.policy.compute_log_likelihoods(
                     actions=all_actions.T,
                     obs_batch=next_obs,
@@ -186,7 +186,9 @@ class FQETorchModel:
         obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
         with torch.no_grad():
             q_values, _ = self.q_model({"obs": obs}, [], None)
-        actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
+        actions = torch.tensor(
+            batch[SampleBatch.ACTIONS], device=self.device, dtype=int
+        )
         q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
         return q_values
 

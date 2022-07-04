@@ -572,7 +572,9 @@ class Algorithm(Trainable):
                     )
                 policy = self.get_policy()
                 gamma = self.config["gamma"]
-                self.reward_estimators.append(method_type(name, policy, gamma))
+                self.reward_estimators.append(
+                    method_type(name, policy, gamma, **method_config)
+                )
             else:
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "

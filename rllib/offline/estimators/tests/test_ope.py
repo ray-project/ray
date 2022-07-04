@@ -28,10 +28,8 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        n_iters = 20
-        n_batches = 20  # Approx. equal to n_episodes
         n_eval_episodes = 20
-        cls.q_model_config = {"n_iters": n_iters}
+        cls.q_model_config = {"n_iters": n_eval_episodes}
 
         config = (
             DQNConfig()
@@ -47,7 +45,7 @@ class TestOPE(unittest.TestCase):
             )
             .framework("torch")
             .evaluation(
-                evaluation_interval=1,
+                evaluation_interval=None,
                 evaluation_duration=n_eval_episodes,
                 evaluation_num_workers=1,
                 evaluation_duration_unit="episodes",
@@ -60,19 +58,28 @@ class TestOPE(unittest.TestCase):
                     "wis": {"type": WeightedImportanceSampling},
                     "dm": {"type": DirectMethod},
                     "dr": {"type": DoublyRobust},
+                    "dm_fqe": {
+                        "type": DMTrainable,
+                        "q_model_config": {"type": FQETorchModel, "n_iters": 1},
+                    },
+                    "dr_fqe": {
+                        "type": DRTrainable,
+                        "q_model_config": {"type": FQETorchModel, "n_iters": 1},
+                    },
+                    # Note: Can't use Q-Reg here since it requires log-probs
                 },
             )
         )
         cls.algo = config.build()
 
         # Train DQN for evaluation policy
-        for _ in range(n_iters):
+        for _ in range(n_eval_episodes):
             cls.algo.train()
 
-        # Read n_batches of data
+        # Read n_eval_episodes of data, assuming that one line is one episode
         reader = JsonReader(eval_data)
         cls.batch = reader.next()
-        for _ in range(n_batches - 1):
+        for _ in range(n_eval_episodes - 1):
             cls.batch = concat_samples([cls.batch, reader.next()])
         cls.n_episodes = len(cls.batch.split_by_episode())
         print("Episodes:", cls.n_episodes, "Steps:", cls.batch.count)
@@ -106,7 +113,8 @@ class TestOPE(unittest.TestCase):
         print(*list(cls.mean_ret.items()), sep="\n")
         print("Stddev:")
         print(*list(cls.std_ret.items()), sep="\n")
-        print("Losses:", cls.losses)
+        print("Losses:")
+        print(*list(cls.losses.items()), sep="\n")
         ray.shutdown()
 
     def test_is(self):
@@ -207,11 +215,14 @@ class TestOPE(unittest.TestCase):
 
     def test_ope_in_algo(self):
         results = self.algo.evaluate()
-        print(
-            *list(results["evaluation"]["off_policy_estimator"].items()),
-            sep="\n",
-            end="\n\n\n"
-        )
+        print("OPE in Algorithm results")
+        estimates = results["evaluation"]["off_policy_estimator"]
+        mean_est = {k: v["v_new"] for k, v in estimates.items()}
+        std_est = {k: v["v_new_std"] for k, v in estimates.items()}
+        print("Mean:")
+        print(*list(mean_est.items()), sep="\n")
+        print("Stddev:")
+        print(*list(std_est.items()), sep="\n")
 
     def test_multiple_inputs(self):
         # TODO (Rohan138): Test with multiple input files

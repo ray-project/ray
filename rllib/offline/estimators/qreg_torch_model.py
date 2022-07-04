@@ -93,10 +93,6 @@ class QRegTorchModel:
 
         self.initializer = f
 
-    def reset(self) -> None:
-        """Resets/Reinintializes the model weights."""
-        self.q_model.apply(self.initializer)
-
     def train(self, batch: SampleBatch) -> TensorType:
         """Trains self.q_model using Q-Reg loss on given batch.
 
@@ -108,7 +104,9 @@ class QRegTorchModel:
         """
         losses = []
         obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
-        actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
+        actions = torch.tensor(
+            batch[SampleBatch.ACTIONS], device=self.device, dtype=int
+        )
         ps = torch.zeros([batch.count], device=self.device)
         returns = torch.zeros([batch.count], device=self.device)
         discounts = torch.zeros([batch.count], device=self.device)
