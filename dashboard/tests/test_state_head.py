@@ -3,8 +3,7 @@ from unittest.mock import MagicMock
 import sys
 import pytest
 from ray.dashboard.optional_utils import rest_response
-
-from dashboard.modules.state.state_head import StateHead
+from ray.dashboard.modules.state.state_head import StateHead
 
 
 @pytest.mark.asyncio
