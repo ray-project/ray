@@ -10,7 +10,7 @@ import ray
 from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 from ray._private.runtime_env.conda import get_uri as get_conda_uri
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
-from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
+# from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -432,7 +432,7 @@ class RuntimeEnv(dict):
 
     def __setitem__(self, key: str, value: Any) -> None:
         res_value = value
-        RuntimeEnvPluginSchemaManager.validate(key, res_value)
+        # RuntimeEnvPluginSchemaManager.validate(key, res_value)
         if key in RuntimeEnv.known_fields and key in OPTION_TO_VALIDATION_FN:
             res_value = OPTION_TO_VALIDATION_FN[key](value)
             if res_value is None:
