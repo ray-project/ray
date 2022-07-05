@@ -214,13 +214,13 @@ class BaseTrainer(abc.ABC):
             )
 
     @classmethod
-    def _validate_scaling_config(cls, dataclass: ScalingConfig) -> ScalingConfig:
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
         """Return scaling config dataclass after validating updated keys."""
         ensure_only_allowed_dataclass_keys_updated(
-            dataclass=dataclass,
+            dataclass=scaling_config,
             allowed_keys=cls._scaling_config_allowed_keys,
         )
-        return dataclass
+        return scaling_config
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
