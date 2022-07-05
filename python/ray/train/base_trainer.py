@@ -11,6 +11,7 @@ from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
 from ray.tune.error import TuneError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -393,6 +394,10 @@ class BaseTrainer(abc.ABC):
                 """
 
                 trial_resources = self.trial_resources
+                # This will be false if the resources are default
+                if not isinstance(trial_resources, PlacementGroupFactory):
+                    return scaling_config
+
                 if scaling_config:
                     scaling_config = (
                         trainer_cls._validate_and_get_scaling_config_data_class(
