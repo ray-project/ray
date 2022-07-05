@@ -1,8 +1,8 @@
 from dataclasses import Field, MISSING, _FIELDS, _FIELD, _FIELD_INITVAR  # type: ignore
 from typing import Type, Any, TypeVar, List
 
-from dacite.data import Data
-from dacite.types import is_optional
+from .data import Data
+from .types import is_optional
 
 T = TypeVar("T", bound=Any)
 

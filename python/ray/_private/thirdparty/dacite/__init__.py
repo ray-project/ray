@@ -1,3 +1,3 @@
-from dacite.config import Config
-from dacite.core import from_dict
-from dacite.exceptions import *
+from .config import Config
+from .core import from_dict
+from .exceptions import *
