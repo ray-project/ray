@@ -19,7 +19,7 @@ DELETE_PATH = "/api/serve/deployments/"
 class ServeSubmissionClient(SubmissionClient):
     def __init__(
         self,
-        dashboard_address: str,
+        dashboard_agent_address: str,
         create_cluster_if_needed=False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -31,7 +31,7 @@ class ServeSubmissionClient(SubmissionClient):
                 "installation: `pip install 'ray[default']``"
             )
         super().__init__(
-            address=dashboard_address,
+            address=dashboard_agent_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,

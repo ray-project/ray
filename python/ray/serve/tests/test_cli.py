@@ -50,7 +50,7 @@ def ray_start_stop():
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
         lambda: requests.get(
-            "http://localhost:52365/api/serve/deployments/"
+            "http://localhost:52365/api/ray/version"
         ).status_code
         == 200,
         timeout=15,

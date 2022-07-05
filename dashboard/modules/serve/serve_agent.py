@@ -26,6 +26,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
 
+    # TODO: It's better to use `/api/version`.
+    # It requires a refactor of ClassMethodRouteTable to differentiate the server.
     @routes.get("/api/ray/version")
     async def get_version(self, req: Request) -> Response:
         # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the

@@ -896,7 +896,7 @@ def test_agent_port_conflict():
     )
     ray.shutdown()
 
-    # ocuppy the port by socket.
+    # ocuppy the port with a socket.
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     wait_for_condition(

@@ -62,7 +62,8 @@ class HttpServerAgent:
             await site.start()
         except OSError as e:
             logger.error(
-                f"Agent port #{self.listen_port} already in use. Failed to start agent. "
+                f"Agent port #{self.listen_port} already in use. "
+                "Failed to start agent. "
                 f"Ensure port #{self.listen_port} is available, and then try again."
             )
             raise e
