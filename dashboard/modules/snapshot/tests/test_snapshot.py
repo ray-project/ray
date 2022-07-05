@@ -24,34 +24,45 @@ from ray._private.test_utils import (
 from ray.dashboard import dashboard
 from ray.dashboard.tests.conftest import *  # noqa
 
+
 @dataclasses.dataclass
 class OtherResponse:
     response: str
 
+
 @dataclasses.dataclass
 class TestRayActivityResponse:
-    # Equivalent definition to ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
+    # Equivalent definition to
+    # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
     # This is defined separately to test activity responses from external methods called
     # by RAY_CLUSTER_ACTIVITY_HOOK are compatible.
     is_active: bool
 
-@pytest.mark.parametrize("cluster_activity_hook_output", [
-    "bad_output", 
-    {"component_type": TestRayActivityResponse(is_active=True)},
-    {"component_type": OtherResponse(response="bad_response")}
-    ])
+
+@pytest.mark.parametrize(
+    "cluster_activity_hook_output",
+    [
+        "bad_output",
+        {"component_type": TestRayActivityResponse(is_active=True)},
+        {"component_type": OtherResponse(response="bad_response")},
+    ],
+)
 async def test_component_activities_hook(cluster_activity_hook_output):
     """
-    Tests /api/component_activities returns correctly for various RAY_CLUSTER_ACTIVITY_HOOKs.
+    Tests /api/component_activities returns correctly for various
+    responses of RAY_CLUSTER_ACTIVITY_HOOK.
     """
-    # Mock ClassMethodRouteTable so get_component_activities can be directly called. This
-    # allows us to mock out the _load_class method even if it is called from within the
-    # API server.
+    # Mock ClassMethodRouteTable so get_component_activities can be directly called.
+    # This allows us to mock out the _load_class method even if it is called
+    # from within the API server.
     class MockClassMethodRouteTable:
         @classmethod
         def get(cls, path, **kwargs):
             return lambda x: x
-    patch('ray.dashboard.optional_utils.ClassMethodRouteTable', MockClassMethodRouteTable).start()
+
+    patch(
+        "ray.dashboard.optional_utils.ClassMethodRouteTable", MockClassMethodRouteTable
+    ).start()
     mock_load_class = Mock(return_value=Mock(return_value=cluster_activity_hook_output))
     os.environ[ray_constants.RAY_CLUSTER_ACTIVITY_HOOK] = "mock_module"
 
@@ -59,18 +70,32 @@ async def test_component_activities_hook(cluster_activity_hook_output):
         "ray.dashboard.modules.snapshot.snapshot_head",
         _internal_kv_initialized=Mock(return_value=True),
         JobInfoStorageClient=Mock(),
-        _load_class=mock_load_class
+        _load_class=mock_load_class,
     ):
         # Import should be after ClassMethodRouteTable is mocked out
-        from ray.dashboard.modules.snapshot.snapshot_head import APIHead, RayActivityResponse
+        from ray.dashboard.modules.snapshot.snapshot_head import (
+            APIHead,
+            RayActivityResponse,
+        )
+
         mock_api_head = APIHead(Mock())
-        mock_api_head._get_job_activity_info = CoroutineMock(return_value=RayActivityResponse(is_active=False))
+        mock_api_head._get_job_activity_info = CoroutineMock(
+            return_value=RayActivityResponse(is_active=False)
+        )
         response = await mock_api_head.get_component_activities(Mock(query={}))
         data = response.body.decode()
 
-        expected_output = {"driver": {"is_active": False, "reason": None, "timestamp": None}}
-        if isinstance(cluster_activity_hook_output, dict) and isinstance(cluster_activity_hook_output["component_type"], TestRayActivityResponse):
-            expected_output["component_type"] = {"is_active": True, "reason": None, "timestamp": None}
+        expected_output = {
+            "driver": {"is_active": False, "reason": None, "timestamp": None}
+        }
+        if isinstance(cluster_activity_hook_output, dict) and isinstance(
+            cluster_activity_hook_output["component_type"], TestRayActivityResponse
+        ):
+            expected_output["component_type"] = {
+                "is_active": True,
+                "reason": None,
+                "timestamp": None,
+            }
         assert data == json.dumps(expected_output)
     os.environ.pop(ray_constants.RAY_CLUSTER_ACTIVITY_HOOK)
 
@@ -78,6 +103,7 @@ async def test_component_activities_hook(cluster_activity_hook_output):
 def test_inactive_component_activities(call_ray_start):
     # Verify no activity in response if no active drivers
     from ray.dashboard.modules.snapshot.snapshot_head import RayActivityResponse
+
     response = requests.get("http://127.0.0.1:8265/api/component_activities")
     response.raise_for_status()
 
@@ -100,6 +126,7 @@ def test_active_component_activities(ray_start_with_dashboard):
     # Verify drivers which don't have namespace starting with _ray_internal_job_info_
     # are considered active.
     from ray.dashboard.modules.snapshot.snapshot_head import RayActivityResponse
+
     driver_template = """
 import ray
 

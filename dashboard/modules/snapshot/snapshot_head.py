@@ -125,21 +125,28 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         external_ray_cluster_activity_output = {}
         if ray_constants.RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
-            external_ray_cluster_activity_output = _load_class(os.environ[ray_constants.RAY_CLUSTER_ACTIVITY_HOOK])()
+            external_ray_cluster_activity_output = _load_class(
+                os.environ[ray_constants.RAY_CLUSTER_ACTIVITY_HOOK]
+            )()
 
         resp = {"driver": dataclasses.asdict(driver_activity_info)}
 
         try:
             for component_type in external_ray_cluster_activity_output:
-                component_activity_output = external_ray_cluster_activity_output[component_type]
+                component_activity_output = external_ray_cluster_activity_output[
+                    component_type
+                ]
                 # Validate and cast output to type RayActivityResponse
-                component_activity_output = RayActivityResponse(**dataclasses.asdict(component_activity_output))
+                component_activity_output = RayActivityResponse(
+                    **dataclasses.asdict(component_activity_output)
+                )
                 resp[component_type] = dataclasses.asdict(component_activity_output)
         except Exception as e:
             logger.info(
                 f"{os.environ[ray_constants.RAY_CLUSTER_ACTIVITY_HOOK]} didn't return "
                 "response of type Dict[str, RayActivityResponse]. "
-                f"Output: {external_ray_cluster_activity_output}\n{str(e)}")
+                f"Output: {external_ray_cluster_activity_output}\n{str(e)}"
+            )
 
         return aiohttp.web.Response(
             text=json.dumps(resp),

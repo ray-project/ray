@@ -86,7 +86,7 @@ RAY_START_HOOK = "RAY_START_HOOK"
 RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
 # Hook that is invoked on the dashboard `/api/component_activities` endpoint.
 # It does not take any arguments and should return a dictionary mapping
-# activity component type (str) to 
+# activity component type (str) to
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
