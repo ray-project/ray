@@ -105,4 +105,4 @@ class DoublyRobust(OffPolicyEstimator):
                     "`off_policy_estimation_methods: {}` to resolve this."
                 )
         losses = self.model.train(batch)
-        return {self.name + "_loss": np.mean(losses)}
+        return {"loss": np.mean(losses)}

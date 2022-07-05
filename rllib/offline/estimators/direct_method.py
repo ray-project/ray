@@ -80,6 +80,7 @@ class DirectMethod(OffPolicyEstimator):
         estimates["v_gain"] = np.mean(estimates["v_gain"])
         return estimates
 
+    @override(OffPolicyEstimator)
     def train(self, batch: SampleBatchType) -> Dict[str, Any]:
         if isinstance(batch, MultiAgentBatch):
             policy_keys = batch.policy_batches.keys()
@@ -92,4 +93,4 @@ class DirectMethod(OffPolicyEstimator):
                     "`off_policy_estimation_methods: {}` to resolve this."
                 )
         losses = self.model.train(batch)
-        return {self.name + "_loss": np.mean(losses)}
+        return {"loss": np.mean(losses)}

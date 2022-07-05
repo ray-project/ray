@@ -958,6 +958,13 @@ class Algorithm(Trainable):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             self.workers.sync_weights(global_vars=global_vars)
 
+        # Train off-policy estimators if neccessary
+        train_results["off_policy_estimation"] = {}
+        for estimator in self.reward_estimators:
+            train_results["off_policy_estimation"][estimator.name] = estimator.train(
+                train_batch
+            )
+
         return train_results
 
     @staticmethod

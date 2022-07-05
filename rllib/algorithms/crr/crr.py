@@ -264,6 +264,13 @@ class CRR(Algorithm):
 
             self._counters[NUM_GRADIENT_UPDATES] += 1
 
+            # Train off-policy estimators if neccessary
+            train_results["off_policy_estimation"] = {}
+            for estimator in self.reward_estimators:
+                train_results["off_policy_estimation"][
+                    estimator.name
+                ] = estimator.train(train_batch)
+
             results.append(train_results)
 
         summary = tree.map_structure_with_path(
