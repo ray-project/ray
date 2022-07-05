@@ -320,7 +320,11 @@ $ serve deploy config_file.yaml -a http://127.0.0.1:52365
 
 The Ray dashboard agent's default port is 52365. This port may be different if:
 * You explicitly set it using the `--dashboard-agent-listen-port` argument when running `ray start`.
-* If the port 52365 was unavailable when Ray started, the dashboard agent http api server would fail. But the dashboard agent and Ray would continue running. You can check if the the agent is running by sending a curl request like: `curl curl http://{node_ip}:52365/api/serve/deployments/`.
+
+:::{note}
+If the port 52365 is unavailable when Ray starts, the dashboard agent’s HTTP server will fail. However, the dashboard agent and Ray will continue to run.
+You can check if an agent’s HTTP server is running by sending a curl request like: `curl http://{node_ip}:{dashboard agent port}/api/serve/deployments/`. If the request succeeds, the server is running on that node. If the request fails, the server is not running on that node. To launch the server on that node, terminate the process occupying the dashboard agent’s port, and restart Ray on that node.
+:::
 
 :::{tip}
 By default, all the Serve CLI commands assume that you're working with a local cluster, they use the Ray agent address associated with a local cluster started by `ray start --head`. However, if the `RAY_AGENT_ADDRESS` environment variable is set, all Serve CLI commands will default to that value instead.
@@ -354,7 +358,7 @@ The Serve CLI offers two commands to help you inspect your Serve application in 
 
 If you're working with a remote cluster, `serve config` and `serve status` also offer an `--address/-a` argument to access your cluster.
 
-By default, all the Serve CLI commands assume that you're working with a local cluster, so if you don't specify an `--address/-a` value, they use the Ray agent address associated with a local cluster started by `ray start --head`. However, if the `RAY_AGENT_ADDRESS` environment variable is set, all Serve CLI commands will default to that value instead (unless you also specify an `--address/-a` value). (serve-in-production-deploying)
+By default, all the Serve CLI commands assume that you're working with a local cluster, so if you don't specify an `--address/-a` value, they use the Ray agent address associated with a local cluster started by `ray start --head`. However, if the `RAY_AGENT_ADDRESS` environment variable is set, all Serve CLI commands will default to that value instead (unless you also specify an `--address/-a` value). Check out [the previous section](serve-in-production-remote-cluster) for more info on this argument.
 
 (serve-in-production-config-command)=
 
