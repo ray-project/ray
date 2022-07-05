@@ -415,7 +415,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
-  auto scheduler =
+  gcs_placement_group_scheduler_ =
       std::make_shared<GcsPlacementGroupScheduler>(main_service_,
                                                    gcs_table_storage_,
                                                    *gcs_node_manager_,
@@ -425,7 +425,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_,
-      scheduler,
+      gcs_placement_group_scheduler_,
       gcs_table_storage_,
       *gcs_resource_manager_,
       [this](const JobID &job_id) {
@@ -666,6 +666,15 @@ void GcsServer::InstallEventListeners() {
             cluster_task_manager_->ScheduleAndDispatchTasks();
           },
           "GcsServer.SchedulePendingActors");
+    });
+    gcs_placement_group_scheduler_->AddResourcesChangedListener([this] {
+      main_service_.post(
+          [this] {
+            // Because placement group resources have been committed or deleted, we need
+            // to try to schedule the pending actors.
+            cluster_task_manager_->ScheduleAndDispatchTasks();
+          },
+          "GcsServer.SchedulePendingPGActors");
     });
   }
 }

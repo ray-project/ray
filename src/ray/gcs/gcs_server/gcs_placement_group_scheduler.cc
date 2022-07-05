@@ -609,9 +609,21 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
   auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
   for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
     for (const auto &[resource_id, capacity] : node_bundle_resources.ToMap()) {
-      cluster_resource_manager.UpdateResourceCapacity(
-          node_id, resource_id, capacity.Double());
+      if (resource_id.IsPlacementGroupWildcardResource()) {
+        auto current_capacity = cluster_resource_manager.GetNodeResources(node_id)
+                                    .total.Get(resource_id)
+                                    .Double();
+        cluster_resource_manager.UpdateResourceCapacity(
+            node_id, resource_id, current_capacity + capacity.Double());
+      } else {
+        cluster_resource_manager.UpdateResourceCapacity(
+            node_id, resource_id, capacity.Double());
+      }
     }
+  }
+
+  for (const auto &listener : resources_changed_listeners_) {
+    listener();
   }
 }
 
@@ -624,13 +636,24 @@ void GcsPlacementGroupScheduler::ReturnBundleResources(
   // scheduling. Only bundles with same total and availe resources could be returnd.
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
+  // Subtract wildcard resources and delete bundle resources.
   for (auto &bundle : *bundle_locations) {
     auto node_id = scheduling::NodeID(bundle.second.first.Binary());
     const auto &bundle_spec = *bundle.second.second;
-    // Remove bundle resource names (the label with `_group_`).
     std::vector<scheduling::ResourceID> bundle_resource_ids;
     for (const auto &entry : bundle_spec.GetFormattedResources()) {
-      bundle_resource_ids.emplace_back(scheduling::ResourceID(entry.first));
+      auto resource_id = scheduling::ResourceID(entry.first);
+      if (resource_id.IsPlacementGroupWildcardResource()) {
+        auto capacity = cluster_resource_manager.GetNodeResources(node_id)
+                            .total.Get(resource_id)
+                            .Double();
+        capacity -= entry.second;
+        if (capacity > 0) {
+          cluster_resource_manager.UpdateResourceCapacity(node_id, resource_id, capacity);
+          continue;
+        }
+      }
+      bundle_resource_ids.emplace_back(resource_id);
     }
 
     // It will affect nothing if the resource_id to be deleted does not exist in the
@@ -640,6 +663,16 @@ void GcsPlacementGroupScheduler::ReturnBundleResources(
     cluster_resource_manager.AddNodeAvailableResources(
         node_id, bundle_spec.GetRequiredResources());
   }
+
+  for (const auto &listener : resources_changed_listeners_) {
+    listener();
+  }
+}
+
+void GcsPlacementGroupScheduler::AddResourcesChangedListener(
+    std::function<void()> listener) {
+  RAY_CHECK(listener != nullptr);
+  resources_changed_listeners_.emplace_back(std::move(listener));
 }
 
 LeaseStatusTracker::LeaseStatusTracker(

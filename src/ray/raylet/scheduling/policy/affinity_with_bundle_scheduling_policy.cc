@@ -26,6 +26,7 @@ bool AffinityWithBundleSchedulingPolicy::IsNodeFeasibleAndAvailable(
 
 scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
+  RAY_LOG(INFO) << "Bundle schedule " << resource_request.DebugString();
   RAY_CHECK(options.scheduling_type == SchedulingType::AFFINITY_WITH_BUNDLE);
 
   auto bundle_scheduling_context =

@@ -416,6 +416,7 @@ def test_placement_group_reschedule_when_node_dead(
             placement_group_bundle_index=2,
             lifetime="detached",
         ).remote()
+
         ray.get(actor_4.value.remote())
         ray.get(actor_5.value.remote())
         ray.get(actor_6.value.remote())

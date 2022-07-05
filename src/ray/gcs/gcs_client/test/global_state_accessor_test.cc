@@ -195,7 +195,6 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
-
   auto resources_data = resource_usage_batch_data.mutable_batch()->at(0);
   ASSERT_EQ(resources_data.resources_total_size(), 2);
   ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
@@ -217,7 +216,6 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
-
   resources_data = resource_usage_batch_data.mutable_batch()->at(0);
   ASSERT_EQ(resources_data.resources_total_size(), 2);
   ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);

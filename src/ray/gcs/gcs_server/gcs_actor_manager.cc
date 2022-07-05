@@ -723,9 +723,11 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       });
 }
 
-void GcsActorManager::DestroyActor(const ActorID &actor_id,
-                                   const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill) {
+void GcsActorManager::DestroyActor(
+    const ActorID &actor_id,
+    const rpc::ActorDeathCause &death_cause,
+    bool force_kill,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
   RAY_LOG(INFO) << "Destroying actor, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   actor_to_register_callbacks_.erase(actor_id);
@@ -777,7 +779,13 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
       if (node_it->second.empty()) {
         created_actors_.erase(node_it);
       }
-    } else {
+    } else if (!(RayConfig::instance().gcs_actor_scheduling_enabled() &&
+                 failure_type ==
+                     rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE)) {
+      // For gcs actor scheduler, if the actor is destroyed because of
+      // `SCHEDULING_CANCELLED_UNSCHEDULABLE`, then it means the lease request has never
+      // been sent out yet. So we do nothing in this case. Otherwise, we have to
+      // `CancelActorInScheduling`.
       CancelActorInScheduling(actor, TaskID::ForActorCreationTask(actor_id));
     }
   }
@@ -1129,7 +1137,7 @@ void GcsActorManager::OnActorSchedulingFailed(
     break;
   }
 
-  DestroyActor(actor->GetActorID(), death_cause);
+  DestroyActor(actor->GetActorID(), death_cause, true, failure_type);
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,

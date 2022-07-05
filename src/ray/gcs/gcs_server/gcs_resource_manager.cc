@@ -215,10 +215,6 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
   } else {
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
-      // Nodes' resource capacity has been updated, so schedule pending actors.
-      if (RayConfig::instance().gcs_actor_scheduling_enabled() && cluster_task_manager_) {
-        cluster_task_manager_->ScheduleAndDispatchTasks();
-      }
     }
     if (resources.resources_available_changed()) {
       (*iter->second.mutable_resources_available()) = resources.resources_available();
