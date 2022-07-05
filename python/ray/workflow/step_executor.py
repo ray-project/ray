@@ -16,7 +16,7 @@ from ray.workflow.common import (
     WorkflowStatus,
     WorkflowExecutionMetadata,
     StepType,
-    StepID,
+    TaskID,
     WorkflowRef,
     CheckpointMode,
 )
@@ -114,14 +114,14 @@ def _wrap_run(
 def _workflow_step_executor(
     func: Callable,
     context: "WorkflowStepContext",
-    step_id: "StepID",
+    task_id: "TaskID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
 ) -> Tuple[Any, Any]:
     """Executor function for workflow step.
 
     Args:
-        step_id: ID of the step.
+        task_id: ID of the step.
         func: The workflow step function.
         baked_inputs: The processed inputs for the step.
         context: Workflow step context. Used to access correct storage etc.
@@ -137,13 +137,13 @@ def _workflow_step_executor(
 
         # Part 2: execute the step
         try:
-            store.save_step_prerun_metadata(step_id, {"start_time": time.time()})
+            store.save_step_prerun_metadata(task_id, {"start_time": time.time()})
             with workflow_context.workflow_execution():
                 output = _wrap_run(func, runtime_options, *args, **kwargs)
-            store.save_step_postrun_metadata(step_id, {"end_time": time.time()})
+            store.save_step_postrun_metadata(task_id, {"end_time": time.time()})
         except Exception as e:
             # Always checkpoint the exception.
-            store.save_step_output(step_id, None, exception=e)
+            store.save_step_output(task_id, None, exception=e)
             raise e
 
         if isinstance(output, DAGNode):
@@ -156,9 +156,9 @@ def _workflow_step_executor(
         # TODO(suquark): Validate checkpoint options before commit the task.
         if CheckpointMode(runtime_options.checkpoint) == CheckpointMode.SYNC:
             if isinstance(output, WorkflowExecutionState):
-                store.save_workflow_execution_state(step_id, output)
+                store.save_workflow_execution_state(task_id, output)
             else:
-                store.save_step_output(step_id, output, exception=None)
+                store.save_step_output(task_id, output, exception=None)
         return execution_metadata, output
 
 
@@ -167,14 +167,14 @@ def _workflow_step_executor_remote(
     func: Callable,
     context: "WorkflowStepContext",
     job_id: str,
-    step_id: "StepID",
+    task_id: "TaskID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
 ) -> Any:
     """The remote version of '_workflow_step_executor'."""
     with workflow_context.workflow_logging_context(job_id):
         return _workflow_step_executor(
-            func, context, step_id, baked_inputs, runtime_options
+            func, context, task_id, baked_inputs, runtime_options
         )
 
 

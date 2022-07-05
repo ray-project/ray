@@ -79,7 +79,7 @@ if __name__ == "__main__":
         ray.workflow.delete(workflow_id)
     except Exception:
         pass
-    assert ray.workflow.create(pipeline(10)).run(workflow_id=workflow_id) == 20
+    assert ray.workflow.run(pipeline(10), workflow_id=workflow_id) == 20
 
     pipeline = function_compose(
         [
@@ -99,5 +99,4 @@ if __name__ == "__main__":
         ray.workflow.delete(workflow_id)
     except Exception:
         pass
-    wf = ray.workflow.create(pipeline(10))
-    assert wf.run(workflow_id=workflow_id) == (14, 15, 15, 16)
+    assert ray.workflow.run(pipeline(10), workflow_id=workflow_id) == (14, 15, 15, 16)
