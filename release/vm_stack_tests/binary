@@ -1,0 +1,21 @@
+Attempting to establish dashboard locally at localhost:8265 connected to remote port 8265
+2022-06-29 14:11:14,371	INFO util.py:338 -- setting max workers for head node type to 0
+Warning: Permanently added '52.26.21.121' (ED25519) to the list of known hosts.
+^CShared connection to 52.26.21.121 closed.
+2022-06-29 14:11:14,374	VWARN commands.py:318 -- [33mLoaded cached provider configuration from [1m/var/folders/70/8_80x3vn6q3_23hgl__hzw7m0000gn/T/ray-config-787772a334dd55da7a0c34cfee646a66eb19d642[22m[39m
+2022-06-29 14:11:14,374	WARN commands.py:326 -- [33mIf you experience issues with the cloud provider, try re-running the command with [1m--no-config-cache[22m[26m.[39m
+2022-06-29 14:11:14,791	INFO command_runner.py:393 -- [37mFetched IP[39m: [1m52.26.21.121[22m
+2022-06-29 14:11:14,792	INFO log_timer.py:30 -- NodeUpdater: i-082d11cee9e95a343: Got IP  [LogTimer=0ms]
+2022-06-29 14:11:14,792	INFO command_runner.py:526 -- [36mForwarding ports[39m
+2022-06-29 14:11:14,792	VVINFO command_runner.py:557 -- Full command is `[1mssh -tt -L 8265:localhost:8265 -i /Users/cade/.ssh/ray-autoscaler_5_us-west-2.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o ControlMaster=auto -o ControlPath=/tmp/ray_ssh_b2224209fc/a31138e70c/%C -o ControlPersist=10s -o ConnectTimeout=120s ubuntu@52.26.21.121 while true; do sleep 86400; done[22m[26m`
+2022-06-29 14:11:14,374	VINFO utils.py:150 -- Creating AWS resource `[1mec2[22m[26m` in `[1mus-west-2[22m[26m`
+2022-06-29 14:11:14,429	VINFO utils.py:150 -- Creating AWS resource `[1mec2[22m[26m` in `[1mus-west-2[22m[26m`
+2022-06-29 14:11:14,792	VINFO command_runner.py:533 -- Forwarding port [1m8265[22m[26m to port [1m8265[22m[26m on localhost.
+2022-06-29 14:11:14,792	VINFO command_runner.py:554 -- Running `[1mNone[22m[26m`
+Error: Failed to forward dashboard from remote port 8265 to local port 8265. There are a couple possibilities: 
+ 1. The remote port is incorrectly specified 
+ 2. The local port 8265 is already in use.
+ The exception is: Command failed:
+
+  ssh -tt -L 8265:localhost:8265 -i /Users/cade/.ssh/ray-autoscaler_5_us-west-2.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o ControlMaster=auto -o ControlPath=/tmp/ray_ssh_b2224209fc/a31138e70c/%C -o ControlPersist=10s -o ConnectTimeout=120s ubuntu@52.26.21.121 while true; do sleep 86400; done
+
