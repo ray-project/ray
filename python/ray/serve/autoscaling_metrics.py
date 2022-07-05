@@ -188,7 +188,6 @@ class InMemoryMetricsStore:
                 if tag in point.tags and point.tags[tag] not in datapoints_per_tags:
                     datapoints_per_tags[point.tags[tag]] = point
             datapoints = list(datapoints_per_tags.values())
-            print(self.data[key])
             return [point.value for point in datapoints]
         else:
             return [points_after_idx[-1].value] if points_after_idx else []
