@@ -13,6 +13,8 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. image:: images/rllib-envs.svg
 
+.. _configuring-environments:
+
 Configuring Environments
 ------------------------
 
