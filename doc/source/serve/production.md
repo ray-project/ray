@@ -327,10 +327,10 @@ You can check if an agent’s HTTP server is running by sending a curl request: 
 
 :::{tip}
 By default, all the Serve CLI commands assume that you're working with a local cluster. All Serve CLI commands, except `serve start` and `serve run` use the Ray agent address associated with a local cluster started by `ray start --head`. However, if the `RAY_AGENT_ADDRESS` environment variable is set, these Serve CLI commands will default to that value instead.
-	
+
 Similarly, `serve start` and `serve run`, use the Ray head node address associated with a local cluster by default. If the `RAY_ADDRESS` environment variable is set, they will use that value instead.
 
-You can check this variable's value by running:
+You can check `RAY_AGENT_ADDRESS`'s value by running:
 
 ```console
 $ echo $RAY_AGENT_ADDRESS
