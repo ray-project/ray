@@ -698,9 +698,6 @@ def test_e2e_intermediate_downscaling(serve_instance):
     handle = A.get_handle()
     [handle.remote() for _ in range(50)]
 
-    print(
-        "test_e2e_intermediate_downscaling: ", get_num_running_replicas(controller, A)
-    )
     wait_for_condition(
         lambda: get_num_running_replicas(controller, A) >= 20, timeout=30
     )
