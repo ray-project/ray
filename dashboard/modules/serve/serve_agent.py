@@ -8,7 +8,7 @@ import ray
 import aiohttp.web
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.modules.job.common import (
+from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )

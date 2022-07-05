@@ -54,9 +54,10 @@ class DashboardAgentModule(abc.ABC):
         should work with `pip install ray` that doesn't requires additonal
         dependencies.
         """
-    
+
     def get_gcs_address(self):
         return self._dashboard_agent.gcs_address
+
 
 class DashboardHeadModule(abc.ABC):
     def __init__(self, dashboard_head):
@@ -84,7 +85,7 @@ class DashboardHeadModule(abc.ABC):
         """
 
     def get_gcs_address(self):
-        return self._dashboard_agent.gcs_address
+        return self._dashboard_head.gcs_address
 
 
 def dashboard_module(enable):
