@@ -28,7 +28,8 @@ class TestOPE(unittest.TestCase):
         env_name = "CartPole-v0"
         cls.gamma = 0.99
         n_eval_episodes = 20
-        cls.q_model_config = {"n_iters": n_eval_episodes}
+        n_iters = 10
+        cls.q_model_config = {"n_iters": n_iters * n_eval_episodes}
 
         config = (
             DQNConfig()
@@ -55,19 +56,19 @@ class TestOPE(unittest.TestCase):
                     "wis": {"type": WeightedImportanceSampling},
                     "dm_fqe": {
                         "type": DirectMethod,
-                        "q_model_config": {"type": FQETorchModel, "n_iters": 1},
+                        "q_model_config": {"type": FQETorchModel, "n_iters": n_iters},
                     },
                     "dr_fqe": {
                         "type": DoublyRobust,
-                        "q_model_config": {"type": FQETorchModel, "n_iters": 1},
+                        "q_model_config": {"type": FQETorchModel, "n_iters": n_iters},
                     },
                     "dm_qreg": {
                         "type": DirectMethod,
-                        "q_model_config": {"type": QRegTorchModel, "n_iters": 1},
+                        "q_model_config": {"type": QRegTorchModel, "n_iters": n_iters},
                     },
                     "dr_qreg": {
                         "type": DoublyRobust,
-                        "q_model_config": {"type": QRegTorchModel, "n_iters": 1},
+                        "q_model_config": {"type": QRegTorchModel, "n_iters": n_iters},
                     },
                 },
             )
@@ -111,6 +112,7 @@ class TestOPE(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        print("Standalone OPE results")
         print("Mean:")
         print(*list(cls.mean_ret.items()), sep="\n")
         print("Stddev:")
@@ -203,6 +205,7 @@ class TestOPE(unittest.TestCase):
         print(*list(mean_est.items()), sep="\n")
         print("Stddev:")
         print(*list(std_est.items()), sep="\n")
+        print("\n\n\n")
 
     def test_multiple_inputs(self):
         # TODO (Rohan138): Test with multiple input files
