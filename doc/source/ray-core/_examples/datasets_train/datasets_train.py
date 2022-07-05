@@ -18,6 +18,7 @@ from typing import Tuple
 import boto3
 import mlflow
 import pandas as pd
+from ray.air.config import DatasetConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
@@ -596,11 +597,7 @@ if __name__ == "__main__":
     DROPOUT_EVERY = 5
     DROPOUT_PROB = 0.2
 
-    # Random global shuffle
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()
-    del train_dataset
-
-    datasets = {"train": train_dataset_pipeline, "test": test_dataset}
+    datasets = {"train": train_dataset, "test": test_dataset}
 
     config = {
         "use_gpu": use_gpu,
@@ -633,6 +630,9 @@ if __name__ == "__main__":
             resources_per_worker=resources_per_worker,
         ),
         run_config=RunConfig(callbacks=callbacks),
+        dataset_config={
+            "train": DatasetConfig(use_stream_api=True, global_shuffle=True)
+        },
     )
     results = trainer.fit()
     model = results.checkpoint.to_dict()["model"]
