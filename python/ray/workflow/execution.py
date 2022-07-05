@@ -14,7 +14,6 @@ from ray.workflow.common import (
     validate_user_metadata,
 )
 from ray.workflow.workflow_access import (
-    get_or_create_management_actor,
     get_management_actor,
     load_step_output_from_storage,
 )
@@ -33,10 +32,6 @@ def run(
     """Run a workflow asynchronously."""
     validate_user_metadata(metadata)
     metadata = metadata or {}
-
-    from ray.workflow.api import _ensure_workflow_initialized
-
-    _ensure_workflow_initialized()
 
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
@@ -60,7 +55,7 @@ def run(
             # The workflow does not exist. We must checkpoint entry workflow.
             ws.save_workflow_execution_state("", state)
             wf_exists = False
-        workflow_manager = get_or_create_management_actor()
+        workflow_manager = get_management_actor()
         if ray.get(workflow_manager.is_workflow_running.remote(workflow_id)):
             raise RuntimeError(f"Workflow '{workflow_id}' is already running.")
         if wf_exists:
@@ -78,7 +73,7 @@ def run(
 def resume(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow asynchronously. See "api.resume()" for details."""
     logger.info(f'Resuming workflow [id="{workflow_id}"].')
-    workflow_manager = get_or_create_management_actor()
+    workflow_manager = get_management_actor()
     if ray.get(workflow_manager.is_workflow_running.remote(workflow_id)):
         raise RuntimeError(f"Workflow '{workflow_id}' is already running.")
     # NOTE: It is important to 'ray.get' the returned output. This
@@ -98,9 +93,6 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
     """Get the output of a running workflow.
     See "api.get_output()" for details.
     """
-    from ray.workflow.api import _ensure_workflow_initialized
-
-    _ensure_workflow_initialized()
 
     try:
         workflow_manager = get_management_actor()
@@ -175,7 +167,7 @@ def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStat
         non_terminating_workflows = {}
     else:
         non_terminating_workflows = ray.get(
-            workflow_manager.list_non_terminating_workflow.remote()
+            workflow_manager.list_non_terminating_workflows.remote()
         )
 
     ret = []

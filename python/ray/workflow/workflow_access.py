@@ -80,13 +80,6 @@ def resume_workflow_step(
             raise WorkflowNotResumableError(workflow_id) from e
 
 
-def _get_workflow_storage(workflow_id: str) -> workflow_storage.WorkflowStorage:
-    # Avoid initialize workflow in the workflow management actor,
-    # because it would invoke remote methods of itself,
-    # resulting in deadlock.
-    return workflow_storage.WorkflowStorage(workflow_id, _no_init_workflow=True)
-
-
 # TODO(suquark): we may use an actor pool in the future if too much
 # concurrent workflow access blocks the actor.
 @ray.remote(num_cpus=0)
@@ -95,19 +88,22 @@ class WorkflowManagementActor:
 
     def __init__(self, max_running_workflows: int, max_pending_workflows: int):
         self._workflow_executors: Dict[str, WorkflowExecutor] = {}
+
+        self._max_running_workflows: int = max_running_workflows
+        self._max_pending_workflows: int = max_pending_workflows
+
+        # 0 means infinite for queue
+        self._workflow_queue = queue.Queue(
+            max_pending_workflows if max_pending_workflows != -1 else 0
+        )
+
+        self._running_workflows: Set[str] = set()
+        self._queued_workflows: Dict[str, asyncio.Future] = {}
         # TODO(suquark): We do not cleanup "_executed_workflows" because we need to
         #  know if users are running the same workflow again long after a workflow
         #  completes. One possible alternative solution is to check the workflow
         #  status in the storage.
         self._executed_workflows: Set[str] = set()
-
-        self._max_running_workflows: int = max_running_workflows
-        self._max_pending_workflows: int = max_pending_workflows
-        # 0 means infinite for queue
-        self._workflow_queue = queue.Queue(
-            max_pending_workflows if max_pending_workflows != -1 else 0
-        )
-        self._queued_workflows: Dict[str, asyncio.Future] = {}
 
     def validate_init_options(
         self, max_running_workflows: Optional[int], max_pending_workflows: Optional[int]
@@ -129,7 +125,7 @@ class WorkflowManagementActor:
             )
 
     def gen_step_id(self, workflow_id: str, step_name: str) -> str:
-        wf_store = _get_workflow_storage(workflow_id)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
         idx = wf_store.gen_step_id(step_name)
         if idx == 0:
             return step_name
@@ -159,6 +155,7 @@ class WorkflowManagementActor:
                 "No root DAG specified that generates output for the workflow."
             )
 
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
         if (
             self._max_running_workflows != -1
             and len(self._running_workflows) >= self._max_running_workflows
@@ -166,10 +163,12 @@ class WorkflowManagementActor:
             try:
                 self._workflow_queue.put_nowait(workflow_id)
                 self._queued_workflows[workflow_id] = asyncio.Future()
-                self._update_workflow_status(workflow_id, common.WorkflowStatus.PENDING)
+                wf_store.update_workflow_status(WorkflowStatus.PENDING)
             except queue.Full:
                 # override with our error message
                 raise queue.Full("Workflow queue has been full") from None
+        else:
+            wf_store.update_workflow_status(WorkflowStatus.RUNNING)
         # initialize executor
         self._workflow_executors[workflow_id] = WorkflowExecutor(state)
 
@@ -201,6 +200,7 @@ class WorkflowManagementActor:
         if fut is not None:
             await fut  # wait until this workflow is ready to go
 
+        self._running_workflows.add(workflow_id)
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
         executor = self._workflow_executors[workflow_id]
         try:
@@ -208,6 +208,7 @@ class WorkflowManagementActor:
             return await self.get_output(workflow_id, executor.output_task_id)
         finally:
             self._workflow_executors.pop(workflow_id)
+            self._running_workflows.remove(workflow_id)
             self._executed_workflows.add(workflow_id)
             if not self._workflow_queue.empty():
                 # schedule another workflow from the pending queue
@@ -234,8 +235,14 @@ class WorkflowManagementActor:
     def is_workflow_running(self, workflow_id: str) -> bool:
         return workflow_id in self._workflow_executors
 
-    def list_running_workflow(self) -> List[str]:
-        return list(self._workflow_executors.keys())
+    def list_non_terminating_workflows(self) -> Dict[WorkflowStatus, List[str]]:
+        result = {WorkflowStatus.RUNNING: [], WorkflowStatus.PENDING: []}
+        for wf in self._workflow_executors.keys():
+            if wf in self._running_workflows:
+                result[WorkflowStatus.RUNNING].append(wf)
+            else:
+                result[WorkflowStatus.PENDING].append(wf)
+        return result
 
     async def get_output(
         self, workflow_id: str, name: Optional[TaskID]
@@ -305,28 +312,3 @@ def get_management_actor() -> "ActorHandle":
     return ray.get_actor(
         common.MANAGEMENT_ACTOR_NAME, namespace=common.MANAGEMENT_ACTOR_NAMESPACE
     )
-
-
-def get_or_create_management_actor() -> "ActorHandle":
-    """Get or create WorkflowManagementActor"""
-    # TODO(suquark): We should not get the actor everytime. We also need to
-    # resume the actor if it failed. Using a global variable to cache the
-    # actor seems not enough to resume the actor, because there is no
-    # aliveness detection for an actor.
-    try:
-        workflow_manager = get_management_actor()
-    except ValueError:
-        # the actor does not exist
-        logger.warning(
-            "Cannot access workflow manager. It could be because "
-            "the workflow manager exited unexpectedly. A new "
-            "workflow manager is being created."
-        )
-        # Here we initialize workflow queue size and maximum concurrency
-        # with default value (infinity).
-        workflow_manager = WorkflowManagementActor.options(
-            name=common.MANAGEMENT_ACTOR_NAME,
-            namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
-            lifetime="detached",
-        ).remote(max_running_workflows=-1, max_pending_workflows=-1)
-    return workflow_manager

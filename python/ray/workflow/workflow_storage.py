@@ -230,14 +230,7 @@ class WorkflowStorage:
     """Access workflow in storage. This is a higher-level abstraction,
     which does not care about the underlining storage implementation."""
 
-    def __init__(self, workflow_id: str, _no_init_workflow: bool = False):
-        from ray.workflow.api import _ensure_workflow_initialized
-
-        if not _no_init_workflow:
-            # Avoid initialize workflow when it is not necessary
-            # or would result in abnormality
-            _ensure_workflow_initialized()
-
+    def __init__(self, workflow_id: str):
         self._storage = storage.get_client(os.path.join(WORKFLOW_ROOT, workflow_id))
         self._status_storage = WorkflowIndexingStorage()
         self._workflow_id = workflow_id

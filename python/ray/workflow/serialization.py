@@ -50,16 +50,6 @@ def get_or_create_manager(warn_on_creation: bool = True) -> "ActorHandle":
         return handle
 
 
-def _get_workflow_storage(workflow_id: str) -> "workflow_storage.WorkflowStorage":
-    # Avoid initialize workflow in the workflow storage management actor,
-    # because it is meaningless to init workflow here.
-
-    # avoid cyclic import
-    from ray.workflow.workflow_storage import WorkflowStorage
-
-    return WorkflowStorage(workflow_id, _no_init_workflow=True)
-
-
 @dataclass
 class Upload:
     identifier_ref: ObjectRef[str]
@@ -137,7 +127,7 @@ def _put_helper(identifier: str, obj: Any, workflow_id: str) -> None:
         key,
         obj,
         workflow_id,
-        _get_workflow_storage(workflow_id),
+        workflow_storage.WorkflowStorage(workflow_id),
         update_existing=False,
     )
 
@@ -210,7 +200,7 @@ def dump_to_storage(
 @ray.remote
 def _load_ref_helper(key: str, workflow_id: str):
     # TODO(Alex): We should stream the data directly into `cloudpickle.load`.
-    storage = _get_workflow_storage(workflow_id)
+    storage = workflow_storage.WorkflowStorage(workflow_id)
     return storage._get(key)
 
 
