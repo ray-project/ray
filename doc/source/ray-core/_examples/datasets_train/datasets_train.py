@@ -416,7 +416,7 @@ def train_func(config):
     train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
     test_dataset = session.get_dataset_shard("test")
     test_torch_dataset = test_dataset.to_torch(
-        label_column="label", batch_size=batch_size
+        label_column="label", batch_size=batch_size, drop_last=True
     )
 
     net = Net(
@@ -461,9 +461,10 @@ def train_func(config):
 
         # Checkpoint model.
         module = net.module if isinstance(net, DistributedDataParallel) else net
-        checkpoint = Checkpoint.from_dict(dict(model=module.cpu()))
+        checkpoint = Checkpoint.from_dict(dict(model=module.state_dict()))
 
         # Record and log stats.
+        print(f"session report on {session.get_world_rank()}")
         session.report(
             dict(
                 train_acc=train_acc,
@@ -637,9 +638,27 @@ if __name__ == "__main__":
         },
     )
     results = trainer.fit()
-    model = results.checkpoint.to_dict()["model"]
+    state_dict = results.checkpoint.to_dict()["model"]
+
+    def load_model_func():
+        num_layers = config["num_layers"]
+        num_hidden = config["num_hidden"]
+        dropout_every = config["dropout_every"]
+        dropout_prob = config["dropout_prob"]
+        num_features = config["num_features"]
+
+        model = Net(
+            n_layers=num_layers,
+            n_features=num_features,
+            num_hidden=num_hidden,
+            dropout_every=dropout_every,
+            drop_prob=dropout_prob,
+        )
+        model.load_state_dict(state_dict)
+        return model
 
     if args.mlflow_register_model:
+        model = load_model_func()
         mlflow.pytorch.log_model(
             model, artifact_path="models", registered_model_name="torch_model"
         )
@@ -657,26 +676,6 @@ if __name__ == "__main__":
         def load_model_func():
             model_uri = f"models:/torch_model/{latest_version}"
             return mlflow.pytorch.load_model(model_uri)
-
-    else:
-        state_dict = model.state_dict()
-
-        def load_model_func():
-            num_layers = config["num_layers"]
-            num_hidden = config["num_hidden"]
-            dropout_every = config["dropout_every"]
-            dropout_prob = config["dropout_prob"]
-            num_features = config["num_features"]
-
-            model = Net(
-                n_layers=num_layers,
-                n_features=num_features,
-                num_hidden=num_hidden,
-                dropout_every=dropout_every,
-                drop_prob=dropout_prob,
-            )
-            model.load_state_dict(state_dict)
-            return model
 
     class BatchInferModel:
         def __init__(self, load_model_func):
