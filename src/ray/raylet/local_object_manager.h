@@ -161,7 +161,7 @@ class LocalObjectManager {
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
-  FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxSpillingSize);
+  FRIEND_TEST(LocalObjectManagerMaxSpillingSizeTest, TestSpillUptoMaxSpillingSize);
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
@@ -354,7 +354,7 @@ class LocalObjectManager {
   friend class LocalObjectManagerTestWithConfig;
   friend class LocalObjectManagerTest;
   friend class LocalObjectManagerFusedTest;
-  friend class LocalObjectManagerMaxSpillingTest;
+  friend class LocalObjectManagerMaxSpillingSizeTest;
 };
 
 };  // namespace raylet

@@ -175,6 +175,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t min_bytes_to_spill,
     return false;
   }
 
+  RAY_CHECK(min_bytes_to_spill <= max_bytes_to_spill);
   RAY_LOG(DEBUG) << "Choosing objects to spill, min size " << min_bytes_to_spill
                  << " max size " << max_bytes_to_spill;
   int64_t bytes_to_spill = 0;
@@ -189,7 +190,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t min_bytes_to_spill,
       }
       bytes_to_spill += size;
       objects_to_spill.push_back(it->first);
-      count += 1;
+      count++;
     }
     it++;
   }
@@ -348,8 +349,6 @@ void LocalObjectManager::SpillObjectsInternal(
               // Object spilling is always done in the order of the request.
               // For example, if an object succeeded, it'll guarentee that all objects
               // before this will succeed.
-              RAY_LOG(INFO) << num_objects_spilled << " "
-                            << requested_objects_to_spill.size();
               RAY_CHECK(num_objects_spilled <= requested_objects_to_spill.size());
               for (size_t i = num_objects_spilled; i != requested_objects_to_spill.size();
                    ++i) {
