@@ -2068,6 +2068,10 @@ def test_detail(shutdown_only):
     assert "actor_id" in result.output
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Lambda test functions could not be pickled on Windows",
+)
 @pytest.mark.parametrize(
     "api_func",
     [
