@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Callable, List, Optional, Type, Union
+import logging
 
 import pandas as pd
 import tensorflow as tf
@@ -7,9 +8,12 @@ from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
 from ray.air.checkpoint import Checkpoint
 from ray.train.data_parallel_trainer import _load_checkpoint
 from ray.train.predictor import DataBatchType, Predictor
+from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+logger = logging.getLogger(__name__)
 
 
 class TensorflowPredictor(Predictor):
@@ -21,8 +25,8 @@ class TensorflowPredictor(Predictor):
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
         model_weights: List of weights to use for the model.
-        use_gpu: If prediction is done on GPU where model will be moved to
-            GPU device upon instantiation.
+        use_gpu: If set, the model will be moved to GPU on instantiation and
+            prediction happens on GPU.
     """
 
     def __init__(
@@ -46,6 +50,16 @@ class TensorflowPredictor(Predictor):
                 self.model = self.model_definition()
         else:
             self.model = self.model_definition()
+
+        if use_gpu is False and len(get_tf_gpu_devices()) > 0:
+            logger.warning(
+                "You have `use_gpu` as False but there are "
+                f"{len(get_tf_gpu_devices())} GPUs detected on host where "
+                "prediction will only use CPU. Please consider explicitly "
+                "setting `TensorflowPredictor(use_gpu=True)` or "
+                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                "enable GPU prediction."
+            )
 
     @classmethod
     def from_checkpoint(

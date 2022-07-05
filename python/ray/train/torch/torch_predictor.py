@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Dict, Optional, Union
+import logging
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,8 @@ from ray.train.torch.utils import load_checkpoint
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
+logger = logging.getLogger(__name__)
+
 
 class TorchPredictor(Predictor):
     """A predictor for PyTorch models.
@@ -21,8 +24,8 @@ class TorchPredictor(Predictor):
         model: The torch module to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
-        use_gpu: If prediction is done on GPU where model will be moved to
-            GPU device upon instantiation.
+        use_gpu: If set, the model will be moved to GPU on instantiation and
+            prediction happens on GPU.
     """
 
     def __init__(
@@ -40,6 +43,16 @@ class TorchPredictor(Predictor):
         if use_gpu:
             # Ensure input tensor and model live on GPU for GPU inference
             self.model.to(torch.device("cuda"))
+
+        if use_gpu is False and torch.cuda.device_count() > 0:
+            logger.warning(
+                "You have `use_gpu` as False but there are "
+                f"{torch.cuda.device_count()} GPUs detected on host where "
+                "prediction will only use CPU. Please consider explicitly "
+                "setting `TensorflowPredictor(use_gpu=True)` or "
+                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                "enable GPU prediction."
+            )
 
     @classmethod
     def from_checkpoint(
@@ -59,8 +72,8 @@ class TorchPredictor(Predictor):
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
                 ``model``.
-            use_gpu: If prediction is done on GPU where model will be moved to
-                GPU device upon instantiation.
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU.
         """
         model, preprocessor = load_checkpoint(checkpoint, model)
         return TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)

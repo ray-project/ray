@@ -30,7 +30,7 @@ class DummyPredictor(Predictor):
 
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         if self.use_gpu:
-            raise ValueError("DummyPredictor does not support GPU yet.")
+            raise ValueError("DummyPredictor does not support GPU prediction.")
         else:
             return data * self.factor
 

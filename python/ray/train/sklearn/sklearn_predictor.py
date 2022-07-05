@@ -23,8 +23,8 @@ class SklearnPredictor(Predictor):
             predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
-        use_gpu: If prediction is done on GPU where model will be moved to
-            GPU device upon instantiation. *Added only for consistent interface
+        use_gpu: If set, the model will be moved to GPU on instantiation and
+            prediction happens on GPU.  *Added only for consistent interface
             with other predictors.*
     """
 
@@ -37,7 +37,8 @@ class SklearnPredictor(Predictor):
         self.estimator = estimator
         self.preprocessor = preprocessor
         self.use_gpu = use_gpu
-        assert self.use_gpu is False, "SklearnPredictor does not support GPU yet."
+        if self.use_gpu is True:
+            raise ValueError("SklearnPredictor does not support GPU prediction.")
 
     @classmethod
     def from_checkpoint(
@@ -51,9 +52,9 @@ class SklearnPredictor(Predictor):
             checkpoint: The checkpoint to load the model and
                 preprocessor from. It is expected to be from the result of a
                 ``SklearnTrainer`` run.
-            use_gpu: If prediction is done on GPU where model will be moved to
-                GPU device upon instantiation. *Added only for consistent
-                interface with other predictors.*
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU. *Added only for consistent interface
+                with other predictors.*
         """
         estimator, preprocessor = load_checkpoint(checkpoint)
         return SklearnPredictor(
