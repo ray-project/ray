@@ -21,6 +21,7 @@ from ray.experimental.state.common import (
     PlacementGroupState,
     PredicateType,
     StateResource,
+    SummaryApiOptions,
     SummaryResource,
     SupportedFilterType,
     TaskState,
