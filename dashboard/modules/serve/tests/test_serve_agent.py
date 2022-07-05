@@ -20,9 +20,7 @@ def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: requests.get(
-            "http://localhost:52365/api/ray/version"
-        ).status_code
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
         == 200,
         timeout=15,
     )
@@ -258,7 +256,7 @@ def test_serve_namespace(ray_start_stop):
 
 def test_default_dashboard_agent_listen_port():
     """
-Defaults in the code and the documentation assume
+    Defaults in the code and the documentation assume
     the dashboard agent listens to HTTP on port 52365.
     """
     assert ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT == 52365
