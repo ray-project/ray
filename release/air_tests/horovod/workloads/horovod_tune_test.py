@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torchvision
-from ray.air import RunConfig
+from ray.air import RunConfig, session
 from ray.train.horovod import HorovodTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -12,7 +12,7 @@ import torchvision.transforms as transforms
 
 import ray
 from ray import tune
-from ray import train
+from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import create_scheduler
 
 from ray.util.ml_utils.resnet import ResNet18
@@ -37,7 +37,7 @@ def train_loop_per_worker(config):
     )
     epoch = 0
 
-    checkpoint = train.load_checkpoint()
+    checkpoint = session.get_checkpoint()
     if checkpoint:
         model_state = checkpoint["model_state"]
         optimizer_state = checkpoint["optimizer_state"]
@@ -79,17 +79,20 @@ def train_loop_per_worker(config):
             # print statistics
             running_loss += loss.item()
             epoch_steps += 1
-            train.report(loss=running_loss / epoch_steps)
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print(
                     "[%d, %5d] loss: %.3f"
                     % (epoch + 1, i + 1, running_loss / epoch_steps)
                 )
-
-        train.save_checkpoint(
-            model_state=net.state_dict(),
-            optimizer_state=optimizer.state_dict(),
-            epoch=epoch,
+        session.report(
+            dict(loss=running_loss / epoch_steps),
+            checkpoint=Checkpoint.from_dict(
+                dict(
+                    model_state=net.state_dict(),
+                    optimizer_state=optimizer.state_dict(),
+                    epoch=epoch,
+                )
+            ),
         )
 
 
