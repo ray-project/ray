@@ -20,6 +20,8 @@ class DummyPredictor(Predictor):
         self.factor = factor
         self.preprocessor = DummyPreprocessor()
         self.use_gpu = use_gpu
+        if self.use_gpu:
+            raise ValueError("DummyPredictor does not support GPU prediction.")
 
     @classmethod
     def from_checkpoint(
@@ -29,10 +31,7 @@ class DummyPredictor(Predictor):
         return DummyPredictor(**checkpoint_data, use_gpu=use_gpu)
 
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        if self.use_gpu:
-            raise ValueError("DummyPredictor does not support GPU prediction.")
-        else:
-            return data * self.factor
+        return data * self.factor
 
 
 class DummyPredictorFS(DummyPredictor):
@@ -104,7 +103,9 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker():
     )
 
     test_dataset = ray.data.range(4)
-    with pytest.raises(ValueError, match="DummyPredictor does not support GPU yet"):
+    with pytest.raises(
+        ValueError, match="DummyPredictor does not support GPU prediction"
+    ):
         _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
 
 
