@@ -66,7 +66,7 @@ class DirectMethod(OffPolicyEstimator):
                 v_old += rewards[t] * self.gamma ** t
 
             init_step = episode[0:1]
-            v_new = self.state_value_fn(self.policy, init_step)
+            v_new = self.model.estimate_v(init_step)
             v_new = convert_to_numpy(v_new).item()
 
             estimates["v_old"].append(v_old)

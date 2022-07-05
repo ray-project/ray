@@ -49,10 +49,7 @@ class TestOPE(unittest.TestCase):
                 evaluation_duration=n_eval_episodes,
                 evaluation_num_workers=1,
                 evaluation_duration_unit="episodes",
-                evaluation_config={
-                    "input": "dataset",
-                    "input_config": {"format": "json", "path": eval_data},
-                },
+                evaluation_config={"input": eval_data},
                 off_policy_estimation_methods={
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
