@@ -132,3 +132,9 @@ def test_gbdt_trainer(ray_start_8_cpus):
     )
     result_grid = tuner.fit()
     assert not any(x.error for x in result_grid)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
