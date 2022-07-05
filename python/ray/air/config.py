@@ -69,6 +69,8 @@ class ScalingConfigDataClass:
                 )
 
     def __eq__(self, o: "ScalingConfigDataClass") -> bool:
+        if not type(o) is type(self):
+            return False
         return self.as_placement_group_factory() == o.as_placement_group_factory()
 
     @property
