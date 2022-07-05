@@ -114,27 +114,26 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/component_activities")
     async def get_component_activities(self, req) -> aiohttp.web.Response:
-        # Get activity information for driver
         timeout = req.query.get("timeout", None)
         if timeout and timeout.isdigit():
             timeout = int(timeout)
         else:
             timeout = 5
 
+        # Get activity information for driver
         driver_activity_info = await self._get_job_activity_info(timeout=timeout)
 
         external_ray_cluster_activity_output = {}
         if ray_constants.RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
             external_ray_cluster_activity_output = _load_class(os.environ[ray_constants.RAY_CLUSTER_ACTIVITY_HOOK])()
 
-        import importlib
         resp = {"driver": dataclasses.asdict(driver_activity_info)}
 
         try:
             for component_type in external_ray_cluster_activity_output:
                 component_activity_output = external_ray_cluster_activity_output[component_type]
-                # Validate output has type RayActivityResponse
-                RayActivityResponse(**dataclasses.asdict(component_activity_output))
+                # Validate and cast output to type RayActivityResponse
+                component_activity_output = RayActivityResponse(**dataclasses.asdict(component_activity_output))
                 resp[component_type] = dataclasses.asdict(component_activity_output)
         except Exception as e:
             logger.info(
