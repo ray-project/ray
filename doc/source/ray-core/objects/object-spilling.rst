@@ -70,7 +70,7 @@ If you are using an HDD, it is recommended that you specify a large buffer size 
 
 To prevent running out of disk space, object spilling will throw ``OutOfDiskError`` if the local disk utilization exceeds the predefined threshold.
 If multiple physical devices are used, any physical device's over-usage will trigger the ``OutOfDiskError``.
-The default threshold is 0.95 (95%). You can change the value by setting ``local_fs_capacity_threshold``.
+The default threshold is 0.95 (95%). You can adjust the threshold by setting ``local_fs_capacity_threshold``, or set it to 1 to disable the protection.
 
 .. code-block:: python
 
