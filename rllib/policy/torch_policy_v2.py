@@ -441,10 +441,9 @@ class TorchPolicyV2(Policy):
         ) -> Union[TensorType, List[TensorType]]:
 
             # Update the weights of the exploration model(s), if necessary.
-            return (
-                self.policy_loss(model, dist_class, train_batch) + 
-                self.exploration.compute_loss_and_update(train_batch, self)
-            )
+            return self.policy_loss(
+                model, dist_class, train_batch
+            ) + self.exploration.compute_loss_and_update(train_batch, self)
 
         self.loss = loss.__get__(self, type(self))
 
