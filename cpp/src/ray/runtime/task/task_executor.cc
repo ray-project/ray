@@ -76,12 +76,6 @@ using ray::core::CoreWorkerProcess;
 
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 
-// TODO(SongGuyang): Make a common task execution function used for both local mode and
-// cluster mode.
-std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
-  return std::make_unique<ObjectID>();
-};
-
 /// TODO(qicosmos): Need to add more details of the error messages, such as object id,
 /// task id etc.
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(

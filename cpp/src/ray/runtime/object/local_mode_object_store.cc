@@ -32,7 +32,8 @@ LocalModeObjectStore::LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_t
 
 void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                   ObjectID *object_id) {
-  PutRaw(data, (const ObjectID)(*object_id));
+  *object_id = ObjectID::FromRandom();
+  PutRaw(data, *object_id);
 }
 
 void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,

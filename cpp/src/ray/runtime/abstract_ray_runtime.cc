@@ -87,7 +87,7 @@ void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
 }
 
 std::string AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
-  ObjectID object_id{};
+  ObjectID object_id;
   object_store_->Put(data, &object_id);
   return object_id.Binary();
 }
@@ -224,8 +224,8 @@ const JobID &AbstractRayRuntime::GetCurrentJobID() {
   return GetWorkerContext().GetCurrentJobID();
 }
 
-const WorkerContext &AbstractRayRuntime::GetWorkerContext() {
-  return CoreWorkerProcess::GetCoreWorker().GetWorkerContext();
+const ActorID &AbstractRayRuntime::GetCurrentActorID() {
+  return GetWorkerContext().GetCurrentActorID();
 }
 
 void AbstractRayRuntime::AddLocalReference(const std::string &id) {

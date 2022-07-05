@@ -38,8 +38,6 @@ ActorID LocalModeRayRuntime::GetNextActorID() {
   return actor_id;
 }
 
-ActorID LocalModeRayRuntime::GetCurrentActorID() { return worker_.GetCurrentActorID(); }
-
 const WorkerContext &LocalModeRayRuntime::GetWorkerContext() { return worker_; }
 
 std::string LocalModeRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
