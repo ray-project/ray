@@ -33,6 +33,16 @@ class TensorflowPredictor(DLPredictor):
         self.model_weights = model_weights
         self.preprocessor = preprocessor
 
+        # TensorFlow model objects cannot be pickled, therefore we use
+        # a callable that returns the model and initialize it here,
+        # instead of having an initialized model object as an attribute.
+        # Predictors are not serializable (see the implementation of __reduce__) in the
+        # Predictor class, so we can safely store the initialized model as an attribute.
+        self._model = self.model_definition()
+
+        if model_weights is not None:
+            self._model.set_weights(model_weights)
+
     @classmethod
     def from_checkpoint(
         cls,
@@ -59,7 +69,9 @@ class TensorflowPredictor(DLPredictor):
             preprocessor=preprocessor,
         )
 
-    def tensorize(self, numpy_array: np.ndarray, dtype: tf.dtypes.DType) -> tf.Tensor:
+    def _array_to_tensor(
+        self, numpy_array: np.ndarray, dtype: tf.dtypes.DType
+    ) -> tf.Tensor:
         tf_tensor = tf.convert_to_tensor(numpy_array, dtype=dtype)
 
         # Off-the-shelf Keras Modules expect the input size to have at least 2
@@ -69,27 +81,14 @@ class TensorflowPredictor(DLPredictor):
             tf_tensor = tf.expand_dims(tf_tensor, axis=1)
         return tf_tensor
 
-    def untensorize(self, tensor: tf.Tensor) -> np.ndarray:
+    def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
         return tensor.numpy()
 
-    def model_predict(
+    def _model_predict(
         self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]
     ) -> Union[tf.Tensor, Dict[str, tf.Tensor], List[tf.Tensor], Tuple[tf.Tensor]]:
-        # TensorFlow model objects cannot be pickled, therefore we use
-        # a callable that returns the model and initialize it here,
-        # instead of having an initialized model object as an attribute.
-        model = self.model_definition()
 
-        if self.model_weights is not None and isinstance(tensor, tf.Tensor):
-            input_shape = list(tensor.shape)
-            # The batch axis can contain varying number of elements, so we set
-            # the shape along the axis to `None`.
-            input_shape[0] = None
-
-            model.build(input_shape=input_shape)
-            model.set_weights(self.model_weights)
-
-        return model(tensor)
+        return self._model(tensor)
 
     def predict(
         self,

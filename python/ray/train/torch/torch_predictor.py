@@ -46,7 +46,9 @@ class TorchPredictor(DLPredictor):
         model, preprocessor = load_checkpoint(checkpoint, model)
         return TorchPredictor(model=model, preprocessor=preprocessor)
 
-    def tensorize(self, numpy_array: np.ndarray, dtype: torch.dtype) -> torch.Tensor:
+    def _array_to_tensor(
+        self, numpy_array: np.ndarray, dtype: torch.dtype
+    ) -> torch.Tensor:
         torch_tensor = torch.from_numpy(numpy_array).to(dtype)
 
         # Off-the-shelf torch Modules expect the input size to have at least 2
@@ -57,10 +59,10 @@ class TorchPredictor(DLPredictor):
 
         return torch_tensor
 
-    def untensorize(self, tensor: torch.Tensor) -> np.ndarray:
+    def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
         return tensor.cpu().detach().numpy()
 
-    def model_predict(
+    def _model_predict(
         self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
     ) -> Union[
         torch.Tensor, Dict[str, torch.Tensor], List[torch.Tensor], Tuple[torch.Tensor]

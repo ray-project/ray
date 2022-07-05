@@ -14,7 +14,9 @@ TensorDtype = TypeVar("TensorDtype")
 
 class DLPredictor(Predictor):
     @abc.abstractmethod
-    def tensorize(self, numpy_array: np.ndarray, dtype: TensorDtype) -> TensorType:
+    def _array_to_tensor(
+        self, numpy_array: np.ndarray, dtype: TensorDtype
+    ) -> TensorType:
         """Converts a single numpy array to the tensor type for the DL framework.
 
         Args:
@@ -27,7 +29,7 @@ class DLPredictor(Predictor):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def untensorize(self, tensor: TensorType) -> np.ndarray:
+    def _tensor_to_array(self, tensor: TensorType) -> np.ndarray:
         """Converts tensor framework specific tensor to a numpy array.
 
         Args:
@@ -40,7 +42,7 @@ class DLPredictor(Predictor):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def model_predict(
+    def _model_predict(
         self, tensor: Union[TensorType, Dict[str, TensorType]]
     ) -> Union[TensorType, Dict[str, TensorType], List[TensorType], Tuple[TensorType]]:
         """Inputs the tensor to the model for this Predictor and returns the result.
@@ -63,33 +65,33 @@ class DLPredictor(Predictor):
             column_name = data.columns[0]
             if isinstance(dtype, dict):
                 dtype = dtype[column_name]
-            model_input = self.tensorize(tensors, dtype)
+            model_input = self._array_to_tensor(tensors, dtype)
 
         else:
             model_input = {
-                k: self.tensorize(
+                k: self._array_to_tensor(
                     v, dtype=dtype[k] if isinstance(dtype, dict) else dtype
                 )
                 for k, v in tensors.items()
             }
 
-        output = self.model_predict(model_input)
+        output = self._model_predict(model_input)
 
         # Handle model multi-output. For example if model outputs 2 images.
         if isinstance(output, dict):
             return pd.DataFrame(
-                {k: TensorArray(self.untensorize(v)) for k, v in output}
+                {k: TensorArray(self._tensor_to_array(v)) for k, v in output}
             )
         elif isinstance(output, list) or isinstance(output, tuple):
             tensor_name = "output_"
             output_dict = {}
             for i in range(len(output)):
                 output_dict[tensor_name + str(i + 1)] = TensorArray(
-                    self.untensorize(output[i])
+                    self._tensor_to_array(output[i])
                 )
             return pd.DataFrame(output_dict)
         else:
             return pd.DataFrame(
-                {"predictions": TensorArray(self.untensorize(output))},
+                {"predictions": TensorArray(self._tensor_to_array(output))},
                 columns=["predictions"],
             )

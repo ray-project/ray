@@ -82,19 +82,6 @@ def test_predict_array_with_preprocessor():
     assert predictions.flatten().tolist() == [4, 8, 12]
 
 
-def test_predict_array_with_input_shape_unspecified():
-    def model_definition():
-        return tf.keras.models.Sequential(tf.keras.layers.Lambda(lambda tensor: tensor))
-
-    predictor = TensorflowPredictor(model_definition=model_definition, model_weights=[])
-
-    data_batch = np.array([1, 2, 3])
-    predictions = predictor.predict(data_batch)
-
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [1, 2, 3]
-
-
 def test_predict_dataframe():
     predictor = TensorflowPredictor(model_definition=build_model_multi_input)
 
