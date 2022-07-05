@@ -115,7 +115,6 @@ class InMemoryMetricsStore:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
-        print("get points: ", datapoints)
 
         idx = bisect.bisect(
             a=datapoints,
