@@ -196,7 +196,17 @@ class ExecutionPlan:
         """
         if self._stages_after_snapshot:
             if fetch_if_missing:
-                self.execute()
+                if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
+                    # TODO(ekl): this is a hack to optimize the case where we have a
+                    # trailing randomize block stages. That stage has no effect and
+                    # so we don't need to execute all blocks to get the schema.
+                    a = self._stages_after_snapshot.pop()
+                    try:
+                        self.execute()
+                    finally:
+                        self._stages_after_snapshot.append(a)
+                else:
+                    self.execute()
             else:
                 return None
         # Snapshot is now guaranteed to be the output of the final stage or None.
@@ -329,6 +339,8 @@ class ExecutionPlan:
         """
         context = DatasetContext.get_current()
         blocks, stats, stages = self._get_source_blocks_and_stages()
+        if context.optimize_reorder_stages:
+            stages = _reorder_stages(stages)
         if context.optimize_fuse_stages:
             if context.optimize_fuse_read_stages:
                 # If using a lazy datasource, rewrite read stage into one-to-one stage
@@ -382,12 +394,20 @@ class ExecutionPlan:
         """Return whether this plan has lazy input blocks."""
         return _is_lazy(self._in_blocks)
 
-    def is_read_stage(self) -> bool:
-        """Return whether this plan only consists of a read stage."""
+    def is_read_stage_equivalent(self) -> bool:
+        """Return whether this plan can be executed as only a read stage."""
+        context = DatasetContext.get_current()
+        remaining_stages = self._stages_after_snapshot
+        if (
+            context.optimize_fuse_stages
+            and remaining_stages
+            and isinstance(remaining_stages[0], RandomizeBlocksStage)
+        ):
+            remaining_stages = remaining_stages[1:]
         return (
             self.has_lazy_input()
             and not self._stages_before_snapshot
-            and not self._stages_after_snapshot
+            and not remaining_stages
             and (
                 not self._snapshot_blocks
                 or isinstance(self._snapshot_blocks, LazyBlockList)
@@ -692,6 +712,20 @@ class AllToAllStage(Stage):
         return blocks, stage_info
 
 
+class RandomizeBlocksStage(AllToAllStage):
+    def __init__(self, seed: Optional[int]):
+        self._seed = seed
+
+        super().__init__("randomize_block_order", None, self.do_randomize)
+
+    def do_randomize(self, block_list, *_):
+        num_blocks = block_list.initial_num_blocks()
+        if num_blocks == 0:
+            return block_list, {}
+        randomized_block_list = block_list.randomize_block_order(self._seed)
+        return randomized_block_list, {}
+
+
 def _rewrite_read_stages(
     blocks: BlockList,
     stats: DatasetStats,
@@ -700,15 +734,14 @@ def _rewrite_read_stages(
 ) -> Tuple[BlockList, DatasetStats, List[Stage]]:
     """Rewrites read stages into one-to-one stages, if needed."""
     if _is_lazy(blocks) and stages:
-        blocks, stats, stage = _rewrite_read_stage(blocks)
+        blocks, stats, stages = _rewrite_read_stage(blocks, stages)
         stats.dataset_uuid = dataset_uuid
-        stages.insert(0, stage)
     return blocks, stats, stages
 
 
 def _rewrite_read_stage(
-    in_blocks: LazyBlockList,
-) -> Tuple[BlockList, DatasetStats, Stage]:
+    in_blocks: LazyBlockList, stages: List[Stage]
+) -> Tuple[BlockList, DatasetStats, List[Stage]]:
     """Rewrite the read stage to a OneToOne stage over read tasks as input.
 
     For example, suppose the plan was [Read -> MapBatches(Fn)]. These stages cannot
@@ -719,10 +752,11 @@ def _rewrite_read_stage(
 
     Args:
         blocks: Lazy block list representing read stage.
+        stages: List of current stages.
 
     Returns:
         Non-lazy block list containing read tasks for not-yet-read block partitions,
-        new stats for the block list, and the new one-to-one read stage.
+        new stats for the block list, and the new list of stages.
     """
     # Generate the "GetReadTasks" stage blocks.
     remote_args = in_blocks._remote_args
@@ -736,9 +770,51 @@ def _rewrite_read_stage(
         for block in read_fn():
             yield block
 
-    stage = OneToOneStage("read", block_fn, "tasks", remote_args)
+    name = "read"
+
+    # Fuse downstream randomize stage with the read stage if possible. This is needed
+    # when .window() is called right after read->randomize, since it forces execution.
+    has_randomize = stages and isinstance(stages[0], RandomizeBlocksStage)
+    if has_randomize:
+        if stages and isinstance(stages[0], RandomizeBlocksStage):
+            block_list, _ = stages[0].do_randomize(block_list)
+            stages = stages[1:]
+        name += "->randomize_block_order"
+
+    stage = OneToOneStage(name, block_fn, "tasks", remote_args)
     stats = DatasetStats(stages={}, parent=None)
-    return block_list, stats, stage
+    stages.insert(0, stage)
+    return block_list, stats, stages
+
+
+def _reorder_stages(stages: List[Stage]) -> List[Stage]:
+    """Reorder randomize stages to the end to enable better stage fusion.
+
+    This applies to RandomizeBlockOrder stages specifically (issue #26057).
+
+    Args:
+        stages: Stages to try to reorder.
+
+    Returns:
+        Reordered stages.
+    """
+
+    output: List[Stage] = []
+    reorder_buf: List[RandomizeBlocksStage] = []
+
+    for s in stages:
+        if isinstance(s, RandomizeBlocksStage):
+            # Buffer it for later reordering.
+            reorder_buf.append(s)
+        else:
+            # Barrier: flush the reorder buffer.
+            if isinstance(s, AllToAllStage):
+                output.extend(reorder_buf)
+                reorder_buf = []
+            output.append(s)
+
+    output.extend(reorder_buf)
+    return output
 
 
 def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
