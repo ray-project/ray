@@ -85,27 +85,37 @@ class MockObjectDirectory {
  public:
   void AsyncGetLocations(const ObjectID &object_id,
                          const ObjectLookupCallback &callback) {
+    absl::MutexLock lock(&mutex);
     callbacks.push_back({object_id, callback});
   }
 
   void SetLocations(const ObjectID &object_id,
                     const std::vector<rpc::Address> &addresses) {
+    absl::MutexLock lock(&mutex);
     locations[object_id] = addresses;
   }
 
   size_t Flush() {
-    size_t flushed = callbacks.size();
-    for (const auto &pair : callbacks) {
-      pair.second(pair.first, locations[pair.first]);
+    std::vector<std::function<void()>> callback_invocations;
+    {
+      absl::MutexLock lock(&mutex);
+      for (const auto &pair : callbacks) {
+        auto object_id = pair.first;
+        auto callback = pair.second;
+        auto location = locations[pair.first];
+        callback_invocations.push_back([=]() { callback(object_id, location); });
+      }
+      callbacks.clear();
     }
-    for (size_t i = 0; i < flushed; i++) {
-      callbacks.erase(callbacks.begin());
+    for (const auto &callback : callback_invocations) {
+      callback();
     }
-    return flushed;
+    return callback_invocations.size();
   }
 
-  std::vector<std::pair<ObjectID, ObjectLookupCallback>> callbacks = {};
-  absl::flat_hash_map<ObjectID, std::vector<rpc::Address>> locations;
+  absl::Mutex mutex;
+  std::vector<std::pair<ObjectID, ObjectLookupCallback>> callbacks = {} GUARDED_BY(mutex);
+  absl::flat_hash_map<ObjectID, std::vector<rpc::Address>> locations GUARDED_BY(mutex);
 };
 
 class ObjectRecoveryManagerTestBase : public ::testing::Test {
