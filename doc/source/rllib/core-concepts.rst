@@ -32,7 +32,7 @@ An environment in RL is the agent's world, it is a simulation of the problem to 
 An RLlib environment consists of: 
 
 1. all possible actions (**action space**)
-2. a complete omniscient description of the environment, nothing hidden (**state space**)
+2. a complete description of the environment, nothing hidden (**state space**)
 3. an observation by the agent of certain parts of the state (**observation space**)
 4. **reward**, which is the only feedback the agent receives per action.
 
