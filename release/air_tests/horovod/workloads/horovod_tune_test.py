@@ -58,6 +58,7 @@ def train_loop_per_worker(config):
     trainloader = DataLoader(
         trainset, batch_size=int(config["batch_size"]), shuffle=True, num_workers=4
     )
+    trainloader_len = len(trainloader)
 
     for epoch in range(epoch, 40):  # loop over the dataset multiple times
         running_loss = 0.0
@@ -79,21 +80,22 @@ def train_loop_per_worker(config):
             # print statistics
             running_loss += loss.item()
             epoch_steps += 1
+            if i == trainloader_len - 1:
+                checkpoint = Checkpoint.from_dict(
+                    dict(
+                        model_state=net.state_dict(),
+                        optimizer_state=optimizer.state_dict(),
+                        epoch=epoch,
+                    )
+                )
+            else:
+                checkpoint = None
+            session.report(dict(loss=running_loss / epoch_steps), checkpoint=checkpoint)
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print(
                     "[%d, %5d] loss: %.3f"
                     % (epoch + 1, i + 1, running_loss / epoch_steps)
                 )
-        session.report(
-            dict(loss=running_loss / epoch_steps),
-            checkpoint=Checkpoint.from_dict(
-                dict(
-                    model_state=net.state_dict(),
-                    optimizer_state=optimizer.state_dict(),
-                    epoch=epoch,
-                )
-            ),
-        )
 
 
 if __name__ == "__main__":
