@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import dataclasses
 from datetime import datetime
+import logging
 import hashlib
 import json
 import os
@@ -23,6 +24,9 @@ from ray.experimental.internal_kv import (
 )
 from ray.job_submission import JobInfo
 from ray.runtime_env import RuntimeEnv
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
@@ -119,13 +123,24 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         driver_activity_info = await self._get_job_activity_info(timeout=timeout)
 
+        external_ray_cluster_activity_output = {}
         if ray_constants.RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
             external_ray_cluster_activity_output = _load_class(os.environ[ray_constants.RAY_CLUSTER_ACTIVITY_HOOK])()
 
+        import importlib
         resp = {"driver": dataclasses.asdict(driver_activity_info)}
 
-        for component_type in external_ray_cluster_activity_output:
-            resp[component_type] = dataclasses.asdict(external_ray_cluster_activity_output[component_type])
+        try:
+            for component_type in external_ray_cluster_activity_output:
+                component_activity_output = external_ray_cluster_activity_output[component_type]
+                # Validate output has type RayActivityResponse
+                RayActivityResponse(**dataclasses.asdict(component_activity_output))
+                resp[component_type] = dataclasses.asdict(component_activity_output)
+        except Exception as e:
+            logger.info(
+                f"{os.environ[ray_constants.RAY_CLUSTER_ACTIVITY_HOOK]} didn't return "
+                "response of type Dict[str, RayActivityResponse]. "
+                f"Output: {external_ray_cluster_activity_output}\n{str(e)}")
 
         return aiohttp.web.Response(
             text=json.dumps(resp),
