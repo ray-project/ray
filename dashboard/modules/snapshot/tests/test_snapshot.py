@@ -64,7 +64,9 @@ async def test_component_activities_hook(cluster_activity_hook_output):
         "ray.dashboard.optional_utils.ClassMethodRouteTable", MockClassMethodRouteTable
     ).start()
     mock_load_class = Mock(return_value=Mock(return_value=cluster_activity_hook_output))
-    os.environ[ray_constants.RAY_CLUSTER_ACTIVITY_HOOK] = "mock_module"
+    os.environ[
+        ray_constants.RAY_CLUSTER_ACTIVITY_HOOK
+    ] = "mock_module.mock_activity_hook"
 
     with patch.multiple(
         "ray.dashboard.modules.snapshot.snapshot_head",
@@ -97,6 +99,22 @@ async def test_component_activities_hook(cluster_activity_hook_output):
                 "timestamp": None,
             }
         assert data == json.dumps(expected_output)
+
+    # Test updating the return value of the external hook
+    mock_load_class = Mock(
+        return_value=Mock(
+            return_value={"new_component": TestRayActivityResponse(is_active=False)}
+        )
+    )
+    with patch.multiple(
+        "ray.dashboard.modules.snapshot.snapshot_head", _load_class=mock_load_class
+    ):
+        response = await mock_api_head.get_component_activities(Mock(query={}))
+        data = response.body.decode()
+        expected_output = {
+            "driver": {"is_active": False, "reason": None, "timestamp": None},
+            "new_component": {"is_active": False, "reason": None, "timestamp": None},
+        }
     os.environ.pop(ray_constants.RAY_CLUSTER_ACTIVITY_HOOK)
 
 
