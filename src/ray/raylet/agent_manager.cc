@@ -32,6 +32,13 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   agent_ip_address_ = request.agent_ip_address();
   agent_port_ = request.agent_port();
   agent_pid_ = request.agent_pid();
+
+  rpc::AgentInfo agent_info;
+  agent_info.set_ip_address(agent_ip_address_);
+  agent_info.set_port(agent_port_);
+  agent_info.set_pid(agent_pid_);
+  set_agent_info_and_register_node_(agent_info);
+
   // TODO(SongGuyang): We should remove this after we find better port resolution.
   // Note: `agent_port_` should be 0 if the grpc port of agent is in conflict.
   if (agent_port_ != 0) {

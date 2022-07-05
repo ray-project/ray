@@ -186,6 +186,11 @@ class GlobalState:
                 "RayletSocketName": item.raylet_socket_name,
                 "MetricsExportPort": item.metrics_export_port,
                 "NodeName": item.node_name,
+                "AgentInfo": {
+                    "ip_address": item.agent_info.ip_address,
+                    "port": item.agent_info.port,
+                    "pid": item.agent_info.pid,
+                },
             }
             node_info["alive"] = node_info["Alive"]
             node_info["Resources"] = (

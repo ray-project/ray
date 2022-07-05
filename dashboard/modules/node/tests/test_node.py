@@ -6,10 +6,12 @@ import time
 import traceback
 import random
 import pytest
+import psutil
 import ray
 import threading
 from datetime import datetime, timedelta
 from ray.cluster_utils import Cluster
+from ray._private.state import state
 from ray.dashboard.modules.node.node_consts import (
     LOG_PRUNE_THREASHOLD,
     MAX_LOGS_TO_CACHE,
@@ -23,6 +25,7 @@ from ray._private.test_utils import (
 )
 
 from unittest import mock
+from subprocess import Popen, PIPE
 
 
 logger = logging.getLogger(__name__)
@@ -524,6 +527,23 @@ def test_logs_max_count(
     assert wait_until_succeeded_without_exception(
         check_logs, (AssertionError,), timeout_ms=10000
     )
+
+
+def test_node_register_with_agent(ray_start_cluster_2_nodes):
+    def test_agent_port(pid, port):
+        p1 = Popen(["lsof", "-a", f"-p{pid}", "-i4"], stdout=PIPE)
+        p2 = Popen(["grep", "LISTEN"], stdin=p1.stdout, stdout=PIPE)
+        assert str(port) in p2.communicate()[0].decode("utf-8")
+
+    def test_agent_process(pid):
+        p = psutil.Process(pid)
+        assert p.cmdline()[2].endswith("dashboard/agent.py")
+
+    for node_info in state.node_table():
+        agent_info = node_info["AgentInfo"]
+        assert agent_info["ip_address"] == node_info["NodeManagerAddress"]
+        test_agent_port(agent_info["pid"], agent_info["port"])
+        test_agent_process(agent_info["pid"])
 
 
 if __name__ == "__main__":

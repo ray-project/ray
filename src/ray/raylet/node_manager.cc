@@ -173,12 +173,14 @@ void HeartbeatSender::Heartbeat() {
       }));
 }
 
-NodeManager::NodeManager(instrumented_io_context &io_service,
-                         const NodeID &self_node_id,
-                         const std::string &self_node_name,
-                         const NodeManagerConfig &config,
-                         const ObjectManagerConfig &object_manager_config,
-                         std::shared_ptr<gcs::GcsClient> gcs_client)
+NodeManager::NodeManager(
+    instrumented_io_context &io_service,
+    const NodeID &self_node_id,
+    const std::string &self_node_name,
+    const NodeManagerConfig &config,
+    const ObjectManagerConfig &object_manager_config,
+    std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::function<void(const AgentInfo &)> set_agent_info_and_register_node)
     : self_node_id_(self_node_id),
       self_node_name_(self_node_name),
       io_service_(io_service),
@@ -436,7 +438,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             << "ip_address: " << ip_address << " port: " << port;
         return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
-      });
+      },
+      true,
+      set_agent_info_and_register_node);
   worker_pool_.SetAgentManager(agent_manager_);
 }
 
