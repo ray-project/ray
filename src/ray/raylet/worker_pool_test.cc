@@ -1022,8 +1022,8 @@ TEST_F(WorkerPoolTest, MaxIOWorkerComplicateTest) {
     spill_workers.insert(worker);
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushSpillWorker(worker);
-    started_processes.pop_back();
   }
+  started_processes.clear();
 
   // Try pop multiple workers and make sure it doesn't exceed max_io_workers.
   for (int i = 0; i < 10; i++) {
@@ -1043,8 +1043,9 @@ TEST_F(WorkerPoolTest, MaxIOWorkerComplicateTest) {
     spill_workers.insert(worker);
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushSpillWorker(worker);
-    started_processes.pop_back();
   }
+  started_processes.clear();
+
   ASSERT_EQ(worker_pool_->GetProcessSize(), MAX_IO_WORKER_SIZE);
   ASSERT_EQ(started_processes.size(), 0);
   ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
