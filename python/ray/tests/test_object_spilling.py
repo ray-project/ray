@@ -7,16 +7,17 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
+
 import ray
+from ray._private.external_storage import create_url_with_offset, parse_url_with_offset
+from ray._private.internal_api import memory_summary
+from ray._private.test_utils import wait_for_condition
+from ray._raylet import GcsClientOptions
 from ray.tests.conftest import (
-    file_system_object_spilling_config,
     buffer_object_spilling_config,
+    file_system_object_spilling_config,
     mock_distributed_fs_object_spilling_config,
 )
-from ray.external_storage import create_url_with_offset, parse_url_with_offset
-from ray._private.test_utils import wait_for_condition
-from ray.internal.internal_api import memory_summary
-from ray._raylet import GcsClientOptions
 
 
 def run_basic_workload():
@@ -27,7 +28,9 @@ def run_basic_workload():
     ray.get(ray.put(arr))
 
 
-def is_dir_empty(temp_folder, append_path=ray.ray_constants.DEFAULT_OBJECT_PREFIX):
+def is_dir_empty(
+    temp_folder, append_path=ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
+):
     # append_path is used because the file based spilling will append
     # new directory path.
     num_files = 0
@@ -40,7 +43,7 @@ def is_dir_empty(temp_folder, append_path=ray.ray_constants.DEFAULT_OBJECT_PREFI
 
 
 def assert_no_thrashing(address):
-    state = ray.state.GlobalState()
+    state = ray._private.state.GlobalState()
     options = GcsClientOptions.from_gcs_address(address)
     state._initialize_global_state(options)
     summary = memory_summary(address=address, stats_only=True)
@@ -103,9 +106,14 @@ def test_url_generation_and_parse():
 def test_default_config(shutdown_only):
     ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
     # Make sure the object spilling configuration is properly set.
-    config = json.loads(ray.worker._global_node._config["object_spilling_config"])
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
     assert config["type"] == "filesystem"
-    assert config["params"]["directory_path"] == ray.worker._global_node._session_dir
+    assert (
+        config["params"]["directory_path"]
+        == ray._private.worker._global_node._session_dir
+    )
     # Make sure the basic workload can succeed.
     run_basic_workload()
     ray.shutdown()
@@ -119,7 +127,7 @@ def test_default_config(shutdown_only):
             "object_store_full_delay_ms": 100,
         },
     )
-    assert "object_spilling_config" not in ray.worker._global_node._config
+    assert "object_spilling_config" not in ray._private.worker._global_node._config
     run_basic_workload()
     ray.shutdown()
 
@@ -132,7 +140,9 @@ def test_default_config(shutdown_only):
             )
         },
     )
-    config = json.loads(ray.worker._global_node._config["object_spilling_config"])
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
     assert config["type"] == "mock_distributed_fs"
 
 
@@ -143,7 +153,9 @@ def test_default_config_buffering(shutdown_only):
             "object_spilling_config": (json.dumps(buffer_object_spilling_config))
         },
     )
-    config = json.loads(ray.worker._global_node._config["object_spilling_config"])
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
     assert config["type"] == buffer_object_spilling_config["type"]
     assert (
         config["params"]["buffer_size"]
@@ -499,7 +511,7 @@ def test_spill_worker_failure(ray_start_regular):
 
         for proc in psutil.process_iter():
             try:
-                name = ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
+                name = ray._private.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
                 if name in proc.name():
                     return proc
                 # for macOS
@@ -530,4 +542,9 @@ def test_spill_worker_failure(ray_start_regular):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

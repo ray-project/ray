@@ -1,3 +1,4 @@
+# isort: skip_file
 import logging
 import os
 
@@ -132,13 +133,13 @@ from ray._raylet import (  # noqa: E402
 
 _config = _Config()
 
-from ray.state import (  # noqa: E402
+from ray._private.state import (  # noqa: E402
     nodes,
     timeline,
     cluster_resources,
     available_resources,
 )
-from ray.worker import (  # noqa: E402,F401
+from ray._private.worker import (  # noqa: E402,F401
     LOCAL_MODE,
     SCRIPT_MODE,
     WORKER_MODE,
@@ -156,7 +157,6 @@ from ray.worker import (  # noqa: E402,F401
     shutdown,
     wait,
 )
-import ray.internal  # noqa: E402
 
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
@@ -168,12 +168,40 @@ from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import autoscaler  # noqa:E402
 from ray import data  # noqa: E402,F401
+from ray import internal  # noqa: E402,F401
 from ray import util  # noqa: E402
 from ray import _private  # noqa: E402,F401
 from ray import workflow  # noqa: E402,F401
 
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
+
+
+class _DeprecationWrapper(object):
+    def __init__(self, name, real_worker):
+        self._name = name
+        self._real_worker = real_worker
+        self._warned = set()
+
+    def __getattr__(self, attr):
+        value = getattr(self._real_worker, attr)
+        if attr not in self._warned:
+            import traceback
+
+            self._warned.add(attr)
+            logger.warning(
+                f"DeprecationWarning: `ray.{self._name}.{attr}` is a private "
+                "attribute and access will be removed in a future Ray version."
+            )
+            traceback.print_stack()
+        return value
+
+
+# TODO(ekl) remove this entirely after 3rd party libraries are all migrated.
+worker = _DeprecationWrapper("worker", ray._private.worker)
+ray_constants = _DeprecationWrapper("ray_constants", ray._private.ray_constants)
+serialization = _DeprecationWrapper("serialization", ray._private.serialization)
+state = _DeprecationWrapper("state", ray._private.state)
 
 __all__ = [
     "__version__",

@@ -2,25 +2,28 @@
 """
 
 import abc
-import gym
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
-from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
-from ray.rllib.policy.policy import Policy
+import gym
+
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
+    AlgorithmConfigDict,
     TensorType,
-    TrainerConfigDict,
 )
+from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
+from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.rllib.policy.policy import Policy
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class ConnectorContext:
     """Data bits that may be needed for running connectors.
 
@@ -34,7 +37,7 @@ class ConnectorContext:
 
     def __init__(
         self,
-        config: TrainerConfigDict = None,
+        config: AlgorithmConfigDict = None,
         model_initial_states: List[TensorType] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
@@ -56,7 +59,7 @@ class ConnectorContext:
         self.view_requirements = view_requirements
 
     @staticmethod
-    def from_policy(policy: Policy) -> "ConnectorContext":
+    def from_policy(policy: "Policy") -> "ConnectorContext":
         """Build ConnectorContext from a given policy.
 
         Args:
@@ -74,7 +77,7 @@ class ConnectorContext:
         )
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class Connector(abc.ABC):
     """Connector base class.
 
@@ -93,6 +96,9 @@ class Connector(abc.ABC):
 
     def is_training(self, is_training: bool):
         self.is_training = is_training
+
+    def __str__(self, indentation: int = 0):
+        return " " * indentation + self.__class__.__name__
 
     def to_config(self) -> Tuple[str, List[Any]]:
         """Serialize a connector into a JSON serializable Tuple.
@@ -122,14 +128,14 @@ class Connector(abc.ABC):
         return NotImplementedError
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class AgentConnector(Connector):
     """Connector connecting user environments to RLlib policies.
 
-    An agent connector transforms a single piece of data in AgentConnectorDataType
-    format into a list of data in the same AgentConnectorDataTypes format.
-    The API is designed so multi-agent observations can be broken and emitted as
-    multiple single agent observations.
+    An agent connector transforms a list of agent data in AgentConnectorDataType
+    format into a new list in the same AgentConnectorDataTypes format.
+    The input API is designed so agent connectors can have access to all the
+    agents assigned to a particular policy.
 
     AgentConnectorDataTypes can be used to specify arbitrary type of env data,
 
@@ -175,18 +181,21 @@ class AgentConnector(Connector):
                 del self._frame_count[env_id]
 
             def __call__(
-                self, ac_data: AgentConnectorDataType
+                self, ac_data: List[AgentConnectorDataType]
             ) -> List[AgentConnectorDataType]:
-                assert ac_data.env_id and ac_data.agent_id, (
-                    "Frame skipping works per agent")
+                ret = []
+                for d in ac_data:
+                    assert d.env_id and d.agent_id, "Frame skipping works per agent"
 
-                count = self._frame_count[ac_data.env_id][ac_data.agent_id]
-                self._frame_count[ac_data.env_id][ac_data.agent_id] = count + 1
+                    count = self._frame_count[ac_data.env_id][ac_data.agent_id]
+                    self._frame_count[ac_data.env_id][ac_data.agent_id] = count + 1
 
-                return [ac_data] if count % self._n == 0 else []
+                    if count % self._n == 0:
+                        ret.append(d)
+                return ret
 
     As shown, an agent connector may choose to emit an empty list to stop input
-    observations from being prosessed further.
+    observations from being further prosessed.
     """
 
     def reset(self, env_id: str):
@@ -212,26 +221,43 @@ class AgentConnector(Connector):
         """
         pass
 
-    def __call__(self, ac_data: AgentConnectorDataType) -> List[AgentConnectorDataType]:
-        """Transform incoming data from environment before they reach policy.
+    def __call__(
+        self, acd_list: List[AgentConnectorDataType]
+    ) -> List[AgentConnectorDataType]:
+        """Transform a list of data items from env before they reach policy.
 
         Args:
-            ctx: Context for running this connector call.
-            data: Env and agent IDs, plus arbitrary data from an environment or
-                upstream agent connectors.
+            ac_data: List of env and agent IDs, plus arbitrary data items from
+                an environment or upstream agent connectors.
 
         Returns:
-            A list of transformed data in AgentConnectorDataType format.
-            The return type is a list because an AgentConnector may choose to
-            derive multiple outputs for a single input data, for example
-            multi-agent obs -> multiple single agent obs.
-            Agent connectors may also return an empty list for certain input,
+            A list of transformed data items in AgentConnectorDataType format.
+            The shape of a returned list does not have to match that of the input list.
+            An AgentConnector may choose to derive multiple outputs for a single piece
+            of input data, for example multi-agent obs -> multiple single agent obs.
+            Agent connectors may also choose to skip emitting certain inputs,
             useful for connectors such as frame skipping.
+        """
+        assert isinstance(
+            acd_list, (list, tuple)
+        ), "Input to agent connectors are list of AgentConnectorDataType."
+        # Default implementation. Simply call transform on each agent connector data.
+        return [self.transform(d) for d in acd_list]
+
+    def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
+        """Transform a single agent connector data item.
+
+        Args:
+            data: Env and agent IDs, plus arbitrary data item from a single agent
+            of an environment.
+
+        Returns:
+            A transformed piece of agent connector data.
         """
         raise NotImplementedError
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class ActionConnector(Connector):
     """Action connector connects policy outputs including actions,
     to user environments.
@@ -260,7 +286,19 @@ class ActionConnector(Connector):
         """Transform policy output before they are sent to a user environment.
 
         Args:
-            ctx: Context for running this connector call.
+            ac_data: Env and agent IDs, plus policy output.
+
+        Returns:
+            The processed action connector data.
+        """
+        return self.transform(ac_data)
+
+    def transform(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
+        """Implementation of the actual transform.
+
+        Users should override transform instead of __call__ directly.
+
+        Args:
             ac_data: Env and agent IDs, plus policy output.
 
         Returns:
@@ -269,8 +307,8 @@ class ActionConnector(Connector):
         raise NotImplementedError
 
 
-@DeveloperAPI
-class ConnectorPipeline:
+@PublicAPI(stability="alpha")
+class ConnectorPipeline(abc.ABC):
     """Utility class for quick manipulation of a connector pipeline."""
 
     def remove(self, name: str):
@@ -335,8 +373,14 @@ class ConnectorPipeline:
         """
         self.connectors.append(connector)
 
+    def __str__(self, indentation: int = 0):
+        return "\n".join(
+            [" " * indentation + self.__class__.__name__]
+            + [c.__str__(indentation + 4) for c in self.connectors]
+        )
 
-@DeveloperAPI
+
+@PublicAPI(stability="alpha")
 def register_connector(name: str, cls: Connector):
     """Register a connector for use with RLlib.
 
@@ -349,7 +393,7 @@ def register_connector(name: str, cls: Connector):
     _global_registry.register(RLLIB_CONNECTOR, name, cls)
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 def get_connector(ctx: ConnectorContext, name: str, params: Tuple[Any]) -> Connector:
     """Get a connector by its name and serialized config.
 

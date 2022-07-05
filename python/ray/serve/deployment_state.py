@@ -1,6 +1,3 @@
-from copy import copy
-from collections import defaultdict, OrderedDict
-from enum import Enum
 import itertools
 import json
 import logging
@@ -9,23 +6,23 @@ import os
 import random
 import time
 import traceback
+from collections import OrderedDict, defaultdict
+from copy import copy
+from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
-from ray import ObjectRef
+from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
-from ray.util.placement_group import PlacementGroup
-from ray import cloudpickle
-
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     Duration,
-    ReplicaTag,
     ReplicaName,
+    ReplicaTag,
     RunningReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig
@@ -37,8 +34,8 @@ from ray.serve.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
+from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.utils import (
     JavaActorHandleProxy,
     format_actor_name,
@@ -46,6 +43,7 @@ from ray.serve.utils import (
     msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
+from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -73,8 +71,10 @@ class ReplicaHealthCheckResponse(Enum):
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
-SLOW_STARTUP_WARNING_S = 30
-SLOW_STARTUP_WARNING_PERIOD_S = 30
+SLOW_STARTUP_WARNING_S = int(os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30))
+SLOW_STARTUP_WARNING_PERIOD_S = int(
+    os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
+)
 
 ALL_REPLICA_STATES = list(ReplicaState)
 USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
@@ -1046,6 +1046,7 @@ class DeploymentState:
                 deployment_info.version,
                 user_config=deployment_info.deployment_config.user_config,
             )
+            self._deleting = False
 
         else:
             self._target_replicas = 0
@@ -1497,7 +1498,7 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = slow_start_replicas[0][0].resource_requirements()
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_allocation)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
@@ -1507,16 +1508,36 @@ class DeploymentState:
                     f"Resources required for each replica: {required}, "
                     f"resources available: {available}."
                 )
+                logger.warning(message)
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
+                # If status is UNHEALTHY, leave the status and message as is.
+                # The issue that caused the deployment to be unhealthy should be
+                # prioritized over this resource availability issue.
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             if len(pending_initialization) > 0:
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
                     f"may be caused by a slow __init__ or reconfigure method."
                 )
+                logger.warning(message)
+                # If status is UNHEALTHY, leave the status and message as is.
+                # The issue that caused the deployment to be unhealthy should be
+                # prioritized over this resource availability issue.
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             self._prev_startup_warning = time.time()
 

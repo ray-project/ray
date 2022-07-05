@@ -3,6 +3,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from pandas.api.types import is_object_dtype
 
 
 def convert_pandas_to_tf_tensor(
@@ -51,7 +52,7 @@ def convert_pandas_to_tf_tensor(
             # if the columns are `ray.data.extensions.tensor_extension.TensorArray`,
             # the dtype will be `object`. In this case, we need to set the dtype to
             # none, and use the automatic type casting of `tf.convert_to_tensor`.
-            if isinstance(dtype, object):
+            if is_object_dtype(dtype):
                 dtype = None
 
         except TypeError:

@@ -5,13 +5,13 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
+import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
-import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
@@ -117,18 +117,15 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
+  public UniqueId getCurrentNodeId() {
+    throw new UnsupportedOperationException("Ray doesn't support it in local mode.");
+  }
+
+  @Override
   public void exitActor() {}
 
   private JobId nextJobId() {
     return JobId.fromInt(jobCounter.getAndIncrement());
-  }
-
-  private static class AsyncContext {
-    private TaskSpec task;
-
-    private AsyncContext(TaskSpec task) {
-      this.task = task;
-    }
   }
 
   private static void updateSessionDir(RayConfig rayConfig) {

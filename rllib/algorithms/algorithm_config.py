@@ -1,14 +1,7 @@
 import copy
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
+
 import gym
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Type,
-    TYPE_CHECKING,
-    Union,
-)
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -18,11 +11,11 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     EnvConfigDict,
     EnvType,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 
@@ -116,6 +109,7 @@ class AlgorithmConfig:
         self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
         self.sample_async = False
+        self.enable_connectors = False
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -189,6 +183,7 @@ class AlgorithmConfig:
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
+        self.sync_filters_on_rollout_workers_timeout_s = 60.0
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
@@ -537,6 +532,7 @@ class AlgorithmConfig:
         create_env_on_local_worker: Optional[bool] = None,
         sample_collector: Optional[Type[SampleCollector]] = None,
         sample_async: Optional[bool] = None,
+        enable_connectors: Optional[bool] = None,
         rollout_fragment_length: Optional[int] = None,
         batch_mode: Optional[str] = None,
         remote_worker_envs: Optional[bool] = None,
@@ -576,6 +572,9 @@ class AlgorithmConfig:
             sample_async: Use a background thread for sampling (slightly off-policy,
                 usually not advisable to turn on unless your env specifically requires
                 it).
+            enable_connectors: Use connector based environment runner, so that all
+                preprocessing of obs and postprocessing of actions are done in agent
+                and action connectors.
             rollout_fragment_length: Divide episodes into fragments of this many steps
                 each during rollouts. Sample batches of this size are collected from
                 rollout workers and combined into a larger batch of `train_batch_size`
@@ -674,6 +673,8 @@ class AlgorithmConfig:
             self.create_env_on_local_worker = create_env_on_local_worker
         if sample_async is not None:
             self.sample_async = sample_async
+        if enable_connectors is not None:
+            self.enable_connectors = enable_connectors
         if rollout_fragment_length is not None:
             self.rollout_fragment_length = rollout_fragment_length
         if batch_mode is not None:
@@ -1111,7 +1112,14 @@ class AlgorithmConfig:
             metrics_episode_collection_timeout_s: Wait for metric batches for at most
                 this many seconds. Those that have not returned in time will be
                 collected in the next train iteration.
-            metrics_num_episodes_for_smoothing: Smooth metrics over this many episodes.
+            metrics_num_episodes_for_smoothing: Smooth rollout metrics over this many
+                episodes, if possible.
+                In case rollouts (sample collection) just started, there may be fewer
+                than this many episodes in the buffer and we'll compute metrics
+                over this smaller number of available episodes.
+                In case there are more than this many episodes collected in a single
+                training iteration, use all of these episodes for metrics computation,
+                meaning don't ever cut any "excess" episodes.
             min_time_s_per_iteration: Minimum time to accumulate within a single
                 `train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by

@@ -1,21 +1,21 @@
 import os
 import shutil
-from typing import Optional
 import unittest
+from typing import Optional
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 from ray import tune
-from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
-from ray.data.block import BlockMetadata
 from ray.air.config import RunConfig
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
+from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
+from ray.data.block import BlockMetadata
 from ray.train.torch import TorchTrainer
+from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
-from ray.train import BaseTrainer
 from ray.tune import Callback, TuneError
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -32,6 +32,16 @@ class DummyTrainer(BaseTrainer):
         "placement_strategy",
     ]
 
+    def training_loop(self) -> None:
+        for i in range(5):
+            with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(str(i))
+            tune.report(step=i)
+
+
+class FailingTrainer(DummyTrainer):
     def training_loop(self) -> None:
         raise RuntimeError("There is an error in trainer!")
 
@@ -189,7 +199,7 @@ class TunerTest(unittest.TestCase):
         assert len(results) == 4
 
     def test_tuner_trainer_fail(self):
-        trainer = DummyTrainer()
+        trainer = FailingTrainer()
         param_space = {
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),
@@ -245,7 +255,8 @@ class TunerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
