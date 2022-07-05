@@ -130,8 +130,8 @@ public class MetricTest extends BaseTest {
     tags.put(new TagKey("histogram_tag"), "default");
     List<Double> boundaries = new ArrayList<>();
     boundaries.add(10.0);
-    boundaries.add(15.0);
     boundaries.add(12.0);
+    boundaries.add(15.0);
     Histogram histogram = new Histogram("metric_histogram", "histogram", "1pc", boundaries, tags);
     for (int i = 1; i <= 200; ++i) {
       histogram.update(i * 1.0d);

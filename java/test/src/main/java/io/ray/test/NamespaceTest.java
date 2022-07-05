@@ -112,6 +112,7 @@ public class NamespaceTest {
       ProcessBuilder builder = TestUtils.buildDriver(driverClass, null);
       builder.redirectError(ProcessBuilder.Redirect.INHERIT);
       driver = builder.start();
+      TestUtils.waitForCondition(() -> Ray.getActor("a", "test1").isPresent(), 10000);
       // Wait for driver to start.
       driver.waitFor(10, TimeUnit.SECONDS);
       runnable.run();
