@@ -15,13 +15,13 @@ import requests
 import ray
 from ray import serve
 from ray.serve.constants import SERVE_NAMESPACE
-from ray._private import ray_constants
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
 from ray.dashboard import dashboard
+from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 from ray.dashboard.tests.conftest import *  # noqa
 
 
@@ -64,9 +64,7 @@ async def test_component_activities_hook(cluster_activity_hook_output):
         "ray.dashboard.optional_utils.ClassMethodRouteTable", MockClassMethodRouteTable
     ).start()
     mock_load_class = Mock(return_value=Mock(return_value=cluster_activity_hook_output))
-    os.environ[
-        ray_constants.RAY_CLUSTER_ACTIVITY_HOOK
-    ] = "mock_module.mock_activity_hook"
+    os.environ[RAY_CLUSTER_ACTIVITY_HOOK] = "mock_module.mock_activity_hook"
 
     with patch.multiple(
         "ray.dashboard.modules.snapshot.snapshot_head",
@@ -115,7 +113,7 @@ async def test_component_activities_hook(cluster_activity_hook_output):
             "driver": {"is_active": False, "reason": None, "timestamp": None},
             "new_component": {"is_active": False, "reason": None, "timestamp": None},
         }
-    os.environ.pop(ray_constants.RAY_CLUSTER_ACTIVITY_HOOK)
+    os.environ.pop(RAY_CLUSTER_ACTIVITY_HOOK)
 
 
 def test_inactive_component_activities(call_ray_start):

@@ -84,12 +84,6 @@ RAY_START_HOOK = "RAY_START_HOOK"
 # Hook that is invoked on `ray job submit`. It will be given all the same args as the
 # job.cli.submit() function gets, passed as kwargs to this function.
 RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
-# Hook that is invoked on the dashboard `/api/component_activities` endpoint.
-# It does not take any arguments and should return a dictionary mapping
-# activity component type (str) to
-# ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
-# Example: "your.module.ray_cluster_activity_hook".
-RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
