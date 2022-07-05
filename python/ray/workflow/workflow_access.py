@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import queue
+import time
 from typing import Dict, List, Set, Optional, TYPE_CHECKING
 
 import ray
@@ -306,6 +307,16 @@ def init_management_actor(
         ).remote(max_running_workflows, max_pending_workflows)
         # No-op to ensure the actor is created before the driver exits.
         ray.get(actor.ready.remote())
+        # TODO(suquark): we cannot guarantee that we can get the actor by name
+        #  immediately after creating the actor (in rare cases get the actor
+        #  by name immediately after creation would result in failure). Here
+        #  is a workaround.
+        while True:
+            try:
+                get_management_actor()
+                break
+            except ValueError:
+                time.sleep(0.01)
 
 
 def get_management_actor() -> "ActorHandle":
