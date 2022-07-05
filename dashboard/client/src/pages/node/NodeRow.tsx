@@ -61,6 +61,9 @@ const NodeRow = ({
 
   const classes = useNodeRowStyles();
 
+  const objectStoreTotalMemory =
+    raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
+
   return (
     <TableRow key={hostname + rowIndex}>
       <TableCell>
@@ -100,10 +103,10 @@ const NodeRow = ({
         {raylet && (
           <PercentageBar
             num={raylet.objectStoreUsedMemory}
-            total={raylet.objectStoreAvailableMemory}
+            total={objectStoreTotalMemory}
           >
             {memoryConverter(raylet.objectStoreUsedMemory)}/
-            {memoryConverter(raylet.objectStoreAvailableMemory)}
+            {memoryConverter(objectStoreTotalMemory)}
           </PercentageBar>
         )}
       </TableCell>

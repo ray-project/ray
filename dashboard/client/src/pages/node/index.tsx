@@ -74,6 +74,9 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   const { nodeId, state, objectStoreUsedMemory, objectStoreAvailableMemory } =
     raylet;
 
+  const objectStoreTotalMemory =
+    objectStoreUsedMemory + objectStoreAvailableMemory;
+
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
       <p style={{ fontWeight: "bold", fontSize: 12, textDecoration: "none" }}>
@@ -120,10 +123,10 @@ export const NodeCard = (props: { node: NodeDetail }) => {
             Object Store Memory
             <PercentageBar
               num={objectStoreUsedMemory}
-              total={objectStoreAvailableMemory}
+              total={objectStoreTotalMemory}
             >
               {memoryConverter(objectStoreUsedMemory)}/
-              {memoryConverter(objectStoreAvailableMemory)}
+              {memoryConverter(objectStoreTotalMemory)}
             </PercentageBar>
           </Grid>
         )}
