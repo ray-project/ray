@@ -631,7 +631,9 @@ if __name__ == "__main__":
         ),
         run_config=RunConfig(callbacks=callbacks),
         dataset_config={
-            "train": DatasetConfig(use_stream_api=True, global_shuffle=True)
+            "train": DatasetConfig(
+                use_stream_api=True, stream_window_size=-1, global_shuffle=True
+            )
         },
     )
     results = trainer.fit()
