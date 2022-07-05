@@ -8,7 +8,10 @@ from ray.rllib.utils.typing import SampleBatchType
 import numpy as np
 from ray.rllib.utils.numpy import convert_to_numpy
 
-from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+from ray.rllib.offline.estimators.off_policy_estimator import (
+    OffPolicyEstimator,
+    action_log_likelihood,
+)
 
 torch, nn = try_import_torch()
 
@@ -61,13 +64,13 @@ class DoublyRobust(OffPolicyEstimator):
         # Calculate doubly robust OPE estimates
         for episode in batch.split_by_episode():
             rewards, old_prob = episode["rewards"], episode["action_prob"]
-            new_prob = np.exp(self.action_log_likelihood(episode))
+            new_prob = np.exp(action_log_likelihood(self.policy, episode))
 
             v_old = 0.0
             v_new = 0.0
-            q_values = self.action_value_fn(self.policy, episode)
+            q_values = self.model.estimate_q(episode)
             q_values = convert_to_numpy(q_values)
-            v_values = self.state_value_fn(self.policy, episode)
+            v_values = self.model.estimate_v(episode)
             v_values = convert_to_numpy(v_values)
             assert q_values.shape == v_values.shape == (episode.count,)
 

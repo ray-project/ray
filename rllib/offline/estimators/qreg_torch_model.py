@@ -9,7 +9,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType, ModelConfigDict
-from ray.rllib.offline.estimators.utils import action_log_likelihood
+from ray.rllib.offline.estimators.off_policy_estimator import action_log_likelihood
 
 torch, nn = try_import_torch()
 
