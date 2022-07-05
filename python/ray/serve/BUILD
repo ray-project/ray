@@ -332,7 +332,7 @@ py_test(
 )
 
 py_test(
-    name = "test_model_wrappers",
+    name = "test_air_integrations",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

@@ -2,20 +2,17 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 import numpy as np
+
 import ray
 from ray import serve
 from ray._private.utils import import_attr
-from ray.air.checkpoint import Checkpoint
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve.utils import require_packages
 
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor
-else:
-    try:
-        from ray.train.predictor import Predictor
-    except ImportError:
-        Predictor = None
+    from ray.air.checkpoint import Checkpoint
+
 
 try:
     import pandas as pd
@@ -24,8 +21,10 @@ except ImportError:
 
 
 def _load_checkpoint(
-    checkpoint: Union[Checkpoint, str],
-) -> Checkpoint:
+    checkpoint: Union["Checkpoint", str],
+) -> "Checkpoint":
+    from ray.air.checkpoint import Checkpoint
+
     if isinstance(checkpoint, str):
         checkpoint = Checkpoint.from_uri(checkpoint)
     assert isinstance(checkpoint, Checkpoint)
@@ -35,6 +34,8 @@ def _load_checkpoint(
 def _load_predictor_cls(
     predictor_cls: Union[str, Type["Predictor"]],
 ) -> Type["Predictor"]:
+    from ray.train.predictor import Predictor
+
     if isinstance(predictor_cls, str):
         predictor_cls = import_attr(predictor_cls)
     if Predictor is not None and not issubclass(predictor_cls, Predictor):
@@ -143,7 +144,7 @@ class BatchingManager:
         return split_list_of_dict
 
 
-class ModelWrapper(SimpleSchemaIngress):
+class PredictorWrapper(SimpleSchemaIngress):
     """Serve any Ray AIR predictor from an AIR checkpoint.
 
     Args:
@@ -175,7 +176,7 @@ class ModelWrapper(SimpleSchemaIngress):
     def __init__(
         self,
         predictor_cls: Union[str, Type["Predictor"]],
-        checkpoint: Union[Checkpoint, str],
+        checkpoint: Union["Checkpoint", str],
         http_adapter: Union[
             str, HTTPAdapterFn
         ] = "ray.serve.http_adapters.json_to_ndarray",
@@ -215,7 +216,7 @@ class ModelWrapper(SimpleSchemaIngress):
                     batched = BatchingManager.batch_dict_array(inp)
                 else:
                     raise ValueError(
-                        "ModelWrapper only accepts numpy array, dataframe, or dict of "
+                        "Predictor only accepts numpy array, dataframe, or dict of "
                         "arrays as input "
                         f"but got types {[type(i) for i in inp]}"
                     )
@@ -234,7 +235,7 @@ class ModelWrapper(SimpleSchemaIngress):
                     return out
                 else:
                     raise ValueError(
-                        f"ModelWrapper only accepts list of length {batch_size}, numpy "
+                        f"Predictor only accepts list of length {batch_size}, numpy "
                         "array, dataframe, or dict of array as output "
                         f"but got types {type(out)} with length "
                         f"{len(out) if hasattr(out, '__len__') else 'unknown'}."
@@ -250,5 +251,5 @@ class ModelWrapper(SimpleSchemaIngress):
 
 
 @serve.deployment
-class ModelWrapperDeployment(ModelWrapper):
-    """Ray Serve Deployment of the ModelWrapper class."""
+class PredictorDeployment(PredictorWrapper):
+    """Ray Serve Deployment for AIRPredictorWrapper."""
