@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getNodesWithWorkers } from "../../../service/node";
-import { NodeDetailExtend } from "../../../type/node";
+import { getNodeList } from "../../../service/node";
+import { NodeDetail } from "../../../type/node";
 import { useSorter } from "../../../util/hook";
 
 export const useNodeList = () => {
-  const [nodeList, setList] = useState<NodeDetailExtend[]>([]);
+  const [nodeList, setList] = useState<NodeDetail[]>([]);
   const [msg, setMsg] = useState("Loading the nodes infos...");
   const [isRefreshing, setRefresh] = useState(true);
   const [mode, setMode] = useState("table");
@@ -30,9 +30,9 @@ export const useNodeList = () => {
     if (!isRefreshing) {
       return;
     }
-    const { data } = await getNodesWithWorkers();
+    const { data } = await getNodeList();
     const { data: rspData, msg } = data;
-    setList(rspData.clients || []);
+    setList(rspData.summary || []);
     if (msg) {
       setMsg(msg);
     } else {

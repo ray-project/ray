@@ -2,11 +2,13 @@ import { IconButton, TableCell, TableRow, Tooltip } from "@material-ui/core";
 import { createStyles, makeStyles } from "@material-ui/core/styles";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
-import React, { useState } from "react";
+import { sortBy } from "lodash";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
-import { NodeDetailExtend } from "../../type/node";
+import { getNodeDetail } from "../../service/node";
+import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
 
@@ -27,7 +29,7 @@ const useNodeRowStyles = makeStyles((theme) =>
   }),
 );
 
-type NodeRowProps = NodeRowsProps & {
+type NodeRowProps = Pick<NodeRowsProps, "node" | "rowIndex"> & {
   /**
    * Whether the node has been expanded to show workers
    */
@@ -135,7 +137,7 @@ type WorkerRowProps = {
   /**
    * Detail of the node the worker is inside.
    */
-  node: NodeDetailExtend;
+  node: NodeDetail;
 };
 
 /**
@@ -159,7 +161,7 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
     : `/log/${encodeURIComponent(logUrl)}`;
 
   return (
-    <TableRow key={coreWorker?.workerId ?? pid}>
+    <TableRow key={pid}>
       <TableCell></TableCell>
       <TableCell>
         <StatusChip type="worker" status="ALIVE" />
@@ -202,18 +204,54 @@ type NodeRowsProps = {
   /**
    * Details of the node
    */
-  node: NodeDetailExtend;
+  node: NodeDetail;
   /**
    * The index of the table. Needed to guarantee key uniqueness.
    */
   rowIndex: number;
+  /**
+   * Whether the node row should refresh data about its workers.
+   */
+  isRefreshing: boolean;
 };
 
 /**
  * The rows related to a node and its workers. Expandable to show information about workers.
  */
-export const NodeRows = ({ node, rowIndex }: NodeRowsProps) => {
+export const NodeRows = ({ node, rowIndex, isRefreshing }: NodeRowsProps) => {
   const [isExpanded, setExpanded] = useState(false);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const tot = useRef<NodeJS.Timeout>();
+
+  const getDetail = useCallback(async () => {
+    if (!isRefreshing || !isExpanded) {
+      return;
+    }
+    const { data } = await getNodeDetail(node.raylet.nodeId);
+    const { data: rspData, result } = data;
+    if (rspData?.detail) {
+      const sortedWorkers = sortBy(
+        rspData.detail.workers,
+        (worker) => worker.pid,
+      );
+      setWorkers(sortedWorkers);
+    }
+
+    if (result === false) {
+      console.error("Node Query Error Please Check Node Name");
+    }
+
+    tot.current = setTimeout(getDetail, 4000);
+  }, [isRefreshing, isExpanded, node.raylet.nodeId]);
+
+  useEffect(() => {
+    getDetail();
+    return () => {
+      if (tot.current) {
+        clearTimeout(tot.current);
+      }
+    };
+  }, [getDetail]);
 
   const handleExpandButtonClick = () => {
     setExpanded(!isExpanded);
@@ -228,7 +266,7 @@ export const NodeRows = ({ node, rowIndex }: NodeRowsProps) => {
         onExpandButtonClick={handleExpandButtonClick}
       />
       {isExpanded &&
-        node.workers.map((worker) => <WorkerRow node={node} worker={worker} />)}
+        workers.map((worker) => <WorkerRow node={node} worker={worker} />)}
     </React.Fragment>
   );
 };

@@ -277,7 +277,11 @@ const Nodes = () => {
                     page.pageNo * page.pageSize,
                   )
                   .map((node, i) => (
-                    <NodeRows node={node} rowIndex={i} />
+                    <NodeRows
+                      node={node}
+                      rowIndex={i}
+                      isRefreshing={isRefreshing}
+                    />
                   ))}
               </TableBody>
             </Table>
