@@ -184,8 +184,6 @@ venv
 # Vim
 .*.swp
 *.swp
-.*.swo
-*.swo
 tags
 tags.lock
 tags.temp
