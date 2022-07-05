@@ -4,6 +4,7 @@ import dataclasses
 from datetime import datetime
 import hashlib
 import json
+import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp.web
@@ -12,6 +13,7 @@ import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
+from ray._private.storage import _load_class
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JobInfoStorageClient
 from ray.experimental.internal_kv import (
@@ -117,7 +119,14 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         driver_activity_info = await self._get_job_activity_info(timeout=timeout)
 
+        if ray_constants.RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
+            external_ray_cluster_activity_output = _load_class(os.environ[ray_constants.RAY_CLUSTER_ACTIVITY_HOOK])()
+
         resp = {"driver": dataclasses.asdict(driver_activity_info)}
+
+        for component_type in external_ray_cluster_activity_output:
+            resp[component_type] = dataclasses.asdict(external_ray_cluster_activity_output[component_type])
+
         return aiohttp.web.Response(
             text=json.dumps(resp),
             content_type="application/json",
