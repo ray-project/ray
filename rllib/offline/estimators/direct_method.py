@@ -1,13 +1,12 @@
 import logging
-from typing import Dict, Any, Callable
+from typing import Dict, Any
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
-from ray.rllib.offline.estimators.utils import lookup_state_value_fn
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import SampleBatchType, TensorType
 import numpy as np
 
 torch, nn = try_import_torch()
@@ -17,7 +16,7 @@ logger = logging.getLogger()
 
 @DeveloperAPI
 class DirectMethod(OffPolicyEstimator):
-    """The Direct Method estimator.
+    """The Direct Method estimator with a trainable Q-model.
 
     DM estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
@@ -27,7 +26,7 @@ class DirectMethod(OffPolicyEstimator):
         name: str,
         policy: Policy,
         gamma: float,
-        state_value_fn: Callable[[Policy, SampleBatch], TensorType] = None,
+        q_model_config: Dict = None,
     ):
         """
         Initializes a Direct Method OPE Estimator.
@@ -36,18 +35,23 @@ class DirectMethod(OffPolicyEstimator):
             name: string to save OPE results under
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
-            state_value_fn: Function that takes in self.policy and a
-            SampleBatch with states s and return the state values V(s).
-            This is meant to be generic; modify this for your Algorithm as neccessary.
-            If None, try to look up the function using lookup_state_value_fn.
+            q_model_config: Arguments to specify the Q-model.
         """
 
+        assert (
+            policy.config["framework"] == "torch"
+        ), "DirectMethod estimator only works with torch!"
         super().__init__(name, policy, gamma)
-        self.state_value_fn = state_value_fn or lookup_state_value_fn(policy)
-        assert policy.config["framework"] in [
-            "torch",
-            "tf2",
-        ], "DirectMethod estimator only works with torch|tf2"
+
+        model_cls = q_model_config.pop("type")
+        self.model = model_cls(
+            policy=policy,
+            gamma=gamma,
+            **q_model_config,
+        )
+        assert hasattr(
+            self.model, "estimate_v"
+        ), "self.model must implement `estimate_v`!"
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
@@ -75,3 +79,17 @@ class DirectMethod(OffPolicyEstimator):
         estimates["v_gain_std"] = np.std(estimates["v_gain"])
         estimates["v_gain"] = np.mean(estimates["v_gain"])
         return estimates
+
+    def train(self, batch: SampleBatchType) -> Dict[str, Any]:
+        if isinstance(batch, MultiAgentBatch):
+            policy_keys = batch.policy_batches.keys()
+            if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
+                batch = batch.policy_batches[DEFAULT_POLICY_ID]
+            else:
+                raise ValueError(
+                    "Off-Policy Estimation is not implemented for "
+                    "multi-agent batches. You can set "
+                    "`off_policy_estimation_methods: {}` to resolve this."
+                )
+        losses = self.model.train(batch)
+        return {self.name + "_loss": np.mean(losses)}

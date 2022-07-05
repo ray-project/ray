@@ -1655,14 +1655,6 @@ py_test(
 )
 
 py_test(
-    name = "test_ope_utils",
-    main = "offline/estimators/tests/test_utils.py",
-    tags = ["team:rllib", "offline"],
-    size = "small",
-    srcs = ["offline/estimators/tests/test_utils.py"]
-)
-
-py_test(
     name = "test_json_reader",
     tags = ["team:rllib", "offline"],
     size = "small",

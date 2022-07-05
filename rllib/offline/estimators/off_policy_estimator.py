@@ -1,10 +1,11 @@
 import logging
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import TensorType, SampleBatchType
-from ray.rllib.offline.estimators.utils import action_log_likelihood
 from typing import Dict, Any
+from ray.rllib.utils.numpy import convert_to_numpy
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,35 @@ class OffPolicyEstimator:
 
     @DeveloperAPI
     def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
-        # TODO (Rohan138): Add deprecation warning
-        return action_log_likelihood(self.policy, batch)
+        """Returns log likelihood for actions in given batch for policy.
+
+        Computes likelihoods by passing the observations through the current
+        policy's `compute_log_likelihoods()` method
+
+        Args:
+            batch: The SampleBatch or MultiAgentBatch to calculate action
+                log likelihoods from. This batch/batches must contain OBS
+                and ACTIONS keys.
+
+        Returns:
+            The probabilities of the actions in the batch, given the
+            observations and the policy.
+        """
+        num_state_inputs = 0
+        for k in batch.keys():
+            if k.startswith("state_in_"):
+                num_state_inputs += 1
+        state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
+        log_likelihoods: TensorType = self.policy.compute_log_likelihoods(
+            actions=batch[SampleBatch.ACTIONS],
+            obs_batch=batch[SampleBatch.OBS],
+            state_batches=[batch[k] for k in state_keys],
+            prev_action_batch=batch.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_batch=batch.get(SampleBatch.PREV_REWARDS),
+            actions_normalized=self.policy.config["actions_in_input_normalized"],
+        )
+        log_likelihoods = convert_to_numpy(log_likelihoods)
+        return log_likelihoods
 
     @DeveloperAPI
     def check_can_estimate_for(self, batch: SampleBatchType) -> None:

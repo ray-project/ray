@@ -6,8 +6,6 @@ from ray.rllib.offline.estimators import (
     WeightedImportanceSampling,
     DirectMethod,
     DoublyRobust,
-    DMTrainable,
-    DRTrainable,
 )
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
@@ -24,7 +22,8 @@ class TestOPE(unittest.TestCase):
     def setUpClass(cls):
         ray.init(num_cpus=4)
         rllib_dir = Path(__file__).parent.parent.parent.parent
-        eval_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        train_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        eval_data = train_data
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
@@ -44,6 +43,7 @@ class TestOPE(unittest.TestCase):
                 },
             )
             .framework("torch")
+            .offline_data(input_=train_data)
             .evaluation(
                 evaluation_interval=None,
                 evaluation_duration=n_eval_episodes,
@@ -56,17 +56,22 @@ class TestOPE(unittest.TestCase):
                 off_policy_estimation_methods={
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
-                    "dm": {"type": DirectMethod},
-                    "dr": {"type": DoublyRobust},
                     "dm_fqe": {
-                        "type": DMTrainable,
+                        "type": DirectMethod,
                         "q_model_config": {"type": FQETorchModel, "n_iters": 1},
                     },
                     "dr_fqe": {
-                        "type": DRTrainable,
+                        "type": DoublyRobust,
                         "q_model_config": {"type": FQETorchModel, "n_iters": 1},
                     },
-                    # Note: Can't use Q-Reg here since it requires log-probs
+                    "dm_qreg": {
+                        "type": DirectMethod,
+                        "q_model_config": {"type": QRegTorchModel, "n_iters": 1},
+                    },
+                    "dr_qreg": {
+                        "type": DoublyRobust,
+                        "q_model_config": {"type": QRegTorchModel, "n_iters": 1},
+                    },
                 },
             )
         )
@@ -139,31 +144,9 @@ class TestOPE(unittest.TestCase):
         self.mean_ret[name] = estimates["v_new"]
         self.std_ret[name] = estimates["v_new_std"]
 
-    def test_dm(self):
-        name = "dm"
-        estimator = DirectMethod(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-        )
-        estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_new"]
-        self.std_ret[name] = estimates["v_new_std"]
-
-    def test_dr(self):
-        name = "dr"
-        estimator = DoublyRobust(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-        )
-        estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_new"]
-        self.std_ret[name] = estimates["v_new_std"]
-
     def test_dm_fqe(self):
         name = "dm_fqe"
-        estimator = DMTrainable(
+        estimator = DirectMethod(
             name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
@@ -176,7 +159,7 @@ class TestOPE(unittest.TestCase):
 
     def test_dr_fqe(self):
         name = "dr_fqe"
-        estimator = DRTrainable(
+        estimator = DoublyRobust(
             name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
@@ -189,7 +172,7 @@ class TestOPE(unittest.TestCase):
 
     def test_dm_qreg(self):
         name = "dm_qreg"
-        estimator = DMTrainable(
+        estimator = DirectMethod(
             name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
@@ -202,7 +185,7 @@ class TestOPE(unittest.TestCase):
 
     def test_dr_qreg(self):
         name = "dr_qreg"
-        estimator = DRTrainable(
+        estimator = DoublyRobust(
             name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
