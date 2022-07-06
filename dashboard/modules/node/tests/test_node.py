@@ -25,7 +25,6 @@ from ray._private.test_utils import (
 )
 
 from unittest import mock
-from subprocess import Popen, PIPE
 
 
 logger = logging.getLogger(__name__)
@@ -531,9 +530,13 @@ def test_logs_max_count(
 
 def test_node_register_with_agent(ray_start_cluster_2_nodes):
     def test_agent_port(pid, port):
-        p1 = Popen(["lsof", "-a", f"-p{pid}", "-i4"], stdout=PIPE)
-        p2 = Popen(["grep", "LISTEN"], stdin=p1.stdout, stdout=PIPE)
-        assert str(port) in p2.communicate()[0].decode("utf-8")
+        p = psutil.Process(pid)
+        assert p.cmdline()[2].endswith("dashboard/agent.py")
+
+        for c in p.connections():
+            if c.status == psutil.CONN_LISTEN and c.laddr.port == port:
+                return
+        assert False
 
     def test_agent_process(pid):
         p = psutil.Process(pid)
@@ -543,7 +546,6 @@ def test_node_register_with_agent(ray_start_cluster_2_nodes):
         agent_info = node_info["AgentInfo"]
         assert agent_info["ip_address"] == node_info["NodeManagerAddress"]
         test_agent_port(agent_info["pid"], agent_info["port"])
-        test_agent_process(agent_info["pid"])
 
 
 if __name__ == "__main__":

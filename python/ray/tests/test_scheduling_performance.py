@@ -14,11 +14,6 @@ logger = logging.getLogger(__name__)
 
 # This test compares the scheduling latency of Raylet-based scheduler and
 # GCS-based scheduler.
-# After this PR: https://github.com/ray-project/ray/pull/26302,
-# since the node needs to wait for the agent to register before
-# registering itself to GCS, `cluster.add_node` will be nearly one second slower,
-# resulting in an increase of 16 * 2 = 32 seconds in total time,
-# so set the test size to medium
 @pytest.mark.parametrize("args", [[16, 16, 4, False], [16, 16, 4, True]])
 def test_actor_scheduling_latency(ray_start_cluster, args):
     cluster = ray_start_cluster
