@@ -259,11 +259,7 @@ def read_datasource(
         get_read_tasks = cached_remote_fn(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
         )
-        from ray.data.datasource.parquet_datasource import (
-            _register_parquet_file_fragment_serialization,
-        )
 
-        _register_parquet_file_fragment_serialization()
         requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
             get_read_tasks.remote(
                 datasource,
