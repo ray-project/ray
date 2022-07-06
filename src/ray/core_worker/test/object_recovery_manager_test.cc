@@ -114,7 +114,7 @@ class MockObjectDirectory {
   }
 
   absl::Mutex mutex;
-  std::vector<std::pair<ObjectID, ObjectLookupCallback>> callbacks = {} GUARDED_BY(mutex);
+  std::vector<std::pair<ObjectID, ObjectLookupCallback>> callbacks GUARDED_BY(mutex) = {};
   absl::flat_hash_map<ObjectID, std::vector<rpc::Address>> locations GUARDED_BY(mutex);
 };
 
