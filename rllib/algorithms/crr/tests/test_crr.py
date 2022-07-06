@@ -37,15 +37,19 @@ class TestCRR(unittest.TestCase):
         # files over to Parquet, since the dataset json reader cannot handle large
         # block sizes.
         input_reader = lambda ioctx: JsonReader(
-                        ioctx.config["input_config"]["paths"], ioctx
-                    )
+            ioctx.config["input_config"]["paths"], ioctx
+        )
         input_config = {"paths": data_file}
 
         config = (
             CRRConfig()
             .environment(env="Pendulum-v1", clip_actions=True)
             .framework("torch")
-            .offline_data(input_=input_reader, input_config=input_config, actions_in_input_normalized=True)
+            .offline_data(
+                input_=input_reader,
+                input_config=input_config,
+                actions_in_input_normalized=True,
+            )
             .training(
                 twin_q=True,
                 train_batch_size=256,
