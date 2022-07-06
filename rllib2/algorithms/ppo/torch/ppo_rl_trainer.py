@@ -1,9 +1,12 @@
 #######################################################
 ########### PPO
 #######################################################
+from typing import Union, Type, Optional, Dict
 
+import torch
 
-from rllib2.core.torch.torch_unit_trainer import TorchUnitTrainer, UnitTrainerConfig
+from rllib2.core.torch.rl_trainer import TorchRLTrainer
+from rllib2.core.torch.rl_module import TorchRLModule
 from rllib2.core.torch.torch_rl_module import (
     PPOTorchRLModule, PPORLModuleConfig, PPOModuleOutput
 )
@@ -14,7 +17,7 @@ class PPOUnitTrainerConfig(UnitTrainerConfig):
     vf_loss_coeff: Optional[float] = None
 
 
-class PPOUnitTrainer(TorchUnitTrainer):
+class PPOTorchTrainer(TorchRLTrainer):
 
     def __init__(self, config: PPOUnitTrainerConfig):
         super().__init__(config)
@@ -22,11 +25,11 @@ class PPOUnitTrainer(TorchUnitTrainer):
     def default_rl_module(self) -> Union[str, Type[TorchRLModule]]:
         return PPOTorchRLModule
 
-    def make_optimizer(self) -> Dict[str, Optimizer]:
+    def make_optimizer(self) -> Dict[LossID, Optimizer]:
         config = self.config.optimizer_config
         return {'total_loss': torch.optim.Adam(self.model.parameters(), lr=config.lr)}
 
-    def loss(self, train_batch: SampleBatch, fwd_train_dict: PPOModuleOutput) -> Dict[str, torch.Tensor]:
+    def loss(self, train_batch: SampleBatch, fwd_train_dict: PPOModuleOutput) -> Dict[LossID, torch.Tensor]:
 
         pi_out_cur = fwd_train_dict.pi_out_cur
         pi_out_prev = fwd_train_dict.pi_out_prev
@@ -34,53 +37,38 @@ class PPOUnitTrainer(TorchUnitTrainer):
 
         kl_coeff = self.model.kl_coeff
 
-
-        logp_ratio = torch.exp(
-            pi_out_cur.log_prob(train_batch[SampleBatch.ACTIONS])
-            - train_batch[SampleBatch.ACTION_LOGP]
-        )
+        # in-place operation, computes advantages and value targets
+        compute_advantages(vf, train_batch, self.gamma, self.lambda_, ...)
 
         if kl_coeff:
-            action_kl = pi_out_prev.kl(pi_out_cur)
-            mean_kl_loss = reduce_mean_valid(action_kl)
+            mean_kl_loss = KLDiv()(pi_out_prev, pi_out_cur)
         else:
-            mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
+            mean_kl_loss = torch.tensor(0.0, device=vf.device)
 
-        curr_entropy = pi_out_cur.entropy()
-        mean_entropy = reduce_mean_valid(curr_entropy)
+        mean_entropy = Entropy()(pi_out_cur)
+        surrogate_loss = PPOClipLoss(clip_param=self.config["clip_params"])(train_batch)
 
-        surrogate_loss = torch.min(
-            train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-            train_batch[Postprocessing.ADVANTAGES]
-            * torch.clamp(
-                logp_ratio, 1 - self.config["clip_param"], 1 + self.config["clip_param"]
-            ),
-        )
-
-        mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         value_fn_out = 0
         mean_vf_loss = vf_loss_clipped = 0.0
         if vf:
             value_fn_out = vf.values.reduce('min')
-            vf_loss = (value_fn_out -
-                       train_batch[Postprocessing.VALUE_TARGETS])**2
+            vf_loss = (value_fn_out - train_batch['vf_targets'])**2
             vf_loss_clipped = torch.clamp(vf_loss, 0, self.config["vf_clip_param"])
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
 
         total_loss = reduce_mean_valid(
             -surrogate_loss
             + self.config.vf_loss_coeff * vf_loss_clipped
-            - self.config.entropy_coeff * curr_entropy
+            - self.config.entropy_coeff * mean_entropy
         )
 
         if kl_coeff:
             total_loss = kl_coeff * mean_kl_loss
 
-
         self.logger.tower_stats.update(
             total_loss=total_loss,
-            mean_policy_loss=mean_policy_loss,
+            mean_policy_loss=-surrogate_loss,
             mean_vf_loss=mean_vf_loss,
             vf_explained_var=explained_variance(train_batch[Postprocessing.VALUE_TARGETS], value_fn_out),
             mean_entropy=mean_entropy,
@@ -88,5 +76,23 @@ class PPOUnitTrainer(TorchUnitTrainer):
         )
 
         return {'total_loss': total_loss}
+
+
+    def update(self, train_batch, update_kl: bool = False):
+        super().update(train_batch)
+
+        if update_kl:
+            self.update_kl()
+
+
+    def update_kl(self):
+        # Update the current KL value based on the recently measured value.
+        sampled_kl = self.logger.tower_stats["mean_kl_loss"]
+        kl_target = self.config["kl_target"]
+        if sampled_kl > 2.0 * kl_target:
+            self.model.kl_coeff *= 1.5
+        elif sampled_kl < 0.5 * kl_target:
+            self.model.kl_coeff *= 0.5
+
 
 

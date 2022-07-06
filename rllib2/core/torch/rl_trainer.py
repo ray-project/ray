@@ -18,7 +18,7 @@ class UnitTrainerConfig:
 
 
 
-class TorchUnitTrainer:
+class TorchRLTrainer:
 
     def __init__(self, module, config):
         self._config = config
@@ -62,7 +62,7 @@ class TorchUnitTrainer:
     #     return rl_module
 
     @abc.abstractmethod
-    def loss(self, train_batch: SampleBatch, fwd_train_dict) -> Dict[str, torch.Tensor]:
+    def loss(self, train_batch: SampleBatch, fwd_train_dict: RLModuleOutput) -> Dict[LossID, torch.Tensor]:
         """
         Computes the loss for each sub-module of the algorithm and returns the loss
         tensor computed for each loss that needs to get back-propagated and updated
@@ -79,7 +79,7 @@ class TorchUnitTrainer:
         """
         raise NotImplementedError
 
-    def update(self, train_batch: SampleBatch):
+    def update(self, train_batch: SampleBatch, **kwargs):
 
         self.model.train()
         fwd_train_dict = self.model.forward_train(train_batch)
@@ -104,7 +104,7 @@ TODO: We should be able to have a type of TorchMARLTrainer[PPOTrainer] which bas
 says that it's a multi-agent wrapper for the base of PPOTrainer. 
 """
 class TorchMARLTrainer:
-    type: Type[TorchUnitTrainer]
+    type: Type[TorchRLTrainer]
     def __init__(self, configs):
         # basically the Type class is going to get constructed for each key inside cnofigs
         self.configs = configs
