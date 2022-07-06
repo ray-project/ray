@@ -235,6 +235,7 @@ __all__ = [
     "timeline",
     "util",
     "wait",
+    "widgets",
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
