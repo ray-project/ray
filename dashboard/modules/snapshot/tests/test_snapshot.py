@@ -38,7 +38,7 @@ def set_ray_cluster_activity_hook(request):
 
     yield external_hook
 
-    if old_addr is not None:
+    if old_hook is not None:
         os.environ[RAY_CLUSTER_ACTIVITY_HOOK] = old_hook
     else:
         del os.environ[RAY_CLUSTER_ACTIVITY_HOOK]
