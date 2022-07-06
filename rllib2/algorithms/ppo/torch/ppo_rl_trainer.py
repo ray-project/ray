@@ -22,9 +22,6 @@ class PPOTorchTrainer(TorchRLTrainer):
     def __init__(self, config: PPOUnitTrainerConfig):
         super().__init__(config)
 
-    def default_rl_module(self) -> Union[str, Type[TorchRLModule]]:
-        return PPOTorchRLModule
-
     def make_optimizer(self) -> Dict[LossID, Optimizer]:
         config = self.config.optimizer_config
         return {'total_loss': torch.optim.Adam(self.model.parameters(), lr=config.lr)}

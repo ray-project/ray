@@ -1,5 +1,4 @@
 from rllib2.core.algorithm import Algorithm
-from .torch.ppo_rl_trainer import PPOTorchUnitTrainer
 
 
 class PPO(Algorithm):
