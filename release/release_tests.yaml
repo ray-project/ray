@@ -2161,6 +2161,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  stable: false
+
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
@@ -2184,6 +2186,8 @@
 - name: rllib_learning_tests_f_to_z
   group: RLlib tests
   working_dir: rllib_tests
+
+  stable: false
 
   legacy:
     test_name: learning_tests
