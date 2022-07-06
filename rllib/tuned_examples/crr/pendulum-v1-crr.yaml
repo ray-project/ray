@@ -6,10 +6,7 @@ pendulum_crr:
       evaluation/episode_reward_mean: -300
       timesteps_total: 2000000
     config:
-        input: "dataset"
-        input_config:
-            format: "json"
-            path: '/Users/avnish/avnish_ray_2/rllib/tests/data/pendulum/pendulum_replay_v1.1.0.json'
+        input: 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
         framework: torch
         num_workers: 3
         gamma: 0.99

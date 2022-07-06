@@ -31,11 +31,6 @@ cartpole_crr:
         evaluation_interval: 1
         evaluation_num_workers: 1
         evaluation_parallel_to_training: True
-        # replay buffer
-        replay_buffer_config:
-          type: ray.rllib.utils.replay_buffers.MultiAgentReplayBuffer
-          learning_starts: 0
-          capacity: 100000
         # specific to CRR
         temperature: 1.0
         weight_type: bin

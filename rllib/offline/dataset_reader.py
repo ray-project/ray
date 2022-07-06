@@ -150,6 +150,8 @@ class DatasetReader(InputReader):
         self._default_policy = self.policy_map = None
         self._dataset = ds
         self.count = None if not self._dataset else self._dataset.count()
+        # do this to disable the ray data stdout logging
+        ray.data.set_progress_bars(enabled=False)
 
         # the number of rows to return per call to next()
         if self._ioctx:
