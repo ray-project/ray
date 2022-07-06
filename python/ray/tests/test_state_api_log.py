@@ -363,7 +363,7 @@ async def test_logs_manager_stream_log(logs_manager):
         keep_alive=True,
         lines=10,
         interval=0.5,
-        timeout=30,
+        timeout=None,
     )
 
     # Currently cannot test actor_id with AsyncMock.

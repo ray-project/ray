@@ -81,6 +81,7 @@ class ConvNet(nn.Module):
 # 1. Wrap your PyTorch model in an objective function.
 import torch
 from ray import tune
+from ray.air import session
 from ray.tune.search.optuna import OptunaSearch
 
 
@@ -95,7 +96,7 @@ def objective(config):
     while True:
         train(model, optimizer, train_loader)  # Train the model
         acc = test(model, test_loader)  # Compute test accuracy
-        tune.report(mean_accuracy=acc)  # Report to Tune
+        session.report({"mean_accuracy": acc})  # Report to Tune
 
 
 # 2. Define a search space and initialize the search algorithm.
