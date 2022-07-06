@@ -146,10 +146,6 @@ class _ParquetDatasourceReader(Reader):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
     ):
-        # NOTE: We override the base class FileBasedDatasource.prepare_read
-        # method in order to leverage pyarrow's ParquetDataset abstraction,
-        # which simplifies partitioning logic. We still use
-        # FileBasedDatasource's write side (do_write), however.
         _check_pyarrow_version()
         import pyarrow as pa
         import pyarrow.parquet as pq
@@ -202,6 +198,10 @@ class _ParquetDatasourceReader(Reader):
         return total_size * PARQUET_DECOMPRESSION_MULTIPLIER
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
+        # method in order to leverage pyarrow's ParquetDataset abstraction,
+        # which simplifies partitioning logic. We still use
+        # FileBasedDatasource's write side (do_write), however.
         read_tasks = []
         for pieces, metadata in zip(
             np.array_split(self._pq_ds.pieces, parallelism),
