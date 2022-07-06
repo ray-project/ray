@@ -16,10 +16,10 @@ def test_wf_run(workflow_start_regular_shared, tmp_path):
         v = int(counter.read_text()) + 1
         counter.write_text(str(v))
 
-    workflow.create(f.bind()).run("abc")
+    workflow.run(f.bind(), workflow_id="abc")
     assert counter.read_text() == "1"
     # This will not rerun the job from beginning
-    workflow.create(f.bind()).run("abc")
+    workflow.run(f.bind(), workflow_id="abc")
     assert counter.read_text() == "1"
 
 
@@ -37,8 +37,7 @@ def test_wf_no_run(shutdown_only):
     def f2(*w):
         pass
 
-    f = workflow.create(f2.bind(*[f1.bind() for _ in range(10)]))
-    f.run()
+    workflow.run(f2.bind(*[f1.bind() for _ in range(10)]))
 
 
 def test_dedupe_indirect(workflow_start_regular_shared, tmp_path):
@@ -66,11 +65,11 @@ def test_dedupe_indirect(workflow_start_regular_shared, tmp_path):
     a = incr.bind()
     i1 = identity.bind(a)
     i2 = identity.bind(a)
-    assert "1" == workflow.create(join.bind(i1, i2)).run()
-    assert "2" == workflow.create(join.bind(i1, i2)).run()
+    assert "1" == workflow.run(join.bind(i1, i2))
+    assert "2" == workflow.run(join.bind(i1, i2))
     # pass a multiple times
-    assert "3" == workflow.create(join.bind(a, a, a, a)).run()
-    assert "4" == workflow.create(join.bind(a, a, a, a)).run()
+    assert "3" == workflow.run(join.bind(a, a, a, a))
+    assert "4" == workflow.run(join.bind(a, a, a, a))
 
 
 def test_run_off_main_thread(workflow_start_regular_shared):
@@ -84,8 +83,7 @@ def test_run_off_main_thread(workflow_start_regular_shared):
     def run():
         global succ
         # Setup the workflow.
-        data = workflow.create(fake_data.bind(10))
-        assert data.run(workflow_id="run") == list(range(10))
+        assert workflow.run(fake_data.bind(10), workflow_id="run") == list(range(10))
 
     import threading
 
@@ -106,10 +104,10 @@ def test_task_id_generation(workflow_start_regular_shared, request):
         x = simple.options(**workflow.options(name="simple")).bind(x)
 
     workflow_id = "test_task_id_generation"
-    ret = workflow.create(x).run_async(workflow_id=workflow_id)
-    outputs = [workflow.get_output(workflow_id, name="simple")]
+    ret = workflow.run_async(x, workflow_id=workflow_id)
+    outputs = [workflow.get_output_async(workflow_id, name="simple")]
     for i in range(1, n):
-        outputs.append(workflow.get_output(workflow_id, name=f"simple_{i}"))
+        outputs.append(workflow.get_output_async(workflow_id, name=f"simple_{i}"))
     assert ray.get(ret) == n - 1
     assert ray.get(outputs) == list(range(n))
 

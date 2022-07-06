@@ -32,8 +32,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
         return 100
 
     outputs = [
-        workflow.create(long_running.bind(i)).run_async(workflow_id=str(i))
-        for i in range(100)
+        workflow.run_async(long_running.bind(i), workflow_id=str(i)) for i in range(100)
     ]
     # Test list all, it should list all jobs running
     all_tasks = workflow.list_all()
@@ -77,7 +76,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     assert workflow.get_status("0") == "FAILED"
     assert workflow.get_status("1") == "SUCCESSFUL"
     lock.acquire()
-    r = workflow.resume("0")
+    r = workflow.resume_async("0")
     assert workflow.get_status("0") == workflow.RUNNING
     flag_file.unlink()
     lock.release()
@@ -86,7 +85,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
 
     # Test cancel
     lock.acquire()
-    workflow.resume("2")
+    workflow.resume_async("2")
     assert workflow.get_status("2") == workflow.RUNNING
     workflow.cancel("2")
     assert workflow.get_status("2") == workflow.CANCELED

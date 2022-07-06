@@ -324,8 +324,20 @@ def test_optimize_reorder(ray_start_regular_shared):
     expect_stages(
         ds2,
         3,
-        ["read", "randomize_block_order", "repartition", "map_batches"],
+        ["read->randomize_block_order", "repartition", "map_batches"],
     )
+
+
+def test_window_randomize_fusion(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_reorder_stages = True
+
+    pipe = ray.data.range(100).randomize_block_order().window().map_batches(lambda x: x)
+    pipe.take()
+    stats = pipe.stats()
+    assert "read->randomize_block_order->map_batches" in stats, stats
 
 
 def test_optimize_fuse(ray_start_regular_shared):
