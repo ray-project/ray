@@ -1,13 +1,10 @@
-import dataclasses
 import os
 import sys
 import json
 import jsonschema
 import hashlib
 import time
-from unittest.mock import ANY, Mock, patch
 
-from asynctest import CoroutineMock
 import pprint
 import pytest
 import requests
@@ -22,134 +19,44 @@ from ray._private.test_utils import (
 )
 from ray.dashboard import dashboard
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
+from ray.dashboard.modules.snapshot.snapshot_head import RayActivityResponse
 from ray.dashboard.tests.conftest import *  # noqa
 
 
-@dataclasses.dataclass
-class OtherResponse:
-    response: str
-
-
-@dataclasses.dataclass
-class TestRayActivityResponse:
-    # Equivalent definition to
-    # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
-    # This is defined separately to test activity responses from external methods called
-    # by RAY_CLUSTER_ACTIVITY_HOOK are compatible.
-    is_active: bool
+@pytest.fixture
+def set_ray_cluster_activity_hook(request):
+    """
+    Fixture that sets RAY_CLUSTER_ACTIVITY_HOOK environment variable
+    for test_e2e_component_activities_hook.
+    """
+    external_hook = getattr(request, "param")
+    assert (
+        external_hook
+    ), "Please pass value of RAY_CLUSTER_ACTIVITY_HOOK env var to this fixture"
+    old_hook = os.environ.get(RAY_CLUSTER_ACTIVITY_HOOK)
+    os.environ[RAY_CLUSTER_ACTIVITY_HOOK] = external_hook
+    yield external_hook
+    os.environ[RAY_CLUSTER_ACTIVITY_HOOK] = old_hook
 
 
 @pytest.mark.parametrize(
-    "cluster_activity_hook_output",
+    "set_ray_cluster_activity_hook",
     [
-        Exception("External hook error"),
-        "bad_output",
-        {"component_type": TestRayActivityResponse(is_active="ACTIVE")},
-        {"component_type": OtherResponse(response="bad_response")},
+        "ray._private.test_utils.external_ray_cluster_activity_hook1",
+        "ray._private.test_utils.external_ray_cluster_activity_hook2",
+        "ray._private.test_utils.external_ray_cluster_activity_hook3",
+        "ray._private.test_utils.external_ray_cluster_activity_hook4",
     ],
+    indirect=True,
 )
-async def test_component_activities_hook(cluster_activity_hook_output):
+async def test_component_activities_hook(set_ray_cluster_activity_hook, call_ray_start):
     """
     Tests /api/component_activities returns correctly for various
-    responses of RAY_CLUSTER_ACTIVITY_HOOK.
+    responses of RAY_CLUSTER_ACTIVITY_HOOK defined in ray._private.test_utils.
+
+    Verify no active drivers are correctly reflected in response.
     """
-    # Mock ClassMethodRouteTable so get_component_activities can be directly called.
-    # This allows us to mock out the _load_class method even if it is called
-    # from within the API server.
-    class MockClassMethodRouteTable:
-        @classmethod
-        def get(cls, path, **kwargs):
-            return lambda x: x
-
-    patch(
-        "ray.dashboard.optional_utils.ClassMethodRouteTable", MockClassMethodRouteTable
-    ).start()
-
-    def external_hook_side_effect():
-        if isinstance(cluster_activity_hook_output, Exception):
-            raise cluster_activity_hook_output
-        else:
-            return cluster_activity_hook_output
-
-    mock_load_class = Mock(return_value=Mock(side_effect=external_hook_side_effect))
-    os.environ[RAY_CLUSTER_ACTIVITY_HOOK] = "mock_module.mock_activity_hook"
-
-    with patch.multiple(
-        "ray.dashboard.modules.snapshot.snapshot_head",
-        _internal_kv_initialized=Mock(return_value=True),
-        JobInfoStorageClient=Mock(),
-        _load_class=mock_load_class,
-    ):
-        # Import should be after ClassMethodRouteTable is mocked out
-        from ray.dashboard.modules.snapshot.snapshot_head import (
-            APIHead,
-            RayActivityResponse,
-        )
-
-        mock_api_head = APIHead(Mock())
-        mock_api_head._get_job_activity_info = CoroutineMock(
-            return_value=RayActivityResponse(is_active="INACTIVE")
-        )
-        response = await mock_api_head.get_component_activities(Mock(query={}))
-        data = response.body.decode()
-
-        expected_output = {
-            "driver": {"is_active": "INACTIVE", "reason": None, "timestamp": None}
-        }
-        if isinstance(cluster_activity_hook_output, str) or isinstance(
-            cluster_activity_hook_output, Exception
-        ):
-            expected_output["external_component"] = {
-                "is_active": "ERROR",
-                "reason": ANY,
-                "timestamp": ANY,
-            }
-        elif isinstance(cluster_activity_hook_output, dict) and isinstance(
-            cluster_activity_hook_output["component_type"], TestRayActivityResponse
-        ):
-            expected_output["component_type"] = {
-                "is_active": "ACTIVE",
-                "reason": None,
-                "timestamp": None,
-            }
-        elif isinstance(cluster_activity_hook_output, dict) and isinstance(
-            cluster_activity_hook_output["component_type"], OtherResponse
-        ):
-            expected_output["component_type"] = {
-                "is_active": "ERROR",
-                "reason": ANY,
-                "timestamp": ANY,
-            }
-        assert json.loads(data) == expected_output
-
-    # Test updating the return value of the external hook
-    mock_load_class = Mock(
-        return_value=Mock(
-            return_value={
-                "new_component": TestRayActivityResponse(is_active="INACTIVE")
-            }
-        )
-    )
-    with patch.multiple(
-        "ray.dashboard.modules.snapshot.snapshot_head", _load_class=mock_load_class
-    ):
-        response = await mock_api_head.get_component_activities(Mock(query={}))
-        data = response.body.decode()
-        expected_output = {
-            "driver": {"is_active": "INACTIVE", "reason": None, "timestamp": None},
-            "new_component": {
-                "is_active": "INACTIVE",
-                "reason": None,
-                "timestamp": None,
-            },
-        }
-        assert data == json.dumps(expected_output)
-    os.environ.pop(RAY_CLUSTER_ACTIVITY_HOOK)
-
-
-def test_inactive_component_activities(call_ray_start):
-    # Verify no activity in response if no active drivers
-    from ray.dashboard.modules.snapshot.snapshot_head import RayActivityResponse
+    external_hook = set_ray_cluster_activity_hook
 
     response = requests.get("http://127.0.0.1:8265/api/component_activities")
     response.raise_for_status()
@@ -163,16 +70,45 @@ def test_inactive_component_activities(call_ray_start):
     pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
-    # Validate ray_activity_response field can be cast to RayActivityResponse object
+    # Validate driver response can be cast to RayActivityResponse object
+    # and that there are no active drivers.
     driver_ray_activity_response = RayActivityResponse(**data["driver"])
     assert driver_ray_activity_response.is_active == "INACTIVE"
     assert driver_ray_activity_response.reason is None
+
+    # Validate external component response can be cast to RayActivityResponse object
+    if external_hook[-1] == "4":
+        external_activity_response = RayActivityResponse(**data["external_component"])
+        assert external_activity_response.is_active == "ERROR"
+        assert (
+            external_activity_response.reason
+            == "Exception('Error in external cluster activity hook')"
+        )
+    elif external_hook[-1] == "3":
+        external_activity_response = RayActivityResponse(**data["external_component"])
+        assert external_activity_response.is_active == "ERROR"
+    elif external_hook[-1] == "2":
+        external_activity_response = RayActivityResponse(**data["test_component2"])
+        assert external_activity_response.is_active == "ERROR"
+    elif external_hook[-1] == "1":
+        external_activity_response = RayActivityResponse(**data["test_component1"])
+        assert external_activity_response.is_active == "ACTIVE"
+        assert external_activity_response.reason == "Counter: 1"
+
+        # Call endpoint again to validate different response
+        response = requests.get("http://127.0.0.1:8265/api/component_activities")
+        response.raise_for_status()
+        data = response.json()
+        jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
+
+        external_activity_response = RayActivityResponse(**data["test_component1"])
+        assert external_activity_response.is_active == "ACTIVE"
+        assert external_activity_response.reason == "Counter: 2"
 
 
 def test_active_component_activities(ray_start_with_dashboard):
     # Verify drivers which don't have namespace starting with _ray_internal_job_info_
     # are considered active.
-    from ray.dashboard.modules.snapshot.snapshot_head import RayActivityResponse
 
     driver_template = """
 import ray

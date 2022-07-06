@@ -32,6 +32,10 @@ from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
+from ray.dashboard.modules.snapshot.snapshot_head import (
+    RayActivityResponse,
+    RayActivityStatus,
+)
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
 
@@ -1366,3 +1370,54 @@ def job_hook(**kwargs):
     cmd = " ".join(kwargs["entrypoint"])
     print(f"hook intercepted: {cmd}")
     sys.exit(0)
+
+
+# Global counter to test different return values
+# for external_ray_cluster_activity_hook1.
+ray_cluster_activity_hook_counter = 0
+
+
+def external_ray_cluster_activity_hook1():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_counter
+    ray_cluster_activity_hook_counter += 1
+    return {
+        "test_component1": RayActivityResponse(
+            is_active=RayActivityStatus.ACTIVE,
+            reason=f"Counter: {ray_cluster_activity_hook_counter}",
+        )
+    }
+
+
+def external_ray_cluster_activity_hook2():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because the value of `test_component2`
+    should be of type RayActivityResponse.
+    """
+    return {"test_component2": "bad_output"}
+
+
+def external_ray_cluster_activity_hook3():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because return type is not
+    Dict[str, RayActivityResponse]
+    """
+    return "bad_output"
+
+
+def external_ray_cluster_activity_hook4():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Errors during execution.
+    """
+    raise Exception("Error in external cluster activity hook")
