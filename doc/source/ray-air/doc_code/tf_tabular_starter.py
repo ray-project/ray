@@ -151,12 +151,13 @@ print(f"Last result: {result.metrics}")
 # __air_tf_train_end__
 
 # __air_tf_tuner_start__
+param_space = {"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}},
 from ray import tune
 from ray.tune.tuner import Tuner, TuneConfig
 
 tuner = Tuner(
     trainer,
-    param_space={"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}},
+    param_space=param_space,
     tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
 )
 result_grid = tuner.fit()

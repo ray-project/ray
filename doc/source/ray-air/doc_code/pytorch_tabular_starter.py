@@ -130,13 +130,15 @@ print(f"Last result: {result.metrics}")
 # __air_pytorch_train_end__
 
 # __air_pytorch_tuner_start__
+param_space = {"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}}
+# __air_pytorch_tuner_end__
 from ray import tune
 from ray.tune.tuner import Tuner, TuneConfig
 from ray.air.config import RunConfig
 
 tuner = Tuner(
     trainer,
-    param_space={"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}},
+    param_space=param_space,
     tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
 )
 result_grid = tuner.fit()
@@ -145,7 +147,6 @@ print("Best Result:", best_result)
 # Best Result: Result(metrics={'loss': 0.278409322102863, ...})
 
 checkpoint = best_result.checkpoint
-# __air_pytorch_tuner_end__
 
 # __air_pytorch_batchpred_start__
 from ray.train.batch_predictor import BatchPredictor
