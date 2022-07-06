@@ -605,13 +605,17 @@ def start(
 
     if plasma_store_socket_name is not None:
         warnings.warn(
-            "DeprecationWarning: plasma_store_socket_name is deprecated and will be "
-            "removed. You are not supposed to specify this parameter as it's internal."
+            "plasma_store_socket_name is deprecated and will be removed. You are not "
+            "supposed to specify this parameter as it's internal.",
+            DeprecationWarning,
+            stacklevel=2,
         )
     if raylet_socket_name is not None:
         warnings.warn(
-            "DeprecationWarning: raylet_socket_name is deprecated and will be removed."
-            "You are not supposed to specify this parameter as it's internal."
+            "raylet_socket_nameis deprecated and will be removed. You are not "
+            "supposed to specify this parameter as it's internal.",
+            DeprecationWarning,
+            stacklevel=2,
         )
 
     redirect_output = None if not no_redirect_output else True

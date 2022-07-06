@@ -468,7 +468,7 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
     with warnings.catch_warnings(record=True) as w:
         Foo.options(placement_group=pg, placement_group_bundle_index=0).remote()
     assert any(
-        "DeprecationWarning: placement_group parameter" in str(warning.message)
+        "placement_group parameter is deprecated" in str(warning.message)
         for warning in w
     )
 

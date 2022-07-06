@@ -259,18 +259,24 @@ class RemoteFunction:
         ):
             if placement_group not in ("default", None):
                 warnings.warn(
-                    "DeprecationWarning: placement_group parameter is "
-                    "deprecated. Use scheduling_strategy parameter instead."
+                    "placement_group parameter is deprecated. Use scheduling_strategy "
+                    "parameter instead.",
+                    DeprecationWarning,
+                    stacklevel=4,
                 )
             if placement_group_bundle_index != -1:
                 warnings.warn(
-                    "DeprecationWarning: placement_group_bundle_index is "
-                    "deprecated. Use scheduling_strategy parameter instead."
+                    "placement_group_bundle_index parameter is deprecated. Use "
+                    "scheduling_strategy parameter instead.",
+                    DeprecationWarning,
+                    stacklevel=4,
                 )
             if placement_group_capture_child_tasks:
                 warnings.warn(
-                    "DeprecationWarning: placement_group_capture_child_tasks is "
-                    "deprecated. Use scheduling_strategy parameter instead."
+                    "placement_group_capture_child_tasks parameter is deprecated. Use "
+                    "scheduling_strategy parameter instead.",
+                    DeprecationWarning,
+                    stacklevel=4,
                 )
 
         resources = ray._private.utils.resources_from_ray_options(task_options)
