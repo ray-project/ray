@@ -1,35 +1,32 @@
-import asyncio
 import logging
 import time
-from typing import Set, List, Tuple, Optional, TYPE_CHECKING, Dict, Any
+from typing import Set, List, Tuple, Optional, Dict, Any
 import uuid
 
 import ray
+from ray.dag import DAGNode, DAGInputData
+
 from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
 from ray.workflow.common import (
-    Workflow,
     WorkflowStatus,
-    StepType,
     WorkflowNotFoundError,
     validate_user_metadata,
-    asyncio_run,
 )
-from ray.workflow.step_executor import commit_step
 from ray.workflow.workflow_access import (
-    flatten_workflow_output,
     get_or_create_management_actor,
     get_management_actor,
+    load_step_output_from_storage,
 )
+from ray.workflow.workflow_state_from_dag import workflow_state_from_dag
 
-if TYPE_CHECKING:
-    from ray.workflow.step_executor import WorkflowExecutionResult
 
 logger = logging.getLogger(__name__)
 
 
 def run(
-    entry_workflow: Workflow,
+    dag: DAGNode,
+    dag_inputs: DAGInputData,
     workflow_id: Optional[str] = None,
     metadata: Optional[Dict] = None,
 ) -> ray.ObjectRef:
@@ -44,43 +41,37 @@ def run(
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
-    step_type = entry_workflow.data.step_options.step_type
 
-    logger.info(f'Workflow job created. [id="{workflow_id}"]. Type: {step_type}.')
+    state = workflow_state_from_dag(dag, dag_inputs, workflow_id)
+    logger.info(f'Workflow job created. [id="{workflow_id}"].')
 
-    with workflow_context.workflow_step_context(workflow_id):
+    context = workflow_context.WorkflowStepContext(workflow_id=workflow_id)
+    with workflow_context.workflow_step_context(context):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
         ws.save_workflow_user_metadata(metadata)
 
-        wf_exists = True
+        job_id = ray.get_runtime_context().job_id.hex()
+
         try:
             ws.get_entrypoint_step_id()
+            wf_exists = True
         except Exception:
+            # The workflow does not exist. We must checkpoint entry workflow.
+            ws.save_workflow_execution_state("", state)
             wf_exists = False
-
-        # "Is growing" means we could adding steps to the (top-level)
-        # workflow to grow the workflow dynamically at runtime.
-        is_growing = step_type not in (StepType.FUNCTION, StepType.WAIT)
-
-        # We only commit for
-        #  - virtual actor tasks: it's dynamic tasks, so we always add
-        #  - it's a new workflow
-        # TODO (yic): follow up with force rerun
-        if is_growing or not wf_exists:
-            # We must checkpoint entry workflow.
-            commit_step(ws, "", entry_workflow, exception=None)
         workflow_manager = get_or_create_management_actor()
-        ignore_existing = is_growing
-        # NOTE: It is important to 'ray.get' the returned output. This
-        # ensures caller of 'run()' holds the reference to the workflow
-        # result. Otherwise if the actor removes the reference of the
-        # workflow output, the caller may fail to resolve the result.
-        job_id = ray.get_runtime_context().job_id.hex()
-        result: "WorkflowExecutionResult" = ray.get(
-            workflow_manager.run_or_resume.remote(job_id, workflow_id, ignore_existing)
+        if ray.get(workflow_manager.is_workflow_running.remote(workflow_id)):
+            raise RuntimeError(f"Workflow '{workflow_id}' is already running.")
+        if wf_exists:
+            return resume(workflow_id)
+        ignore_existing = ws.load_workflow_status() == WorkflowStatus.NONE
+        ray.get(
+            workflow_manager.submit_workflow.remote(
+                workflow_id, state, ignore_existing=ignore_existing
+            )
         )
-        return flatten_workflow_output(workflow_id, result.output)
+        return workflow_manager.execute_workflow.remote(job_id, context)
 
 
 # TODO(suquark): support recovery with ObjectRef inputs.
@@ -88,18 +79,19 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow asynchronously. See "api.resume()" for details."""
     logger.info(f'Resuming workflow [id="{workflow_id}"].')
     workflow_manager = get_or_create_management_actor()
+    if ray.get(workflow_manager.is_workflow_running.remote(workflow_id)):
+        raise RuntimeError(f"Workflow '{workflow_id}' is already running.")
     # NOTE: It is important to 'ray.get' the returned output. This
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
     job_id = ray.get_runtime_context().job_id.hex()
-    result: "WorkflowExecutionResult" = ray.get(
-        workflow_manager.run_or_resume.remote(
-            job_id, workflow_id, ignore_existing=False
-        )
-    )
+
+    context = workflow_context.WorkflowStepContext(workflow_id=workflow_id)
+    ray.get(workflow_manager.reconstruct_workflow.remote(job_id, context))
+    result = workflow_manager.execute_workflow.remote(job_id, context)
     logger.info(f"Workflow job {workflow_id} resumed.")
-    return flatten_workflow_output(workflow_id, result.output)
+    return result
 
 
 def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
@@ -109,6 +101,7 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
     from ray.workflow.api import _ensure_workflow_initialized
 
     _ensure_workflow_initialized()
+
     try:
         workflow_manager = get_management_actor()
     except ValueError as e:
@@ -117,8 +110,17 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
             "actor. The workflow could have already failed. You can use "
             "workflow.resume() to resume the workflow."
         ) from e
-    output = ray.get(workflow_manager.get_output.remote(workflow_id, name))
-    return flatten_workflow_output(workflow_id, output)
+
+    try:
+        # check storage first
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
+        tid = wf_store.inspect_output(name)
+        if tid is not None:
+            return load_step_output_from_storage.remote(workflow_id, name)
+    except ValueError:
+        pass
+
+    return workflow_manager.get_output.remote(workflow_id, name)
 
 
 def cancel(workflow_id: str) -> None:
@@ -180,25 +182,27 @@ def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStat
     # Here we don't have workflow id, so use empty one instead
     store = workflow_storage.get_workflow_storage("")
 
-    exclude_running = False
-    if (
-        WorkflowStatus.RESUMABLE in status_filter
-        and WorkflowStatus.RUNNING not in status_filter
-    ):
-        # Here we have to add "RUNNING" to the status filter, because some "RESUMABLE"
-        # workflows are converted from "RUNNING" workflows below.
-        exclude_running = True
-        status_filter.add(WorkflowStatus.RUNNING)
-    status_from_storage = store.list_workflow(status_filter)
+    # This is the tricky part: the status "RESUMABLE" neither come from
+    # the workflow management actor nor the storage. It is the status where
+    # the storage says it is running but the workflow management actor
+    # is not running it. This usually happened when there was a sudden crash
+    # of the whole Ray runtime or the workflow management actor
+    # (due to cluster etc.). So we includes 'RUNNING' status in the storage
+    # filter to get "RESUMABLE" candidates.
+    storage_status_filter = status_filter.copy()
+    storage_status_filter.add(WorkflowStatus.RUNNING)
+    status_from_storage = store.list_workflow(storage_status_filter)
     ret = []
     for (k, s) in status_from_storage:
         if s == WorkflowStatus.RUNNING:
             if k not in runnings:
                 s = WorkflowStatus.RESUMABLE
-            elif exclude_running:
+            else:
                 continue
         if s in status_filter:
             ret.append((k, s))
+    if WorkflowStatus.RUNNING in status_filter:
+        ret.extend((k, WorkflowStatus.RUNNING) for k in runnings)
     return ret
 
 
@@ -207,22 +211,33 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
     if with_failed:
         filter_set.add(WorkflowStatus.FAILED)
     all_failed = list_all(filter_set)
+
     try:
         workflow_manager = get_management_actor()
     except Exception as e:
         raise RuntimeError("Failed to get management actor") from e
 
-    async def _resume_one(wid: str) -> Tuple[str, Optional[ray.ObjectRef]]:
+    job_id = ray.get_runtime_context().job_id.hex()
+    reconstructed_refs = []
+    reconstructed_workflows = []
+    for wid, _ in all_failed:
+        context = workflow_context.WorkflowStepContext(workflow_id=wid)
+        reconstructed_refs.append(
+            (context, workflow_manager.reconstruct_workflow.remote(job_id, context))
+        )
+    for context, ref in reconstructed_refs:
         try:
-            job_id = ray.get_runtime_context().job_id.hex()
-            result: "WorkflowExecutionResult" = (
-                await workflow_manager.run_or_resume.remote(job_id, wid)
+            ray.get(ref)  # make sure the workflow is already reconstructed
+            reconstructed_workflows.append(
+                (
+                    context.workflow_id,
+                    workflow_manager.execute_workflow.remote(job_id, context),
+                )
             )
-            obj = flatten_workflow_output(wid, result.output)
-            return wid, obj
         except Exception:
-            logger.error(f"Failed to resume workflow {wid}")
-            return (wid, None)
+            # TODO(suquark): Here some workflows got resumed successfully but some
+            #  failed and the user has no idea about this, which is very wired.
+            # Maybe we should raise an exception here instead?
+            logger.error(f"Failed to resume workflow {context.workflow_id}")
 
-    ret = asyncio_run(asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed]))
-    return [(wid, obj) for (wid, obj) in ret if obj is not None]
+    return reconstructed_workflows

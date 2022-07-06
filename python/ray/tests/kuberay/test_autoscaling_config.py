@@ -1,3 +1,4 @@
+import copy
 from pathlib import Path
 import requests
 from typing import Any, Dict, Optional
@@ -10,20 +11,30 @@ import yaml
 from ray.autoscaler._private.kuberay.autoscaling_config import (
     _derive_autoscaling_config_from_ray_cr,
     AutoscalingConfigProducer,
+    _round_up_k8s_quantity,
 )
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
 
 
 def _get_basic_ray_cr() -> dict:
-    """Returns the example Ray CR included in the Ray documentation."""
+    """Returns the example Ray CR included in the Ray documentation,
+    modified to include a GPU worker group.
+    """
     cr_path = str(
         Path(__file__).resolve().parents[2]
         / "autoscaler"
         / "kuberay"
         / "ray-cluster.complete.yaml"
     )
-    return yaml.safe_load(open(cr_path).read())
+    config = yaml.safe_load(open(cr_path).read())
+    gpu_group = copy.deepcopy(config["spec"]["workerGroupSpecs"][0])
+    gpu_group["groupName"] = "gpu-group"
+    gpu_group["template"]["spec"]["containers"][0]["resources"]["limits"].setdefault(
+        "nvidia.com/gpu", 3
+    )
+    config["spec"]["workerGroupSpecs"].append(gpu_group)
+    return config
 
 
 def _get_basic_autoscaling_config() -> dict:
@@ -44,6 +55,7 @@ def _get_basic_autoscaling_config() -> dict:
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
+                    "memory": 1000000000,
                     "Custom1": 1,
                     "Custom2": 5,
                 },
@@ -54,8 +66,22 @@ def _get_basic_autoscaling_config() -> dict:
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
+                    "memory": 536870912,
                     "Custom2": 5,
                     "Custom3": 1,
+                },
+            },
+            # Same as "small-group" with a GPU entry added.
+            "gpu-group": {
+                "max_workers": 300,
+                "min_workers": 1,
+                "node_config": {},
+                "resources": {
+                    "CPU": 1,
+                    "memory": 536870912,
+                    "Custom2": 5,
+                    "Custom3": 1,
+                    "GPU": 3,
                 },
             },
         },
@@ -69,7 +95,7 @@ def _get_basic_autoscaling_config() -> dict:
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 5,
         "initialization_commands": [],
-        "max_workers": 300,
+        "max_workers": 600,
         "setup_commands": [],
         "upscaling_speed": 1,
         "worker_nodes": {},
@@ -99,19 +125,25 @@ def _get_no_cpu_error() -> str:
     )
 
 
-def _get_ray_cr_memory_and_gpu() -> dict:
-    """CR with memory and gpu rayStartParams."""
+def _get_ray_cr_with_overrides() -> dict:
+    """CR with memory, cpu, and gpu overrides from rayStartParams."""
     cr = _get_basic_ray_cr()
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["memory"] = "300000000"
-    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-gpus"] = "1"
+    # num-gpus rayStartParam with no gpus in container limits
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-gpus"] = "100"
+    # num-gpus rayStartParam overriding gpus in container limits
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"]["num-gpus"] = "100"
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-cpus"] = "100"
     return cr
 
 
-def _get_autoscaling_config_memory_and_gpu() -> dict:
+def _get_autoscaling_config_with_overrides() -> dict:
     """Autoscaling config with memory and gpu annotations."""
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["small-group"]["resources"]["memory"] = 300000000
-    config["available_node_types"]["small-group"]["resources"]["GPU"] = 1
+    config["available_node_types"]["small-group"]["resources"]["GPU"] = 100
+    config["available_node_types"]["small-group"]["resources"]["CPU"] = 100
+    config["available_node_types"]["gpu-group"]["resources"]["GPU"] = 100
     return config
 
 
@@ -151,6 +183,21 @@ def _get_autoscaling_config_with_options() -> dict:
     return config
 
 
+@pytest.mark.parametrize(
+    "input,output",
+    [
+        # There's no particular discipline to these test cases.
+        ("100m", 1),
+        ("15001m", 16),
+        ("2", 2),
+        ("100Mi", 104857600),
+        ("1G", 1000000000),
+    ],
+)
+def test_resource_quantity(input: str, output: int):
+    assert _round_up_k8s_quantity(input) == output, output
+
+
 PARAM_ARGS = ",".join(
     [
         "ray_cr_in",
@@ -182,20 +229,12 @@ TEST_DATA = (
             id="no-cpu-error",
         ),
         pytest.param(
-            _get_ray_cr_memory_and_gpu(),
-            _get_autoscaling_config_memory_and_gpu(),
+            _get_ray_cr_with_overrides(),
+            _get_autoscaling_config_with_overrides(),
             None,
             None,
             None,
-            id="memory-and-gpu",
-        ),
-        pytest.param(
-            _get_ray_cr_missing_gpu_arg(),
-            _get_basic_autoscaling_config(),
-            None,
-            None,
-            _get_gpu_complaint(),
-            id="gpu-complaint",
+            id="overrides",
         ),
         pytest.param(
             _get_ray_cr_with_autoscaler_options(),
@@ -239,7 +278,8 @@ def test_cr_image_consistency():
     cr = _get_basic_ray_cr()
 
     group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
-    assert len(group_specs) == 2
+    # Head, CPU group, GPU group.
+    assert len(group_specs) == 3
 
     ray_containers = [
         group_spec["template"]["spec"]["containers"][0] for group_spec in group_specs

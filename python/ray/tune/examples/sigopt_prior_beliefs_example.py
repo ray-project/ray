@@ -7,6 +7,7 @@ import sys
 
 import numpy as np
 from ray import tune
+from ray.air import session
 
 from ray.tune.search.sigopt import SigOptSearch
 
@@ -34,7 +35,7 @@ def easy_objective(config):
         w3 = 1 - total
 
     average, std = evaluate(w1, w2, w3)
-    tune.report(average=average, std=std)
+    session.report({"average": average, "std": std})
 
 
 if __name__ == "__main__":

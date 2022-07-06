@@ -27,7 +27,7 @@ def foo(x):
 
 if __name__ == "__main__":
     ray.init()
-    output = workflow.create(foo.bind(0)).run_async(workflow_id="driver_terminated")
+    output = workflow.run_async(foo.bind(0), workflow_id="driver_terminated")
     time.sleep({})
 """
 
