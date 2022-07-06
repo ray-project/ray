@@ -423,7 +423,7 @@ def debug(address):
 @click.option(
     "--dashboard-agent-listen-port",
     type=int,
-    default=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+    default=0,
     help="the port for dashboard agents to listen for http on.",
 )
 @click.option(

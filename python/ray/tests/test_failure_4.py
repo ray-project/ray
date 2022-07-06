@@ -478,11 +478,11 @@ ray.get(task.remote(), timeout=3)
         # make sure log is correct
         assert (
             "The process is still alive, probably it's hanging during start"
-        ) in e.value.output
+        ) in e.value.output.decode()
         # worker will be killed so it won't try to register to raylet
         assert (
             "Received a register request from an unknown worker shim process"
-        ) not in e.value.output
+        ) not in e.value.output.decode()
 
 
 def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
