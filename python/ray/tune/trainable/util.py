@@ -17,24 +17,29 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
+_TUNE_METADATA_FILENAME = ".tune_metadata"
+
+
 @DeveloperAPI
 class TrainableUtil:
     @staticmethod
     def write_metadata(checkpoint_dir: str, metadata: Dict) -> None:
-        with open(os.path.join(checkpoint_dir, ".tune_metadata"), "wb") as f:
+        with open(os.path.join(checkpoint_dir, _TUNE_METADATA_FILENAME), "wb") as f:
             pickle.dump(metadata, f)
 
     @staticmethod
     def load_metadata(checkpoint_dir: str) -> Dict:
-        with open(os.path.join(checkpoint_dir, ".tune_metadata"), "rb") as f:
+        with open(os.path.join(checkpoint_dir, _TUNE_METADATA_FILENAME), "rb") as f:
             return pickle.load(f)
 
     @staticmethod
     def load_checkpoint_metadata(checkpoint_path: str) -> Optional[Dict]:
-        metadata_path = os.path.join(checkpoint_path, ".tune_metadata")
+        metadata_path = os.path.join(checkpoint_path, _TUNE_METADATA_FILENAME)
         if not os.path.exists(metadata_path):
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-            metadatas = glob.glob(f"{checkpoint_dir}/**/.tune_metadata", recursive=True)
+            metadatas = glob.glob(
+                f"{checkpoint_dir}/**/{_TUNE_METADATA_FILENAME}", recursive=True
+            )
             if not metadatas:
                 return None
             metadata_path = metadatas[0]
@@ -154,12 +159,12 @@ class TrainableUtil:
                 continue
 
             metadata_file = glob.glob(
-                os.path.join(glob.escape(chkpt_dir), "*.tune_metadata")
+                os.path.join(glob.escape(chkpt_dir), f"*{_TUNE_METADATA_FILENAME}")
             )
             # glob.glob: filenames starting with a dot are special cases
             # that are not matched by '*' and '?' patterns.
             metadata_file += glob.glob(
-                os.path.join(glob.escape(chkpt_dir), ".tune_metadata")
+                os.path.join(glob.escape(chkpt_dir), _TUNE_METADATA_FILENAME)
             )
             metadata_file = list(set(metadata_file))  # avoid duplication
             if len(metadata_file) != 1:
@@ -176,7 +181,7 @@ class TrainableUtil:
                 logger.warning(f"Could not read metadata from checkpoint: {e}")
                 metadata = {}
 
-            chkpt_path = metadata_file[: -len(".tune_metadata")]
+            chkpt_path = metadata_file[: -len(_TUNE_METADATA_FILENAME)]
             chkpt_iter = metadata.get("iteration", -1)
             iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
 

@@ -605,12 +605,26 @@ class Trainable:
         )
 
         if saved_as_dict:
-            checkpoint_dict = Checkpoint.from_directory(checkpoint_path).to_dict()
-            checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
+            # We try to load the checkpoint from the metadata file first.
+            # If this fails (because the metadata file does not exist), we
+            # deserialize the checkpoint and load the metadata instead.
+            # This avoids double deserialization if save_to_object was used.
+            try:
+                metadata = TrainableUtil.load_metadata(checkpoint_path)
+            except OSError as e:
+                checkpoint_dict = Checkpoint.from_directory(checkpoint_path).to_dict()
+                checkpoint_dict.update(dict(tune_checkpoint_path=checkpoint_path))
 
-            metadata = checkpoint_dict.pop(_METADATA_KEY, {})
+                metadata = checkpoint_dict.pop(_METADATA_KEY, {})
 
-            to_load = checkpoint_dict
+                if not metadata:
+                    raise RuntimeError(
+                        f"Could not load tune metadata when loading from dict "
+                        f"checkpoint: Metadata file not found. Please report this "
+                        f"issue to GitHub: https://github.com/ray-project/ray/issues"
+                    ) from e
+
+            to_load = checkpoint_path
         else:
             metadata = TrainableUtil.load_metadata(checkpoint_path)
 

@@ -1,11 +1,15 @@
 import json
 import os
+import tempfile
 from typing import Dict, Union
 
 import pytest
 
 import ray
 from ray import tune
+from ray.air import session, Checkpoint
+from ray.tune import Trainable
+from ray.tune.trainable import wrap_function
 
 
 @pytest.fixture
@@ -52,8 +56,21 @@ class SavingTrainable(tune.Trainable):
             assert checkpoint.endswith("subdir/checkpoint.pkl")
 
 
+def function_trainable_dict(config):
+    session.report(
+        {"metric": 2}, checkpoint=Checkpoint.from_dict({"checkpoint_data": 3})
+    )
+
+
+def function_trainable_directory(config):
+    tmpdir = tempfile.mkdtemp("checkpoint_test")
+    with open(os.path.join(tmpdir, "data.json"), "w") as f:
+        json.dump({"checkpoint_data": 5}, f)
+    session.report({"metric": 4}, checkpoint=Checkpoint.from_directory(tmpdir))
+
+
 @pytest.mark.parametrize("return_type", ["object", "root", "subdir", "checkpoint"])
-def test_save_load_checkpoint_path(ray_start_2_cpus, return_type):
+def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type):
     trainable = ray.remote(SavingTrainable).remote(return_type=return_type)
 
     saving_future = trainable.save.remote()
@@ -67,8 +84,44 @@ def test_save_load_checkpoint_path(ray_start_2_cpus, return_type):
 
 
 @pytest.mark.parametrize("return_type", ["object", "root", "subdir", "checkpoint"])
-def test_save_load_checkpoint_object(ray_start_2_cpus, return_type):
+def test_save_load_checkpoint_object_class(ray_start_2_cpus, return_type):
     trainable = ray.remote(SavingTrainable).remote(return_type=return_type)
+
+    saving_future = trainable.save_to_object.remote()
+
+    # Check for errors
+    ray.get(saving_future)
+
+    restoring_future = trainable.restore_from_object.remote(saving_future)
+
+    ray.get(restoring_future)
+
+
+@pytest.mark.parametrize(
+    "fn_trainable", [function_trainable_dict, function_trainable_directory]
+)
+def test_save_load_checkpoint_path_fn(ray_start_2_cpus, fn_trainable):
+    trainable_cls = wrap_function(fn_trainable)
+    trainable = ray.remote(trainable_cls).remote()
+    ray.get(trainable.train.remote())
+
+    saving_future = trainable.save.remote()
+
+    # Check for errors
+    ray.get(saving_future)
+
+    restoring_future = trainable.restore.remote(saving_future)
+
+    ray.get(restoring_future)
+
+
+@pytest.mark.parametrize(
+    "fn_trainable", [function_trainable_dict, function_trainable_directory]
+)
+def test_save_load_checkpoint_object_fn(ray_start_2_cpus, fn_trainable):
+    trainable_cls = wrap_function(fn_trainable)
+    trainable = ray.remote(trainable_cls).remote()
+    ray.get(trainable.train.remote())
 
     saving_future = trainable.save_to_object.remote()
 
