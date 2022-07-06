@@ -34,6 +34,7 @@
       --test_env=CI
       --test_env=RAY_CI_POST_WHEEL_TESTS=True
       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
+    - cat /tmp/ray/session_*/logs/*
 
 - label: ":ferris_wheel: Debug Wheels"
   conditions:

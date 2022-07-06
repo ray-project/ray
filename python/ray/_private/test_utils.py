@@ -213,21 +213,40 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     Returns:
         The script's output.
     """
+    ON_POSIX = 'posix' in sys.builtin_module_names
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=env,
+        bufsize=1,
+        close_fds=ON_POSIX
     )
+    from subprocess import PIPE, Popen
+    from threading  import Thread
+
+    out = ""
+    def catch_output(stdout):
+        for line in iter(stdout.readline, b''):
+            decode_line = ray._private.utils.decode(line, encode_type=encode)
+            nonlocal out
+            out += decode_line
+            print("[script]", decode_line)
+    t = Thread(target=catch_output, args=(proc.stdout,))
+    t.daemon = True # thread dies with the program
+    t.start()
+
     with proc:
-        output = proc.communicate(driver_script.encode(encoding=encode))[0]
+        proc.stdin.write(driver_script.encode(encoding=encode))
+        proc.stdin.close()
+        proc.wait()
+        t.join()
         if proc.returncode:
-            print(ray._private.utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
-                proc.returncode, proc.args, output, proc.stderr
+                proc.returncode, proc.args, out, proc.stderr
             )
-        out = ray._private.utils.decode(output, encode_type=encode)
+
     return out
 
 

@@ -485,7 +485,7 @@ py_test(
     name = "conda_env",
     size = "medium",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "post_wheel_build", "team:serve", "no_main"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 

@@ -295,7 +295,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "post_wheel_build", "team:serve"],
+  tags = ["exclusive", "team:serve"],
   deps = ["//:ray_lib"],
 )
 

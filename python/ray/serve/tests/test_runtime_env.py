@@ -134,30 +134,32 @@ def test_working_dir_scale_up_in_new_driver(ray_start, tmp_dir, use_ray_client):
 
     driver1 = """
 import os
-
+print("driver1:1")
 import ray
 from ray import serve
-
+print("driver1:2")
 job_config = ray.job_config.JobConfig(runtime_env={{"working_dir": "."}})
 if {use_ray_client}:
     ray.util.connect("{client_addr}", namespace="serve", job_config=job_config)
 else:
     ray.init(address="auto", namespace="serve", job_config=job_config)
-
+print("driver1:3")
 serve.start(detached=True)
-
+print("driver1:4")
 @serve.deployment(version="1")
 class Test:
     def __call__(self, *args):
         return os.getpid(), open("hello").read()
 
 Test.deploy()
+print("driver1:5")
 handle = Test.get_handle()
+print("driver1:6")
 assert ray.get(handle.remote())[1] == "world"
 """.format(
         use_ray_client=use_ray_client, client_addr=ray_start
     )
-
+    print("test:1")
     run_string_as_driver(driver1)
 
     with open("hello", "w") as f:
@@ -165,6 +167,7 @@ assert ray.get(handle.remote())[1] == "world"
 
     driver2 = """
 import ray
+print("driver2:1")
 from ray import serve
 
 job_config = ray.job_config.JobConfig(runtime_env={{"working_dir": "."}})
@@ -172,24 +175,30 @@ if {use_ray_client}:
     ray.util.connect("{client_addr}", namespace="serve", job_config=job_config)
 else:
     ray.init(address="auto", namespace="serve", job_config=job_config)
-
+print("driver2:2")
 serve.start(detached=True)
-
+print("driver2:3")
 Test = serve.get_deployment("Test")
+print("driver2:4")
 Test.options(num_replicas=2).deploy()
+print("driver2:5")
 handle = Test.get_handle()
+print("driver2:6")
 results = ray.get([handle.remote() for _ in range(1000)])
+print("driver2:7")
 print(set(results))
 assert all(r[1] == "world" for r in results), (
     "results should still come from the first env")
 assert len(set(r[0] for r in results)) == 2, (
     "make sure there are two replicas")
+print("driver2:8")
 Test.delete()
 """.format(
         use_ray_client=use_ray_client, client_addr=ray_start
     )
-
+    print("test:2")
     run_string_as_driver(driver2)
+    print("test:3")
 
 
 if __name__ == "__main__":
