@@ -716,25 +716,29 @@ class ActorClass:
         placement_group_capture_child_tasks = actor_options[
             "placement_group_capture_child_tasks"
         ]
-        if placement_group != "default":
-            warnings.warn(
-                "DeprecationWarning: placement_group parameter is "
-                "deprecated. Use scheduling_strategy parameter instead."
-            )
-        if placement_group_bundle_index != -1:
-            warnings.warn(
-                "DeprecationWarning: placement_group_bundle_index is "
-                "deprecated. Use scheduling_strategy parameter instead."
-            )
-        if placement_group_capture_child_tasks:
-            warnings.warn(
-                "DeprecationWarning: placement_group_capture_child_tasks is "
-                "deprecated. Use scheduling_strategy parameter instead."
-            )
         scheduling_strategy = actor_options["scheduling_strategy"]
         max_restarts = actor_options["max_restarts"]
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
+
+        if scheduling_strategy is None or not isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        ):
+            if placement_group not in ("default", None):
+                warnings.warn(
+                    "DeprecationWarning: placement_group parameter is "
+                    "deprecated. Use scheduling_strategy parameter instead."
+                )
+            if placement_group_bundle_index != -1:
+                warnings.warn(
+                    "DeprecationWarning: placement_group_bundle_index is "
+                    "deprecated. Use scheduling_strategy parameter instead."
+                )
+            if placement_group_capture_child_tasks:
+                warnings.warn(
+                    "DeprecationWarning: placement_group_capture_child_tasks is "
+                    "deprecated. Use scheduling_strategy parameter instead."
+                )
 
         worker = ray._private.worker.global_worker
         worker.check_connected()

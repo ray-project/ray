@@ -246,7 +246,8 @@ class RuntimeContext(object):
         Returns:
             The current placement group id in hex format of this worker.
         """
-        return self.worker.placement_group_id.hex()
+        pg_id = self.worker.placement_group_id
+        return pg_id.hex() if not pg_id.is_nil() else None
 
     @property
     def should_capture_child_tasks_in_placement_group(self):

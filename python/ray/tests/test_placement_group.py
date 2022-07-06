@@ -1,4 +1,5 @@
 import sys
+import warnings
 
 import pytest
 
@@ -6,6 +7,7 @@ import ray
 import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def are_pairwise_unique(g):
@@ -445,6 +447,38 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
         assert "CPU_group_" in list(resources.keys())[0], resources
 
         placement_group_assert_no_leak([g1])
+
+
+def test_placement_group_scheduling_warning(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def foo():
+            pass
+
+    pg = ray.util.placement_group(
+        name="bar",
+        strategy="PACK",
+        bundles=[
+            {"CPU": 1, "GPU": 0},
+        ],
+    )
+    ray.get(pg.ready())
+
+    # Warning on using deprecated parameters.
+    with warnings.catch_warnings(record=True) as w:
+        Foo.options(placement_group=pg, placement_group_bundle_index=0).remote()
+    assert any(
+        "DeprecationWarning: placement_group parameter" in str(warning.message)
+        for warning in w
+    )
+
+    # No warning when scheduling_strategy is specified.
+    with warnings.catch_warnings(record=True) as w:
+        Foo.options(
+            placement_group_bundle_index=0,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+        ).remote()
+    assert not w
 
 
 if __name__ == "__main__":

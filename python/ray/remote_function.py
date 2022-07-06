@@ -249,25 +249,29 @@ class RemoteFunction:
         placement_group_capture_child_tasks = task_options[
             "placement_group_capture_child_tasks"
         ]
-        if placement_group != "default":
-            warnings.warn(
-                "DeprecationWarning: placement_group parameter is "
-                "deprecated. Use scheduling_strategy parameter instead."
-            )
-        if placement_group_bundle_index != -1:
-            warnings.warn(
-                "DeprecationWarning: placement_group_bundle_index is "
-                "deprecated. Use scheduling_strategy parameter instead."
-            )
-        if placement_group_capture_child_tasks:
-            warnings.warn(
-                "DeprecationWarning: placement_group_capture_child_tasks is "
-                "deprecated. Use scheduling_strategy parameter instead."
-            )
         scheduling_strategy = task_options["scheduling_strategy"]
         num_returns = task_options["num_returns"]
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
+
+        if scheduling_strategy is None or not isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        ):
+            if placement_group not in ("default", None):
+                warnings.warn(
+                    "DeprecationWarning: placement_group parameter is "
+                    "deprecated. Use scheduling_strategy parameter instead."
+                )
+            if placement_group_bundle_index != -1:
+                warnings.warn(
+                    "DeprecationWarning: placement_group_bundle_index is "
+                    "deprecated. Use scheduling_strategy parameter instead."
+                )
+            if placement_group_capture_child_tasks:
+                warnings.warn(
+                    "DeprecationWarning: placement_group_capture_child_tasks is "
+                    "deprecated. Use scheduling_strategy parameter instead."
+                )
 
         resources = ray._private.utils.resources_from_ray_options(task_options)
 
