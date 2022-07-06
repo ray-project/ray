@@ -184,7 +184,7 @@ struct PlacementGroupCreationOptions {
   /// Whether to keep the placement group persistent after its creator dead.
   const bool is_detached = false;
   /// The maximum fraction of CPU cores this placement group can take up on each node.
-  const double max_cpu_fraction_per_node = false;
+  const double max_cpu_fraction_per_node;
 };
 
 class ObjectLocation {

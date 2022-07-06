@@ -122,7 +122,7 @@ std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
 
   // Score the nodes.
   auto cpu_id = ResourceID::CPU();
-  double cpu_request = required_resources.Get(cpu_id).Double();
+  auto cpu_request = required_resources.Get(cpu_id).Double();
   for (const auto &[node_id, node] : candidate_nodes) {
     const auto &node_resources = node->GetLocalView();
     if (node_resources.available.Get(cpu_id).Double() - cpu_request <
