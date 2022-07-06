@@ -6,7 +6,6 @@ import ray
 from ray.rllib.algorithms.crr import CRRConfig
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
@@ -36,9 +35,10 @@ class TestCRR(unittest.TestCase):
         # Will use the Json Reader in this example until we convert over the example
         # files over to Parquet, since the dataset json reader cannot handle large
         # block sizes.
-        input_reader = lambda ioctx: JsonReader(
+        def input_reading_fn(ioctx):
+            return JsonReader(
             ioctx.config["input_config"]["paths"], ioctx
-        )
+            )
         input_config = {"paths": data_file}
 
         config = (
@@ -46,7 +46,7 @@ class TestCRR(unittest.TestCase):
             .environment(env="Pendulum-v1", clip_actions=True)
             .framework("torch")
             .offline_data(
-                input_=input_reader,
+                input_=input_reading_fn,
                 input_config=input_config,
                 actions_in_input_normalized=True,
             )

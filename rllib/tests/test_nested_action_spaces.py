@@ -107,7 +107,8 @@ class NestedActionSpacesTest(unittest.TestCase):
                     # Test, whether offline data can be properly read by
                     # BC, configured accordingly.
 
-                    # doing this for backwards compatibility until we move to parquet as default output
+                    # doing this for backwards compatibility until we move to parquet
+                    # as default output
                     config["input"] = lambda ioctx: JsonReader(
                         ioctx.config["input_config"]["paths"], ioctx
                     )
