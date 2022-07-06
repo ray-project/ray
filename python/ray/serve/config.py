@@ -84,7 +84,7 @@ class AutoscalingConfig(BaseModel):
 
 
 def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
-    """From Serve client API's perspective, decide whehter pickling is needed."""
+    """From Serve client API's perspective, decide whether pickling is needed."""
     if deployment_language == DeploymentLanguage.PYTHON and not is_cross_language:
         # Python client deploying Python replicas.
         return True
