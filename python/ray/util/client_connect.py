@@ -36,7 +36,10 @@ def connect(
     if ray.is_connected():
         ignore_reinit_error = ray_init_kwargs.get("ignore_reinit_error", False)
         if ignore_reinit_error:
-            logger.info("Calling ray.init() again after it has already been called.")
+            logger.info(
+                "Calling ray.init() again after it has already been called. "
+                "Reusing the existing Ray client connection."
+            )
             return ray.get_context().client_worker.connection_info()
         raise RuntimeError(
             "Ray Client is already connected. Maybe you called "
