@@ -130,7 +130,7 @@ trainer = TorchTrainer(
     datasets={"train": train_dataset},
     preprocessor=preprocessor,
 )
-
+# Execute training.
 result = trainer.fit()
 print(f"Last result: {result.metrics}")
 # Last result: {'loss': 0.6559339960416158, ...}
@@ -152,7 +152,10 @@ tuner = Tuner(
     param_space=param_space,
     tune_config=TuneConfig(num_samples=5, metric=metric, mode="min"),
 )
+# Execute tuning.
 result_grid = tuner.fit()
+
+# Fetch the best result.
 best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
 # Best Result: Result(metrics={'loss': 0.278409322102863, ...})

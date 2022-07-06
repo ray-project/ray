@@ -177,7 +177,10 @@ tuner = Tuner(
     param_space=param_space,
     tune_config=TuneConfig(num_samples=5, metric=metric, mode="min"),
 )
+# Execute tuning.
 result_grid = tuner.fit()
+
+# Fetch the best result.
 best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
 # Best Result: Result(metrics={'loss': 4.997025489807129, ...)
