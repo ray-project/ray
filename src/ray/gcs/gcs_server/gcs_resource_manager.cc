@@ -93,7 +93,8 @@ void GcsResourceManager::HandleGetAllAvailableResources(
       if (using_resource_reports) {
         auto resource_iter =
             node_resource_usages_[node_id].resources_available().find(resource_name);
-        if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
+        if (resource_iter != node_resource_usages_[node_id].resources_available().end() &&
+            resource_iter->second > 0) {
           resource.mutable_resources_available()->insert(
               {resource_name, resource_iter->second});
         }
