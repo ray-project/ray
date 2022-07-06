@@ -174,7 +174,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options) {
     PyFunctionDescriptor functionDescriptor =
         new PyFunctionDescriptor(pyFunction.moduleName, "", pyFunction.functionName);
-    // Python functions always have a return value, even if it's `None`.
     return callNormalFunction(
         functionDescriptor, args, /*returnType=*/ Optional.of(pyFunction.returnType), options);
   }
@@ -183,7 +182,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public ObjectRef call(CppFunction cppFunction, Object[] args, CallOptions options) {
     CppFunctionDescriptor functionDescriptor =
         new CppFunctionDescriptor(cppFunction.functionName, "JAVA", "");
-    // Python functions always have a return value, even if it's `None`.
     return callNormalFunction(
         functionDescriptor, args, /*returnType=*/ Optional.of(cppFunction.returnType), options);
   }
@@ -202,7 +200,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     PyFunctionDescriptor functionDescriptor =
         new PyFunctionDescriptor(
             pyActor.getModuleName(), pyActor.getClassName(), pyActorMethod.methodName);
-    // Python functions always have a return value, even if it's `None`.
     return callActorFunction(
         pyActor,
         functionDescriptor,

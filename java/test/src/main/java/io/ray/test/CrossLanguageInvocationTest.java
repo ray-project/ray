@@ -174,13 +174,17 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   @Test
   public void testCallingCppFunction() {
+    // Test calling a simple C++ function.
     ObjectRef<Integer> res = Ray.task(CppFunction.of("Plus", Integer.class), 1, 2).remote();
     Assert.assertEquals(res.get(), Integer.valueOf(3));
+    // Test calling a C++ function that returns a large object.
     ObjectRef<int[]> res1 =
         Ray.task(CppFunction.of("ReturnLargeArray", int[].class), new int[100000]).remote();
     Assert.assertEquals(res1.get().length, 100000);
+    // Test calling a C++ function with String type input/output.
     ObjectRef<String> res2 = Ray.task(CppFunction.of("Echo", String.class), "CallCpp").remote();
     Assert.assertEquals(res2.get(), "CallCpp");
+    // Test calling a C++ function that throws an exception.
     Assert.expectThrows(
         Exception.class,
         () -> {
