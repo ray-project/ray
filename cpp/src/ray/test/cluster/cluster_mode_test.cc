@@ -480,15 +480,14 @@ TEST(RayClusterModeTest, TaskWithPlacementGroup) {
 }
 
 TEST(RayClusterModeTest, NamespaceTest) {
-  auto placement_group = CreateSimplePlacementGroup("first_placement_group");
-  EXPECT_TRUE(placement_group.Wait(10));
-
-  auto r = ray::Task(Return1)
-               .SetResources({{"CPU", 1.0}})
-               .SetPlacementGroup(placement_group, 0)
-               .Remote();
-  EXPECT_EQ(*r.Get(), 1);
-  ray::RemovePlacementGroup(placement_group.GetID());
+  std::string actor_name = "named_actor";
+  ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                                        .SetName(actor_name, "isolated_ns")
+                                        .Remote();
+  auto initialized_obj = actor.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj.Get());
+  auto actor_optional = ray::GetActor<Counter>(actor_name);
+  EXPECT_TRUE(!actor_optional);
 }
 
 int main(int argc, char **argv) {
