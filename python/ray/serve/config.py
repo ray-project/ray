@@ -89,7 +89,8 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         # Python client deploying Python replicas.
         return True
     elif deployment_language == DeploymentLanguage.JAVA and is_cross_language:
-        # Python client deploying Java replicas, using xlang serialization via cloudpickle.
+        # Python client deploying Java replicas,
+        # using xlang serialization via cloudpickle.
         return True
     else:
         return False
