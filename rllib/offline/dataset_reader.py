@@ -12,7 +12,7 @@ from ray.rllib.offline.json_reader import from_json_data
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
-from typing import List
+from typing import List, Union
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def _unzip_if_needed(paths: List[str], format: str):
 @PublicAPI
 def get_dataset_and_shards(
     config: AlgorithmConfigDict, num_workers: int, local_worker: bool
-) -> (ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]):
+) -> Union[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
     assert config["input"] == "dataset"
     assert (
         "input_config" in config
