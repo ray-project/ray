@@ -23,7 +23,7 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids,
                        int64_t timeout_ms,
                        uint64_t num_required_objects,
                        const WaitCallback &callback) {
-  std::unordered_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
+  absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   RAY_CHECK_EQ(object_id_set.size(), object_ids.size())
       << "Waiting duplicate objects is not allowed. Please make sure all object IDs are "
          "unique before calling `WaitManager::Wait`.";
