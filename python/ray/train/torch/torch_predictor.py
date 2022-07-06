@@ -44,7 +44,7 @@ class TorchPredictor(Predictor):
             # Ensure input tensor and model live on GPU for GPU inference
             self.model.to(torch.device("cuda"))
 
-        if use_gpu is False and torch.cuda.device_count() > 0:
+        if not use_gpu and torch.cuda.device_count() > 0:
             logger.warning(
                 "You have `use_gpu` as False but there are "
                 f"{torch.cuda.device_count()} GPUs detected on host where "

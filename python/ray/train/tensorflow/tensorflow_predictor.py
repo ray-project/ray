@@ -51,7 +51,7 @@ class TensorflowPredictor(Predictor):
         else:
             self.model = self.model_definition()
 
-        if use_gpu is False and len(get_tf_gpu_devices()) > 0:
+        if not use_gpu and len(get_tf_gpu_devices()) > 0:
             logger.warning(
                 "You have `use_gpu` as False but there are "
                 f"{len(get_tf_gpu_devices())} GPUs detected on host where "

@@ -37,7 +37,7 @@ class SklearnPredictor(Predictor):
         self.estimator = estimator
         self.preprocessor = preprocessor
         self.use_gpu = use_gpu
-        if self.use_gpu is True:
+        if self.use_gpu:
             raise ValueError("SklearnPredictor does not support GPU prediction.")
 
     @classmethod
