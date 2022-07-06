@@ -114,6 +114,8 @@ def train_func(config: Dict):
         train.report(loss=loss)
         loss_results.append(loss)
 
+    # return required for backwards compatibility with the old API
+    # TODO(team-ml) clean up and remove return
     return loss_results
 
 

@@ -81,6 +81,7 @@ def train_func(config):
         train.report(**result)
         results.append(result)
     # return required for backwards compatibility with the old API
+    # TODO(team-ml) clean up and remove return
     return results
 
 
