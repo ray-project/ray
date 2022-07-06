@@ -10,8 +10,11 @@ import ray._private.usage.usage_lib as ray_usage_lib
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.utils import async_loop_forever
 from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.dashboard.consts import env_integer
 
 logger = logging.getLogger(__name__)
+
+gcs_query_timeout = lambda: env_integer("GCS_QUERY_TIMEOUT_DEFAULT", 10)
 
 
 class UsageStatsHead(dashboard_utils.DashboardHeadModule):
@@ -100,7 +103,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             total_num_nodes = None
             try:
                 result = await self._state_api_data_source_client.get_all_node_info(
-                    timeout=30
+                    timeout=gcs_query_timeout()
                 )
                 total_num_nodes = len(result.node_info_list)
             except Exception as e:

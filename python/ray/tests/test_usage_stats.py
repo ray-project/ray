@@ -1,3 +1,4 @@
+from asyncio import wait_for
 import json
 import os
 import pathlib
@@ -1075,13 +1076,12 @@ def test_usage_stats_tags(monkeypatch, ray_start_cluster, reset_lib_usage):
         cluster.add_node(num_cpus=3)
         cluster.add_node(num_cpus=3)
 
-        ray.init(address=cluster.address)
+        context = ray.init(address=cluster.address)
 
         """
         Verify the usage_stats.json contains the lib usage.
         """
-        global_node = ray.worker._global_node
-        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+        temp_dir = pathlib.Path(context.address_info["session_dir"])
         wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
 
         def verify():
@@ -1090,6 +1090,34 @@ def test_usage_stats_tags(monkeypatch, ray_start_cluster, reset_lib_usage):
             assert tags == {"key": "val", "key2": "val2"}
             assert num_nodes == 2
             return True
+
+        wait_for_condition(verify)
+
+
+def test_usage_stats_gcs_query_failure(monkeypatch, ray_start_cluster, reset_lib_usage):
+    """Test None data is reported when the GCS query is failed."""
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        m.setenv("GCS_QUERY_TIMEOUT_DEFAULT", "1")
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeInfoGcsService.grpc_server.GetAllNodeInfo=2000000:2000000",
+        )
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=3)
+
+        context = ray.init(address=cluster.address)
+
+        temp_dir = pathlib.Path(context.address_info["session_dir"])
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify():
+            num_nodes = read_file(temp_dir, "usage_stats")["total_num_nodes"]
+            return num_nodes is None
+
+        wait_for_condition(verify)
 
 
 if __name__ == "__main__":
