@@ -185,8 +185,7 @@ def test_failed_and_resumed_workflow(workflow_start_regular, tmp_path):
     assert workflow_metadata_failed["status"] == "FAILED"
 
     error_flag.unlink()
-    ref = workflow.resume(workflow_id)
-    assert ray.get(ref) == 0
+    assert workflow.resume(workflow_id) == 0
 
     workflow_metadata_resumed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_resumed["status"] == "SUCCESSFUL"

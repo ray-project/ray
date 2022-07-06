@@ -204,10 +204,10 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
 
     ray.init(num_cpus=4, storage=storage_uri)
     workflow.init()
-    workflow.resume("workflow")
+    workflow.resume_async("workflow")
     utils.set_global_mark("resume")
 
-    ray.get(workflow.get_output("workflow"))
+    workflow.get_output("workflow")
     assert utils.check_global_mark("second")
 
 
@@ -255,9 +255,9 @@ def test_crash_after_commit(workflow_start_regular_shared):
 
     ray.init(num_cpus=4, storage=storage_uri)
     workflow.init()
-    workflow.resume("workflow")
+    workflow.resume_async("workflow")
 
-    ray.get(workflow.get_output("workflow"))
+    workflow.get_output("workflow")
     assert utils.check_global_mark("second")
 
 

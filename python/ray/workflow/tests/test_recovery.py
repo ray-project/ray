@@ -145,12 +145,10 @@ def test_recovery_simple_1(workflow_start_regular):
     assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
     utils.set_global_mark()
-    output = workflow.resume(workflow_id)
-    assert ray.get(output) == "foo(x)"
+    assert workflow.resume(workflow_id) == "foo(x)"
     utils.unset_global_mark()
     # resume from workflow output checkpoint
-    output = workflow.resume(workflow_id)
-    assert ray.get(output) == "foo(x)"
+    assert workflow.resume(workflow_id) == "foo(x)"
 
 
 def test_recovery_simple_2(workflow_start_regular):
@@ -167,13 +165,11 @@ def test_recovery_simple_2(workflow_start_regular):
     assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
     utils.set_global_mark()
-    output = workflow.resume(workflow_id)
-    assert ray.get(output) == "foo(x)"
+    assert workflow.resume(workflow_id) == "foo(x)"
     utils.unset_global_mark()
     # resume from workflow output checkpoint
 
-    output = workflow.resume(workflow_id)
-    assert ray.get(output) == "foo(x)"
+    assert workflow.resume(workflow_id) == "foo(x)"
 
 
 def test_recovery_simple_3(workflow_start_regular):
@@ -201,12 +197,10 @@ def test_recovery_simple_3(workflow_start_regular):
     assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
     utils.set_global_mark()
-    output = workflow.resume(workflow_id)
-    assert ray.get(output) == "foo(x[append1])[append2]"
+    assert workflow.resume(workflow_id) == "foo(x[append1])[append2]"
     utils.unset_global_mark()
     # resume from workflow output checkpoint
-    output = workflow.resume(workflow_id)
-    assert ray.get(output) == "foo(x[append1])[append2]"
+    assert workflow.resume(workflow_id) == "foo(x[append1])[append2]"
 
 
 def test_recovery_complex(workflow_start_regular):
@@ -245,19 +239,17 @@ def test_recovery_complex(workflow_start_regular):
     assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
     utils.set_global_mark()
-    output = workflow.resume(workflow_id)
     r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
-    assert ray.get(output) == r
+    assert workflow.resume(workflow_id) == r
     utils.unset_global_mark()
     # resume from workflow output checkpoint
-    output = workflow.resume(workflow_id)
     r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
-    assert ray.get(output) == r
+    assert workflow.resume(workflow_id) == r
 
 
 def test_recovery_non_exists_workflow(workflow_start_regular):
     with pytest.raises(WorkflowNotResumableError):
-        ray.get(workflow.resume("this_workflow_id_does_not_exist"))
+        workflow.resume("this_workflow_id_does_not_exist")
 
 
 def test_recovery_cluster_failure(tmp_path, shutdown_only):
@@ -290,7 +282,7 @@ if __name__ == "__main__":
     time.sleep(1)
     ray.init(storage=str(tmp_path))
     workflow.init()
-    assert ray.get(workflow.resume("cluster_failure")) == 20
+    assert workflow.resume("cluster_failure") == 20
     ray.shutdown()
 
 
@@ -360,7 +352,7 @@ def test_resume_different_storage(shutdown_only, tmp_path):
     ray.init(storage=str(tmp_path))
     workflow.init()
     workflow.run(constant.bind(), workflow_id="const")
-    assert ray.get(workflow.resume(workflow_id="const")) == 31416
+    assert workflow.resume(workflow_id="const") == 31416
 
 
 if __name__ == "__main__":

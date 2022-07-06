@@ -48,7 +48,7 @@ def test_checkpoint_dag_recovery_skip(workflow_start_regular_shared):
     utils.set_global_mark()
 
     start = time.time()
-    recovered = ray.get(workflow.resume("checkpoint_skip_recovery"))
+    recovered = workflow.resume("checkpoint_skip_recovery")
     recover_duration_skipped = time.time() - start
     assert np.isclose(recovered, np.arange(SIZE).mean())
 
@@ -71,7 +71,7 @@ def test_checkpoint_dag_recovery_partial(workflow_start_regular_shared):
     utils.set_global_mark()
 
     start = time.time()
-    recovered = ray.get(workflow.resume("checkpoint_partial_recovery"))
+    recovered = workflow.resume("checkpoint_partial_recovery")
     recover_duration_partial = time.time() - start
     assert np.isclose(recovered, np.arange(SIZE).mean())
     print(
@@ -91,7 +91,7 @@ def test_checkpoint_dag_recovery_whole(workflow_start_regular_shared):
     utils.set_global_mark()
 
     start = time.time()
-    recovered = ray.get(workflow.resume("checkpoint_whole_recovery"))
+    recovered = workflow.resume("checkpoint_whole_recovery")
     recover_duration_whole = time.time() - start
     assert np.isclose(recovered, np.arange(SIZE).mean())
 

@@ -160,7 +160,7 @@ def test_run_or_resume_during_running(workflow_start_regular_shared):
     with pytest.raises(RuntimeError):
         workflow.run_async(simple_sequential.bind(), workflow_id="running_workflow")
     with pytest.raises(RuntimeError):
-        workflow.resume(workflow_id="running_workflow")
+        workflow.resume_async(workflow_id="running_workflow")
     assert ray.get(output) == "[source1][append1][append2]"
 
 

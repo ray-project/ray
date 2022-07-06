@@ -116,14 +116,13 @@ To retrieve a workflow result, you can assign ``workflow_id`` when running a wor
 
     assert workflow.run(ret, workflow_id="add_example") == 30
 
-Then workflow results can be retrieved with ``workflow.get_output(workflow_id) -> ObjectRef[T]``.
+Then workflow results can be retrieved with ``workflow.get_output(workflow_id)``.
 If a workflow is not given ``workflow_id``, a random string is set as the ``workflow_id``. To confirm ``workflow_id`` in the situation, call ``ray.workflow.list_all()``.
-
-If the workflow has not yet completed, calling ``ray.get()`` on the returned reference will block until the result is computed. For example:
 
 .. code-block:: python
 
-    assert ray.get(workflow.get_output("add_example")) == 30
+    assert workflow.get_output("add_example") == 30
+    # "workflow.get_output_async" is an asynchronous version
 
 We can retrieve the results for individual workflow tasks too with *named tasks*. A task can be named in two ways:
 
@@ -154,8 +153,8 @@ Once a task is given a name, the result of the task will be retrievable via ``wo
     outer_task = double.options(**workflow.options(name="outer")).bind(inner_task)
     result_ref = workflow.run_async(outer_task, workflow_id="double")
 
-    inner = workflow.get_output(workflow_id, name="inner")
-    outer = workflow.get_output(workflow_id, name="outer")
+    inner = workflow.get_output_async(workflow_id, name="inner")
+    outer = workflow.get_output_async(workflow_id, name="outer")
 
     assert ray.get(inner) == 2
     assert ray.get(outer) == 4
@@ -193,9 +192,9 @@ For example,
         x = simple.options(**workflow.options(name="step")).bind(x)
 
     ret = workflow.run_async(x, workflow_id=workflow_id)
-    outputs = [workflow.get_output(workflow_id, name="step")]
+    outputs = [workflow.get_output_async(workflow_id, name="step")]
     for i in range(1, n):
-        outputs.append(workflow.get_output(workflow_id, name=f"step_{i}"))
+        outputs.append(workflow.get_output_async(workflow_id, name=f"step_{i}"))
     assert ray.get(ret) == n - 1
     assert ray.get(outputs) == list(range(n))
 

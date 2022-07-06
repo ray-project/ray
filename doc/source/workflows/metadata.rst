@@ -133,7 +133,7 @@ be updated whenever a workflow is resumed.
 
     # remove flag to make task success
     error_flag.unlink()
-    ref = workflow.resume(workflow_id)
+    ref = workflow.resume_async(workflow_id)
     assert ray.get(ref) == 0
 
     workflow_metadata_resumed = workflow.get_metadata(workflow_id)

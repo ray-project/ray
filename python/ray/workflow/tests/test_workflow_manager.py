@@ -76,7 +76,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     assert workflow.get_status("0") == "FAILED"
     assert workflow.get_status("1") == "SUCCESSFUL"
     lock.acquire()
-    r = workflow.resume("0")
+    r = workflow.resume_async("0")
     assert workflow.get_status("0") == workflow.RUNNING
     flag_file.unlink()
     lock.release()
@@ -85,7 +85,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
 
     # Test cancel
     lock.acquire()
-    workflow.resume("2")
+    workflow.resume_async("2")
     assert workflow.get_status("2") == workflow.RUNNING
     workflow.cancel("2")
     assert workflow.get_status("2") == workflow.CANCELED
