@@ -173,7 +173,8 @@ class DatasetReader(InputReader):
             print(
                 f"DatasetReader {self._ioctx.worker_index} has {ds.count()}, samples."
             )
-            self._iter = self._dataset.repeat().iter_rows()
+            # TODO: @avnishn make this call seeded.
+            self._iter = self._dataset.repeat().random_shuffle_each_window().iter_rows()
         else:
             self._iter = None
 
