@@ -224,7 +224,6 @@ def test_model_wrapper_reconfigure(serve_instance):
             predictor_cls=predictor_cls,
             checkpoint=uri,
         )
-        m1.reconfigure.bind(additional_config)
         dag = m1.predict.bind(dag_input)
     deployments = build(Ingress.bind(dag))
     for d in deployments:
@@ -233,7 +232,7 @@ def test_model_wrapper_reconfigure(serve_instance):
     resp = requests.post("http://127.0.0.1:8000/ingress", json={"array": [40]})
     print(resp.text)
     resp.raise_for_status()
-    return resp.json() == {"value": [47], "batch_size": 1}
+    return resp.json() == {"value": [45], "batch_size": 1}
 
 
 if __name__ == "__main__":
