@@ -35,8 +35,13 @@ def set_ray_cluster_activity_hook(request):
     ), "Please pass value of RAY_CLUSTER_ACTIVITY_HOOK env var to this fixture"
     old_hook = os.environ.get(RAY_CLUSTER_ACTIVITY_HOOK)
     os.environ[RAY_CLUSTER_ACTIVITY_HOOK] = external_hook
+
     yield external_hook
-    os.environ[RAY_CLUSTER_ACTIVITY_HOOK] = old_hook
+
+    if old_addr is not None:
+        os.environ[RAY_CLUSTER_ACTIVITY_HOOK] = old_hook
+    else:
+        del os.environ[RAY_CLUSTER_ACTIVITY_HOOK]
 
 
 @pytest.mark.parametrize(
