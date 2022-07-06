@@ -9,6 +9,7 @@ import io.ray.api.exception.RayIntentionalSystemExitException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorLifetime;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
@@ -265,6 +266,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     return nativeGetNamespace();
   }
 
+  @Override
+  public UniqueId getCurrentNodeId() {
+    return UniqueId.fromBytes(nativeGetCurrentNodeId());
+  }
+
   private static native void nativeInitialize(
       int workerMode,
       String ndoeIpAddress,
@@ -292,4 +298,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native String nativeGetNamespace();
 
   private static native List<byte[]> nativeGetCurrentReturnIds(int numReturns, byte[] actorId);
+
+  private static native byte[] nativeGetCurrentNodeId();
 }

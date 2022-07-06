@@ -1,5 +1,7 @@
 import asyncio
 import concurrent.futures
+import dataclasses
+from datetime import datetime
 import hashlib
 import json
 from typing import Any, Dict, List, Optional
@@ -21,6 +23,21 @@ from ray.job_submission import JobInfo
 from ray.runtime_env import RuntimeEnv
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
+
+
+@dataclasses.dataclass
+class RayActivityResponse:
+    """
+    Dataclass used to inform if a particular Ray component can be considered
+    active, and metadata about observation.
+    """
+
+    # Whether the corresponding Ray component is considered active
+    is_active: bool
+    # Reason if Ray component is considered active
+    reason: Optional[str] = None
+    # Timestamp of when this observation about the Ray component was made
+    timestamp: Optional[float] = None
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
@@ -87,6 +104,48 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         }
         return dashboard_optional_utils.rest_response(
             success=True, message="hello", snapshot=snapshot
+        )
+
+    @routes.get("/api/component_activities")
+    async def get_component_activities(self, req) -> aiohttp.web.Response:
+        # Get activity information for driver
+        timeout = req.query.get("timeout", None)
+        if timeout and timeout.isdigit():
+            timeout = int(timeout)
+        else:
+            timeout = 5
+
+        driver_activity_info = await self._get_job_activity_info(timeout=timeout)
+
+        resp = {"driver": dataclasses.asdict(driver_activity_info)}
+        return aiohttp.web.Response(
+            text=json.dumps(resp),
+            content_type="application/json",
+            status=aiohttp.web.HTTPOk.status_code,
+        )
+
+    async def _get_job_activity_info(self, timeout: int) -> RayActivityResponse:
+        # Returns if there is Ray activity from drivers (job).
+        # Drivers in namespaces that start with _ray_internal_job_info_ are not
+        # considered activity.
+        request = gcs_service_pb2.GetAllJobInfoRequest()
+        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=timeout)
+
+        num_active_drivers = 0
+        for job_table_entry in reply.job_info_list:
+            is_dead = bool(job_table_entry.is_dead)
+            in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
+                JobInfoStorageClient.JOB_DATA_KEY_PREFIX
+            )
+            if not is_dead and not in_internal_namespace:
+                num_active_drivers += 1
+
+        return RayActivityResponse(
+            is_active=num_active_drivers > 0,
+            reason=f"Number of active drivers: {num_active_drivers}"
+            if num_active_drivers
+            else None,
+            timestamp=datetime.now().timestamp(),
         )
 
     def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:

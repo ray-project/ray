@@ -582,13 +582,9 @@ def train(config):
 
 tune.run(train, num_samples=1)
     """
-    asserted = False
-    try:
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
         run_string_as_driver(CMD)
-    except subprocess.CalledProcessError as e:
-        assert "Inducing exception for testing purposes." in e.output
-        asserted = True
-    assert asserted
+    assert "Inducing exception for testing purposes." in exc_info.value.output.decode()
 
 
 if __name__ == "__main__":
