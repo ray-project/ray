@@ -90,11 +90,13 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
         </PercentageBar>
       </TableCell>
       <TableCell>
-        <PercentageBar num={Number(mem[0] - mem[1])} total={mem[0]}>
-          {memoryConverter(mem[0] - mem[1])}/{memoryConverter(mem[0])}(
-          {mem[2].toFixed(1)}
-          %)
-        </PercentageBar>
+        {mem && (
+          <PercentageBar num={Number(mem[0] - mem[1])} total={mem[0]}>
+            {memoryConverter(mem[0] - mem[1])}/{memoryConverter(mem[0])}(
+            {mem[2].toFixed(1)}
+            %)
+          </PercentageBar>
+        )}
       </TableCell>
       <TableCell>
         {raylet && (
@@ -178,11 +180,13 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         </PercentageBar>
       </TableCell>
       <TableCell>
-        <PercentageBar num={memoryInfo.rss} total={mem[0]}>
-          {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
-          {(memoryInfo.rss / mem[0]).toFixed(1)}
-          %)
-        </PercentageBar>
+        {mem && (
+          <PercentageBar num={memoryInfo.rss} total={mem[0]}>
+            {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
+            {(memoryInfo.rss / mem[0]).toFixed(1)}
+            %)
+          </PercentageBar>
+        )}
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>

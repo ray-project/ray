@@ -7,8 +7,8 @@ export type NodeDetail = {
   hostname: string;
   ip: string;
   cpu: number; // cpu usage
-  cpus: number[]; // Logic CPU Count, Physical CPU Count
-  mem: number[]; // total memory, free memory, memory used ratio
+  cpus?: number[]; // Logic CPU Count, Physical CPU Count
+  mem?: number[]; // total memory, free memory, memory used ratio
   bootTime: number; // start time
   loadAvg: number[][]; // recent 1，5，15 minitues system load，load per cpu http://man7.org/linux/man-pages/man3/getloadavg.3.html
   disk: {
