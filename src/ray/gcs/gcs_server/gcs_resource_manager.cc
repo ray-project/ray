@@ -177,8 +177,10 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   if (cluster_task_manager_ && RayConfig::instance().gcs_actor_scheduling_enabled()) {
     cluster_task_manager_->FillPendingActorInfo(resources_data);
   }
-  // Aggregate the load of the gcs (head) node.
+  // Aggregate the load of the gcs node.
   FillAggregateLoad(resources_data, &aggregate_load);
+  // The first entry of the `batch` list is always the gcs node.
+  batch.add_batch()->CopyFrom(resources_data);
 
   for (const auto &usage : node_resource_usages_) {
     // Aggregate the load reported by each raylet.
