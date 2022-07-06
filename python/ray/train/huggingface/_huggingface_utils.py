@@ -149,7 +149,7 @@ class TrainReportCallback(TrainerCallback):
             )
 
     def _report(self):
-        if self.delayed_report:
+        if self.delayed_report["metrics"]:
             session.report(**self.delayed_report)
             self.delayed_report = {"metrics": {}, "checkpoint": None}
 

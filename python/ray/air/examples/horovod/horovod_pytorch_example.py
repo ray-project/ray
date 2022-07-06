@@ -142,6 +142,7 @@ def train_func(config):
 
     model, optimizer, train_loader, train_sampler = setup(config)
 
+    results = []
     for epoch in range(num_epochs):
         loss = train_epoch(
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
@@ -151,7 +152,11 @@ def train_func(config):
         else:
             checkpoint_dict = dict(model=model)
         checkpoint_dict = Checkpoint.from_dict(checkpoint_dict)
+        results.append(loss)
         session.report(dict(loss=loss), checkpoint=checkpoint_dict)
+
+    # Only used for testing.
+    return results
 
 
 def main(num_workers, use_gpu, kwargs):
