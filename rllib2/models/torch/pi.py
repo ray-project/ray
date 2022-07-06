@@ -88,7 +88,6 @@ class Pi(WithEncoderMixin):
         * TODO: [] How do we support Recurrent Policies?
         * TODO: [] Can we support Decision Transformers?
         * TODO: [] How do we support action-space masking?
-    * Support Goal conditioned policies?
     * Should be able to switch between exploration = on / off
         * target_sample is used for inference (exploration = off)
         * behavioral_sample is used for sampling during training (exploration = true)

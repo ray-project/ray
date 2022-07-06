@@ -1,6 +1,6 @@
 ####################################################
 ################# PPO RLModule
-# This is what you customize when modifying TorchPPO
+# This is what you customize when modifying the model
 ####################################################
 
 from rllib2.core.torch.torch_rl_module import (
@@ -46,7 +46,7 @@ class PPOTorchRLModule(TorchRLModule):
         if config.kl_coeff is not None:
             kl_coeff = nn.Parameter(
                 torch.Tensor(config.kl_coeff),
-                requires_grad=True
+                requires_grad=False
             )
             self.register_parameter('kl_coeff', kl_coeff)
 
