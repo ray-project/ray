@@ -68,6 +68,28 @@ If you are using an HDD, it is recommended that you specify a large buffer size 
         },
     )
 
+To prevent running out of disk space, local object spilling will throw ``OutOfDiskError`` if the disk utilization exceeds the predefined threshold.
+If multiple physical devices are used, any physical device's over-usage will trigger the ``OutOfDiskError``.
+The default threshold is 0.95 (95%). You can adjust the threshold by setting ``local_fs_capacity_threshold``, or set it to 1 to disable the protection.
+
+.. code-block:: python
+
+    ray.init(
+        _system_config={
+            # Allow spilling until the local disk is 99% utilized.
+            # This only affects spilling to the local file system.
+            "local_fs_capacity_threshold": 0.99,
+            "object_spilling_config": json.dumps(
+                {
+                  "type": "filesystem",
+                  "params": {
+                    "directory_path": "/tmp/spill",
+                },
+            )
+        },
+    )
+
+
 To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
 
 .. code-block:: python
