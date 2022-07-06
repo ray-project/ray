@@ -183,7 +183,7 @@ class ModelWrapper(SimpleSchemaIngress):
         predict_kwargs: Optional[Dict[str, Any]] = None,
         **predictor_from_checkpoint_kwargs,
     ):
-        if ininstance(predictor_from_checkpoint_kwargs.get("user_config"), dict):
+        if isinstance(predictor_from_checkpoint_kwargs.get("user_config"), dict):
             self.reconfigure(predictor_from_checkpoint_kwargs.get("user_config"))
         else:
             predictor_cls = _load_predictor_cls(predictor_cls)
