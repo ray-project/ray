@@ -1,3 +1,4 @@
+import pathlib
 import re
 
 import gym
@@ -101,7 +102,6 @@ class WorkerSet:
         }
         self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
-
         if _setup:
             # Force a local worker if num_workers == 0 (no remote workers).
             # Otherwise, this WorkerSet would be empty.
@@ -118,6 +118,13 @@ class WorkerSet:
                 and (not "dataset" == trainer_config["input"])
             ):
                 paths = trainer_config["input"]
+                if isinstance(paths, str):
+                    inputs = os.path.abspath(os.path.expanduser(paths))
+                    if os.path.isdir(inputs):
+                        paths = list(pathlib.Path(inputs).glob("*.json")) + list(
+                            pathlib.Path(inputs).glob("*.zip")
+                        )
+                        paths = [str(path) for path in paths]
                 ends_with_zip_or_json = all(
                     re.search("\\.zip$", path) or re.search("\\.json$", path)
                     for path in paths
