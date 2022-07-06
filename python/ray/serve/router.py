@@ -130,8 +130,8 @@ class ReplicaSet:
                     query_string = loaded_http_input.scope.get("query_string")
                     if query_string:
                         arg = query_string.decode().split("=", 1)[1]
-                    elif arg.body:
-                        arg = arg.body.decode()
+                    elif loaded_http_input.body:
+                        arg = loaded_http_input.body.decode()
                 user_ref = JavaActorHandleProxy(
                     replica.actor_handle
                 ).handle_request.remote(
