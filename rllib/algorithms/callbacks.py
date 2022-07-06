@@ -1,19 +1,21 @@
-import numpy as np
 import os
 import tracemalloc
-from typing import Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
+
+import numpy as np
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.episode_v2 import EpisodeV2
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import (
-    is_overridden,
     PublicAPI,
+    is_overridden,
 )
-from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
     compute_states_entropy,
@@ -103,7 +105,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
         """Callback run on the rollout worker before each episode starts.
@@ -137,7 +139,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Optional[Dict[PolicyID, Policy]] = None,
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
         """Runs on each episode step.
@@ -168,7 +170,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2, Exception],
         **kwargs,
     ) -> None:
         """Runs when an episode is done.
@@ -185,6 +187,10 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+                In case of environment failures, episode may also be an Exception
+                that gets thrown from the environment before the episode finishes.
+                Users of this callback may then handle these error cases properly
+                with their custom logics.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -350,7 +356,7 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2, Exception],
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
@@ -436,7 +442,7 @@ class MultiCallbacks(DefaultCallbacks):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2],
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
@@ -456,7 +462,7 @@ class MultiCallbacks(DefaultCallbacks):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Optional[Dict[PolicyID, Policy]] = None,
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2],
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
@@ -476,7 +482,7 @@ class MultiCallbacks(DefaultCallbacks):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2, Exception],
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:

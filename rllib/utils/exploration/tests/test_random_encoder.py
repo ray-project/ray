@@ -47,7 +47,7 @@ class TestRE3(unittest.TestCase):
             },
         }
 
-        num_iterations = 30
+        num_iterations = 60
         algo = algo_cls(config=config)
         learnt = False
         for i in range(num_iterations):

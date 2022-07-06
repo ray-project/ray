@@ -5,25 +5,27 @@ RLlib: Industry-Grade Reinforcement Learning with TF and Torch
 production-level, highly distributed RL workloads, while maintaining
 unified and simple APIs for a large variety of industry applications.
 
-Whether you would like to train your agents in multi-agent setups,
-purely from offline (historic) datasets, or using externally
-connected simulators, RLlib offers simple solutions for your decision making needs.
+Whether you would like to train your agents in **multi-agent** setups,
+purely from **offline** (historic) datasets, or using **externally
+connected simulators**, RLlib offers simple solutions for your decision making needs.
 
-You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
-other of its libraries! If you either have your problem coded (in python) as an
-`RL environment <https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5>`_
+If you either have your problem coded (in python) as an 
+`RL environment <https://docs.ray.io/en/master/rllib/rllib-env.html#configuring-environments>`_
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
 
 RLlib is already used in production by industry leaders in many different verticals, such as
 `climate control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
-`manufacturing and logistics <https://www.anyscale.com/events/2021/06/22/offline-rl-with-rllib>`_,
+`industrial control <https://www.anyscale.com/events/2021/06/22/offline-rl-with-rllib>`_,
+`manufacturing and logistics <https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial>`_,
 `finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
 `gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
 `automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
 `robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
 and many others.
+
+You can also read about `RLlib Key Concepts. <https://docs.ray.io/en/master/rllib/core-concepts.html>`_
 
 
 Installation and Setup

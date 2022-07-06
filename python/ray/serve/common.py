@@ -15,7 +15,6 @@ from ray.serve.generated.serve_pb2 import (
     ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
     StatusOverview as StatusOverviewProto,
-    DeploymentLanguage,
 )
 
 EndpointTag = str
@@ -216,9 +215,7 @@ class DeploymentInfo:
             "deployment_config": deployment_config,
             "replica_config": ReplicaConfig.from_proto(
                 proto.replica_config,
-                deployment_config.deployment_language
-                if deployment_config
-                else DeploymentLanguage.PYTHON,
+                deployment_config.needs_pickle() if deployment_config else True,
             ),
             "start_time_ms": proto.start_time_ms,
             "actor_name": proto.actor_name if proto.actor_name != "" else None,
@@ -283,3 +280,4 @@ class RunningReplicaInfo:
     replica_tag: ReplicaTag
     actor_handle: ActorHandle
     max_concurrent_queries: int
+    is_cross_language: bool = False

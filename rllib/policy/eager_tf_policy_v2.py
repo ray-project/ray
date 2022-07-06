@@ -85,6 +85,14 @@ class EagerTFPolicyV2(Policy):
             self.config["explore"], trainable=False, dtype=tf.bool
         )
 
+        # Log device and worker index.
+        num_gpus = self._get_num_gpus_for_policy()
+        if num_gpus > 0:
+            gpu_ids = get_gpu_devices()
+            logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
+
+        self._is_training = False
+
         self._loss_initialized = False
         # Backward compatibility workaround so Policy will call self.loss() directly.
         # TODO(jungong): clean up after all policies are migrated to new sub-class
