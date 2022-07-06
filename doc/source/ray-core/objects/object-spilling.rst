@@ -68,7 +68,7 @@ If you are using an HDD, it is recommended that you specify a large buffer size 
         },
     )
 
-To prevent running out of disk space, object spilling will throw ``OutOfDiskError`` if the local disk utilization exceeds the predefined threshold.
+To prevent running out of disk space, local object spilling will throw ``OutOfDiskError`` if the disk utilization exceeds the predefined threshold.
 If multiple physical devices are used, any physical device's over-usage will trigger the ``OutOfDiskError``.
 The default threshold is 0.95 (95%). You can adjust the threshold by setting ``local_fs_capacity_threshold``, or set it to 1 to disable the protection.
 
@@ -76,7 +76,9 @@ The default threshold is 0.95 (95%). You can adjust the threshold by setting ``l
 
     ray.init(
         _system_config={
-            "local_fs_capacity_threshold": 0.99, # Allow spilling until local disk is 99% utilized.
+            # Allow spilling until the local disk is 99% utilized.
+            # This only affects spilling to the local file system.
+            "local_fs_capacity_threshold": 0.99,
             "object_spilling_config": json.dumps(
                 {
                   "type": "filesystem",
