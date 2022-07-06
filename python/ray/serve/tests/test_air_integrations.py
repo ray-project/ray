@@ -209,19 +209,19 @@ def test_air_integrations_in_pipeline(serve_instance):
     return resp.json() == {"value": [42], "batch_size": 1}
 
 
-def test_model_wrapper_reconfigure(serve_instance):
+def test_air_integrations_reconfigure(serve_instance):
     path = tempfile.mkdtemp()
     uri = f"file://{path}/test_uri"
     Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
-    predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
+    predictor_cls = "ray.serve.tests.test_air_integrations.AdderPredictor"
     additional_config = {
         "checkpoint": {"increment": 5},
-        "predictor_cls": "ray.serve.tests.test_model_wrappers.AdderPredictor",
+        "predictor_cls": "ray.serve.tests.test_air_integrations.AdderPredictor",
     }
 
     with InputNode() as dag_input:
-        m1 = ModelWrapperDeployment.options(user_config=additional_config).bind(
+        m1 = PredictorDeployment.options(user_config=additional_config).bind(
             predictor_cls=predictor_cls,
             checkpoint=uri,
         )
