@@ -29,15 +29,12 @@ class SklearnPredictor(Predictor):
         self,
         estimator: BaseEstimator,
         preprocessor: Optional["Preprocessor"] = None,
-        use_gpu: bool = False,
     ):
         self.estimator = estimator
         self.preprocessor = preprocessor
 
     @classmethod
-    def from_checkpoint(
-        cls, checkpoint: Checkpoint, use_gpu: bool = False
-    ) -> "SklearnPredictor":
+    def from_checkpoint(cls, checkpoint: Checkpoint) -> "SklearnPredictor":
         """Instantiate the predictor from a Checkpoint.
 
         The checkpoint is expected to be a result of ``SklearnTrainer``.
