@@ -49,7 +49,7 @@ def test_scale_up(ray_cluster):
     serve.run(D.bind())
     pids1 = get_pids(1)
 
-    serve.run(D.options(num_replicas=3).bind())
+    serve.run(D.options(num_replicas=3).bind(), _blocking=False)
 
     # Check that a new replica has not started in 1.0 seconds.  This
     # doesn't guarantee that a new replica won't ever be started, but
