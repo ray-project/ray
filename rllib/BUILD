@@ -1542,6 +1542,13 @@ py_test(
 )
 
 py_test(
+    name = "evaluation/tests/test_episode_v2",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode_v2.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_postprocessing",
     tags = ["team:rllib", "evaluation"],
     size = "small",
@@ -1646,6 +1653,21 @@ py_test(
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"]
 )
+
+py_test(
+    name = "test_json_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_json_reader.py"]
+)
+
+py_test(
+    name = "test_dataset_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_dataset_reader.py"]
+)
+
 
 # --------------------------------------------------------------------
 # Policies

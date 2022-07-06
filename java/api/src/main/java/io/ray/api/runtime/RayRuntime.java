@@ -17,6 +17,7 @@ import io.ray.api.function.RayFunc;
 import io.ray.api.function.RayFuncR;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
+import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
@@ -245,6 +246,8 @@ public interface RayRuntime {
 
   /** Get the namespace of this job. */
   String getNamespace();
+
+  UniqueId getCurrentNodeId();
 
   /**
    * Get a placement group by id.

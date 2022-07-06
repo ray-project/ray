@@ -32,8 +32,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
         return 100
 
     outputs = [
-        workflow.create(long_running.bind(i)).run_async(workflow_id=str(i))
-        for i in range(100)
+        workflow.run_async(long_running.bind(i), workflow_id=str(i)) for i in range(100)
     ]
     # Test list all, it should list all jobs running
     all_tasks = workflow.list_all()
