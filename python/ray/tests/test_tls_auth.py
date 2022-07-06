@@ -136,7 +136,7 @@ ray_client.connect("localhost:10001")
      """,
             env=without_tls_env,
         )
-    assert "ConnectionError" in exc_info.value.output.decode("utf-8")
+    assert "ConnectionError" in exc_info.value.output
 
     # Attempt to connect with TLS
     out = run_string_as_driver(
