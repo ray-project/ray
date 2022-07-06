@@ -331,6 +331,8 @@ perform hyperparameter tuning with Ray Train, please refer to the
 The Result Object
 -----------------
 
+.. TODO(ml-team) Flesh this section out.
+
 The return of a ``Trainer.fit`` is a :class:`Result` object, containing
 information about the training run. You can access it to obtain saved checkpoints,
 metrics and other relevant data.
@@ -874,6 +876,9 @@ number of retries is configurable through the ``max_failures`` attribute of the
 .. You may want to
 
 .. TODO.
+
+
+.. We do not have a profiling callback in AIR as the execution engine has changed to Tune. The behavior of the callback can be replicated with checkpoints (do a trace, save it to checkpoint, it gets downloaded to driver every iteration).
 
 .. .. _train-profiling:
 
