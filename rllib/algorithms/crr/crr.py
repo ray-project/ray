@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import List, Optional, Type
 
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
@@ -6,14 +7,9 @@ from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import (
-    LAST_TARGET_UPDATE_TS,
-    NUM_TARGET_UPDATES,
-    TARGET_NET_UPDATE_TIMER,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-)
-from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
+from ray.rllib.utils.metrics import (LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES,
+                                     TARGET_NET_UPDATE_TIMER, NUM_AGENT_STEPS_SAMPLED,
+                                     NUM_ENV_STEPS_SAMPLED, SAMPLE_TIMER, )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
@@ -39,16 +35,6 @@ class CRRConfig(AlgorithmConfig):
         self.target_update_grad_intervals = 100
         # __sphinx_doc_end__
         # fmt: on
-        self.replay_buffer_config = {
-            "type": MultiAgentReplayBuffer,
-            "capacity": 50000,
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 1000,
-            "replay_batch_size": 32,
-            # The number of contiguous environment steps to replay at once. This
-            # may be set to greater than 1 to support recurrent models.
-            "replay_sequence_length": 1,
-        }
         self.actor_hiddens = [256, 256]
         self.actor_hidden_activation = "relu"
         self.critic_hiddens = [256, 256]
@@ -72,7 +58,6 @@ class CRRConfig(AlgorithmConfig):
         n_action_sample: Optional[int] = None,
         twin_q: Optional[bool] = None,
         target_update_grad_intervals: Optional[int] = None,
-        replay_buffer_config: Optional[dict] = None,
         actor_hiddens: Optional[List[int]] = None,
         actor_hidden_activation: Optional[str] = None,
         critic_hiddens: Optional[List[int]] = None,
@@ -113,7 +98,6 @@ class CRRConfig(AlgorithmConfig):
             target_update_grad_intervals: The frequency at which we update the
                 target copy of the model in terms of the number of gradient updates
                 applied to the main model.
-            replay_buffer_config: The config dictionary for replay buffer.
             actor_hiddens: The number of hidden units in the actor's fc network.
             actor_hidden_activation: The activation used in the actor's fc network.
             critic_hiddens: The number of hidden units in the critic's fc network.
@@ -141,8 +125,6 @@ class CRRConfig(AlgorithmConfig):
             self.twin_q = twin_q
         if target_update_grad_intervals is not None:
             self.target_update_grad_intervals = target_update_grad_intervals
-        if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
         if actor_hiddens is not None:
             self.actor_hiddens = actor_hiddens
         if actor_hidden_activation is not None:
@@ -190,15 +172,12 @@ class CRR(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        bsize = self.config["train_batch_size"]
-
-        batch = synchronous_parallel_sample(worker_set=self.workers)
+        with self._timers[SAMPLE_TIMER]:
+            batch = synchronous_parallel_sample(worker_set=self.workers)
         batch = batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
-        self.local_replay_buffer.add(batch)
-        # Sample training batch from replay buffer.
-        train_batch = self.local_replay_buffer.sample(bsize)
+        train_batch = batch
 
         # Postprocess batch before we learn on it.
         post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
