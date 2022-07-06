@@ -25,7 +25,7 @@ trainer = DummyTrainer(
     scaling_config={"num_workers": 1, "use_gpu": False},
     datasets={"train": dataset},
     preprocessor=preprocessor,
-    runtime_seconds=1,  # Stop after this amount or time or 1 epoch is read.
+    num_epochs=1,  # Stop after this number of epochs is read.
     prefetch_blocks=1,  # Number of blocks to prefetch when reading data.
     batch_size=None,  # Use whole blocks as batches.
 )

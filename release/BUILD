@@ -211,6 +211,13 @@ py_test(
 )
 
 py_test(
+    name = "test_env",
+    tags = ["team:ci", "release_unit"],
+    size = "small",
+    srcs = ["ray_release/tests/test_env.py"]
+)
+
+py_test(
     name = "test_glue",
     tags = ["team:ci", "release_unit"],
     size = "small",

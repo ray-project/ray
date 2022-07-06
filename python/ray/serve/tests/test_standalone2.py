@@ -10,7 +10,7 @@ import pytest
 import requests
 
 import ray
-import ray.state
+import ray._private.state
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
@@ -680,7 +680,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     assert ray.get(a.ready.remote()) == 1
 
     # 2 proxies, 1 controller, and one placeholder.
-    wait_for_condition(lambda: len(ray.state.actors()) == 4)
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 4)
     assert len(ray.nodes()) == 2
 
     # Now make sure the placeholder actor exits.
@@ -688,7 +688,12 @@ def test_autoscaler_shutdown_node_http_everynode(
     # The http proxy on worker node should exit as well.
     wait_for_condition(
         lambda: len(
-            list(filter(lambda a: a["State"] == "ALIVE", ray.state.actors().values()))
+            list(
+                filter(
+                    lambda a: a["State"] == "ALIVE",
+                    ray._private.state.actors().values(),
+                )
+            )
         )
         == 2
     )

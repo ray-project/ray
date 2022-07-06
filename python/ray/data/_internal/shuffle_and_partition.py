@@ -1,12 +1,12 @@
 import math
-from typing import List, Optional, Union, Callable, Iterable
+from typing import Callable, Iterable, List, Optional, Union
 
 import numpy as np
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 
 
 class _ShufflePartitionOp(ShuffleOp):
@@ -71,7 +71,10 @@ class _ShufflePartitionOp(ShuffleOp):
 
     @staticmethod
     def reduce(
-        random_shuffle: bool, random_seed: Optional[int], *mapper_outputs: List[Block]
+        random_shuffle: bool,
+        random_seed: Optional[int],
+        *mapper_outputs: List[Block],
+        partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()

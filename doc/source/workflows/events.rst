@@ -34,7 +34,7 @@ Workflow events are a special type of workflow task. They "finish" when the even
         return args
 
     # Gather will run after 60 seconds, when both event1 and event2 are done.
-    workflow.create(gather.bind(event1_task, event_2_task)).run()
+    workflow.run(gather.bind(event1_task, event_2_task))
 
 
 Custom event listeners
