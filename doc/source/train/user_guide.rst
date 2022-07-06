@@ -9,7 +9,7 @@ Ray Train provides solutions for training machine learning models in a distribut
 This guide focuses on deep learning with PyTorch, TensorFlow and Horovod.
 For other model types, distributed training support is available through other Trainers & libraries:
 
-* **Reinforcement Learning with** :ref:`RLlib <rllib-index>`
+* **Reinforcement Learning:** :ref:`RLlib <rllib-index>`
 * **XGBoost:** :doc:`/ray-air/examples/xgboost_example`
 * **LightGBM:** :doc:`/ray-air/examples/lightgbm_example`
 * **Scikit-Learn** :doc:`/ray-air/examples/sklearn_example`
@@ -224,8 +224,7 @@ with one of the following:
             scaling_config=dict(use_gpu=use_gpu, num_workers=2)
         )
 
-To customize the ``backend`` setup, you can replace the string argument with a
-:ref:`train-api-backend-config` object.
+To customize the backend setup, you can use a :ref:`train-api-backend-config` object.
 
 .. tabbed:: PyTorch
 
@@ -370,6 +369,8 @@ The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
 the end of each training epoch.
 
 .. code-block:: python
+
+    from ray.air import session
 
     def train_func():
         ...
@@ -984,8 +985,8 @@ Reproducibility
 .. tabbed:: PyTorch
 
     To limit sources of nondeterministic behavior, add
-    ``train.torch.enable_reproducibility`` to the top of your training
-    function. `
+    ``train.torch.enable_reproducibility()`` to the top of your training
+    function.
 
     .. code-block:: diff
 

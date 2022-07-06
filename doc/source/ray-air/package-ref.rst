@@ -136,6 +136,8 @@ Keras
 #####
 
 .. autoclass:: ray.air.callbacks.keras.Callback
+
+
 .. _air-session-ref:
 
 Session
