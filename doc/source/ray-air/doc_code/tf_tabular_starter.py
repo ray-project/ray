@@ -1,12 +1,10 @@
 # flake8: noqa
 # isort: skip_file
 
-# __air_tf_preprocess_start__
-import numpy as np
+# __air_generic_preprocess_start__
 import ray
-from ray.data.preprocessors import StandardScaler, BatchMapper, Chain
+from ray.data.preprocessors import StandardScaler
 from ray.air import train_test_split
-import pandas as pd
 
 # Load data.
 dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
@@ -18,6 +16,17 @@ test_dataset = valid_dataset.map_batches(
     lambda df: df.drop("target", axis=1), batch_format="pandas"
 )
 
+# Create a preprocessor to scale some columns
+columns_to_scale = ["mean radius", "mean texture"]
+preprocessor = StandardScaler(columns=columns_to_scale)
+# __air_generic_preprocess_end__
+
+# __air_tf_preprocess_start__
+import numpy as np
+import pandas as pd
+
+from ray.data.preprocessors import BatchMapper, Chain
+
 # Get the training data schema
 schema_order = [k for k in train_dataset.schema().names if k != "target"]
 
@@ -27,18 +36,15 @@ def concat_for_tensor(dataframe):
     from ray.data.extensions import TensorArray
 
     result = {}
-    result["input"] = TensorArray(dataframe[schema_order].to_numpy(dtype=np.float32))
+    input_data = dataframe[schema_order].to_numpy(dtype=np.float32)
+    result["input"] = TensorArray(input_data)
     if "target" in dataframe:
-        result["target"] = TensorArray(dataframe["target"].to_numpy(dtype=np.float32))
+        target_data = dataframe["target"].to_numpy(dtype=np.float32)
+        result["target"] = TensorArray(target_data)
     return pd.DataFrame(result)
 
-
-# Create a preprocessor to scale some columns
-columns_to_scale = ["mean radius", "mean texture"]
-
-preprocessor = Chain(
-    StandardScaler(columns=columns_to_scale), BatchMapper(concat_for_tensor)
-)
+# Chain the preprocessors together.
+preprocessor = Chain(preprocessor, BatchMapper(concat_for_tensor))
 # __air_tf_preprocess_end__
 
 
@@ -50,6 +56,7 @@ from tensorflow.keras import layers
 
 from ray import train
 from ray.air import session
+from ray.air.callbacks.keras import Callback as KerasCallback
 from ray.train.tensorflow import (
     TensorflowTrainer,
     to_air_checkpoint,
@@ -66,11 +73,6 @@ def create_keras_model(input_features):
             layers.Dense(1),
         ]
     )
-
-
-class TrainCheckpointReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        session.report(logs, checkpoint=to_air_checkpoint(self.model))
 
 
 def to_tf_dataset(dataset, batch_size):
@@ -103,7 +105,6 @@ def train_loop_per_worker(config):
     # Get the Ray Dataset shard for this data parallel worker,
     # and convert it to a Tensorflow Dataset.
     train_data = train.get_dataset_shard("train")
-    val_data = train.get_dataset_shard("validate")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():
@@ -124,10 +125,10 @@ def train_loop_per_worker(config):
         tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size)
         history = multi_worker_model.fit(
             tf_dataset,
-            callbacks=[TrainCheckpointReportCallback()],
+            callbacks=[KerasCallback()],
             verbose=0,
         )
-    return results  # TODO: How do I fetch these results?
+    return results
 
 
 num_features = len(schema_order)

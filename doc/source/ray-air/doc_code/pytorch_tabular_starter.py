@@ -1,12 +1,10 @@
 # flake8: noqa
 # isort: skip_file
 
-# __air_pytorch_preprocess_start__
-import numpy as np
+# __air_generic_preprocess_start__
 import ray
-from ray.data.preprocessors import StandardScaler, BatchMapper, Chain
+from ray.data.preprocessors import StandardScaler
 from ray.air import train_test_split
-import pandas as pd
 
 # Load data.
 dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
@@ -18,6 +16,17 @@ test_dataset = valid_dataset.map_batches(
     lambda df: df.drop("target", axis=1), batch_format="pandas"
 )
 
+# Create a preprocessor to scale some columns
+columns_to_scale = ["mean radius", "mean texture"]
+preprocessor = StandardScaler(columns=columns_to_scale)
+# __air_generic_preprocess_end__
+
+# __air_pytorch_preprocess_start__
+import numpy as np
+import pandas as pd
+
+from ray.data.preprocessors import BatchMapper, Chain
+
 # Get the training data schema
 schema_order = [k for k in train_dataset.schema().names if k != "target"]
 
@@ -27,18 +36,15 @@ def concat_for_tensor(dataframe):
     from ray.data.extensions import TensorArray
 
     result = {}
-    result["input"] = TensorArray(dataframe[schema_order].to_numpy(dtype=np.float32))
+    input_data = dataframe[schema_order].to_numpy(dtype=np.float32)
+    result["input"] = TensorArray(input_data)
     if "target" in dataframe:
-        result["target"] = TensorArray(dataframe["target"].to_numpy(dtype=np.float32))
+        target_data = dataframe["target"].to_numpy(dtype=np.float32)
+        result["target"] = TensorArray(target_data)
     return pd.DataFrame(result)
 
-
-# Create a preprocessor to scale some columns
-columns_to_scale = ["mean radius", "mean texture"]
-
-preprocessor = Chain(
-    StandardScaler(columns=columns_to_scale), BatchMapper(concat_for_tensor)
-)
+# Chain the preprocessors together.
+preprocessor = Chain(preprocessor, BatchMapper(concat_for_tensor))
 # __air_pytorch_preprocess_end__
 
 

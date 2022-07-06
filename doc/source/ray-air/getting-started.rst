@@ -37,13 +37,19 @@ between distributed frameworks (e.g., XGBoost, Pytorch, and Tensorflow):
 
 Below, let's start by preprocessing your data with Ray AIR's ``Preprocessors``:
 
+.. literalinclude:: doc_code/xgboost_starter.py
+    :language: python
+    :start-after: __air_generic_preprocess_start__
+    :end-before: __air_generic_preprocess_end__
+
+Optionally, format your data for use with your preferred framework:
+
 .. tabbed:: XGBoost
 
-
-    .. literalinclude:: doc_code/xgboost_starter.py
-        :language: python
-        :start-after: __air_xgb_preprocess_start__
-        :end-before: __air_xgb_preprocess_end__
+    .. code-block:: python
+        
+        # No extra preprocessing is required for XGBoost.
+        # The data is already in the correct format.
 
 .. tabbed:: Pytorch
 

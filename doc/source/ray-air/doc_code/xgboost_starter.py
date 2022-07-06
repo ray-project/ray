@@ -1,18 +1,17 @@
-# isort: skip_file
 # flake8: noqa
+# isort: skip_file
 
-
-# __air_xgb_preprocess_start__
+# __air_generic_preprocess_start__
 import ray
 from ray.data.preprocessors import StandardScaler
 from ray.air import train_test_split
 
-import pandas as pd
-
-# Load the data from S3.
+# Load data.
 dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
-# Split the data into training and validation sets.
+# Split data into train and validation.
 train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
+
+# Create a test dataset by dropping the target column.
 test_dataset = valid_dataset.map_batches(
     lambda df: df.drop("target", axis=1), batch_format="pandas"
 )
@@ -20,7 +19,7 @@ test_dataset = valid_dataset.map_batches(
 # Create a preprocessor to scale some columns
 columns_to_scale = ["mean radius", "mean texture"]
 preprocessor = StandardScaler(columns=columns_to_scale)
-# __air_xgb_preprocess_end__
+# __air_generic_preprocess_end__
 
 
 # __air_xgb_train_start__
