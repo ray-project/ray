@@ -3,6 +3,7 @@ import logging
 import os
 import random
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
@@ -49,7 +50,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
             )
 
-    def _report_usage_sync(self, total_num_nodes):
+    def _report_usage_sync(self, total_num_nodes: Optional[int]):
         """
         - Always write usage_stats.json regardless of report success/failure.
         - If report fails, the error message should be written to usage_stats.json
@@ -96,7 +97,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
             # Find the number of nodes.
-            total_num_nodes = -1
+            total_num_nodes = None
             try:
                 result = await self._state_api_data_source_client.get_all_node_info(
                     timeout=30

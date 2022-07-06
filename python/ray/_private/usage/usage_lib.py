@@ -136,10 +136,9 @@ class UsageStatsToReport:
     seq_number: int
     #: The extra tags to report when specified by an
     #  environment variable EXTRA_USAGE_TAGS
-    extra_usage_tags: Dict[str, str]
+    extra_usage_tags: Optional[Dict[str, str]]
     #: The number of alive nodes when the report is generated.
-    # -1 means it fails to get the number of nodes in the cluster.
-    total_num_nodes: int
+    total_num_nodes: Optional[int]
 
 
 @dataclass(init=True)
@@ -494,7 +493,7 @@ def _parse_extra_usage_tags() -> Dict[str, str]:
     """
     extra_tags = os.getenv("RAY_EXTRA_USAGE_TAGS", None)
     if not extra_tags:
-        return {}
+        return None
 
     try:
         result = {}
@@ -505,7 +504,7 @@ def _parse_extra_usage_tags() -> Dict[str, str]:
         return result
     except Exception as e:
         logger.debug(f"Failed to parse extra usage tags. Error: {e}")
-        return {}
+        return None
 
 
 def get_cluster_status_to_report(gcs_client, num_retries: int) -> ClusterStatusToReport:
@@ -668,7 +667,7 @@ def generate_report_data(
     total_success: int,
     total_failed: int,
     seq_number: int,
-    total_num_nodes: int,
+    total_num_nodes: Optional[int],
 ) -> UsageStatsToReport:
     """Generate the report data.
 
@@ -684,7 +683,6 @@ def generate_report_data(
         seq_number: The sequence number that's incremented whenever
             a new report is sent.
         total_num_nodes: The number of current alive nodes in the cluster.
-            -1 means it fails to get the number of nodes in the cluster.
 
     Returns:
         UsageStats

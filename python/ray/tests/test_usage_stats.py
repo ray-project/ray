@@ -115,17 +115,17 @@ def test_parse_extra_usage_tags(monkeypatch):
         # Test that the env var is not given.
         m.delenv("RAY_EXTRA_USAGE_TAGS")
         result = ray_usage_lib._parse_extra_usage_tags()
-        assert len(result) == 0
+        assert result is None
 
         # Test the parsing failure.
         m.setenv("RAY_EXTRA_USAGE_TAGS", "key=val,key2=val2")
         result = ray_usage_lib._parse_extra_usage_tags()
-        assert len(result) == 0
+        assert result is None
 
         # Test differnt types of parsing failures.
         m.setenv("RAY_EXTRA_USAGE_TAGS", "key=v=al,key2=val2")
         result = ray_usage_lib._parse_extra_usage_tags()
-        assert len(result) == 0
+        assert result is None
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_lib_usage):
@@ -772,7 +772,7 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
-        assert payload["extra_usage_tags"] == {}
+        assert payload["extra_usage_tags"] is None
         assert payload["total_num_nodes"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":
             # Since we start a serve actor for mocking a server using runtime env.
