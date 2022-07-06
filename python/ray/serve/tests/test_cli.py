@@ -113,7 +113,7 @@ def test_deploy(ray_start_stop):
 
         print("Deploying arithmetic config.")
         deploy_response = subprocess.check_output(
-            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:8265/"]
+            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:52365/"]
         )
         assert success_message_fragment in deploy_response
         print("Deploy request sent successfully.")
