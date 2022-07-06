@@ -1,6 +1,6 @@
 package io.ray.serve.poll;
 
-import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.common.base.Preconditions;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
@@ -9,16 +9,13 @@ import io.ray.api.Ray;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayTaskException;
 import io.ray.api.function.PyActorMethod;
-import io.ray.serve.Constants;
-import io.ray.serve.RayServeConfig;
-import io.ray.serve.RayServeException;
-import io.ray.serve.ReplicaContext;
-import io.ray.serve.ServeController;
-import io.ray.serve.UpdatedObject;
 import io.ray.serve.api.Serve;
-import io.ray.serve.generated.ActorSet;
+import io.ray.serve.common.Constants;
+import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.controller.ServeController;
+import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
-import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.HashMap;
 import java.util.Map;
@@ -57,17 +54,10 @@ public class LongPollClientFactory {
       new HashMap<>();
 
   static {
-    DESERIALIZERS.put(LongPollNamespace.ROUTE_TABLE, body -> ServeProtoUtil.parseEndpointSet(body));
+    DESERIALIZERS.put(LongPollNamespace.ROUTE_TABLE, ServeProtoUtil::parseEndpointSet);
     DESERIALIZERS.put(
-        LongPollNamespace.REPLICA_HANDLES,
-        body -> {
-          try {
-            return ActorSet.parseFrom(body);
-          } catch (InvalidProtocolBufferException e) {
-            throw new RayServeException(
-                LogUtil.format("Failed to parse ActorSet from protobuf bytes."), e);
-          }
-        });
+        LongPollNamespace.RUNNING_REPLICAS,
+        bytes -> ServeProtoUtil.bytesToProto(bytes, ActorNameList::parseFrom));
   }
 
   public static void register(BaseActorHandle hostActor, Map<KeyType, KeyListener> keyListeners) {
@@ -86,24 +76,35 @@ public class LongPollClientFactory {
     if (inited) {
       return;
     }
-
-    ReplicaContext replicaContext = Serve.getReplicaContext();
-    boolean enabled =
-        Optional.ofNullable(replicaContext.getRayServeConfig())
-            .map(rayServeConfig -> rayServeConfig.getConfig())
-            .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_ENABLED))
-            .map(longPollClientEnabled -> Boolean.valueOf(longPollClientEnabled))
-            .orElse(true);
-    if (!enabled) {
-      LOGGER.info("LongPollClient is disabled.");
-      return;
+    long intervalS = 6L;
+    try {
+      ReplicaContext replicaContext = Serve.getReplicaContext();
+      boolean enabled =
+          Optional.ofNullable(replicaContext.getConfig())
+              .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_ENABLED))
+              .map(Boolean::valueOf)
+              .orElse(true);
+      if (!enabled) {
+        LOGGER.info("LongPollClient is disabled.");
+        return;
+      }
+      if (null == hostActor) {
+        hostActor =
+            Ray.getActor(replicaContext.getInternalControllerName(), Constants.SERVE_NAMESPACE)
+                .get();
+      }
+      intervalS =
+          Optional.ofNullable(replicaContext.getConfig())
+              .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_INTERVAL))
+              .map(Long::valueOf)
+              .orElse(10L);
+    } catch (Exception e) {
+      LOGGER.info(
+          "Serve.getReplicaContext()` may only be called from within a Ray Serve deployment.");
     }
 
-    LongPollClientFactory.hostActor =
-        Optional.ofNullable(hostActor)
-            .orElse(
-                Ray.getActor(replicaContext.getInternalControllerName(), Constants.SERVE_NAMESPACE)
-                    .get());
+    Preconditions.checkNotNull(hostActor);
+    LongPollClientFactory.hostActor = hostActor;
 
     scheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor(
@@ -115,12 +116,6 @@ public class LongPollClientFactory {
                 return thread;
               }
             });
-    long intervalS =
-        Optional.ofNullable(replicaContext.getRayServeConfig())
-            .map(rayServeConfig -> rayServeConfig.getConfig())
-            .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_INTERVAL))
-            .map(longPollClientInterval -> Long.valueOf(longPollClientInterval))
-            .orElse(10L);
     scheduledExecutorService.scheduleAtFixedRate(
         () -> {
           try {
@@ -134,11 +129,11 @@ public class LongPollClientFactory {
             LOGGER.error("LongPollClient failed to update object of key {}", SNAPSHOT_IDS, e);
           }
         },
-        intervalS,
+        0L,
         intervalS,
         TimeUnit.SECONDS);
     inited = true;
-    LOGGER.info("LongPollClient was initialized with interval {}s.", intervalS);
+    LOGGER.info("LongPollClient was initialized");
   }
 
   /** Poll the updates. */
@@ -197,6 +192,12 @@ public class LongPollClientFactory {
       OBJECT_SNAPSHOTS.put(entry.getKey(), objectSnapshot);
       SNAPSHOT_IDS.put(entry.getKey(), entry.getValue().getSnapshotId());
     }
+  }
+
+  public static void clearAllCache() {
+    KEY_LISTENERS.clear();
+    OBJECT_SNAPSHOTS.clear();
+    SNAPSHOT_IDS.clear();
   }
 
   public static void unregister(Set<KeyType> keys) {

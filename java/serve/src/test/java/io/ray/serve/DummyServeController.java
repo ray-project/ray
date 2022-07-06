@@ -1,5 +1,6 @@
 package io.ray.serve;
 
+import io.ray.serve.controller.ServeController;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.poll.LongPollRequest;
@@ -11,6 +12,15 @@ public class DummyServeController implements ServeController {
   private Map<String, EndpointInfo> endpoints;
 
   private LongPollResult longPollResult;
+
+  private String rootUrl;
+
+  private String checkpointPath;
+
+  public DummyServeController(String rootUrl, String checkpointPath) {
+    this.rootUrl = rootUrl;
+    this.checkpointPath = checkpointPath;
+  }
 
   @Override
   public byte[] getAllEndpoints() {
@@ -31,5 +41,19 @@ public class DummyServeController implements ServeController {
   @Override
   public LongPollResult listenForChange(LongPollRequest longPollRequest) {
     return longPollResult;
+  }
+
+  @Override
+  public String getRootUrl() {
+    return rootUrl;
+  }
+
+  public void setRootUrl(String rootUrl) {
+    this.rootUrl = rootUrl;
+  }
+
+  @Override
+  public String getCheckpointPath() {
+    return checkpointPath;
   }
 }

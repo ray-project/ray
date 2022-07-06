@@ -54,6 +54,10 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     )
     assert ray.get(out) == "my_prefix hello"
 
+    handle = serve.get_deployment("my_java").get_handle()
+    handle_out = handle.remote("hello handle")
+    assert ray.get(handle_out) == "my_prefix hello handle"
+
     ray.get(controller.delete_deployment.remote(deployment_name))
     client._wait_for_deployment_deleted(deployment_name)
 

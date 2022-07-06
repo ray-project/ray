@@ -66,6 +66,11 @@ class MockReplicaActorWrapper:
         self.health_check_called = False
         # Returned by the health check.
         self.healthy = True
+        self._is_cross_language = False
+
+    @property
+    def is_cross_language(self) -> bool:
+        return self._is_cross_language
 
     @property
     def replica_tag(self) -> str:

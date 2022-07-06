@@ -1,8 +1,7 @@
 package io.ray.serve.poll;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.serve.RayServeException;
-import io.ray.serve.UpdatedObject;
+import io.ray.serve.exception.RayServeException;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;

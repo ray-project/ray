@@ -34,6 +34,7 @@ def gen_java_deps():
                 version = "7.3.0",
                 exclusions = [
                     "org.yaml:snakeyaml",
+                    "com.google.guava:guava",
                 ]
             ),
         ],

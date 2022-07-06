@@ -14,7 +14,15 @@ from ray.util import metrics
 from ray.serve.common import RunningReplicaInfo
 from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
-from ray.serve.utils import compute_iterable_delta
+from ray.serve.utils import (
+    compute_iterable_delta,
+    JavaActorHandleProxy,
+    msgpack_serialize,
+)
+from ray.serve.generated.serve_pb2 import (
+    RequestMetadata as RequestMetadataProto,
+    RequestWrapper as RequestWrapperProto,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -113,11 +121,36 @@ class ReplicaSet:
                 f"Assigned query {query.metadata.request_id} "
                 f"to replica {replica.replica_tag}."
             )
-            # Directly passing args because it might contain an ObjectRef.
-            tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
-                pickle.dumps(query.metadata), *query.args, **query.kwargs
-            )
-            self.in_flight_queries[replica].add(tracker_ref)
+            if replica.is_cross_language:
+                # Handling requests for Java replica
+                arg = query.args[0]
+                if query.metadata.http_arg_is_pickled:
+                    assert isinstance(arg, bytes)
+                    loaded_http_input = pickle.loads(arg)
+                    query_string = loaded_http_input.scope.get("query_string")
+                    if query_string:
+                        arg = query_string.decode().split("=", 1)[1]
+                    elif loaded_http_input.body:
+                        arg = loaded_http_input.body.decode()
+                user_ref = JavaActorHandleProxy(
+                    replica.actor_handle
+                ).handle_request.remote(
+                    RequestMetadataProto(
+                        request_id=query.metadata.request_id,
+                        endpoint=query.metadata.endpoint,
+                        call_method=query.metadata.call_method,
+                    ).SerializeToString(),
+                    RequestWrapperProto(
+                        body=msgpack_serialize(arg)
+                    ).SerializeToString(),
+                )
+                self.in_flight_queries[replica].add(user_ref)
+            else:
+                # Directly passing args because it might contain an ObjectRef.
+                tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
+                    pickle.dumps(query.metadata), *query.args, **query.kwargs
+                )
+                self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
         return None
 
