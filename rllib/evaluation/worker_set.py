@@ -593,9 +593,6 @@ class WorkerSet:
                     )
             return False
 
-        import ipdb
-
-        ipdb.set_trace()
         # A callable returning an InputReader object to use.
         if isinstance(config["input"], FunctionType):
             input_creator = config["input"]
