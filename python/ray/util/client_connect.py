@@ -15,7 +15,7 @@ from ray.util.client import ray
 def connect(
     conn_str: str,
     secure: bool = False,
-    _metadata: List[Tuple[str, str]] = None,
+    metadata: List[Tuple[str, str]] = None,
     connection_retries: int = 3,
     job_config: JobConfig = None,
     namespace: str = None,
