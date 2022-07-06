@@ -328,6 +328,29 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         assert not os.path.exists(checkpoint_dir)
 
+    def test_dict_checkpoint_additional_files(self):
+        checkpoint = self._prepare_dict_checkpoint()
+
+        # Convert to directory
+        checkpoint_dir = checkpoint.to_directory()
+
+        # Add file into checkpoint directory
+        with open(os.path.join(checkpoint_dir, "additional_file.txt"), "w") as f:
+            f.write("Additional data\n")
+
+        # Create new checkpoint object
+        checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
+        new_dir = checkpoint.to_directory()
+        new_additional_file = os.path.join(new_dir, "additional_file.txt")
+        assert os.path.exists(new_additional_file)
+        with open(new_additional_file, "r") as f:
+            assert f.read() == "Additional data\n"
+
+        checkpoint_dict = checkpoint.to_dict()
+        for k, v in self.checkpoint_dict_data.items():
+            assert checkpoint_dict[k] == v
+
 
 class CheckpointsSerdeTest(unittest.TestCase):
     def setUp(self) -> None:
