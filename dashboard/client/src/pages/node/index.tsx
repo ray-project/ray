@@ -278,8 +278,8 @@ const Nodes = () => {
                   )
                   .map((node, i) => (
                     <NodeRows
+                      key={node.hostname + i}
                       node={node}
-                      rowIndex={i}
                       isRefreshing={isRefreshing}
                     />
                   ))}

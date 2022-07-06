@@ -29,7 +29,7 @@ const useNodeRowStyles = makeStyles((theme) =>
   }),
 );
 
-type NodeRowProps = Pick<NodeRowsProps, "node" | "rowIndex"> & {
+type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   /**
    * Whether the node has been expanded to show workers
    */
@@ -44,12 +44,7 @@ type NodeRowProps = Pick<NodeRowsProps, "node" | "rowIndex"> & {
  * A single row that represents the node information only.
  * Does not show any data about the node's workers.
  */
-const NodeRow = ({
-  node,
-  rowIndex,
-  expanded,
-  onExpandButtonClick,
-}: NodeRowProps) => {
+const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
   const {
     hostname = "",
     ip = "",
@@ -67,7 +62,7 @@ const NodeRow = ({
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
 
   return (
-    <TableRow key={hostname + rowIndex}>
+    <TableRow>
       <TableCell>
         <IconButton size="small" onClick={onExpandButtonClick}>
           {!expanded ? (
@@ -161,8 +156,10 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
     : `/log/${encodeURIComponent(logUrl)}`;
 
   return (
-    <TableRow key={pid}>
-      <TableCell></TableCell>
+    <TableRow>
+      <TableCell>
+        {/* Empty because workers do not have an expand / unexpand button. */}
+      </TableCell>
       <TableCell>
         <StatusChip type="worker" status="ALIVE" />
       </TableCell>
@@ -206,10 +203,6 @@ type NodeRowsProps = {
    */
   node: NodeDetail;
   /**
-   * The index of the table. Needed to guarantee key uniqueness.
-   */
-  rowIndex: number;
-  /**
    * Whether the node row should refresh data about its workers.
    */
   isRefreshing: boolean;
@@ -218,7 +211,7 @@ type NodeRowsProps = {
 /**
  * The rows related to a node and its workers. Expandable to show information about workers.
  */
-export const NodeRows = ({ node, rowIndex, isRefreshing }: NodeRowsProps) => {
+export const NodeRows = ({ node, isRefreshing }: NodeRowsProps) => {
   const [isExpanded, setExpanded] = useState(false);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const tot = useRef<NodeJS.Timeout>();
@@ -261,12 +254,13 @@ export const NodeRows = ({ node, rowIndex, isRefreshing }: NodeRowsProps) => {
     <React.Fragment>
       <NodeRow
         node={node}
-        rowIndex={rowIndex}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
       />
       {isExpanded &&
-        workers.map((worker) => <WorkerRow node={node} worker={worker} />)}
+        workers.map((worker) => (
+          <WorkerRow key={worker.pid} node={node} worker={worker} />
+        ))}
     </React.Fragment>
   );
 };
