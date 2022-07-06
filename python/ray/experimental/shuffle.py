@@ -321,8 +321,6 @@ def run(
             pass
         if summary:
             break
-    if not summary:
-        ray._private.internal_api.memory_summary(stats_only=True)
     print(summary)
     print()
     print(
