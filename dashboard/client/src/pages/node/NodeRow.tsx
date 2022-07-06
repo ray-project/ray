@@ -99,15 +99,16 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
         )}
       </TableCell>
       <TableCell>
-        {raylet && (
-          <PercentageBar
-            num={raylet.objectStoreUsedMemory}
-            total={objectStoreTotalMemory}
-          >
-            {memoryConverter(raylet.objectStoreUsedMemory)}/
-            {memoryConverter(objectStoreTotalMemory)}
-          </PercentageBar>
-        )}
+        {raylet &&
+          raylet.objectStoreUsedMemory(
+            <PercentageBar
+              num={raylet.objectStoreUsedMemory}
+              total={objectStoreTotalMemory}
+            >
+              {memoryConverter(raylet.objectStoreUsedMemory)}/
+              {memoryConverter(objectStoreTotalMemory)}
+            </PercentageBar>,
+          )}
       </TableCell>
       <TableCell>
         {disk && disk["/"] && (
