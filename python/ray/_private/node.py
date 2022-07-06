@@ -152,8 +152,6 @@ class Node:
         self._ray_params = ray_params
         self._config = ray_params._system_config or {}
 
-        self._dashboard_agent_listen_port = ray_params.dashboard_agent_listen_port
-
         # Configure log rotation parameters.
         self.max_bytes = int(
             os.getenv("RAY_ROTATION_MAX_BYTES", ray_constants.LOGGING_ROTATE_BYTES)
@@ -554,11 +552,6 @@ class Node:
         return self._metrics_export_port
 
     @property
-    def dashboard_agent_listen_port(self):
-        """Get the dashboard agent's listen port"""
-        return self._dashboard_agent_listen_port
-
-    @property
     def logging_config(self):
         """Get the logging config of the current node."""
         return {
@@ -580,7 +573,6 @@ class Node:
             "metrics_export_port": self._metrics_export_port,
             "gcs_address": self.gcs_address,
             "address": self.address,
-            "dashboard_agent_listen_port": self.dashboard_agent_listen_port,
         }
 
     def is_head(self):
