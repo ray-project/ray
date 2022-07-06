@@ -169,6 +169,7 @@ class WorkflowManagementActor:
                 # override with our error message
                 raise queue.Full("Workflow queue has been full") from None
         else:
+            self._running_workflows.add(workflow_id)
             wf_store.update_workflow_status(WorkflowStatus.RUNNING)
         # initialize executor
         self._workflow_executors[workflow_id] = WorkflowExecutor(state)
@@ -201,7 +202,6 @@ class WorkflowManagementActor:
         if fut is not None:
             await fut  # wait until this workflow is ready to go
 
-        self._running_workflows.add(workflow_id)
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
         executor = self._workflow_executors[workflow_id]
         try:
@@ -214,6 +214,7 @@ class WorkflowManagementActor:
             if not self._workflow_queue.empty():
                 # schedule another workflow from the pending queue
                 next_workflow_id = self._workflow_queue.get_nowait()
+                self._running_workflows.add(next_workflow_id)
                 fut = self._queued_workflows.pop(next_workflow_id)
                 fut.set_result(None)
 
@@ -237,6 +238,7 @@ class WorkflowManagementActor:
         return workflow_id in self._workflow_executors
 
     def list_non_terminating_workflows(self) -> Dict[WorkflowStatus, List[str]]:
+        """List workflows whose status are not of terminated status."""
         result = {WorkflowStatus.RUNNING: [], WorkflowStatus.PENDING: []}
         for wf in self._workflow_executors.keys():
             if wf in self._running_workflows:

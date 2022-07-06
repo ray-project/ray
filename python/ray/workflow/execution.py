@@ -184,13 +184,12 @@ def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStat
     modified_status_filter = status_filter.copy()
     # Here we have to add non-terminating status to the status filter, because some
     # "RESUMABLE" workflows are converted from non-terminating workflows below.
-
     # This is the tricky part: the status "RESUMABLE" neither come from
     # the workflow management actor nor the storage. It is the status where
-    # the storage says it is running but the workflow management actor
+    # the storage says it is non-terminating but the workflow management actor
     # is not running it. This usually happened when there was a sudden crash
     # of the whole Ray runtime or the workflow management actor
-    # (due to cluster etc.). So we includes 'RUNNING' status in the storage
+    # (due to cluster etc.). So we includes non terminating status in the storage
     # filter to get "RESUMABLE" candidates.
     modified_status_filter.update(WorkflowStatus.non_terminating_status())
     status_from_storage = store.list_workflow(modified_status_filter)
@@ -231,26 +230,27 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
         raise RuntimeError("Failed to get management actor") from e
 
     job_id = ray.get_runtime_context().job_id.hex()
-    reconstructed_refs = []
     reconstructed_workflows = []
     for wid, _ in all_failed:
         context = workflow_context.WorkflowStepContext(workflow_id=wid)
-        reconstructed_refs.append(
-            (context, workflow_manager.reconstruct_workflow.remote(job_id, context))
-        )
-    for context, ref in reconstructed_refs:
+        # TODO(suquark): This is not very efficient, but it makes sure
+        #  running workflows has higher priority when getting reconstructed.
         try:
-            ray.get(ref)  # make sure the workflow is already reconstructed
-            reconstructed_workflows.append(
-                (
-                    context.workflow_id,
-                    workflow_manager.execute_workflow.remote(job_id, context),
-                )
-            )
-        except Exception:
+            ray.get(workflow_manager.reconstruct_workflow.remote(job_id, context))
+        except Exception as e:
             # TODO(suquark): Here some workflows got resumed successfully but some
             #  failed and the user has no idea about this, which is very wired.
             # Maybe we should raise an exception here instead?
-            logger.error(f"Failed to resume workflow {context.workflow_id}")
+            logger.error(f"Failed to resume workflow {context.workflow_id}", exc_info=e)
+            raise
+        reconstructed_workflows.append(context)
 
-    return reconstructed_workflows
+    results = []
+    for context in reconstructed_workflows:
+        results.append(
+            (
+                context.workflow_id,
+                workflow_manager.execute_workflow.remote(job_id, context),
+            )
+        )
+    return results
