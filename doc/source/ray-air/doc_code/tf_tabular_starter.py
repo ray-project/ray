@@ -151,7 +151,9 @@ print(f"Last result: {result.metrics}")
 # __air_tf_train_end__
 
 # __air_tf_tuner_start__
-param_space = {"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}},
+param_space = {"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}}
+# __air_tf_tuner_end__
+
 from ray import tune
 from ray.tune.tuner import Tuner, TuneConfig
 
@@ -164,7 +166,6 @@ result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
 # Best Result: Result(metrics={'loss': 4.997025489807129, ...)
-# __air_tf_tuner_end__
 
 # __air_tf_batchpred_start__
 from ray.train.batch_predictor import BatchPredictor
