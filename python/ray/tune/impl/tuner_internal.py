@@ -115,8 +115,11 @@ class TunerInternal:
             pickle.dump(self._trainable, fp)
 
     def _process_scaling_config(self) -> None:
-        """Converts ``self._param_space["scaling_config"]`` to a dict so
-        that it can be used to generate search space.
+        """Converts ``self._param_space["scaling_config"]`` to a dict.
+
+        The dict is converted back to a dataclass in
+        ``ray.tune.search.variant_generator.generate_variants``, after the
+        Tune search specification is resolved.
         """
         scaling_config = self._param_space.get("scaling_config")
         if not isinstance(scaling_config, ScalingConfig):
