@@ -818,6 +818,7 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 )
 def test_dashboard_does_not_depend_on_serve():
     """Check that the dashboard can start without Serve."""
+    ray.shutdown()
 
     with pytest.raises(ImportError):
         from ray import serve  # noqa: F401
@@ -839,8 +840,7 @@ def test_dashboard_does_not_depend_on_serve():
 
     # Check that Serve-dependent features fail
     response = requests.get(f"http://{agent_url}/api/serve/deployments/")
-    assert response.status_code == 404
-    assert "Not Found" in response.text
+    assert response.status_code == 500
 
 
 @pytest.mark.skipif(
@@ -849,6 +849,8 @@ def test_dashboard_does_not_depend_on_serve():
 )
 def test_agent_does_not_depend_on_serve(shutdown_only):
     """Check that the dashboard agent can start without Serve."""
+    ray.shutdown()
+
     with pytest.raises(ImportError):
         from ray import serve  # noqa: F401
 
@@ -871,8 +873,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 
     # Check that Serve-dependent features fail
     response = requests.get(f"http://{agent_url}/api/serve/deployments/")
-    assert response.status_code == 404
-    assert "Not Found" in response.text
+    assert response.status_code == 500
 
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
@@ -881,10 +882,12 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_agent_port_conflict():
+    ray.shutdown()
+
     # start ray and test agent works.
     ray.init(include_dashboard=True)
 
