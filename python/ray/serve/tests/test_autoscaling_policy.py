@@ -820,7 +820,7 @@ def test_e2e_raise_min_replicas(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
     print("Deployed A.")
 
     controller = serve_instance._controller
@@ -828,7 +828,6 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     assert get_num_running_replicas(controller, A) == 0
 
-    handle = A.get_handle()
     [handle.remote() for _ in range(1)]
     print("Issued one request.")
 
@@ -838,19 +837,21 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     first_deployment_replicas = get_running_replica_tags(controller, A)
 
-    A.options(
-        _autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 2,
-            "max_replicas": 10,
-            "look_back_period_s": 0.2,
-            "downscale_delay_s": 0.2,
-            "upscale_delay_s": 0.2,
-        },
-        _graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
-        version="v1",
-    ).deploy()
+    serve.run(
+        A.options(
+            _autoscaling_config={
+                "metrics_interval_s": 0.1,
+                "min_replicas": 2,
+                "max_replicas": 10,
+                "look_back_period_s": 0.2,
+                "downscale_delay_s": 0.2,
+                "upscale_delay_s": 0.2,
+            },
+            _graceful_shutdown_timeout_s=1,
+            max_concurrent_queries=1000,
+            version="v1",
+        ).bind()
+    )
     print("Redeployed A with min_replicas set to 2.")
 
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 2)

@@ -29,7 +29,98 @@ class DeploymentNode(DAGNode):
             ray_actor_options,
             other_args_to_resolve=other_args_to_resolve,
         )
+<<<<<<< HEAD
         self._deployment = deployment
+=======
+        # Deployment can be passed into other DAGNodes as init args. This is
+        # supported pattern in ray DAG that user can instantiate and pass class
+        # instances as init args to others.
+
+        # However in ray serve we send init args via .remote() that requires
+        # pickling, and all DAGNode types are not picklable by design.
+
+        # Thus we need convert all DeploymentNode used in init args into
+        # deployment handles (executable and picklable) in ray serve DAG to make
+        # serve DAG end to end executable.
+        # TODO(jiaodong): This part does some magic for DAGDriver and will throw
+        # error with weird pickle replace table error. Move this out.
+        def replace_with_handle(node):
+            if isinstance(node, DeploymentNode):
+                return RayServeLazySyncHandle(node._deployment.name)
+            elif isinstance(node, DeploymentExecutorNode):
+                return node._deployment_handle
+
+        (
+            replaced_deployment_init_args,
+            replaced_deployment_init_kwargs,
+        ) = self.apply_functional(
+            [deployment_init_args, deployment_init_kwargs],
+            predictate_fn=lambda node: isinstance(
+                node,
+                # We need to match and replace all DAGNodes even though they
+                # could be None, because no DAGNode replacement should run into
+                # re-resolved child DAGNodes, otherwise with KeyError
+                (
+                    DeploymentNode,
+                    DeploymentMethodNode,
+                    DeploymentFunctionNode,
+                    DeploymentExecutorNode,
+                    DeploymentFunctionExecutorNode,
+                    DeploymentMethodExecutorNode,
+                ),
+            ),
+            apply_fn=replace_with_handle,
+        )
+
+        version = (
+            self._bound_other_args_to_resolve["version"]
+            if "version" in self._bound_other_args_to_resolve
+            else None
+        )
+        if "deployment_schema" in self._bound_other_args_to_resolve:
+            deployment_schema: DeploymentSchema = self._bound_other_args_to_resolve[
+                "deployment_schema"
+            ]
+            deployment_shell = schema_to_deployment(deployment_schema)
+
+            # Prefer user specified name to override the generated one.
+            if (
+                inspect.isclass(func_or_class)
+                and deployment_shell.name != func_or_class.__name__
+            ):
+                deployment_name = deployment_shell.name
+
+            # Set the route prefix, prefer the one user supplied,
+            # otherwise set it to /deployment_name
+            if (
+                deployment_shell.route_prefix is None
+                or deployment_shell.route_prefix != f"/{deployment_shell.name}"
+            ):
+                route_prefix = deployment_shell.route_prefix
+            else:
+                route_prefix = f"/{deployment_name}"
+
+            self._deployment = deployment_shell.options(
+                func_or_class=func_or_class,
+                name=deployment_name,
+                init_args=replaced_deployment_init_args,
+                init_kwargs=replaced_deployment_init_kwargs,
+                route_prefix=route_prefix,
+                version=version,
+            )
+        else:
+            self._deployment: Deployment = Deployment(
+                func_or_class,
+                deployment_name,
+                # TODO: (jiaodong) Support deployment config from user input
+                DeploymentConfig(),
+                init_args=replaced_deployment_init_args,
+                init_kwargs=replaced_deployment_init_kwargs,
+                ray_actor_options=ray_actor_options,
+                _internal=True,
+                version=version,
+            )
+>>>>>>> 206a2613b (Clean up more tests)
         self._deployment_handle = RayServeLazySyncHandle(self._deployment.name)
 
     def _copy_impl(
