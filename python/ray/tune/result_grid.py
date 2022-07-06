@@ -181,7 +181,7 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            log_dir=Path(trial.logdir),
+            log_dir=Path(trial.logdir) if trial.logdir else None,
             metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
                 trial.logdir
             )
