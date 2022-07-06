@@ -1,3 +1,4 @@
+# flake8: noqa
 # isort: skip_file
 
 # __air_pytorch_preprocess_start__
@@ -130,27 +131,32 @@ print(f"Last result: {result.metrics}")
 # __air_pytorch_train_end__
 
 # __air_pytorch_tuner_start__
-param_space = {"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}}
-# __air_pytorch_tuner_end__
 from ray import tune
+
+param_space = {"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}}
+metric = "loss"
+# __air_pytorch_tuner_end__
+
+# __air_tune_generic_start__
 from ray.tune.tuner import Tuner, TuneConfig
 from ray.air.config import RunConfig
 
 tuner = Tuner(
     trainer,
     param_space=param_space,
-    tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
+    tune_config=TuneConfig(num_samples=5, metric=metric, mode="min"),
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
 # Best Result: Result(metrics={'loss': 0.278409322102863, ...})
-
-checkpoint = best_result.checkpoint
+# __air_tune_generic_end__
 
 # __air_pytorch_batchpred_start__
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor
+
+checkpoint = best_result.checkpoint
 
 batch_predictor = BatchPredictor.from_checkpoint(
     checkpoint, TorchPredictor, model=create_model(num_features)

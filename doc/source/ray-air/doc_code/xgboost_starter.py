@@ -1,9 +1,11 @@
-# flake8: noqa
 # isort: skip_file
+# flake8: noqa
+
 
 # __air_xgb_preprocess_start__
 import ray
 from ray.data.preprocessors import StandardScaler
+from ray.air import train_test_split
 
 import pandas as pd
 
@@ -48,29 +50,36 @@ print(result.metrics)
 
 # __air_xgb_tuner_start__
 from ray import tune
+
+param_space = {"params": {"max_depth": tune.randint(1, 9)}}
+metric = "train-logloss"
+# __air_xgb_tuner_end__
+
+# __air_tune_generic_end__
 from ray.tune.tuner import Tuner, TuneConfig
 
 tuner = Tuner(
     trainer,
-    param_space={"params": {"max_depth": tune.randint(1, 9)}},
-    tune_config=TuneConfig(num_samples=5, metric="train-logloss", mode="min"),
+    param_space=param_space,
+    tune_config=TuneConfig(num_samples=5, metric=metric, mode="min"),
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
-print("Best results", best_result)
-# __air_xgb_tuner_end__
+print("Best result:", best_result)
+# __air_tune_generic_end__
 
 # __air_xgb_batchpred_start__
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostPredictor
 
-batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
+checkpoint = best_result.checkpoint
+
+batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
 print("PREDICTED PROBABILITIES")
 predicted_probabilities.show()
-
-shap_values = batch_predictor.predict(test_dataset, pred_contribs=True)
-print("SHAP VALUES")
-shap_values.show()
+# {'predictions': 0.9970690608024597}
+# {'predictions': 0.9943051934242249}
+# {'predictions': 0.00334902573376894}
 # __air_xgb_batchpred_end__

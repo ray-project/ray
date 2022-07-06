@@ -82,7 +82,7 @@ Train a model with a ``Trainer``.
         :start-after: __air_tf_train_start__
         :end-before: __air_tf_train_end__
 
-Find the best hyperparameters with a ``Tuner``.
+You can specify a hyperparameter space to search over for each trainer:
 
 .. tabbed:: XGBoost
 
@@ -104,6 +104,14 @@ Find the best hyperparameters with a ``Tuner``.
         :language: python
         :start-after: __air_tf_tuner_start__
         :end-before: __air_tf_tuner_end__
+
+Then use the ``Tuner`` to run the search:
+
+.. literalinclude:: doc_code/pytorch_tabular_starter.py
+    :language: python
+    :start-after: __air_tune_generic_start__
+    :end-before: __air_tune_generic_end__
+
 
 Use the trained model for batch prediction with a ``BatchPredictor``.
 

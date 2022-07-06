@@ -1,3 +1,4 @@
+# flake8: noqa
 # isort: skip_file
 
 # __air_tf_preprocess_start__
@@ -57,12 +58,14 @@ from ray.train.tensorflow import (
 
 
 def create_keras_model(input_features):
-    return keras.Sequential([
-        keras.Input(shape=(input_features,)),
-        layers.Dense(16, activation="relu"),
-        layers.Dense(16, activation="relu"),
-        layers.Dense(1),
-    ])
+    return keras.Sequential(
+        [
+            keras.Input(shape=(input_features,)),
+            layers.Dense(16, activation="relu"),
+            layers.Dense(16, activation="relu"),
+            layers.Dense(1),
+        ]
+    )
 
 
 class TrainCheckpointReportCallback(Callback):
@@ -72,9 +75,11 @@ class TrainCheckpointReportCallback(Callback):
 
 def to_tf_dataset(dataset, batch_size):
     def to_tensor_iterator():
-        data_iterator = dataset.iter_batches(batch_format="numpy", batch_size=batch_size)
+        data_iterator = dataset.iter_batches(
+            batch_format="numpy", batch_size=batch_size
+        )
         for d in data_iterator:
-            yield  (
+            yield (
                 tf.convert_to_tensor(d["input"], dtype=tf.float32),
                 tf.convert_to_tensor(d["target"], dtype=tf.float32),
             )
@@ -107,14 +112,20 @@ def train_loop_per_worker(config):
         multi_worker_model.compile(
             optimizer=tf.keras.optimizers.SGD(learning_rate=lr),
             loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-            metrics=[tf.keras.metrics.BinaryCrossentropy(name="loss", )],
+            metrics=[
+                tf.keras.metrics.BinaryCrossentropy(
+                    name="loss",
+                )
+            ],
         )
 
     results = []
     for _ in range(epochs):
         tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size)
         history = multi_worker_model.fit(
-            tf_dataset, callbacks=[TrainCheckpointReportCallback()], verbose=0,
+            tf_dataset,
+            callbacks=[TrainCheckpointReportCallback()],
+            verbose=0,
         )
     return results  # TODO: How do I fetch these results?
 
@@ -151,37 +162,42 @@ print(f"Last result: {result.metrics}")
 # __air_tf_train_end__
 
 # __air_tf_tuner_start__
+from ray import tune
+
 param_space = {"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}}
+metric = "loss"
 # __air_tf_tuner_end__
 
-from ray import tune
+# __air_tune_generic_start__
 from ray.tune.tuner import Tuner, TuneConfig
 
 tuner = Tuner(
     trainer,
     param_space=param_space,
-    tune_config=TuneConfig(num_samples=5, metric="loss", mode="min"),
+    tune_config=TuneConfig(num_samples=5, metric=metric, mode="min"),
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
 # Best Result: Result(metrics={'loss': 4.997025489807129, ...)
+# __air_tune_generic_end__
 
 # __air_tf_batchpred_start__
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import TensorflowPredictor
 
+checkpoint = best_result.checkpoint
+
 batch_predictor = BatchPredictor.from_checkpoint(
-    result.checkpoint, 
+    checkpoint,
     TensorflowPredictor,
-    model_definition=lambda: create_keras_model(num_features)
+    model_definition=lambda: create_keras_model(num_features),
 )
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
-print("PREDICTED PROBABILITIES")
+print("PREDICTED LOG PROBABILITIES")
 predicted_probabilities.show()
 # {'predictions': -226.1644744873047}
 # {'predictions': -256.8736267089844}
 # ...
 # __air_tf_batchpred_end__
-
