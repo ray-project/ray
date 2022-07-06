@@ -32,5 +32,5 @@ The following example demonstrates both concepts above:
         :start-after: __config_scaling_2__
         :end-before: __config_scaling_2_end__
 
-Two ``param_space``s will be produced (one for each value of ``num_workers`` in ``scaling_config``). The values of ``eta``, ``subsample``, 
+Two variants of ``param_space`` will be produced (one for each value of ``num_workers`` in ``scaling_config``). The values of ``eta``, ``subsample``, 
 and ``max_depth`` will be sampled from their corresponding Tune domains, but will not produce any new variants.

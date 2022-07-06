@@ -28,23 +28,24 @@ class ScalingConfig:
     This is the schema for the scaling_config dict, and after beta, this will be the
     actual representation for Scaling config objects.
 
-    trainer_resources: Resources to allocate for the trainer. If none is provided,
-        will default to 1 CPU.
-    num_workers: The number of workers (Ray actors) to launch.
-        Each worker will reserve 1 CPU by default. The number of CPUs
-        reserved by each worker can be overridden with the
-        ``resources_per_worker`` argument.
-    use_gpu: If True, training will be done on GPUs (1 per worker).
-        Defaults to False. The number of GPUs reserved by each
-        worker can be overridden with the ``resources_per_worker``
-        argument.
-    resources_per_worker: If specified, the resources
-        defined in this Dict will be reserved for each worker. The
-        ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
-        override the number of CPU/GPUs used by each worker.
-    placement_strategy: The placement strategy to use for the
-        placement group of the Ray actors. See :ref:`Placement Group
-        Strategies <pgroup-strategy>` for the possible options.
+    Args:
+        trainer_resources: Resources to allocate for the trainer. If none is provided,
+            will default to 1 CPU.
+        num_workers: The number of workers (Ray actors) to launch.
+            Each worker will reserve 1 CPU by default. The number of CPUs
+            reserved by each worker can be overridden with the
+            ``resources_per_worker`` argument.
+        use_gpu: If True, training will be done on GPUs (1 per worker).
+            Defaults to False. The number of GPUs reserved by each
+            worker can be overridden with the ``resources_per_worker``
+            argument.
+        resources_per_worker: If specified, the resources
+            defined in this Dict will be reserved for each worker. The
+            ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
+            override the number of CPU/GPUs used by each worker.
+        placement_strategy: The placement strategy to use for the
+            placement group of the Ray actors. See :ref:`Placement Group
+            Strategies <pgroup-strategy>` for the possible options.
     """
 
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
