@@ -5,6 +5,7 @@ import ray
 from ray.rllib.policy.rnn_sequencing import (
     pad_batch_to_sequences_of_same_size,
     add_time_dimension,
+    chop_into_sequences,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -24,6 +25,49 @@ class TestRNNSequencing(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
+
+    def test_chop_into_sequences_long_seq(self):
+        """Test pad_batch where episodes are longer than max_seq_len. The long
+        seq should be split into two smaller seqs that are less than max_seq_len"""
+        max_seq_len = 2
+        # Input seq lens, corresponding to ep_ids, unroll_ids, etc.
+        seq_lens = [2, 3, 1]  # noqa: F841
+        ep_ids = [0, 0, 1, 1, 1, 2]
+        unroll_ids = [2, 2, 3, 3, 3, 4]
+        feats = [[1, 1, 2, 2, 2, 3]]
+        # Input states, ie states[3] is the input state at
+        # t = 3 and the output state at t = 2
+        states = [[1, 2, 3, 4, 5, 6]]
+        agent = [0, 0, 0, 0, 0, 0]
+        f_pad, s_init, s_lens = chop_into_sequences(
+            feature_columns=feats,
+            state_columns=states,
+            max_seq_len=max_seq_len,
+            episode_ids=ep_ids,
+            unroll_ids=unroll_ids,
+            agent_indices=agent,
+            dynamic_max=False,
+        )
+        expected_f_pad = [[1, 1, 2, 2, 2, 0, 3, 0]]
+        expected_seq_lens = [2, 2, 1, 1]
+        expected_states = [[1, 3, 5, 6]]
+        check(f_pad, expected_f_pad)
+        check(s_lens, expected_seq_lens)
+        check(s_init, expected_states)
+
+        # Try again with dynamic max
+        f_pad, s_init, s_lens = chop_into_sequences(
+            feature_columns=feats,
+            state_columns=states,
+            max_seq_len=max_seq_len,
+            episode_ids=ep_ids,
+            unroll_ids=unroll_ids,
+            agent_indices=agent,
+            dynamic_max=True,
+        )
+        check(f_pad, expected_f_pad)
+        check(s_lens, expected_seq_lens)
+        check(s_init, expected_states)
 
     def test_pad_batch_dynamic_max(self):
         """Test pad_batch_to_sequences_of_same_size when dynamic_max = True"""
