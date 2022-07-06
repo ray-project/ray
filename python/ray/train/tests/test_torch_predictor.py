@@ -171,6 +171,14 @@ def test_multi_modal_real_model(use_gpu):
 
     predictions = predictor.predict(data, dtype=torch.float)
     assert len(predictions) == 2
+    if use_gpu:
+        assert next(
+            predictor.model.parameters()
+        ).is_cuda, "Model should be moved to GPU if use_gpu is True"
+    else:
+        assert not next(
+            predictor.model.parameters()
+        ).is_cuda, "Model should not be on GPU if use_gpu is False"
 
 
 if __name__ == "__main__":

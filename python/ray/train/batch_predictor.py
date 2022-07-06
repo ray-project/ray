@@ -99,7 +99,8 @@ class BatchPredictor:
         predictor_kwargs = self.predictor_kwargs
         # Automatic set use_gpu in predictor constructor if user provided
         # explicit GPU resources
-        predictor_kwargs["use_gpu"] = num_gpus_per_worker > 0
+        if "user_gpu" not in predictor_kwargs and num_gpus_per_worker > 0:
+            predictor_kwargs["use_gpu"] = True
 
         class ScoringWrapper:
             def __init__(self):

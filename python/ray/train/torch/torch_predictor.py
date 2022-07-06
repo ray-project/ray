@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from ray.util import log_once
 from ray.train.predictor import DataBatchType, Predictor
 from ray.air.checkpoint import Checkpoint
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type, DataType
@@ -44,12 +45,16 @@ class TorchPredictor(Predictor):
             # Ensure input tensor and model live on GPU for GPU inference
             self.model.to(torch.device("cuda"))
 
-        if not use_gpu and torch.cuda.device_count() > 0:
+        if (
+            not use_gpu
+            and torch.cuda.device_count() > 0
+            and log_once("torch_predictor_not_using_gpu")
+        ):
             logger.warning(
                 "You have `use_gpu` as False but there are "
                 f"{torch.cuda.device_count()} GPUs detected on host where "
                 "prediction will only use CPU. Please consider explicitly "
-                "setting `TensorflowPredictor(use_gpu=True)` or "
+                "setting `TorchPredictor(use_gpu=True)` or "
                 "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
                 "enable GPU prediction."
             )
@@ -84,12 +89,9 @@ class TorchPredictor(Predictor):
         dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> pd.DataFrame:
         def tensorize(numpy_array, dtype):
+            torch_tensor = torch.from_numpy(numpy_array).to(dtype)
             if self.use_gpu:
-                torch_tensor = torch.from_numpy(numpy_array).to(
-                    device="cuda", dtype=dtype
-                )
-            else:
-                torch_tensor = torch.from_numpy(numpy_array).to(dtype)
+                torch_tensor = torch_tensor.to(device="cuda")
 
             # Off-the-shelf torch Modules expect the input size to have at least 2
             # dimensions (batch_size, feature_size). If the tensor for the column

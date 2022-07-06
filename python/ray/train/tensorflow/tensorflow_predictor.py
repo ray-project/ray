@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 import tensorflow as tf
 
+from ray.util import log_once
 from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
 from ray.air.checkpoint import Checkpoint
 from ray.train.data_parallel_trainer import _load_checkpoint
@@ -51,7 +52,11 @@ class TensorflowPredictor(Predictor):
         else:
             self.model = self.model_definition()
 
-        if not use_gpu and len(get_tf_gpu_devices()) > 0:
+        if (
+            not use_gpu
+            and len(get_tf_gpu_devices()) > 0
+            and log_once("tf_predictor_not_using_gpu")
+        ):
             logger.warning(
                 "You have `use_gpu` as False but there are "
                 f"{len(get_tf_gpu_devices())} GPUs detected on host where "
