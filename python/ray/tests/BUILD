@@ -61,7 +61,8 @@ py_test_module_list(
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
-    "test_protobuf_compatibility.py"
+    "test_protobuf_compatibility.py",
+    "test_scheduling_performance.py"
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -175,7 +176,6 @@ py_test_module_list(
     "test_cross_language.py",
     "test_environ.py",
     "test_raylet_output.py",
-    "test_scheduling_performance.py",
     "test_get_or_create_actor.py",
   ],
   size = "small",

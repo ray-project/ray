@@ -1455,8 +1455,13 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         )
     )
     # Test get workers by id
+
+    # Still need a `wait_for_condition`,
+    # because the worker obtained through the api server will not filter the driver,
+    # but `global_state.workers` will filter the driver.
+    wait_for_condition(lambda: len(global_state.workers()) > 0)
     workers = global_state.workers()
-    assert len(workers) > 0
+
     worker_id = list(workers.keys())[0]
     wait_for_condition(
         lambda: verify_output(cli_get, ["workers", worker_id], ["worker_id", worker_id])
