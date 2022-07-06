@@ -139,7 +139,7 @@ trainer = TensorflowTrainer(
         # Training batch size
         "batch_size": 128,
         # Number of epochs to train each task for.
-        "num_epochs": 20,
+        "num_epochs": 50,
         # Number of columns of datset
         "num_features": num_features,
         # Optimizer args.
@@ -165,7 +165,7 @@ print(f"Last result: {result.metrics}")
 # __air_tf_tuner_start__
 from ray import tune
 
-param_space = {"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}}
+param_space = {"train_loop_config": {"lr": tune.loguniform(0.0001, 0.01)}}
 metric = "loss"
 # __air_tf_tuner_end__
 
