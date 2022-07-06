@@ -18,10 +18,10 @@ from ray.train.examples.horovod.horovod_example import (
 from ray.train.examples.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.train_fashion_mnist_example import (
+from ray.train.examples.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.examples.train_linear_example import LinearDataset
+from ray.train.examples.torch_linear_example import LinearDataset
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
@@ -350,7 +350,7 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.train_linear_dataset_example import train_linear
+    from ray.train.examples.torch_linear_dataset_example import train_linear
 
     assert train_linear(num_workers=2, use_gpu=True)
 

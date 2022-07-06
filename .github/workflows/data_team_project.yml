@@ -1,0 +1,20 @@
+name: Adds issues with "datasets" label to Data Team GitHub project
+
+on:
+  issues:
+    types:
+      - opened
+      - labeled
+
+jobs:
+  add-to-project:
+    name: Add Datasets issues to Data Team project
+    runs-on: ubuntu-latest
+    permissions:
+      repository-projects: write
+    steps:
+      - uses: actions/add-to-project@main
+        with:
+          project-url: https://github.com/orgs/ray-project/projects/31
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          labeled: datasets

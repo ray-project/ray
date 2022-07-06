@@ -38,25 +38,23 @@ def get_dataset_shard(
 
         import ray
         from ray import train
-        from ray.train.torch import TorchTrainer
 
         def train_func():
             model = Net()
             for iter in range(100):
-                data_shard = train.get_dataset_shard("train").to_torch()
+                data_shard = train.get_dataset_shard().to_torch()
                 model.train(data_shard)
             return model
 
         dataset = ray.data.read_csv("train.csv")
         dataset.filter(...).repeat().random_shuffle()
 
+        trainer = Trainer(backend="torch")
+        trainer.start()
+
         # Trainer will automatically handle sharding.
-        trainer = TorchTrainer(
-            train_func,
-            datasets={"train": dataset},
-            scaling_config={"num_workers": 2},
-        )
-        trainer.fit()
+        train_model = trainer.run(train_func, dataset=dataset)
+        trainer.shutdown()
 
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
@@ -97,15 +95,16 @@ def report(**kwargs) -> None:
 
         import time
         from ray import train
-        from ray.train.torch import TorchTrainer
 
         def train_func():
             for iter in range(100):
                 time.sleep(1)
                 train.report(hello="world")
 
-        trainer = TorchTrainer(train_func, scaling_config={"num_workers": 2})
-        trainer.fit()
+        trainer = Trainer(backend="torch")
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
 
     Args:
         **kwargs: Any key value pair to be reported by Train.
@@ -127,7 +126,6 @@ def world_rank() -> int:
 
         import time
         from ray import train
-        from ray.train.torch import TorchTrainer
 
         def train_func():
             for iter in range(100):
@@ -135,8 +133,10 @@ def world_rank() -> int:
                 if train.world_rank() == 0:
                     print("Worker 0")
 
-        trainer = TorchTrainer(train_func, scaling_config={"num_workers": 2})
-        trainer.fit()
+        trainer = Trainer(backend="torch")
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
 
     """
     session = get_session()
@@ -153,18 +153,16 @@ def local_rank() -> int:
 
         import time
         from ray import train
-        from ray.train.torch import TorchTrainer
 
         def train_func():
             if torch.cuda.is_available():
                 torch.cuda.set_device(train.local_rank())
             ...
 
-        trainer = TorchTrainer(
-            train_func,
-            scaling_config={"use_gpu": True, "num_workers": 2},
-        )
-        trainer.fit()
+        trainer = Trainer(backend="torch", use_gpu=True)
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
 
     """
     session = get_session()
@@ -180,29 +178,18 @@ def load_checkpoint() -> Optional[Dict]:
     .. code-block:: python
 
         from ray import train
-        from ray.air import Checkpoint
-        from ray.train.torch import TorchTrainer
 
         def train_func():
             checkpoint = train.load_checkpoint()
             for iter in range(checkpoint["epoch"], 5):
                 print(iter)
 
-        checkpoint = Checkpoint.from_dict(
-            {
-                # this would be set during checkpoint saving
-                "_current_checkpoint_id": 1,
-                "epoch": 3,
-            }
-        )
-        trainer = TorchTrainer(
-            train_func,
-            resume_from_checkpoint=checkpoint,
-            scaling_config={"num_workers": 2},
-        )
-        trainer.fit()
+        trainer = Trainer(backend="torch")
+        trainer.start()
+        trainer.run(train_func, checkpoint={"epoch": 3})
         # 3
         # 4
+        trainer.shutdown()
 
     Args:
         **kwargs: Any key value pair to be checkpointed by Train.
@@ -226,16 +213,16 @@ def save_checkpoint(**kwargs) -> None:
 
         import time
         from ray import train
-        from ray.train.torch import TorchTrainer
 
         def train_func():
             for iter in range(100):
                 time.sleep(1)
                 train.save_checkpoint(epoch=iter)
 
-        trainer = TorchTrainer(train_func, scaling_config={"num_workers": 2})
-        result = trainer.fit()
-        assert result.checkpoint
+        trainer = Trainer(backend="torch")
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
 
     Args:
         **kwargs: Any key value pair to be checkpointed by Train.
@@ -255,14 +242,14 @@ def world_size() -> int:
 
         import time
         from ray import train
-        from ray.train.torch import TorchTrainer
 
         def train_func():
             assert train.world_size() == 4
 
-        trainer = TorchTrainer(train_func, scaling_config={"num_workers": 4})
-        result = trainer.fit()
-
+        trainer = Trainer(backend="torch", num_workers=4)
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
     """
     session = get_session()
     if session is None:

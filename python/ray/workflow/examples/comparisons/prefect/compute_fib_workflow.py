@@ -15,4 +15,4 @@ def compute_large_fib(M: int, n: int = 1, fib: int = 1):
 
 
 if __name__ == "__main__":
-    assert workflow.create(compute_large_fib.bind(100)).run() == 89
+    assert workflow.run(compute_large_fib.bind(100)) == 89

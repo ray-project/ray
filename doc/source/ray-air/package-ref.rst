@@ -94,9 +94,9 @@ Tuner
 Serving
 ~~~~~~~
 
-.. autoclass:: ray.serve.model_wrappers.ModelWrapperDeployment
+.. autoclass:: ray.serve.air_integrations.PredictorDeployment
 
-.. autoclass:: ray.serve.model_wrappers.ModelWrapper
+.. autoclass:: ray.serve.air_integrations.PredictorWrapper
 
 .. _air-results-ref:
 
@@ -135,5 +135,11 @@ Callbacks
 Keras
 #####
 
-.. automodule:: ray.air.callbacks.keras
+.. autoclass:: ray.air.callbacks.keras.Callback
+.. _air-session-ref:
+
+Session
+~~~~~~~
+
+.. automodule:: ray.air.session
     :members:

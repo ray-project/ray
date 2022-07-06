@@ -1,7 +1,7 @@
 import argparse
 
 from ray.air import RunConfig
-from ray.train.examples.train_fashion_mnist_example import train_func
+from ray.train.examples.torch_fashion_mnist_example import train_func
 from ray.train.torch import TorchTrainer
 from ray.tune.integration.mlflow import MLflowLoggerCallback
 
