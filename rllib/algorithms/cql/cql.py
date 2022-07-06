@@ -23,11 +23,17 @@ from ray.rllib.utils.deprecation import (
     Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.metrics import (LAST_TARGET_UPDATE_TS, NUM_AGENT_STEPS_SAMPLED,
-                                     NUM_AGENT_STEPS_TRAINED, NUM_ENV_STEPS_SAMPLED,
-                                     NUM_ENV_STEPS_TRAINED, NUM_TARGET_UPDATES,
-                                     TARGET_NET_UPDATE_TIMER,
-                                     SYNCH_WORKER_WEIGHTS_TIMER, SAMPLE_TIMER, )
+from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+    NUM_TARGET_UPDATES,
+    TARGET_NET_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
+)
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 

@@ -14,8 +14,12 @@ from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceS
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
-from ray.rllib.utils.metrics import (NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_SAMPLED,
-                                     SYNCH_WORKER_WEIGHTS_TIMER, SAMPLE_TIMER, )
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
+)
 from ray.rllib.utils.typing import (
     ResultDict,
     AlgorithmConfigDict,
