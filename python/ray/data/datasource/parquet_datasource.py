@@ -202,54 +202,6 @@ class _ParquetDatasourceReader(Reader):
         return total_size * PARQUET_DECOMPRESSION_MULTIPLIER
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        import pyarrow as pa
-
-        def read_pieces(serialized_pieces: List[SerializedPiece]) -> Iterator[pa.Table]:
-            # Deserialize after loading the filesystem class.
-            pieces: List[
-                "pyarrow._dataset.ParquetFileFragment"
-            ] = _deserialize_pieces_with_retry(serialized_pieces)
-
-            # Ensure that we're reading at least one dataset fragment.
-            assert len(pieces) > 0
-
-            from pyarrow.dataset import _get_partition_keys
-
-            ctx = DatasetContext.get_current()
-            output_buffer = BlockOutputBuffer(
-                block_udf=self._block_udf,
-                target_max_block_size=ctx.target_max_block_size,
-            )
-
-            logger.debug(f"Reading {len(pieces)} parquet pieces")
-            use_threads = self._reader_args.pop("use_threads", False)
-            for piece in pieces:
-                part = _get_partition_keys(piece.partition_expression)
-                batches = piece.to_batches(
-                    use_threads=use_threads,
-                    columns=self._columns,
-                    schema=self._schema,
-                    batch_size=PARQUET_READER_ROW_BATCH_SIZE,
-                    **self._reader_args,
-                )
-                for batch in batches:
-                    table = pa.Table.from_batches([batch], schema=self._schema)
-                    if part:
-                        for col, value in part.items():
-                            table = table.set_column(
-                                table.schema.get_field_index(col),
-                                col,
-                                pa.array([value] * len(table)),
-                            )
-                    # If the table is empty, drop it.
-                    if table.num_rows > 0:
-                        output_buffer.add_block(table)
-                        if output_buffer.has_next():
-                            yield output_buffer.next()
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
-
         read_tasks = []
         for pieces, metadata in zip(
             np.array_split(self._pq_ds.pieces, parallelism),
@@ -265,11 +217,76 @@ class _ParquetDatasourceReader(Reader):
                 pieces=pieces,
                 prefetched_metadata=metadata,
             )
+            block_udf, reader_args, columns, schema = (
+                self._block_udf,
+                self._reader_args,
+                self._columns,
+                self._schema,
+            )
             read_tasks.append(
-                ReadTask(lambda p=serialized_pieces: read_pieces(p), meta)
+                ReadTask(
+                    lambda p=serialized_pieces: _read_pieces(
+                        block_udf,
+                        reader_args,
+                        columns,
+                        schema,
+                        p,
+                    ),
+                    meta,
+                )
             )
 
         return read_tasks
+
+
+def _read_pieces(
+    block_udf, reader_args, columns, schema, serialized_pieces: List[SerializedPiece]
+) -> Iterator["pyarrow.Table"]:
+    # Deserialize after loading the filesystem class.
+    pieces: List[
+        "pyarrow._dataset.ParquetFileFragment"
+    ] = _deserialize_pieces_with_retry(serialized_pieces)
+
+    # Ensure that we're reading at least one dataset fragment.
+    assert len(pieces) > 0
+
+    import pyarrow as pa
+    from pyarrow.dataset import _get_partition_keys
+
+    ctx = DatasetContext.get_current()
+    output_buffer = BlockOutputBuffer(
+        block_udf=block_udf,
+        target_max_block_size=ctx.target_max_block_size,
+    )
+
+    logger.debug(f"Reading {len(pieces)} parquet pieces")
+    use_threads = reader_args.pop("use_threads", False)
+    for piece in pieces:
+        part = _get_partition_keys(piece.partition_expression)
+        batches = piece.to_batches(
+            use_threads=use_threads,
+            columns=columns,
+            schema=schema,
+            batch_size=PARQUET_READER_ROW_BATCH_SIZE,
+            **reader_args,
+        )
+        for batch in batches:
+            table = pa.Table.from_batches([batch], schema=schema)
+            if part:
+                for col, value in part.items():
+                    table = table.set_column(
+                        table.schema.get_field_index(col),
+                        col,
+                        pa.array([value] * len(table)),
+                    )
+            # If the table is empty, drop it.
+            if table.num_rows > 0:
+                output_buffer.add_block(table)
+                if output_buffer.has_next():
+                    yield output_buffer.next()
+    output_buffer.finalize()
+    if output_buffer.has_next():
+        yield output_buffer.next()
 
 
 def _fetch_metadata_remotely(
