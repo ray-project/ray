@@ -5,7 +5,7 @@ import json
 import jsonschema
 import hashlib
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from asynctest import CoroutineMock
 import pprint
@@ -42,8 +42,9 @@ class TestRayActivityResponse:
 @pytest.mark.parametrize(
     "cluster_activity_hook_output",
     [
+        Exception("External hook error"),
         "bad_output",
-        {"component_type": TestRayActivityResponse(is_active=True)},
+        {"component_type": TestRayActivityResponse(is_active="ACTIVE")},
         {"component_type": OtherResponse(response="bad_response")},
     ],
 )
@@ -63,7 +64,14 @@ async def test_component_activities_hook(cluster_activity_hook_output):
     patch(
         "ray.dashboard.optional_utils.ClassMethodRouteTable", MockClassMethodRouteTable
     ).start()
-    mock_load_class = Mock(return_value=Mock(return_value=cluster_activity_hook_output))
+
+    def external_hook_side_effect():
+        if isinstance(cluster_activity_hook_output, Exception):
+            raise cluster_activity_hook_output
+        else:
+            return cluster_activity_hook_output
+
+    mock_load_class = Mock(return_value=Mock(side_effect=external_hook_side_effect))
     os.environ[RAY_CLUSTER_ACTIVITY_HOOK] = "mock_module.mock_activity_hook"
 
     with patch.multiple(
@@ -80,28 +88,46 @@ async def test_component_activities_hook(cluster_activity_hook_output):
 
         mock_api_head = APIHead(Mock())
         mock_api_head._get_job_activity_info = CoroutineMock(
-            return_value=RayActivityResponse(is_active=False)
+            return_value=RayActivityResponse(is_active="INACTIVE")
         )
         response = await mock_api_head.get_component_activities(Mock(query={}))
         data = response.body.decode()
 
         expected_output = {
-            "driver": {"is_active": False, "reason": None, "timestamp": None}
+            "driver": {"is_active": "INACTIVE", "reason": None, "timestamp": None}
         }
-        if isinstance(cluster_activity_hook_output, dict) and isinstance(
+        if isinstance(cluster_activity_hook_output, str) or isinstance(
+            cluster_activity_hook_output, Exception
+        ):
+            expected_output["external_component"] = {
+                "is_active": "ERROR",
+                "reason": ANY,
+                "timestamp": ANY,
+            }
+        elif isinstance(cluster_activity_hook_output, dict) and isinstance(
             cluster_activity_hook_output["component_type"], TestRayActivityResponse
         ):
             expected_output["component_type"] = {
-                "is_active": True,
+                "is_active": "ACTIVE",
                 "reason": None,
                 "timestamp": None,
             }
-        assert data == json.dumps(expected_output)
+        elif isinstance(cluster_activity_hook_output, dict) and isinstance(
+            cluster_activity_hook_output["component_type"], OtherResponse
+        ):
+            expected_output["component_type"] = {
+                "is_active": "ERROR",
+                "reason": ANY,
+                "timestamp": ANY,
+            }
+        assert json.loads(data) == expected_output
 
     # Test updating the return value of the external hook
     mock_load_class = Mock(
         return_value=Mock(
-            return_value={"new_component": TestRayActivityResponse(is_active=False)}
+            return_value={
+                "new_component": TestRayActivityResponse(is_active="INACTIVE")
+            }
         )
     )
     with patch.multiple(
@@ -110,9 +136,14 @@ async def test_component_activities_hook(cluster_activity_hook_output):
         response = await mock_api_head.get_component_activities(Mock(query={}))
         data = response.body.decode()
         expected_output = {
-            "driver": {"is_active": False, "reason": None, "timestamp": None},
-            "new_component": {"is_active": False, "reason": None, "timestamp": None},
+            "driver": {"is_active": "INACTIVE", "reason": None, "timestamp": None},
+            "new_component": {
+                "is_active": "INACTIVE",
+                "reason": None,
+                "timestamp": None,
+            },
         }
+        assert data == json.dumps(expected_output)
     os.environ.pop(RAY_CLUSTER_ACTIVITY_HOOK)
 
 
@@ -134,7 +165,7 @@ def test_inactive_component_activities(call_ray_start):
 
     # Validate ray_activity_response field can be cast to RayActivityResponse object
     driver_ray_activity_response = RayActivityResponse(**data["driver"])
-    assert not driver_ray_activity_response.is_active
+    assert driver_ray_activity_response.is_active == "INACTIVE"
     assert driver_ray_activity_response.reason is None
 
 
@@ -175,7 +206,7 @@ ray.init(address="auto", namespace="{namespace}")
     # Validate ray_activity_response field can be cast to RayActivityResponse object
     driver_ray_activity_response = RayActivityResponse(**data["driver"])
 
-    assert driver_ray_activity_response.is_active
+    assert driver_ray_activity_response.is_active == "ACTIVE"
     # Drivers with namespace starting with "_ray_internal_job_info_" are not
     # considered active drivers. Three active drivers are the two
     # run with namespace "my_namespace" and the one started

@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import dataclasses
 from datetime import datetime
+import enum
 import logging
 import hashlib
 import json
@@ -32,6 +33,12 @@ logger.setLevel(logging.INFO)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
+class RayActivityStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    ERROR = "ERROR"
+
+
 @dataclasses.dataclass
 class RayActivityResponse:
     """
@@ -39,11 +46,12 @@ class RayActivityResponse:
     active, and metadata about observation.
     """
 
-    # Whether the corresponding Ray component is considered active
-    is_active: bool
-    # Reason if Ray component is considered active
+    # Whether the corresponding Ray component is considered active or inactive,
+    # or if there was an error while collecting this observation.
+    is_active: RayActivityStatus
+    # Reason if Ray component is considered active or errored.
     reason: Optional[str] = None
-    # Timestamp of when this observation about the Ray component was made
+    # Timestamp of when this observation about the Ray component was made.
     timestamp: Optional[float] = None
 
 
@@ -123,31 +131,54 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         # Get activity information for driver
         driver_activity_info = await self._get_job_activity_info(timeout=timeout)
-
-        external_ray_cluster_activity_output = {}
-        if RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
-            external_ray_cluster_activity_output = _load_class(
-                os.environ[RAY_CLUSTER_ACTIVITY_HOOK]
-            )()
-
         resp = {"driver": dataclasses.asdict(driver_activity_info)}
 
-        try:
-            for component_type in external_ray_cluster_activity_output:
-                component_activity_output = external_ray_cluster_activity_output[
-                    component_type
-                ]
-                # Validate and cast output to type RayActivityResponse
-                component_activity_output = RayActivityResponse(
-                    **dataclasses.asdict(component_activity_output)
+        if RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
+            try:
+                external_activity_output = _load_class(
+                    os.environ[RAY_CLUSTER_ACTIVITY_HOOK]
+                )()
+                assert isinstance(external_activity_output, dict), (
+                    f"Output of hook {os.environ[RAY_CLUSTER_ACTIVITY_HOOK]} "
+                    "should be Dict[str, RayActivityResponse]. Got "
+                    f"output: {external_activity_output}"
                 )
-                resp[component_type] = dataclasses.asdict(component_activity_output)
-        except Exception as e:
-            logger.info(
-                f"{os.environ[RAY_CLUSTER_ACTIVITY_HOOK]} didn't return "
-                "response of type Dict[str, RayActivityResponse]. "
-                f"Output: {external_ray_cluster_activity_output}\n{str(e)}"
-            )
+                for component_type in external_activity_output:
+                    try:
+                        component_activity_output = external_activity_output[
+                            component_type
+                        ]
+                        # Cast output to type RayActivityResponse
+                        component_activity_output = RayActivityResponse(
+                            **dataclasses.asdict(component_activity_output)
+                        )
+                        # Validate is_active field is of type RayActivityStatus
+                        component_activity_output.is_active = RayActivityStatus[
+                            component_activity_output.is_active
+                        ]
+                        resp[component_type] = dataclasses.asdict(
+                            component_activity_output
+                        )
+                    except Exception as e:
+                        logger.exception(
+                            f"Failed to get activity status of {component_type} "
+                            f"from user hook {os.environ[RAY_CLUSTER_ACTIVITY_HOOK]}."
+                        )
+                        resp[component_type] = {
+                            "is_active": RayActivityStatus.ERROR,
+                            "reason": repr(e),
+                            "timestamp": datetime.now().timestamp(),
+                        }
+            except Exception as e:
+                logger.exception(
+                    "Failed to get activity status from user "
+                    f"hook {os.environ[RAY_CLUSTER_ACTIVITY_HOOK]}."
+                )
+                resp["external_component"] = {
+                    "is_active": RayActivityStatus.ERROR,
+                    "reason": repr(e),
+                    "timestamp": datetime.now().timestamp(),
+                }
 
         return aiohttp.web.Response(
             text=json.dumps(resp),
@@ -159,25 +190,40 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # Returns if there is Ray activity from drivers (job).
         # Drivers in namespaces that start with _ray_internal_job_info_ are not
         # considered activity.
-        request = gcs_service_pb2.GetAllJobInfoRequest()
-        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=timeout)
-
-        num_active_drivers = 0
-        for job_table_entry in reply.job_info_list:
-            is_dead = bool(job_table_entry.is_dead)
-            in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
-                JobInfoStorageClient.JOB_DATA_KEY_PREFIX
+        try:
+            request = gcs_service_pb2.GetAllJobInfoRequest()
+            reply = await self._gcs_job_info_stub.GetAllJobInfo(
+                request, timeout=timeout
             )
-            if not is_dead and not in_internal_namespace:
-                num_active_drivers += 1
 
-        return RayActivityResponse(
-            is_active=num_active_drivers > 0,
-            reason=f"Number of active drivers: {num_active_drivers}"
-            if num_active_drivers
-            else None,
-            timestamp=datetime.now().timestamp(),
-        )
+            num_active_drivers = 0
+            for job_table_entry in reply.job_info_list:
+                is_dead = bool(job_table_entry.is_dead)
+                in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
+                    JobInfoStorageClient.JOB_DATA_KEY_PREFIX
+                )
+                if not is_dead and not in_internal_namespace:
+                    num_active_drivers += 1
+
+            is_active = (
+                RayActivityStatus.ACTIVE
+                if num_active_drivers > 0
+                else RayActivityStatus.INACTIVE
+            )
+            return RayActivityResponse(
+                is_active=is_active,
+                reason=f"Number of active drivers: {num_active_drivers}"
+                if num_active_drivers
+                else None,
+                timestamp=datetime.now().timestamp(),
+            )
+        except Exception as e:
+            logger.exception("Failed to get activity status of Ray drivers.")
+            return RayActivityResponse(
+                is_active=RayActivityStatus.ERROR,
+                reason=repr(e),
+                timestamp=datetime.now().timestamp(),
+            )
 
     def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:
         # If a job submission ID has been added to a job, the status is
