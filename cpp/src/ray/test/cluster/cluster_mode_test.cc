@@ -479,6 +479,18 @@ TEST(RayClusterModeTest, TaskWithPlacementGroup) {
   ray::RemovePlacementGroup(placement_group.GetID());
 }
 
+TEST(RayClusterModeTest, NamespaceTest) {
+  auto placement_group = CreateSimplePlacementGroup("first_placement_group");
+  EXPECT_TRUE(placement_group.Wait(10));
+
+  auto r = ray::Task(Return1)
+               .SetResources({{"CPU", 1.0}})
+               .SetPlacementGroup(placement_group, 0)
+               .Remote();
+  EXPECT_EQ(*r.Get(), 1);
+  ray::RemovePlacementGroup(placement_group.GetID());
+}
+
 int main(int argc, char **argv) {
   absl::ParseCommandLine(argc, argv);
   cmd_argc = argc;

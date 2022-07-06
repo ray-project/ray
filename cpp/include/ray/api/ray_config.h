@@ -59,6 +59,8 @@ class RayConfig {
 
   // A specific flag for internal `default_worker`. Please don't use it in user code.
   bool is_worker_ = false;
+ 
+  std::string ray_namespace = "";
 };
 
 }  // namespace ray

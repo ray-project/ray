@@ -108,7 +108,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::unordered_map<std::string, double> resources;
   std::string name = create_options.name;
-  std::string ray_namespace = "";
+  std::string ray_namespace = create_options.ray_namespace;
   BundleID bundle_id = GetBundleID(create_options);
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
