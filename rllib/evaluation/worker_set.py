@@ -125,6 +125,8 @@ class WorkerSet:
                             pathlib.Path(inputs).glob("*.zip")
                         )
                         paths = [str(path) for path in paths]
+                    else:
+                        paths = [paths]
                 ends_with_zip_or_json = all(
                     re.search("\\.zip$", path) or re.search("\\.json$", path)
                     for path in paths
