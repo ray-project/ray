@@ -156,7 +156,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::unique_ptr<std::string> resources = global_state_->GetAllResourceUsage();
   rpc::ResourceUsageBatchData resource_usage_batch_data;
   resource_usage_batch_data.ParseFromString(*resources.get());
-  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 0);
 
   auto node_table_data = Mocker::GenNodeInfo();
   node_table_data->mutable_resources_total()->insert({"CPU", 1});
@@ -178,7 +178,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
-  ASSERT_EQ(resource_usage_batch_data.batch_size(), 2);
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
 
   // Report changed resource usage.
   std::promise<bool> promise2;
@@ -194,8 +194,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
-  ASSERT_EQ(resource_usage_batch_data.batch_size(), 2);
-  auto resources_data = resource_usage_batch_data.mutable_batch()->at(1);
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
+  auto resources_data = resource_usage_batch_data.mutable_batch()->at(0);
   ASSERT_EQ(resources_data.resources_total_size(), 2);
   ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
   ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
@@ -215,8 +215,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
-  ASSERT_EQ(resource_usage_batch_data.batch_size(), 2);
-  resources_data = resource_usage_batch_data.mutable_batch()->at(1);
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
+  resources_data = resource_usage_batch_data.mutable_batch()->at(0);
   ASSERT_EQ(resources_data.resources_total_size(), 2);
   ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
   ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);

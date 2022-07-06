@@ -90,13 +90,13 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
 
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply, send_reply_callback);
-  ASSERT_EQ(get_all_reply.resource_usage_data().batch().size(), 1);
+  ASSERT_EQ(get_all_reply.resource_usage_data().batch().size(), 2);
 
   gcs_resource_manager_->OnNodeDead(node_id);
   rpc::GetAllResourceUsageReply get_all_reply2;
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply2, send_reply_callback);
-  ASSERT_EQ(get_all_reply2.resource_usage_data().batch().size(), 0);
+  ASSERT_EQ(get_all_reply2.resource_usage_data().batch().size(), 1);
 }
 
 TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
