@@ -183,19 +183,9 @@ class CQL(SAC):
         batch = batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
-        # Add batch to replay buffer.
-        self.local_replay_buffer.add(batch)
 
         # Sample training batch from replay buffer.
-        train_batch = sample_min_n_steps_from_buffer(
-            self.local_replay_buffer,
-            self.config["train_batch_size"],
-            count_by_agent_steps=self._by_agent_steps,
-        )
-
-        # Old-style replay buffers return None if learning has not started
-        if not train_batch:
-            return {}
+        train_batch = batch
 
         # Postprocess batch before we learn on it.
         post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
@@ -208,14 +198,6 @@ class CQL(SAC):
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
-
-        # Update replay buffer priorities.
-        update_priorities_in_replay_buffer(
-            self.local_replay_buffer,
-            self.config,
-            train_batch,
-            train_results,
-        )
 
         # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[
