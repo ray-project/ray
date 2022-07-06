@@ -413,16 +413,18 @@ def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers)
     # Lines are printed 1.25, 2.5, and 5 seconds.
     # First line is the dashboard start log.
     # INFO services.py:1477 -- View the Ray dashboard at http://127.0.0.1:8265
-    assert len(lines) == 4, lines
+    print(lines)
 
     expected_elapsed = [1.25, 2.5, 5.0]
+    expected_lines = []
     for i, line in enumerate(lines[1:]):
-        expected = (
+        expected_lines.append(
             f"({expected_elapsed[i]} / 10 seconds) Waiting for the "
             "response from the API "
             "server address http://127.0.0.1:8265/api/v0/delay/5."
         )
-        assert expected in line
+    for expected_line in expected_lines:
+        expected_line in lines
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@ import warnings
 import threading
 import logging
 from dataclasses import fields
-from typing import Dict, Generator, List, Optional, Tuple, Union, Any, Callable
+from typing import Dict, Generator, List, Optional, Tuple, Union, Any
 from contextlib import contextmanager
 
 import requests
@@ -169,7 +169,6 @@ class StateApiClient(SubmissionClient):
         endpoint: str,
         params: Dict,
         timeout: float,
-        resource: StateResource,
         _explain: bool = False,
     ):
         with warnings_on_slow_request(

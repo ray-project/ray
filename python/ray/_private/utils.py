@@ -17,7 +17,7 @@ import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union, Callable
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
 
 import grpc
 import numpy as np
