@@ -141,7 +141,7 @@ trainer = TensorflowTrainer(
         # trainer_resources=0 so that the example works on Colab.
         "trainer_resources": {"CPU": 0},
     },
-    datasets={"train": train_dataset, "validate": valid_dataset},
+    datasets={"train": train_dataset},
     preprocessor=preprocessor,
 )
 

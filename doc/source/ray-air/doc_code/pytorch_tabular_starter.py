@@ -62,22 +62,6 @@ def create_model(input_features):
     )
 
 
-def validate_epoch(dataloader, model, loss_fn):
-    model.eval()
-    test_loss, correct = 0, 0
-    evaluated = False
-    with torch.no_grad():
-        for idx, (inputs, labels) in enumerate(dataloader):
-            evaluated = True
-            pred = model(inputs)
-            test_loss += loss_fn(pred, labels.unsqueeze(1)).item()
-            correct += (pred.argmax(1) == labels).type(torch.float).sum().item()
-    if not evaluated:
-        return
-    test_loss /= idx + 1
-    return test_loss
-
-
 def train_loop_per_worker(config):
     batch_size = config["batch_size"]
     lr = config["lr"]
@@ -87,7 +71,6 @@ def train_loop_per_worker(config):
     # Get the Ray Dataset shard for this data parallel worker,
     # and convert it to a PyTorch Dataset.
     train_data = train.get_dataset_shard("train")
-    val_data = train.get_dataset_shard("validate")
 
     def to_tensor_iterator(dataset, batch_size):
         data_iterator = dataset.iter_batches(
@@ -111,8 +94,7 @@ def train_loop_per_worker(config):
             train_loss = loss_fn(predictions, labels.unsqueeze(1))
             train_loss.backward()
             optimizer.step()
-        validation_iterator = to_tensor_iterator(val_data, batch_size)
-        loss = validate_epoch(validation_iterator, model, loss_fn)
+        loss = train_loss.item()
         session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
 
 
@@ -138,7 +120,7 @@ trainer = TorchTrainer(
         # trainer_resources=0 so that the example works on Colab.
         "trainer_resources": {"CPU": 0},
     },
-    datasets={"train": train_dataset, "validate": valid_dataset},
+    datasets={"train": train_dataset},
     preprocessor=preprocessor,
 )
 
@@ -179,33 +161,3 @@ predicted_probabilities.show()
 # {'predictions': array([1.], dtype=float32)}
 # {'predictions': array([0.], dtype=float32)}
 # __air_pytorch_batchpred_end__
-
-# __air_pytorch_online_predict_start__
-from ray import serve
-from ray.serve.model_wrappers import ModelWrapperDeployment
-
-from fastapi import Request
-import requests
-
-
-async def adapter(request: Request):
-    content = await request.json()
-    print(content)
-    return pd.DataFrame.from_dict(content)
-
-
-serve.start(detached=True)
-deployment = ModelWrapperDeployment.options(name="my-deployment")
-# deployment.deploy(
-#     TorchPredictor,
-#     checkpoint,
-#     batching_params=False,
-#     http_adapter=adapter,
-#     model=create_model(num_features))
-
-# sample_input = test_dataset.take(1)
-# sample_input = dict(sample_input[0])
-
-# output = requests.post(deployment.url, json=[sample_input]).json()
-# print(output)
-# __air_pytorch_online_predict_end__
