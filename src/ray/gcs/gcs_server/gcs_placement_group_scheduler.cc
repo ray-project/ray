@@ -64,7 +64,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   auto scheduling_options =
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(), strategy);
-  scheduling_options.cpu_frac_slack = 1.0 - placement_group->GetMaxCpuFractionPerNode();
+  scheduling_options.max_allocatable_cpu_fraction =
+      placement_group->GetMaxCpuFractionPerNode();
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 
@@ -72,15 +73,24 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &selected_nodes = scheduling_result.selected_nodes;
 
   if (!result_status.IsSuccess()) {
-    RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
-                   << ", id: " << placement_group->GetPlacementGroupID()
-                   << ", because current resources can't satisfy the required resource.";
+    // SANG-TODO change it to DEBUG
+    RAY_LOG(INFO)
+        << "Failed to schedule placement group " << placement_group->GetName()
+        << ", id: " << placement_group->GetPlacementGroupID()
+        << ", because current resources can't satisfy the required resource. IsFailed: "
+        << result_status.IsFailed() << " IsInfeasible: " << result_status.IsInfeasible()
+        << " IsPartialSuccess: " << result_status.IsPartialSuccess();
     bool infeasible = result_status.IsInfeasible();
     // If the placement group creation has failed,
     // but if it is not infeasible, it is retryable to create.
     failure_callback(placement_group, /*is_feasible*/ !infeasible);
     return;
   }
+
+  // SANG-TODO change it to debug.
+  RAY_LOG(INFO) << "Can schedule a placement group "
+                << placement_group->GetPlacementGroupID()
+                << ". Selected node size: " << selected_nodes.size();
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
