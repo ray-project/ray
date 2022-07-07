@@ -34,6 +34,7 @@ from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
+from threading import Thread
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -220,14 +221,28 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
         stderr=subprocess.STDOUT,
         env=env,
     )
+    out = ""
+
+    def catch_output(stdout):
+        for line in iter(stdout.readline, b""):
+            decode_line = ray._private.utils.decode(line, encode_type=encode)
+            nonlocal out
+            out += decode_line
+            print("[driver]", decode_line)
+
+    # Start a thread to print the driver logs at runtime.
+    t = Thread(target=catch_output, args=(proc.stdout,))
+    t.daemon = True
+    t.start()
     with proc:
-        output = proc.communicate(driver_script.encode(encoding=encode))[0]
+        proc.stdin.write(driver_script.encode(encoding=encode))
+        proc.stdin.close()
+        proc.wait()
+        t.join()
         if proc.returncode:
-            print(ray._private.utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
-                proc.returncode, proc.args, output, proc.stderr
+                proc.returncode, proc.args, out, proc.stderr
             )
-        out = ray._private.utils.decode(output, encode_type=encode)
     return out
 
 
