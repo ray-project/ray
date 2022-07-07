@@ -334,6 +334,23 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
+def test_read_pandas_data_array_column(ray_start_regular_shared):
+    df = pd.DataFrame(
+        {
+            "one": [1, 2, 3],
+            "array": [
+                np.array([1, 1, 1]),
+                np.array([2, 2, 2]),
+                np.array([3, 3, 3]),
+            ],
+        }
+    )
+    ds = ray.data.from_pandas(df)
+    row = ds.take(1)[0]
+    assert row["one"] == 1
+    assert all(row["array"] == [1, 1, 1])
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
