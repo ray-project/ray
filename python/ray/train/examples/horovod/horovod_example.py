@@ -158,7 +158,7 @@ def main(num_workers, use_gpu, kwargs):
         scaling_config={"use_gpu": use_gpu, "num_workers": num_workers},
     )
     results = trainer.fit()
-    print(results)
+    print(results.metrics)
 
 
 # Horovod Class API.

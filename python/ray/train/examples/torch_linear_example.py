@@ -94,7 +94,7 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
     )
     results = trainer.fit()
 
-    print(results)
+    print(results.metrics)
     return results
 
 
