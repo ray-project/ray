@@ -8,7 +8,6 @@ import pytest
 import ray
 from ray import tune
 from ray.air import session, Checkpoint
-from ray.tune import Trainable
 from ray.tune.trainable import wrap_function
 
 

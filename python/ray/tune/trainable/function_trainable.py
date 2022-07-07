@@ -500,15 +500,6 @@ class FunctionTrainable(Trainable):
     def save_to_object(self):
         checkpoint_path = self.save()
         checkpoint = Checkpoint.from_directory(checkpoint_path)
-
-        if os.path.exists(
-            os.path.join(checkpoint_path, _DICT_CHECKPOINT_FILE_NAME)
-        ) and os.path.exists(os.path.join(checkpoint_path, _TUNE_METADATA_FILENAME)):
-            metadata = TrainableUtil.load_metadata(checkpoint_dir=checkpoint_path)
-            checkpoint_data = checkpoint.to_dict()
-            checkpoint_data[_METADATA_KEY] = metadata
-            checkpoint = Checkpoint.from_dict(checkpoint_data)
-
         return checkpoint.to_bytes()
 
     def load_checkpoint(self, checkpoint):

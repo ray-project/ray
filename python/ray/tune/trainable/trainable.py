@@ -459,13 +459,9 @@ class Trainable:
         if isinstance(checkpoint_dict_or_path, dict):
             metadata["relative_checkpoint_path"] = ""
             metadata["saved_as_dict"] = True
-
-            checkpoint_dict_or_path[_METADATA_KEY] = metadata
-
             Checkpoint.from_dict(checkpoint_dict_or_path).to_directory(checkpoint_dir)
             # Re-drop marker
             TrainableUtil.mark_as_checkpoint_dir(checkpoint_dir)
-
         else:
             # Get relative path to returned checkpoint
             relative_checkpoint_path = os.path.relpath(
@@ -600,34 +596,15 @@ class Trainable:
                 f"Got checkpoint path: {checkpoint_path} and IP {checkpoint_node_ip}"
             )
 
-        saved_as_dict = os.path.exists(
-            os.path.join(checkpoint_path, _DICT_CHECKPOINT_FILE_NAME)
-        )
+        metadata = TrainableUtil.load_metadata(checkpoint_path)
 
-        if saved_as_dict:
-            # We try to load the checkpoint from the metadata file first.
-            # If this fails (because the metadata file does not exist), we
-            # deserialize the checkpoint and load the metadata instead.
-            # This avoids double deserialization if save_to_object was used.
-            try:
-                metadata = TrainableUtil.load_metadata(checkpoint_path)
-            except OSError as e:
-                checkpoint_dict = Checkpoint.from_directory(checkpoint_path).to_dict()
-                checkpoint_dict.update(dict(tune_checkpoint_path=checkpoint_path))
-
-                metadata = checkpoint_dict.pop(_METADATA_KEY, {})
-
-                if not metadata:
-                    raise RuntimeError(
-                        f"Could not load tune metadata when loading from dict "
-                        f"checkpoint: Metadata file not found. Please report this "
-                        f"issue to GitHub: https://github.com/ray-project/ray/issues"
-                    ) from e
-
-            to_load = checkpoint_path
+        if metadata["saved_as_dict"]:
+            # If data was saved as a dict (e.g. from a class trainable),
+            # also pass the dict to `load_checkpoint()`.
+            checkpoint_dict = Checkpoint.from_directory(checkpoint_path).to_dict()
+            to_load = checkpoint_dict
         else:
-            metadata = TrainableUtil.load_metadata(checkpoint_path)
-
+            # Otherwise, pass the relative checkpoint path
             relative_checkpoint_path = metadata["relative_checkpoint_path"]
             to_load = os.path.join(checkpoint_path, relative_checkpoint_path)
 
