@@ -9,21 +9,15 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-import ray._private.ray_constants as ray_constants
 
-GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
-STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
+GET_OR_PUT_URL = "http://localhost:8265/api/serve/deployments/"
+STATUS_URL = "http://localhost:8265/api/serve/deployments/status"
 
 
 @pytest.fixture
 def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
     subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
-        == 200,
-        timeout=15,
-    )
     yield
     subprocess.check_output(["ray", "stop", "--force"])
 
@@ -252,14 +246,6 @@ def test_serve_namespace(ray_start_stop):
     print("Successfully retrieved deployment statuses with Python API.")
     print("Shutting down Python API.")
     serve.shutdown()
-
-
-def test_default_dashboard_agent_listen_port():
-    """
-    Defaults in the code and the documentation assume
-    the dashboard agent listens to HTTP on port 52365.
-    """
-    assert ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT == 52365
 
 
 if __name__ == "__main__":
