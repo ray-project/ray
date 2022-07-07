@@ -116,8 +116,18 @@ class WorkerSet:
                 and ("d4rl" not in trainer_config["input"])
                 and (not "sampler" == trainer_config["input"])
                 and (not "dataset" == trainer_config["input"])
-                and (not registry_contains_input(trainer_config["input"]))
-                and (not self._valid_module(trainer_config["input"]))
+                and (
+                    not (
+                        isinstance(trainer_config["input"], str)
+                        and registry_contains_input(trainer_config["input"])
+                    )
+                )
+                and (
+                    not (
+                        isinstance(trainer_config["input"], str)
+                        and self._valid_module(trainer_config["input"])
+                    )
+                )
             ):
                 paths = trainer_config["input"]
                 if isinstance(paths, str):
@@ -779,23 +789,23 @@ class WorkerSet:
 
     @classmethod
     def _valid_module(cls, class_path):
-            del cls
-            if (
-                isinstance(class_path, str)
-                and not os.path.isfile(class_path)
-                and "." in class_path
-            ):
-                module_path, class_name = class_path.rsplit(".", 1)
-                try:
-                    spec = importlib.util.find_spec(module_path)
-                    if spec is not None:
-                        return True
-                except (ModuleNotFoundError, ValueError):
-                    print(
-                        f"module {module_path} not found while trying to get "
-                        f"input {class_path}"
-                    )
-            return False
+        del cls
+        if (
+            isinstance(class_path, str)
+            and not os.path.isfile(class_path)
+            and "." in class_path
+        ):
+            module_path, class_name = class_path.rsplit(".", 1)
+            try:
+                spec = importlib.util.find_spec(module_path)
+                if spec is not None:
+                    return True
+            except (ModuleNotFoundError, ValueError):
+                print(
+                    f"module {module_path} not found while trying to get "
+                    f"input {class_path}"
+                )
+        return False
 
     @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
     def foreach_trainable_policy(self, func):

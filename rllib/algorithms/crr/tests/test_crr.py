@@ -35,10 +35,10 @@ class TestCRR(unittest.TestCase):
         # Will use the Json Reader in this example until we convert over the example
         # files over to Parquet, since the dataset json reader cannot handle large
         # block sizes.
+
         def input_reading_fn(ioctx):
-            return JsonReader(
-            ioctx.config["input_config"]["paths"], ioctx
-            )
+            return JsonReader(ioctx.config["input_config"]["paths"], ioctx)
+
         input_config = {"paths": data_file}
 
         config = (
