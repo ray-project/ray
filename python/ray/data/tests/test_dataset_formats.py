@@ -36,7 +36,7 @@ from ray.data.datasource import (
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
-    SerializedPiece,
+    _SerializedPiece,
     _deserialize_pieces_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa
@@ -359,7 +359,7 @@ def test_parquet_deserialize_pieces_with_retry(
     pq_ds = pq.ParquetDataset(
         data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
     )
-    serialized_pieces = [SerializedPiece(p) for p in pq_ds.pieces]
+    serialized_pieces = [_SerializedPiece(p) for p in pq_ds.pieces]
 
     # test 1st attempt succeed
     pieces = _deserialize_pieces_with_retry(serialized_pieces)
