@@ -7,6 +7,9 @@ docsearch({
     algoliaOptions: {
         hitsPerPage: 10,
     },
+    autocompleteOptions: {
+        autoselect: false,
+    },
     handleSelected: function (input, event, suggestion, datasetNumber, context) {
         if (context.selectionMethod === 'click') {
             input.setVal('');
