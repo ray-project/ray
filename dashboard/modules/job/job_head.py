@@ -16,15 +16,17 @@ from ray._private.runtime_env.packaging import (
     pin_runtime_env_uri,
 )
 from ray.dashboard.modules.job.common import (
-    CURRENT_VERSION,
     http_uri_components_to_uri,
     JobInfo,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
     JobLogsResponse,
-    VersionResponse,
     validate_request_type,
+)
+from ray.dashboard.modules.version import (
+    CURRENT_VERSION,
+    VersionResponse,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
 
