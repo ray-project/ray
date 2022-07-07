@@ -1,18 +1,19 @@
 import argparse
-from typing import Dict
+from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
 
 import ray
 import ray.train as train
+from ray.air.config import DatasetConfig
 from ray.data import Dataset
-from ray.data.dataset_pipeline import DatasetPipeline
-from ray.train import Trainer
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
+from ray.train.torch import TorchTrainer
 
 
-def get_datasets(a=5, b=10, size=1000, split=0.8) -> Dict[str, DatasetPipeline]:
+def get_datasets_and_configs(
+    a=5, b=10, size=1000, split=0.8
+) -> Tuple[Dict[str, Dataset], Dict[str, DatasetConfig]]:
     def get_dataset(a, b, size) -> Dataset:
         items = [i / size for i in range(size)]
         dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
@@ -24,15 +25,18 @@ def get_datasets(a=5, b=10, size=1000, split=0.8) -> Dict[str, DatasetPipeline]:
         [split]
     )
 
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()
-    validation_dataset_pipeline = validation_dataset.repeat()
-
     datasets = {
-        "train": train_dataset_pipeline,
-        "validation": validation_dataset_pipeline,
+        "train": train_dataset,
+        "validation": validation_dataset,
     }
 
-    return datasets
+    # Use dataset pipelining
+    dataset_configs = {
+        "train": DatasetConfig(use_stream_api=True),
+        "validation": DatasetConfig(use_stream_api=True),
+    }
+
+    return datasets, dataset_configs
 
 
 def train_epoch(iterable_dataset, model, loss_fn, optimizer, device):
@@ -83,8 +87,6 @@ def train_func(config):
 
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    results = []
-
     train_dataset_iterator = train_dataset_pipeline_shard.iter_epochs()
     validation_dataset_iterator = validation_dataset_pipeline_shard.iter_epochs()
 
@@ -112,25 +114,21 @@ def train_func(config):
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
         result = validate_epoch(validation_torch_dataset, model, loss_fn, device)
         train.report(**result)
-        results.append(result)
-
-    return results
 
 
 def train_linear(num_workers=2, use_gpu=False):
-    datasets = get_datasets()
+    datasets, dataset_configs = get_datasets_and_configs()
 
-    trainer = Trainer("torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
-    trainer.start()
-    results = trainer.run(
+    trainer = TorchTrainer(
         train_func,
-        config,
-        dataset=datasets,
-        callbacks=[JsonLoggerCallback(), TBXLoggerCallback()],
+        train_loop_config=config,
+        datasets=datasets,
+        dataset_config=dataset_configs,
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
-    trainer.shutdown()
-    print(results)
+    results = trainer.fit()
+    print(results.metrics)
     return results
 
 
@@ -159,8 +157,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        # 1 for datasets
-        num_cpus = args.num_workers + 1
+        # 1 for datasets, 1 for Trainable actor
+        num_cpus = args.num_workers + 2
         num_gpus = args.num_workers if args.use_gpu else 0
         ray.init(num_cpus=num_cpus, num_gpus=num_gpus)
     else:

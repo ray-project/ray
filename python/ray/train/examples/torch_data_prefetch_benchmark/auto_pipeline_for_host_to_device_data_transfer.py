@@ -5,8 +5,9 @@ import warnings
 import numpy as np
 import torch
 import torch.nn as nn
+
 import ray.train as train
-from ray.train import Trainer
+from ray.train.torch import TorchTrainer
 
 
 class Net(nn.Module):
@@ -94,7 +95,6 @@ def train_func(config):
 
 
 def train_linear(num_workers=1, num_hidden_layers=1, use_auto_transfer=True, epochs=3):
-    trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=True)
     config = {
         "lr": 1e-2,
         "hidden_size": num_hidden_layers,
@@ -102,11 +102,14 @@ def train_linear(num_workers=1, num_hidden_layers=1, use_auto_transfer=True, epo
         "epochs": epochs,
         "use_auto_transfer": use_auto_transfer,
     }
-    trainer.start()
-    results = trainer.run(train_func, config)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config=config,
+        scaling_config={"use_gpu": True, "num_workers": num_workers},
+    )
+    results = trainer.fit()
 
-    print(results)
+    print(results.metrics)
     return results
 
 

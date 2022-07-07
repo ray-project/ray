@@ -1,5 +1,6 @@
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
@@ -15,7 +16,7 @@ class Result:
     This is the class produced by Trainer.fit().
     It contains a checkpoint, which can be used for resuming training and for
     creating a Predictor object. It also contains a metrics object describing
-    training metrics. `error` is included so that non successful runs
+    training metrics. ``error`` is included so that non successful runs
     and trials can be represented as well.
 
     The constructor is a private API.
@@ -24,6 +25,7 @@ class Result:
         metrics: The final metrics as reported by an Trainable.
         checkpoint: The final checkpoint of the Trainable.
         error: The execution error of the Trainable run, if the trial finishes in error.
+        log_dir: Directory where the trial logs are saved.
         metrics_dataframe: The full result dataframe of the Trainable.
             The dataframe is indexed by iterations and contains reported
             metrics.
@@ -37,6 +39,7 @@ class Result:
     metrics: Optional[Dict[str, Any]]
     checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
+    log_dir: Optional[Path]
     metrics_dataframe: Optional[pd.DataFrame]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
 
