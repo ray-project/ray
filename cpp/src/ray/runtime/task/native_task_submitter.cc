@@ -145,9 +145,12 @@ ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, task_options);
 }
 
-ActorID NativeTaskSubmitter::GetActor(const std::string &actor_name) const {
+ActorID NativeTaskSubmitter::GetActor(const std::string &actor_name,
+                                      const std::string &ray_namespace) const {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-  auto pair = core_worker.GetNamedActorHandle(actor_name, "");
+  const std::string ns =
+      ray_namespace.empty() ? core_worker.GetJobConfig().ray_namespace() : ray_namespace;
+  auto pair = core_worker.GetNamedActorHandle(actor_name, ns);
   if (!pair.second.ok()) {
     RAY_LOG(WARNING) << pair.second.message();
     return ActorID::Nil();

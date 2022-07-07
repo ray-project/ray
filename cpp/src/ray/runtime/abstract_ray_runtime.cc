@@ -242,8 +242,9 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-std::string AbstractRayRuntime::GetActorId(const std::string &actor_name) {
-  auto actor_id = task_submitter_->GetActor(actor_name);
+std::string AbstractRayRuntime::GetActorId(const std::string &actor_name,
+                                           const std::string &ray_namespace) {
+  auto actor_id = task_submitter_->GetActor(actor_name, ray_namespace);
   if (actor_id.IsNil()) {
     return "";
   }

@@ -480,13 +480,21 @@ TEST(RayClusterModeTest, TaskWithPlacementGroup) {
 }
 
 TEST(RayClusterModeTest, NamespaceTest) {
+  // Create a named actor in namespace `isolated_ns`.
   std::string actor_name = "named_actor";
-  ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
-                                        .SetName(actor_name, "isolated_ns")
-                                        .Remote();
+  std::string ns_name = "isolated_ns";
+  ray::ActorHandle<Counter> actor =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName(actor_name, ns_name).Remote();
   auto initialized_obj = actor.Task(&Counter::Initialized).Remote();
   EXPECT_TRUE(*initialized_obj.Get());
+  // It is invisible to job default namespace.
   auto actor_optional = ray::GetActor<Counter>(actor_name);
+  EXPECT_TRUE(!actor_optional);
+  // It is visible to the namespace it belongs.
+  actor_optional = ray::GetActor<Counter>(actor_name, ns_name);
+  EXPECT_TRUE(actor_optional);
+  // It is invisible to any other namespaces.
+  actor_optional = ray::GetActor<Counter>(actor_name, "other_ns");
   EXPECT_TRUE(!actor_optional);
 }
 

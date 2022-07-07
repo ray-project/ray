@@ -120,6 +120,18 @@ ray::internal::ActorCreator<JavaActorClass> Actor(JavaActorClass func);
 template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
 
+/// Get a handle to a named actor in the given namespace.
+/// Gets a handle to a named actor with the given name of the given namespace. The actor
+/// must have been created with name specified.
+///
+/// \param[in] actor_name The name of the named actor.
+/// \param[in] namespace The namespace of the actor.
+/// \return An ActorHandle to the actor if the actor of specified name exists in
+/// specifiled namespace or an empty optional object.
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
+                                         const std::string &ray_namespace);
+
 /// Intentionally exit the current actor.
 /// It is used to disconnect an actor and exit the worker.
 /// \Throws RayException if the current process is a driver or the current worker is not
@@ -271,11 +283,17 @@ inline ray::internal::ActorCreator<F> Actor(F create_func) {
 
 template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
+  return GetActor<T>(actor_name, "");
+}
+
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
+                                         const std::string &ray_namespace) {
   if (actor_name.empty()) {
     return {};
   }
 
-  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(actor_name);
+  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(actor_name, ray_namespace);
   if (actor_id.empty()) {
     return {};
   }
