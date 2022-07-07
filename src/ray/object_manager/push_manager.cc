@@ -30,7 +30,7 @@ void PushManager::StartPush(const NodeID &dest_id,
   if (push_info_.contains(push_id)) {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    push_info_[push_id]->ResentAllChunks();
+    push_info_[push_id]->ResendAllChunks();
   } else {
     push_info_[push_id].reset(new PushState(num_chunks, send_chunk_fn));
   }
@@ -42,7 +42,7 @@ void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id)
   chunks_in_flight_ -= 1;
   chunks_remaining_ -= 1;
   push_info_[push_id]->OnChunkComplete();
-  if (push_info_[push_id]->AllChunkComplete()) {
+  if (push_info_[push_id]->AllChunksComplete()) {
     push_info_.erase(push_id);
     RAY_LOG(DEBUG) << "Push for " << push_id.first << ", " << push_id.second
                    << " completed, remaining: " << NumPushesInFlight();
