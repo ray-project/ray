@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Set, Deque, Callable
 
 import ray
 from ray.workflow.common import (
-    StepID,
+    TaskID,
     WorkflowRef,
     WorkflowStepRuntimeOptions,
 )
@@ -53,74 +53,74 @@ class WorkflowExecutionState:
     # -------------------------------- dependencies -------------------------------- #
 
     # The mapping from all tasks to immediately upstream tasks.
-    upstream_dependencies: Dict[StepID, List[StepID]] = field(default_factory=dict)
+    upstream_dependencies: Dict[TaskID, List[TaskID]] = field(default_factory=dict)
     # A reverse mapping of the above. The dependency mapping from tasks to
     # immediately downstream tasks.
-    downstream_dependencies: Dict[StepID, List[StepID]] = field(
+    downstream_dependencies: Dict[TaskID, List[TaskID]] = field(
         default_factory=lambda: defaultdict(list)
     )
     # The mapping from a task to its immediate continuation.
-    next_continuation: Dict[StepID, StepID] = field(default_factory=dict)
+    next_continuation: Dict[TaskID, TaskID] = field(default_factory=dict)
     # The reversed mapping from continuation to its immediate task.
-    prev_continuation: Dict[StepID, StepID] = field(default_factory=dict)
+    prev_continuation: Dict[TaskID, TaskID] = field(default_factory=dict)
     # The mapping from a task to its latest continuation. The latest continuation is
     # a task that returns a value instead of a continuation.
-    latest_continuation: Dict[StepID, StepID] = field(default_factory=dict)
+    latest_continuation: Dict[TaskID, TaskID] = field(default_factory=dict)
     # The mapping from a task to the root of the continuation, i.e. the initial task
     # that generates the lineage of continuation.
-    continuation_root: Dict[StepID, StepID] = field(default_factory=dict)
+    continuation_root: Dict[TaskID, TaskID] = field(default_factory=dict)
 
     # ------------------------------- task properties ------------------------------- #
 
     # Workflow tasks.
-    tasks: Dict[StepID, Task] = field(default_factory=dict)
+    tasks: Dict[TaskID, Task] = field(default_factory=dict)
 
     # The arguments for the task.
-    task_input_args: Dict[StepID, ray.ObjectRef] = field(default_factory=dict)
+    task_input_args: Dict[TaskID, ray.ObjectRef] = field(default_factory=dict)
     # The context of the task.
-    task_context: Dict[StepID, WorkflowStepContext] = field(default_factory=dict)
+    task_context: Dict[TaskID, WorkflowStepContext] = field(default_factory=dict)
     # The execution metadata of a task.
-    task_execution_metadata: Dict[StepID, TaskExecutionMetadata] = field(
+    task_execution_metadata: Dict[TaskID, TaskExecutionMetadata] = field(
         default_factory=dict
     )
 
     # ------------------------------ object management ------------------------------ #
 
     # Set of references to upstream outputs.
-    reference_set: Dict[StepID, Set[StepID]] = field(
+    reference_set: Dict[TaskID, Set[TaskID]] = field(
         default_factory=lambda: defaultdict(set)
     )
     # The set of pending inputs of a task. We are able to run the task
     # when it becomes empty.
-    pending_input_set: Dict[StepID, Set[StepID]] = field(default_factory=dict)
+    pending_input_set: Dict[TaskID, Set[TaskID]] = field(default_factory=dict)
     # The map from a task to its in-memory outputs. Normally it is the ObjectRef
     # returned by the underlying Ray task. Things are different for continuation:
     # because the true output of a continuation is created by the last task in
     # the continuation lineage, so all other tasks in the continuation points
     # to the output of the last task instead of the output of themselves.
-    output_map: Dict[StepID, WorkflowRef] = field(default_factory=dict)
+    output_map: Dict[TaskID, WorkflowRef] = field(default_factory=dict)
     # The map from a task to its in-storage checkpoints. Normally it is the checkpoint
     # created by the underlying Ray task. For continuations, the semantics is similar
     # to 'output_map'.
-    checkpoint_map: Dict[StepID, WorkflowRef] = field(default_factory=dict)
+    checkpoint_map: Dict[TaskID, WorkflowRef] = field(default_factory=dict)
     # Outputs that are free (no reference to this output in the workflow) and
     # can be garbage collected.
-    free_outputs: Set[StepID] = field(default_factory=set)
+    free_outputs: Set[TaskID] = field(default_factory=set)
 
     # -------------------------------- scheduling -------------------------------- #
 
     # The frontier that is ready to run.
-    frontier_to_run: Deque[StepID] = field(default_factory=deque)
+    frontier_to_run: Deque[TaskID] = field(default_factory=deque)
     # The set of frontier tasks to run. This field helps deduplicate tasks or
     # look up task quickly. It contains the same elements as 'frontier_to_run',
     # they act like a 'DequeSet' when combined.
-    frontier_to_run_set: Set[StepID] = field(default_factory=set)
+    frontier_to_run_set: Set[TaskID] = field(default_factory=set)
     # The frontier that is running.
     running_frontier: Dict[asyncio.Future, WorkflowRef] = field(default_factory=dict)
     # The set of running frontier. This field helps deduplicate tasks or
     # look up task quickly. It contains the same elements as 'running_frontier',
     # they act like a dict but its values are in a set when combined.
-    running_frontier_set: Set[StepID] = field(default_factory=set)
+    running_frontier_set: Set[TaskID] = field(default_factory=set)
     # The set of completed tasks. They are tasks are actually executed with the state,
     # so inspected during recovery does not count.
     #
@@ -132,20 +132,20 @@ class WorkflowExecutionState:
     # is appended to a previous continuation, then the previous continuation must
     # already complete; if the task that is the root of all continuation completes,
     # then all its continuations would complete.
-    done_tasks: Set[StepID] = field(default_factory=set)
+    done_tasks: Set[TaskID] = field(default_factory=set)
 
     # -------------------------------- external -------------------------------- #
 
     # The ID of the output task.
-    output_task_id: Optional[StepID] = None
+    output_task_id: Optional[TaskID] = None
 
-    def get_input(self, task_id: StepID) -> Optional[WorkflowRef]:
+    def get_input(self, task_id: TaskID) -> Optional[WorkflowRef]:
         """Get the input. It checks memory first and storage later. It returns None if
         the input does not exist.
         """
         return self.output_map.get(task_id, self.checkpoint_map.get(task_id))
 
-    def pop_frontier_to_run(self) -> Optional[StepID]:
+    def pop_frontier_to_run(self) -> Optional[TaskID]:
         """Pop one task to run from the frontier queue."""
         try:
             t = self.frontier_to_run.popleft()
@@ -154,7 +154,7 @@ class WorkflowExecutionState:
         except IndexError:
             return None
 
-    def append_frontier_to_run(self, task_id: StepID) -> None:
+    def append_frontier_to_run(self, task_id: TaskID) -> None:
         """Insert one task to the frontier queue."""
         if (
             task_id not in self.frontier_to_run_set
@@ -163,7 +163,7 @@ class WorkflowExecutionState:
             self.frontier_to_run.append(task_id)
             self.frontier_to_run_set.add(task_id)
 
-    def add_dependencies(self, task_id: StepID, in_dependencies: List[StepID]) -> None:
+    def add_dependencies(self, task_id: TaskID, in_dependencies: List[TaskID]) -> None:
         """Add dependencies between a task and it input dependencies."""
         self.upstream_dependencies[task_id] = in_dependencies
         for in_task_id in in_dependencies:
@@ -181,7 +181,7 @@ class WorkflowExecutionState:
         self.running_frontier_set.add(ref.task_id)
 
     def append_continuation(
-        self, task_id: StepID, continuation_task_id: StepID
+        self, task_id: TaskID, continuation_task_id: TaskID
     ) -> None:
         """Append continuation to a task."""
         continuation_root = self.continuation_root.get(task_id, task_id)
@@ -200,7 +200,7 @@ class WorkflowExecutionState:
         self.output_map.update(state.output_map)
         self.checkpoint_map.update(state.checkpoint_map)
 
-    def construct_scheduling_plan(self, task_id: StepID) -> None:
+    def construct_scheduling_plan(self, task_id: TaskID) -> None:
         """Analyze upstream dependencies of a task to construct the scheduling plan."""
         if self.get_input(task_id) is not None:
             # This case corresponds to the scenario that the task is a
