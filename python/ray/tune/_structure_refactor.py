@@ -26,4 +26,4 @@ def warn_structure_refactor(old_module: str, new_module: str, direct: bool = Tru
 
         with warnings.catch_warnings():
             warnings.simplefilter("always")
-            warnings.warn(warning, DeprecationWarning)
+            warnings.warn(warning, DeprecationWarning, stacklevel=3)
