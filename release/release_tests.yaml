@@ -3617,7 +3617,7 @@
 
   stable: false
 
-  frequency: weekly
+  frequency: nightly
   team: core
   cluster:
     cluster_env: shuffle/100tb_shuffle_app_config.yaml
