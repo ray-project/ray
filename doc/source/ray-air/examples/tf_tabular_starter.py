@@ -43,6 +43,7 @@ def concat_for_tensor(dataframe):
         result["target"] = TensorArray(target_data)
     return pd.DataFrame(result)
 
+
 # Chain the preprocessors together.
 preprocessor = Chain(preprocessor, BatchMapper(concat_for_tensor))
 # __air_tf_preprocess_end__
