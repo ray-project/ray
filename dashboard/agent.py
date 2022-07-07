@@ -63,7 +63,7 @@ class DashboardAgent:
         log_dir=None,
         metrics_export_port=None,
         node_manager_port=None,
-        listen_port=0,
+        listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         object_store_name=None,
         raylet_name=None,
         logging_params=None,
@@ -329,7 +329,7 @@ if __name__ == "__main__":
         "--listen-port",
         required=False,
         type=int,
-        default=0,
+        default=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         help="Port for HTTP server to listen on",
     )
     parser.add_argument(
