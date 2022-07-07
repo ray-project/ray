@@ -60,6 +60,7 @@ class RayConfig {
   // A specific flag for internal `default_worker`. Please don't use it in user code.
   bool is_worker_ = false;
 
+  // A namespace is a logical grouping of jobs and named actors.
   std::string ray_namespace = "";
 };
 

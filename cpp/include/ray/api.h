@@ -111,8 +111,7 @@ ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func);
 ray::internal::ActorCreator<JavaActorClass> Actor(JavaActorClass func);
 
 /// Get a handle to a named actor in current namespace.
-/// Gets a handle to a named actor with the given name. The actor must have been created
-/// with name specified.
+/// The actor must have been created with name specified.
 ///
 /// \param[in] actor_name The name of the named actor.
 /// \return An ActorHandle to the actor if the actor of specified name exists or an
@@ -121,8 +120,7 @@ template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
 
 /// Get a handle to a named actor in the given namespace.
-/// Gets a handle to a named actor with the given name of the given namespace. The actor
-/// must have been created with name specified.
+/// The actor must have been created with name specified.
 ///
 /// \param[in] actor_name The name of the named actor.
 /// \param[in] namespace The namespace of the actor.

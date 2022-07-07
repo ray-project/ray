@@ -117,12 +117,12 @@ inline int64_t current_sys_time_us() {
   return mu_since_epoch.count();
 }
 
-static std::random_device              rd;
-static std::mt19937                    gen(rd());
-static std::uniform_int_distribution<> dis(0, 15);
-static std::uniform_int_distribution<> dis2(8, 11);
+inline std::string GenerateUUIDV4() {
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<> dis(0, 15);
+  static std::uniform_int_distribution<> dis2(8, 11);
 
-inline std::string generate_uuid_v4() {
   std::stringstream ss;
   int i;
   ss << std::hex;

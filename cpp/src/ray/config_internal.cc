@@ -188,7 +188,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   }
   if (worker_type == WorkerType::DRIVER) {
     ray_namespace =
-        config.ray_namespace.empty() ? generate_uuid_v4() : config.ray_namespace;
+        config.ray_namespace.empty() ? GenerateUUIDV4() : config.ray_namespace;
   }
 };
 
