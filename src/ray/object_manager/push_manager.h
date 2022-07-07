@@ -60,7 +60,7 @@ class PushManager {
   int64_t NumChunksInFlight() const { return chunks_in_flight_; };
 
   /// Return the number of chunks remaining. For testing only.
-  int64_t NumChunksRemaining() const { return num_chunks_pending_completion_; }
+  int64_t NumChunksRemaining() const { return chunks_remaining_; }
 
   /// Return the number of pushes currently in flight. For testing only.
   int64_t NumPushesInFlight() const { return push_info_.size(); };
