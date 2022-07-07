@@ -82,6 +82,7 @@ def train_func(config):
         results.append(result)
         session.report(result)
     # return required for backwards compatibility with the old API
+    # TODO(team-ml) clean up and remove return
     return results
 
 
@@ -94,7 +95,7 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
     )
     results = trainer.fit()
 
-    print(results)
+    print(results.metrics)
     return results
 
 

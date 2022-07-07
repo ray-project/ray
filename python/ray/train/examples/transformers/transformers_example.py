@@ -619,7 +619,7 @@ def main():
             scaling_config={"num_workers": args.num_workers, "use_gpu": args.use_gpu},
         )
         results = trainer.fit()
-        print(results)
+        print(results.metrics)
     else:
         # Run training locally.
         train_func(config)

@@ -110,10 +110,16 @@ def train_func(config):
     # Create loss.
     criterion = nn.CrossEntropyLoss()
 
+    results = []
     for _ in range(epochs):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
         session.report(result)
+        results.append(result)
+
+    # return required for backwards compatibility with the old API
+    # TODO(team-ml) clean up and remove return
+    return results
 
 
 if __name__ == "__main__":

@@ -116,6 +116,7 @@ def train_func(config: Dict):
         session.report(dict(loss=loss))
 
     # return required for backwards compatibility with the old API
+    # TODO(team-ml) clean up and remove return
     return loss_results
 
 
@@ -126,7 +127,7 @@ def train_fashion_mnist(num_workers=2, use_gpu=False):
         scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
     result = trainer.fit()
-    print(f"Results: {result}")
+    print(f"Results: {result.metrics}")
 
 
 if __name__ == "__main__":

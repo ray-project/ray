@@ -81,7 +81,7 @@ def train_tensorflow_mnist(num_workers=2, use_gpu=False, epochs=4):
         scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
     results = trainer.fit()
-    print(f"Results: {results[0]}")
+    print(f"Results: {results.metrics}")
 
 
 if __name__ == "__main__":

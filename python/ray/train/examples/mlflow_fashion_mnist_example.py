@@ -17,7 +17,7 @@ def main(num_workers=2, use_gpu=False):
     )
     final_results = trainer.fit()
 
-    print("Full results for rank 0 worker: ", final_results)
+    print("Final metrics: ", final_results.metrics)
 
 
 if __name__ == "__main__":

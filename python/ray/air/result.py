@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.air.checkpoint import Checkpoint
@@ -38,7 +39,7 @@ class Result:
     metrics: Optional[Dict[str, Any]]
     checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
-    log_dir: Optional[str]
+    log_dir: Optional[Path]
     metrics_dataframe: Optional[pd.DataFrame]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
 
