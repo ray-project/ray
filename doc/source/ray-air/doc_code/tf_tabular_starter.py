@@ -202,7 +202,8 @@ batch_predictor = BatchPredictor.from_checkpoint(
 predicted_probabilities = batch_predictor.predict(test_dataset)
 print("PREDICTED LOG PROBABILITIES")
 predicted_probabilities.show()
-# {'predictions': -226.1644744873047}
-# {'predictions': -256.8736267089844}
+# {'predictions': 0.033036969602108}
+# {'predictions': 0.05944341793656349}
+# {'predictions': 0.1657751202583313}
 # ...
 # __air_tf_batchpred_end__

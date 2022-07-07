@@ -139,7 +139,7 @@ print(f"Last result: {result.metrics}")
 # __air_pytorch_tuner_start__
 from ray import tune
 
-param_space = {"train_loop_config": {"lr": tune.uniform(0.0001, 0.01)}}
+param_space = {"train_loop_config": {"lr": tune.loguniform(0.0001, 0.01)}}
 metric = "loss"
 # __air_pytorch_tuner_end__
 
