@@ -241,9 +241,12 @@ class RayLog : public RayLogBase {
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param logDir Logging output file name. If empty, the log won't output to file.
+  /// \param print_log_filename_to_stdout Whether to print a log to stdout to inform users
+  /// which file the logs are printed to.
   static void StartRayLog(const std::string &appName,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
-                          const std::string &logDir = "");
+                          const std::string &logDir = "",
+                          bool print_log_filename_to_stdout = false);
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.

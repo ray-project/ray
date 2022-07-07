@@ -171,7 +171,8 @@ std::vector<FatalLogCallback> RayLog::fatal_log_callbacks_;
 
 void RayLog::StartRayLog(const std::string &app_name,
                          RayLogLevel severity_threshold,
-                         const std::string &log_dir) {
+                         const std::string &log_dir,
+                         bool print_log_filename_to_stdout) {
   const char *var_value = std::getenv("RAY_BACKEND_LOG_LEVEL");
   if (var_value != nullptr) {
     std::string data = var_value;
@@ -245,10 +246,12 @@ void RayLog::StartRayLog(const std::string &app_name,
       // logger.
       spdlog::drop(RayLog::GetLoggerName());
     }
+    auto filename = app_name_without_path + "_" + std::to_string(pid) + ".log";
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
-        log_rotation_max_size_,
-        log_rotation_file_num_);
+        JoinPaths(log_dir_, filename), log_rotation_max_size_, log_rotation_file_num_);
+    if (print_log_filename_to_stdout) {
+      std::cout << "Logs are printed to " << filename << std::endl;
+    }
     sinks.push_back(file_sink);
   } else {
     // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
