@@ -88,6 +88,24 @@ class PushManager {
           chunk_send_fn(chunk_send_fn),
           next_chunk_id(0),
           chunks_remaining(num_chunks) {}
+
+    void ResentAllChunks() {
+      next_chunk_id = 0;
+      chunks_remaining += num_chunks;
+    }
+
+    bool SendOneChunk() {
+      if (next_chunk_id < num_chunks) {
+        // Send the next chunk for this push.
+        chunk_send_fn(next_chunk_id++);
+        return true;
+      }
+      return false;
+    }
+
+    void OnChunkSent() { --chunks_remaining; }
+
+    bool AllChunkSent() { return chunks_remaining <= 0; }
   };
 
   /// Called on completion events to trigger additional pushes.
