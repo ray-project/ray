@@ -193,7 +193,6 @@ public class CrossLanguageInvocationTest extends BaseTest {
         });
   }
 
-  @Test
   // TODO(WangTaoTheTonic): This hangs on Mac and can't be detected by `flakey-tests.ray.io`.
   // Disable it for now and fix it later.
   @Test(enabled = false)
