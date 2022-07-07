@@ -12,7 +12,7 @@ from ray.rllib.offline.json_reader import from_json_data
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
-from typing import List, Union
+from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +53,10 @@ def _unzip_if_needed(paths: List[str], format: str):
 @PublicAPI
 def get_dataset_and_shards(
     config: AlgorithmConfigDict, num_workers: int, local_worker: bool
-) -> Union[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
-    assert config["input"] == "dataset"
+) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
+    assert config["input"] == "dataset", (
+        "Must specify input as dataset if" " calling `get_dataset_and_shards`"
+    )
     assert (
         "input_config" in config
     ), "Must specify input_config dict if using Dataset input."
@@ -89,7 +91,11 @@ def get_dataset_and_shards(
         "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
     )
 
-    assert loader_fn or (format and paths)
+    assert loader_fn or (format and paths), (
+        f"If using a loader_fn: {loader_fn} that constructs a dataset, "
+        "format: {format} and paths: {paths} must be specified. If format and "
+        "paths are specified, a loader_fn must not be specified."
+    )
 
     if loader_fn:
         dataset = loader_fn()
@@ -158,11 +164,6 @@ class DatasetReader(InputReader):
             self.batch_size = self._ioctx.config.get("train_batch_size", 1)
             num_workers = self._ioctx.config.get("num_workers", 0)
             seed = self._ioctx.config.get("seed", None)
-            if seed and not isinstance(seed, int):
-                raise ValueError(
-                    "If a random seed is specified, seed can only be an "
-                    "integer type."
-                )
         if num_workers:
             self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)
         # We allow the creation of a non-functioning None DatasetReader.
@@ -176,6 +177,8 @@ class DatasetReader(InputReader):
                 f"DatasetReader {self._ioctx.worker_index} has {ds.count()}, samples."
             )
             # TODO: @avnishn make this call seeded.
+            # calling random_shuffle_each_window shuffles the dataset after 
+            # each time the whole dataset has been read.
             self._iter = self._dataset.repeat().random_shuffle_each_window().iter_rows()
         else:
             self._iter = None

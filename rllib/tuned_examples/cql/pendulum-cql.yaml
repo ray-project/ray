@@ -22,7 +22,7 @@ pendulum-cql:
         twin_q: true
         train_batch_size: 2000
         bc_iters: 100
-        num_workers: 4
+        num_workers: 2
         min_time_s_per_iteration: 10
 
         metrics_smoothing_episodes: 5
