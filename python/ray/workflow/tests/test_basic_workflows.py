@@ -75,23 +75,21 @@ def test_basic_workflows(workflow_start_regular_shared):
             return workflow.continuation(mul.bind(n, factorial.bind(n - 1)))
 
     # This test also shows different "style" of running workflows.
-    assert (
-        workflow.create(simple_sequential.bind()).run() == "[source1][append1][append2]"
-    )
+    assert workflow.run(simple_sequential.bind()) == "[source1][append1][append2]"
 
     wf = simple_sequential_with_input.bind("start:")
-    assert workflow.create(wf).run() == "start:[append1][append2]"
+    assert workflow.run(wf) == "start:[append1][append2]"
 
     wf = loop_sequential.bind(3)
-    assert workflow.create(wf).run() == "[source1]" + "[append1]" * 3 + "[append2]"
+    assert workflow.run(wf) == "[source1]" + "[append1]" * 3 + "[append2]"
 
     wf = nested.bind("nested:")
-    assert workflow.create(wf).run() == "nested:~[nested]~[append1][append2]"
+    assert workflow.run(wf) == "nested:~[nested]~[append1][append2]"
 
     wf = fork_join.bind()
-    assert workflow.create(wf).run() == "join([source1][append1], [source1][append2])"
+    assert workflow.run(wf) == "join([source1][append1], [source1][append2])"
 
-    assert workflow.create(factorial.bind(10)).run() == 3628800
+    assert workflow.run(factorial.bind(10)) == 3628800
 
 
 def test_async_execution(workflow_start_regular_shared):
@@ -101,7 +99,7 @@ def test_async_execution(workflow_start_regular_shared):
         return 314
 
     start = time.time()
-    output = workflow.create(blocking.bind()).run_async()
+    output = workflow.run_async(blocking.bind())
     duration = time.time() - start
     assert duration < 5  # workflow.run is not blocked
     assert ray.get(output) == 314
@@ -134,7 +132,7 @@ def test_partial(workflow_start_regular_shared):
             wf_step = workflow.step(fs[i]).step(wf_step)
         return wf_step
 
-    assert workflow.create(chain_func.bind(1)).run() == 7
+    assert workflow.run(chain_func.bind(1)) == 7
 
 
 def test_run_or_resume_during_running(workflow_start_regular_shared):
@@ -156,15 +154,13 @@ def test_run_or_resume_during_running(workflow_start_regular_shared):
         y = append1.bind(x)
         return workflow.continuation(append2.bind(y))
 
-    output = workflow.create(simple_sequential.bind()).run_async(
-        workflow_id="running_workflow"
+    output = workflow.run_async(
+        simple_sequential.bind(), workflow_id="running_workflow"
     )
     with pytest.raises(RuntimeError):
-        workflow.create(simple_sequential.bind()).run_async(
-            workflow_id="running_workflow"
-        )
+        workflow.run_async(simple_sequential.bind(), workflow_id="running_workflow")
     with pytest.raises(RuntimeError):
-        workflow.resume(workflow_id="running_workflow")
+        workflow.resume_async(workflow_id="running_workflow")
     assert ray.get(output) == "[source1][append1][append2]"
 
 
@@ -180,33 +176,28 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
         return v
 
     with pytest.raises(Exception):
-        workflow.create(
+        workflow.run_async(
             unstable_step.options(**workflow.options(max_retries=-2).bind())
         )
 
     with pytest.raises(Exception):
-        workflow.create(
-            unstable_step.options(**workflow.options(max_retries=2)).bind()
-        ).run()
-    assert (
-        10
-        == workflow.create(
-            unstable_step.options(**workflow.options(max_retries=7)).bind()
-        ).run()
+        workflow.run(unstable_step.options(**workflow.options(max_retries=2)).bind())
+    assert 10 == workflow.run(
+        unstable_step.options(**workflow.options(max_retries=7)).bind()
     )
     (tmp_path / "test").write_text("0")
-    (ret, err) = workflow.create(
+    (ret, err) = workflow.run(
         unstable_step.options(
             **workflow.options(max_retries=2, catch_exceptions=True)
         ).bind()
-    ).run()
+    )
     assert ret is None
     assert isinstance(err, ValueError)
-    (ret, err) = workflow.create(
+    (ret, err) = workflow.run(
         unstable_step.options(
             **workflow.options(max_retries=7, catch_exceptions=True)
         ).bind()
-    ).run()
+    )
     assert ret == 10
     assert err is None
 
@@ -223,7 +214,7 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    assert workflow.create(unstable_step.bind()).run() == 10
+    assert workflow.run(unstable_step.bind()) == 10
 
     (tmp_path / "test").write_text("0")
 
@@ -236,7 +227,7 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    (ret, err) = workflow.create(unstable_step_exception.bind()).run()
+    (ret, err) = workflow.run(unstable_step_exception.bind())
     assert ret is None
     assert err is not None
 
@@ -251,7 +242,7 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    (ret, err) = workflow.create(unstable_step_exception.bind()).run()
+    (ret, err) = workflow.run(unstable_step_exception.bind())
     assert ret is None
     assert err is not None
     assert (tmp_path / "test").read_text() == "4"
@@ -266,9 +257,9 @@ def test_nested_catch_exception(workflow_start_regular_shared):
     def f1():
         return workflow.continuation(f2.bind())
 
-    assert (10, None) == workflow.create(
+    assert (10, None) == workflow.run(
         f1.options(**workflow.options(catch_exceptions=True)).bind()
-    ).run()
+    )
 
 
 def test_nested_catch_exception_2(workflow_start_regular_shared):
@@ -279,9 +270,9 @@ def test_nested_catch_exception_2(workflow_start_regular_shared):
         else:
             return workflow.continuation(f1.bind(n - 1))
 
-    ret, err = workflow.create(
+    ret, err = workflow.run(
         f1.options(**workflow.options(catch_exceptions=True)).bind(5)
-    ).run()
+    )
     assert ret is None
     assert isinstance(err, ValueError)
 
@@ -309,15 +300,15 @@ def test_nested_catch_exception_3(workflow_start_regular_shared, tmp_path):
         else:
             return workflow.continuation(f2.bind(f3.bind()))
 
-    ret, err = workflow.create(
+    ret, err = workflow.run(
         f1.options(**workflow.options(catch_exceptions=True)).bind(True)
-    ).run()
+    )
     assert ret is None
     assert isinstance(err, ValueError)
 
-    assert (10, None) == workflow.create(
+    assert (10, None) == workflow.run(
         f1.options(**workflow.options(catch_exceptions=True)).bind(False)
-    ).run()
+    )
 
 
 def test_dynamic_output(workflow_start_regular_shared):
@@ -336,9 +327,10 @@ def test_dynamic_output(workflow_start_regular_shared):
     # When workflow fails, the dynamic output should points to the
     # latest successful step.
     try:
-        workflow.create(
-            exponential_fail.options(**workflow.options(name="step_0")).bind(3, 10)
-        ).run(workflow_id="dynamic_output")
+        workflow.run(
+            exponential_fail.options(**workflow.options(name="step_0")).bind(3, 10),
+            workflow_id="dynamic_output",
+        )
     except Exception:
         pass
     from ray.workflow.workflow_storage import get_workflow_storage
