@@ -2143,8 +2143,11 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         [p.start() for p in procs]
 
         # Running another 1 should return error
-        with pytest.raises(RayStateApiException):
-            print(list_logs())
+        with pytest.raises(RayStateApiException) as e:
+            print(list_logs(node_id=0))
+        assert "RAY_STATE_SERVER_MAX_HTTP_REQUEST" in str(
+            e
+        ), f"Expect an exception raised due to rate limit, but have {str(e)}"
 
         # Kill the 3 slow running threads
         [os.kill(p.pid, signal.SIGKILL) for p in procs]
