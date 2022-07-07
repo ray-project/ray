@@ -308,7 +308,7 @@ def setup(app):
 
     # https://github.com/medmunds/rate-the-docs for allowing users
     # to give thumbs up / down and feedback on existing docs pages.
-    app.add_js_file("https://unpkg.com/rate-the-docs@0.2.1")
+    app.add_js_file("js/rate-the-docs.es.min.js")
 
     # Custom docstring processor
     app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
