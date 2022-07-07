@@ -378,15 +378,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                           : std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
 
-  auto get_max_pending_lease_requests_per_scheduling_category = []() {
-    return RayConfig::instance().max_pending_lease_requests_per_scheduling_category();
-  };
+  std::function<uint64_t()> get_max_pending_lease_requests_per_scheduling_category =
+      []() {
+        return RayConfig::instance().max_pending_lease_requests_per_scheduling_category();
+      };
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() == -1) {
     // Set the number of concurrent lease requests to the current number of
     // nodes in the cluster.
     get_max_pending_lease_requests_per_scheduling_category = [this]() {
       return gcs_client_->Nodes().GetAll().size();
-    }
+    };
   }
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_,
