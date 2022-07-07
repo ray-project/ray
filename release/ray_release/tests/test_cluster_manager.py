@@ -101,18 +101,22 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.sdk.reset()
 
     def testClusterName(self):
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
         cluster_manager = self.cls(
-            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False
+            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
         )
         self.assertRegex(cluster_manager.cluster_name, r"^test_\d+$")
         cluster_manager = self.cls(
-            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=True
+            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=True, sdk=sdk
         )
         self.assertRegex(cluster_manager.cluster_name, r"^test-smoke-test_\d+$")
 
     def testSetClusterEnv(self):
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
         cluster_manager = self.cls(
-            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False
+            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
         )
         cluster_manager.set_cluster_env({})
         self.assertEqual(
@@ -120,7 +124,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
             "test_name=test;smoke_test=False",
         )
         cluster_manager = self.cls(
-            test_name="Test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=True
+            test_name="Test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=True, sdk=sdk
         )
         cluster_manager.set_cluster_env({})
         self.assertEqual(
