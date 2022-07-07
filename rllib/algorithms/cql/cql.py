@@ -233,11 +233,12 @@ class CQL(SAC):
                 self.workers.sync_weights()
 
         # Train off-policy estimators if neccessary
-        train_results["off_policy_estimation"] = {}
-        for estimator in self.reward_estimators:
-            train_results["off_policy_estimation"][estimator.name] = estimator.train(
-                train_batch
-            )
+        if self.reward_estimators:
+            train_results["off_policy_estimation"] = {}
+            for estimator in self.reward_estimators:
+                train_results["off_policy_estimation"][
+                    estimator.name
+                ] = estimator.train(train_batch)
 
         # Return all collected metrics for the iteration.
         return train_results
