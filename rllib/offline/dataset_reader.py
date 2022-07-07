@@ -177,7 +177,7 @@ class DatasetReader(InputReader):
                 f"DatasetReader {self._ioctx.worker_index} has {ds.count()}, samples."
             )
             # TODO: @avnishn make this call seeded.
-            # calling random_shuffle_each_window shuffles the dataset after 
+            # calling random_shuffle_each_window shuffles the dataset after
             # each time the whole dataset has been read.
             self._iter = self._dataset.repeat().random_shuffle_each_window().iter_rows()
         else:
