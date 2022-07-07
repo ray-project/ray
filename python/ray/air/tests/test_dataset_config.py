@@ -4,7 +4,7 @@ from typing import Optional
 import pytest
 
 import ray
-from ray import train
+from ray.air import session
 from ray.air.config import DatasetConfig
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessors import BatchMapper
@@ -29,13 +29,13 @@ class TestBasic(DataParallelTrainer):
         self, num_workers: int, expect_ds: bool, expect_sizes: Optional[dict], **kwargs
     ):
         def train_loop_per_worker():
-            data_shard = train.get_dataset_shard("train")
+            data_shard = session.get_dataset_shard("train")
             if expect_ds:
                 assert isinstance(data_shard, Dataset), data_shard
             else:
                 assert isinstance(data_shard, DatasetPipeline), data_shard
             for k, v in expect_sizes.items():
-                shard = train.get_dataset_shard(k)
+                shard = session.get_dataset_shard(k)
                 if v == -1:
                     assert shard is None, shard
                 else:
@@ -197,7 +197,7 @@ class TestStream(DataParallelTrainer):
 
     def __init__(self, check_results_fn, **kwargs):
         def train_loop_per_worker():
-            data_shard = train.get_dataset_shard("train")
+            data_shard = session.get_dataset_shard("train")
             assert isinstance(data_shard, DatasetPipeline), data_shard
             results = []
             for epoch in data_shard.iter_epochs(2):
@@ -218,7 +218,7 @@ class TestBatch(DataParallelTrainer):
 
     def __init__(self, check_results_fn, **kwargs):
         def train_loop_per_worker():
-            data_shard = train.get_dataset_shard("train")
+            data_shard = session.get_dataset_shard("train")
             assert isinstance(data_shard, Dataset), data_shard
             results = data_shard.take()
             check_results_fn(data_shard, results)

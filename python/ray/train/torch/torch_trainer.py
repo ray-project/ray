@@ -38,36 +38,35 @@ class TorchTrainer(DataParallelTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
+    shards that can then be accessed by ``session.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
+    :ref:`Ray AIR session methods <air-session-ref>` and
     :ref:`Ray Train function utils <train-api-func-utils>`.
 
     .. code-block:: python
 
         def train_loop_per_worker():
-            # Report intermediate results for callbacks or logging.
-            train.report(...)
-
-            # Checkpoints the provided args as restorable state.
-            train.save_checkpoint(...)
+            # Report intermediate results for callbacks or logging and
+            # checkpoint data.
+            session.report(...)
 
             # Returns dict of last saved checkpoint.
-            train.load_checkpoint()
+            session.get_checkpoint()
 
             # Returns the Ray Dataset shard for the given key.
-            train.get_dataset_shard("my_dataset")
+            session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            train.get_world_size()
+            session.get_world_size()
 
             # Returns the rank of this worker.
-            train.get_world_rank()
+            session.get_world_rank()
 
             # Returns the rank of the worker on the current node.
-            train.get_local_rank()
+            session.get_local_rank()
 
     You can also use any of the :ref:`Torch specific function utils
     <train-api-torch-utils>`.
@@ -82,14 +81,14 @@ class TorchTrainer(DataParallelTrainer):
             # Configures the dataloader for distributed training by adding a
             # `DistributedSampler`.
             # You should NOT use this if you are doing
-            # `train.get_dataset_shard(...).to_torch(...)`
+            # `session.get_dataset_shard(...).to_torch(...)`
             train.torch.prepare_data_loader(...)
 
             # Returns the current torch device.
             train.torch.get_device()
 
     To save a model to use for the ``TorchPredictor``, you must save it under the
-    "model" kwarg in ``train.save_checkpoint()``.
+    "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 
     Example:
         .. code-block:: python
@@ -99,6 +98,7 @@ class TorchTrainer(DataParallelTrainer):
 
             import ray
             from ray import train
+            from ray.air import session, Checkpoint
             from ray.train.torch import TorchTrainer
 
             input_size = 1
@@ -117,7 +117,7 @@ class TorchTrainer(DataParallelTrainer):
                     return self.layer2(self.relu(self.layer1(input)))
 
             def train_loop_per_worker():
-                dataset_shard = train.get_dataset_shard("train")
+                dataset_shard = session.get_dataset_shard("train")
                 model = NeuralNetwork()
                 loss_fn = nn.MSELoss()
                 optimizer = optim.SGD(model.parameters(), lr=0.1)
@@ -133,7 +133,12 @@ class TorchTrainer(DataParallelTrainer):
                         optimizer.step()
                         print(f"epoch: {epoch}, loss: {loss.item()}")
 
-                    train.save_checkpoint(model=model.state_dict())
+                    session.report(
+                        {},
+                        checkpoint=Checkpoint.from_dict(
+                            dict(epoch=epoch, model=model.state_dict())
+                        ),
+                    )
 
             train_dataset = ray.data.from_items([1, 2, 3])
             scaling_config = {"num_workers": 3}

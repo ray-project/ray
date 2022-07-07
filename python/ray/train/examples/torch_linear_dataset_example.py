@@ -6,6 +6,7 @@ import torch.nn as nn
 
 import ray
 import ray.train as train
+from ray.air import session
 from ray.air.config import DatasetConfig
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
@@ -77,8 +78,8 @@ def train_func(config):
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
-    train_dataset_pipeline_shard = train.get_dataset_shard("train")
-    validation_dataset_pipeline_shard = train.get_dataset_shard("validation")
+    train_dataset_pipeline_shard = session.get_dataset_shard("train")
+    validation_dataset_pipeline_shard = session.get_dataset_shard("validation")
 
     model = nn.Linear(1, hidden_size)
     model = train.torch.prepare_model(model)
@@ -113,7 +114,7 @@ def train_func(config):
 
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
         result = validate_epoch(validation_torch_dataset, model, loss_fn, device)
-        train.report(**result)
+        session.report(result)
 
 
 def train_linear(num_workers=2, use_gpu=False):

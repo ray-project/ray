@@ -8,16 +8,9 @@ import os
 import numpy as np
 from ray.air.result import Result
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
 
-import ray.train as train
 from ray.train.tensorflow import TensorflowTrainer
-
-
-class TrainCheckpointReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{"model": self.model.get_weights()})
-        train.report(**logs)
+from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
 
 
 def mnist_dataset(batch_size: int) -> tf.data.Dataset:

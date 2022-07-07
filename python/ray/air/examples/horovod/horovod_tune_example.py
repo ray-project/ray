@@ -3,8 +3,8 @@ import time
 import torch
 
 import ray
-from ray import train
 from ray import tune
+from ray.air import session
 from ray.train.horovod import HorovodTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -83,7 +83,7 @@ def train_loop_per_worker(config):
 
         optimizer.step()
         time.sleep(0.1)
-        train.report(loss=loss.item())
+        session.report(dict(loss=loss.item()))
     total = time.time() - start
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
 

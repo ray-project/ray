@@ -7,7 +7,7 @@ from typing import Optional, Union
 import numpy as np
 
 import ray
-from ray import train
+from ray.air import session
 from ray.air.config import DatasetConfig
 from ray.data import DatasetPipeline, Dataset
 from ray.data.preprocessors import BatchMapper, Chain
@@ -67,8 +67,8 @@ class DummyTrainer(DataParallelTrainer):
         def train_loop_per_worker():
             import pandas as pd
 
-            rank = train.world_rank()
-            data_shard = train.get_dataset_shard("train")
+            rank = session.get_world_rank()
+            data_shard = session.get_dataset_shard("train")
             start = time.perf_counter()
             epochs_read, batches_read, bytes_read = 0, 0, 0
             batch_delays = []
@@ -102,11 +102,13 @@ class DummyTrainer(DataParallelTrainer):
                         # NOTE: This isn't recursive and will just return the size of
                         # the object pointers if list of non-primitive types.
                         bytes_read += sys.getsizeof(batch)
-                    train.report(
-                        bytes_read=bytes_read,
-                        batches_read=batches_read,
-                        epochs_read=epochs_read,
-                        batch_delay=batch_delay,
+                    session.report(
+                        dict(
+                            bytes_read=bytes_read,
+                            batches_read=batches_read,
+                            epochs_read=epochs_read,
+                            batch_delay=batch_delay,
+                        )
                     )
                     batch_start = time.perf_counter()
             delta = time.perf_counter() - start

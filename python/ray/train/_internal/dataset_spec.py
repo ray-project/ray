@@ -17,10 +17,10 @@ class RayDatasetSpec:
 
     dataset_or_dict: An optional Ray Dataset (or DatasetPipeline) or a dictionary of
         datasets to be sharded across all the training workers, which can be accessed
-        from the training function via ``train.get_dataset_shard()``. Multiple Datasets
-        can be passed in as a dictionary that maps each name key to a Dataset value,
-        and each Dataset can be accessed from the training function by passing in a
-        `dataset_name` argument to ``train.get_dataset_shard()``.
+        from the training function via ``session.get_dataset_shard()``. Multiple
+        Datasets can be passed in as a dictionary that maps each name key to a
+        Dataset value, and each Dataset can be accessed from the training function
+        by passing in a `dataset_name` argument to ``session.get_dataset_shard()``.
     dataset_split_fn: An optional callable to specify how the provided ``dataset``
         should be split across the training workers. It is expected to take in two
         arguments. The first one is the ``dataset``, just as is passed in to the
