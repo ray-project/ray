@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import importlib
+import inspect
 import os
 import pathlib
 import sys
@@ -7,6 +9,7 @@ from typing import Optional, Union
 
 import click
 import yaml
+from watchfiles import watch
 
 import ray
 from ray import serve
@@ -144,6 +147,30 @@ def deploy(config_file_name: str, address: str):
     cli_logger.newline()
 
 
+@ray.remote(num_cpus=0, max_calls=0)
+def serve_cli_deploy_task(
+    config_or_import_path: str, app_dir: str, host: str, port: int
+):
+    """Perform deploy_app or run in a standalone process."""
+    sys.path.insert(0, app_dir)
+
+    client = serve.start(detached=True)
+    if pathlib.Path(config_or_import_path).is_file():
+        config_path = config_or_import_path
+        cli_logger.print(f'Deploying from config file: "{config_path}".')
+
+        with open(config_path, "r") as config_file:
+            config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
+        client.deploy_app(config)
+    else:
+        import_path = config_or_import_path
+        cli_logger.print(f'Deploying from import path: "{import_path}".')
+
+        node = import_attr(import_path)
+        serve.run(node, host=host, port=port)
+    cli_logger.success("Deployed successfully.")
+
+
 @cli.command(
     short_help="Run a Serve app.",
     help=(
@@ -222,6 +249,11 @@ def deploy(config_file_name: str, address: str):
         "will loop and log status until Ctrl-C'd, then clean up the app."
     ),
 )
+@click.option(
+    "--reload/--no-reload",
+    default=False,
+    help="Whether or not to watch the `--app-dir` and re-deploy on file changes.",
+)
 def run(
     config_or_import_path: str,
     runtime_env: str,
@@ -232,43 +264,37 @@ def run(
     host: str,
     port: int,
     blocking: bool,
+    reload: bool,
 ):
-    sys.path.insert(0, app_dir)
-
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
 
-    if pathlib.Path(config_or_import_path).is_file():
-        config_path = config_or_import_path
-        cli_logger.print(f'Deploying from config file: "{config_path}".')
-
-        with open(config_path, "r") as config_file:
-            config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
-        is_config = True
-    else:
-        import_path = config_or_import_path
-        cli_logger.print(f'Deploying from import path: "{import_path}".')
-        node = import_attr(import_path)
-        is_config = False
-
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-    client = serve.start(detached=True)
+
+    def do_deploy():
+        ray.get(
+            serve_cli_deploy_task.remote(config_or_import_path, app_dir, host, port)
+        )
 
     try:
-        if is_config:
-            client.deploy_app(config)
-        else:
-            serve.run(node, host=host, port=port)
-        cli_logger.success("Deployed successfully.")
+        do_deploy()
 
         if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
+            if reload:
+                cli_logger.print(f"Watching file changes in {app_dir}")
+                for change_set in watch(app_dir):
+                    cli_logger.print(
+                        f"Detected changes {[path for _, path in change_set]}"
+                    )
+                    do_deploy()
+            else:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")

@@ -562,7 +562,7 @@ class ServeController:
             return config
 
 
-@ray.remote(num_cpus=0, max_calls=1)
+@ray.remote(num_cpus=0, max_calls=0)
 def run_graph(
     import_path: str, graph_env: dict, deployment_override_options: List[Dict]
 ):
