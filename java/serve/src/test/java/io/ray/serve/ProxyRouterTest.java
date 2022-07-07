@@ -3,7 +3,11 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
+import io.ray.serve.common.Constants;
+import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.proxy.ProxyRouter;
 import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
@@ -11,15 +15,11 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ProxyRouterTest {
+public class ProxyRouterTest extends BaseTest {
 
   @Test
   public void test() {
-    boolean inited = Ray.isInitialized();
-    String previous_namespace = System.getProperty("ray.job.namespace");
-    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
-    Ray.init();
-
+    init();
     try {
       String prefix = "ProxyRouterTest";
       String controllerName =
@@ -28,10 +28,12 @@ public class ProxyRouterTest {
       String endpointName1 = prefix + "_1";
       String endpointName2 = prefix + "_2";
       String route1 = "/route1";
+      Map<String, String> config = new HashMap<>();
+      config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName1,
@@ -40,10 +42,7 @@ public class ProxyRouterTest {
           endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
-      Serve.setInternalReplicaContext(null, null, controllerName, null);
-      Serve.getReplicaContext()
-          .setRayServeConfig(
-              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();
@@ -62,16 +61,7 @@ public class ProxyRouterTest {
       Assert.assertNotNull(handles.get(endpointName1));
       Assert.assertNotNull(handles.get(endpointName2));
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      if (previous_namespace == null) {
-        System.clearProperty("ray.job.namespace");
-      } else {
-        System.setProperty("ray.job.namespace", previous_namespace);
-      }
-      Serve.setInternalReplicaContext(null);
-      Serve.setGlobalClient(null);
+      shutdown();
     }
   }
 }
