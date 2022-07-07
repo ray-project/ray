@@ -1,11 +1,11 @@
 import argparse
 
 import numpy as np
-from ray.air import session
 import torch
 import torch.nn as nn
 
 import ray.train as train
+from ray.air import session
 from ray.train.torch import TorchTrainer
 
 
@@ -81,6 +81,7 @@ def train_func(config):
         result = validate_epoch(validation_loader, model, loss_fn)
         results.append(result)
         session.report(result)
+
     # return required for backwards compatibility with the old API
     # TODO(team-ml) clean up and remove return
     return results

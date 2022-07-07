@@ -2,7 +2,6 @@ import argparse
 import os
 
 import horovod.torch as hvd
-from ray.air import session
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -11,6 +10,7 @@ from filelock import FileLock
 from torchvision import datasets, transforms
 
 import ray
+from ray.air import session
 from ray.train.horovod import HorovodTrainer
 
 

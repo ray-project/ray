@@ -1,12 +1,12 @@
 import argparse
 from typing import Dict, Tuple
-from ray.air import session
 
 import torch
 import torch.nn as nn
 
 import ray
 import ray.train as train
+from ray.air import session
 from ray.air.config import DatasetConfig
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
