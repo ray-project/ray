@@ -1398,7 +1398,8 @@ def external_ray_cluster_activity_hook1():
     ray_cluster_activity_hook_counter += 1
     return {
         "test_component1": TestRayActivityResponse(
-            is_active="ACTIVE", reason=f"Counter: {ray_cluster_activity_hook_counter}",
+            is_active="ACTIVE",
+            reason=f"Counter: {ray_cluster_activity_hook_counter}",
         )
     }
 
