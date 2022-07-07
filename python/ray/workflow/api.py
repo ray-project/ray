@@ -163,8 +163,33 @@ def run_async(
 
 
 @PublicAPI(stability="beta")
-def resume(workflow_id: str) -> ray.ObjectRef:
+def resume(workflow_id: str) -> Any:
     """Resume a workflow.
+
+    Resume a workflow and retrieve its output. If the workflow was incomplete,
+    it will be re-executed from its checkpointed outputs. If the workflow was
+    complete, returns the result immediately.
+
+    Examples:
+        >>> from ray import workflow
+        >>> start_trip = ... # doctest: +SKIP
+        >>> trip = start_trip.bind() # doctest: +SKIP
+        >>> res1 = workflow.run_async(trip, workflow_id="trip1") # doctest: +SKIP
+        >>> res2 = workflow.resume_async("trip1") # doctest: +SKIP
+        >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
+
+    Args:
+        workflow_id: The id of the workflow to resume.
+
+    Returns:
+        The output of the workflow.
+    """
+    return ray.get(resume_async(workflow_id))
+
+
+@PublicAPI(stability="beta")
+def resume_async(workflow_id: str) -> ray.ObjectRef:
+    """Resume a workflow asynchronously.
 
     Resume a workflow and retrieve its output. If the workflow was incomplete,
     it will be re-executed from its checkpointed outputs. If the workflow was
@@ -189,7 +214,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
 
 
 @PublicAPI(stability="beta")
-def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef:
+def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
     """Get the output of a running workflow.
 
     Args:
@@ -203,13 +228,28 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef
         >>> trip = start_trip.options(name="trip").step() # doctest: +SKIP
         >>> res1 = trip.run_async(workflow_id="trip1") # doctest: +SKIP
         >>> # you could "get_output()" in another machine
-        >>> res2 = workflow.get_output("trip1") # doctest: +SKIP
+        >>> res2 = workflow.get_output_async("trip1") # doctest: +SKIP
         >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
-        >>> step_output = workflow.get_output("trip1", "trip") # doctest: +SKIP
+        >>> step_output = workflow.get_output_async("trip1", "trip") # doctest: +SKIP
         >>> assert ray.get(step_output) == ray.get(res1) # doctest: +SKIP
 
     Returns:
-        An object reference that can be used to retrieve the workflow result.
+        The output of the workflow task.
+    """
+    return ray.get(get_output_async(workflow_id, name=name))
+
+
+@PublicAPI(stability="beta")
+def get_output_async(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef:
+    """Get the output of a running workflow asynchronously.
+
+    Args:
+        workflow_id: The workflow to get the output of.
+        name: If set, fetch the specific step instead of the output of the
+            workflow.
+
+    Returns:
+        An object reference that can be used to retrieve the workflow task result.
     """
     _ensure_workflow_initialized()
     return execution.get_output(workflow_id, name)
@@ -562,16 +602,18 @@ __all__ = (
     "init",
     "run",
     "run_async",
-    "continuation",
     "resume",
+    "resume_async",
     "resume_all",
     "cancel",
     "list_all",
     "delete",
     "get_output",
+    "get_output_async",
     "get_status",
     "get_metadata",
     "sleep",
     "wait_for_event",
     "options",
+    "continuation",
 )
