@@ -1236,13 +1236,6 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    if job_config:
-        warnings.warn(
-            "job_config is deprecated and will be removed. Use runtime_env instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         if runtime_env:
             logger.warning(
