@@ -16,6 +16,7 @@ Predictors Basics
 Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition. 
 Checkpoints can be generated from a variety of different ways -- 
 see the Checkpoints user guide for more details.
+
 .. TODO - link to Checkpoint user guide
 
 The checkpoint then is used to create a framework specific Predictor (in our example, a `TensorflowPredictor`), which then can be used for inference:
@@ -107,9 +108,9 @@ Coming soon!
 Lazy/Pipelined Prediction
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 If you have a large dataset but not a lot of available memory, you can use the 
-:method:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
+:meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
 
-Unlike :py:method:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a 
+Unlike :py:meth:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a 
 :class:`DatasetPipeline`` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
 
 The lazy loading of the data will allow you to operate on datasets much greater than your available memory.
