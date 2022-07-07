@@ -105,12 +105,14 @@ The full suite of tests is too large to run on a single machine. However, you ca
 
 .. code-block:: shell
 
+    # Directly calling `pytest -v ...` may lose import paths.
     python -m pytest -v -s python/ray/tests/test_basic.py
 
 This will run all of the tests in the file. To run a specific test, use the following:
 
 .. code-block:: shell
-
+    
+    # Directly calling `pytest -v ...` may lose import paths.
     python -m pytest -v -s test_file.py::name_of_the_test
 
 Testing for C++ development
