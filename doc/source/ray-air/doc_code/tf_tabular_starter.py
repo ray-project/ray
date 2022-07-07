@@ -21,7 +21,7 @@ columns_to_scale = ["mean radius", "mean texture"]
 preprocessor = StandardScaler(columns=columns_to_scale)
 # __air_generic_preprocess_end__
 
-# __air_pytorch_preprocess_start__
+# __air_tf_preprocess_start__
 import numpy as np
 import pandas as pd
 
@@ -45,28 +45,55 @@ def concat_for_tensor(dataframe):
 
 # Chain the preprocessors together.
 preprocessor = Chain(preprocessor, BatchMapper(concat_for_tensor))
-# __air_pytorch_preprocess_end__
+# __air_tf_preprocess_end__
 
 
-# __air_pytorch_train_start__
-import torch
-import torch.nn as nn
-from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
+# __air_tf_train_start__
+import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
+from tensorflow import keras
+from tensorflow.keras import layers
 
 from ray import train
 from ray.air import session
-from ray.train.torch import TorchTrainer, to_air_checkpoint
+from ray.air.callbacks.keras import Callback as KerasCallback
+from ray.train.tensorflow import (
+    TensorflowTrainer,
+    to_air_checkpoint,
+    prepare_dataset_shard,
+)
 
 
-def create_model(input_features):
-    return nn.Sequential(
-        nn.Linear(in_features=input_features, out_features=16),
-        nn.ReLU(),
-        nn.Linear(16, 16),
-        nn.ReLU(),
-        nn.Linear(16, 1),
-        nn.Sigmoid(),
+def create_keras_model(input_features):
+    return keras.Sequential(
+        [
+            keras.Input(shape=(input_features,)),
+            layers.Dense(16, activation="relu"),
+            layers.Dense(16, activation="relu"),
+            layers.Dense(1),
+        ]
     )
+
+
+def to_tf_dataset(dataset, batch_size):
+    def to_tensor_iterator():
+        data_iterator = dataset.iter_batches(
+            batch_format="numpy", batch_size=batch_size
+        )
+        for d in data_iterator:
+            yield (
+                tf.convert_to_tensor(d["input"], dtype=tf.float32),
+                tf.convert_to_tensor(d["target"], dtype=tf.float32),
+            )
+
+    output_signature = (
+        tf.TensorSpec(shape=(None, num_features), dtype=tf.float32),
+        tf.TensorSpec(shape=(None), dtype=tf.float32),
+    )
+    tf_dataset = tf.data.Dataset.from_generator(
+        to_tensor_iterator, output_signature=output_signature
+    )
+    return prepare_dataset_shard(tf_dataset)
 
 
 def train_loop_per_worker(config):
@@ -76,48 +103,47 @@ def train_loop_per_worker(config):
     num_features = config["num_features"]
 
     # Get the Ray Dataset shard for this data parallel worker,
-    # and convert it to a PyTorch Dataset.
+    # and convert it to a Tensorflow Dataset.
     train_data = train.get_dataset_shard("train")
 
-    def to_tensor_iterator(dataset, batch_size):
-        data_iterator = dataset.iter_batches(
-            batch_format="numpy", batch_size=batch_size
+    strategy = tf.distribute.MultiWorkerMirroredStrategy()
+    with strategy.scope():
+        # Model building/compiling need to be within `strategy.scope()`.
+        multi_worker_model = create_keras_model(num_features)
+        multi_worker_model.compile(
+            optimizer=tf.keras.optimizers.SGD(learning_rate=lr),
+            loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
+            metrics=[
+                tf.keras.metrics.BinaryCrossentropy(
+                    name="loss",
+                )
+            ],
         )
 
-        for d in data_iterator:
-            yield torch.Tensor(d["input"]).float(), torch.Tensor(d["target"]).float()
-
-    # Create model.
-    model = create_model(num_features)
-    model = train.torch.prepare_model(model)
-
-    loss_fn = nn.BCELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-
-    for cur_epoch in range(epochs):
-        for inputs, labels in to_tensor_iterator(train_data, batch_size):
-            optimizer.zero_grad()
-            predictions = model(inputs)
-            train_loss = loss_fn(predictions, labels.unsqueeze(1))
-            train_loss.backward()
-            optimizer.step()
-        loss = train_loss.item()
-        session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
+    results = []
+    for _ in range(epochs):
+        tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size)
+        history = multi_worker_model.fit(
+            tf_dataset,
+            callbacks=[KerasCallback()],
+            verbose=0,
+        )
+    return results
 
 
 num_features = len(schema_order)
 
-trainer = TorchTrainer(
+trainer = TensorflowTrainer(
     train_loop_per_worker=train_loop_per_worker,
     train_loop_config={
         # Training batch size
         "batch_size": 128,
         # Number of epochs to train each task for.
-        "num_epochs": 20,
+        "num_epochs": 50,
         # Number of columns of datset
         "num_features": num_features,
         # Optimizer args.
-        "lr": 0.001,
+        "lr": 0.0001,
     },
     scaling_config={
         # Number of workers to use for data parallelism.
@@ -130,22 +156,21 @@ trainer = TorchTrainer(
     datasets={"train": train_dataset},
     preprocessor=preprocessor,
 )
-# Execute training.
+
 result = trainer.fit()
 print(f"Last result: {result.metrics}")
-# Last result: {'loss': 0.6559339960416158, ...}
-# __air_pytorch_train_end__
+# Last result: {'loss': 8.997025489807129, ...}
+# __air_tf_train_end__
 
-# __air_pytorch_tuner_start__
+# __air_tf_tuner_start__
 from ray import tune
 
 param_space = {"train_loop_config": {"lr": tune.loguniform(0.0001, 0.01)}}
 metric = "loss"
-# __air_pytorch_tuner_end__
+# __air_tf_tuner_end__
 
 # __air_tune_generic_start__
 from ray.tune.tuner import Tuner, TuneConfig
-from ray.air.config import RunConfig
 
 tuner = Tuner(
     trainer,
@@ -158,23 +183,27 @@ result_grid = tuner.fit()
 # Fetch the best result.
 best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
-# Best Result: Result(metrics={'loss': 0.278409322102863, ...})
+# Best Result: Result(metrics={'loss': 4.997025489807129, ...)
 # __air_tune_generic_end__
 
-# __air_pytorch_batchpred_start__
+# __air_tf_batchpred_start__
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.torch import TorchPredictor
+from ray.train.tensorflow import TensorflowPredictor
 
 # You can also create a checkpoint from a trained model using `to_air_checkpoint`.
 checkpoint = best_result.checkpoint
 
 batch_predictor = BatchPredictor.from_checkpoint(
-    checkpoint, TorchPredictor, model=create_model(num_features)
+    checkpoint,
+    TensorflowPredictor,
+    model_definition=lambda: create_keras_model(num_features),
 )
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
-print("PREDICTED PROBABILITIES")
+print("PREDICTED LOG PROBABILITIES")
 predicted_probabilities.show()
-# {'predictions': array([1.], dtype=float32)}
-# {'predictions': array([0.], dtype=float32)}
-# __air_pytorch_batchpred_end__
+# {'predictions': 0.033036969602108}
+# {'predictions': 0.05944341793656349}
+# {'predictions': 0.1657751202583313}
+# ...
+# __air_tf_batchpred_end__
