@@ -73,15 +73,14 @@ class PushManager {
  private:
   /// Tracks the state of an active object push to another node.
   struct PushState {
-    /// The number of chunks total to send.
+    /// total number of chunks of this object.
     const int64_t num_chunks;
     /// The function to send chunks with.
     const std::function<void(int64_t)> chunk_send_fn;
     /// The index of the next chunk to send.
     int64_t next_chunk_id;
-    /// The number of chunks pending completion. Once this number drops
-    /// to zero, the push is considered complete.
-    int64_t num_chunks_pending_completion;
+    /// The number of chunks pending completion.
+    int64_t num_chunks_inflight;
     /// The number of chunks remaining to send.
     int64_t num_chunks_to_send;
 
@@ -89,14 +88,11 @@ class PushManager {
         : num_chunks(num_chunks),
           chunk_send_fn(chunk_send_fn),
           next_chunk_id(0),
-          num_chunks_pending_completion(num_chunks),
+          num_chunks_inflight(0),
           num_chunks_to_send(num_chunks) {}
 
     /// Resend all chunks.
-    void ResendAllChunks() {
-      num_chunks_to_send = num_chunks;
-      num_chunks_pending_completion += num_chunks;
-    }
+    void ResendAllChunks() { num_chunks_to_send = num_chunks; }
 
     /// Send one chunck. Return true if a new chunk is sent, false if no more chunk to
     /// send.
@@ -105,6 +101,7 @@ class PushManager {
         return false;
       }
       num_chunks_to_send--;
+      num_chunks_inflight++;
       // Send the next chunk for this push.
       chunk_send_fn(next_chunk_id);
       next_chunk_id = (next_chunk_id + 1) % num_chunks;
@@ -112,10 +109,12 @@ class PushManager {
     }
 
     /// Notify that a chunk is successfully sent.
-    void OnChunkComplete() { --num_chunks_pending_completion; }
+    void OnChunkComplete() { --num_chunks_inflight; }
 
     /// Wether all chunks are successfully sent.
-    bool AllChunksComplete() { return num_chunks_pending_completion <= 0; }
+    bool AllChunksComplete() {
+      return num_chunks_inflight <= 0 && num_chunks_to_send <= 0;
+    }
   };
 
   /// Called on completion events to trigger additional pushes.
