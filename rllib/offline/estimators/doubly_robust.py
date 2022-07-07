@@ -33,7 +33,7 @@ class DoublyRobust(OffPolicyEstimator):
         q_model_config: Dict = None,
     ):
         """
-        Initializes a Direct Method OPE Estimator.
+        Initializes a Doubly Robust OPE Estimator.
 
         Args:
             name: string to save OPE results under
