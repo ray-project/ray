@@ -143,7 +143,7 @@ RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
-RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
+RAY_CONFIG(float, scheduler_spread_threshold, 0);
 
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
