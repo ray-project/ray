@@ -378,6 +378,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                           : std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
 
+  auto get_max_pending_lease_requests_per_scheduling_category = []() {
+    return RayConfig::instance().max_pending_lease_requests_per_scheduling_category();
+  };
+  if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() == -1) {
+    // Set the number of concurrent lease requests to the current number of
+    // nodes in the cluster.
+    get_max_pending_lease_requests_per_scheduling_category = [this]() {
+      return gcs_client_->Nodes().GetAll().size();
+    }
+  }
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_,
       local_raylet_client_,
@@ -391,9 +401,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator_,
       worker_context_.GetCurrentJobID(),
-      [this]() {
-        return RayConfig::instance().max_pending_lease_requests_per_scheduling_category();
-      },
+      get_max_pending_lease_requests_per_scheduling_category,
       boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
