@@ -14,7 +14,9 @@ from ray.dashboard.consts import env_integer
 
 logger = logging.getLogger(__name__)
 
-gcs_query_timeout = lambda: env_integer("GCS_QUERY_TIMEOUT_DEFAULT", 10)
+
+def gcs_query_timeout():
+    return env_integer("GCS_QUERY_TIMEOUT_DEFAULT", 10)
 
 
 class UsageStatsHead(dashboard_utils.DashboardHeadModule):
