@@ -24,7 +24,7 @@
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - sh ./tmp_test.sh
+    - ./tmp_test.sh
     # - bazel test --config=ci $(./ci/run/bazel_export_options)
     #   --test_tag_filters=post_wheel_build
     #   --test_env=CONDA_EXE
