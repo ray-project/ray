@@ -40,15 +40,6 @@ py_test(
 )
 
 py_test(
-    name = "torch_tensorboard_profiler_example",
-    size = "small",
-    main = "examples/torch_tensorboard_profiler_example.py",
-    srcs = ["examples/torch_tensorboard_profiler_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "transformers_example_gpu",
     size = "large",
     main = "examples/transformers/transformers_example.py",
@@ -73,23 +64,13 @@ py_test(
 )
 
 py_test(
-    name = "tune_cifar_pytorch_pbt_example",
+    name = "tune_cifar_torch_pbt_example",
     size = "medium",
-    main = "examples/tune_cifar_pytorch_pbt_example.py",
-    srcs = ["examples/tune_cifar_pytorch_pbt_example.py"],
+    main = "examples/tune_cifar_torch_pbt_example.py",
+    srcs = ["examples/tune_cifar_torch_pbt_example.py"],
     tags = ["team:ml", "exclusive", "pytorch", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
-)
-
-py_test(
-    name = "tune_linear_dataset_example",
-    size = "medium",
-    main = "examples/tune_linear_dataset_example.py",
-    srcs = ["examples/tune_linear_dataset_example.py"],
-    tags = ["team:ml", "exclusive", "gpu_only", "tune"],
-    deps = [":train_lib"],
-    args = ["--smoke-test", "--use-gpu"]
 )
 
 py_test(

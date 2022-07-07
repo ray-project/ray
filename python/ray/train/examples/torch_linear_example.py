@@ -3,9 +3,9 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
+
 import ray.train as train
-from ray.train import Trainer
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
+from ray.train.torch import TorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -75,26 +75,26 @@ def train_func(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
     results = []
-
     for _ in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
         result = validate_epoch(validation_loader, model, loss_fn)
         train.report(**result)
         results.append(result)
-
+    # return required for backwards compatibility with the old API
+    # TODO(team-ml) clean up and remove return
     return results
 
 
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
-    trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(
-        train_func, config, callbacks=[JsonLoggerCallback(), TBXLoggerCallback()]
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config=config,
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
-    trainer.shutdown()
+    results = trainer.fit()
 
-    print(results)
+    print(results.metrics)
     return results
 
 
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     import ray
 
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=4)
         train_linear()
     else:
         ray.init(address=args.address)

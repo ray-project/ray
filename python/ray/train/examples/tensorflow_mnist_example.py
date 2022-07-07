@@ -7,15 +7,9 @@ import os
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
+from ray.air.callbacks.keras import Callback as TrainReportCallback
 
-import ray.train as train
-from ray.train import Trainer
-
-
-class TrainReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.report(**logs)
+from ray.train.tensorflow import TensorflowTrainer
 
 
 def mnist_dataset(batch_size):
@@ -81,13 +75,13 @@ def train_func(config):
 
 
 def train_tensorflow_mnist(num_workers=2, use_gpu=False, epochs=4):
-    trainer = Trainer(backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
-    trainer.start()
-    results = trainer.run(
-        train_func=train_func, config={"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer = TensorflowTrainer(
+        train_func,
+        train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": epochs},
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
-    trainer.shutdown()
-    print(f"Results: {results[0]}")
+    results = trainer.fit()
+    print(f"Results: {results.metrics}")
 
 
 if __name__ == "__main__":
@@ -120,7 +114,7 @@ if __name__ == "__main__":
     import ray
 
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=4)
         train_tensorflow_mnist()
     else:
         ray.init(address=args.address)

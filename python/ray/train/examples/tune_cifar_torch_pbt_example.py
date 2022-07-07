@@ -11,9 +11,11 @@ from torchvision.datasets import CIFAR10
 import ray
 import ray.train as train
 from ray import tune
-from ray.train import Trainer
-from ray.tune import CLIReporter
+from ray.air.config import FailureConfig, RunConfig
+from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 from ray.util.ml_utils.resnet import ResNet18
 
 
@@ -115,6 +117,8 @@ def train_func(config):
         train.report(**result)
         results.append(result)
 
+    # return required for backwards compatibility with the old API
+    # TODO(team-ml) clean up and remove return
     return results
 
 
@@ -149,41 +153,43 @@ if __name__ == "__main__":
     else:
         ray.init(address=args.address)
 
-    trainer = Trainer("torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
-    Trainable = trainer.to_tune_trainable(train_func)
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config={"num_workers": args.num_workers, "use_gpu": args.use_gpu},
+    )
     pbt_scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="loss",
-        mode="min",
         perturbation_interval=1,
         hyperparam_mutations={
-            # distribution for resampling
-            "lr": lambda: np.random.uniform(0.001, 1),
-            # allow perturbations within this set of categorical values
-            "momentum": [0.8, 0.9, 0.99],
+            "train_loop_config": {
+                # distribution for resampling
+                "lr": lambda: np.random.uniform(0.001, 1),
+                # allow perturbations within this set of categorical values
+                "momentum": [0.8, 0.9, 0.99],
+            }
         },
     )
 
-    reporter = CLIReporter()
-    reporter.add_metric_column("loss", "loss")
-
-    analysis = tune.run(
-        Trainable,
-        num_samples=4,
-        config={
-            "lr": tune.choice([0.001, 0.01, 0.1]),
-            "momentum": 0.8,
-            "batch_size": 128 * args.num_workers,
-            "epochs": args.num_epochs,
-            "test_mode": args.smoke_test,  # whether to to subset the data
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "lr": tune.choice([0.001, 0.01, 0.1]),
+                "momentum": 0.8,
+                "batch_size": 128 * args.num_workers,
+                "epochs": args.num_epochs,
+                "test_mode": args.smoke_test,  # whether to to subset the data
+            }
         },
-        stop={"training_iteration": 2 if args.smoke_test else 100},
-        max_failures=3,  # used for fault tolerance
-        checkpoint_freq=3,  # used for fault tolerance
-        keep_checkpoints_num=1,  # used for fault tolerance
-        verbose=2,
-        progress_reporter=reporter,
-        scheduler=pbt_scheduler,
+        tune_config=TuneConfig(
+            num_samples=4, metric="loss", mode="min", scheduler=pbt_scheduler
+        ),
+        run_config=RunConfig(
+            stop={"training_iteration": 2 if args.smoke_test else 100},
+            failure_config=FailureConfig(max_failures=3),  # used for fault tolerance
+        ),
     )
 
-    print(analysis.get_best_config(metric="loss", mode="min"))
+    results = tuner.fit()
+
+    print(results.get_best_result(metric="loss", mode="min"))
