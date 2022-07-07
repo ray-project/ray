@@ -1,8 +1,6 @@
 from collections import defaultdict
 from typing import Any, List
 
-import numpy as np
-
 from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,

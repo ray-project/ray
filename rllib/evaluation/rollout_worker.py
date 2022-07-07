@@ -1865,8 +1865,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 merged_conf,
             )
 
-            if (policy_config.get("enable_connectors", False) and
-                name in self.policy_map):
+            if (
+                policy_config.get("enable_connectors", False)
+                and name in self.policy_map
+            ):
                 create_connectors_for_policy(self.policy_map[name], policy_config)
 
         if self.worker_index == 0:

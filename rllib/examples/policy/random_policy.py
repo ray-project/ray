@@ -33,7 +33,8 @@ class RandomPolicy(Policy):
         # For demo purpose, specify that only OBS column is used for training and
         # action computation.
         for k, v in self.view_requirements.items():
-            if k == SampleBatch.OBS: continue
+            if k == SampleBatch.OBS:
+                continue
             v.used_for_compute_actions = False
 
     @override(Policy)

@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Type
+from typing import Any, Callable, List, Type
 
 import numpy as np
 import tree  # dm_tree
@@ -12,7 +12,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
-    TensorStructType,
 )
 from ray.util.annotations import PublicAPI
 

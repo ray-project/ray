@@ -595,7 +595,8 @@ class EnvRunnerV2:
                     )
 
                 if not all_agents_done and not agent_dones[d.agent_id]:
-                    # Add to eval set if env is not done and this particular agent is not done.
+                    # Add to eval set if env is not done and this particular agent
+                    # is also not done.
                     item = _PolicyEvalData(d.env_id, d.agent_id, d.data.for_action)
                     to_eval[policy_id].append(item)
 

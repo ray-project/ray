@@ -779,7 +779,6 @@ class Policy(metaclass=ABCMeta):
             logger.info("restoring action connectors:")
             logger.info(self.action_connectors.__str__(indentation=4))
 
-
     @DeveloperAPI
     def set_state(self, state: PolicyState) -> None:
         """Restores the entire current state of this Policy from `state`.

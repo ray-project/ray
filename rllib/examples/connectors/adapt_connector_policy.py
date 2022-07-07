@@ -24,10 +24,13 @@ from ray.rllib.utils.typing import (
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--checkpoint_file", help="Path to an RLlib checkpoint file.",
+    "--checkpoint_file",
+    help="Path to an RLlib checkpoint file.",
 )
 parser.add_argument(
-    "--policy_id", default="default_policy", help="ID of policy to load.",
+    "--policy_id",
+    default="default_policy",
+    help="ID of policy to load.",
 )
 args = parser.parse_args()
 
@@ -39,6 +42,7 @@ class MyCartPole(gym.Env):
 
     Gives 2 additional observation states and takes 2 discrete actions.
     """
+
     def __init__(self):
         self._env = gym.make("CartPole-v0")
         self.observation_space = gym.spaces.Box(low=-10, high=10, shape=(6,))
@@ -47,7 +51,7 @@ class MyCartPole(gym.Env):
     def step(self, actions):
         # Take the first action.
         action = actions[0]
-        obs, reward, done, info  = self._env.step(action)
+        obs, reward, done, info = self._env.step(action)
         # Fake additional data points to the obs.
         obs = np.hstack((obs, [8.0, 6.0]))
         return obs, reward, done, info
@@ -57,9 +61,7 @@ class MyCartPole(gym.Env):
 
 
 # Custom agent connector.
-def v2_to_v1_obs(
-    data: Dict[str, TensorStructType]
-) -> Dict[str, TensorStructType]:
+def v2_to_v1_obs(data: Dict[str, TensorStructType]) -> Dict[str, TensorStructType]:
     data[SampleBatch.NEXT_OBS] = data[SampleBatch.NEXT_OBS][:-2]
     return data
 
@@ -87,9 +89,7 @@ V1ToV2ActionConnector = register_lambda_action_connector(
 
 def run():
     # Restore policy.
-    policies = load_policies_from_checkpoint(
-        args.checkpoint_file, [args.policy_id]
-    )
+    policies = load_policies_from_checkpoint(args.checkpoint_file, [args.policy_id])
     policy = policies[args.policy_id]
 
     # Adapt policy trained for standard CartPole to the new env.

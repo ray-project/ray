@@ -26,10 +26,14 @@ parser.add_argument(
     help="Path to a connector enabled checkpoint file for restoring.",
 )
 parser.add_argument(
-    "--policy_id", default="main", help="ID of policy to load.",
+    "--policy_id",
+    default="main",
+    help="ID of policy to load.",
 )
 parser.add_argument(
-    "--train_iteration", default=10, help="Number of iterations to train.",
+    "--train_iteration",
+    default=10,
+    help="Number of iterations to train.",
 )
 args = parser.parse_args()
 
@@ -50,7 +54,9 @@ class AddPolicyCallback(DefaultCallbacks):
             f"Available policies are {list(policy_specs.keys())}"
         )
         policy_spec = policy_specs[args.policy_id]
-        policy_state = policy_states[args.policy_id] if args.policy_id in policy_states else None
+        policy_state = (
+            policy_states[args.policy_id] if args.policy_id in policy_states else None
+        )
         config = merge_dicts(policy_config, policy_spec.config or {})
 
         # Add restored policy to trainer.
@@ -61,14 +67,16 @@ class AddPolicyCallback(DefaultCallbacks):
             action_space=policy_spec.action_space,
             config=config,
             policy_state=policy_state,
-            evaluation_workers=True
+            evaluation_workers=True,
         )
 
 
 if __name__ == "__main__":
     ray.init()
 
-    register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
+    register_env(
+        "open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game("connect_four"))
+    )
 
     def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         # main policy plays against opponent policy.

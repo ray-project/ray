@@ -1,6 +1,6 @@
 import gym
 import pickle
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -74,9 +74,7 @@ def create_policy_for_framework(
         # For tf-eager: no graph, no session.
         else:
             with tf1.variable_scope(var_scope):
-                return policy_class(
-                    observation_space, action_space, merged_config
-                )
+                return policy_class(observation_space, action_space, merged_config)
     # Non-tf: No graph, no session.
     else:
         return policy_class(observation_space, action_space, merged_config)
@@ -84,7 +82,7 @@ def create_policy_for_framework(
 
 @PublicAPI(stability="alpha")
 def parse_policy_specs_from_checkpoint(
-    path: str
+    path: str,
 ) -> Tuple[PartialAlgorithmConfigDict, Dict[str, PolicySpec], Dict[str, PolicyState]]:
     """Read and parse policy specifications from a checkpoint file.
 
@@ -129,7 +127,9 @@ def load_policies_from_checkpoint(
     Returns:
 
     """
-    policy_config, policy_specs, policy_states = parse_policy_specs_from_checkpoint(path)
+    policy_config, policy_specs, policy_states = parse_policy_specs_from_checkpoint(
+        path
+    )
 
     policies = {}
     for id, policy_spec in policy_specs.items():
@@ -143,7 +143,7 @@ def load_policies_from_checkpoint(
             policy_spec.policy_class,
             merged_config,
             policy_spec.observation_space,
-            policy_spec.action_space
+            policy_spec.action_space,
         )
         if id in policy_states:
             policy.set_state(policy_states[id])
@@ -174,9 +174,9 @@ def policy_inference(
     Returns:
         List of outputs from policy forward pass.
     """
-    assert policy.agent_connectors, (
-        "policy_inference only works with connected enabled policies."
-    )
+    assert (
+        policy.agent_connectors
+    ), "policy_inference only works with connected enabled policies."
 
     policy.agent_connectors.is_training(False)
     # TODO(jungong) : support multiple env, multiple agent inference.

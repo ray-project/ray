@@ -118,9 +118,14 @@ class TestAgentConnector(unittest.TestCase):
 
     def test_view_requirement_connector(self):
         view_requirements = {
-            "obs": ViewRequirement(used_for_training=True, used_for_compute_actions=True),
+            "obs": ViewRequirement(
+                used_for_training=True, used_for_compute_actions=True
+            ),
             "prev_actions": ViewRequirement(
-                data_col="actions", shift=-1, used_for_training=True, used_for_compute_actions=True
+                data_col="actions",
+                shift=-1,
+                used_for_training=True,
+                used_for_compute_actions=True,
             ),
         }
         ctx = ConnectorContext(view_requirements=view_requirements)

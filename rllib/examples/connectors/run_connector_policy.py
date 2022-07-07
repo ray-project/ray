@@ -14,10 +14,13 @@ from ray.rllib.utils.policy import (
 parser = argparse.ArgumentParser()
 # This should a checkpoint created with connectors enabled.
 parser.add_argument(
-    "--checkpoint_file", help="Path to an RLlib checkpoint file.",
+    "--checkpoint_file",
+    help="Path to an RLlib checkpoint file.",
 )
 parser.add_argument(
-    "--policy_id", default="default_policy", help="ID of policy to load.",
+    "--policy_id",
+    default="default_policy",
+    help="ID of policy to load.",
 )
 args = parser.parse_args()
 
@@ -26,9 +29,7 @@ assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 
 def run():
     # Restore policy.
-    policies = load_policies_from_checkpoint(
-        args.checkpoint_file, [args.policy_id]
-    )
+    policies = load_policies_from_checkpoint(args.checkpoint_file, [args.policy_id])
     policy = policies[args.policy_id]
 
     # Run CartPole.
