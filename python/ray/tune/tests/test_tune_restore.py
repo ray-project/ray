@@ -584,7 +584,7 @@ tune.run(train, num_samples=1)
     """
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
         run_string_as_driver(CMD)
-    assert "Inducing exception for testing purposes." in exc_info.value.output.decode()
+    assert "Inducing exception for testing purposes." in exc_info.value.output
 
 
 if __name__ == "__main__":
