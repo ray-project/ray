@@ -48,7 +48,8 @@ class CRRConfig(AlgorithmConfig):
         self.tau = 5e-3
 
         # overriding the trainer config default
-        self.num_workers = 4  # offline RL does not need rollout workers
+        # If data ingestion/sample_time is slow, increase this
+        self.num_workers = 4
         self.offline_sampling = True
         self.min_iter_time_s = 10.0
 
