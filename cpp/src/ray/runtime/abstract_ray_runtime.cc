@@ -351,7 +351,9 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroupById(const std::string &id) 
 }
 
 PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name) {
-  auto str_ptr = global_state_accessor_->GetPlacementGroupByName(name, "");
+  // TODO(WangTaoTheTonic): Add namespace support for placement group.
+  auto str_ptr = global_state_accessor_->GetPlacementGroupByName(
+      name, CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace());
   if (str_ptr == nullptr) {
     return {};
   }
