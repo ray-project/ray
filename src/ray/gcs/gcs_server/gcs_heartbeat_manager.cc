@@ -67,7 +67,10 @@ void GcsHeartbeatManager::Stop() {
   }
 }
 
-void GcsHeartbeatManager::AddNode(const NodeID &node_id) {
+void GcsHeartbeatManager::AddNode(const rpc::GcsNodeInfo &node_info) {
+  auto node_id = NodeID::FromBinary(node_info.node_id());
+  node_map_.insert(
+      NodeIDAddrBiMap::value_type(node_info.node_id(), node_info.node_manager_address()));
   io_service_.post(
       [this, node_id] { heartbeats_.emplace(node_id, num_heartbeats_timeout_); },
       "GcsHeartbeatManager.AddNode");
@@ -94,6 +97,10 @@ void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request
                                            rpc::CheckAliveReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);
+  for (const auto &addr : request.raylet_address()) {
+    *reply->mutable_raylet_alive()->Add() = node_map_.right.count(addr) != 0;
+  }
+
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -105,6 +112,7 @@ void GcsHeartbeatManager::DetectDeadNodes() {
       auto node_id = current->first;
       RAY_LOG(WARNING) << "Node timed out: " << node_id;
       heartbeats_.erase(current);
+      node_map_.left.erase(node_id.Binary());
       if (on_node_death_callback_) {
         on_node_death_callback_(node_id);
       }

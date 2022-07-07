@@ -159,6 +159,10 @@ class GcsChannel:
         self._gcs_address = gcs_address
         self._aio = aio
 
+    @property
+    def address(self):
+        return self._gcs_address
+
     def connect(self):
         # GCS server uses a cached port, so it should use the same port after
         # restarting. This means GCS address should stay the same for the
@@ -332,11 +336,29 @@ class GcsAioClient:
         self._channel = channel
         self._connect()
 
+    @property
+    def channel(self):
+        return self._channel
+
     def _connect(self):
         self._channel.connect()
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel()
         )
+        self._heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+            self._channel.channel()
+        )
+
+    async def check_alive(
+        self, node_ips: List[bytes], timeout: Optional[float] = None
+    ) -> List[bool]:
+        req = gcs_service_pb2.CheckAliveRequest(raylet_address=node_ips)
+        resp = await self._heartbeat_info_stub.CheckAlive(req, timeout=timeout)
+        if resp.status.code != GcsCode.OK:
+            raise RuntimeError(
+                f"GCS running at {self._channel.address} is unhealthy: {resp.status}"
+            )
+        return resp.raylet_alive()
 
     async def internal_kv_get(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
