@@ -36,7 +36,7 @@ class CRRConfig(AlgorithmConfig):
         self.advantage_type = "mean"
         self.n_action_sample = 4
         self.twin_q = True
-        self.target_update_grad_intervals = 100
+        self.target_network_update_freq = 100
         # __sphinx_doc_end__
         # fmt: on
         self.actor_hiddens = [256, 256]
@@ -62,7 +62,7 @@ class CRRConfig(AlgorithmConfig):
         advantage_type: Optional[str] = None,
         n_action_sample: Optional[int] = None,
         twin_q: Optional[bool] = None,
-        target_update_grad_intervals: Optional[int] = None,
+        target_network_update_freq: Optional[int] = None,
         actor_hiddens: Optional[List[int]] = None,
         actor_hidden_activation: Optional[str] = None,
         critic_hiddens: Optional[List[int]] = None,
@@ -100,7 +100,7 @@ class CRRConfig(AlgorithmConfig):
                     a^j)]
             n_action_sample: the number of actions to sample for v_t estimation.
             twin_q: if True, uses pessimistic q estimation.
-            target_update_grad_intervals: The frequency at which we update the
+            target_network_update_freq: The frequency at which we update the
                 target copy of the model in terms of the number of gradient updates
                 applied to the main model.
             actor_hiddens: The number of hidden units in the actor's fc network.
@@ -128,8 +128,8 @@ class CRRConfig(AlgorithmConfig):
             self.n_action_sample = n_action_sample
         if twin_q is not None:
             self.twin_q = twin_q
-        if target_update_grad_intervals is not None:
-            self.target_update_grad_intervals = target_update_grad_intervals
+        if target_network_update_freq is not None:
+            self.target_network_update_freq = target_network_update_freq
         if actor_hiddens is not None:
             self.actor_hiddens = actor_hiddens
         if actor_hidden_activation is not None:
@@ -200,7 +200,7 @@ class CRR(Algorithm):
         cur_ts = self._counters[NUM_GRADIENT_UPDATES]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-        if cur_ts - last_update >= self.config["target_update_grad_intervals"]:
+        if cur_ts - last_update >= self.config["target_network_update_freq"]:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
                 to_update = self.workers.local_worker().get_policies_to_train()
                 self.workers.local_worker().foreach_policy_to_train(

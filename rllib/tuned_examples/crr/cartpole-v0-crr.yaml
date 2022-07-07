@@ -21,7 +21,7 @@ cartpole_crr:
         clip_actions: True
         # Q function update setting
         twin_q: True
-        target_update_grad_intervals: 1
+        target_network_update_freq: 1
         tau: 0.0005
         # evaluation
         evaluation_config:

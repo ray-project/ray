@@ -56,7 +56,7 @@ class TestCRR(unittest.TestCase):
                 weight_type="bin",
                 advantage_type="mean",
                 n_action_sample=4,
-                target_update_grad_intervals=10000,
+                target_network_update_freq=10000,
                 tau=1.0,
             )
             .evaluation(
