@@ -453,15 +453,21 @@ class FunctionTrainable(Trainable):
     def execute(self, fn):
         return fn(self)
 
+    def get_state(self):
+        state = super().get_state()
+
+        checkpoint = self._status_reporter.get_checkpoint()
+        if not checkpoint:
+            state.update(iteration=0, timesteps_total=0, episodes_total=0)
+        return state
+
     def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
         if tmp_checkpoint_dir:
             raise ValueError("Checkpoint dir should not be used with function API.")
 
         checkpoint = self._status_reporter.get_checkpoint()
-        state = self.get_state()
 
         if not checkpoint:
-            state.update(iteration=0, timesteps_total=0, episodes_total=0)
             # We drop a marker here to indicate that the checkpoint is empty
             checkpoint = FuncCheckpointUtil.mk_null_checkpoint_dir(self.logdir)
             parent_dir = checkpoint

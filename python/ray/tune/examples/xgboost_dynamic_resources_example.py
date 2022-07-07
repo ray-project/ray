@@ -22,8 +22,10 @@ CHECKPOINT_FILENAME = "model.xgb"
 
 def get_best_model_checkpoint(analysis):
     best_bst = xgb.Booster()
+
     with analysis.best_checkpoint.as_directory() as checkpoint_dir:
         best_bst.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
+
     accuracy = 1.0 - analysis.best_result["eval-logloss"]
     print(f"Best model parameters: {analysis.best_config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
