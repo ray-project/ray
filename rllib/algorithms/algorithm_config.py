@@ -175,6 +175,7 @@ class AlgorithmConfig:
         self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
+        self.evaluation_sample_timeout_s = 60
         self.evaluation_parallel_to_training = False
         self.evaluation_config = {}
         self.evaluation_num_workers = 0
@@ -803,6 +804,7 @@ class AlgorithmConfig:
         evaluation_interval: Optional[int] = None,
         evaluation_duration: Optional[int] = None,
         evaluation_duration_unit: Optional[str] = None,
+        evaluation_sample_timeout_s: Optional[float] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
@@ -831,6 +833,11 @@ class AlgorithmConfig:
                 - For `evaluation_parallel_to_training=False`: Error.
             evaluation_duration_unit: The unit, with which to count the evaluation
                 duration. Either "episodes" (default) or "timesteps".
+            evaluation_sample_timeout_s: The timeout (in seconds) for the ray.get call
+                to the remote evaluation worker(s) `sample()` method. After this time,
+                the user will receive a warning and instructions on how to fix the
+                issue. This could be either to make sure the episode ends, increasing
+                the timeout, or switching to `evaluation_duration_unit=timesteps`.
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
                 a Algorithm.train() call using threading. Default=False.
                 E.g. evaluation_interval=2 -> For every other training iteration,
@@ -867,6 +874,8 @@ class AlgorithmConfig:
             self.evaluation_duration = evaluation_duration
         if evaluation_duration_unit is not None:
             self.evaluation_duration_unit = evaluation_duration_unit
+        if evaluation_sample_timeout_s is not None:
+            self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:

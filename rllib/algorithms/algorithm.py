@@ -29,7 +29,7 @@ from packaging import version
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError
+from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -779,16 +779,31 @@ class Algorithm(Trainable):
                         break
 
                     round_ += 1
-                    batches = ray.get(
-                        [
-                            w.sample.remote()
-                            for i, w in enumerate(
-                                self.evaluation_workers.remote_workers()
+                    try:
+                        batches = ray.get(
+                            [
+                                w.sample.remote()
+                                for i, w in enumerate(
+                                    self.evaluation_workers.remote_workers()
+                                )
+                                if i * (1 if unit == "episodes" else rollout * num_envs)
+                                < units_left_to_do
+                            ],
+                            timeout=self.config["evaluation_sample_timeout_s"],
+                        )
+                    except GetTimeoutError:
+                        logger.warning(
+                            "Calling `sample()` on your remote evaluation worker(s) "
+                            "resulted in a timeout (after the configured "
+                            f"{self.config['evaluation_sample_timeout_s']} seconds)! "
+                            "Try to set `evaluation_sample_timeout_s` in your config"
+                            " to a larger value." + (
+                                " If your episodes don't terminate easily, you may "
+                                "also want to set `evaluation_duration_unit` to "
+                                "'timesteps' (instead of 'episodes')."
+                                if unit == "episodes" else ""
                             )
-                            if i * (1 if unit == "episodes" else rollout * num_envs)
-                            < units_left_to_do
-                        ]
-                    )
+                        )
                     _agent_steps = sum(b.agent_steps() for b in batches)
                     _env_steps = sum(b.env_steps() for b in batches)
                     # 1 episode per returned batch.
