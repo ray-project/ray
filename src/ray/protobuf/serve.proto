@@ -141,11 +141,6 @@ message ActorNameList {
   repeated string names = 1;
 }
 
-// It is deprecated. Use ActorNameList instead.
-message ActorSet {
-  repeated string names = 1;
-}
-
 message DeploymentVersion {
   string code_version = 1;
   bytes user_config = 2;
