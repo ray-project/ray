@@ -2083,79 +2083,87 @@ def test_detail(shutdown_only):
         list_placement_groups,
     ],
 )
-def test_state_api_server_enforce_concurrent_http_requests(api_func):
+def test_state_api_server_enforce_concurrent_http_requests(
+    api_func, monkeypatch, shutdown_only
+):
     import time
-    import multiprocessing as mp
+    import threading
     import queue
-    import os
 
     # Set environment
-    os.environ["RAY_STATE_SERVER_MAX_HTTP_REQUEST"] = "1"
+    with monkeypatch.context() as m:
+        m.setenv("RAY_STATE_SERVER_MAX_HTTP_REQUEST", "1")
+        ray.init()
 
-    ray.shutdown()
-    ray.init()
+        # Set up scripts
+        @ray.remote
+        def f():
+            import time
 
-    # Set up scripts
-    @ray.remote
-    def f():
-        import time
+            time.sleep(30)
 
-        time.sleep(30)
+        @ray.remote
+        class Actor:
+            pass
 
-    @ray.remote
-    class Actor:
-        pass
+        task = f.remote()  # noqa
+        actor = Actor.remote()  # noqa
+        actor_runtime_env = Actor.options(  # noqa
+            runtime_env={"pip": ["requests"]}
+        ).remote()
+        pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
-    task = f.remote()  # noqa
-    actor = Actor.remote()  # noqa
-    actor_runtime_env = Actor.options(  # noqa
-        runtime_env={"pip": ["requests"]}
-    ).remote()
-    pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
+        _objs = [ray.put(x) for x in range(10)]  # noqa
 
-    _objs = [ray.put(x) for x in range(10)]  # noqa
+        # Wait for results to be populate on the cluster
+        time.sleep(3)
 
-    # Wait for results to be populate on the cluster
-    time.sleep(3)
-
-    def try_state_query(q):
-        try:
-            api_func()
-        except RayStateApiException as e:
-            # Other exceptions will be thrown
-            if "Max number of in-progress requests" in str(e):
-                q.put(1)
-            else:
+        def try_state_query(q):
+            try:
+                api_func()
+            except RayStateApiException as e:
+                # Other exceptions will be thrown
+                if "Max number of in-progress requests" in str(e):
+                    q.put(1)
+                else:
+                    q.put(e)
+            except Exception as e:
                 q.put(e)
-        except Exception as e:
-            q.put(e)
-        else:
-            q.put(0)
-
-    q = mp.Queue()
-    num_procs = 200
-    procs = [mp.Process(target=try_state_query, args=(q,)) for _ in range(num_procs)]
-
-    [p.start() for p in procs]
-    max_concurrent_reqs_error = 0
-    for _ in range(num_procs):
-        try:
-            res = q.get(timeout=5)
-            if isinstance(res, Exception):
-                assert False, f"Error when list_objects: {res}"
-            elif isinstance(res, int):
-                max_concurrent_reqs_error += res
             else:
-                raise ValueError(res)
-        except queue.Empty:
-            assert False, "Failed to get some results from a subprocess"
+                q.put(0)
 
-    # We should run into max in-progress requests errors
-    assert max_concurrent_reqs_error > 0
-    [p.join(5) for p in procs]
-    for proc in procs:
-        assert proc.exitcode is not None, "Some processes still running."
-        assert proc.exitcode == 0, f"Some processes exit {proc.exitcode}"
+        q = queue.Queue()
+        num_procs = 300
+        procs = [
+            threading.Thread(target=try_state_query, args=(q,))
+            for _ in range(num_procs)
+        ]
+
+        [p.start() for p in procs]
+
+        def verify():
+            max_concurrent_reqs_error = 0
+            for _ in range(num_procs):
+                try:
+                    res = q.get(timeout=5)
+                    if isinstance(res, Exception):
+                        assert False, f"Error when list_objects: {res}"
+                    elif isinstance(res, int):
+                        max_concurrent_reqs_error += res
+                    else:
+                        raise ValueError(res)
+                except queue.Empty:
+                    assert False, "Failed to get some results from a subprocess"
+
+            # We should run into max in-progress requests errors
+            assert max_concurrent_reqs_error > 0, "Some requests should be rate limited"
+            [p.join(5) for p in procs]
+            for proc in procs:
+                assert not proc.is_alive(), "All threads should exit"
+
+            return True
+
+        wait_for_condition(verify)
 
 
 if __name__ == "__main__":
