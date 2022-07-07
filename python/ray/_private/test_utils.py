@@ -1376,9 +1376,11 @@ class TestRayActivityResponse:
     used in test_component_activities_hook to mimic typical
     usage of redefining or extending response type.
     """
+
     is_active: str
     reason: Optional[str] = None
     timestamp: Optional[float] = None
+
 
 # Global counter to test different return values
 # for external_ray_cluster_activity_hook1.
@@ -1396,8 +1398,7 @@ def external_ray_cluster_activity_hook1():
     ray_cluster_activity_hook_counter += 1
     return {
         "test_component1": TestRayActivityResponse(
-            is_active="ACTIVE",
-            reason=f"Counter: {ray_cluster_activity_hook_counter}",
+            is_active="ACTIVE", reason=f"Counter: {ray_cluster_activity_hook_counter}",
         )
     }
 
