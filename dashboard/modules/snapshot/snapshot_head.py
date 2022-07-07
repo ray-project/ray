@@ -135,9 +135,10 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         if RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
             try:
-                external_activity_output = _load_class(
+                cluster_activity_callable = _load_class(
                     os.environ[RAY_CLUSTER_ACTIVITY_HOOK]
-                )()
+                )
+                external_activity_output = cluster_activity_callable()
                 assert isinstance(external_activity_output, dict), (
                     f"Output of hook {os.environ[RAY_CLUSTER_ACTIVITY_HOOK]} "
                     "should be Dict[str, RayActivityResponse]. Got "

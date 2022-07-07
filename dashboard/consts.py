@@ -37,7 +37,8 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
     "BAD_RUNTIME_ENV_CACHE_TTL_SECONDS", 60 * 10
 )
 # Hook that is invoked on the dashboard `/api/component_activities` endpoint.
-# It does not take any arguments and should return a dictionary mapping
+# Environment variable stored here should be a callable that does not
+# take any arguments and should return a dictionary mapping
 # activity component type (str) to
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
