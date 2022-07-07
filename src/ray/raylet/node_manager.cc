@@ -331,7 +331,51 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
-      ray_syncer_service_(ray_syncer_) {
+      ray_syncer_service_(ray_syncer_),
+      memory_monitor_(std::make_unique<MemoryMonitor>(
+          RayConfig::instance().node_high_memory_usage_fraction(),
+          RayConfig::instance().memory_monitor_interval_ms(),
+          [this](bool is_usage_above_threshold) {
+            if (high_memory_eviction_target_ != nullptr) {
+              if (!high_memory_eviction_target_->GetProcess().IsAlive()) {
+                high_memory_eviction_target_ = nullptr;
+                std::chrono::duration<double> duration = std::chrono::high_resolution_clock::now()
+                  - high_memory_eviction_start_time_;
+                RAY_LOG(INFO) 
+                    << "Worker evicted approximately after "
+                    << duration.count()
+                    << "s to reclaim memory.";
+              }
+            }
+            if (is_usage_above_threshold) {
+              if (high_memory_eviction_target_ != nullptr) {
+                RAY_LOG(INFO) << "Memory usage above threshold. "
+                    << "Still waiting for worker eviction to free up memory. "
+                    << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId()
+                    << "task: " << high_memory_eviction_target_->GetAssignedTaskId();
+              } else {
+                auto newest_task_start_time = std::chrono::high_resolution_clock::time_point();
+                std::shared_ptr<WorkerInterface> latest_worker = nullptr;
+                for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
+                  if (worker->GetAssignedTaskTime() > newest_task_start_time) {
+                    newest_task_start_time = worker->GetAssignedTaskTime();
+                    latest_worker = worker;
+                  }
+                }
+                if (latest_worker != nullptr) {
+                  RAY_LOG(DEBUG) << "Killing worker with the newest started task "
+                      << "to free up memory. "
+                      << "worker pid: " << latest_worker->GetProcess().GetId()
+                      << "task: " << latest_worker->GetAssignedTaskId();                
+                  high_memory_eviction_target_ = latest_worker; 
+                  DestroyWorker(latest_worker,
+                      rpc::WorkerExitType::USER_ERROR,
+                      absl::StrCat("Ray OOM killer terminating worker to prevent system OOM"),
+                      true /* force */);
+                }   
+              }
+            }
+          })) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
@@ -563,36 +607,41 @@ ray::Status NodeManager::RegisterGcs() {
   return ray::Status::OK();
 }
 
-void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
+void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force) {
+  if (force) {
+    worker->GetProcess().Kill();
+  } else {
 #ifdef _WIN32
 // TODO(mehrdadn): implement graceful process termination mechanism
 #else
-  // If we're just cleaning up a single worker, allow it some time to clean
-  // up its state before force killing. The client socket will be closed
-  // and the worker struct will be freed after the timeout.
-  kill(worker->GetProcess().GetId(), SIGTERM);
+    // If we're just cleaning up a single worker, allow it some time to clean
+    // up its state before force killing. The client socket will be closed
+    // and the worker struct will be freed after the timeout.
+    kill(worker->GetProcess().GetId(), SIGTERM);
 #endif
 
-  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-  auto retry_duration = boost::posix_time::milliseconds(
-      RayConfig::instance().kill_worker_timeout_milliseconds());
-  retry_timer->expires_from_now(retry_duration);
-  retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
-    RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
-    // Force kill worker
-    worker->GetProcess().Kill();
-  });
+    auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+    auto retry_duration = boost::posix_time::milliseconds(
+        RayConfig::instance().kill_worker_timeout_milliseconds());
+    retry_timer->expires_from_now(retry_duration);
+    retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
+      RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
+      // Force kill worker
+      worker->GetProcess().Kill();
+    });
+  }
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
-                                const std::string &disconnect_detail) {
+                                const std::string &disconnect_detail,
+                                bool force) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
   DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   worker->MarkDead();
-  KillWorker(worker);
+  KillWorker(worker, force);
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
@@ -1494,8 +1543,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         error_message << "A worker died or was killed while executing a task by an "
                          "unexpected system "
                          "error. To troubleshoot the problem, check the logs for the "
-                         "dead worker. RayTask ID: "
-                      << task_id << " Worker ID: " << worker->WorkerId()
+                         "dead worker."
+                      << " RayTask ID: " << task_id
+                      << " Worker ID: " << worker->WorkerId()
                       << " Node ID: " << self_node_id_
                       << " Worker IP address: " << worker->IpAddress()
                       << " Worker port: " << worker->Port()
@@ -2737,6 +2787,7 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
   TriggerGlobalGC();
 }
 
+
 bool NodeManager::TryLocalGC() {
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =
@@ -2761,6 +2812,7 @@ bool NodeManager::TryLocalGC() {
     DoLocalGC(triggered_by_global_gc);
     should_local_gc_ = false;
   }
+
   return triggered_by_global_gc;
 }
 
