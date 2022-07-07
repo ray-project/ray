@@ -46,13 +46,24 @@ class SavingTrainable(tune.Trainable):
     def load_checkpoint(self, checkpoint: Union[Dict, str]):
         if self.return_type == "object":
             assert isinstance(checkpoint, dict)
+            checkpoint_data = checkpoint
+            checkpoint_file = None
         elif self.return_type == "root":
             assert "subdir" not in checkpoint
+            checkpoint_file = os.path.join(checkpoint, "subdir", "checkpoint.pkl")
         elif self.return_type == "subdir":
             assert "subdir" in checkpoint
             assert "checkpoint.pkl" not in checkpoint
+            checkpoint_file = os.path.join(checkpoint, "checkpoint.pkl")
         else:  # self.return_type == "checkpoint"
             assert checkpoint.endswith("subdir/checkpoint.pkl")
+            checkpoint_file = checkpoint
+
+        if checkpoint_file:
+            with open(checkpoint_file, "rb") as f:
+                checkpoint_data = json.load(f)
+
+        assert checkpoint_data == {"data": 1}, checkpoint_data
 
 
 def function_trainable_dict(config):

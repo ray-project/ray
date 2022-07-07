@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Optional
 
 from six.moves import queue
 
-from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_FILE_NAME
+from ray.air.checkpoint import Checkpoint
 from ray.tune import TuneError
 from ray.tune.trainable import session
 from ray.tune.result import (
@@ -23,16 +23,11 @@ from ray.tune.result import (
     TIME_THIS_ITER_S,
 )
 from ray.tune.trainable import Trainable, TrainableUtil
-from ray.tune.trainable.trainable import _METADATA_KEY
 from ray.tune.utils import (
     detect_checkpoint_function,
     detect_config_single,
     detect_reporter,
 )
-from ray.tune.trainable.util import (
-    with_parameters,
-    _TUNE_METADATA_FILENAME,
-)  # noqa: F401
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 

@@ -13,7 +13,10 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 import ray
-from ray.air.checkpoint import _DICT_CHECKPOINT_FILE_NAME, Checkpoint
+from ray.air.checkpoint import (
+    Checkpoint,
+    _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
+)
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.resources import Resources
 from ray.tune.result import (
@@ -602,6 +605,9 @@ class Trainable:
             # If data was saved as a dict (e.g. from a class trainable),
             # also pass the dict to `load_checkpoint()`.
             checkpoint_dict = Checkpoint.from_directory(checkpoint_path).to_dict()
+            # If other files were added to the directory after converting from the
+            # original dict (e.g. marker files), clean these up
+            checkpoint_dict.pop(_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, None)
             to_load = checkpoint_dict
         else:
             # Otherwise, pass the relative checkpoint path
