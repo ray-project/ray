@@ -43,22 +43,21 @@ The Ray DAG will not be executed until further actions are taken on it.
 Your first workflow
 -------------------
 
-A single line is all you need to turn the previous DAG into a workflow:
+A single line is all you need to run the workflow DAG:
 
 .. code-block:: python
 
     # <follow the previous code>
     from ray import workflow
 
-    # Create the workflow from the DAG.
-    wf = workflow.create(output)
     # Execute the workflow and print the result.
-    print(wf.run())
+    print(workflow.run(output))
 
-    # The workflow can also be executed asynchronously.
-    # print(ray.get(output.run_async()))
+    # You can also run the workflow asynchronously and fetching the output via 'ray.get'
+    output_ref = workflow.run_async(dag)
+    print(ray.get(output_ref))
 
-Here is the workflow we created:
+Here this figure visualizes the workflow we created:
 
 .. image:: basic.png
    :width: 500px
@@ -115,16 +114,15 @@ To retrieve a workflow result, you can assign ``workflow_id`` when running a wor
 
     ret = add.bind(get_val.bind(), 20)
 
-    assert workflow.create(ret).run(workflow_id="add_example") == 30
+    assert workflow.run(ret, workflow_id="add_example") == 30
 
-Then workflow results can be retrieved with ``workflow.get_output(workflow_id) -> ObjectRef[T]``.
+Then workflow results can be retrieved with ``workflow.get_output(workflow_id)``.
 If a workflow is not given ``workflow_id``, a random string is set as the ``workflow_id``. To confirm ``workflow_id`` in the situation, call ``ray.workflow.list_all()``.
-
-If the workflow has not yet completed, calling ``ray.get()`` on the returned reference will block until the result is computed. For example:
 
 .. code-block:: python
 
-    assert ray.get(workflow.get_output("add_example")) == 30
+    assert workflow.get_output("add_example") == 30
+    # "workflow.get_output_async" is an asynchronous version
 
 We can retrieve the results for individual workflow tasks too with *named tasks*. A task can be named in two ways:
 
@@ -153,14 +151,14 @@ Once a task is given a name, the result of the task will be retrievable via ``wo
 
     inner_task = double.options(**workflow.options(name="inner")).bind(1)
     outer_task = double.options(**workflow.options(name="outer")).bind(inner_task)
-    result = workflow.create(outer_task).run_async("double")
+    result_ref = workflow.run_async(outer_task, workflow_id="double")
 
-    inner = workflow.get_output(workflow_id, name="inner")
-    outer = workflow.get_output(workflow_id, name="outer")
+    inner = workflow.get_output_async(workflow_id, name="inner")
+    outer = workflow.get_output_async(workflow_id, name="outer")
 
     assert ray.get(inner) == 2
     assert ray.get(outer) == 4
-    assert ray.get(result) == 4
+    assert ray.get(result_ref) == 4
 
 If there are multiple tasks with the same name, a suffix with a counter ``_n`` will be added automatically.
 
@@ -193,10 +191,10 @@ For example,
     for i in range(1, n):
         x = simple.options(**workflow.options(name="step")).bind(x)
 
-    ret = workflow.create(x).run_async(workflow_id=workflow_id)
-    outputs = [workflow.get_output(workflow_id, name="step")]
+    ret = workflow.run_async(x, workflow_id=workflow_id)
+    outputs = [workflow.get_output_async(workflow_id, name="step")]
     for i in range(1, n):
-        outputs.append(workflow.get_output(workflow_id, name=f"step_{i}"))
+        outputs.append(workflow.get_output_async(workflow_id, name=f"step_{i}"))
     assert ray.get(ret) == n - 1
     assert ray.get(outputs) == list(range(n))
 
@@ -229,7 +227,7 @@ The following error handling flags can be either set in the task decorator or vi
 
     # Tries up to five times before giving up.
     r1 = faulty_function.options(**workflow.options(max_retries=5)).bind()
-    workflow.create(r1).run()
+    workflow.run(r1)
 
     @ray.remote
     def handle_errors(result: Tuple[str, Exception]):
@@ -242,7 +240,7 @@ The following error handling flags can be either set in the task decorator or vi
 
     # `handle_errors` receives a tuple of (result, exception).
     r2 = faulty_function.options(**workflow.options(catch_exceptions=True)).bind()
-    workflow.create(handle_errors.bind(r2)).run()
+    workflow.run(handle_errors.bind(r2))
 
 - If ``max_retries`` is given, the task will be retried for the given number of times if an exception is raised. It will only retry for the application level error. For system errors, it's controlled by ray. By default, ``max_retries`` is set to be 3.
 - If ``catch_exceptions`` is True, the return value of the function will be converted to ``Tuple[Optional[T], Optional[Exception]]``. This can be combined with ``max_retries`` to try a given number of times before returning the result tuple.
@@ -278,7 +276,7 @@ Note that tasks that have side-effects still need to be idempotent. This is beca
         return ticket
 
     # UNSAFE: we could book multiple flight tickets
-    workflow.create(book_flight_unsafe.bind()).run()
+    workflow.run(book_flight_unsafe.bind())
 
 .. code-block:: python
     :caption: Idempotent workflow:
@@ -297,7 +295,7 @@ Note that tasks that have side-effects still need to be idempotent. This is beca
 
     # SAFE: book_flight is written to be idempotent
     request_id = generate_id.bind()
-    workflow.create(book_flight_idempotent.bind(request_id)).run()
+    workflow.run(book_flight_idempotent.bind(request_id))
 
 Dynamic workflows
 -----------------
@@ -305,7 +303,41 @@ Dynamic workflows
 Additional tasks can be dynamically created and inserted into the workflow DAG during execution.
 
 This is achieved by returning a continuation of a DAG.
-A continuation is something returned by a function and executed after it returns.
+
+In our context, a continuation is basically a tail function call returned by a function. For example:
+
+.. code-block:: python
+
+    def bar(): ...
+
+    def foo_1():
+        # Here we say 'foo_1()' returns a continuation.
+        # The continuation is made of 'bar()'
+        return bar()
+
+    def foo_2():
+        # This is NOT a continuation because we do not return it.
+        bar()
+
+    def foo_3():
+        # This is NOT a continuation because it is not a function call.
+        return 42
+
+Continuations can be used to implement something more complex, for example, recursions:
+
+.. code-block:: python
+
+    def factorial(n: int) -> int:
+        if n == 1:
+            return 1
+        else:
+            return multiply(n, factorial(n - 1))
+
+    def multiply(a: int, b: int) -> int:
+        return a * b
+
+    assert factorial(10) == 3628800
+
 The continuation feature enables nesting, looping, and recursion within workflows.
 
 The following example shows how to implement the recursive ``factorial`` program using dynamically generated tasks:
@@ -323,10 +355,11 @@ The following example shows how to implement the recursive ``factorial`` program
     def multiply(a: int, b: int) -> int:
         return a * b
 
-    ret = workflow.create(factorial.bind(10))
-    assert ret.run() == 3628800
+    assert workflow.run(factorial.bind(10)) == 3628800
 
-The key behavior to note is that when a task returns a ``Workflow`` output instead of a concrete value, that workflow's output will be substituted for the task's return. To better understand dynamic workflows, let's look at a more realistic example of booking a trip:
+The key behavior to note is that when a task returns a continuation instead of a concrete value,
+that continuation will be substituted for the task's return.
+To better understand dynamic workflows, let's look at a more realistic example of booking a trip:
 
 .. code-block:: python
 
@@ -342,18 +375,16 @@ The key behavior to note is that when a task returns a ``Workflow`` output inste
         hotels: List[Hotel]) -> Receipt: ...
 
     @ray.remote
-    def book_trip(origin: str, dest: str, dates) ->
-            "Workflow[Receipt]":
+    def book_trip(origin: str, dest: str, dates) -> Receipt:
         # Note that the workflow engine will not begin executing
         # child workflows until the parent task returns.
         # This avoids task overlap and ensures recoverability.
-        f1: Workflow = book_flight.bind(origin, dest, dates[0])
-        f2: Workflow = book_flight.bind(dest, origin, dates[1])
-        hotel: Workflow = book_hotel.bind(dest, dates)
+        f1 = book_flight.bind(origin, dest, dates[0])
+        f2 = book_flight.bind(dest, origin, dates[1])
+        hotel = book_hotel.bind(dest, dates)
         return workflow.continuation(finalize_or_cancel.bind([f1, f2], [hotel]))
 
-    fut = workflow.create(book_trip.bind("OAK", "SAN", ["6/12", "7/5"]))
-    fut.run()  # returns Receipt(...)
+    receipt: Receipt = workflow.run(book_trip.bind("OAK", "SAN", ["6/12", "7/5"]))
 
 Here the workflow initially just consists of the ``book_trip`` task. Once executed, ``book_trip`` generates tasks to book flights and hotels in parallel, which feeds into a task to decide whether to cancel the trip or finalize it. The DAG can be visualized as follows (note the dynamically generated nested workflows within ``book_trip``):
 
@@ -379,7 +410,8 @@ Workflows are compatible with Ray tasks and actors. There are two methods of usi
 
 Passing nested arguments
 ~~~~~~~~~~~~~~~~~~~~~~~~
-Like Ray tasks, when you pass a list of ``Workflow`` outputs to a task, the values are not resolved. But we ensure that all ancestors of a task are fully executed prior to the task starting:
+Like Ray tasks, when you pass a list of task outputs to a task, the values are not resolved.
+But we ensure that all ancestors of a task are fully executed prior to the task starting:
 
 .. code-block:: python
 
@@ -395,7 +427,7 @@ Like Ray tasks, when you pass a list of ``Workflow`` outputs to a task, the valu
         return 10
 
     ret = add.bind([get_val.bind() for _ in range(3)])
-    assert workflow.create(ret).run() == 30
+    assert workflow.run(ret) == 30
 
 Passing object references between tasks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -412,7 +444,7 @@ Ray object references and data structures composed of them (e.g., ``ray.Dataset`
     def add(a, b):
         return do_add.remote(a, b)
 
-    workflow.create(add.bind(ray.put(10), ray.put(20))).run() == 30
+    workflow.run(add.bind(ray.put(10), ray.put(20))) == 30
 
 
 Ray actor handles are not allowed to be passed between tasks.
@@ -428,4 +460,4 @@ You can assign resources (e.g., CPUs, GPUs to tasks via the same ``num_cpus``, `
     def train_model() -> Model:
         pass  # This task is assigned a GPU by Ray.
 
-    workflow.create(train_model.bind()).run()
+    workflow.run(train_model.bind())

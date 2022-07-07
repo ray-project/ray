@@ -49,7 +49,7 @@ def construct_workflow(length: int):
     for i in range(length):
         x0, x1, x2 = results[-2], results[-1], str(i)
         results.append(scan.bind(x0, x1, x2))
-    return workflow.create(results[-1])
+    return results[-1]
 
 
 def _locate_initial_commit(debug_store: DebugStorage) -> int:
@@ -90,7 +90,7 @@ def test_failure_with_storage(workflow_start_regular):
                     await debug_store.replay(i)
 
             asyncio_run(replay())
-            return ray.get(workflow.resume(workflow_id="complex_workflow"))
+            return workflow.resume(workflow_id="complex_workflow")
 
         with pytest.raises(ValueError):
             # in cases, the replayed records are too few to resume the
