@@ -128,7 +128,7 @@ def run_release_test(
 
     # Instantiate managers and command runner
     try:
-        cluster_manager = cluster_manager_cls(test["name"], anyscale_project)
+        cluster_manager = cluster_manager_cls(f"{test['name']}{'-smoke-test' if smoke_test else ''}", anyscale_project)
         file_manager = file_manager_cls(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(cluster_manager, file_manager, working_dir)
     except Exception as e:
