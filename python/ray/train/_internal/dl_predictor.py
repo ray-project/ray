@@ -86,7 +86,7 @@ class DLPredictor(Predictor):
             tensor_name = "output_"
             output_dict = {}
             for i in range(len(output)):
-                output_dict[tensor_name + str(i + 1)] = TensorArray(
+                output_dict[tensor_name + str(i + 1).zfill(5)] = TensorArray(
                     self._tensor_to_array(output[i])
                 )
             return pd.DataFrame(output_dict)
