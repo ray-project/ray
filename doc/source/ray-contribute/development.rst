@@ -142,11 +142,22 @@ To build Ray on Ubuntu, run the following commands:
 
 .. code-block:: bash
 
+  # Add a PPA containing gcc-9 for older versions of Ubuntu.
+  sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
   sudo apt-get update
-  sudo apt-get install -y build-essential curl unzip psmisc
+  sudo apt-get install -y build-essential curl gcc-9 g++-9 pkg-config psmisc unzip
+  sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 \
+                --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
+                --slave /usr/bin/gcov gcov /usr/bin/gcov-9
 
   # Install Bazel.
   ci/env/install-bazel.sh
+
+  # Install node version manager and node 14
+  $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
+  nvm install 14
+  nvm use 14
+
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
