@@ -63,7 +63,7 @@ void LocalDependencyResolver::CancelDependencyResolution(const TaskID &task_id) 
 }
 
 void LocalDependencyResolver::ResolveDependencies(
-    TaskSpecification &task, std::function<void(Status)> on_complete) {
+    TaskSpecification &task, std::function<void(Status)> on_dependencies_resolved) {
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
   std::vector<ActorID> actor_dependences;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -81,17 +81,18 @@ void LocalDependencyResolver::ResolveDependencies(
     }
   }
   if (local_dependencies.empty() && actor_dependences.empty()) {
-    on_complete(Status::OK());
+    on_dependencies_resolved(Status::OK());
     return;
   }
 
   // This is deleted when the last dependency fetch callback finishes.
   const auto task_id = task.TaskId();
-  auto inserted = pending_tasks_.emplace(task_id,
-                                         new TaskState(task,
-                                                       std::move(local_dependencies),
-                                                       std::move(actor_dependences),
-                                                       on_complete));
+  auto inserted =
+      pending_tasks_.emplace(task_id,
+                             std::make_unique<TaskState>(task,
+                                                         std::move(local_dependencies),
+                                                         std::move(actor_dependences),
+                                                         on_dependencies_resolved));
   RAY_CHECK(inserted.second);
   auto &state = inserted.first->second;
 
@@ -130,14 +131,14 @@ void LocalDependencyResolver::ResolveDependencies(
                                                      contained_ids);
           }
           if (resolved_task_state) {
-            resolved_task_state->on_complete(resolved_task_state->status);
+            resolved_task_state->on_dependencies_resolved(resolved_task_state->status);
           }
         });
   }
 
   for (const auto &actor_id : state->actor_dependencies) {
     actor_creator_.AsyncWaitForActorRegisterFinish(
-        actor_id, [this, task_id, on_complete](const Status &status) {
+        actor_id, [this, task_id, on_dependencies_resolved](const Status &status) {
           std::unique_ptr<TaskState> resolved_task_state = nullptr;
 
           {
@@ -159,7 +160,7 @@ void LocalDependencyResolver::ResolveDependencies(
           }
 
           if (resolved_task_state) {
-            resolved_task_state->on_complete(resolved_task_state->status);
+            resolved_task_state->on_dependencies_resolved(resolved_task_state->status);
           }
         });
   }

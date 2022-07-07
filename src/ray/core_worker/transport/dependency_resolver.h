@@ -46,11 +46,11 @@ class LocalDependencyResolver {
   /// are converted to values and all remaining arguments are arguments in the task spec.
   ///
   /// \param[in] task The task whose dependencies we should resolve.
-  /// \param[in] on_complete A callback to call once the task's dependencies
+  /// \param[in] on_dependencies_resolved A callback to call once the task's dependencies
   /// have been resolved. Note that we will not call this if the dependency
   /// resolution is cancelled.
   void ResolveDependencies(TaskSpecification &task,
-                           std::function<void(Status)> on_complete);
+                           std::function<void(Status)> on_dependencies_resolved);
 
   /// Cancel resolution of the given task's dependencies. Its registered
   /// callback will not be called.
@@ -68,12 +68,12 @@ class LocalDependencyResolver {
     TaskState(TaskSpecification t,
               absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> deps,
               std::vector<ActorID> actor_ids,
-              std::function<void(Status)> on_complete)
+              std::function<void(Status)> on_dependencies_resolved)
         : task(t),
           local_dependencies(std::move(deps)),
           actor_dependencies(std::move(actor_ids)),
           status(Status::OK()),
-          on_complete(on_complete) {
+          on_dependencies_resolved(on_dependencies_resolved) {
       obj_dependencies_remaining = local_dependencies.size();
       actor_dependencies_remaining = actor_dependencies.size();
     }
@@ -88,7 +88,7 @@ class LocalDependencyResolver {
     size_t actor_dependencies_remaining;
     size_t obj_dependencies_remaining;
     Status status;
-    std::function<void(Status)> on_complete;
+    std::function<void(Status)> on_dependencies_resolved;
   };
 
   /// The in-memory store.
@@ -101,7 +101,7 @@ class LocalDependencyResolver {
   /// Number of tasks pending dependency resolution.
   std::atomic<int> num_pending_;
 
-  absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_;
+  absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_ GUARDED_BY(mu_);
 
   /// Protects against concurrent access to internal state.
   mutable absl::Mutex mu_;
