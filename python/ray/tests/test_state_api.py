@@ -58,6 +58,7 @@ from ray.experimental.state.api import (
     get_task,
     get_worker,
     list_actors,
+    list_logs,
     list_jobs,
     list_nodes,
     list_objects,
@@ -2087,7 +2088,6 @@ def try_state_query(api_func, q):
 def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     import queue
     import multiprocessing as mp
-    import time
 
     # Set environment
     with monkeypatch.context() as m:
@@ -2096,7 +2096,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             "RAY_testing_asio_delay_us",
             (
                 "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000,"
-                "NodeManagerService.grpc_server.GetObjectsInfo=10000000:10000000,"
+                "NodeInfoGcsService.grpc_server.GetAllNodeInfo=1000000:1000000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=10000000:10000000"
             ),
         )
@@ -2123,15 +2123,14 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
 
         _objs = [ray.put(x) for x in range(10)]  # noqa
 
-        # Wait for results to be populate on the cluster
-        # In particular, waiting for raylets to be registered so state
-        # query will actually get blocked on the state manager RPC end.
-        time.sleep(5)
+        # list_objects() will wait for raylets to be registered, which
+        # means `list_tasks` will also see the registered raylets.
+        wait_for_condition(lambda: len(list_objects()) > 0)
 
         # Running 3 slow apis to exhaust the limits
         procs = [
             mp.Process(target=lambda: print(list_tasks()), args=()),
-            mp.Process(target=lambda: print(list_objects()), args=()),
+            mp.Process(target=lambda: print(list_nodes()), args=()),
             mp.Process(target=lambda: print(list_actors()), args=()),
         ]
 
@@ -2139,7 +2138,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
 
         # Running another 1 should return error
         with pytest.raises(RayStateApiException):
-            print(list_nodes())
+            print(list_logs())
 
         # Kill the 3 slow running threads
         [p.kill() for p in procs]
@@ -2153,7 +2152,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             mp.Process(
                 target=try_state_query,
                 args=(
-                    list_nodes,
+                    list_objects,
                     q,
                 ),
             ),
