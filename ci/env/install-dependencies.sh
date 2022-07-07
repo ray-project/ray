@@ -392,6 +392,8 @@ install_dependencies() {
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
+    # Todo: raydp-nightly depends on ray < 1.13.0 which will uninstall our latest release
+    pip install --no-deps raydp-nightly netifaces
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
