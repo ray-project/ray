@@ -103,9 +103,9 @@ class PushManager {
       return false;
     }
 
-    void OnChunkSent() { --chunks_remaining; }
+    void OnChunkComplete() { --chunks_remaining; }
 
-    bool AllChunkSent() { return chunks_remaining <= 0; }
+    bool AllChunkComplete() { return chunks_remaining <= 0; }
   };
 
   /// Called on completion events to trigger additional pushes.
