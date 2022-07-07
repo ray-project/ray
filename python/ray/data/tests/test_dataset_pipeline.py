@@ -507,6 +507,13 @@ def test_preserve_whether_base_datasets_can_be_cleared(ray_start_regular_shared)
     assert not p2._base_datasets_can_be_cleared
 
 
+def test_drop_columns(ray_start_regular_shared):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds = ray.data.from_pandas(df)
+    pipe = ds.repeat()
+    assert pipe.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
+
+
 if __name__ == "__main__":
     import sys
 

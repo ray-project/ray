@@ -88,8 +88,6 @@ message DeploymentConfig {
   AutoscalingConfig autoscaling_config = 10;
 
   string version = 11;
-
-  string prev_version = 12;
 }
 
 // Deployment language.
@@ -140,11 +138,6 @@ message EndpointSet {
 // list across language. When Actor handle list supports across language, this message can
 // be replaced.
 message ActorNameList {
-  repeated string names = 1;
-}
-
-// It is deprecated. Use ActorNameList instead.
-message ActorSet {
   repeated string names = 1;
 }
 
