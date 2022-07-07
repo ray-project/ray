@@ -76,36 +76,35 @@ class DataParallelTrainer(BaseTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
+    shards that can then be accessed by ``session.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
+    :ref:`Ray AIR session methods <air-session-ref>` and
     :ref:`Ray Train function utils <train-api-func-utils>`.
 
     .. code-block:: python
 
         def train_loop_per_worker():
-            # Report intermediate results for callbacks or logging.
-            train.report(...)
-
-            # Checkpoints the provided args as restorable state.
-            train.save_checkpoint(...)
+            # Report intermediate results for callbacks or logging and
+            # checkpoint data.
+            session.report(...)
 
             # Returns dict of last saved checkpoint.
-            train.load_checkpoint()
+            session.get_checkpoint()
 
             # Returns the Ray Dataset shard for the given key.
-            train.get_dataset_shard("my_dataset")
+            session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            train.get_world_size()
+            session.get_world_size()
 
             # Returns the rank of this worker.
-            train.get_world_rank()
+            session.get_world_rank()
 
             # Returns the rank of the worker on the current node.
-            train.get_local_rank()
+            session.get_local_rank()
 
     **How do I use ``DataParallelTrainer`` or any of its subclasses?**
 
@@ -114,10 +113,10 @@ class DataParallelTrainer(BaseTrainer):
     .. code-block:: python
 
         import ray
-        from ray import train
+        from ray.air import session
 
         def train_loop_for_worker():
-            dataset_shard_for_this_worker = train.get_dataset_shard("train")
+            dataset_shard_for_this_worker = session.get_dataset_shard("train")
 
             assert len(dataset_shard_for_this_worker) == 1
 

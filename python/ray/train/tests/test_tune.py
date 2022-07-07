@@ -134,9 +134,11 @@ def test_tune_error(ray_start_4_cpus):
 
 def test_tune_checkpoint(ray_start_4_cpus):
     def train_func():
-        for i in range(10):
-            train.report(test=i)
-        train.save_checkpoint(hello="world")
+        for i in range(9):
+            session.report(dict(test=i))
+        session.report(
+            dict(test=i + 1), checkpoint=Checkpoint.from_dict(dict(hello="world"))
+        )
 
     trainer = DataParallelTrainer(
         train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)

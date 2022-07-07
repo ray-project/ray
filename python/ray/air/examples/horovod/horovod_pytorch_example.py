@@ -2,6 +2,7 @@ import argparse
 from filelock import FileLock
 import horovod.torch as hvd
 import os
+from ray.air.checkpoint import Checkpoint
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -9,7 +10,7 @@ import torch.utils.data.distributed
 from torchvision import datasets, transforms
 
 import ray
-from ray import train
+from ray.air import session
 from ray.train.horovod import HorovodTrainer
 
 
@@ -146,13 +147,15 @@ def train_func(config):
         loss = train_epoch(
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
+        if save_model_as_dict:
+            checkpoint_dict = dict(model=model.state_dict())
+        else:
+            checkpoint_dict = dict(model=model)
+        checkpoint_dict = Checkpoint.from_dict(checkpoint_dict)
         results.append(loss)
-    if save_model_as_dict:
-        train.save_checkpoint(model=model.state_dict())
-    else:
-        train.save_checkpoint(model=model)
-    print("losses of each epoch:")
-    print(results)
+        session.report(dict(loss=loss), checkpoint=checkpoint_dict)
+
+    # Only used for testing.
     return results
 
 

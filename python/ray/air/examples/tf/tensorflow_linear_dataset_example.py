@@ -2,10 +2,10 @@ import argparse
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
 
 import ray
-import ray.train as train
+from ray.air import session
+from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
 from ray.air.result import Result
 from ray.data import Dataset
 from ray.train.batch_predictor import BatchPredictor
@@ -14,12 +14,6 @@ from ray.train.tensorflow import (
     TensorflowTrainer,
     prepare_dataset_shard,
 )
-
-
-class TrainCheckpointReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{"model": self.model.get_weights()})
-        train.report(**logs)
 
 
 def get_dataset(a=5, b=10, size=1000) -> Dataset:
@@ -53,7 +47,7 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = train.get_dataset_shard("train")
+    dataset = session.get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):

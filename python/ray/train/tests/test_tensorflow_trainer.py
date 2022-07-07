@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 import ray
-from ray import train
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.examples.tf.tensorflow_linear_dataset_example import get_dataset
@@ -65,7 +64,7 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
 def test_tensorflow_e2e(ray_start_4_cpus):
     def train_func():
         model = build_model().get_weights()
-        train.save_checkpoint(**{MODEL_KEY: model})
+        session.report({}, checkpoint=Checkpoint.from_dict({MODEL_KEY: model}))
 
     scaling_config = {"num_workers": 2}
     trainer = TensorflowTrainer(

@@ -14,7 +14,7 @@ from ray.air.constants import (  # noqa: F401
     WILDCARD_KEY,
 )
 
-# Autofilled train.report() metrics. Keys should be consistent with Tune.
+# Autofilled session.report() metrics. Keys should be consistent with Tune.
 TIMESTAMP = "_timestamp"
 TIME_THIS_ITER_S = "_time_this_iter_s"
 TRAINING_ITERATION = "_training_iteration"
@@ -72,10 +72,10 @@ SESSION_MISUSE_LOG_ONCE_KEY = "train_warn_session_misuse"
 
 # Reserved keyword used by the ``TorchWorkerProfiler`` and
 # ``TorchTensorboardProfilerCallback`` for passing PyTorch Profiler data
-# through ``train.report()``
+# through ``session.report()``
 PYTORCH_PROFILER_KEY = "_train_torch_profiler"
 
 # Reserved keys used across all Callbacks.
-# By default these will be filtered out from ``train.report()``.
+# By default these will be filtered out from ``session.report()``.
 # See ``TrainingCallback._preprocess_results`` for more details.
 ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}

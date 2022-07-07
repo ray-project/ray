@@ -9,7 +9,7 @@ How fast is Ray Train compared to PyTorch, TensorFlow, etc.?
 At its core, training speed should be the same - while Ray Train launches distributed training workers via Ray Actors,
 communication during training (e.g. gradient synchronization) is handled by the backend training framework itself.
 
-For example, when running Ray Train with the ``"torch"`` backend,
+For example, when running Ray Train with the ``TorchTrainer``,
 distributed training communication is done with Torch's ``DistributedDataParallel``.
 
 How do I set resources?
@@ -18,7 +18,7 @@ How do I set resources?
 By default, each worker will reserve 1 CPU resource, and an additional 1 GPU resource if ``use_gpu=True``.
 
 To override these resource requests or request additional custom resources,
-you can initialize the ``Trainer`` with ``resources_per_worker``.
+you can initialize the ``Trainer`` with ``resources_per_worker`` specified in ``scaling_config``.
 
 .. note::
    Some GPU utility functions (e.g. :ref:`train-api-torch-get-device`, :ref:`train-api-torch-prepare-model`)
@@ -36,5 +36,5 @@ If you try to create a Matplotlib plot in the training function, you may encount
 
 To handle this, consider the following approaches:
 
-1. If there is no dependency on any code in your training function, simply move the Matplotlib logic out and execute it before or after ``trainer.run``.
-2. If you are plotting metrics, you can pass the metrics via ``train.report()`` and create a :ref:`custom callback <train-custom-callbacks>` to plot the results.
+1. If there is no dependency on any code in your training function, simply move the Matplotlib logic out and execute it before or after ``trainer.fit()``.
+2. If you are plotting metrics, you can pass the metrics via ``session.report()`` and create a :ref:`custom callback <train-custom-callbacks>` to plot the results.
