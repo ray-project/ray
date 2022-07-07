@@ -1081,7 +1081,7 @@ def _process_observations(
             # If reset is async, we will get its result in some future poll.
             elif resetted_obs != ASYNC_RESET_RETURN:
                 new_episode: Episode = active_episodes[env_id]
-                assert not new_episode.is_faulty
+                _assert_episode_not_faulty(new_episode)
                 resetted_obs = resetted_obs[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
@@ -1174,7 +1174,7 @@ def _do_policy_eval(
             # have already been changed (mapping fn stay constant
             # within one episode).
             episode = active_episodes[eval_data[0].env_id]
-            assert not episode.is_faulty
+            _assert_episode_not_faulty(episode)
             policy_id = episode.policy_mapping_fn(
                 eval_data[0].agent_id, episode, worker=episode.worker
             )
@@ -1270,7 +1270,7 @@ def _process_policy_eval_results(
             env_id: int = eval_data[i].env_id
             agent_id: AgentID = eval_data[i].agent_id
             episode: Episode = active_episodes[env_id]
-            assert not episode.is_faulty
+            _assert_episode_not_faulty(episode)
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
             episode._set_last_extra_action_outs(
                 agent_id, {k: v[i] for k, v in extra_action_out_cols.items()}
@@ -1292,3 +1292,11 @@ def _process_policy_eval_results(
 def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:
     num_cols = len(rnn_state_rows[0])
     return [[row[i] for row in rnn_state_rows] for i in range(num_cols)]
+
+
+def _assert_episode_not_faulty(episode):
+    if episode.is_faulty:
+        raise AssertionError(
+            "Episodes marked as `faulty` should not be kept in the "
+            f"`active_episodes` map! Episode ID={episode.episode_id}."
+        )
