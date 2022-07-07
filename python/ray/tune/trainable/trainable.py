@@ -541,6 +541,13 @@ class Trainable:
         shutil.rmtree(temp_container_dir)
         return obj_ref
 
+    def _restore_from_checkpoint_obj(self, checkpoint: Checkpoint):
+        with checkpoint.as_directory() as converted_checkpoint_path:
+            return self.restore(
+                checkpoint_path=converted_checkpoint_path,
+                checkpoint_node_ip=None,
+            )
+
     def restore(self, checkpoint_path: str, checkpoint_node_ip: Optional[str] = None):
         """Restores training state from a given model checkpoint.
 
@@ -575,11 +582,7 @@ class Trainable:
         """
         # Ensure Checkpoints are converted
         if isinstance(checkpoint_path, Checkpoint):
-            with checkpoint_path.as_directory() as converted_checkpoint_path:
-                return self.restore(
-                    checkpoint_path=converted_checkpoint_path,
-                    checkpoint_node_ip=checkpoint_node_ip,
-                )
+            return self._restore_from_checkpoint_obj(checkpoint_path)
 
         if not self._maybe_load_from_cloud(checkpoint_path) and (
             # If a checkpoint source IP is given
