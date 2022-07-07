@@ -345,11 +345,14 @@ class CheckpointsConversionTest(unittest.TestCase):
         checkpoint = Checkpoint.from_directory(checkpoint_dir)
 
         new_dir = checkpoint.to_directory()
-        new_additional_file = os.path.join(new_dir, "additional_file.txt")
-        assert os.path.exists(new_additional_file)
-        with open(new_additional_file, "r") as f:
+
+        assert os.path.exists(os.path.join(new_dir, "additional_file.txt"))
+        with open(os.path.join(new_dir, "additional_file.txt"), "r") as f:
             assert f.read() == "Additional data\n"
+
         assert os.path.exists(os.path.join(new_dir, "subdir", "another.txt"))
+        with open(os.path.join(new_dir, "subdir", "another.txt"), "r") as f:
+            assert f.read() == "Another additional file\n"
 
         checkpoint_dict = checkpoint.to_dict()
         for k, v in self.checkpoint_dict_data.items():
