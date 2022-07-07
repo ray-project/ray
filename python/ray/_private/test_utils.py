@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import fnmatch
 import functools
 import io
@@ -32,10 +33,6 @@ from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
-from ray.dashboard.modules.snapshot.snapshot_head import (
-    RayActivityResponse,
-    RayActivityStatus,
-)
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
 
@@ -1372,6 +1369,17 @@ def job_hook(**kwargs):
     sys.exit(0)
 
 
+@dataclasses.dataclass
+class TestRayActivityResponse:
+    """
+    Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+    used in test_component_activities_hook to mimic typical
+    usage of redefining or extending response type.
+    """
+    is_active: str
+    reason: Optional[str] = None
+    timestamp: Optional[float] = None
+
 # Global counter to test different return values
 # for external_ray_cluster_activity_hook1.
 ray_cluster_activity_hook_counter = 0
@@ -1387,8 +1395,8 @@ def external_ray_cluster_activity_hook1():
     global ray_cluster_activity_hook_counter
     ray_cluster_activity_hook_counter += 1
     return {
-        "test_component1": RayActivityResponse(
-            is_active=RayActivityStatus.ACTIVE,
+        "test_component1": TestRayActivityResponse(
+            is_active="ACTIVE",
             reason=f"Counter: {ray_cluster_activity_hook_counter}",
         )
     }
