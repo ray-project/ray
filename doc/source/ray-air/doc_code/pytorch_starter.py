@@ -1,15 +1,10 @@
-import argparse
-from typing import Dict
-from ray.air import session
+# flake8: noqa
+# isort: skip_file
 
-import torch
-from torch import nn
-from torch.utils.data import DataLoader
+# __air_pytorch_preprocess_start__
+
 from torchvision import datasets
 from torchvision.transforms import ToTensor
-
-import ray.train as train
-from ray.train.torch import TorchTrainer
 
 # Download training data from open datasets.
 training_data = datasets.FashionMNIST(
@@ -27,6 +22,15 @@ test_data = datasets.FashionMNIST(
     transform=ToTensor(),
 )
 
+# __air_pytorch_preprocess_end__
+
+# __air_pytorch_train_start__
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
+import ray.train as train
+from ray.air import session
+from ray.train.torch import TorchTrainer
 
 # Define model
 class NeuralNetwork(nn.Module):
@@ -86,7 +90,7 @@ def validate_epoch(dataloader, model, loss_fn):
     return test_loss
 
 
-def train_func(config: Dict):
+def train_func(config):
     batch_size = config["batch_size"]
     lr = config["lr"]
     epochs = config["epochs"]
@@ -107,48 +111,34 @@ def train_func(config: Dict):
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    loss_results = []
-
     for _ in range(epochs):
         train_epoch(train_dataloader, model, loss_fn, optimizer)
         loss = validate_epoch(test_dataloader, model, loss_fn)
-        loss_results.append(loss)
         session.report(dict(loss=loss))
 
-    # return required for backwards compatibility with the old API
-    # TODO(team-ml) clean up and remove return
-    return loss_results
+
+num_workers = 2
+use_gpu = False
+
+trainer = TorchTrainer(
+    train_loop_per_worker=train_func,
+    train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": 4},
+    scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+)
+result = trainer.fit()
+print(f"Last result: {result.metrics}")
+# __air_pytorch_train_end__
 
 
-def train_fashion_mnist(num_workers=2, use_gpu=False):
-    trainer = TorchTrainer(
-        train_func,
-        train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": 4},
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
-    )
-    result = trainer.fit()
-    print(f"Results: {result.metrics}")
+# # __air_pytorch_batchpred_start__
+# import random
+# from ray.train.batch_predictor import BatchPredictor
+# from ray.train.torch import TorchPredictor
 
+# batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--address", required=False, type=str, help="the address to use for Ray"
-    )
-    parser.add_argument(
-        "--num-workers",
-        "-n",
-        type=int,
-        default=2,
-        help="Sets number of workers for training.",
-    )
-    parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
-    )
+# items = [{"x": random.uniform(0, 1) for _ in range(10)}]
+# prediction_dataset = ray.data.from_items(items)
 
-    args, _ = parser.parse_known_args()
-
-    import ray
-
-    ray.init(address=args.address)
-    train_fashion_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)
+# predictions = batch_predictor.predict(prediction_dataset, dtype=torch.float)
+# # __air_pytorch_batchpred_end__
