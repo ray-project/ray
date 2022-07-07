@@ -26,3 +26,10 @@ class HealthzHead(dashboard_utils.DashboardHeadModule):
                 return HTTPServiceUnavailable(reason=e.message())
 
         return HTTPServiceUnavailable(reason="Unknown error")
+
+    async def run(self, server):
+        pass
+
+    @staticmethod
+    def is_minimal_module():
+        return True

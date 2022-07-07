@@ -38,3 +38,10 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             text="success",
             content_type="application/text",
         )
+
+    async def run(self, server):
+        pass
+
+    @staticmethod
+    def is_minimal_module():
+        return True
