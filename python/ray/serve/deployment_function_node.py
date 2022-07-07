@@ -29,6 +29,11 @@ class DeploymentFunctionNode(DAGNode):
             func_options,
             other_args_to_resolve=other_args_to_resolve,
         )
+        version = (
+            self._bound_other_args_to_resolve["version"]
+            if "version" in self._bound_other_args_to_resolve
+            else None
+        )
         if "deployment_schema" in self._bound_other_args_to_resolve:
             deployment_schema: DeploymentSchema = self._bound_other_args_to_resolve[
                 "deployment_schema"
@@ -58,6 +63,7 @@ class DeploymentFunctionNode(DAGNode):
                 init_args=(),
                 init_kwargs={},
                 route_prefix=route_prefix,
+                version=version,
             )
         else:
             self._deployment: Deployment = Deployment(
@@ -68,6 +74,7 @@ class DeploymentFunctionNode(DAGNode):
                 init_kwargs=dict(),
                 ray_actor_options=func_options,
                 _internal=True,
+                version=version,
             )
         # TODO (jiaodong): Polish with async handle support later
         self._deployment_handle = RayServeLazySyncHandle(self._deployment.name)
