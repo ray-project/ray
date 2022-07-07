@@ -325,7 +325,7 @@ class ConnectorPipeline(abc.ABC):
             raise ValueError(f"Can not find connector {name}")
         del self.connectors[idx]
 
-        print(f"Removed connector {name} from {self.__class__.__name__}.")
+        logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
 
     def insert_before(self, name: str, connector: Connector):
         """Insert a new connector before connector <name>
@@ -343,7 +343,7 @@ class ConnectorPipeline(abc.ABC):
             raise ValueError(f"Can not find connector {name}")
         self.connectors.insert(idx, connector)
 
-        print(
+        logger.info(
             f"Inserted {connector.__class__.__name__} before {name} "
             f"to {self.__class__.__name__}."
         )
@@ -364,7 +364,7 @@ class ConnectorPipeline(abc.ABC):
             raise ValueError(f"Can not find connector {name}")
         self.connectors.insert(idx + 1, connector)
 
-        print(
+        logger.info(
             f"Inserted {connector.__class__.__name__} after {name} "
             f"to {self.__class__.__name__}."
         )
@@ -377,7 +377,7 @@ class ConnectorPipeline(abc.ABC):
         """
         self.connectors.insert(0, connector)
 
-        print(
+        logger.info(
             f"Added {connector.__class__.__name__} to the beginning of "
             f"{self.__class__.__name__}."
         )
@@ -390,7 +390,7 @@ class ConnectorPipeline(abc.ABC):
         """
         self.connectors.append(connector)
 
-        print(
+        logger.info(
             f"Added {connector.__class__.__name__} to the end of "
             f"{self.__class__.__name__}."
         )

@@ -1,5 +1,5 @@
 """This example script shows how to load a connector enabled policy,
-and adapt and use it with a different version of environment.
+and use it in a serving/inference setting.
 """
 
 import argparse

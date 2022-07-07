@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Tuple, TYPE_CHECKING
 
 from ray.rllib.connectors.action.clip import ClipActionsConnector
@@ -17,6 +18,8 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -78,9 +81,9 @@ def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     policy.agent_connectors = get_agent_connectors_from_config(ctx, config)
     policy.action_connectors = get_action_connectors_from_trainer_config(ctx, config)
 
-    print("Connectors enabled:")
-    print(policy.agent_connectors.__str__(indentation=4))
-    print(policy.action_connectors.__str__(indentation=4))
+    logger.info("Using connectors:")
+    logger.info(policy.agent_connectors.__str__(indentation=4))
+    logger.info(policy.action_connectors.__str__(indentation=4))
 
 
 @PublicAPI(stability="alpha")

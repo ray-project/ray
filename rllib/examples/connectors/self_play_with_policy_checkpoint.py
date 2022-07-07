@@ -28,6 +28,9 @@ parser.add_argument(
 parser.add_argument(
     "--policy_id", default="main", help="ID of policy to load.",
 )
+parser.add_argument(
+    "--train_iteration", default=10, help="Number of iterations to train.",
+)
 args = parser.parse_args()
 
 assert args.checkpoint_file, "Must specify --checkpoint_file flag."
@@ -101,7 +104,7 @@ if __name__ == "__main__":
     }
 
     stop = {
-        "training_iteration": 10,
+        "training_iteration": args.train_iteration,
     }
 
     # Train the "main" policy to play really well using self-play.
