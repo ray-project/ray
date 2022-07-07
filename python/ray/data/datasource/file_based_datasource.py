@@ -187,6 +187,21 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
 
+    @staticmethod
+    def _open_input_source(
+        filesystem: "pyarrow.fs.FileSystem",
+        path: str,
+        **open_args,
+    ) -> "pyarrow.NativeFile":
+        """Opens a source path for reading and returns the associated Arrow NativeFile.
+
+        The default implementation opens the source path as a sequential input stream.
+
+        Implementations that do not support streaming reads (e.g. that require random
+        access) should override this method.
+        """
+        return filesystem.open_input_stream(path, **open_args)
+
     def create_reader(self, **kwargs):
         return _FileBasedDatasourceReader(self, **kwargs)
 
@@ -211,21 +226,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _read_file()."
         )
-
-    def _open_input_source(
-        self,
-        filesystem: "pyarrow.fs.FileSystem",
-        path: str,
-        **open_args,
-    ) -> "pyarrow.NativeFile":
-        """Opens a source path for reading and returns the associated Arrow NativeFile.
-
-        The default implementation opens the source path as a sequential input stream.
-
-        Implementations that do not support streaming reads (e.g. that require random
-        access) should override this method.
-        """
-        return filesystem.open_input_stream(path, **open_args)
 
     def do_write(
         self,
@@ -415,7 +415,7 @@ class _FileBasedDatasourceReader(Reader):
                     # Non-Snappy compression, pass as open_input_stream() arg so Arrow
                     # can take care of streaming decompression for us.
                     open_stream_args["compression"] = compression
-                with self._delegate._open_input_source(
+                with FileBasedDatasource._open_input_source(
                     fs, read_path, **open_stream_args
                 ) as f:
                     for data in read_stream(f, read_path, **reader_args):
