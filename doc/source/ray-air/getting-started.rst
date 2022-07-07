@@ -40,7 +40,7 @@ Preprocessing
 
 Below, let's start by preprocessing your data with Ray AIR's ``Preprocessors``:
 
-.. literalinclude:: doc_code/xgboost_starter.py
+.. literalinclude:: ../../../python/ray/air/examples/xgboost_starter.py
     :language: python
     :start-after: __air_generic_preprocess_start__
     :end-before: __air_generic_preprocess_end__
@@ -56,14 +56,14 @@ If using Tensorflow or Pytorch, format your data for use with your training fram
 
 .. tabbed:: Pytorch
 
-    .. literalinclude:: doc_code/pytorch_tabular_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/pytorch_tabular_starter.py
         :language: python
         :start-after: __air_pytorch_preprocess_start__
         :end-before: __air_pytorch_preprocess_end__
 
 .. tabbed:: Tensorflow
 
-    .. literalinclude:: doc_code/tf_tabular_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/tf_tabular_starter.py
         :language: python
         :start-after: __air_tf_preprocess_start__
         :end-before: __air_tf_preprocess_end__
@@ -75,21 +75,21 @@ Train a model with a ``Trainer`` with common ML frameworks:
 
 .. tabbed:: XGBoost
 
-    .. literalinclude:: doc_code/xgboost_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/xgboost_starter.py
         :language: python
         :start-after: __air_xgb_train_start__
         :end-before: __air_xgb_train_end__
 
 .. tabbed:: Pytorch
 
-    .. literalinclude:: doc_code/pytorch_tabular_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/pytorch_tabular_starter.py
         :language: python
         :start-after: __air_pytorch_train_start__
         :end-before: __air_pytorch_train_end__
 
 .. tabbed:: Tensorflow
 
-    .. literalinclude:: doc_code/tf_tabular_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/tf_tabular_starter.py
         :language: python
         :start-after: __air_tf_train_start__
         :end-before: __air_tf_train_end__
@@ -101,28 +101,28 @@ You can specify a hyperparameter space to search over for each trainer:
 
 .. tabbed:: XGBoost
 
-    .. literalinclude:: doc_code/xgboost_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/xgboost_starter.py
         :language: python
         :start-after: __air_xgb_tuner_start__
         :end-before: __air_xgb_tuner_end__
 
 .. tabbed:: Pytorch
 
-    .. literalinclude:: doc_code/pytorch_tabular_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/pytorch_tabular_starter.py
         :language: python
         :start-after: __air_pytorch_tuner_start__
         :end-before: __air_pytorch_tuner_end__
 
 .. tabbed:: Tensorflow
 
-    .. literalinclude:: doc_code/tf_tabular_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/tf_tabular_starter.py
         :language: python
         :start-after: __air_tf_tuner_start__
         :end-before: __air_tf_tuner_end__
 
 Then use the ``Tuner`` to run the search:
 
-.. literalinclude:: doc_code/pytorch_tabular_starter.py
+.. literalinclude:: ../../../python/ray/air/examples/pytorch_tabular_starter.py
     :language: python
     :start-after: __air_tune_generic_start__
     :end-before: __air_tune_generic_end__
@@ -134,21 +134,21 @@ Use the trained model for scalable batch prediction with a ``BatchPredictor``.
 
 .. tabbed:: XGBoost
 
-    .. literalinclude:: doc_code/xgboost_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/xgboost_starter.py
         :language: python
         :start-after: __air_xgb_batchpred_start__
         :end-before: __air_xgb_batchpred_end__
 
 .. tabbed:: Pytorch
 
-    .. literalinclude:: doc_code/pytorch_tabular_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/pytorch_tabular_starter.py
         :language: python
         :start-after: __air_pytorch_batchpred_start__
         :end-before: __air_pytorch_batchpred_end__
 
 .. tabbed:: Tensorflow
 
-    .. literalinclude:: doc_code/tf_tabular_starter.py
+    .. literalinclude:: ../../../python/ray/air/examples/tf_tabular_starter.py
         :language: python
         :start-after: __air_tf_batchpred_start__
         :end-before: __air_tf_batchpred_end__
