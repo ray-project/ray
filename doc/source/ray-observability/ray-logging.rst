@@ -149,14 +149,14 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 
 - ``dashboard.log``: A log file of a Ray dashboard.
 - ``dashboard_agent.log``: Every Ray node has one dashboard agent. This is a log file of the agent.
-- ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
+- ``gcs_server.[out|err|_[pid].log]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
 - ``log_monitor.log``: The log monitor is in charge of streaming logs to the driver.
 - ``monitor.log``: Ray's cluster launcher is operated with a monitor process. It also manages the autoscaler.
 - ``monitor.[out|err]``: Stdout and stderr of a cluster launcher.
 - ``plasma_store.[out|err]``: Deprecated.
 - ``python-core-driver-[worker_id]_[pid].log``: Ray drivers consist of CPP core and Python/Java frontend. This is a log file generated from CPP code.
 - ``python-core-worker-[worker_id]_[pid].log``: Ray workers consist of CPP core and Python/Java frontend. This is a log file generated from CPP code.
-- ``raylet.[out|err]``: A log file of raylets.
+- ``raylet.[out|err|_[pid].log]``: A log file of raylets.
 - ``redis-shard_[shard_index].[out|err]``: Redis shard log files.
 - ``redis.[out|err]``: Redis log files.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.

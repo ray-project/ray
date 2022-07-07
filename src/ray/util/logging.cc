@@ -197,7 +197,12 @@ void RayLog::StartRayLog(const std::string &app_name,
   }
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
-  log_dir_ = log_dir;
+  if (std::getenv("RAY_LOG_TO_STDERR") != nullptr &&
+      std::getenv("RAY_LOG_TO_STDERR") == std::string("1")) {
+    log_dir_ = "";
+  } else {
+    log_dir_ = log_dir;
+  }
 
   // All the logging sinks to add.
   std::vector<spdlog::sink_ptr> sinks;
