@@ -154,6 +154,7 @@ class TensorflowPredictor(DLPredictor):
             predictions = predictor.predict(data)
 
         Returns:
-            DataBatchType: Prediction result.
+            DataBatchType: Prediction result. The return type will be the same as the
+                input type.
         """
         return super(TensorflowPredictor, self).predict(data=data, dtype=dtype)

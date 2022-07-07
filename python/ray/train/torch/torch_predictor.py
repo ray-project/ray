@@ -132,6 +132,7 @@ class TorchPredictor(DLPredictor):
             predictions = predictor.predict(data)
 
         Returns:
-            DataBatchType: Prediction result.
+            DataBatchType: Prediction result. The return type will be the same as the
+                input type.
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
