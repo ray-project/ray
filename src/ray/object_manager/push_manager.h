@@ -131,7 +131,7 @@ class PushManager {
   int64_t chunks_in_flight_ = 0;
 
   /// Remaining count of chunks to push to other nodes.
-  int64_t num_chunks_pending_completion_ = 0;
+  int64_t chunks_remaining_ = 0;
 
   /// Tracks all pushes with chunk transfers in flight.
   absl::flat_hash_map<PushID, std::unique_ptr<PushState>> push_info_;
