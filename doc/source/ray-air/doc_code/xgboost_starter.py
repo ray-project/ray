@@ -36,7 +36,6 @@ trainer = XGBoostTrainer(
     num_boost_round=20,
     params={
         # XGBoost specific params
-        "tree_method": "approx",
         "objective": "binary:logistic",
         "eval_metric": ["logloss", "error"],
     },
