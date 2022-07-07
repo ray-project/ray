@@ -178,11 +178,10 @@ class CRR(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         with self._timers[SAMPLE_TIMER]:
-            batch = synchronous_parallel_sample(worker_set=self.workers)
-        batch = batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
-        train_batch = batch
+            train_batch = synchronous_parallel_sample(worker_set=self.workers)
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
         # Postprocess batch before we learn on it.
         post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
