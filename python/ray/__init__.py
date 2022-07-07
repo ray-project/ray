@@ -186,11 +186,14 @@ class _DeprecationWrapper(object):
     def __getattr__(self, attr):
         value = getattr(self._real_worker, attr)
         if attr not in self._warned:
+            import traceback
+
             self._warned.add(attr)
             logger.warning(
                 f"DeprecationWarning: `ray.{self._name}.{attr}` is a private "
                 "attribute and access will be removed in a future Ray version."
             )
+            traceback.print_stack()
         return value
 
 
@@ -198,6 +201,7 @@ class _DeprecationWrapper(object):
 worker = _DeprecationWrapper("worker", ray._private.worker)
 ray_constants = _DeprecationWrapper("ray_constants", ray._private.ray_constants)
 serialization = _DeprecationWrapper("serialization", ray._private.serialization)
+state = _DeprecationWrapper("state", ray._private.state)
 
 __all__ = [
     "__version__",
@@ -231,6 +235,7 @@ __all__ = [
     "timeline",
     "util",
     "wait",
+    "widgets",
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",

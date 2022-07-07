@@ -4,9 +4,9 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ray.tune import trial_runner
+from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.util.annotations import PublicAPI
 

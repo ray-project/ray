@@ -71,8 +71,10 @@ class ReplicaHealthCheckResponse(Enum):
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
-SLOW_STARTUP_WARNING_S = 30
-SLOW_STARTUP_WARNING_PERIOD_S = 30
+SLOW_STARTUP_WARNING_S = int(os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30))
+SLOW_STARTUP_WARNING_PERIOD_S = int(
+    os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
+)
 
 ALL_REPLICA_STATES = list(ReplicaState)
 USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
@@ -184,6 +186,10 @@ class ActorReplicaWrapper:
     @property
     def deployment_name(self) -> str:
         return self._deployment_name
+
+    @property
+    def is_cross_language(self) -> bool:
+        return self._is_cross_language
 
     @property
     def actor_handle(self) -> Optional[ActorHandle]:
@@ -298,7 +304,7 @@ class ActorReplicaWrapper:
         ):
             self._is_cross_language = True
             actor_def = ray.cross_language.java_actor_class(
-                "io.ray.serve.RayServeWrappedReplica"
+                "io.ray.serve.replica.RayServeWrappedReplica"
             )
             init_args = (
                 # String deploymentName,
@@ -308,7 +314,13 @@ class ActorReplicaWrapper:
                 # String deploymentDef
                 deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
-                msgpack_serialize(deployment_info.replica_config.init_args),
+                msgpack_serialize(
+                    cloudpickle.loads(
+                        deployment_info.replica_config.serialized_init_args
+                    )
+                )
+                if deployment_info.deployment_config.is_cross_language
+                else deployment_info.replica_config.serialized_init_args,
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
                 # byte[] deploymentVersionBytes,
@@ -330,16 +342,20 @@ class ActorReplicaWrapper:
         # See https://github.com/ray-project/ray/issues/21474
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
-
-        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-        self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            deployment_info.deployment_config.user_config,
-            # Ensure that `is_allocated` will execute before `reconfigure`,
-            # because `reconfigure` runs user code that could block the replica
-            # asyncio loop. If that happens before `is_allocated` is executed,
-            # the `is_allocated` call won't be able to run.
-            self._allocated_obj_ref,
-        )
+            self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+                deployment_info.deployment_config.user_config
+            )
+        else:
+            self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+                deployment_info.deployment_config.user_config,
+                # Ensure that `is_allocated` will execute before `reconfigure`,
+                # because `reconfigure` runs user code that could block the replica
+                # asyncio loop. If that happens before `is_allocated` is executed,
+                # the `is_allocated` call won't be able to run.
+                self._allocated_obj_ref,
+            )
 
     def update_user_config(self, user_config: Any):
         """
@@ -366,7 +382,10 @@ class ActorReplicaWrapper:
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
-        self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+        if self._is_cross_language:
+            self._ready_obj_ref = self._actor_handle.check_health.remote()
+        else:
+            self._ready_obj_ref = self._actor_handle.get_metadata.remote()
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[DeploymentVersion]]:
         """
@@ -630,6 +649,7 @@ class DeploymentReplica(VersionedReplica):
             replica_tag=self._replica_tag,
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
+            is_cross_language=self._actor.is_cross_language,
         )
 
     @property
@@ -1496,7 +1516,7 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = slow_start_replicas[0][0].resource_requirements()
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_allocation)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
@@ -1506,16 +1526,36 @@ class DeploymentState:
                     f"Resources required for each replica: {required}, "
                     f"resources available: {available}."
                 )
+                logger.warning(message)
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
+                # If status is UNHEALTHY, leave the status and message as is.
+                # The issue that caused the deployment to be unhealthy should be
+                # prioritized over this resource availability issue.
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             if len(pending_initialization) > 0:
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
                     f"may be caused by a slow __init__ or reconfigure method."
                 )
+                logger.warning(message)
+                # If status is UNHEALTHY, leave the status and message as is.
+                # The issue that caused the deployment to be unhealthy should be
+                # prioritized over this resource availability issue.
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             self._prev_startup_warning = time.time()
 

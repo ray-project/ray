@@ -12,9 +12,10 @@ import numpy as np
 import time
 
 from ray import tune
-from ray.tune.suggest import ConcurrencyLimiter
+from ray.air import session
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.dragonfly import DragonflySearch
+from ray.tune.search.dragonfly import DragonflySearch
 
 
 def objective(config):
@@ -27,7 +28,7 @@ def objective(config):
         conductivity = vol1 + 0.1 * (vol2 + vol3) ** 2 + 2.3 * vol4 * (vol1 ** 1.5)
         # Add Gaussian noise to simulate experimental noise
         conductivity += np.random.normal() * 0.01
-        tune.report(timesteps_total=i, objective=conductivity)
+        session.report({"timesteps_total": i, "objective": conductivity})
         time.sleep(0.02)
 
 
