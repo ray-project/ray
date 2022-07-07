@@ -109,7 +109,7 @@ def train_linear(num_workers=1, num_hidden_layers=1, use_auto_transfer=True, epo
     )
     results = trainer.fit()
 
-    print(results)
+    print(results.metrics)
     return results
 
 

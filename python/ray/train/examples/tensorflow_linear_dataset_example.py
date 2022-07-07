@@ -83,7 +83,7 @@ def train_tensorflow_linear(num_workers=2, use_gpu=False):
         scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
     results = trainer.fit()
-    print(f"Results: {results}")
+    print(f"Results: {results.metrics}")
     return results
 
 
