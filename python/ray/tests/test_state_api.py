@@ -2069,7 +2069,7 @@ def test_detail(shutdown_only):
     assert "actor_id" in result.output
 
 
-def try_state_query(api_func, q):
+def _try_state_query(api_func, q):
     """Utility functions for rate limit related e2e tests below"""
     try:
         api_func()
@@ -2085,9 +2085,15 @@ def try_state_query(api_func, q):
         q.put(0)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Lambda test functions could not be pickled on Windows",
+)
 def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     import queue
     import multiprocessing as mp
+    import os
+    import signal
 
     # Set environment
     with monkeypatch.context() as m:
@@ -2141,7 +2147,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             print(list_logs())
 
         # Kill the 3 slow running threads
-        [p.kill() for p in procs]
+        [os.kill(p.pid, signal.SIGKILL) for p in procs]
         [p.join() for p in procs]
         for p in procs:
             assert not p.is_alive(), "Slow queries should be killed"
@@ -2150,21 +2156,21 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         q = mp.Queue()
         procs = [
             mp.Process(
-                target=try_state_query,
+                target=_try_state_query,
                 args=(
                     list_objects,
                     q,
                 ),
             ),
             mp.Process(
-                target=try_state_query,
+                target=_try_state_query,
                 args=(
                     list_runtime_envs,
                     q,
                 ),
             ),
             mp.Process(
-                target=try_state_query,
+                target=_try_state_query,
                 args=(
                     list_placement_groups,
                     q,
@@ -2257,7 +2263,7 @@ def test_state_api_server_enforce_concurrent_http_requests(
             num_procs = 3
             procs = [
                 threading.Thread(
-                    target=try_state_query,
+                    target=_try_state_query,
                     args=(
                         api_func,
                         q,
