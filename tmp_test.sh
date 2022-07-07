@@ -13,6 +13,7 @@ bazel test --config=ci $(./ci/run/bazel_export_options) --runs_per_test=1 \
 python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
 
 cat /tmp/ray/session_*/logs/*
+cat /tmp/ray/session_*/logs/serve/*
 
 
 

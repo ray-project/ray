@@ -19,11 +19,11 @@
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
 /// The duration between dumping debug info to logs, or 0 to disable.
-RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
+RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 0)
 
 /// Whether to enable Ray event stats collection.
 /// TODO(ekl) this seems to segfault Java unit tests when on by default?
-RAY_CONFIG(bool, event_stats, true)
+RAY_CONFIG(bool, event_stats, false)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
