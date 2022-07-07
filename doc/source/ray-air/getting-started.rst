@@ -35,6 +35,9 @@ Quick Start
 Below, we demonstrate how you can use the Ray libraries in a seamless flow
 between distributed frameworks (e.g., XGBoost, Pytorch, and Tensorflow): 
 
+Preprocessing
+~~~~~~~~~~~~~
+
 Below, let's start by preprocessing your data with Ray AIR's ``Preprocessors``:
 
 .. literalinclude:: doc_code/xgboost_starter.py
@@ -42,7 +45,7 @@ Below, let's start by preprocessing your data with Ray AIR's ``Preprocessors``:
     :start-after: __air_generic_preprocess_start__
     :end-before: __air_generic_preprocess_end__
 
-Optionally, format your data for use with your preferred framework:
+If using Tensorflow or Pytorch, format your data for use with your training framework:
 
 .. tabbed:: XGBoost
 
@@ -65,7 +68,10 @@ Optionally, format your data for use with your preferred framework:
         :start-after: __air_tf_preprocess_start__
         :end-before: __air_tf_preprocess_end__
 
-Train a model with a ``Trainer``.
+Training
+~~~~~~~~
+
+Train a model with a ``Trainer`` with common ML frameworks:
 
 .. tabbed:: XGBoost
 
@@ -87,6 +93,9 @@ Train a model with a ``Trainer``.
         :language: python
         :start-after: __air_tf_train_start__
         :end-before: __air_tf_train_end__
+
+Hyperparameter Tuning
+~~~~~~~~~~~~~~~~~~~~~
 
 You can specify a hyperparameter space to search over for each trainer:
 
@@ -118,8 +127,10 @@ Then use the ``Tuner`` to run the search:
     :start-after: __air_tune_generic_start__
     :end-before: __air_tune_generic_end__
 
+Batch Inference
+~~~~~~~~~~~~~~~
 
-Use the trained model for batch prediction with a ``BatchPredictor``.
+Use the trained model for scalable batch prediction with a ``BatchPredictor``.
 
 .. tabbed:: XGBoost
 
