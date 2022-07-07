@@ -189,8 +189,23 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
 
+  global_gc_throttler_ =
+      std::make_unique<Throttler>(RayConfig::instance().global_gc_min_interval_s() * 1e9);
   periodical_runner_.RunFnPeriodically(
-      [this] { DumpDebugStateToFile(); },
+      [this] {
+        DumpDebugStateToFile();
+        if (cluster_task_manager_->GetPendingQueueSize() == 0) {
+          resource_deadlock_detected_ = 0;
+          return;
+        }
+        // Trigger global gc to solve resource deadlocks.
+        // To avoid spurious triggers, only those after two consecutive
+        // detections and under throttling are sent out.
+        if (resource_deadlock_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
+          gcs_ray_syncer_->SetTriggerGlobalGC(true);
+          global_gc_throttler_->RunNow();
+        }
+      },
       /*ms*/ RayConfig::instance().debug_dump_period_milliseconds(),
       "GCSServer.deadline_timer.debug_state_dump");
 

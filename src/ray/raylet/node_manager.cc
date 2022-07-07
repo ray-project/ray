@@ -1733,6 +1733,9 @@ void NodeManager::HandleUpdateResourceUsage(
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
+  if (resource_usage_batch.trigger_global_gc()) {
+    should_local_gc_ = true;
+  }
   for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
     if (resource_change_or_data.has_data()) {
       const auto &resource_usage = resource_change_or_data.data();

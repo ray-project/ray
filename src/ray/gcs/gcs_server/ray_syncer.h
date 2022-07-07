@@ -72,6 +72,10 @@ class RaySyncer {
           }
           resources_buffer_.erase(beg, ptr);
 
+          if (trigger_global_gc_) {
+            resources_buffer_proto_.set_trigger_global_gc(true);
+            trigger_global_gc_ = false;
+          }
           // Broadcast the messages to other nodes.
           broadcast_service_.dispatch(
               [this, resources = std::move(resources_buffer_proto_)]() mutable {
@@ -150,6 +154,10 @@ class RaySyncer {
     resources_buffer_.erase(node_info.node_id());
   }
 
+  void SetTriggerGlobalGC(bool trigger_global_gc) {
+    trigger_global_gc_ = trigger_global_gc;
+  }
+
   std::string DebugString() { return broadcaster_->DebugString(); }
 
  private:
@@ -182,6 +190,7 @@ class RaySyncer {
   // resources_buffer_proto_ will be cleared after each broadcasting.
   absl::flat_hash_map<std::string, rpc::ResourcesData> resources_buffer_;
   rpc::ResourceUsageBroadcastData resources_buffer_proto_;
+  bool trigger_global_gc_;
   friend class ray::GcsPlacementGroupSchedulerTest;
 };
 
