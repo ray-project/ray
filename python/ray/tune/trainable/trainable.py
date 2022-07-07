@@ -599,6 +599,7 @@ class Trainable:
                 f"Got checkpoint path: {checkpoint_path} and IP {checkpoint_node_ip}"
             )
 
+        checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         metadata = TrainableUtil.load_metadata(checkpoint_path)
 
         if metadata["saved_as_dict"]:
