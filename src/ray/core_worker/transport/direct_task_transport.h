@@ -69,9 +69,8 @@ class CoreWorkerDirectTaskSubmitter {
       int64_t lease_timeout_ms,
       std::shared_ptr<ActorCreatorInterface> actor_creator,
       const JobID &job_id,
-      absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
-      uint64_t max_pending_lease_requests_per_scheduling_category =
-          ::RayConfig::instance().max_pending_lease_requests_per_scheduling_category())
+      std::function<uint64_t()> get_max_pending_lease_requests_per_scheduling_category,
+      absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
@@ -84,8 +83,8 @@ class CoreWorkerDirectTaskSubmitter {
         actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
         job_id_(job_id),
-        max_pending_lease_requests_per_scheduling_category_(
-            max_pending_lease_requests_per_scheduling_category),
+        get_max_pending_lease_requests_per_scheduling_category_(
+            get_max_pending_lease_requests_per_scheduling_category),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -244,8 +243,9 @@ class CoreWorkerDirectTaskSubmitter {
   /// The ID of the job.
   const JobID job_id_;
 
-  // Max number of pending lease requests per SchedulingKey.
-  const uint64_t max_pending_lease_requests_per_scheduling_category_;
+  // Get the max number of pending lease requests per
+  // SchedulingKey.
+  const std::function<uint64_t()> get_max_pending_lease_requests_per_scheduling_category_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned
