@@ -135,7 +135,7 @@ py_test(
     size = "small",
     main = "source/ray-core/doc_code/runtime_env_example.py",
     srcs = ["source/ray-core/doc_code/runtime_env_example.py"],
-    tags = ["exclusive", "post_wheel_build", "team:serve"]
+    tags = ["exclusive", "team:serve"]
 )
 
 # --------------------------------------------------------------------

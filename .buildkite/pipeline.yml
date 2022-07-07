@@ -24,17 +24,18 @@
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=post_wheel_build
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      --test_env=CI
-      --test_env=RAY_CI_POST_WHEEL_TESTS=True
-      python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
-    - cat /tmp/ray/session_*/logs/*
+    - sh ./tmp_test.sh
+    # - bazel test --config=ci $(./ci/run/bazel_export_options)
+    #   --test_tag_filters=post_wheel_build
+    #   --test_env=CONDA_EXE
+    #   --test_env=CONDA_PYTHON_EXE
+    #   --test_env=CONDA_SHLVL
+    #   --test_env=CONDA_PREFIX
+    #   --test_env=CONDA_DEFAULT_ENV
+    #   --test_env=CI
+    #   --test_env=RAY_CI_POST_WHEEL_TESTS=True
+    #   python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
+    # - cat /tmp/ray/session_*/logs/*
 
 - label: ":ferris_wheel: Debug Wheels"
   conditions:

@@ -133,6 +133,7 @@ def test_working_dir_scale_up_in_new_driver(ray_start, tmp_dir, use_ray_client):
         f.write("world")
 
     driver1 = """
+print("driver1:0")
 import os
 print("driver1:1")
 import ray

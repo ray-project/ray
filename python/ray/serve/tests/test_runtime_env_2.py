@@ -4,13 +4,14 @@ import sys
 from ray._private.test_utils import run_string_as_driver
 
 
-@pytest.mark.parametrize("use_ray_client", [False, True])
+@pytest.mark.parametrize("use_ray_client", [True])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_working_dir_deploy_new_version(ray_start, tmp_dir, use_ray_client):
     with open("hello", "w") as f:
         f.write("world")
 
     driver1 = """
+print("driver1:0")
 import ray
 print("driver1:1")
 from ray import serve
@@ -80,43 +81,43 @@ Test.delete()
     print("test:4")
 
 
-@pytest.mark.parametrize("use_ray_client", [False, True])
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Runtime env unsupported on Windows"
-)
-def test_pip_no_working_dir(ray_start, use_ray_client):
+# @pytest.mark.parametrize("use_ray_client", [False, True])
+# @pytest.mark.skipif(
+#     sys.platform == "win32", reason="Runtime env unsupported on Windows"
+# )
+# def test_pip_no_working_dir(ray_start, use_ray_client):
 
-    driver = """
-import ray
-from ray import serve
-import requests
+#     driver = """
+# import ray
+# from ray import serve
+# import requests
 
-if {use_ray_client}:
-    ray.util.connect("{client_addr}")
-else:
-    ray.init(address="auto")
+# if {use_ray_client}:
+#     ray.util.connect("{client_addr}")
+# else:
+#     ray.init(address="auto")
 
-serve.start()
-
-
-@serve.deployment
-def requests_version(request):
-    return requests.__version__
+# serve.start()
 
 
-requests_version.options(
-    ray_actor_options={{
-        "runtime_env": {{
-            "pip": ["ray[serve]", "requests==2.25.1"]
-        }}
-    }}).deploy()
+# @serve.deployment
+# def requests_version(request):
+#     return requests.__version__
 
-assert requests.get("http://127.0.0.1:8000/requests_version").text == "2.25.1"
-""".format(
-        use_ray_client=use_ray_client, client_addr=ray_start
-    )
 
-    run_string_as_driver(driver)
+# requests_version.options(
+#     ray_actor_options={{
+#         "runtime_env": {{
+#             "pip": ["ray[serve]", "requests==2.25.1"]
+#         }}
+#     }}).deploy()
+
+# assert requests.get("http://127.0.0.1:8000/requests_version").text == "2.25.1"
+# """.format(
+#         use_ray_client=use_ray_client, client_addr=ray_start
+#     )
+
+#     run_string_as_driver(driver)
 
 
 if __name__ == "__main__":
