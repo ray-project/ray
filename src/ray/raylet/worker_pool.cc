@@ -138,6 +138,12 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
         [this] { TryKillingIdleWorkers(); },
         RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
+  } 
+  if (RayConfig::instance().collect_worker_stats_ms() > 0) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { CollectWorkerStats(); },
+        RayConfig::instance().collect_worker_stats_ms(),
+        "RayletWorkerPool.collect_worker_stats_ms");
   }
 }
 
@@ -1139,6 +1145,13 @@ void WorkerPool::TryKillingIdleWorkers() {
 
   idle_of_all_languages_ = std::move(new_idle_of_all_languages);
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+}
+
+void WorkerPool::CollectWorkerStats() {
+  for (const auto &worker : GetAllRegisteredWorkers()) {
+    auto uss = worker->GetProcess().UssBytes();
+    RAY_LOG(INFO) << "PID uss " << uss;
+  }
 }
 
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,

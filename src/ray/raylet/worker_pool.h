@@ -400,6 +400,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
+  /// Collects work stats such as memory utilization.
+  void CollectWorkerStats();
+
  protected:
   void update_worker_startup_token_counter();
 
