@@ -1,4 +1,4 @@
-import pathlib
+from pathlib import Path
 import re
 
 import gym
@@ -131,11 +131,9 @@ class WorkerSet:
             ):
                 paths = trainer_config["input"]
                 if isinstance(paths, str):
-                    inputs = os.path.abspath(os.path.expanduser(paths))
-                    if os.path.isdir(inputs):
-                        paths = list(pathlib.Path(inputs).glob("*.json")) + list(
-                            pathlib.Path(inputs).glob("*.zip")
-                        )
+                    inputs = Path(paths).absolute()
+                    if inputs.is_dir():
+                        paths = list(inputs.glob("*.json")) + list(inputs.glob("*.zip"))
                         paths = [str(path) for path in paths]
                     else:
                         paths = [paths]

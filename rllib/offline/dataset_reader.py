@@ -1,6 +1,5 @@
 import logging
 import math
-import os
 import re
 import zipfile
 from pathlib import Path
@@ -32,21 +31,16 @@ def _unzip_if_needed(paths: List[str], format: str):
     """If a path in paths is a zip file, unzip it and use path of the unzipped file"""
     ret = []
     for path in paths:
-        if path.startswith("~/"):
-            path = os.path.join(os.environ.get("HOME", ""), path[2:])
-
-        # If path doesn't exist, try to interpret is as relative to the
-        # rllib directory (located ../../ from this very module).
-        path_orig = path
-        if not os.path.exists(path):
-            path = os.path.join(Path(__file__).parent.parent, path)
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Offline file {path_orig} not found!")
-        if re.search("\\.zip$", path):
-            with zipfile.ZipFile(path, "r") as zip_ref:
-                zip_ref.extractall(Path(path).parent)
-            path = re.sub("\\.zip$", f".{format}", path)
-        ret.append(path)
+        fpath = Path(path).absolute()
+        if not fpath.exists():
+            fpath = Path(__file__).parent.parent / path
+        if not fpath.exists():
+            raise FileNotFoundError
+        if re.search("\\.zip$", str(fpath)):
+            with zipfile.ZipFile(str(fpath), "r") as zip_ref:
+                zip_ref.extractall(str(fpath.parent))
+            fpath = re.sub("\\.zip$", f".{format}", str(fpath))
+        ret.append(fpath)
     return ret
 
 
