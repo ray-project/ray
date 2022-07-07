@@ -68,6 +68,24 @@ py_test (
 )
 
 py_test(
+    name = "pytorch_tabular_starter",
+    size = "medium",
+    main = "examples/pytorch_tabular_starter.py",
+    srcs = ["examples/pytorch_tabular_starter.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+)
+
+py_test(
+    name = "xgboost_starter",
+    size = "medium",
+    main = "examples/xgboost_starter.py",
+    srcs = ["examples/xgboost_starter.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+)
+
+py_test(
     name = "tensorflow_linear_dataset_example",
     size = "medium",
     main = "examples/tf/tensorflow_linear_dataset_example.py",
@@ -85,6 +103,15 @@ py_test(
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]
+)
+
+py_test(
+    name = "tf_tabular_starter",
+    size = "medium",
+    main = "examples/tf_tabular_starter.py",
+    srcs = ["examples/tf_tabular_starter.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
 )
 
 py_test(
