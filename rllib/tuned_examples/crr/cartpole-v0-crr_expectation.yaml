@@ -8,6 +8,7 @@ cartpole_crr:
         input:
           - 'tests/data/cartpole/large.json'
         framework: torch
+        num_workers: 3
         gamma: 0.99
         train_batch_size: 2048
         critic_hidden_activation: 'tanh'

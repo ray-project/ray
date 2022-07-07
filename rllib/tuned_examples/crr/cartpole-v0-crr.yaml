@@ -7,6 +7,7 @@ cartpole_crr:
     config:
         input:
           - 'tests/data/cartpole/large.json'
+        num_workers: 3
         framework: torch
         gamma: 0.99
         train_batch_size: 2048
