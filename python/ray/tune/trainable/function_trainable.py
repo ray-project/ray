@@ -28,7 +28,6 @@ from ray.tune.utils import (
     detect_config_single,
     detect_reporter,
 )
-from ray.tune.trainable.util import with_parameters  # noqa: F401
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -467,9 +466,7 @@ class FunctionTrainable(Trainable):
             checkpoint = FuncCheckpointUtil.mk_null_checkpoint_dir(self.logdir)
             parent_dir = checkpoint
         elif isinstance(checkpoint, dict):
-            parent_dir = TrainableUtil.make_checkpoint_dir(
-                self.logdir, index=self.training_iteration
-            )
+            return checkpoint
         elif isinstance(checkpoint, str):
             parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint)
             # When the trainable is restored, a temporary checkpoint
@@ -477,41 +474,30 @@ class FunctionTrainable(Trainable):
             # Ideally, there are no save calls upon a temporary
             # checkpoint, but certain schedulers might.
             if FuncCheckpointUtil.is_temp_checkpoint_dir(parent_dir):
-                relative_path = os.path.relpath(checkpoint, parent_dir)
                 parent_dir = FuncCheckpointUtil.create_perm_checkpoint(
                     checkpoint_dir=parent_dir,
                     logdir=self.logdir,
                     step=self.training_iteration,
                 )
-                checkpoint = os.path.abspath(os.path.join(parent_dir, relative_path))
         else:
             raise ValueError(
                 "Provided checkpoint was expected to have "
                 "type (str, dict). Got {}.".format(type(checkpoint))
             )
 
-        checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint, parent_dir, state
-        )
-        return checkpoint_path
+        return parent_dir
 
-    def save(self, checkpoint_path=None) -> str:
-        if checkpoint_path:
-            raise ValueError("Checkpoint path should not be used with function API.")
-
-        checkpoint_path = self.save_checkpoint()
-
-        parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        self._maybe_save_to_cloud(parent_dir)
-
-        return checkpoint_path
+    def _create_checkpoint_dir(
+        self, checkpoint_dir: Optional[str] = None
+    ) -> Optional[str]:
+        return None
 
     def save_to_object(self):
         checkpoint_path = self.save()
-        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
-        return obj
+        checkpoint = Checkpoint.from_directory(checkpoint_path)
+        return checkpoint.to_bytes()
 
-    def load_checkpoint(self, checkpoint: str):
+    def load_checkpoint(self, checkpoint):
         # This should be removed once Trainables are refactored.
         if "tune_checkpoint_path" in checkpoint:
             del checkpoint["tune_checkpoint_path"]
@@ -528,10 +514,10 @@ class FunctionTrainable(Trainable):
         self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
             self.logdir
         )
-        checkpoint_path = TrainableUtil.create_from_pickle(
-            obj, self.temp_checkpoint_dir
-        )
-        self.restore(checkpoint_path)
+        checkpoint = Checkpoint.from_bytes(obj)
+        checkpoint.to_directory(self.temp_checkpoint_dir)
+
+        self.restore(self.temp_checkpoint_dir)
 
     def cleanup(self):
         # Trigger thread termination

@@ -15,7 +15,7 @@ from ray import cloudpickle
 from ray._private import storage
 from ray.types import ObjectRef
 from ray.workflow.common import (
-    StepID,
+    TaskID,
     WorkflowStatus,
     WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
@@ -64,7 +64,7 @@ class StepInspectResult:
     output_object_valid: bool = False
     # The ID of the step that could contain the output checkpoint of this
     # step. If this field is set, we do not set all other fields below.
-    output_step_id: Optional[StepID] = None
+    output_step_id: Optional[TaskID] = None
     # The step input arguments checkpoint exists and valid.
     args_valid: bool = False
     # The step function body checkpoint exists and valid.
@@ -239,19 +239,19 @@ class WorkflowStorage:
         self._status_storage = WorkflowIndexingStorage()
         self._workflow_id = workflow_id
 
-    def load_step_output(self, step_id: StepID) -> Any:
+    def load_step_output(self, task_id: TaskID) -> Any:
         """Load the output of the workflow step from checkpoint.
 
         Args:
-            step_id: ID of the workflow step.
+            task_id: ID of the workflow step.
 
         Returns:
             Output of the workflow step.
         """
 
         tasks = [
-            self._get(self._key_step_output(step_id), no_exception=True),
-            self._get(self._key_step_exception(step_id), no_exception=True),
+            self._get(self._key_step_output(task_id), no_exception=True),
+            self._get(self._key_step_exception(task_id), no_exception=True),
         ]
         (output_ret, output_err), (exception_ret, exception_err) = tasks
         # When we have output, always return output first
@@ -266,7 +266,7 @@ class WorkflowStorage:
         raise output_err
 
     def save_workflow_execution_state(
-        self, creator_task_id: StepID, state: WorkflowExecutionState
+        self, creator_task_id: TaskID, state: WorkflowExecutionState
     ) -> None:
         """Save a workflow execution state.
         Typically, the state is translated from a Ray DAG.
@@ -318,7 +318,7 @@ class WorkflowStorage:
 
     def save_step_output(
         self,
-        task_id: StepID,
+        task_id: TaskID,
         ret: Any,
         *,
         exception: Optional[Exception],
@@ -343,7 +343,7 @@ class WorkflowStorage:
                 self._workflow_id,
                 storage=self,
             )
-            # tasks.append(self._put(self._key_step_output(step_id), ret))
+            # tasks.append(self._put(self._key_step_output(task_id), ret))
             # TODO (yic): Delete exception file
         else:
             assert ret is None
@@ -354,21 +354,21 @@ class WorkflowStorage:
                 storage=self,
             )
             # tasks.append(
-            #     self._put(self._key_step_exception(step_id), exception))
+            #     self._put(self._key_step_exception(task_id), exception))
 
         # Finish checkpointing.
         # TODO(suquark): batching all tasks above.
 
-    def load_step_func_body(self, step_id: StepID) -> Callable:
+    def load_step_func_body(self, task_id: TaskID) -> Callable:
         """Load the function body of the workflow step.
 
         Args:
-            step_id: ID of the workflow step.
+            task_id: ID of the workflow step.
 
         Returns:
             A callable function.
         """
-        return self._get(self._key_step_function_body(step_id))
+        return self._get(self._key_step_function_body(task_id))
 
     def gen_step_id(self, step_name: str) -> int:
         def _gen_step_id():
@@ -383,19 +383,19 @@ class WorkflowStorage:
 
         return _gen_step_id()
 
-    def load_step_args(self, step_id: StepID) -> ray.ObjectRef:
+    def load_step_args(self, task_id: TaskID) -> ray.ObjectRef:
         """Load the input arguments of the workflow step. This must be
         done under a serialization context, otherwise the arguments would
         not be reconstructed successfully.
 
         Args:
-            step_id: ID of the workflow step.
+            task_id: ID of the workflow step.
 
         Returns:
             An object ref of the input args.
         """
         with serialization_context.workflow_args_keeping_context():
-            x = self._get(self._key_step_args(step_id))
+            x = self._get(self._key_step_args(task_id))
         return ray.put(x)
 
     def save_object_ref(self, obj_ref: ray.ObjectRef) -> None:
@@ -427,7 +427,7 @@ class WorkflowStorage:
         return _load_obj_ref()
 
     def update_continuation_output_link(
-        self, continuation_root_id: StepID, latest_continuation_task_id: StepID
+        self, continuation_root_id: TaskID, latest_continuation_task_id: TaskID
     ) -> None:
         """Update the link of the continuation output. The link points
         to the ID of the latest finished continuation task.
@@ -455,17 +455,17 @@ class WorkflowStorage:
                 self._key_step_output_metadata(continuation_root_id), metadata, True
             )
 
-    def _locate_output_step_id(self, step_id: StepID) -> str:
-        metadata = self._get(self._key_step_output_metadata(step_id), True)
+    def _locate_output_step_id(self, task_id: TaskID) -> str:
+        metadata = self._get(self._key_step_output_metadata(task_id), True)
         return metadata.get("dynamic_output_step_id") or metadata["output_step_id"]
 
-    def get_entrypoint_step_id(self) -> StepID:
+    def get_entrypoint_step_id(self) -> TaskID:
         """Load the entrypoint step ID of the workflow.
 
         Returns:
             The ID of the entrypoint step.
         """
-        # empty StepID represents the workflow driver
+        # empty TaskID represents the workflow driver
         try:
             return self._locate_output_step_id("")
         except Exception as e:
@@ -474,7 +474,7 @@ class WorkflowStorage:
                 f"[id={self._workflow_id}]"
             ) from e
 
-    def _locate_output_in_storage(self, task_id: StepID) -> Optional[StepID]:
+    def _locate_output_in_storage(self, task_id: TaskID) -> Optional[TaskID]:
         result = self.inspect_step(task_id)
         while isinstance(result.output_step_id, str):
             task_id = result.output_step_id
@@ -483,7 +483,7 @@ class WorkflowStorage:
             return task_id
         return None
 
-    def inspect_output(self, task_id: StepID) -> Optional[StepID]:
+    def inspect_output(self, task_id: TaskID) -> Optional[TaskID]:
         """Get the actual checkpointed output for a task, represented by the ID of
         the task that actually keeps the checkpoint.
 
@@ -512,33 +512,33 @@ class WorkflowStorage:
             task_id = self.get_entrypoint_step_id()
         return self._locate_output_in_storage(task_id)
 
-    def inspect_step(self, step_id: StepID) -> StepInspectResult:
+    def inspect_step(self, task_id: TaskID) -> StepInspectResult:
         """
         Get the status of a workflow step. The status indicates whether
         the workflow step can be recovered etc.
 
         Args:
-            step_id: The ID of a workflow step
+            task_id: The ID of a workflow step
 
         Returns:
             The status of the step.
         """
-        return self._inspect_step(step_id)
+        return self._inspect_step(task_id)
 
-    def _inspect_step(self, step_id: StepID) -> StepInspectResult:
-        items = self._scan(self._key_step_prefix(step_id), ignore_errors=True)
+    def _inspect_step(self, task_id: TaskID) -> StepInspectResult:
+        items = self._scan(self._key_step_prefix(task_id), ignore_errors=True)
         keys = set(items)
         # does this step contains output checkpoint file?
         if STEP_OUTPUT in keys:
             return StepInspectResult(output_object_valid=True)
         # do we know where the output comes from?
         if STEP_OUTPUTS_METADATA in keys:
-            output_step_id = self._locate_output_step_id(step_id)
+            output_step_id = self._locate_output_step_id(task_id)
             return StepInspectResult(output_step_id=output_step_id)
 
         # read inputs metadata
         try:
-            metadata = self._get(self._key_step_input_metadata(step_id), True)
+            metadata = self._get(self._key_step_input_metadata(task_id), True)
             return StepInspectResult(
                 args_valid=(STEP_ARGS in keys),
                 func_body_valid=(STEP_FUNC_BODY in keys),
@@ -578,31 +578,31 @@ class WorkflowStorage:
         """
         self._put(self._key_class_body(), cls)
 
-    def save_step_prerun_metadata(self, step_id: StepID, metadata: Dict[str, Any]):
+    def save_step_prerun_metadata(self, task_id: TaskID, metadata: Dict[str, Any]):
         """Save pre-run metadata of the current step.
 
         Args:
-            step_id: ID of the workflow step.
+            task_id: ID of the workflow step.
             metadata: pre-run metadata of the current step.
 
         Raises:
             DataSaveError: if we fail to save the pre-run metadata.
         """
 
-        self._put(self._key_step_prerun_metadata(step_id), metadata, True)
+        self._put(self._key_step_prerun_metadata(task_id), metadata, True)
 
-    def save_step_postrun_metadata(self, step_id: StepID, metadata: Dict[str, Any]):
+    def save_step_postrun_metadata(self, task_id: TaskID, metadata: Dict[str, Any]):
         """Save post-run metadata of the current step.
 
         Args:
-            step_id: ID of the workflow step.
+            task_id: ID of the workflow step.
             metadata: post-run metadata of the current step.
 
         Raises:
             DataSaveError: if we fail to save the post-run metadata.
         """
 
-        self._put(self._key_step_postrun_metadata(step_id), metadata, True)
+        self._put(self._key_step_postrun_metadata(task_id), metadata, True)
 
     def save_workflow_user_metadata(self, metadata: Dict[str, Any]):
         """Save user metadata of the current workflow.
@@ -616,7 +616,7 @@ class WorkflowStorage:
 
         self._put(self._key_workflow_user_metadata(), metadata, True)
 
-    def load_step_metadata(self, step_id: StepID) -> Dict[str, Any]:
+    def load_step_metadata(self, task_id: TaskID) -> Dict[str, Any]:
         """Load the metadata of the given step.
 
         Returns:
@@ -624,20 +624,20 @@ class WorkflowStorage:
         """
 
         def _load_step_metadata():
-            if not self._scan(self._key_step_prefix(step_id), ignore_errors=True):
+            if not self._scan(self._key_step_prefix(task_id), ignore_errors=True):
                 if not self._scan("", ignore_errors=True):
                     raise ValueError("No such workflow_id {}".format(self._workflow_id))
                 else:
                     raise ValueError(
-                        "No such step_id {} in workflow {}".format(
-                            step_id, self._workflow_id
+                        "No such task_id {} in workflow {}".format(
+                            task_id, self._workflow_id
                         )
                     )
 
             tasks = [
-                self._get(self._key_step_input_metadata(step_id), True, True),
-                self._get(self._key_step_prerun_metadata(step_id), True, True),
-                self._get(self._key_step_postrun_metadata(step_id), True, True),
+                self._get(self._key_step_input_metadata(task_id), True, True),
+                self._get(self._key_step_prerun_metadata(task_id), True, True),
+                self._get(self._key_step_postrun_metadata(task_id), True, True),
             ]
 
             (
@@ -798,38 +798,38 @@ class WorkflowStorage:
     # The following functions are helper functions to get the key
     # for a specific fields
 
-    def _key_step_input_metadata(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, STEP_INPUTS_METADATA)
+    def _key_step_input_metadata(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, STEP_INPUTS_METADATA)
 
-    def _key_step_user_metadata(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, STEP_USER_METADATA)
+    def _key_step_user_metadata(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, STEP_USER_METADATA)
 
-    def _key_step_prerun_metadata(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, STEP_PRERUN_METADATA)
+    def _key_step_prerun_metadata(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, STEP_PRERUN_METADATA)
 
-    def _key_step_postrun_metadata(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, STEP_POSTRUN_METADATA)
+    def _key_step_postrun_metadata(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, STEP_POSTRUN_METADATA)
 
-    def _key_step_output(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, STEP_OUTPUT)
+    def _key_step_output(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, STEP_OUTPUT)
 
-    def _key_step_exception(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, STEP_EXCEPTION)
+    def _key_step_exception(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, STEP_EXCEPTION)
 
-    def _key_step_output_metadata(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, STEP_OUTPUTS_METADATA)
+    def _key_step_output_metadata(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, STEP_OUTPUTS_METADATA)
 
-    def _key_step_function_body(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, STEP_FUNC_BODY)
+    def _key_step_function_body(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, STEP_FUNC_BODY)
 
-    def _key_step_args(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, STEP_ARGS)
+    def _key_step_args(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, STEP_ARGS)
 
     def _key_obj_id(self, object_id):
         return os.path.join(OBJECTS_DIR, object_id)
 
-    def _key_step_prefix(self, step_id):
-        return os.path.join(STEPS_DIR, step_id, "")
+    def _key_step_prefix(self, task_id):
+        return os.path.join(STEPS_DIR, task_id, "")
 
     def _key_class_body(self):
         return os.path.join(CLASS_BODY)
