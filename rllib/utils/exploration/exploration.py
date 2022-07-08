@@ -9,6 +9,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import LocalOptimizer, AlgorithmConfigDict
+from ray.rllib.utils.typing import Dict # ADDED
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -86,6 +87,7 @@ class Exploration:
     @DeveloperAPI
     def get_exploration_action(self,
                                *,
+                               input_dict: Dict[str, TensorType], # ADDED
                                action_distribution: ActionDistribution,
                                timestep: Union[TensorType, int],
                                explore: bool = True):
