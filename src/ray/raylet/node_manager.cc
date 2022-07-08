@@ -1138,17 +1138,17 @@ void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &req
 
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
+  // Trigger local GC at the next heartbeat interval.
+  if (resource_data.should_global_gc()) {
+    should_local_gc_ = true;
+  }
+
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           scheduling::NodeID(node_id.Binary()), resource_data)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
     return;
-  }
-
-  // Trigger local GC at the next heartbeat interval.
-  if (resource_data.should_global_gc()) {
-    should_local_gc_ = true;
   }
 
   // If light resource usage report enabled, we update remote resources only when related
@@ -1733,9 +1733,6 @@ void NodeManager::HandleUpdateResourceUsage(
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
-  if (resource_usage_batch.trigger_global_gc()) {
-    should_local_gc_ = true;
-  }
   for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
     if (resource_change_or_data.has_data()) {
       const auto &resource_usage = resource_change_or_data.data();

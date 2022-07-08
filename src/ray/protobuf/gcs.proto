@@ -361,9 +361,8 @@ message ResourceUpdate {
 message ResourceUsageBroadcastData {
   // An incrementing sequence number, used for correcting network errors.
   int64 seq_no = 1;
-  bool trigger_global_gc = 2;
   // The changes to the state of the cluster.
-  repeated ResourceUpdate batch = 3;
+  repeated ResourceUpdate batch = 2;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

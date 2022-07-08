@@ -268,9 +268,9 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  int resource_deadlock_detected_;
   /// Throttler for global gc
   std::unique_ptr<Throttler> global_gc_throttler_;
-  int resource_deadlock_detected_;
 };
 
 }  // namespace gcs

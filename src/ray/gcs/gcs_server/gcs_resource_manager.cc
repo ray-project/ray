@@ -112,18 +112,20 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    UpdateNodeNormalTaskResources(node_id, data);
-  } else {
-    if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
-            scheduling::NodeID(node_id.Binary()), data)) {
-      RAY_LOG(INFO)
-          << "[UpdateFromResourceReport]: received resource usage from unknown node id "
-          << node_id;
+  if (node_id != local_node_id_) {
+    if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+      UpdateNodeNormalTaskResources(node_id, data);
+    } else {
+      if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
+              scheduling::NodeID(node_id.Binary()), data)) {
+        RAY_LOG(INFO)
+            << "[UpdateFromResourceReport]: received resource usage from unknown node id "
+            << node_id;
+      }
     }
+  
+    UpdateNodeResourceUsage(node_id, data);
   }
-
-  UpdateNodeResourceUsage(node_id, data);
 }
 
 void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
@@ -181,7 +183,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       batch.add_batch()->CopyFrom(usage.second);
     }
 
-    if (cluster_task_manager_ && RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    if (cluster_task_manager_) {
       rpc::ResourcesData gcs_resources_data;
       cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
       // Aggregate the load (pending info) of gcs.

@@ -194,6 +194,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   periodical_runner_.RunFnPeriodically(
       [this] {
         DumpDebugStateToFile();
+
         if (cluster_task_manager_->GetPendingQueueSize() == 0) {
           resource_deadlock_detected_ = 0;
           return;
@@ -202,7 +203,23 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
         // To avoid spurious triggers, only those after two consecutive
         // detections and under throttling are sent out.
         if (resource_deadlock_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
-          gcs_ray_syncer_->SetTriggerGlobalGC(true);
+          rpc::ResourcesData resources_data;
+          resources_data.set_should_global_gc(true);
+
+          if (RayConfig::instance().use_ray_syncer()) {
+            syncer::RaySyncMessage msg;
+            msg.set_version(absl::GetCurrentTimeNanos());
+            msg.set_node_id(local_node_id_.Binary());
+            msg.set_message_type(syncer::MessageType::COMMANDS);
+            std::string serialized_msg;
+            RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+            msg.set_sync_message(std::move(serialized_msg));
+            ray_syncer_->OnDemandBroadcasting(msg);
+          } else {
+            resources_data.set_node_id(local_node_id_.Binary());
+            gcs_ray_syncer_->Update(resources_data);
+          }
+
           global_gc_throttler_->RunNow();
         }
       },
@@ -242,7 +259,7 @@ void GcsServer::Stop() {
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
+      gcs_publisher_, gcs_table_storage_, raylet_client_pool_, cluster_task_manager_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
