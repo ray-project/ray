@@ -994,6 +994,7 @@ class TorchPolicy(Policy):
 
             # Get the exploration action from the forward results.
             actions, logp = self.exploration.get_exploration_action(
+                input_dict=input_dict, # ADDED
                 action_distribution=action_dist, timestep=timestep, explore=explore
             )
 
