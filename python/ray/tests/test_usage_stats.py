@@ -102,28 +102,28 @@ def reset_lib_usage():
 def test_parse_extra_usage_tags(monkeypatch):
     with monkeypatch.context() as m:
         # Test a normal case.
-        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=val;key2=val2")
+        m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2")
         result = ray_usage_lib._parse_extra_usage_tags()
         assert result["key"] == "val"
         assert result["key2"] == "val2"
 
-        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=val;key2=val2;")
+        m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2;")
         result = ray_usage_lib._parse_extra_usage_tags()
         assert result["key"] == "val"
         assert result["key2"] == "val2"
 
         # Test that the env var is not given.
-        m.delenv("RAY_EXTRA_USAGE_TAGS")
+        m.delenv("RAY_USAGE_STATS_EXTRA_TAGS")
         result = ray_usage_lib._parse_extra_usage_tags()
         assert result is None
 
         # Test the parsing failure.
-        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=val,key2=val2")
+        m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val,key2=val2")
         result = ray_usage_lib._parse_extra_usage_tags()
         assert result is None
 
         # Test differnt types of parsing failures.
-        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=v=al,key2=val2")
+        m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=v=al,key2=val2")
         result = ray_usage_lib._parse_extra_usage_tags()
         assert result is None
 
@@ -1070,7 +1070,7 @@ def test_usage_stats_tags(monkeypatch, ray_start_cluster, reset_lib_usage):
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=val;key2=val2")
+        m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
         cluster.add_node(num_cpus=3)

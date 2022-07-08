@@ -135,7 +135,7 @@ class UsageStatsToReport:
     #: The sequence number of the report.
     seq_number: int
     #: The extra tags to report when specified by an
-    #  environment variable EXTRA_USAGE_TAGS
+    #  environment variable RAY_USAGE_STATS_EXTRA_TAGS
     extra_usage_tags: Optional[Dict[str, str]]
     #: The number of alive nodes when the report is generated.
     total_num_nodes: Optional[int]
@@ -491,7 +491,7 @@ def _parse_extra_usage_tags() -> Dict[str, str]:
     Returns:
         Dictionary of key value pair parsed.
     """
-    extra_tags = os.getenv("RAY_EXTRA_USAGE_TAGS", None)
+    extra_tags = os.getenv("RAY_USAGE_STATS_EXTRA_TAGS", None)
     if not extra_tags:
         return None
 
