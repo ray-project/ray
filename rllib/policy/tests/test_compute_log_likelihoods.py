@@ -222,7 +222,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
         do_test_log_likelihood(sac.SAC, config, prev_a)
 
-    def test_cql_cont(self):
+    def test_crr_cont(self):
         env = gym.make("Pendulum-v1")
         obs_space = env.observation_space
         act_space = env.action_space
@@ -239,7 +239,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
             )
         input_batch = SampleBatch({"obs": torch.Tensor(obs_batch)})
         expected_mean_logstd = policy.action_distribution_fn(
-            policy.model, obs_batch=input_batch, state_batches=None
+            policy.model, input_dict=input_batch, state_batches=None
         )
         # note this only works since CRR implements `action_distribution_fn`
         expected_mean_logstd = expected_mean_logstd[0].flatten().detach().numpy()
@@ -249,7 +249,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
             expected_logp = np.log(norm.pdf(action, mean, np.exp(log_std)))[0]
             computed_logp = policy.compute_log_likelihoods(
                 torch.Tensor(action),
-                obs_batch,
+                obs_batch=obs_batch,
                 actions_normalized=True,
             ).item()
             check(expected_logp, computed_logp, rtol=0.2)

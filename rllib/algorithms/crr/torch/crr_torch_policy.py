@@ -67,13 +67,13 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
     def action_distribution_fn(
         self,
         model: ModelV2,
+        input_dict: SampleBatch,
         *,
-        obs_batch: TensorType,
         state_batches: TensorType,
         **kwargs,
     ) -> Tuple[TensorType, type, List[TensorType]]:
 
-        model_out, _ = model(obs_batch)
+        model_out, _ = model(input_dict)
         dist_input = model.get_policy_output(model_out)
         dist_class = self.dist_class
 

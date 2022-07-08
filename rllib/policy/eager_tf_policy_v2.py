@@ -555,7 +555,10 @@ class EagerTFPolicyV2(Policy):
         # Action dist class and inputs are generated via custom function.
         if is_overridden(self.action_distribution_fn):
             dist_inputs, self.dist_class, _ = self.action_distribution_fn(
-                self, self.model, input_batch, explore=False, is_training=False
+                self.model,
+                input_dict=input_batch,
+                explore=False,
+                is_training=False,
             )
         # Default log-likelihood calculation.
         else:
