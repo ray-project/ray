@@ -14,16 +14,17 @@ import traceback
 from collections import namedtuple
 from typing import Any, Callable
 
+from aiohttp.web import Response
+
 import ray
 import ray.dashboard.consts as dashboard_consts
-from aiohttp.web import Response
+from ray._private.ray_constants import env_bool
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
 from ray.dashboard.utils import CustomEncoder, to_google_style
-from ray.ray_constants import env_bool
 
 try:
     create_task = asyncio.create_task
@@ -258,10 +259,13 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
             try:
                 if not ray.is_initialized():
                     try:
-                        address = self._dashboard_head.gcs_address
+                        address = self.get_gcs_address()
                         logger.info(f"Connecting to ray with address={address}")
+                        # Init ray without logging to driver
+                        # to avoid infinite logging issue.
                         ray.init(
                             address=address,
+                            log_to_driver=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:

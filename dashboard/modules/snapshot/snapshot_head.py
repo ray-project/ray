@@ -1,31 +1,43 @@
 import asyncio
 import concurrent.futures
-from typing import Any, Dict, List, Optional
+import dataclasses
+from datetime import datetime
 import hashlib
-
-import ray
-from ray import ray_constants
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_pb2
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
-    _internal_kv_get,
-    _internal_kv_list,
-)
-import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.runtime_env import RuntimeEnv
-from ray.job_submission import JobInfo
-from ray.dashboard.modules.job.common import (
-    JobInfoStorageClient,
-    JOB_ID_METADATA_KEY,
-)
-
 import json
+from typing import Any, Dict, List, Optional
+
 import aiohttp.web
 
+import ray
+import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.utils as dashboard_utils
+from ray._private import ray_constants
+from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
+from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JobInfoStorageClient
+from ray.experimental.internal_kv import (
+    _internal_kv_get,
+    _internal_kv_initialized,
+    _internal_kv_list,
+)
+from ray.job_submission import JobInfo
+from ray.runtime_env import RuntimeEnv
+
 routes = dashboard_optional_utils.ClassMethodRouteTable
+
+
+@dataclasses.dataclass
+class RayActivityResponse:
+    """
+    Dataclass used to inform if a particular Ray component can be considered
+    active, and metadata about observation.
+    """
+
+    # Whether the corresponding Ray component is considered active
+    is_active: bool
+    # Reason if Ray component is considered active
+    reason: Optional[str] = None
+    # Timestamp of when this observation about the Ray component was made
+    timestamp: Optional[float] = None
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
@@ -92,6 +104,48 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         }
         return dashboard_optional_utils.rest_response(
             success=True, message="hello", snapshot=snapshot
+        )
+
+    @routes.get("/api/component_activities")
+    async def get_component_activities(self, req) -> aiohttp.web.Response:
+        # Get activity information for driver
+        timeout = req.query.get("timeout", None)
+        if timeout and timeout.isdigit():
+            timeout = int(timeout)
+        else:
+            timeout = 5
+
+        driver_activity_info = await self._get_job_activity_info(timeout=timeout)
+
+        resp = {"driver": dataclasses.asdict(driver_activity_info)}
+        return aiohttp.web.Response(
+            text=json.dumps(resp),
+            content_type="application/json",
+            status=aiohttp.web.HTTPOk.status_code,
+        )
+
+    async def _get_job_activity_info(self, timeout: int) -> RayActivityResponse:
+        # Returns if there is Ray activity from drivers (job).
+        # Drivers in namespaces that start with _ray_internal_job_info_ are not
+        # considered activity.
+        request = gcs_service_pb2.GetAllJobInfoRequest()
+        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=timeout)
+
+        num_active_drivers = 0
+        for job_table_entry in reply.job_info_list:
+            is_dead = bool(job_table_entry.is_dead)
+            in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
+                JobInfoStorageClient.JOB_DATA_KEY_PREFIX
+            )
+            if not is_dead and not in_internal_namespace:
+                num_active_drivers += 1
+
+        return RayActivityResponse(
+            is_active=num_active_drivers > 0,
+            reason=f"Number of active drivers: {num_active_drivers}"
+            if num_active_drivers
+            else None,
+            timestamp=datetime.now().timestamp(),
         )
 
     def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:
@@ -195,8 +249,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # Conditionally import serve to prevent ModuleNotFoundError from serve
         # dependencies when only ray[default] is installed (#17712)
         try:
-            from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
             from ray.serve.constants import SERVE_CONTROLLER_NAME
+            from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
         except Exception:
             return {}
 

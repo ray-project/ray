@@ -15,7 +15,7 @@
 #    actions vs continuous actions.
 # -- "fake_gpus": Tests that run using 2 fake GPUs.
 
-# - Quick agent compilation/tune-train tests, tagged "quick_train".
+# - Quick algo compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "algorithms_dir" tests as
 #         they cover the same functionaliy.
 
@@ -28,7 +28,7 @@
 #   - `policy` directory tests.
 #   - `utils` directory tests.
 
-# - Trainer ("agents") tests, tagged "algorithms_dir".
+# - Algorithm tests, tagged "algorithms_dir".
 
 # - Tests directory (everything in rllib/tests/...), tagged: "tests_dir" and
 #   "tests_dir_[A-Z]"
@@ -65,7 +65,7 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
 # --------------------------------------------------------------------
-# Agents learning regression tests.
+# Algorithms learning regression tests.
 #
 # Tag: learning_tests
 #
@@ -276,6 +276,20 @@ py_test(
     # Include an offline json data file as well.
     data = [
         "tuned_examples/crr/cartpole-v0-crr.yaml",
+        "tests/data/cartpole/large.json",
+    ],
+    args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
+)
+
+py_test(
+    name = "learning_tests_cartpole_crr_expectation",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include an offline json data file as well.
+    data = [
+        "tuned_examples/crr/cartpole-v0-crr_expectation.yaml",
         "tests/data/cartpole/large.json",
     ],
     args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
@@ -685,40 +699,41 @@ py_test(
 
 
 # --------------------------------------------------------------------
-# Agents (Compilation, Losses, simple agent functionality tests)
+# Algorithms (Compilation, Losses, simple functionality tests)
 # rllib/algorithms/
 #
 # Tag: algorithms_dir
 # --------------------------------------------------------------------
 
-# Generic (all Trainers)
+# Generic (all Algorithms)
+
+py_test(
+    name = "test_algorithm",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm.py"]
+)
+
 py_test(
     name = "test_callbacks",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "medium",
-    srcs = ["agents/tests/test_callbacks.py"]
+    srcs = ["algorithms/tests/test_callbacks.py"]
 )
 
 py_test(
     name = "test_memory_leaks_generic",
-    main = "agents/tests/test_memory_leaks.py",
+    main = "algorithms/tests/test_memory_leaks.py",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["agents/tests/test_memory_leaks.py"]
-)
-
-py_test(
-    name = "test_trainer",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "large",
-    srcs = ["agents/tests/test_trainer.py"]
+    srcs = ["algorithms/tests/test_memory_leaks.py"]
 )
 
 py_test(
     name = "tests/test_worker_failures",
     tags = ["team:rllib", "tests_dir", "algorithms_dir_generic"],
     size = "large",
-    srcs = ["agents/tests/test_worker_failures.py"]
+    srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
 # Specific Algorithms
@@ -809,7 +824,7 @@ py_test(
 py_test(
     name = "test_cql",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
@@ -982,7 +997,7 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# contrib Agents
+# contrib Algorithms
 # --------------------------------------------------------------------
 
 py_test(
@@ -1071,7 +1086,7 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Agents (quick training test iterations via `rllib train`)
+# Algorithms (quick training test iterations via `rllib train`)
 #
 # Tag: quick_train
 #
@@ -1527,6 +1542,13 @@ py_test(
 )
 
 py_test(
+    name = "evaluation/tests/test_episode_v2",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode_v2.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_postprocessing",
     tags = ["team:rllib", "evaluation"],
     size = "small",
@@ -1557,7 +1579,7 @@ py_test(
 py_test(
     name = "test_async_requests_manager",
     tags = ["team:rllib", "execution"],
-    size = "small",
+    size = "medium",
     srcs = ["execution/tests/test_async_requests_manager.py"]
 )
 
@@ -1631,6 +1653,21 @@ py_test(
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"]
 )
+
+py_test(
+    name = "test_json_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_json_reader.py"]
+)
+
+py_test(
+    name = "test_dataset_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_dataset_reader.py"]
+)
+
 
 # --------------------------------------------------------------------
 # Policies
@@ -1804,6 +1841,20 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_segment_tree_replay_buffer_api.py"]
+)
+
+py_test(
+    name = "test_check_env",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_check_env.py"]
+)
+
+py_test(
+    name = "test_check_multi_agent",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_check_multi_agent.py"]
 )
 
 # --------------------------------------------------------------------
@@ -3284,8 +3335,6 @@ py_test_module_list(
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
     "execution/tests/test_mixin_multi_agent_replay_buffer.py",
-    "utils/tests/test_check_env.py",
-    "utils/tests/test_check_multi_agent.py",
     "utils/tests/test_errors.py",
     "utils/tests/test_utils.py",
   ],

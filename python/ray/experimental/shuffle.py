@@ -24,11 +24,11 @@ This will print out some statistics on the shuffle execution such as:
 """
 
 import time
-from typing import List, Iterable, Tuple, Callable, Any, Union
+from typing import Any, Callable, Iterable, List, Tuple, Union
 
 import ray
-from ray.cluster_utils import Cluster
 from ray import ObjectRef
+from ray.cluster_utils import Cluster
 
 # TODO(ekl) why doesn't TypeVar() deserialize properly in Ray?
 # The type produced by the input reader function.
@@ -239,8 +239,9 @@ def run(
     use_wait=False,
     tracker=None,
 ):
-    import numpy as np
     import time
+
+    import numpy as np
 
     is_multi_node = num_nodes
     if ray_address:
@@ -310,7 +311,17 @@ def run(
 
     time.sleep(0.5)
     print()
-    print(ray.internal.internal_api.memory_summary(stats_only=True))
+
+    summary = None
+    for i in range(5):
+        try:
+            summary = ray._private.internal_api.memory_summary(stats_only=True)
+        except Exception:
+            time.sleep(1)
+            pass
+        if summary:
+            break
+    print(summary)
     print()
     print(
         "Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta, "seconds"

@@ -11,7 +11,7 @@ from ray.train.constants import (
     TUNE_CHECKPOINT_ID,
     TUNE_INSTALLED,
 )
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, CheckpointStrategy
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, CheckpointConfig
 from ray.util.ml_utils.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
 )
@@ -67,7 +67,7 @@ class CheckpointManager(CommonCheckpointManager):
     def __init__(
         self,
         run_dir: Optional[Path] = None,
-        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+        checkpoint_strategy: Optional[CheckpointConfig] = None,
     ):
         self.run_dir = run_dir
 
@@ -116,7 +116,7 @@ class CheckpointManager(CommonCheckpointManager):
                 f"checkpoint_score_attribute: "
                 f"{score_attr}. "
                 f"Include this attribute in the call to "
-                f"train.save_checkpoint."
+                f"`session.report()`."
             )
 
         tracked_checkpoint = _TrackedCheckpoint(
@@ -136,11 +136,11 @@ class CheckpointManager(CommonCheckpointManager):
 
     def on_start_training(
         self,
-        checkpoint_strategy: Optional[CheckpointStrategy],
+        checkpoint_strategy: Optional[CheckpointConfig],
         run_dir: Path,
         latest_checkpoint_id: Optional[int] = 0,
     ):
-        checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
+        checkpoint_strategy = checkpoint_strategy or CheckpointConfig()
         self._checkpoint_strategy = checkpoint_strategy
 
         self._validate_checkpoint_strategy()

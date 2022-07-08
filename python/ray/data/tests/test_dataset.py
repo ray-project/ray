@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import signal
 import time
 
 import numpy as np
@@ -10,6 +11,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -162,6 +164,22 @@ def test_callable_classes(shutdown_only):
     # Need to specify actor compute strategy.
     with pytest.raises(ValueError):
         ds.map(StatefulFn, compute="tasks").take()
+
+    # Need to specify compute explicitly.
+    with pytest.raises(ValueError):
+        ds.flat_map(StatefulFn).take()
+
+    # Need to specify actor compute strategy.
+    with pytest.raises(ValueError):
+        ds.flat_map(StatefulFn, compute="tasks")
+
+    # Need to specify compute explicitly.
+    with pytest.raises(ValueError):
+        ds.filter(StatefulFn).take()
+
+    # Need to specify actor compute strategy.
+    with pytest.raises(ValueError):
+        ds.filter(StatefulFn, compute="tasks")
 
     # map
     actor_reuse = ds.map(StatefulFn, compute="actors").take()
@@ -1721,16 +1739,37 @@ def test_add_column(ray_start_regular_shared):
         ds = ray.data.range(5).add_column("value", 0)
 
 
-def test_map_batch(ray_start_regular_shared, tmp_path):
+def test_drop_columns(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds1 = ray.data.from_pandas(df)
+    ds1.write_parquet(str(tmp_path))
+    ds2 = ray.data.read_parquet(str(tmp_path))
+
+    for ds in [ds1, ds2]:
+        assert ds.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
+        assert ds.drop_columns(["col1", "col3"]).take(1) == [{"col2": 2}]
+        assert ds.drop_columns([]).take(1) == [{"col1": 1, "col2": 2, "col3": 3}]
+        assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == [{}]
+        assert ds.drop_columns(["col1", "col1", "col2", "col1"]).take(1) == [
+            {"col3": 3}
+        ]
+        # Test dropping non-existent column
+        with pytest.raises(KeyError):
+            ds.drop_columns(["dummy_col", "col1", "col2"])
+
+
+def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     # Test input validation
     ds = ray.data.range(5)
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: x + 1, batch_format="pyarrow", batch_size=-1).take()
 
-    # Test pandas
+    # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    # Test pandas
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: df + 1, batch_size=1, batch_format="pandas")
     assert ds2._dataset_format() == "pandas"
@@ -1788,7 +1827,245 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
         ).take()
 
 
-def test_map_batch_actors_preserves_order(ray_start_regular_shared):
+def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
+    # Test input validation
+    ds = ray.data.range(5)
+
+    class Foo:
+        def __call__(self, df):
+            return df
+
+    with pytest.raises(ValueError):
+        # CallableClass not supported for task compute strategy, which is the default.
+        ds.map_batches(Foo)
+
+    with pytest.raises(ValueError):
+        # CallableClass not supported for task compute strategy.
+        ds.map_batches(Foo, compute="tasks")
+
+    with pytest.raises(ValueError):
+        # fn_constructor_args and fn_constructor_kwargs only supported for actor compute
+        # strategy.
+        ds.map_batches(
+            lambda x: x,
+            compute="tasks",
+            fn_constructor_args=(1,),
+            fn_constructor_kwargs={"a": 1},
+        )
+
+    with pytest.raises(ValueError):
+        # fn_constructor_args and fn_constructor_kwargs only supported for callable
+        # class UDFs.
+        ds.map_batches(
+            lambda x: x,
+            compute="actors",
+            fn_constructor_args=(1,),
+            fn_constructor_kwargs={"a": 1},
+        )
+
+    # Set up.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    # Test extra UDF args.
+    # Test positional.
+    def udf(batch, a):
+        assert a == 1
+        return batch + a
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        udf,
+        batch_size=1,
+        batch_format="pandas",
+        fn_args=(ray.put(1),),
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 3, 4]
+    values = [s["two"] for s in ds_list]
+    assert values == [3, 4, 5]
+
+    # Test kwargs.
+    def udf(batch, b=None):
+        assert b == 2
+        return b * batch
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        udf,
+        batch_size=1,
+        batch_format="pandas",
+        fn_kwargs={"b": ray.put(2)},
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 4, 6]
+    values = [s["two"] for s in ds_list]
+    assert values == [4, 6, 8]
+
+    # Test both.
+    def udf(batch, a, b=None):
+        assert a == 1
+        assert b == 2
+        return b * batch + a
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        udf,
+        batch_size=1,
+        batch_format="pandas",
+        fn_args=(ray.put(1),),
+        fn_kwargs={"b": ray.put(2)},
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [3, 5, 7]
+    values = [s["two"] for s in ds_list]
+    assert values == [5, 7, 9]
+
+    # Test constructor UDF args.
+    # Test positional.
+    class CallableFn:
+        def __init__(self, a):
+            assert a == 1
+            self.a = a
+
+        def __call__(self, x):
+            return x + self.a
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        CallableFn,
+        batch_size=1,
+        batch_format="pandas",
+        compute="actors",
+        fn_constructor_args=(ray.put(1),),
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 3, 4]
+    values = [s["two"] for s in ds_list]
+    assert values == [3, 4, 5]
+
+    # Test kwarg.
+    class CallableFn:
+        def __init__(self, b=None):
+            assert b == 2
+            self.b = b
+
+        def __call__(self, x):
+            return self.b * x
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        CallableFn,
+        batch_size=1,
+        batch_format="pandas",
+        compute="actors",
+        fn_constructor_kwargs={"b": ray.put(2)},
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 4, 6]
+    values = [s["two"] for s in ds_list]
+    assert values == [4, 6, 8]
+
+    # Test both.
+    class CallableFn:
+        def __init__(self, a, b=None):
+            assert a == 1
+            assert b == 2
+            self.a = a
+            self.b = b
+
+        def __call__(self, x):
+            return self.b * x + self.a
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        CallableFn,
+        batch_size=1,
+        batch_format="pandas",
+        compute="actors",
+        fn_constructor_args=(ray.put(1),),
+        fn_constructor_kwargs={"b": ray.put(2)},
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [3, 5, 7]
+    values = [s["two"] for s in ds_list]
+    assert values == [5, 7, 9]
+
+    # Test callable chain.
+    ds = ray.data.read_parquet(str(tmp_path))
+    fn_constructor_args = (ray.put(1),)
+    fn_constructor_kwargs = {"b": ray.put(2)}
+    ds2 = (
+        ds.experimental_lazy()
+        .map_batches(
+            CallableFn,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+        .map_batches(
+            CallableFn,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [7, 11, 15]
+    values = [s["two"] for s in ds_list]
+    assert values == [11, 15, 19]
+
+    # Test function + callable chain.
+    ds = ray.data.read_parquet(str(tmp_path))
+    fn_constructor_args = (ray.put(1),)
+    fn_constructor_kwargs = {"b": ray.put(2)}
+    ds2 = (
+        ds.experimental_lazy()
+        .map_batches(
+            lambda df, a, b=None: b * df + a,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_args=(ray.put(1),),
+            fn_kwargs={"b": ray.put(2)},
+        )
+        .map_batches(
+            CallableFn,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [7, 11, 15]
+    values = [s["two"] for s in ds_list]
+    assert values == [11, 15, 19]
+
+
+def test_map_batches_actors_preserves_order(ray_start_regular_shared):
     # Test that actor compute model preserves block order.
     ds = ray.data.range(10, parallelism=5)
     assert ds.map_batches(lambda x: x, compute="actors").take() == list(range(10))
@@ -2192,7 +2469,7 @@ def test_block_builder_for_block(ray_start_regular_shared):
         BlockBuilder.for_block(str())
 
 
-def test_groupby_arrow(ray_start_regular_shared):
+def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
     # Test empty dataset.
     agg_ds = (
         ray.data.range_table(10)
@@ -2271,7 +2548,9 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_count(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_count(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
     # Test built-in count aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
@@ -2298,7 +2577,9 @@ def test_groupby_tabular_count(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_sum(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
     # Test built-in sum aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_sum with: {seed}")
@@ -3674,67 +3955,58 @@ def test_random_block_order(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
-    ctx = ray.data.context.DatasetContext.get_current()
-
-    try:
-        original = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
-
-        def range(n, parallelism=200):
-            ds = ray.data.range(n, parallelism=parallelism)
-            if pipelined:
-                pipe = ds.repeat(2)
-                pipe.random_shuffle = pipe.random_shuffle_each_window
-                return pipe
-            else:
-                return ds
-
-        r1 = range(100).random_shuffle().take(999)
-        r2 = range(100).random_shuffle().take(999)
-        assert r1 != r2, (r1, r2)
-
-        r1 = range(100, parallelism=1).random_shuffle().take(999)
-        r2 = range(100, parallelism=1).random_shuffle().take(999)
-        assert r1 != r2, (r1, r2)
-
-        r1 = range(100).random_shuffle(num_blocks=1).take(999)
-        r2 = range(100).random_shuffle(num_blocks=1).take(999)
-        assert r1 != r2, (r1, r2)
-
-        r0 = range(100, parallelism=5).take(999)
-        r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
-        assert r1 == r2, (r1, r2)
-        assert r1 != r0, (r1, r0)
-        assert r1 != r3, (r1, r3)
-
-        r0 = ray.data.range_table(100, parallelism=5).take(999)
-        r1 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r2 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
-        assert r1 == r2, (r1, r2)
-        assert r1 != r0, (r1, r0)
-
-        # Test move.
-        ds = range(100, parallelism=2)
-        r1 = ds.random_shuffle().take(999)
+    def range(n, parallelism=200):
+        ds = ray.data.range(n, parallelism=parallelism)
         if pipelined:
-            with pytest.raises(RuntimeError):
-                ds = ds.map(lambda x: x).take(999)
+            pipe = ds.repeat(2)
+            pipe.random_shuffle = pipe.random_shuffle_each_window
+            return pipe
         else:
-            ds = ds.map(lambda x: x).take(999)
-        r2 = range(100).random_shuffle().take(999)
-        assert r1 != r2, (r1, r2)
+            return ds
 
-        # Test empty dataset.
-        ds = ray.data.from_items([])
-        r1 = ds.random_shuffle()
-        assert r1.count() == 0
-        assert r1.take() == ds.take()
-    finally:
-        ctx.use_push_based_shuffle = original
+    r1 = range(100).random_shuffle().take(999)
+    r2 = range(100).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    r1 = range(100, parallelism=1).random_shuffle().take(999)
+    r2 = range(100, parallelism=1).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    r1 = range(100).random_shuffle(num_blocks=1).take(999)
+    r2 = range(100).random_shuffle(num_blocks=1).take(999)
+    assert r1 != r2, (r1, r2)
+
+    r0 = range(100, parallelism=5).take(999)
+    r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+    assert r1 != r3, (r1, r3)
+
+    r0 = ray.data.range_table(100, parallelism=5).take(999)
+    r1 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r2 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+
+    # Test move.
+    ds = range(100, parallelism=2)
+    r1 = ds.random_shuffle().take(999)
+    if pipelined:
+        with pytest.raises(RuntimeError):
+            ds = ds.map(lambda x: x).take(999)
+    else:
+        ds = ds.map(lambda x: x).take(999)
+    r2 = range(100).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    r1 = ds.random_shuffle()
+    assert r1.count() == 0
+    assert r1.take() == ds.take()
 
 
 def test_random_shuffle_check_random(shutdown_only):
@@ -3785,47 +4057,38 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
-    ctx = ray.data.context.DatasetContext.get_current()
-    try:
-        original = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
-        cluster = ray_start_cluster
-        cluster.add_node(
-            resources={"bar:1": 100},
-            num_cpus=10,
-            _system_config={"max_direct_call_object_size": 0},
-        )
-        cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
-        cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+    ray.init(cluster.address)
 
-        ray.init(cluster.address)
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
 
-        @ray.remote
-        def get_node_id():
-            return ray.get_runtime_context().node_id.hex()
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
-        node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
-        node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+    ds = ray.data.range(100, parallelism=2).random_shuffle()
+    blocks = ds.get_internal_block_refs()
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert "2 nodes used" in ds.stats()
 
-        ds = ray.data.range(100, parallelism=2).random_shuffle()
-        blocks = ds.get_internal_block_refs()
-        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-        location_data = ray.experimental.get_object_locations(blocks)
-        locations = []
-        for block in blocks:
-            locations.extend(location_data[block]["node_ids"])
-        assert "2 nodes used" in ds.stats()
-
-        if not use_push_based_shuffle:
-            # We don't check this for push-based shuffle since it will try to
-            # colocate reduce tasks to improve locality.
-            assert set(locations) == {node1_id, node2_id}
-
-    finally:
-        ctx.use_push_based_shuffle = original
+    if not use_push_based_shuffle:
+        # We don't check this for push-based shuffle since it will try to
+        # colocate reduce tasks to improve locality.
+        assert set(locations) == {node1_id, node2_id}
 
 
 def test_parquet_read_spread(ray_start_cluster, tmp_path):
@@ -3973,6 +4236,51 @@ def test_polars_lazy_import(shutdown_only):
 
     finally:
         ctx.use_polars = original_use_polars
+
+
+def test_actor_pool_strategy_apply_interrupt(shutdown_only):
+    """Test that _apply kills the actor pool if an interrupt is raised."""
+    ray.init(include_dashboard=False, num_cpus=1)
+
+    cpus = ray.available_resources()["CPU"]
+    ds = ray.data.range(5)
+    aps = ray.data.ActorPoolStrategy(max_size=5)
+    blocks = ds._plan.execute()
+
+    # Start some actors, the first one sends a SIGINT, emulating a KeyboardInterrupt
+    def test_func(block):
+        for i, _ in enumerate(BlockAccessor.for_block(block).iter_rows()):
+            if i == 0:
+                os.kill(os.getpid(), signal.SIGINT)
+            else:
+                time.sleep(1000)
+                return block
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        aps._apply(test_func, {}, blocks, False)
+
+    # Check that all actors have been killed by counting the available CPUs
+    wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
+
+
+def test_actor_pool_strategy_default_num_actors(shutdown_only):
+    def f(x):
+        import time
+
+        time.sleep(1)
+        return x
+
+    num_cpus = 5
+    ray.init(num_cpus=num_cpus)
+    compute_strategy = ray.data.ActorPoolStrategy()
+    ray.data.range(10, parallelism=10).map_batches(f, compute=compute_strategy)
+    expected_max_num_workers = math.ceil(
+        num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
+    )
+    assert (
+        compute_strategy.num_workers >= num_cpus
+        and compute_strategy.num_workers <= expected_max_num_workers
+    ), "Number of actors is out of the expected bound"
 
 
 if __name__ == "__main__":

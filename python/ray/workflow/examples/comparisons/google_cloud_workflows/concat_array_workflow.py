@@ -12,4 +12,4 @@ def iterate(array: List[str], result: str, i: int) -> str:
 
 
 if __name__ == "__main__":
-    print(workflow.create(iterate.bind(["foo", "ba", "r"], "", 0)).run())
+    print(workflow.run(iterate.bind(["foo", "ba", "r"], "", 0)))

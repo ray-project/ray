@@ -175,7 +175,7 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
    
 #. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs. 
    
-   * ``pip uninstall grpcio; conda install grpcio``
+   * ``pip uninstall grpcio; conda install grpcio=1.43.0``
 
 #. Install Ray as you normally would.
 
@@ -365,32 +365,3 @@ that you've cloned the git repository.
 .. code-block:: bash
 
   python -m pytest -v python/ray/tests/test_mini.py
-
-Troubleshooting
----------------
-
-If importing Ray (``python3 -c "import ray"``) in your development clone results
-in this error:
-
-.. code-block:: python
-
-  Traceback (most recent call last):
-    File "<string>", line 1, in <module>
-    File ".../ray/python/ray/__init__.py", line 63, in <module>
-      import ray._raylet  # noqa: E402
-    File "python/ray/_raylet.pyx", line 98, in init ray._raylet
-      import ray.memory_monitor as memory_monitor
-    File ".../ray/python/ray/memory_monitor.py", line 9, in <module>
-      import psutil  # noqa E402
-    File ".../ray/python/ray/thirdparty_files/psutil/__init__.py", line 159, in <module>
-      from . import _psosx as _psplatform
-    File ".../ray/python/ray/thirdparty_files/psutil/_psosx.py", line 15, in <module>
-      from . import _psutil_osx as cext
-  ImportError: cannot import name '_psutil_osx' from partially initialized module 'psutil' (most likely due to a circular import) (.../ray/python/ray/thirdparty_files/psutil/__init__.py)
-
-Then you should run the following commands:
-
-.. code-block:: bash
-
-  rm -rf python/ray/thirdparty_files/
-  python3 -m pip install setproctitle
