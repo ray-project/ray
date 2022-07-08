@@ -123,7 +123,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
             << node_id;
       }
     }
-  
+
     UpdateNodeResourceUsage(node_id, data);
   }
 }

@@ -142,7 +142,8 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
   if (cluster_task_manager_) {
     rpc::GetNodeStatsReply node_stats;
     cluster_task_manager_->FillPendingActorInfo(&node_stats);
-    reply->mutable_gcs_stats()->mutable_infeasible_tasks()->CopyFrom(node_stats.infeasible_tasks());
+    reply->mutable_gcs_stats()->mutable_infeasible_tasks()->CopyFrom(
+        node_stats.infeasible_tasks());
     reply->mutable_gcs_stats()->mutable_ready_tasks()->CopyFrom(node_stats.ready_tasks());
   }
   // Here the unsafe allocate is safe here, because entry.second's life cycle is longer

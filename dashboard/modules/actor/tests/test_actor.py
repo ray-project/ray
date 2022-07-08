@@ -13,7 +13,6 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.modules.actor import actor_consts
 from ray.dashboard.tests.conftest import *  # noqa
-from ray._private.ray_constants import gcs_actor_scheduling_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +65,9 @@ def test_actor_groups(ray_start_with_dashboard):
             assert len(entries) == 2
             assert "InfeasibleActor" in actor_groups
 
-            # TODO(Chong-Li): `InfeasibleActor` info is organized by
-            # `DataSource.node_stats`, which was fetched from each
-            # worker node. With gcs actor scheduler, because pending
-            # and infeasible actors stay in gcs, there should be extra
-            # RPC calls from dashboard to gcs in order to fetch related info.
-            if not gcs_actor_scheduling_enabled():
-                entries = actor_groups["InfeasibleActor"]["entries"]
-                assert "requiredResources" in entries[0]
-                assert "GPU" in entries[0]["requiredResources"]
+            entries = actor_groups["InfeasibleActor"]["entries"]
+            assert "requiredResources" in entries[0]
+            assert "GPU" in entries[0]["requiredResources"]
             break
         except Exception as ex:
             last_ex = ex

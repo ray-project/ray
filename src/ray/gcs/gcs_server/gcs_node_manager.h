@@ -29,7 +29,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-  using raylet::ClusterTaskManager;
+using raylet::ClusterTaskManager;
 namespace gcs {
 
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
@@ -41,10 +41,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
-                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-                          std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
+  explicit GcsNodeManager(
+      std::shared_ptr<GcsPublisher> gcs_publisher,
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+      std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,

@@ -54,6 +54,7 @@ class DataSource:
     # {node ip (str): error entries by pid
     # (dict from pid to list of latest err entries)}
     ip_and_pid_to_errors = Dict()
+    gcs_stats = Dict()
 
 
 class DataOrganizer:
@@ -275,6 +276,7 @@ class DataOrganizer:
 
     @classmethod
     async def get_actor_creation_tasks(cls):
+        # Collect infeasible tasks in worker nodes.
         infeasible_tasks = sum(
             (
                 list(node_stats.get("infeasibleTasks", []))
@@ -282,6 +284,8 @@ class DataOrganizer:
             ),
             [],
         )
+        # Collect infeasible tasks in gcs.
+        infeasible_tasks.extend(list(DataSource.gcs_stats.get("infeasibleTasks", [])))
         new_infeasible_tasks = []
         for task in infeasible_tasks:
             task = dict(task)
@@ -289,6 +293,7 @@ class DataOrganizer:
             task["state"] = "INFEASIBLE"
             new_infeasible_tasks.append(task)
 
+        # Collect pending tasks in worker nodes.
         resource_pending_tasks = sum(
             (
                 list(data.get("readyTasks", []))
@@ -296,6 +301,8 @@ class DataOrganizer:
             ),
             [],
         )
+        # Collect pending tasks in gcs.
+        resource_pending_tasks.extend(list(DataSource.gcs_stats.get("readyTasks", [])))
         new_resource_pending_tasks = []
         for task in resource_pending_tasks:
             task = dict(task)
