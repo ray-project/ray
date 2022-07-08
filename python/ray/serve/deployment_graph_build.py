@@ -1,8 +1,9 @@
+import inspect
 import json
 from typing import List
 from collections import OrderedDict
 
-from ray.serve.deployment import Deployment
+from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.deployment_method_node import DeploymentMethodNode
 from ray.serve.deployment_node import DeploymentNode
@@ -11,6 +12,8 @@ from ray.serve.deployment_executor_node import DeploymentExecutorNode
 from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
 from ray.serve.json_serde import DAGNodeEncoder
+from ray.serve.handle import RayServeLazySyncHandle
+from ray.serve.schema import DeploymentSchema
 
 
 from ray.dag import (
@@ -133,13 +136,82 @@ def transform_ray_dag_to_serve_dag(
     """
     if isinstance(dag_node, ClassNode):
         deployment_name = node_name_generator.get_node_name(dag_node)
+
+        # Deployment can be passed into other DAGNodes as init args. This is
+        # supported pattern in ray DAG that user can instantiate and pass class
+        # instances as init args to others.
+
+        # However in ray serve we send init args via .remote() that requires
+        # pickling, and all DAGNode types are not picklable by design.
+
+        # Thus we need convert all DeploymentNode used in init args into
+        # deployment handles (executable and picklable) in ray serve DAG to make
+        # serve DAG end to end executable.
+        def replace_with_handle(node):
+            if isinstance(node, DeploymentNode):
+                return RayServeLazySyncHandle(node._deployment.name)
+            elif isinstance(node, DeploymentExecutorNode):
+                return node._deployment_handle
+
+        (
+            replaced_deployment_init_args,
+            replaced_deployment_init_kwargs,
+        ) = dag_node.apply_functional(
+            [dag_node.get_args(), dag_node.get_kwargs()],
+            predictate_fn=lambda node: isinstance(
+                node,
+                # We need to match and replace all DAGNodes even though they
+                # could be None, because no DAGNode replacement should run into
+                # re-resolved child DAGNodes, otherwise with KeyError
+                (
+                    DeploymentNode,
+                    DeploymentMethodNode,
+                    DeploymentFunctionNode,
+                    DeploymentExecutorNode,
+                    DeploymentFunctionExecutorNode,
+                    DeploymentMethodExecutorNode,
+                ),
+            ),
+            apply_fn=replace_with_handle,
+        )
+
+        # ClassNode is created via bind on serve.deployment decorated class
+        # with no serve specific configs.
+        deployment_schema: DeploymentSchema = dag_node._bound_other_args_to_resolve[
+            "deployment_schema"
+        ]
+        deployment_shell: Deployment = schema_to_deployment(deployment_schema)
+
+        # Prefer user specified name to override the generated one.
+        if (
+            inspect.isclass(dag_node._body)
+            and deployment_shell.name != dag_node._body.__name__
+        ):
+            deployment_name = deployment_shell.name
+
+        # Set the route prefix, prefer the one user supplied,
+        # otherwise set it to /deployment_name
+        if (
+            deployment_shell.route_prefix is None
+            or deployment_shell.route_prefix != f"/{deployment_shell.name}"
+        ):
+            route_prefix = deployment_shell.route_prefix
+        else:
+            route_prefix = f"/{deployment_name}"
+
+        deployment = deployment_shell.options(
+            func_or_class=dag_node._body,
+            name=deployment_name,
+            init_args=replaced_deployment_init_args,
+            init_kwargs=replaced_deployment_init_kwargs,
+            route_prefix=route_prefix,
+        )
+
         return DeploymentNode(
-            dag_node._body,
-            deployment_name,
+            deployment,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
-            # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
 

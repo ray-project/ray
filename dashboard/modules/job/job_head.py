@@ -18,18 +18,22 @@ from ray._private.runtime_env.packaging import (
 )
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import (
-    CURRENT_VERSION,
-    JOB_ID_METADATA_KEY,
-    DriverInfo,
+    http_uri_components_to_uri,
     JobInfo,
     JobLogsResponse,
     JobStatus,
     JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
-    VersionResponse,
-    http_uri_components_to_uri,
+    JobStopResponse,
+    JobLogsResponse,
     validate_request_type,
+    JOB_ID_METADATA_KEY,
+    DriverInfo,
+)
+from ray.dashboard.modules.version import (
+    CURRENT_VERSION,
+    VersionResponse,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.runtime_env import RuntimeEnv
@@ -47,9 +51,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._job_manager = None
         self._gcs_job_info_stub = None
 
-    async def _parse_and_validate_request(
-        self, req: Request, request_type: dataclass
-    ) -> Any:
+    async def _parse_and_validate_request(self, req: Request,
+                                          request_type: dataclass) -> Any:
         """Parse request and cast to request type. If parsing failed, return a
         Response object with status 400 and stacktrace instead.
         """
@@ -180,8 +183,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json")
 
     @routes.get("/api/jobs/{job_id}")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
@@ -195,20 +198,18 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         data: JobInfo = self._job_manager.get_job_info(job_id)
         return Response(
-            text=json.dumps(dataclasses.asdict(data)), content_type="application/json"
-        )
+            text=json.dumps(dataclasses.asdict(data)),
+            content_type="application/json")
 
     @routes.get("/api/jobs/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def list_jobs(self, req: Request) -> Response:
         data: dict[str, JobInfo] = self._job_manager.list_jobs()
         return Response(
-            text=json.dumps(
-                {
-                    job_id: dataclasses.asdict(job_info)
-                    for job_id, job_info in data.items()
-                }
-            ),
+            text=json.dumps({
+                job_id: dataclasses.asdict(job_info)
+                for job_id, job_info in data.items()
+            }),
             content_type="application/json",
         )
 
@@ -220,22 +221,17 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         for job_id, job in submission_jobs.items():
             job.driver = submission_job_drivers.get(job_id)
         return Response(
-            text=json.dumps(
-                [
-                    *[
-                        {
-                            **dataclasses.asdict(job_info),
-                            "id": job_id,
-                            "type": "submission",
-                        }
-                        for job_id, job_info in submission_jobs.items()
-                    ],
-                    *[
-                        {**dataclasses.asdict(job_info), "id": job_id, "type": "driver"}
-                        for job_id, job_info in driver_jobs.items()
-                    ],
-                ]
-            ),
+            text=json.dumps([
+                *[{
+                    **dataclasses.asdict(job_info),
+                    "id": job_id,
+                    "type": "submission",
+                } for job_id, job_info in submission_jobs.items()],
+                *[{
+                    **dataclasses.asdict(job_info), "id": job_id,
+                    "type": "driver"
+                } for job_id, job_info in driver_jobs.items()],
+            ]),
             content_type="application/json",
         )
 
@@ -264,15 +260,14 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 )
                 job = JobInfo(
                     status=JobStatus.SUCCEEDED
-                    if job_table_entry.is_dead
-                    else JobStatus.RUNNING,
+                    if job_table_entry.is_dead else JobStatus.RUNNING,
                     entrypoint="",
                     start_time=job_table_entry.start_time,
                     end_time=job_table_entry.end_time,
                     metadata=metadata,
                     runtime_env=RuntimeEnv.deserialize(
-                        job_table_entry.config.runtime_env_info.serialized_runtime_env
-                    ).to_dict(),
+                        job_table_entry.config.runtime_env_info.
+                        serialized_runtime_env).to_dict(),
                     driver=driver,
                 )
                 jobs[f"raydriver_{job_id}"] = job
@@ -298,8 +293,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job_id))
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json")
 
     @routes.get("/api/jobs/{job_id}/logs/tail")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
@@ -322,8 +317,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             self._job_manager = JobManager()
 
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel
-        )
+            self._dashboard_head.aiogrpc_gcs_channel)
 
     @staticmethod
     def is_minimal_module():
