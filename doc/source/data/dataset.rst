@@ -92,7 +92,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :classes: btn-outline-info btn-block
     ---
 
-    **User Guide**
+    **User Guides**
     ^^^
 
     Learn how to :ref:`create datasets<creating_datasets>`, :ref:`save
