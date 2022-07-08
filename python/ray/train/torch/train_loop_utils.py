@@ -552,7 +552,7 @@ class _WrappedDataLoader(DataLoader):
             if isinstance(item, collections.abc.Mapping):
                 item_on_device = {k: self._move_to_device(v) for k, v in item.items()}
             elif isinstance(item, (tuple, list)):
-                item_on_device = tuple(try_move_device(i) for i in item)
+                item_on_device = tuple(self._move_to_device(i) for i in item)
             elif isinstance(item, torch.Tensor):
                 item_on_device = try_move_device(item)
             else:
