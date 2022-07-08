@@ -250,7 +250,7 @@ class PredictorWrapper(SimpleSchemaIngress):
         return await self.predict_impl(inp)
 
     def reconfigure(self, config):
-        """Reconfigure Model from Config Checkpoint"""
+        """Reconfigure model from config checkpoint"""
         from ray.air.checkpoint import Checkpoint
 
         predictor_cls = _load_predictor_cls(config["predictor_cls"])
