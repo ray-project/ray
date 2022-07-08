@@ -8,6 +8,8 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -36,7 +38,11 @@ class CRRConfig(AlgorithmConfig):
         self.advantage_type = "mean"
         self.n_action_sample = 4
         self.twin_q = True
-        self.target_network_update_freq = 100
+        self.train_batch_size = 128
+
+        # target_network_update_freq by default is 100 * train_batch_size
+        # if target_network_update_freq is not set. See self.setup for code.
+        self.target_network_update_freq = None
         # __sphinx_doc_end__
         # fmt: on
         self.actor_hiddens = [256, 256]
@@ -155,7 +161,9 @@ class CRR(Algorithm):
 
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
-
+        if self.config.get("target_network_update_freq", None) is None:
+            self.config["target_network_update_freq"] = (
+                self.config["train_batch_size"] * 100)
         # added a counter key for keeping track of number of gradient updates
         self._counters[NUM_GRADIENT_UPDATES] = 0
         # if I don't set this here to zero I won't see zero in the logs (defaultdict)
@@ -196,7 +204,10 @@ class CRR(Algorithm):
             train_results = multi_gpu_train_one_step(self, train_batch)
 
         # update target every few gradient updates
-        cur_ts = self._counters[NUM_GRADIENT_UPDATES]
+        # Update target network every `target_network_update_freq` training steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
+        ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
         if cur_ts - last_update >= self.config["target_network_update_freq"]:

@@ -35,7 +35,7 @@ def _unzip_if_needed(paths: List[str], format: str):
         if not fpath.exists():
             fpath = Path(__file__).parent.parent / path
         if not fpath.exists():
-            raise FileNotFoundError
+            raise FileNotFoundError(f"File not found: {path}")
         if re.search("\\.zip$", str(fpath)):
             with zipfile.ZipFile(str(fpath), "r") as zip_ref:
                 zip_ref.extractall(str(fpath.parent))
