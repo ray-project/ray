@@ -2105,7 +2105,9 @@ class Algorithm(Trainable):
         removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
         if recreate:
-            removed_workers, new_workers = worker_set.recreate_failed_workers()
+            removed_workers, new_workers = worker_set.recreate_failed_workers(
+                local_worker_for_synching=self.workers.local_worker()
+            )
         elif ignore:
             removed_workers = worker_set.remove_failed_workers()
 
@@ -2396,6 +2398,9 @@ class Algorithm(Trainable):
         # Evaluation results.
         if "evaluation" in iteration_results:
             results["evaluation"] = iteration_results.pop("evaluation")
+            results["evaluation"]["num_healthy_workers"] = len(
+                self.evaluation_workers.remote_workers()
+            )
 
         # Custom metrics and episode media.
         results["custom_metrics"] = iteration_results.pop("custom_metrics", {})

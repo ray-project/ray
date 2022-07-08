@@ -59,8 +59,108 @@ def _ensure_workflow_initialized() -> None:
 
 
 @PublicAPI(stability="beta")
-def resume(workflow_id: str) -> ray.ObjectRef:
+def run(
+    dag_node: DAGNode,
+    *args,
+    workflow_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    **kwargs,
+) -> Any:
+    """Run a workflow.
+
+    If the workflow with the given id already exists, it will be resumed.
+
+    Examples:
+        >>> import ray
+        >>> from ray import workflow
+        >>> Flight, Reservation, Trip = ... # doctest: +SKIP
+        >>> @ray.remote # doctest: +SKIP
+        ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
+        ...    return Flight(...) # doctest: +SKIP
+        >>> @ray.remote # doctest: +SKIP
+        ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
+        ...    return Reservation(...) # doctest: +SKIP
+        >>> @ray.remote # doctest: +SKIP
+        ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
+        ...    return Trip(...) # doctest: +SKIP
+
+        >>> flight1 = book_flight.bind("OAK", "SAN") # doctest: +SKIP
+        >>> flight2 = book_flight.bind("SAN", "OAK") # doctest: +SKIP
+        >>> hotel = book_hotel.bind("SAN") # doctest: +SKIP
+        >>> trip = finalize_trip.bind([flight1, flight2, hotel]) # doctest: +SKIP
+        >>> result = workflow.run(trip) # doctest: +SKIP
+
+    Args:
+        workflow_id: A unique identifier that can be used to resume the
+            workflow. If not specified, a random id will be generated.
+        metadata: The metadata to add to the workflow. It has to be able
+            to serialize to json.
+
+    Returns:
+        The running result.
+    """
+    return ray.get(
+        run_async(dag_node, *args, workflow_id=workflow_id, metadata=metadata, **kwargs)
+    )
+
+
+@PublicAPI(stability="beta")
+def run_async(
+    dag_node: DAGNode,
+    *args,
+    workflow_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    **kwargs,
+) -> ray.ObjectRef:
+    """Run a workflow asynchronously.
+
+    If the workflow with the given id already exists, it will be resumed.
+
+    Args:
+        workflow_id: A unique identifier that can be used to resume the
+            workflow. If not specified, a random id will be generated.
+        metadata: The metadata to add to the workflow. It has to be able
+            to serialize to json.
+
+    Returns:
+       The running result as ray.ObjectRef.
+
+    """
+    _ensure_workflow_initialized()
+    if not isinstance(dag_node, DAGNode):
+        raise TypeError("Input should be a DAG.")
+    input_data = DAGInputData(*args, **kwargs)
+    return execution.run(dag_node, input_data, workflow_id, metadata)
+
+
+@PublicAPI(stability="beta")
+def resume(workflow_id: str) -> Any:
     """Resume a workflow.
+
+    Resume a workflow and retrieve its output. If the workflow was incomplete,
+    it will be re-executed from its checkpointed outputs. If the workflow was
+    complete, returns the result immediately.
+
+    Examples:
+        >>> from ray import workflow
+        >>> start_trip = ... # doctest: +SKIP
+        >>> trip = start_trip.bind() # doctest: +SKIP
+        >>> res1 = workflow.run_async(trip, workflow_id="trip1") # doctest: +SKIP
+        >>> res2 = workflow.resume_async("trip1") # doctest: +SKIP
+        >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
+
+    Args:
+        workflow_id: The id of the workflow to resume.
+
+    Returns:
+        The output of the workflow.
+    """
+    return ray.get(resume_async(workflow_id))
+
+
+@PublicAPI(stability="beta")
+def resume_async(workflow_id: str) -> ray.ObjectRef:
+    """Resume a workflow asynchronously.
 
     Resume a workflow and retrieve its output. If the workflow was incomplete,
     it will be re-executed from its checkpointed outputs. If the workflow was
@@ -85,7 +185,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
 
 
 @PublicAPI(stability="beta")
-def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef:
+def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
     """Get the output of a running workflow.
 
     Args:
@@ -99,13 +199,28 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef
         >>> trip = start_trip.options(name="trip").step() # doctest: +SKIP
         >>> res1 = trip.run_async(workflow_id="trip1") # doctest: +SKIP
         >>> # you could "get_output()" in another machine
-        >>> res2 = workflow.get_output("trip1") # doctest: +SKIP
+        >>> res2 = workflow.get_output_async("trip1") # doctest: +SKIP
         >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
-        >>> step_output = workflow.get_output("trip1", "trip") # doctest: +SKIP
+        >>> step_output = workflow.get_output_async("trip1", "trip") # doctest: +SKIP
         >>> assert ray.get(step_output) == ray.get(res1) # doctest: +SKIP
 
     Returns:
-        An object reference that can be used to retrieve the workflow result.
+        The output of the workflow task.
+    """
+    return ray.get(get_output_async(workflow_id, name=name))
+
+
+@PublicAPI(stability="beta")
+def get_output_async(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef:
+    """Get the output of a running workflow asynchronously.
+
+    Args:
+        workflow_id: The workflow to get the output of.
+        name: If set, fetch the specific step instead of the output of the
+            workflow.
+
+    Returns:
+        An object reference that can be used to retrieve the workflow task result.
     """
     _ensure_workflow_initialized()
     return execution.get_output(workflow_id, name)
@@ -174,7 +289,7 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     This can be used after cluster restart to resume all tasks.
 
     Args:
-        with_failed: Whether to resume FAILED workflows.
+        include_failed: Whether to resume FAILED workflows.
 
     Examples:
         >>> from ray import workflow
@@ -379,87 +494,6 @@ def delete(workflow_id: str) -> None:
 
 
 @PublicAPI(stability="beta")
-def create(dag_node: "DAGNode", *args, **kwargs) -> "DAGNode":
-    """Converts a DAG into a workflow.
-
-    TODO(suquark): deprecate this API.
-
-    Examples:
-        >>> import ray
-        >>> from ray import workflow
-        >>> Flight, Reservation, Trip = ... # doctest: +SKIP
-        >>> @ray.remote # doctest: +SKIP
-        ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
-        ...    return Flight(...) # doctest: +SKIP
-        >>> @ray.remote # doctest: +SKIP
-        ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
-        ...    return Reservation(...) # doctest: +SKIP
-        >>> @ray.remote # doctest: +SKIP
-        ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
-        ...    return Trip(...) # doctest: +SKIP
-
-        >>> flight1 = book_flight.bind("OAK", "SAN") # doctest: +SKIP
-        >>> flight2 = book_flight.bind("SAN", "OAK") # doctest: +SKIP
-        >>> hotel = book_hotel.bind("SAN") # doctest: +SKIP
-        >>> trip = finalize_trip.bind([flight1, flight2, hotel]) # doctest: +SKIP
-        >>> result = workflow.create(trip).run() # doctest: +SKIP
-
-    Args:
-        dag_node: The DAG to be converted.
-        args: Positional arguments of the DAG input node.
-        kwargs: Keyword arguments of the DAG input node.
-    """
-    if not isinstance(dag_node, DAGNode):
-        raise TypeError("Input should be a DAG.")
-    input_data = DAGInputData(*args, **kwargs)
-
-    def run_async(
-        workflow_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None
-    ):
-        """Run a workflow asynchronously.
-
-        If the workflow with the given id already exists, it will be resumed.
-
-        Args:
-            workflow_id: A unique identifier that can be used to resume the
-                workflow. If not specified, a random id will be generated.
-            metadata: The metadata to add to the workflow. It has to be able
-                to serialize to json.
-
-        Returns:
-           The running result as ray.ObjectRef.
-
-        """
-        _ensure_workflow_initialized()
-        return execution.run(dag_node, input_data, workflow_id, metadata)
-
-    def run(
-        workflow_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Any:
-        """Run a workflow.
-
-        If the workflow with the given id already exists, it will be resumed.
-
-
-
-        Args:
-            workflow_id: A unique identifier that can be used to resume the
-                workflow. If not specified, a random id will be generated.
-            metadata: The metadata to add to the workflow. It has to be able
-                to serialize to json.
-
-        Returns:
-            The running result.
-        """
-        return ray.get(run_async(workflow_id, metadata))
-
-    dag_node.run_async = run_async
-    dag_node.run = run
-    return dag_node
-
-
-@PublicAPI(stability="beta")
 def continuation(dag_node: "DAGNode") -> Union["DAGNode", Any]:
     """Converts a DAG into a continuation.
 
@@ -476,7 +510,7 @@ def continuation(dag_node: "DAGNode") -> Union["DAGNode", Any]:
         raise TypeError("Input should be a DAG.")
 
     if in_workflow_execution():
-        return create(dag_node)
+        return dag_node
     return ray.get(dag_node.execute())
 
 
@@ -535,11 +569,21 @@ class options:
 
 
 __all__ = (
+    "init",
+    "run",
+    "run_async",
     "resume",
-    "get_output",
+    "resume_async",
     "resume_all",
+    "cancel",
+    "list_all",
+    "delete",
+    "get_output",
+    "get_output_async",
     "get_status",
     "get_metadata",
-    "cancel",
+    "sleep",
+    "wait_for_event",
     "options",
+    "continuation",
 )
