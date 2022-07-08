@@ -163,7 +163,8 @@ class CRR(Algorithm):
         super().setup(config)
         if self.config.get("target_network_update_freq", None) is None:
             self.config["target_network_update_freq"] = (
-                self.config["train_batch_size"] * 100)
+                self.config["train_batch_size"] * 100
+            )
         # added a counter key for keeping track of number of gradient updates
         self._counters[NUM_GRADIENT_UPDATES] = 0
         # if I don't set this here to zero I won't see zero in the logs (defaultdict)
