@@ -10,6 +10,8 @@ import ray
 from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 from ray._private.runtime_env.conda import get_uri as get_conda_uri
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
+import jsonschema
+import json
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
 from ray.core.generated.runtime_env_common_pb2 import (
