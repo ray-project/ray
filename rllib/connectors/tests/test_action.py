@@ -1,18 +1,14 @@
-import gym
-import numpy as np
 import unittest
 
+import gym
+import numpy as np
+
 from ray.rllib.connectors.action.clip import ClipActionsConnector
-from ray.rllib.connectors.action.lambdas import (
-    ConvertToNumpyConnector,
-    UnbatchActionsConnector,
-)
+from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
+from ray.rllib.connectors.action.lambdas import ConvertToNumpyConnector
 from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
 from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
-from ray.rllib.connectors.connector import (
-    ConnectorContext,
-    get_connector,
-)
+from ray.rllib.connectors.connector import ConnectorContext, get_connector
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ActionConnectorDataType
 
@@ -48,43 +44,6 @@ class TestActionConnector(unittest.TestCase):
         self.assertTrue(isinstance(converted.output[0], np.ndarray))
         self.assertTrue(isinstance(converted.output[1], np.ndarray))
 
-    def test_unbatch_action_connector(self):
-        ctx = ConnectorContext()
-        c = UnbatchActionsConnector(ctx)
-
-        name, params = c.to_config()
-
-        self.assertEqual(name, "UnbatchActionsConnector")
-
-        restored = get_connector(ctx, name, params)
-        self.assertTrue(isinstance(restored, UnbatchActionsConnector))
-
-        ac_data = ActionConnectorDataType(
-            0,
-            1,
-            (
-                {
-                    "a": np.array([1, 2, 3]),
-                    "b": (np.array([4, 5, 6]), np.array([7, 8, 9])),
-                },
-                [],
-                {},
-            ),
-        )
-
-        unbatched = c(ac_data)
-        actions, _, _ = unbatched.output
-
-        self.assertEqual(len(actions), 3)
-        self.assertEqual(actions[0]["a"], 1)
-        self.assertTrue((actions[0]["b"] == np.array((4, 7))).all())
-
-        self.assertEqual(actions[1]["a"], 2)
-        self.assertTrue((actions[1]["b"] == np.array((5, 8))).all())
-
-        self.assertEqual(actions[2]["a"], 3)
-        self.assertTrue((actions[2]["b"] == np.array((6, 9))).all())
-
     def test_normalize_action_connector(self):
         ctx = ConnectorContext(
             action_space=gym.spaces.Box(low=0.0, high=6.0, shape=[1])
@@ -118,6 +77,25 @@ class TestActionConnector(unittest.TestCase):
 
         clipped = c(ac_data)
         self.assertEqual(clipped.output[0], 6.0)
+
+    def test_immutable_action_connector(self):
+        ctx = ConnectorContext(
+            action_space=gym.spaces.Box(low=0.0, high=6.0, shape=[1])
+        )
+        c = ImmutableActionsConnector(ctx)
+
+        name, params = c.to_config()
+        self.assertEqual(name, "ImmutableActionsConnector")
+
+        restored = get_connector(ctx, name, params)
+        self.assertTrue(isinstance(restored, ImmutableActionsConnector))
+
+        ac_data = ActionConnectorDataType(0, 1, (np.array([8.8]), [], {}))
+
+        immutable = c(ac_data)
+
+        with self.assertRaises(ValueError):
+            immutable.output[0][0] = 5
 
 
 if __name__ == "__main__":

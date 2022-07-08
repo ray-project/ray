@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
+from ray.data import Dataset
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.datasource import Datasource, ReadTask
@@ -48,7 +49,14 @@ def expect_stages(pipe, num_stages_expected, stage_names):
     for name in stage_names:
         name = " " + name + ":"
         assert name in stats, (name, stats)
-    assert len(pipe._optimized_stages) == num_stages_expected, pipe._optimized_stages
+    if isinstance(pipe, Dataset):
+        assert (
+            len(pipe._plan._stages_before_snapshot) == num_stages_expected
+        ), pipe._plan._stages_before_snapshot
+    else:
+        assert (
+            len(pipe._optimized_stages) == num_stages_expected
+        ), pipe._optimized_stages
 
 
 def test_memory_sanity(shutdown_only):
@@ -292,6 +300,44 @@ def test_stage_linking(ray_start_regular_shared):
     _assert_has_stages(ds._plan._stages_before_snapshot, ["map"])
     assert len(ds._plan._stages_after_snapshot) == 0
     _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
+
+
+def test_optimize_reorder(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_reorder_stages = True
+
+    ds = ray.data.range(10).randomize_block_order().map_batches(lambda x: x)
+    expect_stages(
+        ds,
+        2,
+        ["read->map_batches", "randomize_block_order"],
+    )
+
+    ds2 = (
+        ray.data.range(10)
+        .randomize_block_order()
+        .repartition(10)
+        .map_batches(lambda x: x)
+    )
+    expect_stages(
+        ds2,
+        3,
+        ["read->randomize_block_order", "repartition", "map_batches"],
+    )
+
+
+def test_window_randomize_fusion(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_reorder_stages = True
+
+    pipe = ray.data.range(100).randomize_block_order().window().map_batches(lambda x: x)
+    pipe.take()
+    stats = pipe.stats()
+    assert "read->randomize_block_order->map_batches" in stats, stats
 
 
 def test_optimize_fuse(ray_start_regular_shared):
