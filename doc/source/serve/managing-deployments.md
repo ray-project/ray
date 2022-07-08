@@ -76,7 +76,7 @@ func.options(num_replicas=1).deploy()
 
 #### Autoscaling
 
-Serve also has experimental support for a demand-based replica autoscaler.
+Serve also has the support for a demand-based replica autoscaler.
 It reacts to traffic spikes via observing queue sizes and making scaling decisions.
 To configure it, you can set the `autoscaling` field in deployment options.
 
