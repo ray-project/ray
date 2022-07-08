@@ -233,7 +233,9 @@ def chop_into_sequences(
     Args:
         feature_columns: List of arrays containing features.
         state_columns: List of arrays containing LSTM state values.
-        max_seq_len: Max length of sequences before truncation.
+        max_seq_len: Max length of sequences. Sequences longer than max_seq_len
+            will be split into subsequences that span the batch dimension
+            and sum to max_seq_len.
         episode_ids (List[EpisodeID]): List of episode ids for each step.
         unroll_ids (List[UnrollID]): List of identifiers for the sample batch.
             This is used to make sure sequences are cut between sample batches.

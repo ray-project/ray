@@ -116,7 +116,7 @@ class CheckpointManager(CommonCheckpointManager):
                 f"checkpoint_score_attribute: "
                 f"{score_attr}. "
                 f"Include this attribute in the call to "
-                f"train.save_checkpoint."
+                f"`session.report()`."
             )
 
         tracked_checkpoint = _TrackedCheckpoint(
