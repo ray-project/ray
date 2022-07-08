@@ -67,11 +67,13 @@ void GcsHeartbeatManager::Stop() {
   }
 }
 
-void GcsHeartbeatManager::RemoveNode(const NodeID& node_id) {
-  io_service_.dispatch([this, node_id] {
-    node_map_.left.erase(node_id);
-    heartbeats_.erase(node_id);
-  }, "GcsHeartbeatManager::RemoveNode");
+void GcsHeartbeatManager::RemoveNode(const NodeID &node_id) {
+  io_service_.dispatch(
+      [this, node_id] {
+        node_map_.left.erase(node_id);
+        heartbeats_.erase(node_id);
+      },
+      "GcsHeartbeatManager::RemoveNode");
 }
 
 void GcsHeartbeatManager::AddNode(const rpc::GcsNodeInfo &node_info) {
@@ -116,13 +118,13 @@ void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request
 
 void GcsHeartbeatManager::DetectDeadNodes() {
   std::vector<NodeID> dead_nodes;
-  for (auto& current : heartbeats_) {
+  for (auto &current : heartbeats_) {
     current.second = current.second - 1;
     if (current.second == 0) {
       dead_nodes.push_back(current.first);
     }
   }
-  for(const auto& node_id : dead_nodes) {
+  for (const auto &node_id : dead_nodes) {
     RemoveNode(node_id);
     if (on_node_death_callback_) {
       on_node_death_callback_(node_id);
