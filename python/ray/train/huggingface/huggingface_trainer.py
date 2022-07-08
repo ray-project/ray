@@ -5,22 +5,19 @@ import tempfile
 import warnings
 from distutils.version import LooseVersion
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
-import torch
 import transformers
 import transformers.modeling_utils
 import transformers.trainer
 import transformers.training_args
 from torch.utils.data import Dataset as TorchDataset
-from transformers.trainer import TRAINING_ARGS_NAME, WEIGHTS_NAME
 
 from ray import train
+from ray.air import session
 from ray.air._internal.checkpointing import (
-    load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.air._internal.torch_utils import load_torch_model
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.constants import (
@@ -30,7 +27,7 @@ from ray.train.constants import (
     TUNE_CHECKPOINT_ID,
 )
 from ray.train.data_parallel_trainer import _DataParallelCheckpointManager
-from ray.train.huggingface.huggingface_utils import (
+from ray.train.huggingface._huggingface_utils import (
     CHECKPOINT_PATH_ON_NODE_KEY,
     NODE_IP_KEY,
     TrainReportCallback,
@@ -406,65 +403,6 @@ class HuggingFaceTrainer(TorchTrainer):
         return ret
 
 
-def load_checkpoint(
-    checkpoint: Checkpoint,
-    model: Union[Type[transformers.modeling_utils.PreTrainedModel], torch.nn.Module],
-    tokenizer: Optional[Type[transformers.PreTrainedTokenizer]] = None,
-    *,
-    tokenizer_kwargs: Optional[Dict[str, Any]] = None,
-    **pretrained_model_kwargs,
-) -> Tuple[
-    Union[transformers.modeling_utils.PreTrainedModel, torch.nn.Module],
-    transformers.training_args.TrainingArguments,
-    Optional[transformers.PreTrainedTokenizer],
-    Optional["Preprocessor"],
-]:
-    """Load a Checkpoint from ``HuggingFaceTrainer``.
-
-
-    Args:
-        checkpoint: The checkpoint to load the model and
-            preprocessor from. It is expected to be from the result of a
-            ``HuggingFaceTrainer`` run.
-        model: Either a ``transformers.PreTrainedModel`` class
-            (eg. ``AutoModelForCausalLM``), or a PyTorch model to load the
-            weights to. This should be the same model used for training.
-        tokenizer: A ``transformers.PreTrainedTokenizer`` class to load
-            the model tokenizer to. If not specified, the tokenizer will
-            not be loaded. Will throw an exception if specified, but no
-            tokenizer was found in the checkpoint.
-        tokenizer_kwargs: Dict of kwargs to pass to ``tokenizer.from_pretrained``
-            call. Ignored if ``tokenizer`` is None.
-        **pretrained_model_kwargs: Kwargs to pass to ``mode.from_pretrained``
-            call. Ignored if ``model`` is not a ``transformers.PreTrainedModel``
-            class.
-
-    Returns:
-        The model, ``TrainingArguments``, tokenizer and AIR preprocessor
-        contained within. Those can be used to initialize a ``transformers.Trainer``
-        object locally.
-    """
-    tokenizer_kwargs = tokenizer_kwargs or {}
-    with checkpoint.as_directory() as checkpoint_path:
-        preprocessor = load_preprocessor_from_dir(checkpoint_path)
-        if isinstance(model, torch.nn.Module):
-            state_dict = torch.load(
-                os.path.join(checkpoint_path, WEIGHTS_NAME), map_location="cpu"
-            )
-            model = load_torch_model(saved_model=state_dict, model_definition=model)
-        else:
-            model = model.from_pretrained(checkpoint_path, **pretrained_model_kwargs)
-        if tokenizer:
-            tokenizer = tokenizer.from_pretrained(checkpoint_path, **tokenizer_kwargs)
-        training_args_path = os.path.join(checkpoint_path, TRAINING_ARGS_NAME)
-        if os.path.exists(training_args_path):
-            with open(training_args_path, "rb") as f:
-                training_args = torch.load(f, map_location="cpu")
-        else:
-            training_args = None
-    return model, training_args, tokenizer, preprocessor
-
-
 def _huggingface_train_loop_per_worker(config):
     """Per-worker training loop for HuggingFace Transformers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
@@ -517,12 +455,14 @@ def _huggingface_train_loop_per_worker(config):
 
     trainer.add_callback(TrainReportCallback)
 
-    checkpoint = train.load_checkpoint()
+    checkpoint = session.get_checkpoint()
     checkpoint_path = None
     remove_checkpoint_path = False
     if checkpoint:
-        source_ip = checkpoint[NODE_IP_KEY]
-        source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
+        assert isinstance(checkpoint, Checkpoint)
+        checkpoint_dict = checkpoint.to_dict()
+        source_ip = checkpoint_dict[NODE_IP_KEY]
+        source_path = checkpoint_dict[CHECKPOINT_PATH_ON_NODE_KEY]
         target_ip = get_node_ip_address()
         if source_ip == target_ip:
             checkpoint_path = source_path
