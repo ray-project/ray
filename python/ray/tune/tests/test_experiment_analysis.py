@@ -167,7 +167,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_checkpoint = self.ea.get_best_checkpoint(
             best_trial, self.metric, mode="max"
         )
-        assert expected_path == best_checkpoint
+        assert expected_path == best_checkpoint._local_path
 
     def testGetBestCheckpointNan(self):
         """Tests if nan values are excluded from best checkpoint."""

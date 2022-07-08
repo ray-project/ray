@@ -115,18 +115,9 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
     )
 
 
-def get_remote_model(remote_model_checkpoint_path):
-    if ray.util.client.ray.is_connected():
-        remote_load = ray.remote(get_model)
-        remote_load = force_on_current_node(remote_load)
-        return ray.get(remote_load.remote(remote_model_checkpoint_path))
-    else:
-        get_best_model_remote = ray.remote(get_model)
-        return ray.get(get_best_model_remote.remote(remote_model_checkpoint_path))
-
-
-def get_model(model_checkpoint_path):
-    checkpoint_dict = Trainer.load_checkpoint_from_path(model_checkpoint_path)
+def get_model(checkpoint):
+    with checkpoint.as_directory() as model_checkpoint_path:
+        checkpoint_dict = Trainer.load_checkpoint_from_path(model_checkpoint_path)
     model_state = checkpoint_dict["model_state_dict"]
 
     model = ResNet18(None)
@@ -256,8 +247,8 @@ if __name__ == "__main__":
     analysis = train_mnist(args.smoke_test, num_workers, use_gpu)
 
     print("Retrieving best model.")
-    best_checkpoint = analysis.best_checkpoint.local_path
-    model = get_remote_model(best_checkpoint)
+    best_checkpoint = analysis.best_checkpoint
+    model = get_model(best_checkpoint)
 
     print("Setting up Serve.")
     setup_serve(model, use_gpu)
