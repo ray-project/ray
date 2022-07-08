@@ -24,7 +24,15 @@ def get_best_model_checkpoint(analysis):
     best_bst = xgb.Booster()
 
     with analysis.best_checkpoint.as_directory() as checkpoint_dir:
-        best_bst.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
+        to_load = os.path.join(checkpoint_dir, CHECKPOINT_FILENAME)
+
+        if not os.path.exists(to_load):
+            # Class trainable
+            with open(os.path.join(checkpoint_dir, "checkpoint"), "rb") as f:
+                _, _, raw_model = pickle.load(f)
+            to_load = bytearray(raw_model)
+
+        best_bst.load_model(to_load)
 
     accuracy = 1.0 - analysis.best_result["eval-logloss"]
     print(f"Best model parameters: {analysis.best_config}")
