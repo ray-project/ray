@@ -650,7 +650,10 @@ class DynamicTFPolicyV2(TFPolicy):
         optimizers = force_list(self.optimizer())
         if getattr(self, "exploration", None):
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
-
+            # Check, if exploration needs to update its parameters together with
+            # policy in each iteration.
+            if self.exploration.global_update:
+                self.add_exploration_loss_and_update()
         # No optimizers produced -> Return.
         if not optimizers:
             return
@@ -660,6 +663,25 @@ class DynamicTFPolicyV2(TFPolicy):
         # Backward compatibility.
         self._optimizer = optimizers[0]
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def add_exploration_loss_and_update(self):
+        self.policy_loss = self.loss.__get__(self, type(self))
+        
+        def loss(
+            self,
+            model: Union[ModelV2, "tf.keras.Model"],
+            dist_class: Type[TFActionDistribution],
+            train_batch: SampleBatch,
+        ) -> Union[TensorType, List[TensorType]]:
+            
+            # Update the weights of the exploration model(s), if necessary
+            return self.policy_loss(
+                model, dist_class, train_batch                
+            ) + self.exploration.compute_loss_and_update(train_batch, self)
+            
+        self.loss = loss.__get__(self, type(self))
+        
     def maybe_initialize_optimizer_and_loss(self):
         # We don't need to initialize loss calculation for MultiGPUTowerStack.
         if self._is_tower:
