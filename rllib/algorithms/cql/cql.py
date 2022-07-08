@@ -14,7 +14,6 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
-from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
@@ -32,8 +31,8 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
-from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
@@ -177,23 +176,11 @@ class CQL(SAC):
     @override(SAC)
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
-        batch = synchronous_parallel_sample(worker_set=self.workers)
-        batch = batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
-        # Add batch to replay buffer.
-        self.local_replay_buffer.add(batch)
-
-        # Sample training batch from replay buffer.
-        train_batch = sample_min_n_steps_from_buffer(
-            self.local_replay_buffer,
-            self.config["train_batch_size"],
-            count_by_agent_steps=self._by_agent_steps,
-        )
-
-        # Old-style replay buffers return None if learning has not started
-        if not train_batch:
-            return {}
+        with self._timers[SAMPLE_TIMER]:
+            train_batch = synchronous_parallel_sample(worker_set=self.workers)
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
         # Postprocess batch before we learn on it.
         post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
@@ -206,14 +193,6 @@ class CQL(SAC):
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
-
-        # Update replay buffer priorities.
-        update_priorities_in_replay_buffer(
-            self.local_replay_buffer,
-            self.config,
-            train_batch,
-            train_results,
-        )
 
         # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[
