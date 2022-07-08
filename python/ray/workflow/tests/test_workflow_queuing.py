@@ -102,6 +102,35 @@ def test_workflow_queuing_2(shutdown_only, tmp_path):
     ]
 
 
+def test_workflow_queuing_3(shutdown_only, tmp_path):
+    """This test ensures the queuing workflow is indeed pending."""
+    ray.init(storage=str(tmp_path))
+    workflow.init(max_running_workflows=1, max_pending_workflows=1)
+
+    import time
+    import filelock
+    from ray.exceptions import GetTimeoutError
+
+    lock_path = str(tmp_path / ".lock")
+
+    @ray.remote
+    def long_running(x):
+        (tmp_path / str(x)).write_text(str(x))
+        with filelock.FileLock(lock_path):
+            return x
+
+    with filelock.FileLock(lock_path):
+        wf_1 = workflow.run_async(long_running.bind(1))
+        wf_2 = workflow.run_async(long_running.bind(2))
+        time.sleep(5)
+        assert (tmp_path / str(1)).exists()
+        assert not (tmp_path / str(2)).exists()
+        with pytest.raises(GetTimeoutError):
+            ray.get(wf_2, timeout=5)
+
+    assert ray.get([wf_1, wf_2]) == [1, 2]
+
+
 def test_workflow_queuing_resume_all(shutdown_only, tmp_path):
     ray.init(storage=str(tmp_path))
     workflow.init(max_running_workflows=2, max_pending_workflows=2)

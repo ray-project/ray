@@ -197,9 +197,9 @@ class WorkflowManagementActor:
         if workflow_id not in self._workflow_executors:
             raise RuntimeError(f"Workflow '{workflow_id}' has not been submitted.")
 
-        fut = self._queued_workflows.get(workflow_id)
-        if fut is not None:
-            await fut  # wait until this workflow is ready to go
+        pending_fut = self._queued_workflows.get(workflow_id)
+        if pending_fut is not None:
+            await pending_fut  # wait until this workflow is ready to go
 
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
         executor = self._workflow_executors[workflow_id]
