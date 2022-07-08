@@ -1,8 +1,8 @@
 """Convert a jupytext-compliant format in to a python script
 and execute it with parsed arguments."""
+import runpy
 
 import argparse
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
