@@ -135,7 +135,7 @@ struct SchedulingOptions {
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
-  double max_allocatable_cpu_fraction = 1.0;
+  double max_reservable_cpu_fraction = 1.0;
 
  private:
   SchedulingOptions(SchedulingType type,

@@ -15,15 +15,19 @@
 #include "ray/raylet/scheduling/policy/bundle_scheduling_policy.h"
 
 namespace {
+
 bool AllocationWillExceedMaxCpuFraction(const ray::NodeResources &node_resources,
                                         const ray::ResourceRequest &resource_request,
-                                        double max_allocatable_cpu_fraction) {
+                                        double max_reservable_cpu_fraction) {
   auto cpu_id = ray::ResourceID::CPU();
-  return (node_resources.available.Get(cpu_id).Double() -  // allocadtion
-          resource_request.Get(cpu_id).Double()) >         // will exceed
-         max_allocatable_cpu_fraction *
-             node_resources.total.Get(cpu_id).Double();  // max cpu quota
+  auto remaining_cpus = node_resources.available.Get(cpu_id).Double() -
+                        resource_request.Get(cpu_id).Double();
+  auto total_allocated_cpus = node_resources.total.Get(cpu_id).Double() - remaining_cpus;
+  auto max_reservable_cpus =
+      max_reservable_cpu_fraction * node_resources.total.Get(cpu_id).Double();
+  return total_allocated_cpus > max_reservable_cpus;
 }
+
 }  // namespace
 
 namespace ray {
@@ -136,7 +140,7 @@ std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
   for (const auto &[node_id, node] : candidate_nodes) {
     const auto &node_resources = node->GetLocalView();
     if (AllocationWillExceedMaxCpuFraction(
-            node_resources, required_resources, options.max_allocatable_cpu_fraction)) {
+            node_resources, required_resources, options.max_reservable_cpu_fraction)) {
       continue;
     }
 
@@ -202,7 +206,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
                                                      // exceed max cpu fraction.
                  node_resources,
                  *iter->second,
-                 options.max_allocatable_cpu_fraction)) {
+                 options.max_reservable_cpu_fraction)) {
         // Then allocate it.
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
             best_node.first, *iter->second));
@@ -302,8 +306,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 
   auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
   if (candidate_nodes.empty()) {
-    // SANG-TODO Change it to DEBUG
-    RAY_LOG(INFO) << "The candidate nodes is empty, return directly.";
+    RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
   }
 
@@ -329,13 +332,12 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
                                                       // exceed max cpu fraction.
                     node_resources,
                     aggregated_resource_request,
-                    options.max_allocatable_cpu_fraction));
+                    options.max_reservable_cpu_fraction));
         return allocatable;
       });
 
   if (right_node_it == candidate_nodes.end()) {
-    // SANG-TODO Change it to DEBUG
-    RAY_LOG(INFO) << "The required resource is bigger than the maximum resource in the "
+    RAY_LOG(DEBUG) << "The required resource is bigger than the maximum resource in the "
                      "whole cluster, schedule failed.";
     return SchedulingResult::Infeasible();
   }
@@ -347,11 +349,9 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   // only schedules to a node and triggers rescheduling when node dead.
   std::vector<scheduling::NodeID> result_nodes;
   if (!best_node.first.IsNil()) {
-    RAY_LOG(INFO) << "SANG-TODO Found the best node";
     result_nodes.resize(resource_request_list.size(), best_node.first);
   }
   if (result_nodes.empty()) {
-    RAY_LOG(INFO) << "SANG-TODO CAnnot find the best node";
     // Can't meet the scheduling requirements temporarily.
     return SchedulingResult::Failed();
   }

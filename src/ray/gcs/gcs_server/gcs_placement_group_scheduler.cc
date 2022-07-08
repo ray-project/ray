@@ -64,7 +64,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   auto scheduling_options =
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(), strategy);
-  scheduling_options.max_allocatable_cpu_fraction =
+  scheduling_options.max_reservable_cpu_fraction =
       placement_group->GetMaxCpuFractionPerNode();
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
@@ -73,8 +73,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &selected_nodes = scheduling_result.selected_nodes;
 
   if (!result_status.IsSuccess()) {
-    // SANG-TODO change it to DEBUG
-    RAY_LOG(INFO)
+    RAY_LOG(DEBUG)
         << "Failed to schedule placement group " << placement_group->GetName()
         << ", id: " << placement_group->GetPlacementGroupID()
         << ", because current resources can't satisfy the required resource. IsFailed: "
@@ -87,8 +86,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     return;
   }
 
-  // SANG-TODO change it to debug.
-  RAY_LOG(INFO) << "Can schedule a placement group "
+  RAY_LOG(DEBUG) << "Can schedule a placement group "
                 << placement_group->GetPlacementGroupID()
                 << ". Selected node size: " << selected_nodes.size();
 
