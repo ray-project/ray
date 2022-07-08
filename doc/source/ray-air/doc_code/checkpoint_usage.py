@@ -20,47 +20,35 @@ checkpoint = to_air_checkpoint(model)
 
 import ray
 import pandas as pd
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
+from ray.air import train_test_split
 
 from ray.data.preprocessors import *
 
-data_raw = load_breast_cancer()
-dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
-dataset_df["target"] = data_raw["target"]
-train_df, test_df = train_test_split(dataset_df, test_size=0.3)
-train_dataset = ray.data.from_pandas(train_df)
-valid_dataset = ray.data.from_pandas(test_df)
+dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
+# Split data into train and validation.
+train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
 
+# Create a test dataset by dropping the target column.
+test_dataset = valid_dataset.map_batches(
+    lambda df: df.drop("target", axis=1), batch_format="pandas"
+)
 
 # __use_trainer_checkpoint_start__
 from ray.train.xgboost import XGBoostTrainer
 
-num_workers = 2
-use_gpu = False
-# XGBoost specific params
-params = {
-    "tree_method": "approx",
-    "objective": "binary:logistic",
-    "eval_metric": ["logloss", "error"],
-    "max_depth": 2,
-}
-
 trainer = XGBoostTrainer(
-    scaling_config={
-        "num_workers": num_workers,
-        "use_gpu": use_gpu,
-    },
+    scaling_config={"num_workers": 2},
     label_column="target",
-    params=params,
-    datasets={"train": train_dataset, "valid": valid_dataset},
+    params={
+        "objective": "binary:logistic",
+        "eval_metric": ["logloss", "error"],
+    },
+    datasets={"train": train_dataset},
     num_boost_round=5,
 )
 
 result = trainer.fit()
-print(result.metrics)
 checkpoint = result.checkpoint
-print(checkpoint)
 # __use_trainer_checkpoint_end__
 
 # __batch_pred_start__
@@ -70,11 +58,7 @@ from ray.train.xgboost import XGBoostPredictor
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
 
 # Bulk batch prediction.
-predicted_labels = (
-    batch_predictor.predict(test_dataset)
-    .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
-    .to_pandas(limit=float("inf"))
-)
+batch_predictor.predict(test_dataset)
 # __batch_pred_end__
 
 
@@ -110,12 +94,12 @@ checkpoint_data = {"data": 123}
 # Create checkpoint object from data
 checkpoint = Checkpoint.from_dict(checkpoint_data)
 
-# Save checkpoint to temporary location
+# Save checkpoint to a directory on the file system.
 path = checkpoint.to_directory()
 
-# This path can then be passed around, e.g. to a different function
+# This path can then be passed around, e.g. to a different function or a different script.
 
-# At some other location, recover Checkpoint object from path
+# At another function or script, recover Checkpoint object from path
 checkpoint = Checkpoint.from_directory(path)
 
 # Convert into dictionary again

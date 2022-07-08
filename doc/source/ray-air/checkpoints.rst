@@ -5,7 +5,7 @@ Checkpoints are the common format for models that are used across different comp
 
 .. image:: images/checkpoint_diagram.png
 
-There are numerous ways of generating a checkpoint.
+There are two ways of generating a checkpoint.
 
 The first way is to generate it from a pretrained model. Each framework that AIR supports has a ``to_air_checkpoint`` method that can be used to generate an AIR checkpoint:
 
@@ -25,13 +25,14 @@ Another way is to retrieve it from the results of a Trainer or a Tuner.
 What exactly is a checkpoint?
 -----------------------------
 
-The Checkpoint object is a serializable reference to a model, which itself can be represented in one of three ways:
+The Checkpoint object is a serializable reference to a model. The model can represented in one of three ways:
 
 - a directory located on local (on-disk) storage
 - a directory located on external storage (e.g. cloud storage)
-- in-memory dictionary
+- an in-memory dictionary
 
-The flexibility provided in the Checkpoint model representation is useful in distributed environments, where you may want to recreate the same model on multiple nodes in your Ray cluster for inference.
+The flexibility provided in the Checkpoint model representation is useful in distributed environments,
+where you may want to recreate the same model on multiple nodes in your Ray cluster for inference.
 
 The Checkpoint object has methods to translate between different checkpoint storage locations:
 
