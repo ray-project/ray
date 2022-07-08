@@ -804,6 +804,8 @@ class Algorithm(Trainable):
                                 if unit == "episodes" else ""
                             )
                         )
+                        break
+
                     _agent_steps = sum(b.agent_steps() for b in batches)
                     _env_steps = sum(b.env_steps() for b in batches)
                     # 1 episode per returned batch.
