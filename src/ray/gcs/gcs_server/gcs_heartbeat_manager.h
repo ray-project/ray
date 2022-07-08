@@ -72,6 +72,11 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   /// \param node_info The node to be registered.
   void AddNode(const rpc::GcsNodeInfo &node_info);
 
+  /// Remove a node from this detector.
+  ///
+  /// \param node_id The node to be removed.
+  void RemoveNode(const NodeID& node_id);
+
  protected:
   /// Check that if any raylet is inactive due to no heartbeat for a period of time.
   /// If found any, mark it as dead.
@@ -93,7 +98,7 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   /// Is the detect started.
   bool is_started_ = false;
   /// A map of NodeId <-> ip:port of raylet
-  using NodeIDAddrBiMap = boost::bimap<boost::bimaps::unordered_set_of<std::string>,
+  using NodeIDAddrBiMap = boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
                                        boost::bimaps::unordered_set_of<std::string>>;
   NodeIDAddrBiMap node_map_;
 };

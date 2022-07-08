@@ -67,13 +67,22 @@ void GcsHeartbeatManager::Stop() {
   }
 }
 
+void GcsHeartbeatManager::RemoveNode(const NodeID& node_id) {
+  io_service_.dispatch([this, node_id] {
+    node_map_.left.erase(node_id);
+    heartbeats_.erase(node_id);
+  }, "GcsHeartbeatManager::RemoveNode");
+}
+
 void GcsHeartbeatManager::AddNode(const rpc::GcsNodeInfo &node_info) {
   auto node_id = NodeID::FromBinary(node_info.node_id());
   auto node_addr = node_info.node_manager_address() + ":" +
                    std::to_string(node_info.node_manager_port());
-  node_map_.insert(NodeIDAddrBiMap::value_type(node_info.node_id(), node_addr));
   io_service_.post(
-      [this, node_id] { heartbeats_.emplace(node_id, num_heartbeats_timeout_); },
+      [this, node_id, node_addr] {
+        node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
+        heartbeats_.emplace(node_id, num_heartbeats_timeout_);
+      },
       "GcsHeartbeatManager.AddNode");
 }
 
@@ -99,24 +108,24 @@ void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request
                                            rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);
   for (const auto &addr : request.raylet_address()) {
-    *reply->mutable_raylet_alive()->Add() = node_map_.right.count(addr) != 0;
+    reply->mutable_raylet_alive()->Add(node_map_.right.count(addr) != 0);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsHeartbeatManager::DetectDeadNodes() {
-  for (auto it = heartbeats_.begin(); it != heartbeats_.end();) {
-    auto current = it++;
-    current->second = current->second - 1;
-    if (current->second == 0) {
-      auto node_id = current->first;
-      RAY_LOG(WARNING) << "Node timed out: " << node_id;
-      heartbeats_.erase(current);
-      node_map_.left.erase(node_id.Binary());
-      if (on_node_death_callback_) {
-        on_node_death_callback_(node_id);
-      }
+  std::vector<NodeID> dead_nodes;
+  for (auto& current : heartbeats_) {
+    current.second = current.second - 1;
+    if (current.second == 0) {
+      dead_nodes.push_back(current.first);
+    }
+  }
+  for(const auto& node_id : dead_nodes) {
+    RemoveNode(node_id);
+    if (on_node_death_callback_) {
+      on_node_death_callback_(node_id);
     }
   }
 }
