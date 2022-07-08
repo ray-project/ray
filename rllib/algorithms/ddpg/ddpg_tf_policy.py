@@ -6,7 +6,6 @@ from typing import Dict, Tuple, List, Type, Union, Optional, Any
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.algorithms.ddpg.ddpg_tf_model import DDPGTFModel
 from ray.rllib.algorithms.ddpg.utils import make_ddpg_models, validate_spaces
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     postprocess_nstep_and_prio,

@@ -5,7 +5,6 @@ from typing import Dict, List, Optional, Any, Tuple, Type
 import ray
 from ray.rllib.algorithms.ddpg.utils import make_ddpg_models, validate_spaces
 from ray.rllib.algorithms.dqn.utils import postprocess_nstep_and_prio
-from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.evaluation import Episode
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
@@ -28,8 +27,6 @@ from ray.rllib.utils.torch_utils import (
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    GradInfoDict,
-    LocalOptimizer,
     ModelGradients,
     TensorType,
 )
@@ -69,9 +66,9 @@ class ComputeTDErrorMixin:
 class TargetNetworkMixin:
     """Mixin class adding a method for (soft) target net(s) synchronizations.
 
-    - Adds the `update_target` method to the policy.
-      Calling `update_target` updates all target Q-networks' weights from their
-      respective "main" Q-metworks, based on tau (smooth, partial updating).
+    Adds the `update_target` method to the policy.
+    Calling `update_target` updates all target Q-networks' weights from their
+    respective "main" Q-metworks, based on tau (smooth, partial updating).
     """
 
     def __init__(self):

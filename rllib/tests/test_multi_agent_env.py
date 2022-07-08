@@ -5,7 +5,7 @@ import gym
 import numpy as np
 
 import ray
-from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTF2Policy
+from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTF1Policy
 from ray.rllib.algorithms.pg import PG
 from ray.rllib.env.multi_agent_env import MultiAgentEnvWrapper
 from ray.rllib.evaluation.episode import Episode
@@ -312,7 +312,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch["state_out_0"][1], h)
 
     def test_returning_model_based_rollouts_data(self):
-        class ModelBasedPolicy(DQNTF2Policy):
+        class ModelBasedPolicy(DQNTF1Policy):
             def compute_actions_from_input_dict(
                 self, input_dict, explore=None, timestep=None, episodes=None, **kwargs
             ):

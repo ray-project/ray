@@ -10,7 +10,7 @@ from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTF1Policy, DQNTF2Policy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.algorithms.r2d2.r2d2 import R2D2 as R2D2Trainer
 from ray.rllib.algorithms.r2d2.r2d2 import R2D2_DEFAULT_CONFIG, R2D2Config
-from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
+from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TF1Policy, R2D2TF2Policy
 from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.algorithms.simple_q.simple_q import (
     DEFAULT_CONFIG as SIMPLE_Q_DEFAULT_CONFIG,
@@ -33,7 +33,8 @@ __all__ = [
     "DQNTorchPolicy",
     "DQNTrainer",
     "R2D2Config",
-    "R2D2TFPolicy",
+    "R2D2TF1Policy",
+    "R2D2TF2Policy",
     "R2D2TorchPolicy",
     "R2D2Trainer",
     "SimpleQConfig",
