@@ -240,7 +240,6 @@ class AlgorithmConfig:
             use cases, e.g. w/ `tune.run()`.
         """
         config = copy.deepcopy(vars(self))
-        config.pop("algo_class")
 
         # Worst naming convention ever: NEVER EVER use reserved key-words...
         if "lambda_" in config:

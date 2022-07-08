@@ -167,6 +167,7 @@ class Algorithm(Trainable):
     _allow_unknown_subkeys = [
         "tf_session_args",
         "local_tf_session_args",
+        "algo_class",
         "env_config",
         "model",
         "optimizer",
