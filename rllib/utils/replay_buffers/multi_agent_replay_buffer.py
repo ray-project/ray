@@ -396,7 +396,4 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         if self.replay_mode == ReplayMode.LOCKSTEP:
             return {_ALL_POLICIES: batch}
         else:
-            return {
-                policy_id: sample_batch
-                for policy_id, sample_batch in batch.policy_batches.items()
-            }
+            return batch.policy_batches
