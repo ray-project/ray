@@ -417,7 +417,10 @@ class EagerTFPolicyV2(Policy):
         optimizers = force_list(self.optimizer())
         if getattr(self, "exploration", None):
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
-
+            # Check, if exploration needs to update its parameters together with
+            # policy in each iteration.
+            if self.exploration.global_update:
+                self.add_exploration_loss_and_update()
         # The list of local (tf) optimizers (one per loss term).
         self._optimizers: List[LocalOptimizer] = optimizers
         # Backward compatibility: A user's policy may only support a single
@@ -429,6 +432,25 @@ class EagerTFPolicyV2(Policy):
         )
         self._loss_initialized = True
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def add_custom_loss_and_update(self):
+        self.policy_loss = self.loss.__get__(self, type(self))
+        
+        def loss(
+            self,
+            model: Union[ModelV2, "tf.keras.Model"],
+            dist_class: Type[TFActionDistribution],
+            train_batch: SampleBatch,
+        ) -> Union[TensorType, List[TensorType]]:
+            
+            # Update the weights of the exploration model(s), if necessary
+            return self.policy_loss(
+                model, dist_class, train_batch                
+            ) + self.exploration.compute_loss_and_update(train_batch, self)
+            
+        self.loss = loss.__get__(self, type(self))
+        
     @override(Policy)
     def compute_actions_from_input_dict(
         self,
