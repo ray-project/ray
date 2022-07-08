@@ -337,7 +337,8 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
   return PlacementGroupCreationOptions(name,
                                        ConvertStrategy(java_strategy),
                                        bundles,
-                                       /*is_detached=*/false);
+                                       /*is_detached=*/false,
+                                       /*max_cpu_fraction_per_node*/1.0);
 }
 
 #ifdef __cplusplus
