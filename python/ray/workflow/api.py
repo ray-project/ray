@@ -29,9 +29,6 @@ from ray._private.usage import usage_lib
 logger = logging.getLogger(__name__)
 
 
-_is_workflow_initialized = False
-
-
 @PublicAPI(stability="beta")
 def init(
     *,
@@ -78,13 +75,19 @@ def init(
         ray.init(storage="file:///tmp/ray/workflow_data")
     workflow_access.init_management_actor(max_running_workflows, max_pending_workflows)
     serialization.init_manager()
-    global _is_workflow_initialized
-    _is_workflow_initialized = True
 
 
 def _ensure_workflow_initialized() -> None:
-    if not _is_workflow_initialized or not ray.is_initialized():
+    # NOTE: Trying to get the actor has a side effect: it initializes Ray with
+    # default arguments. This is different in "init()": it assigns a temporary
+    # storage. This is why we need to check "ray.is_initialized()" first.
+    if not ray.is_initialized():
         init()
+    else:
+        try:
+            workflow_access.get_management_actor()
+        except ValueError:
+            init()
 
 
 @PublicAPI(stability="beta")

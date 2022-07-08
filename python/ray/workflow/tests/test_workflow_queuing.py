@@ -76,7 +76,7 @@ def test_workflow_queuing_1(shutdown_only, tmp_path):
         "workflow_4",
     ]
     for i in range(5):
-        assert ray.get(workflow.get_output(f"workflow_{i}")) == i
+        assert workflow.get_output(f"workflow_{i}") == i
 
 
 def test_workflow_queuing_2(shutdown_only, tmp_path):
@@ -90,7 +90,7 @@ def test_workflow_queuing_2(shutdown_only, tmp_path):
     wfs = [short_running.bind(i) for i in range(5)]
     refs = [workflow.run_async(wfs[i], workflow_id=f"workflow_{i}") for i in range(4)]
     for i in range(4):
-        assert ray.get(workflow.get_output(f"workflow_{i}")) == i
+        assert workflow.get_output(f"workflow_{i}") == i
     assert ray.get(refs) == [0, 1, 2, 3]
     assert workflow.run(wfs[4], workflow_id="workflow_4") == 4
     assert sorted(x[0] for x in workflow.list_all({workflow.SUCCESSFUL})) == [
