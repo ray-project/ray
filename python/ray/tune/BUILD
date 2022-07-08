@@ -128,6 +128,13 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_F"],
 )
 
+py_test(
+    name = "test_function_api_legacy",
+    size = "medium",
+    srcs = ["tests/test_function_api_legacy.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_F"],
+)
 
 py_test(
     name = "test_legacy_import",
@@ -295,6 +302,14 @@ py_test(
     srcs = ["tests/test_syncer_callback.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_trainable",
+    size = "medium",
+    srcs = ["tests/test_trainable.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(

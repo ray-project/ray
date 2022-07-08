@@ -3,7 +3,6 @@ from traceback import format_exception
 from typing import Optional, Union
 
 import colorama
-import setproctitle
 
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
@@ -16,6 +15,8 @@ from ray.core.generated.common_pb2 import (
     RayException,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+import setproctitle
 
 
 @PublicAPI
