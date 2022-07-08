@@ -5,6 +5,21 @@ Checkpoints are the common format for models that are used across different comp
 
 .. image:: images/checkpoint_diagram.png
 
+What exactly is a checkpoint?
+-----------------------------
+
+The Checkpoint object is a serializable reference to a model. The model can represented in one of three ways:
+
+- a directory located on local (on-disk) storage
+- a directory located on external storage (e.g. cloud storage)
+- an in-memory dictionary
+
+The flexibility provided in the Checkpoint model representation is useful in distributed environments,
+where you may want to recreate the same model on multiple nodes in your Ray cluster for inference.
+
+
+Creating a checkpoint
+--------------------
 There are two ways of generating a checkpoint.
 
 The first way is to generate it from a pretrained model. Each framework that AIR supports has a ``to_air_checkpoint`` method that can be used to generate an AIR checkpoint:
@@ -22,30 +37,11 @@ Another way is to retrieve it from the results of a Trainer or a Tuner.
     :start-after: __use_trainer_checkpoint_start__
     :end-before: __use_trainer_checkpoint_end__
 
-What exactly is a checkpoint?
------------------------------
-
-The Checkpoint object is a serializable reference to a model. The model can represented in one of three ways:
-
-- a directory located on local (on-disk) storage
-- a directory located on external storage (e.g. cloud storage)
-- an in-memory dictionary
-
-The flexibility provided in the Checkpoint model representation is useful in distributed environments,
-where you may want to recreate the same model on multiple nodes in your Ray cluster for inference.
-
-The Checkpoint object has methods to translate between different checkpoint storage locations:
-
-.. literalinclude:: doc_code/checkpoint_usage.py
-    :language: python
-    :start-after: __basic_checkpoint_start__
-    :end-before: __basic_checkpoint_end__
-
-
 What can I do with a checkpoint?
 --------------------------------
 
-Checkpoints can be consumed by a :class:`Predictor`, :class:`BatchPredictor`, or :class:`ModelWrapperDeployment`. Upon usage, the model held by the Checkpoint will be instantiated in memory and used for inference.
+Checkpoints can be used to instantiate a :class:`Predictor`, :class:`BatchPredictor`, or :class:`ModelWrapperDeployment`.
+Upon usage, the model held by the Checkpoint will be instantiated in memory and used for inference.
 
 Using the :class:`BatchPredictor` for scalable batch inference:
 
@@ -63,6 +59,12 @@ Deploying a service for online inference via :class:`ModelWrapperDeployment`:
     :start-after: __online_inference_start__
     :end-before: __online_inference_end__
 
+The Checkpoint object has methods to translate between different checkpoint storage locations:
+
+.. literalinclude:: doc_code/checkpoint_usage.py
+    :language: python
+    :start-after: __basic_checkpoint_start__
+    :end-before: __basic_checkpoint_end__
 
 
 Example: Using Checkpoints with MLflow
