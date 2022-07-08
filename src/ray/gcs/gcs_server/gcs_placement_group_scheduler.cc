@@ -87,8 +87,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   }
 
   RAY_LOG(DEBUG) << "Can schedule a placement group "
-                << placement_group->GetPlacementGroupID()
-                << ". Selected node size: " << selected_nodes.size();
+                 << placement_group->GetPlacementGroupID()
+                 << ". Selected node size: " << selected_nodes.size();
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 

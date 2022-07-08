@@ -338,7 +338,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 
   if (right_node_it == candidate_nodes.end()) {
     RAY_LOG(DEBUG) << "The required resource is bigger than the maximum resource in the "
-                     "whole cluster, schedule failed.";
+                      "whole cluster, schedule failed.";
     return SchedulingResult::Infeasible();
   }
 
