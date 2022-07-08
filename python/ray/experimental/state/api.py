@@ -285,7 +285,6 @@ class StateApiClient(SubmissionClient):
             endpoint=endpoint,
             params=params,
             timeout=options.timeout,
-            resource=resource,
             _explain=_explain,
         )
         result = list_api_response["result"]
@@ -359,7 +358,6 @@ class StateApiClient(SubmissionClient):
             endpoint=endpoint,
             params=params,
             timeout=options.timeout,
-            resource=resource,
             _explain=_explain,
         )
         if _explain:
@@ -392,7 +390,6 @@ class StateApiClient(SubmissionClient):
             endpoint=endpoint,
             params=params,
             timeout=options.timeout,
-            resource=resource,
             _explain=_explain,
         )
         result = list_api_response["result"]
