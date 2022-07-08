@@ -863,7 +863,6 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> print(worker.sample()) # doctest: +SKIP
             SampleBatch({"obs": [...], "action": [...], ...})
         """
-
         if self.fake_sampler and self.last_batch is not None:
             return self.last_batch
         elif self.input_reader is None:
@@ -893,9 +892,8 @@ class RolloutWorker(ParallelIteratorWorker):
             max_batches = self.num_envs
         else:
             max_batches = float("inf")
-
-        while (
-            steps_so_far < self.rollout_fragment_length and len(batches) < max_batches
+        while steps_so_far < self.rollout_fragment_length and (
+            len(batches) < max_batches or self.policy_config.get("offline_sampling")
         ):
             batch = self.input_reader.next()
             steps_so_far += (

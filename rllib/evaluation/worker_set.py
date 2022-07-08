@@ -1,3 +1,6 @@
+from pathlib import Path
+import re
+
 import gym
 import logging
 import importlib.util
@@ -99,14 +102,59 @@ class WorkerSet:
         }
         self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
-
         if _setup:
             # Force a local worker if num_workers == 0 (no remote workers).
             # Otherwise, this WorkerSet would be empty.
             self._local_worker = None
             if num_workers == 0:
                 local_worker = True
-
+            if (
+                (
+                    isinstance(trainer_config["input"], str)
+                    or isinstance(trainer_config["input"], list)
+                )
+                and ("d4rl" not in trainer_config["input"])
+                and (not "sampler" == trainer_config["input"])
+                and (not "dataset" == trainer_config["input"])
+                and (
+                    not (
+                        isinstance(trainer_config["input"], str)
+                        and registry_contains_input(trainer_config["input"])
+                    )
+                )
+                and (
+                    not (
+                        isinstance(trainer_config["input"], str)
+                        and self._valid_module(trainer_config["input"])
+                    )
+                )
+            ):
+                paths = trainer_config["input"]
+                if isinstance(paths, str):
+                    inputs = Path(paths).absolute()
+                    if inputs.is_dir():
+                        paths = list(inputs.glob("*.json")) + list(inputs.glob("*.zip"))
+                        paths = [str(path) for path in paths]
+                    else:
+                        paths = [paths]
+                ends_with_zip_or_json = all(
+                    re.search("\\.zip$", path) or re.search("\\.json$", path)
+                    for path in paths
+                )
+                ends_with_parquet = all(
+                    re.search("\\.parquet$", path) for path in paths
+                )
+                trainer_config["input"] = "dataset"
+                input_config = {"paths": paths}
+                if ends_with_zip_or_json:
+                    input_config["format"] = "json"
+                elif ends_with_parquet:
+                    input_config["format"] = "parquet"
+                else:
+                    raise ValueError(
+                        "Input path must end with .zip, .parquet, or .json"
+                    )
+                trainer_config["input_config"] = input_config
             self._local_config = merge_dicts(
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]},
@@ -736,6 +784,26 @@ class WorkerSet:
                 faulty_worker_indices.append(i + 1)
 
         return faulty_worker_indices
+
+    @classmethod
+    def _valid_module(cls, class_path):
+        del cls
+        if (
+            isinstance(class_path, str)
+            and not os.path.isfile(class_path)
+            and "." in class_path
+        ):
+            module_path, class_name = class_path.rsplit(".", 1)
+            try:
+                spec = importlib.util.find_spec(module_path)
+                if spec is not None:
+                    return True
+            except (ModuleNotFoundError, ValueError):
+                print(
+                    f"module {module_path} not found while trying to get "
+                    f"input {class_path}"
+                )
+        return False
 
     @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
     def foreach_trainable_policy(self, func):
