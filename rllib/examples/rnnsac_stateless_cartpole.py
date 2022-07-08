@@ -80,9 +80,10 @@ if __name__ == "__main__":
     # TEST
     best_checkpoint = results.best_checkpoint
     print("Loading checkpoint: {}".format(best_checkpoint))
-    checkpoint_config_path = str(Path(best_checkpoint).parent.parent / "params.json")
-    with open(checkpoint_config_path, "rb") as f:
-        checkpoint_config = json.load(f)
+    with best_checkpoint.as_directory() as best_checkpoint_dir:
+        checkpoint_config_path = str(Path(best_checkpoint_dir).parent / "params.json")
+        with open(checkpoint_config_path, "rb") as f:
+            checkpoint_config = json.load(f)
 
     checkpoint_config["explore"] = False
 
