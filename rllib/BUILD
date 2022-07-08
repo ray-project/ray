@@ -254,17 +254,17 @@ py_test(
 
 # CRR
 py_test(
-    name = "learning_tests_pendulum_crr",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    # Include an offline json data file as well.
-    data = [
-        "tuned_examples/crr/pendulum-v1-crr.yaml",
-        "tests/data/pendulum/pendulum_replay_v1.1.0.zip",
-    ],
-    args = ["--yaml-dir=tuned_examples/crr"]
+   name = "learning_tests_pendulum_crr",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+   size = "large",
+   srcs = ["tests/run_regression_tests.py"],
+   # Include an offline json data file as well.
+   data = [
+       "tuned_examples/crr/pendulum-v1-crr.yaml",
+       "tests/data/pendulum/pendulum_replay_v1.1.0.zip",
+   ],
+   args = ["--yaml-dir=tuned_examples/crr"]
 )
 
 py_test(

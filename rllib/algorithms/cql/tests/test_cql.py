@@ -69,7 +69,8 @@ class TestCQL(unittest.TestCase):
                 evaluation_parallel_to_training=False,
                 evaluation_num_workers=2,
             )
-            .rollouts(rollout_fragment_length=1)
+            .rollouts(num_rollout_workers=0)
+            .reporting(min_time_s_per_iteration=0.0)
         )
         num_iterations = 4
 
@@ -85,7 +86,6 @@ class TestCQL(unittest.TestCase):
                     f"iter={trainer.iteration} "
                     f"R={eval_results['episode_reward_mean']}"
                 )
-
             check_compute_single_action(trainer)
 
             # Get policy and model.
@@ -97,9 +97,9 @@ class TestCQL(unittest.TestCase):
             # Example on how to do evaluation on the trained Trainer
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch).
-            multi_agent_batch = trainer.local_replay_buffer.sample(
-                num_items=config.train_batch_size
-            )
+
+            batch = trainer.workers.local_worker().input_reader.next()
+            multi_agent_batch = batch.as_multi_agent()
             # All experiences have been buffered for `default_policy`
             batch = multi_agent_batch.policy_batches["default_policy"]
 
