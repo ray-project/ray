@@ -306,7 +306,7 @@ py_test(
 
 py_test(
     name = "test_trainable",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_trainable.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
