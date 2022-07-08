@@ -15,7 +15,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             f"{dashboard_agent.ip}:{dashboard_agent.node_manager_port}",
         )
 
-    @routes.get("/api/local_raylet_healthz/")
+    @routes.get("/api/local_raylet_healthz")
     async def health_check(self, req: Request) -> Response:
         try:
             alive = await self._health_checker.check_local_raylet_liveness()

@@ -353,12 +353,13 @@ class GcsAioClient:
         self, node_ips: List[bytes], timeout: Optional[float] = None
     ) -> List[bool]:
         req = gcs_service_pb2.CheckAliveRequest(raylet_address=node_ips)
-        resp = await self._heartbeat_info_stub.CheckAlive(req, timeout=timeout)
-        if resp.status.code != GcsCode.OK:
+        reply = await self._heartbeat_info_stub.CheckAlive(req, timeout=timeout)
+
+        if reply.status.code != GcsCode.OK:
             raise RuntimeError(
-                f"GCS running at {self._channel.address} is unhealthy: {resp.status}"
+                f"GCS running at {self._channel.address} is unhealthy: {reply.status}"
             )
-        return resp.raylet_alive()
+        return list(reply.raylet_alive)
 
     async def internal_kv_get(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None

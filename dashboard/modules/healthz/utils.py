@@ -12,13 +12,12 @@ class HealthChecker:
     async def check_local_raylet_liveness(self) -> bool:
         if self._local_node_address is None:
             return False
-        return await self._gcs_aio_client.check_alive(
-            [self.local_node_address.encode()], 1
-        )[0]
+
+        liveness = await self._gcs_aio_client.check_alive(
+            [self._local_node_address.encode()], 1
+        )
+        return liveness[0]
 
     async def check_gcs_liveness(self) -> bool:
-        try:
-            await self._gcs_aio_client.check_alive([], 1)
-        except Exception:
-            return False
+        await self._gcs_aio_client.check_alive([], 1)
         return True

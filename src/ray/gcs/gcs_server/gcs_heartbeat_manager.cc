@@ -41,7 +41,7 @@ GcsHeartbeatManager::GcsHeartbeatManager(
 void GcsHeartbeatManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      heartbeats_.emplace(item.first, num_heartbeats_timeout_);
+      AddNode(item.second);
     }
   }
 }
@@ -69,8 +69,9 @@ void GcsHeartbeatManager::Stop() {
 
 void GcsHeartbeatManager::AddNode(const rpc::GcsNodeInfo &node_info) {
   auto node_id = NodeID::FromBinary(node_info.node_id());
-  node_map_.insert(
-      NodeIDAddrBiMap::value_type(node_info.node_id(), node_info.node_manager_address()));
+  auto node_addr = node_info.node_manager_address() + ":" +
+                   std::to_string(node_info.node_manager_port());
+  node_map_.insert(NodeIDAddrBiMap::value_type(node_info.node_id(), node_addr));
   io_service_.post(
       [this, node_id] { heartbeats_.emplace(node_id, num_heartbeats_timeout_); },
       "GcsHeartbeatManager.AddNode");
