@@ -1,4 +1,6 @@
+load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
+
 
 filegroup(
     name = "air_examples",
