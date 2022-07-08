@@ -62,6 +62,7 @@ PyTorch, and Tensorflow for more info and examples:
 - {ref}`serve-pytorch-tutorial`
 - {ref}`serve-tensorflow-tutorial`
 
+(converting-to-ray-serve-deployment)=
 ## Converting to a Ray Serve Deployment
 
 This tutorial's goal is to deploy this model using Ray Serve, so it can be
