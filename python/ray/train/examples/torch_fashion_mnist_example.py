@@ -1,14 +1,15 @@
 import argparse
 from typing import Dict
+from ray.air import session
 
 import torch
-import ray.train as train
-from ray.train.trainer import Trainer
-from ray.train.callbacks import JsonLoggerCallback
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
+
+import ray.train as train
+from ray.train.torch import TorchTrainer
 
 # Download training data from open datasets.
 training_data = datasets.FashionMNIST(
@@ -48,7 +49,7 @@ class NeuralNetwork(nn.Module):
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset) // train.world_size()
+    size = len(dataloader.dataset) // session.get_world_size()
     model.train()
     for batch, (X, y) in enumerate(dataloader):
         # Compute prediction error
@@ -66,7 +67,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
 
 
 def validate_epoch(dataloader, model, loss_fn):
-    size = len(dataloader.dataset) // train.world_size()
+    size = len(dataloader.dataset) // session.get_world_size()
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
@@ -90,7 +91,7 @@ def train_func(config: Dict):
     lr = config["lr"]
     epochs = config["epochs"]
 
-    worker_batch_size = batch_size // train.world_size()
+    worker_batch_size = batch_size // session.get_world_size()
 
     # Create data loaders.
     train_dataloader = DataLoader(training_data, batch_size=worker_batch_size)
@@ -111,22 +112,22 @@ def train_func(config: Dict):
     for _ in range(epochs):
         train_epoch(train_dataloader, model, loss_fn, optimizer)
         loss = validate_epoch(test_dataloader, model, loss_fn)
-        train.report(loss=loss)
         loss_results.append(loss)
+        session.report(dict(loss=loss))
 
+    # return required for backwards compatibility with the old API
+    # TODO(team-ml) clean up and remove return
     return loss_results
 
 
 def train_fashion_mnist(num_workers=2, use_gpu=False):
-    trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
-    trainer.start()
-    result = trainer.run(
-        train_func=train_func,
-        config={"lr": 1e-3, "batch_size": 64, "epochs": 4},
-        callbacks=[JsonLoggerCallback()],
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": 4},
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
-    trainer.shutdown()
-    print(f"Loss results: {result}")
+    result = trainer.fit()
+    print(f"Results: {result.metrics}")
 
 
 if __name__ == "__main__":
