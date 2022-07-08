@@ -66,8 +66,8 @@ class LocalDependencyResolver {
  private:
   struct TaskState {
     TaskState(TaskSpecification t,
-              const std::vector<ObjectID> &deps,
-              const std::vector<ActorID> &actor_ids,
+              const std::unordered_set<ObjectID> &deps,
+              const std::unordered_set<ActorID> &actor_ids,
               std::function<void(Status)> on_dependencies_resolved)
         : task(t),
           local_dependencies(),

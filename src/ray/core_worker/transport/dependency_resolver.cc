@@ -64,18 +64,18 @@ void LocalDependencyResolver::CancelDependencyResolution(const TaskID &task_id) 
 
 void LocalDependencyResolver::ResolveDependencies(
     TaskSpecification &task, std::function<void(Status)> on_dependencies_resolved) {
-  std::vector<ObjectID> local_dependency_ids;
-  std::vector<ActorID> actor_dependency_ids;
+  std::unordered_set<ObjectID> local_dependency_ids;
+  std::unordered_set<ActorID> actor_dependency_ids;
   for (size_t i = 0; i < task.NumArgs(); i++) {
     if (task.ArgByRef(i)) {
-      local_dependency_ids.push_back(task.ArgId(i));
+      local_dependency_ids.insert(task.ArgId(i));
     }
     for (const auto &in : task.ArgInlinedRefs(i)) {
       auto object_id = ObjectID::FromBinary(in.object_id());
       if (ObjectID::IsActorID(object_id)) {
         auto actor_id = ObjectID::ToActorID(object_id);
         if (actor_creator_.IsActorInRegistering(actor_id)) {
-          actor_dependency_ids.emplace_back(ObjectID::ToActorID(object_id));
+          actor_dependency_ids.insert(ObjectID::ToActorID(object_id));
         }
       }
     }
