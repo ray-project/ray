@@ -13,6 +13,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
     This module adds health check related endpoint to the agent to check
     local components' health.
     """
+
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._health_checker = HealthChecker(
