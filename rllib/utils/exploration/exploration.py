@@ -9,7 +9,6 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import LocalOptimizer, AlgorithmConfigDict
-from ray.rllib.utils.typing import Dict # ADDED
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy

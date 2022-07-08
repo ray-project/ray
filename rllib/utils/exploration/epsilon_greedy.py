@@ -14,6 +14,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
 from ray.rllib.utils.torch_utils import FLOAT_MIN
+from ray.rllib.utils.typing import Dict # ADDED
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -87,6 +88,7 @@ class EpsilonGreedy(Exploration):
     def get_exploration_action(
         self,
         *,
+        input_dict: Dict[str, TensorType], # ADDED
         action_distribution: ActionDistribution,
         timestep: Union[int, TensorType],
         explore: Optional[Union[bool, TensorType]] = True,
