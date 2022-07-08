@@ -97,8 +97,8 @@ before executing any workflow. ``workflow.init()`` again with a different config
 For example, ``workflow.init(max_running_workflows=10, max_pending_workflows=50)`` means there will be at most 10 workflows running, 50 workflows pending.
 Submitting workflows when the number of pending workflows are at maximum would raise ``queue.Full("Workflow queue has been full")``. Getting the output of a pending workflow would be blocking until the workflow finishes running later.
 
-Pending workflows have the ``PENDING`` status, they can be resumed same as these running workflows if they failed with a system error.
-When both running and pending workflows are resumed with ``workflow.resume_all()``, running workflows have the higher priority (i.e. the pending workflows would still likely be pending).
+A pending workflows has the ``PENDING`` status. After the pending workflow get interrupted (e.g., a cluster failure), it can be resumed.
+When resuming interrupted workflows that were running and pending with ``workflow.resume_all()``, running workflows have higher priority than pending workflows (i.e. the pending workflows would still likely be pending).
 
 Handling Dependencies
 ---------------------
