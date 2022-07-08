@@ -208,6 +208,17 @@ def test_syncer_callback_sync(ray_start_2_cpus, temp_data_dirs):
     assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
 
 
+def test_syncer_callback_no_size_limit(temp_data_dirs):
+    """Check if max_size_bytes is set to None for sync function"""
+    tmp_source, _ = temp_data_dirs
+
+    syncer_callback = SyncerCallback()
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    sync_fn = syncer_callback._get_trial_sync_process(trial1)._fn
+    assert sync_fn.keywords["max_size_bytes"] is None
+
+
 def test_syncer_callback_sync_period(ray_start_2_cpus, temp_data_dirs):
     """Check that on_trial_result triggers syncing, obeying sync period"""
     tmp_source, tmp_target = temp_data_dirs
