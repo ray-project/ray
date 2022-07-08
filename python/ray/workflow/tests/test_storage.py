@@ -39,7 +39,7 @@ def test_delete(workflow_start_regular):
         time.sleep(1000000)
         return x
 
-    workflow.create(never_ends.bind("hello world")).run_async("never_finishes")
+    workflow.run_async(never_ends.bind("hello world"), workflow_id="never_finishes")
 
     # Make sure the step is actualy executing before killing the cluster
     while not utils.check_global_mark():
@@ -52,15 +52,14 @@ def test_delete(workflow_start_regular):
     workflow.init()
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        result = workflow.get_output("never_finishes")
-        ray.get(result)
+        workflow.get_output("never_finishes")
 
     workflow.delete("never_finishes")
 
     with pytest.raises(ray.exceptions.RaySystemError):
         # TODO(suquark): we should raise "ValueError" without
-        #  ray.get() over the result.
-        ray.get(workflow.get_output("never_finishes"))
+        #  been blocking over the result.
+        workflow.get_output("never_finishes")
 
     # TODO(Alex): Uncomment after
     # https://github.com/ray-project/ray/issues/19481.
@@ -75,17 +74,16 @@ def test_delete(workflow_start_regular):
     def basic_step(arg):
         return arg
 
-    result = workflow.create(basic_step.bind("hello world")).run(workflow_id="finishes")
+    result = workflow.run(basic_step.bind("hello world"), workflow_id="finishes")
     assert result == "hello world"
-    ouput = workflow.get_output("finishes")
-    assert ray.get(ouput) == "hello world"
+    assert workflow.get_output("finishes") == "hello world"
 
     workflow.delete(workflow_id="finishes")
 
     with pytest.raises(ray.exceptions.RaySystemError):
         # TODO(suquark): we should raise "ValueError" without
-        #  ray.get() over the result.
-        ray.get(workflow.get_output("finishes"))
+        #  blocking over the result.
+        workflow.get_output("finishes")
 
     # TODO(Alex): Uncomment after
     # https://github.com/ray-project/ray/issues/19481.
@@ -98,7 +96,7 @@ def test_delete(workflow_start_regular):
     assert workflow.list_all() == []
 
     # The workflow can be re-run as if it was never run before.
-    assert workflow.create(basic_step.bind("123")).run(workflow_id="finishes") == "123"
+    assert workflow.run(basic_step.bind("123"), workflow_id="finishes") == "123"
 
     # utils.unset_global_mark()
     # never_ends.step("123").run_async(workflow_id="never_finishes")
@@ -118,7 +116,7 @@ def test_delete(workflow_start_regular):
 def test_workflow_storage(workflow_start_regular):
     workflow_id = test_workflow_storage.__name__
     wf_storage = workflow_storage.WorkflowStorage(workflow_id)
-    step_id = "some_step"
+    task_id = "some_step"
     step_options = WorkflowStepRuntimeOptions(
         step_type=StepType.FUNCTION,
         catch_exceptions=False,
@@ -141,27 +139,27 @@ def test_workflow_storage(workflow_start_regular):
     obj_ref = ray.put(object_resolved)
 
     # test basics
-    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
+    wf_storage._put(wf_storage._key_step_input_metadata(task_id), input_metadata, True)
 
-    wf_storage._put(wf_storage._key_step_function_body(step_id), some_func)
-    wf_storage._put(wf_storage._key_step_args(step_id), flattened_args)
+    wf_storage._put(wf_storage._key_step_function_body(task_id), some_func)
+    wf_storage._put(wf_storage._key_step_args(task_id), flattened_args)
 
     wf_storage._put(wf_storage._key_obj_id(obj_ref.hex()), ray.get(obj_ref))
     wf_storage._put(
-        wf_storage._key_step_output_metadata(step_id), output_metadata, True
+        wf_storage._key_step_output_metadata(task_id), output_metadata, True
     )
     wf_storage._put(
         wf_storage._key_step_output_metadata(""), root_output_metadata, True
     )
-    wf_storage._put(wf_storage._key_step_output(step_id), output)
+    wf_storage._put(wf_storage._key_step_output(task_id), output)
 
-    assert wf_storage.load_step_output(step_id) == output
+    assert wf_storage.load_step_output(task_id) == output
 
     with serialization_context.workflow_args_resolving_context([]):
         assert (
-            signature.recover_args(ray.get(wf_storage.load_step_args(step_id))) == args
+            signature.recover_args(ray.get(wf_storage.load_step_args(task_id))) == args
         )
-    assert wf_storage.load_step_func_body(step_id)(33) == 34
+    assert wf_storage.load_step_func_body(task_id)(33) == 34
     assert ray.get(wf_storage.load_object_ref(obj_ref.hex())) == object_resolved
 
     # test s3 path
@@ -172,31 +170,31 @@ def test_workflow_storage(workflow_start_regular):
         assert wf_storage._get("steps/outputs.json", True) == root_output_metadata
 
     # test "inspect_step"
-    inspect_result = wf_storage.inspect_step(step_id)
+    inspect_result = wf_storage.inspect_step(task_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         output_object_valid=True
     )
     assert inspect_result.is_recoverable()
 
-    step_id = "some_step2"
-    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
-    wf_storage._put(wf_storage._key_step_function_body(step_id), some_func)
-    wf_storage._put(wf_storage._key_step_args(step_id), args)
+    task_id = "some_step2"
+    wf_storage._put(wf_storage._key_step_input_metadata(task_id), input_metadata, True)
+    wf_storage._put(wf_storage._key_step_function_body(task_id), some_func)
+    wf_storage._put(wf_storage._key_step_args(task_id), args)
     wf_storage._put(
-        wf_storage._key_step_output_metadata(step_id), output_metadata, True
+        wf_storage._key_step_output_metadata(task_id), output_metadata, True
     )
 
-    inspect_result = wf_storage.inspect_step(step_id)
+    inspect_result = wf_storage.inspect_step(task_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         output_step_id=output_metadata["dynamic_output_step_id"]
     )
     assert inspect_result.is_recoverable()
 
-    step_id = "some_step3"
-    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
-    wf_storage._put(wf_storage._key_step_function_body(step_id), some_func)
-    wf_storage._put(wf_storage._key_step_args(step_id), args)
-    inspect_result = wf_storage.inspect_step(step_id)
+    task_id = "some_step3"
+    wf_storage._put(wf_storage._key_step_input_metadata(task_id), input_metadata, True)
+    wf_storage._put(wf_storage._key_step_function_body(task_id), some_func)
+    wf_storage._put(wf_storage._key_step_args(task_id), args)
+    inspect_result = wf_storage.inspect_step(task_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         args_valid=True,
         func_body_valid=True,
@@ -205,11 +203,11 @@ def test_workflow_storage(workflow_start_regular):
     )
     assert inspect_result.is_recoverable()
 
-    step_id = "some_step4"
-    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
+    task_id = "some_step4"
+    wf_storage._put(wf_storage._key_step_input_metadata(task_id), input_metadata, True)
 
-    wf_storage._put(wf_storage._key_step_function_body(step_id), some_func)
-    inspect_result = wf_storage.inspect_step(step_id)
+    wf_storage._put(wf_storage._key_step_function_body(task_id), some_func)
+    inspect_result = wf_storage.inspect_step(task_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         func_body_valid=True,
         workflow_refs=input_metadata["workflow_refs"],
@@ -217,18 +215,18 @@ def test_workflow_storage(workflow_start_regular):
     )
     assert not inspect_result.is_recoverable()
 
-    step_id = "some_step5"
-    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
+    task_id = "some_step5"
+    wf_storage._put(wf_storage._key_step_input_metadata(task_id), input_metadata, True)
 
-    inspect_result = wf_storage.inspect_step(step_id)
+    inspect_result = wf_storage.inspect_step(task_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         workflow_refs=input_metadata["workflow_refs"],
         step_options=step_options,
     )
     assert not inspect_result.is_recoverable()
 
-    step_id = "some_step6"
-    inspect_result = wf_storage.inspect_step(step_id)
+    task_id = "some_step6"
+    inspect_result = wf_storage.inspect_step(task_id)
     print(inspect_result)
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
@@ -252,7 +250,7 @@ def test_cluster_storage_init(workflow_start_cluster, tmp_path):
     def f():
         return 10
 
-    assert workflow.create(f.bind()).run() == 10
+    assert workflow.run(f.bind()) == 10
 
 
 if __name__ == "__main__":

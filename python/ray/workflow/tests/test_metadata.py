@@ -19,7 +19,7 @@ def test_user_metadata(workflow_start_regular):
     def simple():
         return 0
 
-    workflow.create(simple.bind()).run(workflow_id, metadata=user_run_metadata)
+    workflow.run(simple.bind(), workflow_id=workflow_id, metadata=user_run_metadata)
 
     assert workflow.get_metadata("simple")["user_metadata"] == user_run_metadata
     assert (
@@ -38,7 +38,7 @@ def test_user_metadata_empty(workflow_start_regular):
     def simple():
         return 0
 
-    workflow.create(simple.bind()).run(workflow_id)
+    workflow.run(simple.bind(), workflow_id=workflow_id)
 
     assert workflow.get_metadata("simple")["user_metadata"] == {}
     assert workflow.get_metadata("simple", "simple_step")["user_metadata"] == {}
@@ -50,10 +50,10 @@ def test_user_metadata_not_dict(workflow_start_regular):
         return 0
 
     with pytest.raises(ValueError):
-        workflow.create(simple.options(**workflow.options(metadata="x")).bind())
+        workflow.run_async(simple.options(**workflow.options(metadata="x")).bind())
 
     with pytest.raises(ValueError):
-        workflow.create(simple.bind()).run(metadata="x")
+        workflow.run(simple.bind(), metadata="x")
 
 
 def test_user_metadata_not_json_serializable(workflow_start_regular):
@@ -65,10 +65,12 @@ def test_user_metadata_not_json_serializable(workflow_start_regular):
         pass
 
     with pytest.raises(ValueError):
-        workflow.create(simple.options(**workflow.options(metadata={"x": X()})).bind())
+        workflow.run_async(
+            simple.options(**workflow.options(metadata={"x": X()})).bind()
+        )
 
     with pytest.raises(ValueError):
-        workflow.create(simple.bind()).run(metadata={"x": X()})
+        workflow.run(simple.bind(), metadata={"x": X()})
 
 
 def test_runtime_metadata(workflow_start_regular):
@@ -82,7 +84,7 @@ def test_runtime_metadata(workflow_start_regular):
         time.sleep(2)
         return 0
 
-    workflow.create(simple.bind()).run(workflow_id)
+    workflow.run(simple.bind(), workflow_id=workflow_id)
 
     workflow_metadata = workflow.get_metadata("simple")
     assert "start_time" in workflow_metadata["stats"]
@@ -113,7 +115,7 @@ def test_successful_workflow(workflow_start_regular):
         time.sleep(2)
         return 0
 
-    workflow.create(simple.bind()).run(workflow_id, metadata=user_run_metadata)
+    workflow.run(simple.bind(), workflow_id=workflow_id, metadata=user_run_metadata)
 
     workflow_metadata = workflow.get_metadata("simple")
     assert workflow_metadata["status"] == "SUCCESSFUL"
@@ -145,7 +147,7 @@ def test_running_and_canceled_workflow(workflow_start_regular, tmp_path):
         time.sleep(1000)
         return 0
 
-    workflow.create(simple.bind()).run_async(workflow_id)
+    workflow.run_async(simple.bind(), workflow_id=workflow_id)
 
     # Wait until step runs to make sure pre-run metadata is written
     while not flag.exists():
@@ -177,14 +179,13 @@ def test_failed_and_resumed_workflow(workflow_start_regular, tmp_path):
         return 0
 
     with pytest.raises(workflow.WorkflowExecutionError):
-        workflow.create(simple.bind()).run(workflow_id)
+        workflow.run(simple.bind(), workflow_id=workflow_id)
 
     workflow_metadata_failed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_failed["status"] == "FAILED"
 
     error_flag.unlink()
-    ref = workflow.resume(workflow_id)
-    assert ray.get(ref) == 0
+    assert workflow.resume(workflow_id) == 0
 
     workflow_metadata_resumed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_resumed["status"] == "SUCCESSFUL"
@@ -213,7 +214,9 @@ def test_nested_workflow(workflow_start_regular):
         time.sleep(2)
         return workflow.continuation(inner.bind())
 
-    workflow.create(outer.bind()).run("nested", metadata={"workflow_k": "workflow_v"})
+    workflow.run(
+        outer.bind(), workflow_id="nested", metadata={"workflow_k": "workflow_v"}
+    )
 
     workflow_metadata = workflow.get_metadata("nested")
     outer_step_metadata = workflow.get_metadata("nested", "outer")
@@ -251,7 +254,7 @@ def test_no_workflow_found(workflow_start_regular):
     def simple():
         return 0
 
-    workflow.create(simple.bind()).run(workflow_id)
+    workflow.run(simple.bind(), workflow_id=workflow_id)
 
     with pytest.raises(ValueError) as excinfo:
         workflow.get_metadata("simple1")
@@ -263,7 +266,7 @@ def test_no_workflow_found(workflow_start_regular):
 
     with pytest.raises(ValueError) as excinfo:
         workflow.get_metadata("simple", "simple_step1")
-    assert str(excinfo.value) == "No such step_id simple_step1 in workflow simple"
+    assert str(excinfo.value) == "No such task_id simple_step1 in workflow simple"
 
 
 if __name__ == "__main__":
