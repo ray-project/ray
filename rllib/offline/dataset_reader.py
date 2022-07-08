@@ -40,6 +40,7 @@ def _unzip_if_needed(paths: List[str], format: str):
             with zipfile.ZipFile(str(fpath), "r") as zip_ref:
                 zip_ref.extractall(str(fpath.parent))
             fpath = re.sub("\\.zip$", f".{format}", str(fpath))
+        fpath = str(fpath)
         ret.append(fpath)
     return ret
 
@@ -90,7 +91,6 @@ def get_dataset_and_shards(
         "format: {format} and paths: {paths} must be specified. If format and "
         "paths are specified, a loader_fn must not be specified."
     )
-
     if loader_fn:
         dataset = loader_fn()
     elif format == "json":
