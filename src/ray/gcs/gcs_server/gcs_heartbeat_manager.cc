@@ -121,6 +121,7 @@ void GcsHeartbeatManager::DetectDeadNodes() {
   for (auto &current : heartbeats_) {
     current.second = current.second - 1;
     if (current.second == 0) {
+      RAY_LOG(WARNING) << "Node timed out: " << current.first;
       dead_nodes.push_back(current.first);
     }
   }
