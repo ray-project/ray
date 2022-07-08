@@ -131,8 +131,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_000001", "")
-        assert checkpoints_metrics[0][0] == expected_path
+        expected_path = os.path.join(logdir, "checkpoint_000001")
+        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
         assert checkpoints_metrics[0][1] == 1
 
     def testGetTrialCheckpointsPathsByPath(self):
