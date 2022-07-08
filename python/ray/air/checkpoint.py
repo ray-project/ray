@@ -49,15 +49,16 @@ class Checkpoint:
     There are no guarantees made about compatibility of intermediate
     representations.
 
-    For checkpoints which were created from dictionaries and then serialized into
-    directories, if additional files are added to the directory, these will be
-    serialized if the checkpoint is subsequently turned into a dictionary again.
-    In this case, the checkpoint dictionary will contain an additional private field,
-    ``_ray_additional_checkpoint_files``, containing the serialized files.
-
-    New data can be added to Checkpoint during conversion. Consider the
+    New data can be added to a Checkpoint during conversion. Consider the
     following conversion: directory --> dict (adding dict["foo"] = "bar")
-    --> directory --> dict (expect to see dict["foo"] = "bar").
+    --> directory --> dict (expect to see dict["foo"] = "bar"). Note that
+    the second directory will contain pickle files with the serialized additional
+    field data in them.
+
+    Similarly with a dict as a source: dict --> directory (add file "foo.txt")
+    --> dict --> directory (will have "foo.txt" in it again). Note that the second
+    dict representation will contain an extra field with the serialized additional
+    files in it.
 
     Examples:
 
