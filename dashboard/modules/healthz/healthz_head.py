@@ -7,6 +7,11 @@ routes = optional_utils.ClassMethodRouteTable
 
 
 class HealthzHead(dashboard_utils.DashboardHeadModule):
+    """Health check in the head.
+
+    This module adds health check related endpoint to the head to check
+    GCS's heath.
+    """
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._health_checker = HealthChecker(dashboard_head.gcs_aio_client)
