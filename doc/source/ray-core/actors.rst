@@ -24,6 +24,9 @@ that specific worker and can access and mutate the state of that worker.
               self.value += 1
               return self.value
 
+          def get_counter(self):
+              return self.value
+
       # Create an actor from this class.
       counter = Counter.remote()
 
