@@ -32,6 +32,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--train_iteration",
+    type=int,
     default=10,
     help="Number of iterations to train.",
 )
@@ -60,6 +61,8 @@ class AddPolicyCallback(DefaultCallbacks):
         config = merge_dicts(policy_config, policy_spec.config or {})
 
         # Add restored policy to trainer.
+        # Note that this policy doesn't have to be trained with the same algorithm
+        # of the training stack. You can even mix up TF policies with a Torch stack.
         algorithm.add_policy(
             policy_id="opponent",
             policy_cls=policy_spec.policy_class,

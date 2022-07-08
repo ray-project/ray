@@ -10,7 +10,7 @@ from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConn
 from ray.rllib.connectors.connector import ConnectorContext, get_connector
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import AgentConnectorDataType
+from ray.rllib.utils.typing import AgentConnectorDataType, AgentConnectorsOutput
 
 
 class TestAgentConnector(unittest.TestCase):
@@ -92,18 +92,22 @@ class TestAgentConnector(unittest.TestCase):
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, FlattenDataAgentConnector))
 
+        sample_batch = {
+            SampleBatch.NEXT_OBS: {
+                "sensor1": [[1, 1], [2, 2]],
+                "sensor2": 8.8,
+            },
+            SampleBatch.REWARDS: 5.8,
+            SampleBatch.ACTIONS: [[1, 1], [2]],
+            SampleBatch.INFOS: {"random": "info"},
+        }
+
         d = AgentConnectorDataType(
             0,
             1,
-            {
-                SampleBatch.NEXT_OBS: {
-                    "sensor1": [[1, 1], [2, 2]],
-                    "sensor2": 8.8,
-                },
-                SampleBatch.REWARDS: 5.8,
-                SampleBatch.ACTIONS: [[1, 1], [2]],
-                SampleBatch.INFOS: {"random": "info"},
-            },
+            # FlattenDataAgentConnector does NOT touch for_training dict,
+            # so simply pass None here.
+            AgentConnectorsOutput(None, sample_batch),
         )
 
         flattened = c([d])
@@ -130,8 +134,8 @@ class TestAgentConnector(unittest.TestCase):
         }
         ctx = ConnectorContext(view_requirements=view_requirements)
 
-        f = FlattenDataAgentConnector(ctx)
         c = ViewRequirementAgentConnector(ctx)
+        f = FlattenDataAgentConnector(ctx)
 
         d = AgentConnectorDataType(
             0,
@@ -144,11 +148,11 @@ class TestAgentConnector(unittest.TestCase):
                 SampleBatch.ACTIONS: np.array(0),
             },
         )
-        # FlattenAgentConnector, then ViewRequirementAgentConnector.
-        processed = c(f([d]))
+        # ViewRequirementAgentConnector then FlattenAgentConnector.
+        processed = f(c([d]))
 
-        self.assertTrue("obs" in processed.data.for_action)
-        self.assertTrue("prev_actions" in processed.data.for_action)
+        self.assertTrue("obs" in processed[0].data.for_action)
+        self.assertTrue("prev_actions" in processed[0].data.for_action)
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ def create_policy_for_framework(
     framework = merged_config.get("framework", "tf")
     # Tf.
     if framework in ["tf2", "tf", "tfe"]:
-        var_scope = f"{policy_id}_wk{worker_index}"
+        var_scope = policy_id + (f"_wk{worker_index}" if worker_index else "")
         # For tf static graph, build every policy in its own graph
         # and create a new session for it.
         if framework == "tf":

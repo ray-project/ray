@@ -3297,11 +3297,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/connectors/self_play_with_policy_checkpoint.py",
-    main = "examples/connectors/self_play_with_policy_checkpoint.py.py",
+    name = "examples/connectors/self_play_with_policy_checkpoint",
+    main = "examples/connectors/self_play_with_policy_checkpoint.py",
     tags = ["team:rllib", "exclusive", "examples", ],
     size = "small",
-    srcs = ["examples/connectors/self_play_with_policy_checkpoint.py.py"],
+    srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
     data = [
         "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
     ],
