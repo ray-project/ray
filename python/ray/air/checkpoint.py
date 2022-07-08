@@ -22,6 +22,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.ml_utils.filelock import TempFileLock
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
+_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY = "_ray_additional_checkpoint_files"
 _METADATA_CHECKPOINT_SUFFIX = ".meta.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
@@ -48,9 +49,16 @@ class Checkpoint:
     There are no guarantees made about compatibility of intermediate
     representations.
 
-    New data can be added to Checkpoint during conversion. Consider the
+    New data can be added to a Checkpoint during conversion. Consider the
     following conversion: directory --> dict (adding dict["foo"] = "bar")
-    --> directory --> dict (expect to see dict["foo"] = "bar").
+    --> directory --> dict (expect to see dict["foo"] = "bar"). Note that
+    the second directory will contain pickle files with the serialized additional
+    field data in them.
+
+    Similarly with a dict as a source: dict --> directory (add file "foo.txt")
+    --> dict --> directory (will have "foo.txt" in it again). Note that the second
+    dict representation will contain an extra field with the serialized additional
+    files in it.
 
     Examples:
 
@@ -258,6 +266,23 @@ class Checkpoint:
                     # from the checkpoint file.
                     with open(checkpoint_data_path, "rb") as f:
                         checkpoint_data = pickle.load(f)
+
+                    # If there are additional files in the directory, add them as
+                    # _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
+                    additional_files = {}
+                    for file_or_dir in os.listdir(local_path):
+                        if file_or_dir in [".", "..", _DICT_CHECKPOINT_FILE_NAME]:
+                            continue
+
+                        additional_files[file_or_dir] = _pack(
+                            os.path.join(local_path, file_or_dir)
+                        )
+
+                    if additional_files:
+                        checkpoint_data[
+                            _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
+                        ] = additional_files
+
                 else:
                     files = [
                         f
@@ -361,7 +386,15 @@ class Checkpoint:
                 # This used to be a true fs checkpoint, so restore
                 _unpack(data_dict[_FS_CHECKPOINT_KEY], path)
             else:
-                # This is a dict checkpoint. Dump data into checkpoint.pkl
+                # This is a dict checkpoint.
+                # First, restore any additional files
+                additional_files = data_dict.pop(
+                    _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, {}
+                )
+                for file, content in additional_files.items():
+                    _unpack(stream=content, path=os.path.join(path, file))
+
+                # Then dump data into checkpoint.pkl
                 checkpoint_data_path = os.path.join(path, _DICT_CHECKPOINT_FILE_NAME)
                 with open(checkpoint_data_path, "wb") as f:
                     pickle.dump(data_dict, f)
@@ -630,5 +663,3 @@ def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
         open(del_lock_path, "a").close()
 
     os.makedirs(path, exist_ok=True)
-    # Drop marker
-    open(os.path.join(path, ".is_checkpoint"), "a").close()

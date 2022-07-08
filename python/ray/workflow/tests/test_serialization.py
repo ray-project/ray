@@ -60,7 +60,7 @@ def test_dedupe_serialization(workflow_start_regular_shared):
     single = identity.bind((ref,))
     double = identity.bind(list_of_refs)
 
-    workflow.create(gather.bind(single, double)).run()
+    workflow.run(gather.bind(single, double))
 
     # One more for hashing the ref, and for uploading.
     assert ray.get(counter.get_count.remote()) == 3
@@ -75,7 +75,7 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
     single = identity.bind((ref,))
     double = identity.bind(list_of_refs)
 
-    result_ref, result_list = workflow.create(gather.bind(single, double)).run()
+    result_ref, result_list = workflow.run(gather.bind(single, double))
 
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
@@ -96,8 +96,8 @@ def test_same_object_many_workflows(workflow_start_regular_shared):
 
     x = {0: ray.put(10)}
 
-    result1 = workflow.create(f.bind(x)).run()
-    result2 = workflow.create(f.bind(x)).run()
+    result1 = workflow.run(f.bind(x))
+    result2 = workflow.run(f.bind(x))
     print(result1)
     print(result2)
 
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     workflow.init()
     arg = ray.put("hello world")
 
-    workflow.create(foo.bind([arg, arg])).run()
+    workflow.run(foo.bind([arg, arg]))
     assert False
     """
 

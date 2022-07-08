@@ -19,7 +19,7 @@ def test_sleep(workflow_start_regular_shared):
     def sleep_helper():
         return workflow.continuation(after_sleep.bind(time.time(), workflow.sleep(2)))
 
-    start, end = workflow.create(sleep_helper.bind()).run()
+    start, end = workflow.run(sleep_helper.bind())
     duration = end - start
 
     assert 1 < duration
@@ -31,7 +31,7 @@ def test_sleep_checkpointing(workflow_start_regular_shared):
     sleep_step = workflow.sleep(2)
     time.sleep(2)
     start_time = time.time()
-    workflow.create(sleep_step).run()
+    workflow.run(sleep_step)
     end_time = time.time()
     duration = end_time - start_time
     assert 1 < duration
@@ -73,9 +73,7 @@ def test_wait_for_multiple_events(workflow_start_regular_shared):
     event1_promise = workflow.wait_for_event(EventListener1)
     event2_promise = workflow.wait_for_event(EventListener2)
 
-    promise = workflow.create(
-        trivial_step.bind(event1_promise, event2_promise)
-    ).run_async()
+    promise = workflow.run_async(trivial_step.bind(event1_promise, event2_promise))
 
     while not (
         utils.check_global_mark("listener1") and utils.check_global_mark("listener2")
@@ -118,7 +116,7 @@ def test_event_after_arg_resolution(workflow_start_regular_shared):
 
     event_promise = workflow.wait_for_event(MyEventListener)
 
-    assert workflow.create(gather.bind(event_promise, triggers_event.bind())).run() == (
+    assert workflow.run(gather.bind(event_promise, triggers_event.bind())) == (
         None,
         None,
     )
@@ -156,7 +154,7 @@ def test_event_during_arg_resolution(workflow_start_regular_shared):
         return args
 
     event_promise = workflow.wait_for_event(MyEventListener)
-    assert workflow.create(gather.bind(event_promise, triggers_event.bind())).run() == (
+    assert workflow.run(gather.bind(event_promise, triggers_event.bind())) == (
         None,
         None,
     )
@@ -192,7 +190,7 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
         pass
 
     event_promise = workflow.wait_for_event(MyEventListener)
-    workflow.create(wait_then_finish.bind(event_promise)).run_async("workflow")
+    workflow.run_async(wait_then_finish.bind(event_promise), workflow_id="workflow")
 
     while not utils.check_global_mark("time_to_die"):
         time.sleep(0.1)
@@ -206,10 +204,10 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
 
     ray.init(num_cpus=4, storage=storage_uri)
     workflow.init()
-    workflow.resume("workflow")
+    workflow.resume_async("workflow")
     utils.set_global_mark("resume")
 
-    ray.get(workflow.get_output("workflow"))
+    workflow.get_output("workflow")
     assert utils.check_global_mark("second")
 
 
@@ -247,7 +245,7 @@ def test_crash_after_commit(workflow_start_regular_shared):
                 await asyncio.sleep(1000000)
 
     event_promise = workflow.wait_for_event(MyEventListener)
-    workflow.create(event_promise).run_async("workflow")
+    workflow.run_async(event_promise, workflow_id="workflow")
 
     while not utils.check_global_mark("first"):
         time.sleep(0.1)
@@ -257,9 +255,9 @@ def test_crash_after_commit(workflow_start_regular_shared):
 
     ray.init(num_cpus=4, storage=storage_uri)
     workflow.init()
-    workflow.resume("workflow")
+    workflow.resume_async("workflow")
 
-    ray.get(workflow.get_output("workflow"))
+    workflow.get_output("workflow")
     assert utils.check_global_mark("second")
 
 
@@ -280,7 +278,9 @@ def test_event_as_workflow(workflow_start_regular_shared):
                 await asyncio.sleep(1)
 
     utils.unset_global_mark()
-    promise = workflow.create(workflow.wait_for_event(MyEventListener)).run_async("wf")
+    promise = workflow.run_async(
+        workflow.wait_for_event(MyEventListener), workflow_id="wf"
+    )
 
     assert workflow.get_status("wf") == workflow.WorkflowStatus.RUNNING
 
