@@ -3,7 +3,7 @@ Checkpoints
 
 Checkpoints are the common format for models that are used across different components of the Ray AI Runtime.
 
-.. image:: images/checkpoint_diagram.png
+.. image:: images/checkpoints.jpg
 
 What exactly is a checkpoint?
 -----------------------------
