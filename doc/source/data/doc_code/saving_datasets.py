@@ -32,13 +32,13 @@ ds.take(5)
 
 # Write out just one file.
 ds.repartition(1).write_csv("/tmp/one_csv")
-# -> /tmp/one_parquet/d757569dfb2845589b0ccbcb263e8cc3_000000.csv
+# -> /tmp/one_csv/d757569dfb2845589b0ccbcb263e8cc3_000000.csv
 
 # Write out multiple files.
 ds.repartition(3).write_csv("/tmp/multi_csv")
-# -> /tmp/multi_parquet/2b529dc5d8eb45e5ad03e69fb7ad8bc0_000000.csv
-# -> /tmp/multi_parquet/2b529dc5d8eb45e5ad03e69fb7ad8bc0_000001.csv
-# -> /tmp/multi_parquet/2b529dc5d8eb45e5ad03e69fb7ad8bc0_000002.csv
+# -> /tmp/multi_csv/2b529dc5d8eb45e5ad03e69fb7ad8bc0_000000.csv
+# -> /tmp/multi_csv/2b529dc5d8eb45e5ad03e69fb7ad8bc0_000001.csv
+# -> /tmp/multi_csv/2b529dc5d8eb45e5ad03e69fb7ad8bc0_000002.csv
 # __write_csv_end__
 # fmt: on
 
@@ -53,13 +53,13 @@ ds.take(5)
 
 # Write out just one file.
 ds.repartition(1).write_json("/tmp/one_json")
-# -> /tmp/one_parquet/ab693fde13634f4c8cdaef1db9595ac1_000000.json
+# -> /tmp/one_json/ab693fde13634f4c8cdaef1db9595ac1_000000.json
 
 # Write out multiple files.
 ds.repartition(3).write_json("/tmp/multi_json")
-# -> /tmp/multi_parquet/f467636b3c41420bb109505ab56c6eae_000000.json
-# -> /tmp/multi_parquet/f467636b3c41420bb109505ab56c6eae_000001.json
-# -> /tmp/multi_parquet/f467636b3c41420bb109505ab56c6eae_000002.json
+# -> /tmp/multi_json/f467636b3c41420bb109505ab56c6eae_000000.json
+# -> /tmp/multi_json/f467636b3c41420bb109505ab56c6eae_000001.json
+# -> /tmp/multi_json/f467636b3c41420bb109505ab56c6eae_000002.json
 # __write_json_end__
 # fmt: on
 

@@ -99,7 +99,7 @@ just two of the five columns of Iris dataset.
 Parquet Row Pruning
 ~~~~~~~~~~~~~~~~~~~
 
-Similarly, you can pass in a filter to ``ray.data.read_parquet()`` (selection pushdown)
+Similarly, you can pass in a filter to ``ray.data.read_parquet()`` (filter pushdown)
 which will be applied at the file scan so only rows that match the filter predicate
 will be returned.
 For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pa.dataset.field("sepal.length") > 5.0``
