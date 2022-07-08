@@ -68,7 +68,7 @@ void LocalDependencyResolver::ResolveDependencies(
   std::vector<ActorID> actor_dependency_ids;
   for (size_t i = 0; i < task.NumArgs(); i++) {
     if (task.ArgByRef(i)) {
-      local_dependency_ids.emplace(task.ArgId(i), nullptr);
+      local_dependency_ids.push_back(task.ArgId(i));
     }
     for (const auto &in : task.ArgInlinedRefs(i)) {
       auto object_id = ObjectID::FromBinary(in.object_id());
@@ -85,13 +85,13 @@ void LocalDependencyResolver::ResolveDependencies(
     return;
   }
 
+  const auto task_id = task.TaskId();
   {
     absl::MutexLock lock(&mu_);
     // This is deleted when the last dependency fetch callback finishes.
-    const auto task_id = task.TaskId();
     auto inserted = pending_tasks_.emplace(
         task_id,
-        std::make_shared<TaskState>(
+        std::make_unique<TaskState>(
             task, local_dependency_ids, actor_dependency_ids, on_dependencies_resolved));
     RAY_CHECK(inserted.second);
   }
@@ -101,7 +101,7 @@ void LocalDependencyResolver::ResolveDependencies(
         obj_id, [this, task_id, obj_id](std::shared_ptr<RayObject> obj) {
           RAY_CHECK(obj != nullptr);
 
-          std::shared_ptr<TaskState> resolved_task_state = nullptr;
+          std::unique_ptr<TaskState> resolved_task_state = nullptr;
           std::vector<ObjectID> inlined_dependency_ids;
           std::vector<ObjectID> contained_ids;
           {
@@ -138,7 +138,7 @@ void LocalDependencyResolver::ResolveDependencies(
   for (const auto &actor_id : actor_dependency_ids) {
     actor_creator_.AsyncWaitForActorRegisterFinish(
         actor_id, [this, task_id, on_dependencies_resolved](const Status &status) {
-          std::shared_ptr<TaskState> resolved_task_state = nullptr;
+          std::unique_ptr<TaskState> resolved_task_state = nullptr;
 
           {
             absl::MutexLock lock(&mu_);
