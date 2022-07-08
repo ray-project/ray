@@ -461,8 +461,8 @@ class FunctionTrainable(Trainable):
             state.update(iteration=0, timesteps_total=0, episodes_total=0)
         return state
 
-    def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
-        if tmp_checkpoint_dir:
+    def save_checkpoint(self, checkpoint_dir: str = ""):
+        if checkpoint_dir:
             raise ValueError("Checkpoint dir should not be used with function API.")
 
         checkpoint = self._status_reporter.get_checkpoint()

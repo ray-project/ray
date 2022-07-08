@@ -33,21 +33,6 @@ class TrainableUtil:
             return pickle.load(f)
 
     @staticmethod
-    def load_checkpoint_metadata(checkpoint_path: str) -> Optional[Dict]:
-        metadata_path = os.path.join(checkpoint_path, _TUNE_METADATA_FILENAME)
-        if not os.path.exists(metadata_path):
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-            metadatas = glob.glob(
-                f"{checkpoint_dir}/**/{_TUNE_METADATA_FILENAME}", recursive=True
-            )
-            if not metadatas:
-                return None
-            metadata_path = metadatas[0]
-
-        with open(metadata_path, "rb") as f:
-            return pickle.load(f)
-
-    @staticmethod
     def pickle_checkpoint(checkpoint_path: str):
         """Pickles checkpoint data."""
         checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)

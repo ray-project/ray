@@ -59,8 +59,6 @@ logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
 
-_METADATA_KEY = "_tune_metadata"
-
 
 @PublicAPI
 class Trainable:
@@ -451,8 +449,15 @@ class Trainable:
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
         if checkpoint_dict_or_path is None:
+            # checkpoint_dict_or_path can only be None in class trainables.
+            # In that case the default is to use the root checkpoint directory.
+            assert checkpoint_dir
             checkpoint_dict_or_path = checkpoint_dir
         elif checkpoint_dir is None:
+            # checkpoint_dir is only None in function trainables. In that case,
+            # checkpoint_dict_or_path points to the already saved checkpoint dir.
+            # This will be considered the root dir.
+            assert isinstance(checkpoint_dict_or_path, str)
             checkpoint_dir = checkpoint_dict_or_path
 
         # Get trainable metadata
@@ -465,6 +470,13 @@ class Trainable:
             # Re-drop marker
             TrainableUtil.mark_as_checkpoint_dir(checkpoint_dir)
         else:
+            # Make sure the checkpoint dir is contained
+            if not checkpoint_dict_or_path.startswith(checkpoint_dir):
+                raise ValueError(
+                    f"The returned checkpoint path must be within the given "
+                    f"checkpoint dir ({checkpoint_dir}): {checkpoint_dict_or_path}"
+                )
+
             # Get relative path to returned checkpoint
             relative_checkpoint_path = os.path.relpath(
                 checkpoint_dict_or_path, checkpoint_dir
@@ -480,7 +492,6 @@ class Trainable:
         return checkpoint_dir
 
     def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
-        # Derived classes like the FunctionTrainable might call this
         if not self.uses_cloud_checkpointing:
             return False
 
@@ -605,13 +616,13 @@ class Trainable:
                 f"Got checkpoint path: {checkpoint_path} and IP {checkpoint_node_ip}"
             )
 
-        checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        metadata = TrainableUtil.load_metadata(checkpoint_path)
+        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        metadata = TrainableUtil.load_metadata(checkpoint_dir)
 
         if metadata["saved_as_dict"]:
             # If data was saved as a dict (e.g. from a class trainable),
             # also pass the dict to `load_checkpoint()`.
-            checkpoint_dict = Checkpoint.from_directory(checkpoint_path).to_dict()
+            checkpoint_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
             # If other files were added to the directory after converting from the
             # original dict (e.g. marker files), clean these up
             checkpoint_dict.pop(_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, None)
@@ -619,7 +630,7 @@ class Trainable:
         else:
             # Otherwise, pass the relative checkpoint path
             relative_checkpoint_path = metadata["relative_checkpoint_path"]
-            to_load = os.path.join(checkpoint_path, relative_checkpoint_path)
+            to_load = os.path.join(checkpoint_dir, relative_checkpoint_path)
 
         # Set metadata
         self._experiment_id = metadata["experiment_id"]
@@ -637,7 +648,7 @@ class Trainable:
         self._restored = True
 
         logger.info(
-            "Restored on %s from checkpoint: %s", self.get_current_ip(), checkpoint_path
+            "Restored on %s from checkpoint: %s", self.get_current_ip(), checkpoint_dir
         )
         state = {
             "_iteration": self._iteration,
