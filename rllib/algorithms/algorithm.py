@@ -753,7 +753,8 @@ class Algorithm(Trainable):
                     env_steps_this_iter += batch.env_steps()
                 metrics = collect_metrics(
                     self.workers.local_worker(),
-                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
+                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
                 )
 
             # Evaluation worker set only has local worker.
@@ -836,6 +837,7 @@ class Algorithm(Trainable):
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
                 )
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter

@@ -175,7 +175,7 @@ class AlgorithmConfig:
         self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
-        self.evaluation_sample_timeout_s = 60
+        self.evaluation_sample_timeout_s = 180.0
         self.evaluation_parallel_to_training = False
         self.evaluation_config = {}
         self.evaluation_num_workers = 0
@@ -188,7 +188,7 @@ class AlgorithmConfig:
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
-        self.metrics_episode_collection_timeout_s = 180
+        self.metrics_episode_collection_timeout_s = 60.0
         self.metrics_num_episodes_for_smoothing = 100
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
@@ -1107,7 +1107,7 @@ class AlgorithmConfig:
         self,
         *,
         keep_per_episode_custom_metrics: Optional[bool] = None,
-        metrics_episode_collection_timeout_s: Optional[int] = None,
+        metrics_episode_collection_timeout_s: Optional[float] = None,
         metrics_num_episodes_for_smoothing: Optional[int] = None,
         min_time_s_per_iteration: Optional[int] = None,
         min_train_timesteps_per_iteration: Optional[int] = None,
