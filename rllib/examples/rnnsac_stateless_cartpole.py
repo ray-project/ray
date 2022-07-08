@@ -6,7 +6,6 @@ import ray
 from ray import tune
 from ray.rllib.algorithms.registry import get_algorithm_class
 
-# from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 
 
@@ -78,13 +77,14 @@ if __name__ == "__main__":
     results = tune.run("RNNSAC", **config)
 
     # TEST
-    best_checkpoint = results.best_checkpoint
-    print("Loading checkpoint: {}".format(best_checkpoint))
-    checkpoint_config_path = str(Path(best_checkpoint).parent.parent / "params.json")
+    checkpoint_config_path = str(Path(results.best_logdir) / "params.json")
     with open(checkpoint_config_path, "rb") as f:
         checkpoint_config = json.load(f)
 
     checkpoint_config["explore"] = False
+
+    best_checkpoint = results.best_checkpoint
+    print("Loading checkpoint: {}".format(best_checkpoint))
 
     algo = get_algorithm_class("RNNSAC")(
         env=config["config"]["env"], config=checkpoint_config
