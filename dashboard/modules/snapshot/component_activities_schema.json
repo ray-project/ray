@@ -7,8 +7,7 @@
       "type": "object",
       "properties":{
         "is_active": {
-          "type": "string",
-          "enum": ["ACTIVE", "INACTIVE", "ERROR"]
+          "type": "boolean"
         },
         "reason": {
           "type": [
