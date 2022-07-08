@@ -106,6 +106,14 @@ py_test(
 )
 
 py_test(
+    name = "test_horovod_trainer",
+    size = "large",
+    srcs = ["tests/test_horovod_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_base_trainer",
     size = "medium",
     srcs = ["tests/test_base_trainer.py"],
@@ -158,14 +166,6 @@ py_test(
     size = "large",
     srcs = ["tests/test_gpu.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_horovod_trainer",
-    size = "large",
-    srcs = ["tests/test_horovod_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
 
