@@ -10,7 +10,6 @@ from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
 from ray.workflow.common import (
     WorkflowStatus,
-    WorkflowNotFoundError,
     validate_user_metadata,
 )
 from ray.workflow.workflow_access import (
@@ -56,8 +55,10 @@ def run(
             ws.save_workflow_execution_state("", state)
             wf_exists = False
         workflow_manager = get_management_actor()
-        if ray.get(workflow_manager.is_workflow_running.remote(workflow_id)):
-            raise RuntimeError(f"Workflow '{workflow_id}' is already running.")
+        if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
+            raise RuntimeError(
+                f"Workflow '{workflow_id}' is already running or pending."
+            )
         if wf_exists:
             return resume(workflow_id)
         ignore_existing = ws.load_workflow_status() == WorkflowStatus.NONE
@@ -74,8 +75,8 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow asynchronously. See "api.resume()" for details."""
     logger.info(f'Resuming workflow [id="{workflow_id}"].')
     workflow_manager = get_management_actor()
-    if ray.get(workflow_manager.is_workflow_running.remote(workflow_id)):
-        raise RuntimeError(f"Workflow '{workflow_id}' is already running.")
+    if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
+        raise RuntimeError(f"Workflow '{workflow_id}' is already running or pending.")
     # NOTE: It is important to 'ray.get' the returned output. This
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
@@ -130,20 +131,8 @@ def cancel(workflow_id: str) -> None:
 
 
 def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
-    try:
-        workflow_manager = get_management_actor()
-        running = ray.get(workflow_manager.is_workflow_running.remote(workflow_id))
-    except Exception:
-        running = False
-    if running:
-        return WorkflowStatus.RUNNING
-    store = workflow_storage.get_workflow_storage(workflow_id)
-    status = store.load_workflow_status()
-    if status == WorkflowStatus.NONE:
-        raise WorkflowNotFoundError(workflow_id)
-    if status == WorkflowStatus.RUNNING:
-        return WorkflowStatus.RESUMABLE
-    return status
+    workflow_manager = get_management_actor()
+    return ray.get(workflow_manager.get_workflow_status.remote(workflow_id))
 
 
 def get_metadata(workflow_id: str, name: Optional[str]) -> Dict[str, Any]:

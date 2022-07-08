@@ -6,7 +6,7 @@ from typing import Dict, List, Set, Optional, TYPE_CHECKING
 import ray
 
 from ray.workflow import common
-from ray.workflow.common import WorkflowStatus, TaskID
+from ray.workflow.common import WorkflowStatus, TaskID, WorkflowNotFoundError
 from ray.workflow import workflow_state_from_storage
 from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
@@ -233,7 +233,22 @@ class WorkflowManagementActor:
             wf_store = workflow_storage.WorkflowStorage(workflow_id)
             wf_store.update_workflow_status(WorkflowStatus.CANCELED)
 
-    def is_workflow_running(self, workflow_id: str) -> bool:
+    def get_workflow_status(self, workflow_id: str) -> WorkflowStatus:
+        """Get the status of the workflow."""
+        if workflow_id in self._workflow_executors:
+            if workflow_id in self._queued_workflows:
+                return WorkflowStatus.PENDING
+            return WorkflowStatus.RUNNING
+        store = workflow_storage.get_workflow_storage(workflow_id)
+        status = store.load_workflow_status()
+        if status == WorkflowStatus.NONE:
+            raise WorkflowNotFoundError(workflow_id)
+        elif status in WorkflowStatus.non_terminating_status():
+            return WorkflowStatus.RESUMABLE
+        return status
+
+    def is_workflow_non_terminating(self, workflow_id: str) -> bool:
+        """True if the workflow is still running or pending."""
         return workflow_id in self._workflow_executors
 
     def list_non_terminating_workflows(self) -> Dict[WorkflowStatus, List[str]]:
@@ -260,7 +275,7 @@ class WorkflowManagementActor:
         """
         # TODO(suquark): Use 'task_id' instead of 'name' for the API.
         ref = None
-        if self.is_workflow_running(workflow_id):
+        if self.is_workflow_non_terminating(workflow_id):
             executor = self._workflow_executors[workflow_id]
             if name is None:
                 name = executor.output_task_id

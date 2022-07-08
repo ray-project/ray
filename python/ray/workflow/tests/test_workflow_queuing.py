@@ -119,12 +119,16 @@ def test_workflow_queuing_3(shutdown_only, tmp_path):
         with filelock.FileLock(lock_path):
             return x
 
+    workflow_id = "test_workflow_queuing_3"
+
     with filelock.FileLock(lock_path):
-        wf_1 = workflow.run_async(long_running.bind(1))
-        wf_2 = workflow.run_async(long_running.bind(2))
+        wf_1 = workflow.run_async(long_running.bind(1), workflow_id=f"{workflow_id}_1")
+        wf_2 = workflow.run_async(long_running.bind(2), workflow_id=f"{workflow_id}_2")
         time.sleep(5)
         assert (tmp_path / str(1)).exists()
         assert not (tmp_path / str(2)).exists()
+        assert workflow.get_status(workflow_id=f"{workflow_id}_1") == workflow.RUNNING
+        assert workflow.get_status(workflow_id=f"{workflow_id}_2") == workflow.PENDING
         with pytest.raises(GetTimeoutError):
             ray.get(wf_2, timeout=5)
 

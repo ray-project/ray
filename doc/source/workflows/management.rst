@@ -100,6 +100,10 @@ Submitting workflows when the number of pending workflows are at maximum would r
 A pending workflows has the ``PENDING`` status. After the pending workflow get interrupted (e.g., a cluster failure), it can be resumed.
 When resuming interrupted workflows that were running and pending with ``workflow.resume_all()``, running workflows have higher priority than pending workflows (i.e. the pending workflows would still likely be pending).
 
+.. note::
+
+  We currently does not guarantee that resumed pending workflows are running in the same order as they originally did.
+
 Handling Dependencies
 ---------------------
 
