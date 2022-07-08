@@ -41,7 +41,7 @@ def test_dataset(workflow_start_regular_shared):
     transformed_ref = transform_dataset.bind(ds_ref)
     output_ref = sum_dataset.bind(transformed_ref)
 
-    result = workflow.create(output_ref).run()
+    result = workflow.run(output_ref)
     assert result == 2 * sum(range(1000))
 
 
@@ -50,7 +50,7 @@ def test_dataset_1(workflow_start_regular_shared):
     transformed_ref = transform_dataset.bind(ds_ref)
     output_ref = sum_dataset.bind(transformed_ref)
 
-    result = workflow.create(output_ref).run()
+    result = workflow.run(output_ref)
     assert result == 2 * sum(range(1000))
 
 
@@ -59,7 +59,7 @@ def test_dataset_2(workflow_start_regular_shared):
     transformed_ref = transform_dataset_1.bind(ds_ref)
     output_ref = sum_dataset.bind(transformed_ref)
 
-    result = workflow.create(output_ref).run()
+    result = workflow.run(output_ref)
     assert result == 2 * sum(range(1000))
 
 

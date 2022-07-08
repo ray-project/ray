@@ -7,6 +7,7 @@ import os
 import socket
 import subprocess
 import sys
+import time
 from tempfile import mkstemp
 
 import pydantic
@@ -34,6 +35,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
 from ray.serve.http_util import set_socket_reuse_port
 from ray.serve.utils import block_until_http_ready, format_actor_name, get_all_node_ids
+from ray.serve.schema import ServeApplicationSchema
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -783,6 +785,40 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
             == "UPDATING",
             timeout=10,
         )
+
+
+@serve.deployment(ray_actor_options={"num_cpus": 0.1})
+class Waiter:
+    def __init__(self):
+        time.sleep(5)
+
+    def __call__(self, *args):
+        return "May I take your order?"
+
+
+WaiterNode = Waiter.bind()
+
+
+def test_run_graph_task_uses_zero_cpus():
+    """Check that the run_graph() task uses zero CPUs."""
+
+    ray.init(num_cpus=2)
+    client = serve.start(detached=True)
+
+    config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
+    config = ServeApplicationSchema.parse_obj(config)
+    client.deploy_app(config)
+
+    with pytest.raises(RuntimeError):
+        wait_for_condition(lambda: ray.available_resources()["CPU"] < 1.9, timeout=5)
+
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/Waiter").text
+        == "May I take your order?"
+    )
+
+    serve.shutdown()
+    ray.shutdown()
 
 
 if __name__ == "__main__":

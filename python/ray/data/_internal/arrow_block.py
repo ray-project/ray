@@ -484,7 +484,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block[ArrowRow]], key: KeyFn, aggs: Tuple[AggregateFn]
+        blocks: List[Block[ArrowRow]],
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+        finalize: bool,
     ) -> Tuple[Block[ArrowRow], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
@@ -495,6 +498,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks: A list of partially combined and sorted blocks.
             key: The column name of key or None for global aggregation.
             aggs: The aggregations to do.
+            finalize: Whether to finalize the aggregation. This is used as an
+                optimization for cases where we repeatedly combine partially
+                aggregated groups.
 
         Returns:
             A block of [k, v_1, ..., v_n] columns and its metadata where k is
@@ -565,7 +571,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 for agg, agg_name, accumulator in zip(
                     aggs, resolved_agg_names, accumulators
                 ):
-                    row[agg_name] = agg.finalize(accumulator)
+                    if finalize:
+                        row[agg_name] = agg.finalize(accumulator)
+                    else:
+                        row[agg_name] = accumulator
 
                 builder.add(row)
             except StopIteration:
