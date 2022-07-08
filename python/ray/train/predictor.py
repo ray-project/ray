@@ -96,7 +96,8 @@ class Predictor(abc.ABC):
             directly to ``_predict_pandas``.
 
         Returns:
-            DataBatchType: Prediction result.
+            DataBatchType: Prediction result. The return type will be the same as the
+                input type.
         """
         data_df = convert_batch_type_to_pandas(data)
 
