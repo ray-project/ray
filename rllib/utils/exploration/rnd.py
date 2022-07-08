@@ -234,6 +234,7 @@ class RND(Exploration):
         if self.normalize:
             # Use the `_MovingMeanStd` class to normalize the intrinsic rewards.
             from ray.rllib.utils.exploration.random_encoder import _MovingMeanStd
+
             self._moving_mean_std = _MovingMeanStd()
 
         if sub_exploration is None:
@@ -398,7 +399,7 @@ class RND(Exploration):
         # tf-eager: Perform model calls, loss calculation, and optimizer
         # stepping on the fly.
         else:
-            # Update the weights of the predictor network only, if the 
+            # Update the weights of the predictor network only, if the
             # update should happen locally.
             self._novelty_np, _ = self._postprocess_helper_tf(
                 sample_batch[SampleBatch.OBS],
@@ -422,7 +423,7 @@ class RND(Exploration):
             # Get the non-episodic value predictions for all observations
             # in the trajectory.
             model_out, _ = policy.model(sample_batch)
-            # TODO: Is this necessary? Could we instead call the whole static graph? 
+            # TODO: Is this necessary? Could we instead call the whole static graph?
             sample_batch["exploration_vf_preds"] = tf_sess.run(
                 policy.model._exploration_value_branch()
             )
@@ -466,10 +467,10 @@ class RND(Exploration):
             # TODO: @simonsays1980: Should be probably mean over dim=1 and then
             # sum over batches.
             distill_loss = tf.reduce_mean(novelty, axis=-1)
-            
+
             update_op = None
             if optimize:
-                # Step the optimizer 
+                # Step the optimizer
                 if self.framework != "tf":
                     grads = tape.gradient(distill_loss, self._optimizer_var_list)
                     grads_and_vars = [
@@ -595,7 +596,7 @@ class RND(Exploration):
                 # Return zero, if non-episodic returns are not used.
                 vf_intrinsic_loss = np.array([0.0])
         else:
-            # Update the predictor network. 
+            # Update the predictor network.
             self.novelty, _ = self._postprocess_helper_tf(
                 sample_batch[SampleBatch.OBS], True
             )
