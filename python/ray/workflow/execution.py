@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Set, List, Tuple, Optional, Dict, Any
+from typing import Set, List, Tuple, Optional, Dict
 import uuid
 
 import ray
@@ -10,9 +10,9 @@ from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
 from ray.workflow.common import (
     WorkflowStatus,
-    WorkflowNotFoundError,
     validate_user_metadata,
 )
+from ray.workflow.exceptions import WorkflowNotFoundError
 from ray.workflow.workflow_access import (
     get_or_create_management_actor,
     get_management_actor,
@@ -152,17 +152,6 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     if status == WorkflowStatus.RUNNING:
         return WorkflowStatus.RESUMABLE
     return status
-
-
-def get_metadata(workflow_id: str, name: Optional[str]) -> Dict[str, Any]:
-    """Get the metadata of the workflow.
-    See "api.get_metadata()" for details.
-    """
-    store = workflow_storage.get_workflow_storage(workflow_id)
-    if name is None:
-        return store.load_workflow_metadata()
-    else:
-        return store.load_step_metadata(name)
 
 
 def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
