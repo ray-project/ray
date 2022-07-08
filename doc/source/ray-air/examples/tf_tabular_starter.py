@@ -1,6 +1,8 @@
 # flake8: noqa
 # isort: skip_file
 
+print(os.environ)
+
 # __air_generic_preprocess_start__
 import ray
 from ray.data.preprocessors import StandardScaler
