@@ -6,7 +6,7 @@ import unittest
 from typing import Any
 
 import ray
-from ray.air.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air._internal.remote_storage import delete_at_uri, _ensure_directory
 
 
@@ -327,6 +327,81 @@ class CheckpointsConversionTest(unittest.TestCase):
             assert checkpoint_dir.endswith(obj_ref.hex())
 
         assert not os.path.exists(checkpoint_dir)
+
+    def test_dict_checkpoint_additional_files(self):
+        checkpoint = self._prepare_dict_checkpoint()
+
+        # Convert to directory
+        checkpoint_dir = checkpoint.to_directory()
+
+        # Add file into checkpoint directory
+        with open(os.path.join(checkpoint_dir, "additional_file.txt"), "w") as f:
+            f.write("Additional data\n")
+        os.mkdir(os.path.join(checkpoint_dir, "subdir"))
+        with open(os.path.join(checkpoint_dir, "subdir", "another.txt"), "w") as f:
+            f.write("Another additional file\n")
+
+        # Create new checkpoint object
+        checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
+        new_dir = checkpoint.to_directory()
+
+        assert os.path.exists(os.path.join(new_dir, "additional_file.txt"))
+        with open(os.path.join(new_dir, "additional_file.txt"), "r") as f:
+            assert f.read() == "Additional data\n"
+
+        assert os.path.exists(os.path.join(new_dir, "subdir", "another.txt"))
+        with open(os.path.join(new_dir, "subdir", "another.txt"), "r") as f:
+            assert f.read() == "Another additional file\n"
+
+        checkpoint_dict = checkpoint.to_dict()
+        for k, v in self.checkpoint_dict_data.items():
+            assert checkpoint_dict[k] == v
+
+        assert _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY in checkpoint_dict
+
+        # Add another field
+        checkpoint_dict["new_field"] = "Data"
+
+        another_dict = Checkpoint.from_directory(
+            Checkpoint.from_dict(checkpoint_dict).to_directory()
+        ).to_dict()
+        assert _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY in another_dict
+        assert another_dict["new_field"] == "Data"
+
+    def test_fs_checkpoint_additional_fields(self):
+        checkpoint = self._prepare_fs_checkpoint()
+
+        # Convert to dict
+        checkpoint_dict = checkpoint.to_dict()
+
+        # Add field to dict
+        checkpoint_dict["additional_field"] = "data"
+
+        # Create new checkpoint object
+        checkpoint = Checkpoint.from_dict(checkpoint_dict)
+
+        # Turn into FS
+        checkpoint_dir = checkpoint.to_directory()
+
+        assert os.path.exists(os.path.join(checkpoint_dir, "test_data.pkl"))
+        assert os.path.exists(os.path.join(checkpoint_dir, "additional_field.meta.pkl"))
+
+        # Add new file
+        with open(os.path.join(checkpoint_dir, "even_more.txt"), "w") as f:
+            f.write("More\n")
+
+        # Turn into dict
+        new_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
+
+        assert new_dict["additional_field"] == "data"
+
+        # Turn into fs
+        new_dir = Checkpoint.from_dict(new_dict).to_directory()
+
+        assert os.path.exists(os.path.join(new_dir, "test_data.pkl"))
+        assert os.path.exists(os.path.join(new_dir, "additional_field.meta.pkl"))
+        assert os.path.exists(os.path.join(new_dir, "even_more.txt"))
 
 
 class CheckpointsSerdeTest(unittest.TestCase):
