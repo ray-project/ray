@@ -3,11 +3,9 @@ import pytest
 import requests
 
 import ray._private.ray_constants as ray_constants
-from ray.tests.conftest import *
-from ray._private.test_utils import (
-    find_free_port,
-    wait_for_condition
-)
+from ray.tests.conftest import *  # noqa: F401 F403
+from ray._private.test_utils import find_free_port, wait_for_condition
+
 
 def test_healthz_head(ray_start_cluster):
     dashboard_port = find_free_port()
@@ -45,12 +43,16 @@ def test_healthz_agent_2(monkeypatch, ray_start_cluster):
     wait_for_condition(lambda: requests.get(uri).status_code == 200)
 
     import signal
-    h.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.send_signal(signal.SIGSTOP)
+
+    h.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.send_signal(
+        signal.SIGSTOP
+    )
 
     # GCS still think raylet is alive.
     assert requests.get(uri).status_code == 200
     # But after heartbeat timeout, it'll think the raylet is down.
     wait_for_condition(lambda: requests.get(uri).status_code != 200)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
