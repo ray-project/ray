@@ -561,7 +561,7 @@ class Dataset(Generic[T]):
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
         return self.map_batches(
