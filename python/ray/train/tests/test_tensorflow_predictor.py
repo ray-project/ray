@@ -26,7 +26,21 @@ def build_model() -> tf.keras.Model:
     return model
 
 
-weights = [np.array([[1.0]]), np.array([0.0])]
+def build_model_multi_input() -> tf.keras.Model:
+    input1 = tf.keras.layers.Input(shape=(1,), name="A")
+    input2 = tf.keras.layers.Input(shape=(1,), name="B")
+    output = tf.keras.layers.Add()([input1, input2])
+    model = tf.keras.models.Model(inputs=[input1, input2], outputs=output)
+    return model
+
+
+def build_model_multi_output() -> tf.keras.Model:
+    input = tf.keras.layers.Input(shape=1)
+    model = tf.keras.models.Model(inputs=input, outputs=[input, input])
+    return model
+
+
+weights = [np.array([[2.0]]), np.array([0.0])]
 
 
 def test_init():
@@ -45,54 +59,51 @@ def test_init():
     assert checkpoint_predictor.preprocessor == predictor.preprocessor
 
 
+def test_predict_array():
+    predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
+
+    data_batch = np.asarray([1, 2, 3])
+    predictions = predictor.predict(data_batch)
+
+    assert len(predictions) == 3
+    assert predictions.flatten().tolist() == [2, 4, 6]
+
+
 def test_predict_array_with_preprocessor():
     preprocessor = DummyPreprocessor()
     predictor = TensorflowPredictor(
         model_definition=build_model, preprocessor=preprocessor, model_weights=weights
     )
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert predictions.flatten().tolist() == [4, 8, 12]
 
 
-def test_predict_array_with_input_shape_unspecified():
-    def model_definition():
-        return tf.keras.models.Sequential(tf.keras.layers.Lambda(lambda tensor: tensor))
+def test_predict_dataframe():
+    predictor = TensorflowPredictor(model_definition=build_model_multi_input)
 
-    predictor = TensorflowPredictor(model_definition=model_definition, model_weights=[])
-
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = pd.DataFrame({"A": [0.0, 0.0, 0.0], "B": [1.0, 2.0, 3.0]})
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
+    assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-def test_predict_array():
-    checkpoint = {MODEL_KEY: weights}
-    predictor = TensorflowPredictor.from_checkpoint(
-        Checkpoint.from_dict(checkpoint), build_model
-    )
+def test_predict_multi_output():
+    predictor = TensorflowPredictor(model_definition=build_model_multi_output)
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
-
-
-def test_predict_dataframe_with_feature_columns():
-    predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
-
-    data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-    predictions = predictor.predict(data, feature_columns=["A"])
-
+    # Model outputs two tensors
     assert len(predictions) == 2
-    assert predictions.to_numpy().flatten().tolist() == [1, 3]
+    for k, v in predictions.items():
+        # Each tensor is of size 3
+        assert len(v) == 3
+        assert v.flatten().tolist() == [1, 2, 3]
 
 
 def test_tensorflow_predictor_no_training():
