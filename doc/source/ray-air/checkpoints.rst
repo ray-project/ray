@@ -15,11 +15,13 @@ The Checkpoint object is a serializable reference to a model. The model can repr
 - an in-memory dictionary
 
 The flexibility provided in the Checkpoint model representation is useful in distributed environments,
-where you may want to recreate the same model on multiple nodes in your Ray cluster for inference.
+where you may want to recreate the same model on multiple nodes in your Ray cluster for inference
+or across different Ray clusters.
 
 
 Creating a checkpoint
---------------------
+---------------------
+
 There are two ways of generating a checkpoint.
 
 The first way is to generate it from a pretrained model. Each framework that AIR supports has a ``to_air_checkpoint`` method that can be used to generate an AIR checkpoint:
@@ -40,26 +42,26 @@ Another way is to retrieve it from the results of a Trainer or a Tuner.
 What can I do with a checkpoint?
 --------------------------------
 
-Checkpoints can be used to instantiate a :class:`Predictor`, :class:`BatchPredictor`, or :class:`ModelWrapperDeployment`.
+Checkpoints can be used to instantiate a :class:`Predictor`, :class:`BatchPredictor`, or :class:`PredictorDeployment`.
 Upon usage, the model held by the Checkpoint will be instantiated in memory and used for inference.
 
-Using the :class:`BatchPredictor` for scalable batch inference:
-
+Below is an example using a checkpoint in the :class:`BatchPredictor` for scalable batch inference:
 
 .. literalinclude:: doc_code/checkpoint_usage.py
     :language: python
     :start-after: __batch_pred_start__
     :end-before: __batch_pred_end__
 
-
-Deploying a service for online inference via :class:`ModelWrapperDeployment`:
+Below is an example using a checkpoint in a service for online inference via :class:`PredictorDeployment`:
 
 .. literalinclude:: doc_code/checkpoint_usage.py
     :language: python
     :start-after: __online_inference_start__
     :end-before: __online_inference_end__
 
-The Checkpoint object has methods to translate between different checkpoint storage locations:
+The Checkpoint object has methods to translate between different checkpoint storage locations.
+With this flexibility, Checkpoint objects can be serialized and used in different contexts
+(e.g., on a different process or a different machine):
 
 .. literalinclude:: doc_code/checkpoint_usage.py
     :language: python

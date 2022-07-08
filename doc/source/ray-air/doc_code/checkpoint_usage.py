@@ -1,6 +1,6 @@
 # __checkpoint_quick_start__
 from ray.train.tensorflow import to_air_checkpoint
-
+import tensorflow as tf
 
 # This can be a trained model.
 def build_model() -> tf.keras.Model:
@@ -12,29 +12,22 @@ def build_model() -> tf.keras.Model:
     )
     return model
 
+
 model = build_model()
 
 checkpoint = to_air_checkpoint(model)
 # __checkpoint_quick_end__
 
 
+# __use_trainer_checkpoint_start__
 import ray
-import pandas as pd
 from ray.air import train_test_split
+from ray.train.xgboost import XGBoostTrainer
 
-from ray.data.preprocessors import *
 
 dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
 # Split data into train and validation.
 train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
-
-# Create a test dataset by dropping the target column.
-test_dataset = valid_dataset.map_batches(
-    lambda df: df.drop("target", axis=1), batch_format="pandas"
-)
-
-# __use_trainer_checkpoint_start__
-from ray.train.xgboost import XGBoostTrainer
 
 trainer = XGBoostTrainer(
     scaling_config={"num_workers": 2},
@@ -55,6 +48,11 @@ checkpoint = result.checkpoint
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostPredictor
 
+# Create a test dataset by dropping the target column.
+test_dataset = valid_dataset.map_batches(
+    lambda df: df.drop("target", axis=1), batch_format="pandas"
+)
+
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
 
 # Bulk batch prediction.
@@ -63,9 +61,12 @@ batch_predictor.predict(test_dataset)
 
 
 # __online_inference_start__
-from ray import serve
+import requests
 from fastapi import Request
-from ray.serve.model_wrappers import ModelWrapperDeployment
+import pandas as pd
+
+from ray import serve
+from ray.serve import PredictorDeployment
 from ray.serve.http_adapters import json_request
 
 
@@ -76,13 +77,19 @@ async def adapter(request: Request):
 
 
 serve.start(detached=True)
-deployment = ModelWrapperDeployment.options(name="XGBoostService")
+deployment = PredictorDeployment.options(name="XGBoostService")
 
 deployment.deploy(
     XGBoostPredictor, checkpoint, batching_params=False, http_adapter=adapter
 )
 
 print(deployment.url)
+
+sample_input = test_dataset.take(1)
+sample_input = dict(sample_input[0])
+
+output = requests.post(deployment.url, json=[sample_input]).json()
+print(output)
 # __online_inference_end__
 
 # __basic_checkpoint_start__
@@ -97,9 +104,12 @@ checkpoint = Checkpoint.from_dict(checkpoint_data)
 # Save checkpoint to a directory on the file system.
 path = checkpoint.to_directory()
 
-# This path can then be passed around, e.g. to a different function or a different script.
+# This path can then be passed around,
+# # e.g. to a different function or a different script.
+# You can also use `checkpoint.to_uri/from_uri` to
+# read from/write to cloud storage
 
-# At another function or script, recover Checkpoint object from path
+# In another function or script, recover Checkpoint object from path
 checkpoint = Checkpoint.from_directory(path)
 
 # Convert into dictionary again
@@ -108,4 +118,3 @@ recovered_data = checkpoint.to_dict()
 # It is guaranteed that the original data has been recovered
 assert recovered_data == checkpoint_data
 # __basic_checkpoint_end__
-

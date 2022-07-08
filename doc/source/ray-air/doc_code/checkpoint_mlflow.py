@@ -12,16 +12,10 @@ mlflow.sklearn.save_model(clf, "model_directory")
 # Create checkpoint object from path
 checkpoint = Checkpoint.from_directory("model_directory")
 
-# Convert into dictionary
-checkpoint_dict = checkpoint.to_dict()
-
-# This dict can then be passed around, e.g. to a different function
-
-# At some other location, recover checkpoint object from dict
-checkpoint = Checkpoint.from_dict(checkpoint_dict)
-
-# Convert into a directory again
+# Write it to some other directory
 checkpoint.to_directory("other_directory")
+# You can also use `checkpoint.to_uri/from_uri` to
+# read from/write to cloud storage
 
 # We can now use MLflow to re-load the model
 clf = mlflow.sklearn.load_model("other_directory")
