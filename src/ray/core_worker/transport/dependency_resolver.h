@@ -66,14 +66,17 @@ class LocalDependencyResolver {
  private:
   struct TaskState {
     TaskState(TaskSpecification t,
-              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> deps,
-              std::vector<ActorID> actor_ids,
+              const std::vector<ObjectID> &deps,
+              const std::vector<ActorID> &actor_ids,
               std::function<void(Status)> on_dependencies_resolved)
         : task(t),
-          local_dependencies(std::move(deps)),
-          actor_dependencies(std::move(actor_ids)),
+          local_dependencies(),
+          actor_dependencies(actor_ids),
           status(Status::OK()),
           on_dependencies_resolved(on_dependencies_resolved) {
+      for (const auto &dep : deps) {
+        local_dependencies.emplace(dep, nullptr);
+      }
       obj_dependencies_remaining = local_dependencies.size();
       actor_dependencies_remaining = actor_dependencies.size();
     }
@@ -81,7 +84,7 @@ class LocalDependencyResolver {
     TaskSpecification task;
     /// The local dependencies to resolve for this task. Objects are nullptr if not yet
     /// resolved.
-    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
+    absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> local_dependencies;
     std::vector<ActorID> actor_dependencies;
     /// Number of local dependencies that aren't yet resolved (have nullptrs in the above
     /// map).

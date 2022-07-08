@@ -368,6 +368,25 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
+TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+
+  ObjectID obj = ObjectID::FromRandom();
+  auto data = GenerateRandomObject();
+  ASSERT_TRUE(store->Put(*data, obj));
+
+  TaskSpecification task;
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
+  bool ok = false;
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
+  ASSERT_TRUE(ok);
+  // Check for leaks.
+  ASSERT_EQ(resolver.NumPendingTasks(), 0);
+}
+
 }  // namespace core
 }  // namespace ray
 
