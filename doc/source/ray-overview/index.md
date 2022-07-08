@@ -42,8 +42,8 @@ Preprocess your data with a ``Preprocessor``.
 
 ```{literalinclude} ../ray-air/examples/xgboost_starter.py
     :language: python
-    :start-after: __air_xgb_preprocess_start__
-    :end-before: __air_xgb_preprocess_end__
+    :start-after: __air_generic_preprocess_start__
+    :end-before: __air_generic_preprocess_end__
 ```
 `````
 
