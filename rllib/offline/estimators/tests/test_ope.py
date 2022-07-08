@@ -201,6 +201,7 @@ class TestOPE(unittest.TestCase):
         estimates = results["evaluation"]["off_policy_estimator"]
         mean_est = {k: v["v_new"] for k, v in estimates.items()}
         std_est = {k: v["v_new_std"] for k, v in estimates.items()}
+
         print("Mean:")
         print(*list(mean_est.items()), sep="\n")
         print("Stddev:")
