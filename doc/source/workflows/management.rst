@@ -7,14 +7,15 @@ Each workflow has a unique ``workflow_id``. By default, when you call ``.run()``
 
 If ``.run()`` is called with a previously used workflow id, the workflow will be resumed from the previous execution.
 
-Workflow States
+Workflow Status
 ---------------
-A workflow can be in one of several states:
+A workflow can be in one of several status:
 
 =================== =======================================================================================
 Status              Description
 =================== =======================================================================================
 RUNNING             The workflow is currently running in the cluster.
+PENDING             The workflow is queued and waited to be executed.
 FAILED              This workflow failed with an application error. It can be resumed from the failed task.
 RESUMABLE           This workflow failed with a system error. It can be resumed from the failed task.
 CANCELED            The workflow was canceled. Its result is unavailable, and it cannot be resumed.
@@ -82,12 +83,26 @@ Storage Configuration
 Workflows supports two types of storage backends out of the box:
 
 *  Local file system: the data is stored locally. This is only for single node testing. It needs to be a NFS to work with multi-node clusters. To use local storage, specify ``ray.init(storage="/path/to/storage_dir")``.
-*  S3: Production users should use S3 as the storage backend. Enable S3 storage with ``r.init(storage="s3://bucket/path")``.
+*  S3: Production users should use S3 as the storage backend. Enable S3 storage with ``ray.init(storage="s3://bucket/path")``.
 
 Additional storage backends can be written by subclassing the ``Storage`` class and passing a storage instance to ``ray.init()`` [TODO: note that the Storage API is not currently stable].
 
 If left unspecified, ``/tmp/ray/workflow_data`` will be used for temporary storage. This default setting *will only work for single-node Ray clusters*.
 
+Concurrency Control
+-------------------
+Ray workflow supports concurrency control. You can support the maximum running workflows and maximum pending workflows via ``workflow.init()``
+before executing any workflow. ``workflow.init()`` again with a different configuration would raise an error.
+
+For example, ``workflow.init(max_running_workflows=10, max_pending_workflows=50)`` means there will be at most 10 workflows running, 50 workflows pending.
+Submitting workflows when the number of pending workflows are at maximum would raise ``queue.Full("Workflow queue has been full")``. Getting the output of a pending workflow would be blocking until the workflow finishes running later.
+
+A pending workflows has the ``PENDING`` status. After the pending workflow get interrupted (e.g., a cluster failure), it can be resumed.
+When resuming interrupted workflows that were running and pending with ``workflow.resume_all()``, running workflows have higher priority than pending workflows (i.e. the pending workflows would still likely be pending).
+
+.. note::
+
+  We currently does not guarantee that resumed pending workflows are running in the same order as they originally did.
 
 Handling Dependencies
 ---------------------
