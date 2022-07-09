@@ -442,6 +442,8 @@
     - docker tag rayproject/ray:nightly-py37-cpu ray-ci:kuberay-test
     # Load the image into the kind node.
     - kind load docker-image ray-ci:kuberay-test
+    - echo "--- Setting up KubeRay operator."
+    - python python/ray/tests/kuberay/setup/setup_kuberay.py
     - echo "--- Running the test."
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=kuberay_operator
@@ -449,6 +451,8 @@
       --test_env=PULL_POLICY=IfNotPresent
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...
+    - echo "--- Tearing down KubeRay operator."
+    - python python/ray/tests/kuberay/setup/teardown_kuberay.py
 - label: ":python: Ray DAG Tests"
   conditions:
     [

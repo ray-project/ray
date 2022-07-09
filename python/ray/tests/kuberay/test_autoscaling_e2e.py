@@ -15,6 +15,7 @@ from ray.tests.kuberay.utils import (
     get_raycluster,
     ray_client_port_forward,
     ray_job_submit,
+    setup_logging,
     switch_to_ray_parent_dir,
     kubectl_exec_python_script,
     kubectl_logs,
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.
-RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:nightly")
+RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:nightly-py38")
 # By default, use the same image for the autoscaler and Ray containers.
 AUTOSCALER_IMAGE = os.environ.get("AUTOSCALER_IMAGE", RAY_IMAGE)
 # Set to IfNotPresent in kind CI.
@@ -390,4 +391,5 @@ if __name__ == "__main__":
     import pytest
     import sys
 
+    setup_logging()
     sys.exit(pytest.main(["-vv", __file__]))

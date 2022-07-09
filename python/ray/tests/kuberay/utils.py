@@ -19,7 +19,9 @@ from ray.job_submission import JobStatus, JobSubmissionClient
 logger = logging.getLogger(__name__)
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent / "scripts"
-TEST_CR_PATH = pathlib.Path(__file__).resolve().parent / "setup" / "raycluster_test.yaml"
+TEST_CR_PATH = (
+    pathlib.Path(__file__).resolve().parent / "setup" / "raycluster_test.yaml"
+)
 TEST_CLUSTER_NAME = "raycluster-test"
 
 # Parent directory of Ray repository
@@ -35,6 +37,7 @@ def setup_logging():
         level=logging.INFO,
         format=LOG_FORMAT,
     )
+
 
 def switch_to_ray_parent_dir():
     # Switch to parent of Ray repo, because that's what the doc examples do.
