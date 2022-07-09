@@ -88,6 +88,16 @@ py_test(
 )
 
 py_test(
+    name = "tensorflow_autoencoder_example",
+    size = "medium",
+    main = "examples/tf/tensorflow_autoendocder_example.py",
+    srcs = ["examples/tf/tensorflow_autoendocder_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "torch_fashion_mnist_example",
     size = "medium",
     main = "examples/pytorch/torch_fashion_mnist_example.py",
