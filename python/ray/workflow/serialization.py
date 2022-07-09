@@ -6,7 +6,7 @@ import os
 import ray
 from ray import cloudpickle
 from ray.types import ObjectRef
-from ray.workflow import common
+from ray.workflow import common, workflow_storage
 from typing import Any, Dict, Generator, List, Optional, Tuple, TYPE_CHECKING
 
 from collections import ChainMap
@@ -14,7 +14,6 @@ import io
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
-    from ray.workflow import workflow_storage
 
 logger = logging.getLogger(__name__)
 
@@ -122,13 +121,12 @@ def _put_helper(identifier: str, obj: Any, workflow_id: str) -> None:
             "Workflow does not support checkpointing nested object references yet."
         )
     key = _obj_id_to_key(identifier)
-    from ray.workflow import workflow_storage  # avoid cyclic import
 
     dump_to_storage(
         key,
         obj,
         workflow_id,
-        workflow_storage.get_workflow_storage(workflow_id),
+        workflow_storage.WorkflowStorage(workflow_id),
         update_existing=False,
     )
 
@@ -201,9 +199,7 @@ def dump_to_storage(
 @ray.remote
 def _load_ref_helper(key: str, workflow_id: str):
     # TODO(Alex): We should stream the data directly into `cloudpickle.load`.
-    from ray.workflow import workflow_storage  # avoid cyclic import
-
-    storage = workflow_storage.get_workflow_storage(workflow_id)
+    storage = workflow_storage.WorkflowStorage(workflow_id)
     return storage._get(key)
 
 

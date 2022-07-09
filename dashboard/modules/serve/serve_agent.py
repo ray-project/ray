@@ -3,8 +3,15 @@ import logging
 
 from aiohttp.web import Request, Response
 
+import dataclasses
+import ray
+import aiohttp.web
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.modules.version import (
+    CURRENT_VERSION,
+    VersionResponse,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -13,11 +20,28 @@ routes = optional_utils.ClassMethodRouteTable
 
 
 # NOTE (shrekris-anyscale): This class uses delayed imports for all
-# Ray Serve-related modules. That way, users can use the Ray dashboard for
+# Ray Serve-related modules. That way, users can use the Ray dashboard agent for
 # non-Serve purposes without downloading Serve dependencies.
-class ServeHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
+class ServeAgent(dashboard_utils.DashboardAgentModule):
+    def __init__(self, dashboard_agent):
+        super().__init__(dashboard_agent)
+
+    # TODO: It's better to use `/api/version`.
+    # It requires a refactor of ClassMethodRouteTable to differentiate the server.
+    @routes.get("/api/ray/version")
+    async def get_version(self, req: Request) -> Response:
+        # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the
+        # client when we have backwards-incompatible changes.
+        resp = VersionResponse(
+            version=CURRENT_VERSION,
+            ray_version=ray.__version__,
+            ray_commit=ray.__commit__,
+        )
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json",
+            status=aiohttp.web.HTTPOk.status_code,
+        )
 
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
