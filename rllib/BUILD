@@ -3272,6 +3272,45 @@ py_test(
     srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
 
+py_test(
+    name = "examples/connectors/run_connector_policy",
+    main = "examples/connectors/run_connector_policy.py",
+    tags = ["team:rllib", "exclusive", "examples", ],
+    size = "small",
+    srcs = ["examples/connectors/run_connector_policy.py"],
+    data = [
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
+    ],
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+)
+
+py_test(
+    name = "examples/connectors/adapt_connector_policy",
+    main = "examples/connectors/adapt_connector_policy.py",
+    tags = ["team:rllib", "exclusive", "examples", ],
+    size = "small",
+    srcs = ["examples/connectors/adapt_connector_policy.py"],
+    data = [
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
+    ],
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+)
+
+py_test(
+    name = "examples/connectors/self_play_with_policy_checkpoint",
+    main = "examples/connectors/self_play_with_policy_checkpoint.py",
+    tags = ["team:rllib", "exclusive", "examples", ],
+    size = "small",
+    srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
+    data = [
+        "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
+    ],
+    args = [
+        "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
+        "--train_iteration=1"  # Smoke test.
+    ]
+)
+
 # --------------------------------------------------------------------
 # examples/documentation directory
 #
