@@ -133,15 +133,16 @@ class MultiAgentPrioritizedReplayBuffer(
         shard_capacity = capacity // num_shards
         MultiAgentReplayBuffer.__init__(
             self,
-            shard_capacity,
-            storage_unit,
-            **kwargs,
-            underlying_buffer_config=prioritized_replay_buffer_config,
+            capacity=shard_capacity,
+            storage_unit=storage_unit,
+            replay_sequence_override=replay_sequence_override,
             learning_starts=learning_starts,
             replay_mode=replay_mode,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,
             replay_zero_init_states=replay_zero_init_states,
+            underlying_buffer_config=prioritized_replay_buffer_config,
+            **kwargs,
         )
 
         self.prioritized_replay_eps = prioritized_replay_eps
