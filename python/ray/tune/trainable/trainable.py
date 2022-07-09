@@ -13,8 +13,10 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 import ray
-import ray.cloudpickle as pickle
-from ray.air.checkpoint import Checkpoint
+from ray.air.checkpoint import (
+    Checkpoint,
+    _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
+)
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.resources import Resources
 from ray.tune.result import (
@@ -415,6 +417,15 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
+    def _create_checkpoint_dir(
+        self, checkpoint_dir: Optional[str] = None
+    ) -> Optional[str]:
+        # Create checkpoint_xxxxx directory and drop checkpoint marker
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            checkpoint_dir or self.logdir, index=self.iteration
+        )
+        return checkpoint_dir
+
     def save(self, checkpoint_dir: Optional[str] = None) -> str:
         """Saves the current model state to a checkpoint.
 
@@ -428,29 +439,60 @@ class Trainable:
             checkpoint_dir: Optional dir to place the checkpoint.
 
         Returns:
-            str: path that points to xxx.pkl file.
+            The given or created checkpoint directory.
 
         Note the return path should match up with what is expected of
         `restore()`.
         """
-        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            checkpoint_dir or self.logdir, index=self.iteration
-        )
+        checkpoint_dir = self._create_checkpoint_dir(checkpoint_dir=checkpoint_dir)
+
+        # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
-        trainable_state = self.get_state()
-        checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint_dict_or_path,
-            parent_dir=checkpoint_dir,
-            trainable_state=trainable_state,
-        )
+
+        if checkpoint_dict_or_path is None:
+            # checkpoint_dict_or_path can only be None in class trainables.
+            # In that case the default is to use the root checkpoint directory.
+            assert checkpoint_dir
+            checkpoint_dict_or_path = checkpoint_dir
+        elif checkpoint_dir is None:
+            # checkpoint_dir is only None in function trainables. In that case,
+            # checkpoint_dict_or_path points to the already saved checkpoint dir.
+            # This will be considered the root dir.
+            assert isinstance(checkpoint_dict_or_path, str)
+            checkpoint_dir = checkpoint_dict_or_path
+
+        # Get trainable metadata
+        metadata = self.get_state()
+
+        if isinstance(checkpoint_dict_or_path, dict):
+            metadata["relative_checkpoint_path"] = ""
+            metadata["saved_as_dict"] = True
+            Checkpoint.from_dict(checkpoint_dict_or_path).to_directory(checkpoint_dir)
+            # Re-drop marker
+            TrainableUtil.mark_as_checkpoint_dir(checkpoint_dir)
+        else:
+            # Make sure the checkpoint dir is contained
+            if not checkpoint_dict_or_path.startswith(checkpoint_dir):
+                raise ValueError(
+                    f"The returned checkpoint path must be within the given "
+                    f"checkpoint dir ({checkpoint_dir}): {checkpoint_dict_or_path}"
+                )
+
+            # Get relative path to returned checkpoint
+            relative_checkpoint_path = os.path.relpath(
+                checkpoint_dict_or_path, checkpoint_dir
+            )
+            metadata["relative_checkpoint_path"] = relative_checkpoint_path
+            metadata["saved_as_dict"] = False
+
+        TrainableUtil.write_metadata(checkpoint_dir, metadata)
 
         # Maybe sync to cloud
         self._maybe_save_to_cloud(checkpoint_dir)
 
-        return checkpoint_path
+        return checkpoint_dir
 
     def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
-        # Derived classes like the FunctionTrainable might call this
         if not self.uses_cloud_checkpointing:
             return False
 
@@ -504,12 +546,12 @@ class Trainable:
         Returns:
             Object holding checkpoint data.
         """
-        tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
-        checkpoint_path = self.save(tmpdir)
-        # Save all files in subtree and delete the tmpdir.
-        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
-        shutil.rmtree(tmpdir)
-        return obj
+        temp_container_dir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
+        checkpoint_dir = self.save(temp_container_dir)
+
+        obj_ref = Checkpoint.from_directory(checkpoint_dir).to_bytes()
+        shutil.rmtree(temp_container_dir)
+        return obj_ref
 
     def restore(self, checkpoint_path: str, checkpoint_node_ip: Optional[str] = None):
         """Restores training state from a given model checkpoint.
@@ -568,27 +610,39 @@ class Trainable:
                 f"Got checkpoint path: {checkpoint_path} and IP {checkpoint_node_ip}"
             )
 
-        with open(checkpoint_path + ".tune_metadata", "rb") as f:
-            metadata = pickle.load(f)
+        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        metadata = TrainableUtil.load_metadata(checkpoint_dir)
+
+        if metadata["saved_as_dict"]:
+            # If data was saved as a dict (e.g. from a class trainable),
+            # also pass the dict to `load_checkpoint()`.
+            checkpoint_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
+            # If other files were added to the directory after converting from the
+            # original dict (e.g. marker files), clean these up
+            checkpoint_dict.pop(_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, None)
+            to_load = checkpoint_dict
+        else:
+            # Otherwise, pass the relative checkpoint path
+            relative_checkpoint_path = metadata["relative_checkpoint_path"]
+            to_load = os.path.join(checkpoint_dir, relative_checkpoint_path)
+
+        # Set metadata
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]
         self._time_total = metadata["time_total"]
         self._episodes_total = metadata["episodes_total"]
-        saved_as_dict = metadata["saved_as_dict"]
-        if saved_as_dict:
-            with open(checkpoint_path, "rb") as loaded_state:
-                checkpoint_dict = pickle.load(loaded_state)
-            checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
-            self.load_checkpoint(checkpoint_dict)
-        else:
-            self.load_checkpoint(checkpoint_path)
+
+        # Actually load checkpoint
+        self.load_checkpoint(to_load)
+
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
+
         logger.info(
-            "Restored on %s from checkpoint: %s", self.get_current_ip(), checkpoint_path
+            "Restored on %s from checkpoint: %s", self.get_current_ip(), checkpoint_dir
         )
         state = {
             "_iteration": self._iteration,
@@ -603,10 +657,10 @@ class Trainable:
 
         These checkpoints are returned from calls to save_to_object().
         """
-        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-        checkpoint_path = TrainableUtil.create_from_pickle(obj, tmpdir)
-        self.restore(checkpoint_path)
-        shutil.rmtree(tmpdir)
+        checkpoint = Checkpoint.from_bytes(obj)
+
+        with checkpoint.as_directory() as checkpoint_path:
+            self.restore(checkpoint_path)
 
     def delete_checkpoint(self, checkpoint_path: str):
         """Deletes local copy of checkpoint.
@@ -909,7 +963,7 @@ class Trainable:
         """
         raise NotImplementedError
 
-    def save_checkpoint(self, tmp_checkpoint_dir: str):
+    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Union[str, Dict]]:
         """Subclasses should override this to implement ``save()``.
 
         Warning:
@@ -928,7 +982,7 @@ class Trainable:
         .. versionadded:: 0.8.7
 
         Args:
-            tmp_checkpoint_dir: The directory where the checkpoint
+            checkpoint_dir: The directory where the checkpoint
                 file must be stored. In a Tune run, if the trial is paused,
                 the provided path may be temporary and moved.
 
@@ -941,7 +995,7 @@ class Trainable:
         Example:
             >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
             >>> print(trainable1.save_checkpoint("/tmp/checkpoint_1")) # doctest: +SKIP
-            "/tmp/checkpoint_1/my_checkpoint_file"
+            "/tmp/checkpoint_1"
             >>> print(trainable2.save_checkpoint("/tmp/checkpoint_2")) # doctest: +SKIP
             {"some": "data"}
             >>> trainable.save_checkpoint("/tmp/bad_example") # doctest: +SKIP

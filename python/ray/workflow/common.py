@@ -5,7 +5,7 @@ import json
 from ray import cloudpickle
 from enum import Enum, unique
 import hashlib
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 
 from dataclasses import dataclass
 
@@ -15,7 +15,7 @@ from ray.util.annotations import PublicAPI
 
 # Alias types
 Event = Any
-StepID = str
+TaskID = str
 WorkflowOutputType = ObjectRef
 
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
@@ -61,7 +61,7 @@ class WorkflowRef:
     """
 
     # The ID of the step that produces the output of the workflow.
-    task_id: StepID
+    task_id: TaskID
     # The ObjectRef of the output. If it is "None", then the output has been
     # saved in the storage, and we need to check the workflow management actor
     # for the object ref.
@@ -97,6 +97,12 @@ class WorkflowStatus(str, Enum):
     # The workflow failed with a system error, i.e., ray shutdown.
     # It can be resumed.
     RESUMABLE = "RESUMABLE"
+    # The workflow is queued and waited to be executed.
+    PENDING = "PENDING"
+
+    @classmethod
+    def non_terminating_status(cls) -> "Tuple[WorkflowStatus, ...]":
+        return cls.RUNNING, cls.PENDING
 
 
 @unique
@@ -195,20 +201,3 @@ class WorkflowExecutionMetadata:
 class WorkflowMetaData:
     # The current status of the workflow
     status: WorkflowStatus
-
-
-@PublicAPI(stability="beta")
-class WorkflowNotFoundError(Exception):
-    def __init__(self, workflow_id: str):
-        self.message = f"Workflow[id={workflow_id}] was referenced but doesn't exist."
-        super().__init__(self.message)
-
-
-@PublicAPI(stability="beta")
-class WorkflowRunningError(Exception):
-    def __init__(self, operation: str, workflow_id: str):
-        self.message = (
-            f"{operation} couldn't be completed becasue "
-            f"Workflow[id={workflow_id}] is still running."
-        )
-        super().__init__(self.message)

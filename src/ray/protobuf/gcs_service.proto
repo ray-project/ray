@@ -189,11 +189,13 @@ message ReportHeartbeatReply {
 }
 
 message CheckAliveRequest {
+  repeated string raylet_address = 1;
 }
 
 message CheckAliveReply {
   GcsStatus status = 1;
   string ray_version = 2;
+  repeated bool raylet_alive = 3;
 }
 
 message GetInternalConfigRequest {

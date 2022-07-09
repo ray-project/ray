@@ -124,7 +124,7 @@ class _TrainSession:
         self.training_thread.start()
 
     def pause_reporting(self):
-        """Ignore all future ``train.report()`` calls."""
+        """Ignore all future ``session.report()`` calls."""
         self.ignore_report = True
 
     def finish(self):

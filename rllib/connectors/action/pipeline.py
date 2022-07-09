@@ -19,7 +19,7 @@ class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
         self.connectors = connectors
 
     def is_training(self, is_training: bool):
-        self.is_training = is_training
+        self._is_training = is_training
         for c in self.connectors:
             c.is_training(is_training)
 
