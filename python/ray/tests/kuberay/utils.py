@@ -125,8 +125,10 @@ def wait_for_raycluster_crd(tries=60, backoff_s=5):
     out = subprocess.check_output(["kubectl", "get", "rayclusters.ray.io"]).decode()
     assert TEST_CLUSTER_NAME in out, out
 
-    # Delete the test RayCluster
+    # Delete the test RayCluster.
     subprocess.check_call(["kubectl", "delete", "-f", TEST_CR_PATH])
+    # Make sure the associated resources are gone before proceeding.
+    wait_for_pods(goal_num_pods=0, namespace="default")
 
 
 def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> None:
