@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Set, List, Tuple, Optional, Dict, Any
+from typing import Set, List, Tuple, Optional, Dict
 import uuid
 
 import ray
@@ -133,17 +133,6 @@ def cancel(workflow_id: str) -> None:
 def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     workflow_manager = get_management_actor()
     return ray.get(workflow_manager.get_workflow_status.remote(workflow_id))
-
-
-def get_metadata(workflow_id: str, name: Optional[str]) -> Dict[str, Any]:
-    """Get the metadata of the workflow.
-    See "api.get_metadata()" for details.
-    """
-    store = workflow_storage.get_workflow_storage(workflow_id)
-    if name is None:
-        return store.load_workflow_metadata()
-    else:
-        return store.load_step_metadata(name)
 
 
 def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
