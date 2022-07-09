@@ -24,6 +24,7 @@ from gym.spaces import Discrete, MultiDiscrete, Space
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
+from ray.rllib.connectors.util import create_connectors_for_policy
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -1561,6 +1562,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 "filters": filters,
                 "state": state,
                 "policy_specs": policy_specs,
+                "policy_config": self.policy_config,
             }
         )
 
@@ -1603,7 +1605,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         action_space=policy_spec.action_space,
                         config=policy_spec.config,
                     )
-            else:
+            if pid in self.policy_map:
                 self.policy_map[pid].set_state(state)
 
     @DeveloperAPI
@@ -1862,6 +1864,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy_spec.config,  # overrides.
                 merged_conf,
             )
+
+            if (
+                policy_config.get("enable_connectors", False)
+                and name in self.policy_map
+            ):
+                create_connectors_for_policy(self.policy_map[name], policy_config)
 
         if self.worker_index == 0:
             logger.info(f"Built policy map: {self.policy_map}")
