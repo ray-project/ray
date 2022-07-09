@@ -138,7 +138,7 @@ class NonTerminatedNodes:
 #
 # keep: should keep the worker
 # terminate: should terminate the worker
-# decide_later: the worker can be terminated if needed
+# decide_later: the worker can be terminated if neededddd
 KeepOrTerminate = Enum("KeepOrTerminate", "keep terminate decide_later")
 
 
