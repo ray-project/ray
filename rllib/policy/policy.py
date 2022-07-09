@@ -29,7 +29,6 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-    PublicAPI,
     is_overridden,
 )
 from ray.rllib.utils.deprecation import Deprecated
@@ -54,6 +53,7 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -740,7 +740,44 @@ class Policy(metaclass=ABCMeta):
             # The current global timestep.
             "global_timestep": self.global_timestep,
         }
+        if self.config.get("enable_connectors", False):
+            # Checkpoint connectors state as well if enabled.
+            connector_configs = {}
+            if self.agent_connectors:
+                connector_configs["agent"] = self.agent_connectors.to_config()
+            if self.action_connectors:
+                connector_configs["action"] = self.action_connectors.to_config()
+            state["connector_configs"] = connector_configs
         return state
+
+    @PublicAPI(stability="alpha")
+    def restore_connectors(self, state: PolicyState):
+        """Restore agent and action connectors if configs available.
+
+        Args:
+            state: The new state to set this policy to. Can be
+                obtained by calling `self.get_state()`.
+        """
+        # To avoid a circular dependency problem cause by SampleBatch.
+        from ray.rllib.connectors.util import restore_connectors_for_policy
+
+        # No-op if connector is not enabled.
+        if not self.config.get("enable_connectors", False):
+            return
+
+        connector_configs = state.get("connector_configs", {})
+        if "agent" in connector_configs:
+            self.agent_connectors = restore_connectors_for_policy(
+                self, connector_configs["agent"]
+            )
+            logger.info("restoring agent connectors:")
+            logger.info(self.agent_connectors.__str__(indentation=4))
+        if "action" in connector_configs:
+            self.action_connectors = restore_connectors_for_policy(
+                self, connector_configs["action"]
+            )
+            logger.info("restoring action connectors:")
+            logger.info(self.action_connectors.__str__(indentation=4))
 
     @DeveloperAPI
     def set_state(self, state: PolicyState) -> None:
@@ -752,6 +789,7 @@ class Policy(metaclass=ABCMeta):
         """
         self.set_weights(state["weights"])
         self.global_timestep = state["global_timestep"]
+        self.restore_connectors(state)
 
     @ExperimentalAPI
     def apply(

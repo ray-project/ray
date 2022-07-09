@@ -48,6 +48,7 @@ class StateBufferConnector(AgentConnector):
 
         action, states, fetches = self._states[env_id][agent_id]
 
+        # TODO(jungong): Support buffering more than 1 prev actions.
         if action is not None:
             d[SampleBatch.ACTIONS] = action  # Last action
         else:
