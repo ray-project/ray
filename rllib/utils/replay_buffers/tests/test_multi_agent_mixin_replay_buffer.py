@@ -77,7 +77,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
             replay_ratio=0.5,
             learning_starts=0,
             replay_sequence_length=2,
-            replay_sequence_override=True,
+            replay_sequence_override=False,
         )
 
         # If we insert and replay n times, expect roughly return batches of

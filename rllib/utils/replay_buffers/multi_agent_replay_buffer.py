@@ -135,7 +135,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         if (
             replay_sequence_length > 1
-            and self.storage_unit is not StorageUnit.SEQUENCES
+            and self.storage_unit != StorageUnit.SEQUENCES
         ):
             logger.warning(
                 "MultiAgentReplayBuffer configured with "
@@ -146,7 +146,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             )
             self.replay_sequence_length = 1
 
-        if replay_sequence_length == 1 and self.storage_unit is StorageUnit.SEQUENCES:
+        if replay_sequence_length == 1 and self.storage_unit == StorageUnit.SEQUENCES:
             logger.warning(
                 "MultiAgentReplayBuffer configured with "
                 "`replay_sequence_length={}`, but `storage_unit={}`. "
@@ -265,9 +265,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
-        if self.storage_unit is StorageUnit.TIMESTEPS:
+        if self.storage_unit == StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
-        elif self.storage_unit is StorageUnit.SEQUENCES:
+        elif self.storage_unit == StorageUnit.SEQUENCES:
             timeslices = timeslice_along_seq_lens_with_overlap(
                 sample_batch=batch,
                 seq_lens=batch.get(SampleBatch.SEQ_LENS)

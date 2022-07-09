@@ -133,16 +133,17 @@ class MultiAgentPrioritizedReplayBuffer(
         shard_capacity = capacity // num_shards
         MultiAgentReplayBuffer.__init__(
             self,
-            shard_capacity,
-            storage_unit,
-            storage_location,
-            **kwargs,
-            underlying_buffer_config=prioritized_replay_buffer_config,
+            capacity=shard_capacity,
+            storage_unit=storage_unit,
+            storage_location=storage_location,
+            replay_sequence_override=replay_sequence_override,
             learning_starts=learning_starts,
             replay_mode=replay_mode,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,
             replay_zero_init_states=replay_zero_init_states,
+            underlying_buffer_config=prioritized_replay_buffer_config,
+            **kwargs,
         )
 
         self.prioritized_replay_eps = prioritized_replay_eps
@@ -171,9 +172,9 @@ class MultiAgentPrioritizedReplayBuffer(
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
-        if self.storage_unit is StorageUnit.TIMESTEPS:
+        if self.storage_unit == StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
-        elif self.storage_unit is StorageUnit.SEQUENCES:
+        elif self.storage_unit == StorageUnit.SEQUENCES:
             timeslices = timeslice_along_seq_lens_with_overlap(
                 sample_batch=batch,
                 seq_lens=batch.get(SampleBatch.SEQ_LENS)
