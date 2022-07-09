@@ -258,7 +258,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         )
         raise ValueError(error)
 
-    sampled_action = env.action_space_sample()
+    sampled_action = env.action_space_sample(reset_obs.keys())
     _check_if_element_multi_agent_dict(env, sampled_action, "action_space_sample")
     try:
         env.action_space_contains(sampled_action)
