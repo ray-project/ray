@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pickle
 import shelve
+from pathlib import Path
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
@@ -13,7 +14,7 @@ from abc import abstractmethod
 from collections.abc import Sized, Iterable
 from enum import Enum, unique
 from typing import Optional, Dict, Any, Iterator, Union, overload
-from tempfile import NamedTemporaryFile
+from tempfile import TemporaryDirectory
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.metrics.window_stat import WindowStat
@@ -610,9 +611,7 @@ class InMemoryStorage(LocalStorage):
 class OnDiskStorage(LocalStorage):
     @ExperimentalAPI
     @override(LocalStorage)
-    def __init__(
-        self, capacity: int = 10000, buffer_file: Optional[str] = None
-    ) -> None:
+    def __init__(self, capacity: int = 10000, buffer_dir: Optional[str] = None) -> None:
         """Initializes an OnDiskStorage instance for storing timesteps on disk.
         This allows replay buffers larger than memory.
 
@@ -622,33 +621,56 @@ class OnDiskStorage(LocalStorage):
             capacity: Maximum number of timesteps to store in this FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            buffer_file: Optional buffer file to wite the data to. The file must not
-                exist and the file name must end with an `.dat` extension.
+            buffer_dir: Optional buffer directory to write the data to. If the
+                directory exists, the buffer inside will be overwritten.
         """
         super().__init__(capacity, AllocationPlan.DYNAMIC.value)
-        self._buffer_file = buffer_file
+        self._buffer_file_dir = buffer_dir
         self._rm_file_on_del = False
-        if not self._buffer_file:
+
+        if not self._buffer_file_dir:
             self._rm_file_on_del = True
-            with NamedTemporaryFile(prefix="replay_buffer_", suffix=".dat") as f:
-                self._buffer_file = f.name
-        if os.path.exists(self._buffer_file):
-            raise ValueError("buffer_file must not exist: {}".format(self._buffer_file))
-        if not self._buffer_file.endswith(".dat"):
-            raise ValueError("buffer_file must end with '.dat' extension")
-        self._buffer_file = os.path.abspath(self._buffer_file)
+            with TemporaryDirectory(prefix="rllib_replay_buffer_storage_") as d:
+                self._buffer_file_dir = d
+
+        if os.path.exists(self._buffer_file_dir):
+            logger.warning(
+                "On-disk replay buffer is writing to an already created db " "file."
+            )
+
+        self._buffer_file = self._buffer_file_dir + "/db"
+        Path(self._buffer_file).mkdir(parents=True, exist_ok=True)
 
         # The actual storage (shelf / dict of SampleBatches).
         if pickle.HIGHEST_PROTOCOL < 5:
             logger.warning(
                 "Recommended pickle protocol is at least 5 "
-                "for fast zero-copy access of arrays"
+                "for fast zero-copy access of arrays. This may compromise the "
+                "performance of your on-disk replay buffer."
             )
         self._samples = shelve.open(
-            self._buffer_file[:-4], flag="c", protocol=pickle.HIGHEST_PROTOCOL
+            self._buffer_file, flag="n", protocol=pickle.HIGHEST_PROTOCOL
         )
         # Make sure shelve created correct file for storage
-        assert os.path.exists(self._buffer_file)
+
+        matching_db_files = [
+            filename
+            for filename in os.listdir(self._buffer_file_dir)
+            if filename.startswith("db")
+        ]
+
+        if len(matching_db_files) > 1:
+            logger.warning(
+                "There appear to be multiple on-disk replay buffer "
+                "database files inside your storage folder {}. "
+                "Delete all but one of the files {} to resolve this "
+                "warning."
+            )
+        if len(matching_db_files) == 0:
+            raise ValueError(
+                "No replay buffer database file was created at {} for "
+                "the on-disk replay buffer.".format(self._buffer_file)
+            )
 
     @ExperimentalAPI
     @override(LocalStorage)
@@ -698,14 +720,14 @@ class OnDiskStorage(LocalStorage):
     def __del__(self) -> None:
         if self._samples is not None:
             self._samples.close()
-        if self._rm_file_on_del and os.path.exists(self._buffer_file):
-            os.remove(self._buffer_file)
+        if self._rm_file_on_del and os.path.exists(self._buffer_file_dir):
+            os.remove(self._buffer_file_dir)
 
     def _warn_replay_capacity(self, item: SampleBatchType, num_items: int) -> None:
         """Warn if the configured replay buffer capacity is too large."""
         if log_once("replay_capacity_disk"):
             item_size = item.size_bytes()
-            shutil_du = shutil.disk_usage(os.path.dirname(self._buffer_file))
+            shutil_du = shutil.disk_usage(os.path.dirname(self._buffer_file_dir))
             free_gb = shutil_du.free / 1e9
             mem_size = num_items * item_size / 1e9
             remainder = mem_size - self.size_bytes / 1e9

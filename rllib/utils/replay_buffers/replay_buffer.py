@@ -33,6 +33,7 @@ class StorageUnit(str, Enum):
     episodes: One buffer slot per episode.
     fragemts: One buffer slot per incoming batch.
     """
+
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
     EPISODES = "episodes"
