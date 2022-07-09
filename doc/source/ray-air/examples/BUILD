@@ -39,4 +39,5 @@ py_test_run_all_notebooks(
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
+    allow_empty = True  # REGRESSION
 )
