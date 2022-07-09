@@ -1,5 +1,4 @@
 import copy
-import logging
 
 import gym
 import numpy as np
@@ -16,7 +15,6 @@ from ray.rllib.algorithms.bc import BC, BCConfig
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.algorithms.algorithm import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
@@ -349,30 +347,6 @@ class TestAlgorithm(unittest.TestCase):
         bc = BC(config=offline_rl_config)
         bc.train()
         bc.stop()
-
-    def test_eval_workers_on_infinite_episodes(self):
-        """Tests whether eval workers warn appropriately after some episode timeout."""
-        # Create infinitely running episodes, but with horizon setting (RLlib will
-        # auto-terminate the episode). However, in the eval workers, don't set a
-        # horizon -> Expect warning and no proper evaluation results.
-        config = (
-            pg.PGConfig()
-            .rollouts(num_rollout_workers=2, horizon=100)
-            .reporting(metrics_episode_collection_timeout_s=5.0)
-            .environment(env=RandomEnv, env_config={"p_done": 0.0})
-            .evaluation(
-                evaluation_num_workers=2,
-                evaluation_interval=1,
-                evaluation_sample_timeout_s=5.0,
-                evaluation_config={
-                    "horizon": None,
-                },
-            )
-        )
-        algo = config.build()
-        results = algo.train()
-        self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
-        algo.stop()
 
 
 if __name__ == "__main__":
