@@ -80,7 +80,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         buffer = MultiAgentPrioritizedReplayBuffer(
             capacity=10,
             replay_mode="independent",
-            min_size_for_sampling=0,
+            min_size=0,
             num_shards=1,
         )
 
@@ -101,7 +101,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         buffer = MultiAgentPrioritizedReplayBuffer(
             capacity=buffer_size,
             replay_mode="lockstep",
-            min_size_for_sampling=0,
+            min_size=0,
             num_shards=1,
         )
 
@@ -133,7 +133,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         buffer = MultiAgentPrioritizedReplayBuffer(
             capacity=buffer_size,
             replay_mode="independent",
-            min_size_for_sampling=0,
+            min_size=0,
             num_shards=1,
         )
 
@@ -175,7 +175,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
             prioritized_replay_beta=self.beta,
             replay_mode="independent",
             replay_sequence_length=2,
-            min_size_for_sampling=0,
+            min_size=0,
             num_shards=1,
         )
 
@@ -224,7 +224,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
             prioritized_replay_alpha=self.alpha,
             prioritized_replay_beta=self.beta,
             replay_mode="independent",
-            min_size_for_sampling=0,
+            min_size=0,
             num_shards=1,
         )
         new_buffer.set_state(state)

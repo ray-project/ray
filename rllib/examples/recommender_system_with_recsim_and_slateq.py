@@ -137,7 +137,7 @@ def main():
         "num_workers": args.num_workers,
         "env_config": env_config,
         "replay_buffer_config": {
-            "min_size_for_sampling": args.min_size_for_sampling,  # noqa E501
+            "min_size": args.min_size,  # noqa E501
         },
     }
 

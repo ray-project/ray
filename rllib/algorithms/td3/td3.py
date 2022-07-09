@@ -72,9 +72,9 @@ class TD3Config(DDPGConfig):
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": 1000000,
             # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size_for_sampling is reached,
+            # returns a batch. Before min_size is reached,
             # sample() will return an empty batch and no learning will happen..
-            "min_size_for_sampling": 10000,
+            "min_size": 10000,
             "worker_side_prioritization": False,
         }
 

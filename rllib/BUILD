@@ -1157,7 +1157,7 @@ py_test(
         "--env", "Pendulum-v1",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"replay_buffer_config\": {\"min_size_for_sampling\": 100}, \"min_time_s_per_iteration\": 1, \"batch_mode\": \"complete_episodes\"}'",
+        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"replay_buffer_config\": {\"min_size\": 100}, \"min_time_s_per_iteration\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1214,7 +1214,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"min_size_for_sampling\": 0}, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"min_size\": 0}, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -1226,7 +1226,7 @@ py_test(
         "--env", "PongDeterministic-v4",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000, \"min_size_for_sampling\": 10000}, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
+        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000, \"min_size\": 10000}, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
         ]
 )
 

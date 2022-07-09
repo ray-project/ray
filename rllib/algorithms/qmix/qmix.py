@@ -87,9 +87,9 @@ class QMixConfig(SimpleQConfig):
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
             # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size_for_sampling is reached,
+            # returns a batch. Before min_size is reached,
             # sample() will return an empty batch and no learning will happen.
-            "min_size_for_sampling": 1000,
+            "min_size": 1000,
             # Choosing `fragments` here makes it so that the buffer stores entire
             # batches, instead of sequences, episodes or timesteps.
             "storage_unit": "fragments",
