@@ -122,7 +122,7 @@ def wait_for_raycluster_crd(tries=60, backoff_s=5):
                 raise e from None
 
     # Confirm the test RayCluster exists.
-    out = subprocess.check_output(["kubectl", "get", "rayclusters.ray.io"]).decode()
+    out = subprocess.check_output(["kubectl", "get", RAYCLUSTERS_QUALIFIED]).decode()
     assert TEST_CLUSTER_NAME in out, out
 
     # Delete the test RayCluster.
