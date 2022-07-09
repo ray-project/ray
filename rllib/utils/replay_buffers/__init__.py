@@ -17,7 +17,6 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
     StorageUnit,
 )
 from ray.rllib.utils.replay_buffers.reservoir_replay_buffer import ReservoirReplayBuffer
-from ray.rllib.utils.replay_buffers.simple_replay_buffer import SimpleReplayBuffer
 from ray.rllib.utils.replay_buffers.storage import (
     InMemoryStorage,
     LocalStorage,
@@ -35,7 +34,6 @@ __all__ = [
     "PrioritizedReplayBuffer",
     "ReplayMode",
     "ReplayBuffer",
-    "SimpleReplayBuffer",
     "StorageLocation",
     "ReservoirReplayBuffer",
     "StorageUnit",
