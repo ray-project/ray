@@ -2,7 +2,6 @@
 # OPE
 
 from typing import Callable, List
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy import Policy
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.offline.estimators.off_policy_estimator import (
@@ -35,7 +34,8 @@ class FeatureImportance(OffPolicyEstimator):
             policy: the policy to use for feature importance.
             repeat: number of times to repeat the perturbation.
             gamma: dummy discount factor to be passed to the super class.
-            perturb_fn: function to perturb the features. By default reshuffle the features within the batch.
+            perturb_fn: function to perturb the features. By default reshuffle the
+            features within the batch.
         """
         super().__init__(name, policy, gamma=gamma)
         self.repeat = repeat
