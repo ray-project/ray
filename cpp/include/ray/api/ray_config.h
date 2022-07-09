@@ -24,6 +24,11 @@
 
 namespace ray {
 
+enum class ActorLifetime {
+  NON_DETACHED,
+  DETACHED,
+};
+
 class RayConfig {
  public:
   // The address of the Ray cluster to connect to.
@@ -43,6 +48,9 @@ class RayConfig {
   // takes effect only if Ray head is started by a driver. Run `ray start --help` for
   // details.
   std::vector<std::string> head_args = {};
+
+  // The default actor lifetime type, `DETACHED` or `NON_DETACHED`.
+  ActorLifetime default_actor_lifetime = ActorLifetime::NON_DETACHED;
 
   /* The following are unstable parameters and their use is discouraged. */
 

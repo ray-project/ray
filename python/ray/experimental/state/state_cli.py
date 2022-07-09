@@ -23,6 +23,8 @@ from ray.experimental.state.common import (
     GetApiOptions,
     ListApiOptions,
     StateResource,
+    PredicateType,
+    SupportedFilterType,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,56 @@ class AvailableFormat(Enum):
     JSON = "json"
     YAML = "yaml"
     TABLE = "table"
+
+
+def _parse_filter(filter: str) -> Tuple[str, PredicateType, SupportedFilterType]:
+    """Parse the filter string to a tuple of key, preciate, and value."""
+    # The function assumes there's going to be no key that includes "="" or "!=".
+    # Since key is controlled by us, it should be trivial to keep the invariant.
+    predicate = None
+    # Tuple of [predicate_start, predicate_end).
+    predicate_index = None
+
+    # Find the first predicate match. This logic works because we assume the
+    # key doesn't contain = or !=.
+    for i in range(len(filter)):
+        char = filter[i]
+        if char == "=":
+            predicate = "="
+            predicate_index = (i, i + 1)
+            break
+        elif char == "!":
+            if len(filter) <= i + 1:
+                continue
+
+            next_char = filter[i + 1]
+            if next_char == "=":
+                predicate = "!="
+                predicate_index = (i, i + 2)
+                break
+
+    if not predicate or not predicate_index:
+        raise ValueError(
+            f"The format of a given filter {filter} is invalid: "
+            "Cannot find the predicate. "
+            "Please provide key=val or key!=val format string."
+        )
+
+    key, predicate, value = (
+        filter[: predicate_index[0]],
+        filter[predicate_index[0] : predicate_index[1]],
+        filter[predicate_index[1] :],
+    )
+
+    assert predicate == "=" or predicate == "!="
+    if len(key) == 0 or len(value) == 0:
+        raise ValueError(
+            f"The format of a given filter {filter} is invalid: "
+            f"Cannot identify key {key} or value, {value}. "
+            "Please provide key=val or key!=val format string."
+        )
+
+    return (key, predicate, value)
 
 
 def _get_available_formats() -> List[str]:
@@ -228,20 +280,31 @@ def get(
     "-f",
     "--filter",
     help=(
-        "A key value pair to filter the result. "
-        "For example, specify --filter [column] [value] "
-        "to filter out data that satisfies column==value."
+        "A key, predicate, and value to filter the result. "
+        "E.g., --filter 'key=value' or --filter 'key!=value'. "
+        "You can specify multiple --filter options. In this case all predicates "
+        "are concatenated as AND. For example, --filter key=value --filter key2=value "
+        "means (key==val) AND (key2==val2)"
     ),
-    nargs=2,
-    type=click.Tuple([str, str]),
     multiple=True,
+)
+@click.option(
+    "--detail",
+    help=(
+        "If the flag is set, the output will contain data in more details. "
+        "Note that the API could query more sources "
+        "to obtain information in a greater detail."
+    ),
+    is_flag=True,
+    default=False,
 )
 @timeout_option
 @address_option
 def list(
     resource: str,
     format: str,
-    filter: List[Tuple[str, str]],
+    detail: bool,
+    filter: List[str],
     timeout: float,
     address: str,
 ):
@@ -265,10 +328,13 @@ def list(
         api_server_address=api_server_address,
     )
 
+    filter = [_parse_filter(f) for f in filter]
+
     options = ListApiOptions(
         limit=DEFAULT_LIMIT,  # TODO(rickyyx): parameters discussion to be finalized
         timeout=timeout,
         filters=filter,
+        detail=detail,
     )
 
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.

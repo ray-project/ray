@@ -63,7 +63,7 @@ def test_predict_model_not_training(model):
 def test_predict_array(model):
     predictor = TorchPredictor(model=model)
 
-    data_batch = np.asarray([[1], [2], [3]])
+    data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
@@ -73,7 +73,7 @@ def test_predict_array(model):
 def test_predict_array_with_preprocessor(model, preprocessor):
     predictor = TorchPredictor(model=model, preprocessor=preprocessor)
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
@@ -93,7 +93,7 @@ def test_predict_dataframe():
 def test_predict_multi_output():
     predictor = TorchPredictor(model=DummyModelMultiOutput())
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
     # Model outputs two tensors
@@ -116,7 +116,7 @@ def test_predict_multi_output():
 def test_predict_array_with_different_dtypes(model, input_dtype, expected_output_dtype):
     predictor = TorchPredictor(model=model)
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch, dtype=input_dtype)
 
     assert predictions.dtype == expected_output_dtype
@@ -126,7 +126,7 @@ def test_predict_array_no_training(model):
     checkpoint = to_air_checkpoint(model)
     predictor = TorchPredictor.from_checkpoint(checkpoint)
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3

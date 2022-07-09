@@ -614,6 +614,8 @@ message CoreWorkerStats {
   uint32 pid = 22;
   // The worker type.
   WorkerType worker_type = 23;
+  // Length of the number of objects without truncation.
+  int64 objects_total = 24;
 }
 
 message MetricPoint {

@@ -254,17 +254,17 @@ py_test(
 
 # CRR
 py_test(
-    name = "learning_tests_pendulum_crr",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    # Include an offline json data file as well.
-    data = [
-        "tuned_examples/crr/pendulum-v1-crr.yaml",
-        "tests/data/pendulum/pendulum_replay_v1.1.0.zip",
-    ],
-    args = ["--yaml-dir=tuned_examples/crr"]
+   name = "learning_tests_pendulum_crr",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+   size = "large",
+   srcs = ["tests/run_regression_tests.py"],
+   # Include an offline json data file as well.
+   data = [
+       "tuned_examples/crr/pendulum-v1-crr.yaml",
+       "tests/data/pendulum/pendulum_replay_v1.1.0.zip",
+   ],
+   args = ["--yaml-dir=tuned_examples/crr"]
 )
 
 py_test(
@@ -276,6 +276,20 @@ py_test(
     # Include an offline json data file as well.
     data = [
         "tuned_examples/crr/cartpole-v0-crr.yaml",
+        "tests/data/cartpole/large.json",
+    ],
+    args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
+)
+
+py_test(
+    name = "learning_tests_cartpole_crr_expectation",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include an offline json data file as well.
+    data = [
+        "tuned_examples/crr/cartpole-v0-crr_expectation.yaml",
         "tests/data/cartpole/large.json",
     ],
     args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
@@ -1528,6 +1542,13 @@ py_test(
 )
 
 py_test(
+    name = "evaluation/tests/test_episode_v2",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode_v2.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_postprocessing",
     tags = ["team:rllib", "evaluation"],
     size = "small",
@@ -1558,7 +1579,7 @@ py_test(
 py_test(
     name = "test_async_requests_manager",
     tags = ["team:rllib", "execution"],
-    size = "small",
+    size = "medium",
     srcs = ["execution/tests/test_async_requests_manager.py"]
 )
 
@@ -1632,6 +1653,21 @@ py_test(
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"]
 )
+
+py_test(
+    name = "test_json_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_json_reader.py"]
+)
+
+py_test(
+    name = "test_dataset_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_dataset_reader.py"]
+)
+
 
 # --------------------------------------------------------------------
 # Policies
