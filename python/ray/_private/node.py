@@ -331,7 +331,8 @@ class Node:
                 self._raylet_ip_address,
                 redis_password=self.redis_password,
             )
-            self._ray_params.node_manager_port = node_info.node_manager_port
+            if self._ray_params.node_manager_port == 0:
+                self._ray_params.node_manager_port = node_info.node_manager_port
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)

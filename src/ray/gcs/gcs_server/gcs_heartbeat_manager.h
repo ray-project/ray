@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include <boost/bimap.hpp>
+#include <boost/bimap/unordered_set_of.hpp>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
@@ -66,8 +69,13 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   /// Register node to this detector.
   /// Only if the node has registered, its heartbeat data will be accepted.
   ///
-  /// \param node_id ID of the node to be registered.
-  void AddNode(const NodeID &node_id);
+  /// \param node_info The node to be registered.
+  void AddNode(const rpc::GcsNodeInfo &node_info);
+
+  /// Remove a node from this detector.
+  ///
+  /// \param node_id The node to be removed.
+  void RemoveNode(const NodeID &node_id);
 
  protected:
   /// Check that if any raylet is inactive due to no heartbeat for a period of time.
@@ -89,6 +97,11 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   absl::flat_hash_map<NodeID, int64_t> heartbeats_;
   /// Is the detect started.
   bool is_started_ = false;
+  /// A map of NodeId <-> ip:port of raylet
+  using NodeIDAddrBiMap =
+      boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
+                   boost::bimaps::unordered_set_of<std::string>>;
+  NodeIDAddrBiMap node_map_;
 };
 
 }  // namespace gcs
