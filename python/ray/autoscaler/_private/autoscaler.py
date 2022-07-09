@@ -133,7 +133,7 @@ class NonTerminatedNodes:
         self.all_node_ids = list(filter(not_terminating, self.all_node_ids))
 
 
-# Whether a worker should be kept based on the min_workers and
+# Whether a worker should be kept based on the min_workers andaa
 # max_workers constraints.
 #
 # keep: should keep the worker
