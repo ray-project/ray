@@ -82,6 +82,8 @@ logger = logging.getLogger(__name__)
 # Status of a node e.g. "up-to-date", see ray/autoscaler/tags.py
 NodeStatus = str
 
+# 4
+
 # Tuple of modified fields for the given node_id returned by should_update
 # that will be passed into a NodeUpdaterThread.
 UpdateInstructions = namedtuple(
