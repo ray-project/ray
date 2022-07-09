@@ -5,7 +5,7 @@ import json
 from ray import cloudpickle
 from enum import Enum, unique
 import hashlib
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 
 from dataclasses import dataclass
 
@@ -97,6 +97,12 @@ class WorkflowStatus(str, Enum):
     # The workflow failed with a system error, i.e., ray shutdown.
     # It can be resumed.
     RESUMABLE = "RESUMABLE"
+    # The workflow is queued and waited to be executed.
+    PENDING = "PENDING"
+
+    @classmethod
+    def non_terminating_status(cls) -> "Tuple[WorkflowStatus, ...]":
+        return cls.RUNNING, cls.PENDING
 
 
 @unique
