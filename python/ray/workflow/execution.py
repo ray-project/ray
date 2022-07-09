@@ -12,7 +12,6 @@ from ray.workflow.common import (
     WorkflowStatus,
     validate_user_metadata,
 )
-from ray.workflow.exceptions import WorkflowNotFoundError
 from ray.workflow.workflow_access import (
     get_management_actor,
     load_step_output_from_storage,
