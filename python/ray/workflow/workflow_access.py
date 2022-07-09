@@ -6,12 +6,13 @@ from typing import Dict, List, Set, Optional, TYPE_CHECKING
 import ray
 
 from ray.workflow import common
-from ray.workflow.common import WorkflowStatus, TaskID, WorkflowNotFoundError
+from ray.workflow.common import WorkflowStatus, TaskID
 from ray.workflow import workflow_state_from_storage
 from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
 from ray.workflow.exceptions import (
     WorkflowCancellationError,
+    WorkflowNotFoundError,
     WorkflowNotResumableError,
 )
 from ray.workflow.workflow_executor import WorkflowExecutor

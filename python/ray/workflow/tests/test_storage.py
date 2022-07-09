@@ -10,9 +10,9 @@ from ray.tests.conftest import *  # noqa
 from ray.workflow import workflow_storage
 from ray.workflow.common import (
     StepType,
-    WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
 )
+from ray.workflow.exceptions import WorkflowNotFoundError
 from ray.workflow import serialization_context
 from ray.workflow.tests import utils
 
