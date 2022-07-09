@@ -28,3 +28,10 @@ class TestFeatureImportance(unittest.TestCase):
 
             # check if the estimate is positive
             assert all([val > 0 for val in estimate.values()])
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
