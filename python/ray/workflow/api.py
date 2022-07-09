@@ -14,11 +14,10 @@ from ray.workflow import execution
 from ray.workflow.common import (
     WorkflowStatus,
     Event,
-    WorkflowRunningError,
-    WorkflowNotFoundError,
     asyncio_run,
     validate_user_metadata,
 )
+from ray.workflow.exceptions import WorkflowRunningError, WorkflowNotFoundError
 from ray.workflow import serialization
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
 from ray.workflow import workflow_access
@@ -459,7 +458,11 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
         ValueError: if given workflow or workflow step does not exist.
     """
     _ensure_workflow_initialized()
-    return execution.get_metadata(workflow_id, name)
+    store = get_workflow_storage(workflow_id)
+    if name is None:
+        return store.load_workflow_metadata()
+    else:
+        return store.load_step_metadata(name)
 
 
 @PublicAPI(stability="beta")
