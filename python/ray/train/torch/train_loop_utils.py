@@ -556,7 +556,7 @@ class _WrappedDataLoader(DataLoader):
             elif isinstance(item, torch.Tensor):
                 item_on_device = try_move_device(item)
             else:
-                logger.debug(
+                logger.info(
                     f"Data type {type(item)} doesn't support being moved to device."
                 )
 
