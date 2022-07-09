@@ -73,7 +73,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--min-size-for-sampling",
+    "--min_size",
     type=int,
     default=20000,
     help="The number of timesteps to add to the replay buffer before sampling from "
