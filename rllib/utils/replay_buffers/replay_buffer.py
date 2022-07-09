@@ -128,7 +128,7 @@ class ReplayBuffer(ParallelIteratorWorker):
                     ", ".join(f"'{s}'" for s in StorageUnit)
                 )
             )
-        self._storage_unit = storage_unit
+        self.storage_unit = storage_unit
 
         # Caps the number of timesteps stored in this buffer
         if capacity <= 0:
@@ -168,7 +168,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         """Adds a batch of experiences to this buffer.
 
         Splits batch into chunks of timesteps, sequences or episodes, depending on
-        `self._storage_unit`. Calls `self._add_single_batch` to add resulting slices
+        `self.storage_unit`. Calls `self._add_single_batch` to add resulting slices
         to the buffer storage.
 
         Args:
@@ -178,7 +178,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         if not batch.count > 0:
             return
 
-        if self._storage_unit == StorageUnit.TIMESTEPS:
+        if self.storage_unit == StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
             for t in timeslices:
                 self._add_single_batch(t, **kwargs)
@@ -294,7 +294,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         """
         state = {
             "_storage": self._storage.get_state(),
-            "_storage_unit": self._storage_unit,
+            "storage_unit": self.storage_unit,
             "_storage_location": self._storage_location,
         }
         state.update(self.stats(debug=False))
@@ -309,7 +309,7 @@ class ReplayBuffer(ParallelIteratorWorker):
                 obtained by calling `self.get_state()`.
         """
         # The actual storage.
-        self._storage_unit = state["_storage_unit"]
+        self.storage_unit = state["storage_unit"]
         self._storage_location = state["_storage_location"]
         self._storage = self._create_storage(1)
         self._storage.set_state(state["_storage"])
