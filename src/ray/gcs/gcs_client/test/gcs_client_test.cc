@@ -459,6 +459,43 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
 
+TEST_P(GcsClientTest, TestCheckAlive) {
+  auto node_info1 = Mocker::GenNodeInfo();
+  node_info1->set_node_manager_address("172.1.2.3");
+  node_info1->set_node_manager_port(31292);
+
+  auto node_info2 = Mocker::GenNodeInfo();
+  node_info2->set_node_manager_address("172.1.2.4");
+  node_info2->set_node_manager_port(31293);
+
+  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+                                     grpc::InsecureChannelCredentials());
+  auto stub = rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+  rpc::CheckAliveRequest request;
+  *(request.mutable_raylet_address()->Add()) = "172.1.2.3:31292";
+  *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";
+  {
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 1s);
+    rpc::CheckAliveReply reply;
+    ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
+    ASSERT_EQ(2, reply.raylet_alive_size());
+    ASSERT_FALSE(reply.raylet_alive().at(0));
+    ASSERT_FALSE(reply.raylet_alive().at(1));
+  }
+
+  ASSERT_TRUE(RegisterNode(*node_info1));
+  {
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 1s);
+    rpc::CheckAliveReply reply;
+    ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
+    ASSERT_EQ(2, reply.raylet_alive_size());
+    ASSERT_TRUE(reply.raylet_alive().at(0));
+    ASSERT_FALSE(reply.raylet_alive().at(1));
+  }
+}
+
 TEST_P(GcsClientTest, TestJobInfo) {
   // Create job table data.
   JobID add_job_id = JobID::FromInt(1);
