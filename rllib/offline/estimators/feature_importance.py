@@ -5,26 +5,28 @@ from typing import Callable, List
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy import Policy
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
+from ray.rllib.offline.estimators.off_policy_estimator import (
+    OffPolicyEstimator,
+    OffPolicyEstimate,
+)
 
 import numpy as np
 import copy
 
 
 def perturb_fn(batch: np.ndarray, index: int):
-    # shuffle the indexth column features 
+    # shuffle the indexth column features
     random_inds = np.random.permutation(batch.shape[0])
     batch[:, index] = batch[random_inds, index]
-    
+
 
 class FeatureImportance(OffPolicyEstimator):
-
     def __init__(
-        self, 
-        name: str, 
-        policy: Policy, 
+        self,
+        name: str,
+        policy: Policy,
         gamma: float,
-        repeat: int=1,
+        repeat: int = 1,
         perturb_fn: Callable[[np.ndarray, int], None] = perturb_fn,
     ):
         """
@@ -60,4 +62,3 @@ class FeatureImportance(OffPolicyEstimator):
         ret = [OffPolicyEstimate(self.name, metrics)]
 
         return ret
-
