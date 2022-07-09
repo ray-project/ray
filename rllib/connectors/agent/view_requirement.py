@@ -1,8 +1,6 @@
 from collections import defaultdict
 from typing import Any, List
 
-import numpy as np
-
 from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,
@@ -45,25 +43,18 @@ class ViewRequirementAgentConnector(AgentConnector):
     ) -> SampleBatch:
         # TODO(jungong) : actually support buildling input sample batch with all the
         #  view shift requirements, etc.
-        # For now, we use some simple logics for demo purpose.
+        # For now, we only support last elemen (no shift).
         input_dict = {}
-        for k, v in view_requirements.items():
-            if not v.used_for_compute_actions:
+        for col, req in view_requirements.items():
+            if not req.used_for_compute_actions:
                 continue
-            data_col = v.data_col or k
-            if data_col not in agent_batch:
+            if col not in agent_batch:
                 continue
-            input_dict[k] = agent_batch[data_col][-1:]
+            input_dict[col] = agent_batch[col][-1]
         return SampleBatch(input_dict, is_training=False)
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
-        assert isinstance(ac_data.data, AgentConnectorsOutput), (
-            "ViewRequirementAgentConnector operates on raw input dict and its"
-            "flattened SampleBatch."
-        )
-
-        d = ac_data.data.for_training
-        f = ac_data.data.for_action
+        d = ac_data.data
         assert (
             type(d) == dict
         ), "Single agent data must be of type Dict[str, TensorStructType]"
@@ -79,8 +70,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         assert vr, "ViewRequirements required by ViewRequirementConnector"
 
         training_dict = None
-        # We construct a proper per-timeslice dict in training mode,
-        # for env runner to construct a complete episode.
+        # Return full training_dict for env runner to construct episodes.
         if self.is_training:
             # Note(jungong) : we need to keep the entire input dict here.
             # A column may be used by postprocessing (GAE) even if its
@@ -106,14 +96,18 @@ class ViewRequirementAgentConnector(AgentConnector):
             if data_col not in d:
                 continue
 
-            if col in agent_batch:
-                # Stack along batch dim.
-                agent_batch[col] = np.vstack((agent_batch[col], f[data_col]))
-            else:
-                agent_batch[col] = f[data_col]
+            if col not in agent_batch:
+                agent_batch[col] = []
+            # Stack along batch dim.
+            agent_batch[col].append(d[data_col])
+
             # Only keep the useful part of the history.
-            h = req.shift_from if req.shift_from else -1
-            assert h <= 0, "Can use future data to compute action"
+            h = -1
+            if req.shift_from is not None:
+                h = req.shift_from
+            elif type(req.shift) == int:
+                h = req.shift
+            assert h <= 0, "Cannot use future data to compute action"
             agent_batch[col] = agent_batch[col][h:]
 
         sample_batch = self._get_sample_batch_for_action(vr, agent_batch)

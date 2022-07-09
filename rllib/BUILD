@@ -254,17 +254,17 @@ py_test(
 
 # CRR
 py_test(
-    name = "learning_tests_pendulum_crr",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    # Include an offline json data file as well.
-    data = [
-        "tuned_examples/crr/pendulum-v1-crr.yaml",
-        "tests/data/pendulum/pendulum_replay_v1.1.0.zip",
-    ],
-    args = ["--yaml-dir=tuned_examples/crr"]
+   name = "learning_tests_pendulum_crr",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+   size = "large",
+   srcs = ["tests/run_regression_tests.py"],
+   # Include an offline json data file as well.
+   data = [
+       "tuned_examples/crr/pendulum-v1-crr.yaml",
+       "tests/data/pendulum/pendulum_replay_v1.1.0.zip",
+   ],
+   args = ["--yaml-dir=tuned_examples/crr"]
 )
 
 py_test(
@@ -3279,6 +3279,45 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", ],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
+)
+
+py_test(
+    name = "examples/connectors/run_connector_policy",
+    main = "examples/connectors/run_connector_policy.py",
+    tags = ["team:rllib", "exclusive", "examples", ],
+    size = "small",
+    srcs = ["examples/connectors/run_connector_policy.py"],
+    data = [
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
+    ],
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+)
+
+py_test(
+    name = "examples/connectors/adapt_connector_policy",
+    main = "examples/connectors/adapt_connector_policy.py",
+    tags = ["team:rllib", "exclusive", "examples", ],
+    size = "small",
+    srcs = ["examples/connectors/adapt_connector_policy.py"],
+    data = [
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
+    ],
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+)
+
+py_test(
+    name = "examples/connectors/self_play_with_policy_checkpoint",
+    main = "examples/connectors/self_play_with_policy_checkpoint.py",
+    tags = ["team:rllib", "exclusive", "examples", ],
+    size = "small",
+    srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
+    data = [
+        "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
+    ],
+    args = [
+        "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
+        "--train_iteration=1"  # Smoke test.
+    ]
 )
 
 # --------------------------------------------------------------------

@@ -242,16 +242,17 @@ class SyncSampler(SamplerInput):
 
         if worker.policy_config.get("enable_connectors", False):
             self._env_runner = EnvRunnerV2(
-                worker,
-                self.base_env,
-                self.horizon,
-                multiple_episodes_in_batch,
-                callbacks,
-                self.perf_stats,
-                soft_horizon,
-                no_done_at_end,
-                rollout_fragment_length,
-                self.render,
+                worker=worker,
+                base_env=self.base_env,
+                horizon=self.horizon,
+                multiple_episodes_in_batch=multiple_episodes_in_batch,
+                callbacks=callbacks,
+                perf_stats=self.perf_stats,
+                soft_horizon=soft_horizon,
+                no_done_at_end=no_done_at_end,
+                rollout_fragment_length=rollout_fragment_length,
+                count_steps_by=count_steps_by,
+                render=self.render,
             ).run()
         else:
             # Create the rollout generator to use for calls to `get_data()`.
@@ -432,6 +433,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.rollout_fragment_length,
             count_steps_by=count_steps_by,
         )
+        self.count_steps_by = count_steps_by
 
     @override(threading.Thread)
     def run(self):
@@ -458,16 +460,17 @@ class AsyncSampler(threading.Thread, SamplerInput):
             extra_batches_putter = lambda x: self.extra_batches.put(x, timeout=600.0)
         if self.worker.policy_config.get("enable_connectors", False):
             env_runner = EnvRunnerV2(
-                self.worker,
-                self.base_env,
-                self.horizon,
-                self.multiple_episodes_in_batch,
-                self.callbacks,
-                self.perf_stats,
-                self.soft_horizon,
-                self.no_done_at_end,
-                self.rollout_fragment_length,
-                self.render,
+                worker=self.worker,
+                base_env=self.base_env,
+                horizon=self.horizon,
+                multiple_episodes_in_batch=self.multiple_episodes_in_batch,
+                callbacks=self.callbacks,
+                perf_stats=self.perf_stats,
+                soft_horizon=self.soft_horizon,
+                no_done_at_end=self.no_done_at_end,
+                rollout_fragment_length=self.rollout_fragment_length,
+                count_steps_by=self.count_steps_by,
+                render=self.render,
             ).run()
         else:
             env_runner = _env_runner(
