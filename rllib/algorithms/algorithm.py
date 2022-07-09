@@ -798,11 +798,13 @@ class Algorithm(Trainable):
                             "resulted in a timeout (after the configured "
                             f"{self.config['evaluation_sample_timeout_s']} seconds)! "
                             "Try to set `evaluation_sample_timeout_s` in your config"
-                            " to a larger value." + (
+                            " to a larger value."
+                            + (
                                 " If your episodes don't terminate easily, you may "
                                 "also want to set `evaluation_duration_unit` to "
                                 "'timesteps' (instead of 'episodes')."
-                                if unit == "episodes" else ""
+                                if unit == "episodes"
+                                else ""
                             )
                         )
                         break
