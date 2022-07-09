@@ -154,7 +154,9 @@ class R2D2TorchPolicy(DQNTorchPolicy):
         best_actions_one_hot = F.one_hot(best_actions, self.action_space.n)
         q_target_best = torch.sum(
             torch.where(
-                q_target > FLOAT_MIN, q_target, torch.tensor(0.0, device=q_target.device)
+                q_target > FLOAT_MIN,
+                q_target,
+                torch.tensor(0.0, device=q_target.device),
             )
             * best_actions_one_hot,
             dim=1,
@@ -168,14 +170,17 @@ class R2D2TorchPolicy(DQNTorchPolicy):
             )
 
             if config["use_h_function"]:
-                h_inv = self._h_inverse(q_target_best_masked_tp1, config["h_function_epsilon"])
+                h_inv = self._h_inverse(
+                    q_target_best_masked_tp1, config["h_function_epsilon"]
+                )
                 target = self._h_function(
                     rewards + config["gamma"] ** config["n_step"] * h_inv,
                     config["h_function_epsilon"],
                 )
             else:
                 target = (
-                    rewards + config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
+                    rewards
+                    + config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
                 )
 
             # Seq-mask all loss-related terms.
@@ -213,16 +218,20 @@ class R2D2TorchPolicy(DQNTorchPolicy):
 
     @override(DQNTorchPolicy)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        return convert_to_numpy({
-            "cur_lr": self.cur_lr,
-            "total_loss": torch.mean(torch.stack(self.get_tower_stats("total_loss"))),
-            "mean_q": torch.mean(torch.stack(self.get_tower_stats("mean_q"))),
-            "min_q": torch.mean(torch.stack(self.get_tower_stats("min_q"))),
-            "max_q": torch.mean(torch.stack(self.get_tower_stats("max_q"))),
-            "mean_td_error": torch.mean(
-                torch.stack(self.get_tower_stats("mean_td_error"))
-            ),
-        })
+        return convert_to_numpy(
+            {
+                "cur_lr": self.cur_lr,
+                "total_loss": torch.mean(
+                    torch.stack(self.get_tower_stats("total_loss"))
+                ),
+                "mean_q": torch.mean(torch.stack(self.get_tower_stats("mean_q"))),
+                "min_q": torch.mean(torch.stack(self.get_tower_stats("min_q"))),
+                "max_q": torch.mean(torch.stack(self.get_tower_stats("max_q"))),
+                "mean_td_error": torch.mean(
+                    torch.stack(self.get_tower_stats("mean_td_error"))
+                ),
+            }
+        )
 
     def _h_function(self, x, epsilon=1.0):
         """h-function to normalize target Qs, described in the paper [1].
@@ -233,7 +242,6 @@ class R2D2TorchPolicy(DQNTorchPolicy):
           targets = h(r + gamma * h_inverse(Q^))
         """
         return torch.sign(x) * (torch.sqrt(torch.abs(x) + 1.0) - 1.0) + epsilon * x
-
 
     def _h_inverse(self, x, epsilon=1.0):
         """Inverse if the above h-function, described in the paper [1].

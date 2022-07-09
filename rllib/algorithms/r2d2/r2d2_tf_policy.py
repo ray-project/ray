@@ -123,7 +123,7 @@ def get_r2d2_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             one_hot_selection = tf.one_hot(actions, self.action_space.n)
             q_selected = tf.reduce_sum(
                 tf.where(q > tf.float32.min, q, tf.zeros_like(q)) * one_hot_selection,
-                axis=1
+                axis=1,
             )
 
             if config["double_q"]:
@@ -146,21 +146,23 @@ def get_r2d2_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
                 )
 
                 if config["use_h_function"]:
-                    h_inv = self._h_inverse(q_target_best_masked_tp1,
-                                      config["h_function_epsilon"])
+                    h_inv = self._h_inverse(
+                        q_target_best_masked_tp1, config["h_function_epsilon"]
+                    )
                     target = self._h_function(
                         rewards + config["gamma"] ** config["n_step"] * h_inv,
                         config["h_function_epsilon"],
                     )
                 else:
                     target = (
-                        rewards + config["gamma"] ** config[
-                        "n_step"] * q_target_best_masked_tp1
+                        rewards
+                        + config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
                     )
 
                 # Seq-mask all loss-related terms.
-                seq_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:,
-                           :-1]
+                seq_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[
+                    :, :-1
+                ]
                 # Mask away also the burn-in sequence at the beginning.
                 burn_in = self.config["replay_buffer_config"]["replay_burn_in"]
                 # Making sure, this works for both static graph and eager.
@@ -180,7 +182,8 @@ def get_r2d2_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
                 # Q(t) - [gamma * r + Q^(t+1)]
                 q_selected = tf.reshape(q_selected, [B, T])[:, :-1]
                 td_error = q_selected - tf.stop_gradient(
-                    tf.reshape(target, [B, T])[:, :-1])
+                    tf.reshape(target, [B, T])[:, :-1]
+                )
                 td_error = td_error * tf.cast(seq_mask, tf.float32)
                 weights = tf.reshape(weights, [B, T])[:, :-1]
                 self._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
@@ -202,7 +205,7 @@ def get_r2d2_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
                 {
                     "cur_lr": self.cur_lr,
                 },
-                **self._loss_stats
+                **self._loss_stats,
             )
 
         def _h_function(self, x, epsilon=1.0):
@@ -228,15 +231,15 @@ def get_r2d2_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             """
             two_epsilon = epsilon * 2
             if_x_pos = (
-                           two_epsilon * x
-                           + (two_epsilon + 1.0)
-                           - tf.sqrt(4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
-                       ) / (2.0 * epsilon ** 2)
+                two_epsilon * x
+                + (two_epsilon + 1.0)
+                - tf.sqrt(4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
+            ) / (2.0 * epsilon ** 2)
             if_x_neg = (
-                           two_epsilon * x
-                           - (two_epsilon + 1.0)
-                           + tf.sqrt(-4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
-                       ) / (2.0 * epsilon ** 2)
+                two_epsilon * x
+                - (two_epsilon + 1.0)
+                + tf.sqrt(-4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
+            ) / (2.0 * epsilon ** 2)
             return tf.where(x < 0.0, if_x_neg, if_x_pos)
 
     return R2D2TFPolicy

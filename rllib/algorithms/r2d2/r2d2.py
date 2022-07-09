@@ -205,7 +205,6 @@ class R2D2(DQN):
 
             return R2D2TF2Policy
 
-
     @override(DQN)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Checks and updates the config based on settings.

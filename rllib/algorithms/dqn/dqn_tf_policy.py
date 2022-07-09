@@ -107,7 +107,9 @@ def get_dqn_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> 
             seq_lens=None,
             **kwargs,
         ) -> Tuple[TensorType, type, List[TensorType]]:
-            self.q_values, _, _, state_out = self._compute_q_values(model, input_dict, state_batches=state_batches, seq_lens=seq_lens)
+            self.q_values, _, _, state_out = self._compute_q_values(
+                model, input_dict, state_batches=state_batches, seq_lens=seq_lens
+            )
             return self.q_values, Categorical, state_out
 
         @override(base)

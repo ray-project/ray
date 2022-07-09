@@ -25,9 +25,11 @@ class TestDQN(unittest.TestCase):
     def test_dqn_compilation(self):
         """Test whether DQN can be built on all frameworks."""
         num_iterations = 1
-        config = dqn.dqn.DQNConfig()\
-            .environment(env="CartPole-v0")\
+        config = (
+            dqn.dqn.DQNConfig()
+            .environment(env="CartPole-v0")
             .rollouts(num_rollout_workers=2)
+        )
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             # Double-dueling DQN.

@@ -809,7 +809,7 @@ class SampleBatch(dict):
     @DeveloperAPI
     def set_get_interceptor(self, fn):
         # If get-interceptor changes, must erase old intercepted values.
-        #if fn is not self.get_interceptor:
+        # if fn is not self.get_interceptor:
         self.intercepted_values = {}
         self.get_interceptor = fn
 

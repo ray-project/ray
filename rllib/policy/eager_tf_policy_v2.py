@@ -748,8 +748,8 @@ class EagerTFPolicyV2(Policy):
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
             if is_overridden(self.action_sampler_fn):
-                #dist_inputs = None
-                #state_out = []
+                # dist_inputs = None
+                # state_out = []
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                     self.model,
                     input_dict[SampleBatch.OBS],
@@ -780,7 +780,9 @@ class EagerTFPolicyV2(Policy):
                     self._lazy_tensor_dict(input_dict)
                     dist_inputs, state_out, extra_fetches = self.model(input_dict)
                 else:
-                    dist_inputs, state_out = self.model(input_dict, state_batches, seq_lens)
+                    dist_inputs, state_out = self.model(
+                        input_dict, state_batches, seq_lens
+                    )
 
                 action_dist = self.dist_class(dist_inputs, self.model)
 
