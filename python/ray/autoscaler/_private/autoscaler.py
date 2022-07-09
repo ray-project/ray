@@ -83,7 +83,7 @@ logger = logging.getLogger(__name__)
 NodeStatus = str
 
 # Tuple of modified fields for the given node_id returned by should_update
-# that will be passed into a NodeUpdaterThread.
+# that will be passed into a NodeUpdaterThreadddddd.
 UpdateInstructions = namedtuple(
     "UpdateInstructions",
     ["node_id", "setup_commands", "ray_start_commands", "docker_config"],
