@@ -19,6 +19,7 @@ class BatcherInterface:
         raise NotImplementedError()
 
     def done_adding(self) -> bool:
+        """Indicate to the batcher that no more blocks will be added to the buffer."""
         raise NotImplementedError()
 
     def has_batch(self) -> bool:
@@ -69,6 +70,7 @@ class Batcher(BatcherInterface):
         return not self._done_adding
 
     def done_adding(self) -> bool:
+        """Indicate to the batcher that no more blocks will be added to the batcher."""
         self._done_adding = True
 
     def has_batch(self) -> bool:
@@ -87,6 +89,7 @@ class Batcher(BatcherInterface):
         Returns:
             A batch represented as a Block.
         """
+        assert self.has_batch()
         # If no batch size, short-circuit.
         if self._batch_size is None:
             assert len(self._buffer) == 1
@@ -284,6 +287,7 @@ class ShufflingBatcher(BatcherInterface):
         Returns:
             A batch represented as a Block.
         """
+        assert self.has_batch()
         # Add rows in the builder to the shuffle buffer.
         if self._builder.num_rows() > 0:
             if self._shuffle_buffer is not None:

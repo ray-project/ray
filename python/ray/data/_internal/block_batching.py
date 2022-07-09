@@ -39,7 +39,6 @@ def batch_blocks(
     batch_format: str = "native",
     drop_last: bool = False,
     shuffle: bool = False,
-    shuffle_buffer_capacity: Optional[int] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
 ) -> Iterator[BatchType]:
