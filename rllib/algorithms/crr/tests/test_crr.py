@@ -4,8 +4,8 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.crr import CRRConfig
+from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
@@ -32,24 +32,31 @@ class TestCRR(unittest.TestCase):
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
+        # Will use the Json Reader in this example until we convert over the example
+        # files over to Parquet, since the dataset json reader cannot handle large
+        # block sizes.
+
+        def input_reading_fn(ioctx):
+            return JsonReader(ioctx.config["input_config"]["paths"], ioctx)
+
+        input_config = {"paths": data_file}
 
         config = (
             CRRConfig()
             .environment(env="Pendulum-v1", clip_actions=True)
             .framework("torch")
-            .offline_data(input_=[data_file], actions_in_input_normalized=True)
+            .offline_data(
+                input_=input_reading_fn,
+                input_config=input_config,
+                actions_in_input_normalized=True,
+            )
             .training(
                 twin_q=True,
                 train_batch_size=256,
-                replay_buffer_config={
-                    "type": MultiAgentReplayBuffer,
-                    "learning_starts": 0,
-                    "capacity": 100000,
-                },
                 weight_type="bin",
                 advantage_type="mean",
                 n_action_sample=4,
-                target_update_grad_intervals=10000,
+                target_network_update_freq=10000,
                 tau=1.0,
             )
             .evaluation(
