@@ -14,8 +14,8 @@ class TestFeatureImportance(unittest.TestCase):
         ray.shutdown()
 
     def test_feat_importance_cartpole(self):
-        config = CRRConfig(env="CartPole-v0")
-        runner = CRR(config)
+        config = CRRConfig().framework('torch')
+        runner = CRR(config, env="CartPole-v0")
         policy = runner.workers.local_worker().get_policy()
         sample_batch = synchronous_parallel_sample(worker_set=runner.workers)
 
@@ -24,7 +24,7 @@ class TestFeatureImportance(unittest.TestCase):
                 name="feature_importance", policy=policy, gamma=0.0, repeat=repeat
             )
 
-            estimate = evaluator.process(sample_batch)[0].metrics
+            estimate = evaluator.estimate(sample_batch)[0].metrics
 
             # check if the estimate is positive
             assert all([val > 0 for val in estimate.values()])
