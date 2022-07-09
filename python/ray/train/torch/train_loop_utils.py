@@ -547,6 +547,22 @@ class _WrappedDataLoader(DataLoader):
                 logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
             return i
 
+        def handle_dict(item):
+            batch = {}
+            for key, value in item:
+                if isinstance(value, dict):
+                    batch[key] = handle_dict(item)
+                if value is not None:
+                    if isinstance(value, list):
+                        with torch.cuda.stream():
+                            batch[key] = tuple(try_move_device(i) for i in value)
+                    else:
+                        batch[key] = tuple(try_move_device(value))
+            return batch
+
+        if isinstance(item, dict):
+            return handle_dict(item)
+
         with torch.cuda.stream(self._memcpy_stream):
             return tuple(try_move_device(i) for i in item)
 
