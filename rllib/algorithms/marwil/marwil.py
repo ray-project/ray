@@ -18,6 +18,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import (
     ResultDict,
@@ -253,7 +254,8 @@ class MARWIL(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
-        batch = synchronous_parallel_sample(worker_set=self.workers)
+        with self._timers[SAMPLE_TIMER]:
+            batch = synchronous_parallel_sample(worker_set=self.workers)
         batch = batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
