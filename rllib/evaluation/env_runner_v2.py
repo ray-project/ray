@@ -475,9 +475,7 @@ class EnvRunnerV2:
             episode: EpisodeV2 = self._active_episodes[env_id]
 
             # Episode length after this step.
-            # If this is a branch new episode, this step is adding init_obs.
-            # So env_steps will stay at 0. Otherwise, env_steps will advance by 1.
-            next_episode_length = episode.length + 1 if episode.has_init_obs else 0
+            next_episode_length = episode.length + 1
             # Check episode termination conditions.
             if dones[env_id]["__all__"] or next_episode_length >= self._horizon:
                 hit_horizon = (
@@ -508,7 +506,7 @@ class EnvRunnerV2:
                 agent_dones[agent_id] = agent_done
 
                 # A completely new agent is already done -> Skip entirely.
-                if not episode.has_init_obs and agent_done:
+                if not episode.has_init_obs(agent_id) and agent_done:
                     continue
 
                 values_dict = {
@@ -583,10 +581,9 @@ class EnvRunnerV2:
                 ]
                 processed.extend(policy.agent_connectors(acd_list))
 
-            is_initial_obs = not episode.has_init_obs
             for d in processed:
                 # Record transition info if applicable.
-                if is_initial_obs:
+                if not episode.has_init_obs(d.agent_id):
                     episode.add_init_obs(
                         d.agent_id,
                         d.data.for_training[SampleBatch.T],
@@ -597,17 +594,19 @@ class EnvRunnerV2:
                         d.agent_id, d.data.for_training
                     )
 
-                if not agent_dones[d.agent_id]:
+                if not all_agents_done and not agent_dones[d.agent_id]:
+                    # Add to eval set if env is not done and this particular agent
+                    # is also not done.
                     item = _PolicyEvalData(d.env_id, d.agent_id, d.data.for_action)
                     to_eval[policy_id].append(item)
+
+            # Finished advancing episode by 1 step, mark it so.
+            episode.step()
 
             # Exception: The very first env.poll() call causes the env to get reset
             # (no step taken yet, just a single starting observation logged).
             # We need to skip this callback in this case.
-            if not is_initial_obs:
-                # Finished advancing episode by 1 step, mark it so.
-                episode.step()
-
+            if episode.length > 0:
                 # Invoke the `on_episode_step` callback after the step is logged
                 # to the episode.
                 self._callbacks.on_episode_step(
@@ -828,7 +827,10 @@ class EnvRunnerV2:
         # Reached the fragment-len -> We should build an MA-Batch.
         if built_steps + ongoing_steps >= self._rollout_fragment_length:
             if self._count_steps_by != "agent_steps":
-                assert built_steps + ongoing_steps == self._rollout_fragment_length
+                assert built_steps + ongoing_steps == self._rollout_fragment_length, (
+                    f"built_steps ({built_steps}) + ongoing_steps ({ongoing_steps}) != "
+                    f"rollout_fragment_length ({self._rollout_fragment_length})."
+                )
 
             # If we reached the fragment-len only because of `episode_id`
             # (still ongoing) -> postprocess `episode_id` first.

@@ -49,9 +49,11 @@ class EpisodeV2:
         # Summed reward across all agents in this episode.
         self.total_reward: float = 0.0
         # Active (uncollected) # of env steps taken by this episode.
-        self.active_env_steps: int = 0
+        # Start from -1, since after add_init_obs(), we will be at 0 step.
+        self.active_env_steps: int = -1
         # Total # of env steps taken by this episode.
-        self.total_env_steps: int = 0
+        # Start from -1, since after add_init_obs(), we will be at 0 step.
+        self.total_env_steps: int = -1
         # Active (uncollected) agent steps.
         self.active_agent_steps: int = 0
         # Total # of steps take by all agents in this env.
@@ -87,7 +89,7 @@ class EpisodeV2:
         self.agent_rewards: Dict[Tuple[AgentID, PolicyID], float] = defaultdict(float)
         self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(list)
 
-        self.has_init_obs = False
+        self._has_init_obs: Dict[AgentID, bool] = {}
         self._last_dones: Dict[AgentID, bool] = {}
         # Keep last info dict around, in case an environment tries to signal
         # us something.
@@ -175,7 +177,6 @@ class EpisodeV2:
 
         # Add initial obs to Trajectory.
         assert agent_id not in self._agent_collectors
-        # TODO: determine exact shift-before based on the view-req shifts.
         self._agent_collectors[agent_id] = _AgentCollector(
             policy.view_requirements, policy
         )
@@ -187,7 +188,7 @@ class EpisodeV2:
             init_obs=init_obs,
         )
 
-        self.has_init_obs = True
+        self._has_init_obs[agent_id] = True
 
     def add_action_reward_done_next_obs(
         self,
@@ -254,9 +255,9 @@ class EpisodeV2:
             pid = self.policy_for(agent_id)
             policy = self.policy_map[pid]
             pre_batch = collector.build(policy.view_requirements)
-            pre_batches[agent_id] = (policy, pre_batch)
+            pre_batches[agent_id] = (pid, policy, pre_batch)
 
-        for agent_id, (policy, pre_batch) in pre_batches.items():
+        for agent_id, (pid, policy, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
             # Error if no DONE at end of this agent's trajectory.
             if is_done and check_dones and not pre_batch[SampleBatch.DONES][-1]:
@@ -326,6 +327,9 @@ class EpisodeV2:
         # AgentCollector cleared.
         self.active_agent_steps = 0
         self.active_env_steps = 0
+
+    def has_init_obs(self, agent_id: AgentID) -> bool:
+        return agent_id in self._has_init_obs and self._has_init_obs[agent_id]
 
     def is_done(self, agent_id: AgentID) -> bool:
         return self._last_dones.get(agent_id, False)

@@ -1,8 +1,9 @@
 import logging
 import math
-import re
-import zipfile
 from pathlib import Path
+import re
+from typing import List, Tuple
+import zipfile
 
 import ray.data
 from ray.rllib.offline.input_reader import InputReader
@@ -11,7 +12,6 @@ from ray.rllib.offline.json_reader import from_json_data
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
-from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
