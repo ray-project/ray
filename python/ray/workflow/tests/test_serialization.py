@@ -1,13 +1,14 @@
-from filelock import FileLock
-import pytest
-import ray
-from ray import workflow
-from ray.workflow import serialization
-from ray.workflow import workflow_storage
-from ray._private.test_utils import run_string_as_driver_nonblocking
-from ray.tests.conftest import *  # noqa
 import subprocess
 import time
+
+import pytest
+from filelock import FileLock
+
+import ray
+from ray import workflow
+from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.tests.conftest import *  # noqa
+from ray.workflow import serialization, workflow_storage
 
 
 @ray.remote
@@ -59,7 +60,7 @@ def test_dedupe_serialization(workflow_start_regular_shared):
     single = identity.bind((ref,))
     double = identity.bind(list_of_refs)
 
-    workflow.create(gather.bind(single, double)).run()
+    workflow.run(gather.bind(single, double))
 
     # One more for hashing the ref, and for uploading.
     assert ray.get(counter.get_count.remote()) == 3
@@ -74,14 +75,14 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
     single = identity.bind((ref,))
     double = identity.bind(list_of_refs)
 
-    result_ref, result_list = workflow.create(gather.bind(single, double)).run()
+    result_ref, result_list = workflow.run(gather.bind(single, double))
 
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
 
     # One upload for the initial checkpoint, and one for the object ref after
     # resuming.
-    assert get_num_uploads() == 2
+    assert get_num_uploads() == 1
 
 
 def test_same_object_many_workflows(workflow_start_regular_shared):
@@ -95,8 +96,8 @@ def test_same_object_many_workflows(workflow_start_regular_shared):
 
     x = {0: ray.put(10)}
 
-    result1 = workflow.create(f.bind(x)).run()
-    result2 = workflow.create(f.bind(x)).run()
+    result1 = workflow.run(f.bind(x))
+    result2 = workflow.run(f.bind(x))
     print(result1)
     print(result2)
 
@@ -139,7 +140,7 @@ if __name__ == "__main__":
     workflow.init()
     arg = ray.put("hello world")
 
-    workflow.create(foo.bind([arg, arg])).run()
+    workflow.run(foo.bind([arg, arg]))
     assert False
     """
 
@@ -173,7 +174,7 @@ def test_embedded_objectrefs(workflow_start_regular):
         def __init__(self, refs):
             self.refs = refs
 
-    from ray.internal.storage import _storage_uri
+    from ray._private.storage import _storage_uri
 
     wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
 

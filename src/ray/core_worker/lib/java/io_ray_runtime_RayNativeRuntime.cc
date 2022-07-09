@@ -421,6 +421,12 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *env, jclass) {
       CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str());
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentNodeId(JNIEnv *env, jclass) {
+  const auto &curr_node_id = CoreWorkerProcess::GetCoreWorker().GetCurrentNodeId();
+  return IdToJavaByteArray<NodeID>(env, curr_node_id);
+}
+
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentReturnIds(
     JNIEnv *env, jclass, jint numReturns, jbyteArray actorIdByteArray) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();

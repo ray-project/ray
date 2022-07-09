@@ -212,16 +212,6 @@ def test_user_config(serve_instance):
     wait_for_condition(lambda: check("456", 3))
 
 
-def test_reject_duplicate_route(serve_instance):
-    @serve.deployment(name="A", route_prefix="/api")
-    class A:
-        pass
-
-    A.deploy()
-    with pytest.raises(ValueError):
-        A.options(name="B").deploy()
-
-
 def test_scaling_replicas(serve_instance):
     @serve.deployment(name="counter", num_replicas=2)
     class Counter:
@@ -308,6 +298,11 @@ def test_delete_deployment_group(serve_instance, blocking):
             )
             wait_for_condition(
                 lambda: requests.get("http://127.0.0.1:8000/g").status_code == 404,
+                timeout=5,
+            )
+
+            wait_for_condition(
+                lambda: len(serve_instance.list_deployments()) == 0,
                 timeout=5,
             )
 
@@ -435,7 +430,6 @@ class TestSetOptions:
         @serve.deployment(
             num_replicas=4,
             max_concurrent_queries=3,
-            prev_version="abcd",
             ray_actor_options={"num_cpus": 2},
             _health_check_timeout_s=17,
         )
@@ -444,14 +438,12 @@ class TestSetOptions:
 
         f.set_options(
             num_replicas=9,
-            prev_version="abcd",
             version="efgh",
             ray_actor_options={"num_gpus": 3},
         )
 
         assert f.num_replicas == 9
         assert f.max_concurrent_queries == 3
-        assert f.prev_version == "abcd"
         assert f.version == "efgh"
         assert f.ray_actor_options == {"num_gpus": 3}
         assert f._config.health_check_timeout_s == 17

@@ -1,6 +1,8 @@
-(key-concepts)=
+(serve-key-concepts)=
 
 # Key Concepts
+
+(serve-key-concepts-deployment)=
 
 ## Deployment
 
@@ -73,6 +75,7 @@ import requests
 print(requests.get("http://127.0.0.1:8000/api").text)
 ```
 
+(serve-key-concepts-query-deployment)=
 ## ServeHandle
 
 We can also query the deployment using the {mod}`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
@@ -104,6 +107,7 @@ Python developer. And the second is by using the HTTP request, allowing access t
   ```
 :::
 
+(serve-key-concepts-deployment-graph)=
 ## Deployment Graph
 
 Building on top of the Deployment concept, Ray Serve provides a first-class API for composing models into a graph structure.

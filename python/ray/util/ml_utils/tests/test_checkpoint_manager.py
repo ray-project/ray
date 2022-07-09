@@ -2,13 +2,13 @@ import pytest
 from ray.util.ml_utils.checkpoint_manager import (
     _CheckpointManager,
     CheckpointStorage,
-    CheckpointStrategy,
+    CheckpointConfig,
     _TrackedCheckpoint,
 )
 
 
 def test_unlimited_persistent_checkpoints():
-    cpm = _CheckpointManager(checkpoint_strategy=CheckpointStrategy(num_to_keep=None))
+    cpm = _CheckpointManager(checkpoint_strategy=CheckpointConfig(num_to_keep=None))
 
     for i in range(10):
         cpm.register_checkpoint(
@@ -19,7 +19,7 @@ def test_unlimited_persistent_checkpoints():
 
 
 def test_limited_persistent_checkpoints():
-    cpm = _CheckpointManager(checkpoint_strategy=CheckpointStrategy(num_to_keep=2))
+    cpm = _CheckpointManager(checkpoint_strategy=CheckpointConfig(num_to_keep=2))
 
     for i in range(10):
         cpm.register_checkpoint(
@@ -30,7 +30,7 @@ def test_limited_persistent_checkpoints():
 
 
 def test_no_persistent_checkpoints():
-    cpm = _CheckpointManager(checkpoint_strategy=CheckpointStrategy(num_to_keep=0))
+    cpm = _CheckpointManager(checkpoint_strategy=CheckpointConfig(num_to_keep=0))
 
     for i in range(10):
         cpm.register_checkpoint(
@@ -41,7 +41,7 @@ def test_no_persistent_checkpoints():
 
 
 def test_dont_persist_memory_checkpoints():
-    cpm = _CheckpointManager(checkpoint_strategy=CheckpointStrategy(num_to_keep=None))
+    cpm = _CheckpointManager(checkpoint_strategy=CheckpointConfig(num_to_keep=None))
     cpm._persist_memory_checkpoints = False
 
     for i in range(10):
@@ -53,7 +53,7 @@ def test_dont_persist_memory_checkpoints():
 
 
 def test_persist_memory_checkpoints():
-    cpm = _CheckpointManager(checkpoint_strategy=CheckpointStrategy(num_to_keep=None))
+    cpm = _CheckpointManager(checkpoint_strategy=CheckpointConfig(num_to_keep=None))
     cpm._persist_memory_checkpoints = True
 
     for i in range(10):
@@ -66,7 +66,7 @@ def test_persist_memory_checkpoints():
 
 def test_keep_best_checkpoints():
     cpm = _CheckpointManager(
-        checkpoint_strategy=CheckpointStrategy(
+        checkpoint_strategy=CheckpointConfig(
             num_to_keep=2,
             checkpoint_score_attribute="metric",
             checkpoint_score_order="min",

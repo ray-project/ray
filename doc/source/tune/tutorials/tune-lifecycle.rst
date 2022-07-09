@@ -32,7 +32,7 @@ while Ray Tune trainable "actors" run on any node (either on the same node or on
 
 The driver spawns parallel worker processes (:ref:`Ray actors <actor-guide>`)
 that are responsible for evaluating each trial using its hyperparameter configuration and the provided trainable
-(see the `trial executor source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_executor.py>`__).
+(see the `ray trial executor source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/ray_trial_executor.py>`__).
 
 While the Trainable is executing (:ref:`trainable-execution`), the Tune Driver communicates with each actor
 via actor methods to receive intermediate training results and pause/stop actors (see :ref:`trial-lifecycle`).
@@ -56,8 +56,8 @@ After each invocation, the driver is notified that a "result dict" is ready.
 The driver will then pull the result via ``ray.get``.
 
 If the trainable is a callable or a function, it will be executed on the Ray actor process on a separate execution thread.
-Whenever ``tune.report`` is called, the execution thread is paused and waits for the driver to pull a
-result (see `function_runner.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/function_runner.py>`__.
+Whenever ``session.report`` is called, the execution thread is paused and waits for the driver to pull a
+result (see `function_trainable.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable/function_trainable.py>`__.
 After pulling, the actor’s execution thread will automatically resume.
 
 
@@ -152,19 +152,18 @@ the following states: ``"PENDING"``, ``"RUNNING"``, ``"PAUSED"``, ``"ERRORED"``,
 
 See the docstring at :ref:`trial-docstring`.
 
-TrialExecutor
-~~~~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_executor.py>`__]
-The TrialExecutor is a component that interacts with the underlying execution framework.
-It also manages resources to ensure the cluster isn't overloaded. By default,
-the TrialExecutor uses Ray to execute trials.
+RayTrialExecutor
+~~~~~~~~~~~~~~~~
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/ray_trial_executor.py>`__]
+The RayTrialExecutor is a component that interacts with the underlying execution framework.
+It also manages resources to ensure the cluster isn't overloaded.
 
 See the docstring at :ref:`raytrialexecutor-docstring`.
 
 
 SearchAlg
 ~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/tree/master/python/ray/tune/suggest>`__]
+[`source code <https://github.com/ray-project/ray/tree/master/python/ray/tune/search>`__]
 The SearchAlgorithm is a user-provided object
 that is used for querying new hyperparameter configurations to evaluate.
 
@@ -183,7 +182,7 @@ and also are given the ability to reorder/prioritize incoming trials.
 
 Trainables
 ~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable.py>`__]
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable/trainable.py>`__]
 These are user-provided objects that are used for
 the training process. If a class is provided, it is expected to conform to the
 Trainable interface. If a function is provided. it is wrapped into a

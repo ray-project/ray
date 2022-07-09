@@ -15,7 +15,6 @@ from ray.serve.generated.serve_pb2 import (
     ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
     StatusOverview as StatusOverviewProto,
-    DeploymentLanguage,
 )
 
 EndpointTag = str
@@ -101,7 +100,7 @@ class StatusOverview:
         """Get a deployment's status by name.
 
         Args:
-            name (str): Deployment's name.
+            name: Deployment's name.
 
         Return (Optional[DeploymentStatusInfo]): Status with a name matching
             the argument, if one exists. Otherwise, returns None.
@@ -136,7 +135,7 @@ class StatusOverview:
         )
 
     @classmethod
-    def from_proto(cls, proto: StatusOverviewProto):
+    def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
 
         # Recreate Serve Application info
         app_status = ApplicationStatusInfo.from_proto(proto.app_status)
@@ -164,7 +163,6 @@ class DeploymentInfo:
         start_time_ms: int,
         deployer_job_id: "ray._raylet.JobID",
         actor_name: Optional[str] = None,
-        serialized_deployment_def: Optional[bytes] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         autoscaling_policy: Optional[AutoscalingPolicy] = None,
@@ -174,7 +172,6 @@ class DeploymentInfo:
         # The time when .deploy() was first called for this deployment.
         self.start_time_ms = start_time_ms
         self.actor_name = actor_name
-        self.serialized_deployment_def = serialized_deployment_def
         self.version = version
         self.deployer_job_id = deployer_job_id
         # The time when this deployment was deleted.
@@ -200,24 +197,10 @@ class DeploymentInfo:
 
         if self._cached_actor_def is None:
             assert self.actor_name is not None
-            assert (
-                self.replica_config.import_path is not None
-                or self.serialized_deployment_def is not None
+
+            self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
+                create_replica_wrapper(self.actor_name)
             )
-            if self.replica_config.import_path is not None:
-                self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
-                    create_replica_wrapper(
-                        self.actor_name,
-                        import_path=self.replica_config.import_path,
-                    )
-                )
-            else:
-                self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
-                    create_replica_wrapper(
-                        self.actor_name,
-                        serialized_deployment_def=self.serialized_deployment_def,
-                    )
-                )
 
         return self._cached_actor_def
 
@@ -232,15 +215,10 @@ class DeploymentInfo:
             "deployment_config": deployment_config,
             "replica_config": ReplicaConfig.from_proto(
                 proto.replica_config,
-                deployment_config.deployment_language
-                if deployment_config
-                else DeploymentLanguage.PYTHON,
+                deployment_config.needs_pickle() if deployment_config else True,
             ),
             "start_time_ms": proto.start_time_ms,
             "actor_name": proto.actor_name if proto.actor_name != "" else None,
-            "serialized_deployment_def": proto.serialized_deployment_def
-            if proto.serialized_deployment_def != b""
-            else None,
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().job_id,
@@ -252,7 +230,6 @@ class DeploymentInfo:
         data = {
             "start_time_ms": self.start_time_ms,
             "actor_name": self.actor_name,
-            "serialized_deployment_def": self.serialized_deployment_def,
             "version": self.version,
             "end_time_ms": self.end_time_ms,
         }
@@ -303,3 +280,4 @@ class RunningReplicaInfo:
     replica_tag: ReplicaTag
     actor_handle: ActorHandle
     max_concurrent_queries: int
+    is_cross_language: bool = False

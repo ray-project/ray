@@ -15,7 +15,7 @@ By default, Tune automatically runs N concurrent trials, where N is the number o
 
 You can override this parallelism with ``resources_per_trial``. Here you can
 specify your resource requests using either a dictionary or a
-:class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+:class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
 object. In any case, Ray Tune will try to start a placement group for each trial.
 
 .. code-block:: python
@@ -39,7 +39,7 @@ It is also possible to specify memory (``"memory"``, in bytes) and custom resour
 
 If your trainable function starts more remote workers, you will need to pass so-called placement group
 factory objects to request these resources.
-See the :class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+See the :class:`PlacementGroupFactory documentation <ray.tune.execution.placement_groups.PlacementGroupFactory>`
 for further information.
 This also applies if you are using other libraries making use of Ray, such as Modin.
 Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
@@ -101,7 +101,7 @@ How to limit concurrency?
 If using a :ref:`search algorithm <tune-search-alg>`, you may want to limit the number of trials that are being evaluated.
 For example, you may want to serialize the evaluation of trials to do sequential optimization.
 
-In this case, ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency:
+In this case, ``ray.tune.search.ConcurrencyLimiter`` to limit the amount of concurrency:
 
 .. code-block:: python
 
