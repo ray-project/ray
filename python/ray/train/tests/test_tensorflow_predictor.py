@@ -62,7 +62,9 @@ def test_init():
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array(use_gpu):
-    predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights, use_gpu=use_gpu)
+    predictor = TensorflowPredictor(
+        model_definition=build_model, model_weights=weights, use_gpu=use_gpu
+    )
 
     data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
@@ -75,8 +77,10 @@ def test_predict_array(use_gpu):
 def test_predict_array_with_preprocessor(use_gpu):
     preprocessor = DummyPreprocessor()
     predictor = TensorflowPredictor(
-        model_definition=build_model, preprocessor=preprocessor,
-        model_weights=weights, use_gpu=use_gpu
+        model_definition=build_model,
+        preprocessor=preprocessor,
+        model_weights=weights,
+        use_gpu=use_gpu,
     )
 
     data_batch = np.array([1, 2, 3])
@@ -88,7 +92,9 @@ def test_predict_array_with_preprocessor(use_gpu):
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_dataframe(use_gpu):
-    predictor = TensorflowPredictor(model_definition=build_model_multi_input, use_gpu=use_gpu)
+    predictor = TensorflowPredictor(
+        model_definition=build_model_multi_input, use_gpu=use_gpu
+    )
 
     data_batch = pd.DataFrame({"A": [0.0, 0.0, 0.0], "B": [1.0, 2.0, 3.0]})
     predictions = predictor.predict(data_batch)
@@ -99,7 +105,9 @@ def test_predict_dataframe(use_gpu):
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_multi_output(use_gpu):
-    predictor = TensorflowPredictor(model_definition=build_model_multi_output, use_gpu=use_gpu)
+    predictor = TensorflowPredictor(
+        model_definition=build_model_multi_output, use_gpu=use_gpu
+    )
 
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
