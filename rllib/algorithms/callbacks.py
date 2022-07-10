@@ -12,6 +12,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic,
     PublicAPI,
     is_overridden,
 )
@@ -50,13 +51,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 "a class extending rllib.algorithms.callbacks.DefaultCallbacks",
             )
         self.legacy_callbacks = legacy_callbacks_dict or {}
-        if is_overridden(self.on_trainer_init):
-            deprecation_warning(
-                old="on_trainer_init(trainer, **kwargs)",
-                new="on_algorithm_init(algorithm, **kwargs)",
-                error=False,
-            )
 
+    @OverrideToImplementCustomLogic
     def on_sub_environment_created(
         self,
         *,
@@ -82,6 +78,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """
         pass
 
+    @OverrideToImplementCustomLogic
     def on_algorithm_init(
         self,
         *,
@@ -99,6 +96,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """
         pass
 
+    @OverrideToImplementCustomLogic
     def on_episode_start(
         self,
         *,
@@ -133,6 +131,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @OverrideToImplementCustomLogic
     def on_episode_step(
         self,
         *,
@@ -164,6 +163,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 {"env": base_env, "episode": episode}
             )
 
+    @OverrideToImplementCustomLogic
     def on_episode_end(
         self,
         *,
@@ -203,6 +203,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @OverrideToImplementCustomLogic
     def on_postprocess_trajectory(
         self,
         *,
@@ -247,6 +248,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @OverrideToImplementCustomLogic
     def on_sample_end(
         self, *, worker: "RolloutWorker", samples: SampleBatch, **kwargs
     ) -> None:
@@ -267,6 +269,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @OverrideToImplementCustomLogic
     def on_learn_on_batch(
         self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
     ) -> None:
@@ -291,6 +294,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         pass
 
+    @OverrideToImplementCustomLogic
     def on_train_result(
         self,
         *,
@@ -318,7 +322,9 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
-    @Deprecated(error=True)
+    @Deprecated(old="on_trainer_init(trainer, **kwargs)",
+                new="on_algorithm_init(algorithm, **kwargs)",
+                error=True)
     def on_trainer_init(self, *args, **kwargs):
         raise DeprecationWarning
 
