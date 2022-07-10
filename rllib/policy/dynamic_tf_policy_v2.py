@@ -84,12 +84,12 @@ class DynamicTFPolicyV2(TFPolicy):
 
         self._init_state_inputs(existing_inputs)
         self._init_view_requirements()
-        
+
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session(
             config=tf1.ConfigProto(**self.config["tf_session_args"])
         )
-        
+
         timestep, explore = self._init_input_dict_and_dummy_batch(existing_inputs)
         (
             sampled_action,
@@ -97,8 +97,6 @@ class DynamicTFPolicyV2(TFPolicy):
             dist_inputs,
             self._policy_extra_action_fetches,
         ) = self._init_action_fetches(timestep, explore, sess)
-
-        
 
         batch_divisibility_req = self.get_batch_divisibility_req()
 
@@ -561,7 +559,10 @@ class DynamicTFPolicyV2(TFPolicy):
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
     def _init_action_fetches(
-        self, timestep: Union[int, TensorType], explore: Union[bool, TensorType], tf_sess
+        self,
+        timestep: Union[int, TensorType],
+        explore: Union[bool, TensorType],
+        tf_sess,
     ) -> Tuple[TensorType, TensorType, TensorType, type, Dict[str, TensorType]]:
         """Create action related fields for base Policy and loss initialization."""
         # Multi-GPU towers do not need any action computing/exploration
@@ -670,21 +671,21 @@ class DynamicTFPolicyV2(TFPolicy):
     @OverrideToImplementCustomLogic
     def add_exploration_loss_and_update(self):
         self.policy_loss = self.loss.__get__(self, type(self))
-        
+
         def loss(
             self,
             model: Union[ModelV2, "tf.keras.Model"],
             dist_class: Type[TFActionDistribution],
             train_batch: SampleBatch,
         ) -> Union[TensorType, List[TensorType]]:
-            
+
             # Update the weights of the exploration model(s), if necessary
             return self.policy_loss(
-                model, dist_class, train_batch                
+                model, dist_class, train_batch
             ) + self.exploration.compute_loss_and_update(train_batch, self)
-            
+
         self.loss = loss.__get__(self, type(self))
-        
+
     def maybe_initialize_optimizer_and_loss(self):
         # We don't need to initialize loss calculation for MultiGPUTowerStack.
         if self._is_tower:

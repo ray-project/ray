@@ -436,21 +436,21 @@ class EagerTFPolicyV2(Policy):
     @OverrideToImplementCustomLogic
     def add_custom_loss_and_update(self):
         self.policy_loss = self.loss.__get__(self, type(self))
-        
+
         def loss(
             self,
             model: Union[ModelV2, "tf.keras.Model"],
             dist_class: Type[TFActionDistribution],
             train_batch: SampleBatch,
         ) -> Union[TensorType, List[TensorType]]:
-            
+
             # Update the weights of the exploration model(s), if necessary
             return self.policy_loss(
-                model, dist_class, train_batch                
+                model, dist_class, train_batch
             ) + self.exploration.compute_loss_and_update(train_batch, self)
-            
+
         self.loss = loss.__get__(self, type(self))
-        
+
     @override(Policy)
     def compute_actions_from_input_dict(
         self,

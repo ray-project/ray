@@ -225,13 +225,12 @@ class NovelDMetricsCallbacks(RNDMetricsCallbacks):
         episode.hist_data["noveld/state_counts_avg"] = episode.user_data[
             "state_counts_avg"
         ]
-        
-        
+
+
 class RNDBatchCallbacks(DefaultCallbacks):
-    
     def __init__(self):
         super().__init__()
-                
+
     def on_learn_on_batch(
         self,
         *,
@@ -244,8 +243,11 @@ class RNDBatchCallbacks(DefaultCallbacks):
             policy=policy, train_batch=train_batch, result=result, **kwargs
         )
         from ray.rllib.evaluation.postprocessing import Postprocessing
+
         if Postprocessing.ADVANTAGES in train_batch:
             train_batch[Postprocessing.ADVANTAGES] = (
-                policy.exploration.adv_ext_coeff * train_batch[Postprocessing.ADVANTAGES]
-                + policy.exploration.adv_int_coeff * train_batch["exploration_advantages"]
+                policy.exploration.adv_ext_coeff
+                * train_batch[Postprocessing.ADVANTAGES]
+                + policy.exploration.adv_int_coeff
+                * train_batch["exploration_advantages"]
             )
