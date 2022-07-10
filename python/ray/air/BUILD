@@ -222,4 +222,10 @@ py_test(
 py_library(
     name = "ml_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    visibility = [
+        "//python/ray/air:__pkg__",
+        "//python/ray/air:__subpackages__",
+        "//python/ray/train:__pkg__",
+        "//python/ray/train:__subpackages__",
+    ],
 )
