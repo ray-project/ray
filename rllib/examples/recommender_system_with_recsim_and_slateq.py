@@ -73,7 +73,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--min-size",
+    "--min-size-for-sampling",
     type=int,
     default=20000,
     help="The number of timesteps to add to the replay buffer before sampling from "
@@ -137,7 +137,7 @@ def main():
         "num_workers": args.num_workers,
         "env_config": env_config,
         "replay_buffer_config": {
-            "min_size": args.min_size,  # noqa E501
+            "min_size": args.min_size_for_sampling,  # noqa E501
         },
     }
 
