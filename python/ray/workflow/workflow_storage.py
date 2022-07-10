@@ -17,9 +17,9 @@ from ray.types import ObjectRef
 from ray.workflow.common import (
     TaskID,
     WorkflowStatus,
-    WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
 )
+from ray.workflow.exceptions import WorkflowNotFoundError
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow import serialization_context
@@ -231,10 +231,6 @@ class WorkflowStorage:
     which does not care about the underlining storage implementation."""
 
     def __init__(self, workflow_id: str):
-        from ray.workflow.api import _ensure_workflow_initialized
-
-        _ensure_workflow_initialized()
-
         self._storage = storage.get_client(os.path.join(WORKFLOW_ROOT, workflow_id))
         self._status_storage = WorkflowIndexingStorage()
         self._workflow_id = workflow_id

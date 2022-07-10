@@ -65,7 +65,7 @@ def test_predict_model_not_training(model, use_gpu):
 def test_predict_array(model, use_gpu):
     predictor = TorchPredictor(model=model, use_gpu=use_gpu)
 
-    data_batch = np.asarray([[1], [2], [3]])
+    data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
@@ -76,7 +76,7 @@ def test_predict_array(model, use_gpu):
 def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
     predictor = TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
@@ -98,7 +98,7 @@ def test_predict_dataframe(use_gpu):
 def test_predict_multi_output(use_gpu):
     predictor = TorchPredictor(model=DummyModelMultiOutput(), use_gpu=use_gpu)
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
     # Model outputs two tensors
@@ -124,7 +124,7 @@ def test_predict_array_with_different_dtypes(
 ):
     predictor = TorchPredictor(model=model, use_gpu=use_gpu)
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch, dtype=input_dtype)
 
     assert predictions.dtype == expected_output_dtype
@@ -135,7 +135,7 @@ def test_predict_array_no_training(model, use_gpu):
     checkpoint = to_air_checkpoint(model)
     predictor = TorchPredictor.from_checkpoint(checkpoint, use_gpu=use_gpu)
 
-    data_batch = np.array([[1], [2], [3]])
+    data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
