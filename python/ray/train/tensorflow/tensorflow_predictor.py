@@ -9,7 +9,6 @@ from ray.train.predictor import DataBatchType
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.air.checkpoint import Checkpoint
 from ray.train.data_parallel_trainer import _load_checkpoint
-from ray.train.predictor import DataBatchType
 from ray.train._internal.dl_predictor import DLPredictor
 
 if TYPE_CHECKING:
