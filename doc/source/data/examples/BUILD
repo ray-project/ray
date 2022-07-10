@@ -16,7 +16,12 @@ filegroup(
 py_test_run_all_notebooks(
     size = "medium",
     include = ["*.ipynb"],
-    exclude = ["big_data_ingestion.ipynb"],
+    exclude = [
+        "big_data_ingestion.ipynb",
+        "nyc_taxi_basic_processing.ipynb", # REGRESSION
+        "ocr_example.ipynb", # REGRESSION
+    ],
     data = ["//doc/source/data/examples:data_examples"],
     tags = ["exclusive", "team:ml"],
+    allow_empty = True  # REGRESSION
 )
