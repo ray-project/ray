@@ -975,7 +975,7 @@ class RayContext(BaseContext, Mapping):
     def _repr_html_(self):
         if self.dashboard_url:
             dashboard_row = Template("context_dashrow.html.j2").render(
-                dashboard_url=self.dashboard_url
+                dashboard_url="http://" + self.dashboard_url
             )
         else:
             dashboard_row = None
