@@ -38,5 +38,8 @@ if __name__ == "__main__":
         jupytext.write(notebook, f, fmt="py:percent")
         name = f.name
 
-    # execute the test
-    runpy.run_path(name)
+    remainder.insert(0, name)
+    remainder.insert(0, sys.executable)
+
+    # Run the notebook
+    subprocess.run(remainder, check=True)
