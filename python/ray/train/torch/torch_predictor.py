@@ -1,16 +1,14 @@
-from typing import TYPE_CHECKING, Dict, Optional, Union
 import logging
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import pandas as pd
 import torch
 
 from ray.util import log_once
-from ray.train.predictor import DataBatchType, Predictor
+from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
-from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type, DataType
-from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.train.torch.utils import load_checkpoint
+from ray.train._internal.dl_predictor import DLPredictor
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -18,7 +16,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class TorchPredictor(Predictor):
+class TorchPredictor(DLPredictor):
     """A predictor for PyTorch models.
 
     Args:
@@ -83,59 +81,32 @@ class TorchPredictor(Predictor):
         model, preprocessor = load_checkpoint(checkpoint, model)
         return TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
-    def _predict_pandas(
-        self,
-        data: pd.DataFrame,
-        dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
-    ) -> pd.DataFrame:
-        def tensorize(numpy_array, dtype):
-            torch_tensor = torch.from_numpy(numpy_array).to(dtype)
-            if self.use_gpu:
-                torch_tensor = torch_tensor.to(device="cuda")
+    def _array_to_tensor(
+        self, numpy_array: np.ndarray, dtype: torch.dtype
+    ) -> torch.Tensor:
+        torch_tensor = torch.from_numpy(numpy_array).to(dtype)
+        if self.use_gpu:
+            torch_tensor = torch_tensor.to(device="cuda")
 
-            # Off-the-shelf torch Modules expect the input size to have at least 2
-            # dimensions (batch_size, feature_size). If the tensor for the column
-            # is flattened, then we unqueeze it to add an extra dimension.
-            if len(torch_tensor.size()) == 1:
-                torch_tensor = torch_tensor.unsqueeze(dim=1)
+        # Off-the-shelf torch Modules expect the input size to have at least 2
+        # dimensions (batch_size, feature_size). If the tensor for the column
+        # is flattened, then we unqueeze it to add an extra dimension.
+        if len(torch_tensor.size()) == 1:
+            torch_tensor = torch_tensor.unsqueeze(dim=1)
 
-            return torch_tensor
+        return torch_tensor
 
-        tensors = convert_pandas_to_batch_type(data, DataType.NUMPY)
+    def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
+        return tensor.cpu().detach().numpy()
 
-        # Single numpy array.
-        if isinstance(tensors, np.ndarray):
-            column_name = data.columns[0]
-            if isinstance(dtype, dict):
-                dtype = dtype[column_name]
-            model_input = tensorize(tensors, dtype)
-
-        else:
-            model_input = {
-                k: tensorize(v, dtype=dtype[k] if isinstance(dtype, dict) else dtype)
-                for k, v in tensors.items()
-            }
-
+    def _model_predict(
+        self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
+    ) -> Union[
+        torch.Tensor, Dict[str, torch.Tensor], List[torch.Tensor], Tuple[torch.Tensor]
+    ]:
         with torch.no_grad():
-            output = self.model(model_input)
-
-        def untensorize(torch_tensor):
-            numpy_array = torch_tensor.detach().cpu().numpy()
-            return TensorArray(numpy_array)
-
-        # Handle model multi-output. For example if model outputs 2 images.
-        if isinstance(output, dict):
-            return pd.DataFrame({k: untensorize(v) for k, v in output})
-        elif isinstance(output, list) or isinstance(output, tuple):
-            tensor_name = "output_"
-            output_dict = {}
-            for i in range(len(output)):
-                output_dict[tensor_name + str(i + 1)] = untensorize(output[i])
-            return pd.DataFrame(output_dict)
-        else:
-            return pd.DataFrame(
-                {"predictions": untensorize(output)}, columns=["predictions"]
-            )
+            output = self.model(tensor)
+        return output
 
     def predict(
         self,
@@ -197,6 +168,7 @@ class TorchPredictor(Predictor):
             predictions = predictor.predict(data)
 
         Returns:
-            DataBatchType: Prediction result.
+            DataBatchType: Prediction result. The return type will be the same as the
+                input type.
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)

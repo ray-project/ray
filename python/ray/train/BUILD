@@ -106,14 +106,6 @@ py_test(
 )
 
 py_test(
-    name = "test_horovod_trainer",
-    size = "large",
-    srcs = ["tests/test_horovod_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_base_trainer",
     size = "medium",
     srcs = ["tests/test_base_trainer.py"],
@@ -170,11 +162,11 @@ py_test(
 )
 
 py_test(
-    name = "test_huggingface_predictor",
-    size = "medium",
-    srcs = ["tests/test_huggingface_predictor.py"],
+    name = "test_horovod_trainer",
+    size = "large",
+    srcs = ["tests/test_horovod_trainer.py", "python/ray/air/examples/horovod/horovod_pytorch_example.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", "//python/ray/air:ml_lib"]
 )
 
 py_test(
@@ -358,4 +350,10 @@ py_test(
 py_library(
     name = "train_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    visibility = [
+        "//python/ray/air:__pkg__",
+        "//python/ray/air:__subpackages__",
+        "//python/ray/train:__pkg__",
+        "//python/ray/train:__subpackages__",
+    ],
 )
