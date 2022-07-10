@@ -35,6 +35,7 @@ class Exploration:
         framework: str,
         policy_config: AlgorithmConfigDict,
         model: ModelV2,
+        tf_sess,
         num_workers: int,
         worker_index: int
     ):

@@ -37,6 +37,7 @@ class StochasticSampling(Exploration):
         *,
         framework: str,
         model: ModelV2,
+        tf_sess=None,
         random_timesteps: int = 0,
         **kwargs
     ):
@@ -51,7 +52,7 @@ class StochasticSampling(Exploration):
                 actual samples will be drawn to get exploration actions.
         """
         assert framework is not None
-        super().__init__(action_space, model=model, framework=framework, **kwargs)
+        super().__init__(action_space, model=model, framework=framework, tf_sess=tf_sess, **kwargs)
 
         # Create the Random exploration module (used for the first n
         # timesteps).

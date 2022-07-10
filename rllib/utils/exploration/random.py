@@ -28,7 +28,7 @@ class Random(Exploration):
     """
 
     def __init__(
-        self, action_space: Space, *, model: ModelV2, framework: Optional[str], **kwargs
+        self, action_space: Space, *, model: ModelV2, tf_sess=None, framework: Optional[str], **kwargs
     ):
         """Initialize a Random Exploration object.
 
@@ -37,7 +37,7 @@ class Random(Exploration):
             framework: One of None, "tf", "tfe", "torch".
         """
         super().__init__(
-            action_space=action_space, model=model, framework=framework, **kwargs
+            action_space=action_space, model=model, tf_sess=tf_sess, framework=framework, **kwargs
         )
 
         self.action_space_struct = get_base_struct_from_space(self.action_space)

@@ -84,18 +84,21 @@ class DynamicTFPolicyV2(TFPolicy):
 
         self._init_state_inputs(existing_inputs)
         self._init_view_requirements()
+        
+        # Phase 1 init.
+        sess = tf1.get_default_session() or tf1.Session(
+            config=tf1.ConfigProto(**self.config["tf_session_args"])
+        )
+        
         timestep, explore = self._init_input_dict_and_dummy_batch(existing_inputs)
         (
             sampled_action,
             sampled_action_logp,
             dist_inputs,
             self._policy_extra_action_fetches,
-        ) = self._init_action_fetches(timestep, explore)
+        ) = self._init_action_fetches(timestep, explore, sess)
 
-        # Phase 1 init.
-        sess = tf1.get_default_session() or tf1.Session(
-            config=tf1.ConfigProto(**self.config["tf_session_args"])
-        )
+        
 
         batch_divisibility_req = self.get_batch_divisibility_req()
 
@@ -558,7 +561,7 @@ class DynamicTFPolicyV2(TFPolicy):
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
     def _init_action_fetches(
-        self, timestep: Union[int, TensorType], explore: Union[bool, TensorType]
+        self, timestep: Union[int, TensorType], explore: Union[bool, TensorType], tf_sess
     ) -> Tuple[TensorType, TensorType, TensorType, type, Dict[str, TensorType]]:
         """Create action related fields for base Policy and loss initialization."""
         # Multi-GPU towers do not need any action computing/exploration
@@ -570,7 +573,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self._state_out = None
         if not self._is_tower:
             # Create the Exploration object to use for this Policy.
-            self.exploration = self._create_exploration()
+            self.exploration = self._create_exploration(tf_sess)
 
             # Fully customized action generation (e.g., custom policy).
             if is_overridden(self.action_sampler_fn):

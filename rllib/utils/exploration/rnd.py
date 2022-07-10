@@ -1,3 +1,4 @@
+from email import policy
 from gym.spaces import Space
 import logging
 from typing import Dict, Optional, Union
@@ -16,7 +17,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.tf_utils import get_placeholder
+from ray.rllib.utils.tf_utils import get_placeholder, make_tf_callable
 from ray.rllib.utils.typing import (
     FromConfigSpec,
     List,
@@ -57,6 +58,7 @@ class RND(Exploration):
         *,
         framework: str,
         model: ModelV2,
+        tf_sess,
         embed_dim: int = 128,
         distill_net_config: Optional[ModelConfigDict] = None,
         lr: float = 1e-3,
@@ -116,7 +118,7 @@ class RND(Exploration):
                 used with a `PiecewiseSchedule`, i.e. using the `random_timesteps`.
         """
 
-        super().__init__(action_space, framework=framework, model=model, **kwargs)
+        super().__init__(action_space, framework=framework, model=model, tf_sess=tf_sess,**kwargs)
 
         # Check for parallel execution.
         if self.policy_config["num_workers"] != 0:
@@ -190,6 +192,7 @@ class RND(Exploration):
                     activation_fn=None,
                 )
             else:
+                # TensorFlow
                 prev_layer = model.base_model.get_layer("value_out").input
                 exploration_value_out = tf.keras.layers.Dense(
                     1,
@@ -223,7 +226,15 @@ class RND(Exploration):
 
                 model._exploration_value_branch = _exploration_value_branch.__get__(
                     model, type(model)
-                )
+                )      
+                self.model = model
+                self._sess = tf_sess
+                @make_tf_callable(self._sess)
+                def _value_function(**input_dict):                    
+                    input_dict = SampleBatch(input_dict)
+                    model_out, _ = self.model(input_dict)                      
+                    return self.model._exploration_value_branch()[0]
+                self._value_function = _value_function
             # -------------------------------------------------------
             # TODO: Check, if this is really working on a reference.
             self.model = model
@@ -509,8 +520,11 @@ class RND(Exploration):
             )
         else:
             # Calculate non-episodic returns and estimate value targets.
-            last_r = self._predict_nonepisodic_value(sample_batch, policy)
-
+            last_r = (
+                self._predict_nonepisodic_value(
+                    sample_batch, policy
+                ).detach().numpy().reshape(-1)
+            )
             # Get the non-episodic value predictions for all observations
             # in the trajectory.
             sample_batch["exploration_vf_preds"] = (
@@ -520,15 +534,12 @@ class RND(Exploration):
                             policy.device
                         )
                     )
-                )
-                .detach()
-                .numpy()
-                .reshape(-1)
+                ).detach().numpy().reshape(-1)
             )
 
             # Compute advantages and value targets.
             vpred_t = np.concatenate(
-                [sample_batch["exploration_vf_preds"], np.array([last_r])]
+                [sample_batch["exploration_vf_preds"], last_r]
             )
             delta_t = (
                 self._intrinsic_reward_np + self.gamma * vpred_t[1:] - vpred_t[:-1]
@@ -558,7 +569,7 @@ class RND(Exploration):
         return sample_batch
 
     @override(Exploration)
-    def compute_loss_and_update(self, sample_batch, policy, tf_sess):
+    def compute_loss_and_update(self, sample_batch, policy):
 
         if self.framework == "torch":
             novelty = self._compute_novelty(
@@ -604,10 +615,16 @@ class RND(Exploration):
             # Add non-episodic returns if needed.
             if self.nonepisodic_returns:
                 from ray.rllib.evaluation.postprocessing import Postprocessing
-
-                value_fn_out = self._value_function(sample_batch, policy)
+                # Attach the RNDBatchCallbacks to compute non-episodic advantages.
+                self._attach_rnd_batch_callbacks(policy)
+                model_out, _ = self.model(sample_batch)
+                value_fn_out = self.model._exploration_value_branch()[0]
+                _ = sample_batch["exploration_advantages"] * 2.0
+                #value_fn_out = self._value_function(sample_batch, policy)
                 # Compute the intrinsic value function loss to add to the
-                # total PPO loss
+                # total PPO loss.
+                # TODO: Check, if this has to be initialized at the beginning
+                # and only calculated here.
                 vf_intrinsic_loss = (
                     tf.reduce_mean(
                         tf.pow(
@@ -616,17 +633,19 @@ class RND(Exploration):
                         ),
                         axis=-1,
                     )
-                    * self.vf_loss_coeff
+                    * tf.constant(self.vf_loss_coeff)
                 )
                 if self.framework == "tf":
-                    self._vf_intrinsic_loss_np = tf_sess.run(vf_intrinsic_loss)
+                    self._vf_intrinsic_loss = vf_intrinsic_loss
                 else:
                     self._vf_intrinsic_loss_np = vf_intrinsic_loss.numpy()
                 # Add intrinsic advantages to the extrinsic advantages.
-                sample_batch[Postprocessing.ADVANTAGES] = (
-                    self.adv_ext_coeff * sample_batch[Postprocessing.ADVANTAGES]
-                    + self.adv_int_coeff * sample_batch["exploration_advantages"]
-                )
+                # During postprocessing the policy's advantages are not yet provided.
+                # sample_batch[Postprocessing.ADVANTAGES] = (
+                #     self.adv_ext_coeff * sample_batch[Postprocessing.ADVANTAGES]
+                #     + self.adv_int_coeff * sample_batch["exploration_advantages"]
+                # )
+                
             else:
                 # Else, return zero loss.
                 vf_intrinsic_loss = tf.constant(0.0)
@@ -659,31 +678,67 @@ class RND(Exploration):
         self._intrinsic_reward_np = self._novelty_np * self.intrinsic_reward_coeff
 
     # TODO: Check if this holds for both TF and Torch
-    def _predict_nonepisodic_value(self, sample_batch, policy, tf_sess):
+    def _predict_nonepisodic_value(self, sample_batch, policy, tf_sess=None):
         """Uses the non-episodic value head to predict a value.
 
         Note, this is done only for the next observation.
         """
         input_dict = sample_batch.get_single_step_input_dict(
-            policy.model.view_requirements, index="last"
+            self.model.view_requirements, index="last"
         )
-        input_dict = SampleBatch(input_dict)
-        return self._value_function(input_dict, policy, tf_sess)
+        if self.framework != "tf":
+            return self._value_function(input_dict, policy)
+        else: 
+            return self._value_function(**input_dict)
 
-    def _value_function(self, sample_batch, policy, tf_sess):
-        """Calls the non-episodic value head."""
-        if self.framework == "torch":
+    #@make_tf_callable(self.get_session())
+    def _value_function(self, input_dict, policy):
+        """Calls the non-episodic value head."""        
+        if self.framework == "torch":            
+            input_dict = SampleBatch(input_dict)
             input_dict = policy._lazy_tensor_dict(input_dict)
             # TODO: Ensure it also runs with no separate value head.
             return self.model._exploration_value_branch(
                 self.model._value_branch_separate(
-                    sample_batch[SampleBatch.OBS].to(policy.device)
+                    input_dict[SampleBatch.OBS].to(policy.device)
                 )
             )
         else:
-            model_out, _ = policy.model(sample_batch)
-            if self.framework == "tf":
-                return tf_sess.run(policy.model._exploration_value_branch()[0])
-            else:
-                input_dict = policy._lazy_tensor_dict(input_dict)
-                return policy.model._exploration_value_branch()[0]
+            # For tfe.
+            model_out, _ = policy.model(input_dict)            
+            return self.model._exploration_value_branch()[0]
+            
+    def _attach_rnd_batch_callbacks(self, policy):
+        """Attaches the RNDBatchCallbacks to add non-episodic advantages.
+        
+        For TensorFlow 1.x this is needed as otherwise the `advantages`' 
+        placeholder is overwritten and cannot be used for feeding anymore.
+        Using a callback solves this problem as in òn_learn_on_batch()` we
+        work on the numpy training batch and not the placeholders.
+        """        
+        from ray.rllib.utils.exploration.callbacks import RNDBatchCallbacks
+        from ray.rllib.algorithms.callbacks import MultiCallbacks
+        # Three cases can occur within the Policy's callbacks:
+        #   1. Only the DefaultCallbacks.
+        #   2. Only another single Callback.
+        #   3. A MultiCallbacks object.
+        if not isinstance(policy.callbacks, MultiCallbacks):
+            if not isinstance(policy.callbacks, RNDBatchCallbacks):
+                policy.callbacks = MultiCallbacks([policy.callbacks, RNDBatchCallbacks])
+                logger.info(
+                    "Attached RNDBatchCallbacks to policy callbacks. This enables advantages computation "
+                    "with non-episodic returns."
+                )
+        else:
+            if not issubclass(policy.callbacks._callback_class_list[-1], RNDBatchCallbacks):
+                policy.callbacks = MultiCallbacks([*policy.callbacks._callback_class_list, RNDBatchCallbacks])
+                logger.info(
+                    "Attached RNDBatchCallbacks to policy callbacks. This enables advantages computation "
+                    "with non-episodic returns."
+                )
+        
+
+
+
+        
+        
