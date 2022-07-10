@@ -180,7 +180,7 @@ class LocalObjectManager {
   std::string GetObjectCheckpointURL(const ObjectID &object_id)
       LOCKS_EXCLUDED(object_map_mutex_);
 
-  ActorID LocalObjectManager::GetObjectGlobalOwnerID(const ObjectID &object_id)
+  ActorID GetObjectGlobalOwnerID(const ObjectID &object_id)
       LOCKS_EXCLUDED(object_map_mutex_);
 
  private:
@@ -273,6 +273,8 @@ class LocalObjectManager {
   /// progress.
   absl::flat_hash_set<ObjectID> objects_pending_restore_;
 
+  absl::flat_hash_set<ObjectID> objects_pending_load_;
+
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.
   uint64_t last_free_objects_at_ms_ = 0;
@@ -345,8 +347,8 @@ class LocalObjectManager {
   IObjectDirectory *object_directory_;
 
   mutable absl::Mutex object_map_mutex_;
-  absl::flat_hash_map<ObjectID, std::tuple<std::string, bool, ActorID>> get_object_to_url_map_
-      GUARDED_BY(object_map_mutex_);
+  absl::flat_hash_map<ObjectID, std::tuple<std::string, bool, ActorID>>
+      get_object_to_url_map_ GUARDED_BY(object_map_mutex_);
 
   ///
   /// Stats

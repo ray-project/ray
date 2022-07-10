@@ -63,6 +63,7 @@ class DumpCheckpointInterface {
   virtual void DumpCheckpoints(
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
+      const std::vector<ActorID> &global_owner_ids,
       const rpc::Address &worker_address,
       const ray::rpc::ClientCallback<ray::rpc::DumpCheckpointsReply> &callback) = 0;
 
@@ -322,7 +323,8 @@ class RayletClient : public RayletClientInterface {
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(
       const std::vector<ObjectID> &object_ids,
-      const absl::flat_hash_map<ObjectID, std::string> &object_to_url_map,
+      const absl::flat_hash_map<ObjectID, std::pair<std::string, std::string>>
+          &object_to_url_map,
       const std::vector<rpc::Address> &owner_addresses,
       bool fetch_only,
       bool mark_worker_blocked,
@@ -465,6 +467,7 @@ class RayletClient : public RayletClientInterface {
   void DumpCheckpoints(
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
+      const std::vector<ActorID> &global_owner_ids,
       const rpc::Address &worker_address,
       const ray::rpc::ClientCallback<ray::rpc::DumpCheckpointsReply> &callback) override;
 

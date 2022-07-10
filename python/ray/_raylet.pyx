@@ -1201,18 +1201,21 @@ cdef class CoreWorker:
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
-    def get_objects(self, object_refs, checkpoint_urls, TaskID current_task_id,
+    def get_objects(self, object_refs, checkpoint_urls, global_owner_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
             c_vector[c_string] c_checkpoint_urls
+            c_vector[c_string] c_global_owner_ids
         for checkpoint_url in checkpoint_urls:
             c_checkpoint_urls.push_back(<c_string>checkpoint_url)
+        for global_owner_id in global_owner_ids:
+            c_global_owner_ids.push_back(<c_string>global_owner_id)
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, c_checkpoint_urls, timeout_ms, &results))
+                c_object_ids, c_checkpoint_urls, c_global_owner_ids, timeout_ms, &results))
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1356,7 +1359,7 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().SealExisting(
                             c_object_id, pin_object=False,
                             owner_address=c_owner_address,
-                            global_owner_actor_id=CActorID.Nil(),
+                            global_owner_id=CActorID.Nil(),
                             checkpoint_url=NULL))
 
     def put_serialized_object_and_increment_local_ref(self, serialized_object,
@@ -1431,7 +1434,7 @@ cdef class CoreWorker:
                             CCoreWorkerProcess.GetCoreWorker().SealExisting(
                                         c_object_id, pin_object=False,
                                         owner_address=move(c_owner_address),
-                                        global_owner_actor_id=c_owner_actor_id,
+                                        global_owner_id=c_owner_actor_id,
                                         checkpoint_url=checkpoint_url_point))
 
         return c_object_id.Binary(), checkpoint_url
@@ -1991,17 +1994,20 @@ cdef class CoreWorker:
             c_string c_spilled_url
             CNodeID c_spilled_node_id
             c_string serialized_object_status
+            CActorID global_owner_id
         CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id,
                 &c_owner_address,
                 &c_spilled_url,
                 &c_spilled_node_id,
-                &serialized_object_status)
+                &serialized_object_status,
+                &global_owner_id)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 c_spilled_url,
                 c_spilled_node_id.Binary(),
-                serialized_object_status)
+                serialized_object_status,
+                global_owner_id.Binary())
 
     def deserialize_and_register_object_ref(
             self, const c_string &object_ref_binary,
@@ -2010,6 +2016,7 @@ cdef class CoreWorker:
             const c_string &spilled_url,
             const c_string &spilled_node_id,
             const c_string &serialized_object_status,
+            const c_string &global_owner_id,
     ):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_ref_binary)
@@ -2018,6 +2025,7 @@ cdef class CoreWorker:
                                            CObjectID.Nil())
             CAddress c_owner_address = CAddress()
             CNodeID c_spilled_node_id = CNodeID.FromBinary(spilled_node_id)
+            CActorID c_global_owner_id = CActorID.FromBinary(global_owner_id)
 
         c_owner_address.ParseFromString(serialized_owner_address)
         (CCoreWorkerProcess.GetCoreWorker()
@@ -2027,7 +2035,8 @@ cdef class CoreWorker:
                 c_owner_address,
                 spilled_url,
                 c_spilled_node_id,
-                serialized_object_status))
+                serialized_object_status,
+                c_global_owner_id))
 
     cdef store_task_output(self, serialized_object, const CObjectID &return_id,
                            size_t data_size, shared_ptr[CBuffer] &metadata,

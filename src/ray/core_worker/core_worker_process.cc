@@ -178,6 +178,13 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     instrumented_io_context io_service;
     boost::asio::io_service::work work(io_service);
     rpc::ClientCallManager client_call_manager(io_service);
+    std::string worker_type_str = std::string("unknown worker");
+    if (options_.worker_type == WorkerType::LOAD_CHECKPOINT_WORKER) {
+      worker_type_str = std::string("IS_LOAD_CHECKPOINT_WORKER");
+    }
+    RAY_LOG(DEBUG) << "In InitializeSystemConfig, node_address: "
+                   << options_.raylet_ip_address << ":" << options_.node_manager_port
+                   << ", " << worker_type_str;
     auto grpc_client = rpc::NodeManagerWorkerClient::make(
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
     raylet::RayletClient raylet_client(grpc_client);

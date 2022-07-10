@@ -835,9 +835,10 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
                                   rpc::Address *owner_address,
                                   std::string *spilled_url,
                                   NodeID *spilled_node_id,
-                                  std::string *serialized_object_status) {
+                                  std::string *serialized_object_status,
+                                  ActorID *global_owner_id) {
   auto has_owner = reference_counter_->GetOwner(
-      object_id, owner_address, spilled_url, spilled_node_id);
+      object_id, owner_address, spilled_url, spilled_node_id, global_owner_id);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
          "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
@@ -864,11 +865,12 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const rpc::Address &owner_address,
     const std::string &spilled_url,
     const NodeID &spilled_node_id,
-    const std::string &serialized_object_status) {
+    const std::string &serialized_object_status,
+    const ActorID &global_owner_id) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(
-      object_id, outer_object_id, owner_address, spilled_url, spilled_node_id);
+      object_id, outer_object_id, owner_address, spilled_url, spilled_node_id, false, global_owner_id);
 
   rpc::GetObjectStatusReply object_status;
   object_status.ParseFromString(serialized_object_status);
@@ -992,7 +994,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                               // TODO(kfstorm): We need to update this.
                                               /*spilled_url=*/"",
                                               /*spilled_node_id=*/NodeID::Nil(),
-                                              /*foreign_owner_already_monitoring=*/true));
+                                              /*foreign_owner_already_monitoring=*/true,
+                                              /*global_owner_id*/global_owner_id));
 
     // Remote call `AssignObjectOwner()`.
     rpc::AssignObjectOwnerRequest request;
@@ -1091,6 +1094,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     local_raylet_client_->DumpCheckpoints(
         {object_id},
         {real_owner_address},
+        {global_owner_id},
         rpc_address_,
         [&sync_promise, checkpoint_url](const Status &status,
                                         const rpc::DumpCheckpointsReply &reply) {
@@ -1128,9 +1132,11 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const std::vector<std::string> &checkpoint_urls,
+                       const std::vector<std::string> &global_owner_ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   RAY_CHECK(ids.size() == checkpoint_urls.size());
+  RAY_CHECK(ids.size() == global_owner_ids.size());
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -1138,9 +1144,11 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
 
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
-  absl::flat_hash_map<ObjectID, std::string> plasma_objects_id_to_url;
+  absl::flat_hash_map<ObjectID, std::pair<std::string, std::string>>
+      plasma_objects_id_to_url;
   for (size_t i = 0; i < ids.size(); i++) {
-    plasma_objects_id_to_url.emplace(ids[i], checkpoint_urls[i]);
+    plasma_objects_id_to_url.emplace(
+        ids[i], std::make_pair(checkpoint_urls[i], global_owner_ids[i]));
   }
   auto start_time = current_time_ms();
 
@@ -2500,9 +2508,11 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                         // TODO(kfstorm): We need to update this.
                                         /*spilled_url=*/"",
                                         /*spilled_node_id=*/NodeID::Nil());
-  absl::flat_hash_map<ObjectID, std::string> plasma_objects_id_to_url;
+  absl::flat_hash_map<ObjectID, std::pair<std::string, std::string>>
+      plasma_objects_id_to_url;
   // TO_BE_SOLVED: HA for return objects
-  plasma_objects_id_to_url.emplace(return_id, "");
+  plasma_objects_id_to_url.emplace(return_id,
+                                   std::make_pair("", ActorID::Nil().Binary()));
   auto status = plasma_store_provider_->Get({return_id},
                                             plasma_objects_id_to_url,
                                             0,
@@ -2594,7 +2604,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 
   absl::flat_hash_set<ObjectID> by_ref_ids;
   absl::flat_hash_map<ObjectID, std::vector<size_t>> by_ref_indices;
-  absl::flat_hash_map<ObjectID, std::string> plasma_objects_id_to_url;
+  absl::flat_hash_map<ObjectID, std::pair<std::string, std::string>>
+      plasma_objects_id_to_url;
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     if (task.ArgByRef(i)) {
@@ -2608,7 +2619,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
       by_ref_ids.insert(arg_id);
       // TO_BE_SOLVED: HA for task arg
-      plasma_objects_id_to_url.emplace(arg_id, "");
+      plasma_objects_id_to_url.emplace(arg_id,
+                                       std::make_pair("", ActorID::Nil().Binary()));
       auto it = by_ref_indices.find(arg_id);
       if (it == by_ref_indices.end()) {
         by_ref_indices.emplace(arg_id, std::vector<size_t>({i}));
@@ -3298,6 +3310,7 @@ void CoreWorker::HandleDumpObjectsCheckpoint(
 void CoreWorker::HandleLoadCheckpoint(const rpc::LoadCheckpointRequest &request,
                                       rpc::LoadCheckpointReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "begin to HandleLoadCheckpoint!";
   if (options_.load_checkpoint_objects != nullptr) {
     // Get a list of object ids.
     std::vector<rpc::ObjectReference> object_refs_to_load;
@@ -3465,7 +3478,11 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    if (Get(std::vector<ObjectID>{object_id}, std::vector<std::string>{""}, 0, &vec)
+    if (Get(std::vector<ObjectID>{object_id},
+            std::vector<std::string>{""},
+            std::vector<std::string>{ActorID::Nil().Binary()},
+            0,
+            &vec)
             .ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";

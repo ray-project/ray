@@ -326,6 +326,7 @@ message NotifyGCSRestartReply {}
 message DumpCheckpointsRequest {
   repeated bytes object_ids = 1;
   repeated Address owner_addresses = 2;
+  repeated bytes global_owner_ids = 3;
 }
 
 message DumpCheckpointsReply {

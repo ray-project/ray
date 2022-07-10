@@ -91,7 +91,7 @@ bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const std::string &spilled_url,
                                          const NodeID &spilled_node_id,
                                          bool foreign_owner_already_monitoring,
-                                         const absl::optional<ActorID> &global_owner_id) {
+                                         const ActorID &global_owner_id) {
   absl::MutexLock lock(&mutex_);
   return AddBorrowedObjectInternal(object_id,
                                    outer_id,
@@ -102,14 +102,13 @@ bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                    global_owner_id);
 }
 
-bool ReferenceCounter::AddBorrowedObjectInternal(
-    const ObjectID &object_id,
-    const ObjectID &outer_id,
-    const rpc::Address &owner_address,
-    const std::string &spilled_url,
-    const NodeID &spilled_node_id,
-    bool foreign_owner_already_monitoring,
-    const absl::optional<ActorID> &global_owner_id) {
+bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
+                                                 const ObjectID &outer_id,
+                                                 const rpc::Address &owner_address,
+                                                 const std::string &spilled_url,
+                                                 const NodeID &spilled_node_id,
+                                                 bool foreign_owner_already_monitoring,
+                                                 const ActorID &global_owner_id) {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     it = object_id_refs_.emplace(object_id, Reference()).first;
@@ -204,7 +203,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
     RAY_CHECK(it == object_id_refs_.end())
         << "Tried to create an owned object that already exists: " << object_id;
   }
-  if (it != object_id_refs_.end()) {
+  // // TO_BE_SOLVED(qingwu): check it
+  if (it == object_id_refs_.end()) {
     // If the entry doesn't exist, we initialize the direct reference count to zero
     // because this corresponds to a submitted task whose return ObjectID will be created
     // in the frontend language, incrementing the reference count.
@@ -482,15 +482,18 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
 bool ReferenceCounter::GetOwner(const ObjectID &object_id,
                                 rpc::Address *owner_address,
                                 std::string *spilled_url,
-                                NodeID *spilled_node_id) const {
+                                NodeID *spilled_node_id,
+                                ActorID *global_owner_id) const {
   absl::MutexLock lock(&mutex_);
-  return GetOwnerInternal(object_id, owner_address, spilled_url, spilled_node_id);
+  return GetOwnerInternal(
+      object_id, owner_address, spilled_url, spilled_node_id, global_owner_id);
 }
 
 bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
                                         rpc::Address *owner_address,
                                         std::string *spilled_url,
-                                        NodeID *spilled_node_id) const {
+                                        NodeID *spilled_node_id,
+                                        ActorID *global_owner_id) const {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -501,6 +504,9 @@ bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
 
   *spilled_url = it->second.spilled_url;
   *spilled_node_id = it->second.spilled_node_id;
+  if (global_owner_id) {
+    *global_owner_id = it->second.global_owner_id;
+  }
   if (it->second.owner_address) {
     *owner_address = *it->second.owner_address;
     return true;

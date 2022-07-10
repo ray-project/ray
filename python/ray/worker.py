@@ -329,7 +329,7 @@ class Worker:
             object_id,
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
-            global_owner_actor_id=owner_actor_id,
+            global_owner_id=owner_actor_id,
             checkpoint_url=checkpoint_url,
         )
 
@@ -374,9 +374,14 @@ class Worker:
                     "which is not an ray.ObjectRef."
                 )
         checkpoint_urls = list(map(lambda ref: ref.checkpoint_url(), object_refs))
+        global_owner_ids = list(map(lambda ref: ref.global_owner_id(), object_refs))
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_refs, checkpoint_urls, self.current_task_id, timeout_ms
+            object_refs,
+            checkpoint_urls,
+            global_owner_ids,
+            self.current_task_id,
+            timeout_ms,
         )
         debugger_breakpoint = b""
         for (data, metadata) in data_metadata_pairs:

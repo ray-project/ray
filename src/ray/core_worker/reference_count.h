@@ -36,14 +36,13 @@ class ReferenceCounterInterface {
  public:
   virtual void AddLocalReference(const ObjectID &object_id,
                                  const std::string &call_site) = 0;
-  virtual bool AddBorrowedObject(
-      const ObjectID &object_id,
-      const ObjectID &outer_id,
-      const rpc::Address &owner_address,
-      const std::string &spilled_url,
-      const NodeID &spilled_node_id,
-      bool foreign_owner_already_monitoring = false,
-      const absl::optional<ActorID> &global_owner_id = absl::optional<ActorID>()) = 0;
+  virtual bool AddBorrowedObject(const ObjectID &object_id,
+                                 const ObjectID &outer_id,
+                                 const rpc::Address &owner_address,
+                                 const std::string &spilled_url,
+                                 const NodeID &spilled_node_id,
+                                 bool foreign_owner_already_monitoring = false,
+                                 const ActorID &global_owner_id = ActorID::Nil()) = 0;
   virtual void AddOwnedObject(
       const ObjectID &object_id,
       const std::vector<ObjectID> &contained_ids,
@@ -220,8 +219,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                          const std::string &spilled_url,
                          const NodeID &spilled_node_id,
                          bool foreign_owner_already_monitoring = false,
-                         const absl::optional<ActorID> &global_owner_id =
-                             absl::optional<ActorID>()) LOCKS_EXCLUDED(mutex_);
+                         const ActorID &global_owner_id = ActorID::Nil())
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner address of the given object.
   ///
@@ -233,7 +232,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool GetOwner(const ObjectID &object_id,
                 rpc::Address *owner_address = nullptr,
                 std::string *spilled_url = nullptr,
-                NodeID *spilled_node_id = nullptr) const LOCKS_EXCLUDED(mutex_);
+                NodeID *spilled_node_id = nullptr,
+                ActorID *global_owner_id = nullptr) const LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner addresses of the given objects. The owner address
   /// must be registered for these objects.
@@ -674,7 +674,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// using the ObjectID.
     absl::optional<rpc::Address> owner_address;
 
-    absl::optional<ActorID> global_owner_id;
+    ActorID global_owner_id;
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
@@ -752,7 +752,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool GetOwnerInternal(const ObjectID &object_id,
                         rpc::Address *owner_address = nullptr,
                         std::string *spilled_url = nullptr,
-                        NodeID *spilled_node_id = nullptr) const
+                        NodeID *spilled_node_id = nullptr,
+                        ActorID *global_owner_id = nullptr) const
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Release the pinned plasma object, if any. Also unsets the raylet address
@@ -858,14 +859,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] foreign_owner_already_monitoring Whether to set the bit that an
   ///            externally assigned owner is monitoring the lifetime of this
   ///            object. This is the case for `ray.put(..., _owner=ZZZ)`.
-  bool AddBorrowedObjectInternal(
-      const ObjectID &object_id,
-      const ObjectID &outer_id,
-      const rpc::Address &owner_address,
-      const std::string &spilled_url,
-      const NodeID &spilled_node_id,
-      bool foreign_owner_already_monitoring,
-      const absl::optional<ActorID> &global_owner_id = absl::optional<ActorID>())
+  bool AddBorrowedObjectInternal(const ObjectID &object_id,
+                                 const ObjectID &outer_id,
+                                 const rpc::Address &owner_address,
+                                 const std::string &spilled_url,
+                                 const NodeID &spilled_node_id,
+                                 bool foreign_owner_already_monitoring,
+                                 const ActorID &global_owner_id = ActorID::Nil())
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary

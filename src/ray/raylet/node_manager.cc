@@ -82,10 +82,12 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithCheckpoint
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
     const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
         &owner_addresses,
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &checkpoint_urls,
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
-        &checkpoint_urls) {
+        &global_owner_ids) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   RAY_CHECK(checkpoint_urls.size() == object_ids.size());
+  RAY_CHECK(global_owner_ids.size() == object_ids.size());
   std::vector<ray::rpc::ObjectReference> refs;
   for (int64_t i = 0; i < object_ids.size(); i++) {
     ray::rpc::ObjectReference ref;
@@ -96,6 +98,7 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithCheckpoint
     ref.mutable_owner_address()->set_port(addr->port());
     ref.mutable_owner_address()->set_worker_id(addr->worker_id()->str());
     ref.set_checkpoint_url(checkpoint_urls.Get(i)->str());
+    ref.set_global_owner_id(global_owner_ids.Get(i)->str());
     refs.emplace_back(std::move(ref));
   }
   return refs;
@@ -1547,13 +1550,19 @@ void NodeManager::ProcessDisconnectClientMessage(
 void NodeManager::ProcessFetchOrReconstructMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
-  const auto refs = FlatbufferToObjectReferenceWithCheckpointURLs(
-      *message->object_ids(), *message->owner_addresses(), *message->checkpoint_urls());
+  const auto refs =
+      FlatbufferToObjectReferenceWithCheckpointURLs(*message->object_ids(),
+                                                    *message->owner_addresses(),
+                                                    *message->checkpoint_urls(),
+                                                    *message->global_owner_ids());
   for (const auto &ref : refs) {
     std::string checkpoint_url = ref.checkpoint_url();
+    ActorID global_owner_id = ActorID::FromBinary(ref.global_owner_id());
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
+    RAY_LOG(DEBUG) << "Try to get object: " << object_id
+                   << ", its global owner: " << global_owner_id;
     GetLocalObjectManager().InsertObjectAndCheckpointURL(
-        object_id, checkpoint_url, false);
+        object_id, checkpoint_url, false, global_owner_id);
   }
   // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
   // non-direct call support.
@@ -2236,15 +2245,57 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
         });
   }
   auto global_owner_id = GetLocalObjectManager().GetObjectGlobalOwnerID(object_id);
+  if (global_owner_id.IsNil()) {
+    RAY_LOG(DEBUG) << "object(" << object_id << ") global owner is nil.";
+    return;
+  }
+
+  bool new_object = false;
   {
     absl::MutexLock guard(&objects_need_to_report_mutex_);
     auto it = objects_need_to_report_.find(global_owner_id);
     if (it == objects_need_to_report_.end()) {
-      it = objects_need_to_report_.emplace(global_owner_id, absl::flat_hash_set<ObjectID>());
+      it = objects_need_to_report_
+               .emplace(global_owner_id, absl::flat_hash_set<ObjectID>())
+               .first;
     }
-    if (it->second.insert(object_id).second) {
-      object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+    new_object = it->second.count(object_id) == 0;
+  }
+  if (!new_object) return;
+
+  {
+    absl::MutexLock guard(&global_owner_mutex_);
+    ObjectInfo new_object_info;
+    auto it = global_owner_address_.find(global_owner_id);
+    if (it != global_owner_address_.end()) {
+      auto global_owner_address = it->second;
+
+      new_object_info.object_id = object_id;
+      new_object_info.owner_raylet_id =
+          NodeID::FromBinary(global_owner_address.raylet_id());
+      new_object_info.owner_ip_address = global_owner_address.ip_address();
+      new_object_info.owner_port = global_owner_address.port();
+      new_object_info.owner_worker_id =
+          WorkerID::FromBinary(global_owner_address.worker_id());
+    } else {
+      new_object_info = object_info;
+      rpc::Address global_owner_address;
+      global_owner_address.set_raylet_id(new_object_info.owner_raylet_id.Binary());
+      global_owner_address.set_ip_address(new_object_info.owner_ip_address);
+      global_owner_address.set_port(new_object_info.owner_port);
+      global_owner_address.set_worker_id(new_object_info.owner_worker_id.Binary());
+      global_owner_address_.emplace(global_owner_id, global_owner_address);
+      SubscribeGlobalOwnerAddress(global_owner_id);
     }
+  }
+  // report location to global owner, Ignore duplicate report
+  RAY_LOG(DEBUG) << "try to report location, object: " << object_id;
+  object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+  {
+    absl::MutexLock guard(&objects_need_to_report_mutex_);
+    auto it = objects_need_to_report_.find(global_owner_id);
+    RAY_CHECK(it != objects_need_to_report_.end());
+    RAY_CHECK(it->second.insert(object_id).second);
   }
 }
 
@@ -2453,10 +2504,13 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
   RAY_LOG(DEBUG) << "received DumpCheckpointsRequest";
   std::vector<ObjectID> objects_to_dump;
   std::vector<rpc::Address> owner_addresses;
+  std::vector<ActorID> global_owner_ids;
   for (size_t i = 0; i < request.object_ids_size(); i++) {
     auto object_id = ObjectID::FromBinary(request.object_ids()[i]);
     objects_to_dump.push_back(std::move(object_id));
     owner_addresses.push_back(std::move(request.owner_addresses()[i]));
+    auto global_owner_id = ActorID::FromBinary(request.global_owner_ids()[i]);
+    global_owner_ids.push_back(std::move(global_owner_id));
   }
   local_object_manager_.DumpCheckpoints(
       objects_to_dump,
@@ -2468,6 +2522,7 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
       /* Send result to caller CoreWorker*/
       [this,
        objects_to_dump,
+       global_owner_ids,
        send_reply_callback = std::move(send_reply_callback),
        reply](const std::vector<std::string> &checkpoint_urls) {
         RAY_CHECK(objects_to_dump.size() == checkpoint_urls.size())
@@ -2475,7 +2530,7 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
             << ", checkpoint_urls size: " << checkpoint_urls.size();
         for (size_t i = 0; i < checkpoint_urls.size(); i++) {
           GetLocalObjectManager().InsertObjectAndCheckpointURL(
-              objects_to_dump[i], checkpoint_urls[i], true);
+              objects_to_dump[i], checkpoint_urls[i], true, global_owner_ids[i]);
           reply->add_checkpoint_urls(std::move(checkpoint_urls[i]));
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2882,7 +2937,6 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
 }
 
 void NodeManager::SubscribeGlobalOwnerAddress(ActorID actor_id) {
-  if (reference_counter_->AlreadyWatchActor(actor_id)) return;
   RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
       actor_id,
       [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
@@ -2903,10 +2957,13 @@ void NodeManager::SubscribeGlobalOwnerAddress(ActorID actor_id) {
             for (const auto &object_id : it->second) {
               ObjectInfo object_info;
               object_info.object_id = object_id;
-              object_info.owner_raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
+              object_info.owner_raylet_id =
+                  NodeID::FromBinary(actor_data.address().raylet_id());
               object_info.owner_ip_address = actor_data.address().ip_address();
               object_info.owner_port = actor_data.address().port();
-              object_info.owner_worker_id = actor_data.address().worker_id();
+              object_info.owner_worker_id =
+                  WorkerID::FromBinary(actor_data.address().worker_id());
+              RAY_LOG(DEBUG) << "try to report object add " << object_id;
               object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
             }
           }

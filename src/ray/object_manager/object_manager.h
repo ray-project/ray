@@ -247,8 +247,6 @@ class ObjectManager : public ObjectManagerInterface,
 
   bool PullManagerHasPullsQueued() const { return pull_manager_->HasPullsQueued(); }
 
-  void InsertObjectToReport
-
  private:
   friend class TestObjectManager;
 

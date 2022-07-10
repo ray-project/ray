@@ -217,7 +217,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                         rpc::Address *owner_address,
                         std::string *spilled_url,
                         NodeID *spilled_node_id,
-                        std::string *serialized_object_status);
+                        std::string *serialized_object_status,
+                        ActorID *global_owner_id = nullptr);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -238,7 +239,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                              const rpc::Address &owner_address,
                                              const std::string &spilled_url,
                                              const NodeID &spilled_node_id,
-                                             const std::string &serialized_object_status);
+                                             const std::string &serialized_object_status,
+                                             const ActorID &global_owner_id = ActorID::Nil());
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -359,6 +361,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids,
              const std::vector<std::string> &checkpoint_urls,
+             const std::vector<std::string> &global_owner_ids,
              const int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
 

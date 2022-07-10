@@ -188,14 +188,16 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                               CAddress *owner_address,
                               c_string *spilled_url,
                               CNodeID *spilled_node_id,
-                              c_string *object_status)
+                              c_string *object_status,
+                              CActorID *global_owner_id)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
                 const CAddress &owner_address,
                 const c_string &spilled_url,
                 const CNodeID &spilled_node_id,
-                const c_string &object_status)
+                const c_string &object_status,
+                const CActorID &global_owner_id)
 
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
@@ -220,14 +222,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   c_bool created_by_worker)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address,
-                             const CActorID &global_owner_actor_id,
+                             const CActorID &global_owner_id,
                              c_string *checkpoint_url)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const unique_ptr[CAddress] &owner_address,
-                                const CActorID &global_owner_actor_id,
+                                const CActorID &global_owner_id,
                                 c_string *checkpoint_url)
         CRayStatus Get(const c_vector[CObjectID] &ids,
                        const c_vector[c_string] &checkpoint_urls,
+                       const c_vector[c_string] &c_global_owner_ids,
                        int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(

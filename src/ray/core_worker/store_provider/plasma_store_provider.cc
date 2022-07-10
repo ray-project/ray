@@ -164,7 +164,8 @@ Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_set<ObjectID> &remaining,
     const std::vector<ObjectID> &batch_ids,
-    const absl::flat_hash_map<ObjectID, std::string> &object_to_url_map,
+    const absl::flat_hash_map<ObjectID, std::pair<std::string, std::string>>
+        &object_to_url_map,
     int64_t timeout_ms,
     bool fetch_only,
     bool in_direct_call,
@@ -267,7 +268,8 @@ Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
 
 Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids,
-    const absl::flat_hash_map<ObjectID, std::string> &object_to_url_map,
+    const absl::flat_hash_map<ObjectID, std::pair<std::string, std::string>>
+        &object_to_url_map,
     int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,

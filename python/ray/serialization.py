@@ -48,7 +48,14 @@ class DeserializationError(Exception):
 
 
 def _object_ref_deserializer(
-    binary, call_site, owner_address, spilled_url, spilled_node_id, object_status
+    binary,
+    call_site,
+    owner_address,
+    spilled_url,
+    spilled_node_id,
+    object_status,
+    checkpoint_url,
+    global_owner_id,
 ):
     # NOTE(suquark): This function should be a global function so
     # cloudpickle can access it directly. Otherwise cloudpickle
@@ -59,7 +66,13 @@ def _object_ref_deserializer(
     # that the ref count for the ObjectRef is greater than 0 by the
     # time the core worker resolves the value of the object.
     obj_ref = ray.ObjectRef(
-        binary, owner_address, call_site, spilled_url, spilled_node_id
+        binary,
+        owner_address,
+        call_site,
+        spilled_url,
+        spilled_node_id,
+        checkpoint_url=checkpoint_url,
+        global_owner_id=global_owner_id,
     )
 
     # TODO(edoakes): we should be able to just capture a reference
@@ -81,6 +94,7 @@ def _object_ref_deserializer(
             spilled_url,
             spilled_node_id,
             object_status,
+            global_owner_id,
         )
     return obj_ref
 
@@ -123,6 +137,7 @@ class SerializationContext:
                 spilled_url,
                 spilled_node_id,
                 object_status,
+                global_owner_id,
             ) = worker.core_worker.serialize_object_ref(obj)
             return _object_ref_deserializer, (
                 obj.binary(),
@@ -131,6 +146,8 @@ class SerializationContext:
                 spilled_url,
                 spilled_node_id,
                 object_status,
+                obj.checkpoint_url(),
+                global_owner_id,
             )
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
