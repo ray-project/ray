@@ -6,10 +6,8 @@
 
 # Serve: Scalable and Programmable Serving
 
-:::{tip}
-[Get in touch with us](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU) if you're using or considering using Ray Serve.
-
-Chat with Ray Serve users and developers on our [forum](https://discuss.ray.io/).
+:::{note}
+[Get in touch with us](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU) if you're using or considering using Ray Serve!
 :::
 
 ```{image} logo.svg
@@ -28,40 +26,35 @@ Serve is particularly well suited for {ref}`serve-model-composition`, enabling y
 
 Serve is built on top of Ray, so it easily scales to many machines and offers flexible scheduling support such as fractional GPUs so you can share resources and serve many machine learning models at low cost.
 
-:::{tabbed} Installation
-
-Install Ray Serve and its dependencies:
+Install Ray, Ray Serve and its dependencies by running the following command in your terminal:
 
 ```bash
 pip install "ray[serve]"
 ```
-:::
 
 :::{tabbed} Quickstart
-
-To run this example, install the following: ``pip install ray["serve"]``
 
 In this quick-start example we will define a simple "hello world" deployment, deploy it behind HTTP locally, and query it.
 
 ```{literalinclude} doc_code/quickstart.py
 :language: python
 ```
+
 :::
 
 :::{tabbed} FastAPI integration
-
-To run this example, install the following: ``pip install ray["serve"]``
 
 In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to make use of more advanced HTTP functionality.
 
 ```{literalinclude} doc_code/fastapi_example.py
 :language: python
 ```
+
 :::
 
 :::{tabbed} Serving a Hugging Face NLP model
 
-To run this example, install the following: ``pip install ray["serve"] transformers``
+To run this example, install the following: ``pip install transformers``
 
 In this example we will serve a pre-trained [Hugging Face transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
 The model we'll use is a sentiment analysis model: it will take a text string as input and return if the text was "POSITIVE" or "NEGATIVE."
@@ -69,6 +62,7 @@ The model we'll use is a sentiment analysis model: it will take a text string as
 ```{literalinclude} doc_code/transformers_example.py
 :language: python
 ```
+
 :::
 
 ## Why choose Serve?
@@ -122,9 +116,94 @@ Because it's built on top of Ray, you can run it anywhere Ray can: on your lapto
 
 :::
 
+## How can Serve help me as a...
+
+:::{tabbed} Data Scientist/Model Builder
+
+Serve is easy to use. You can test your models (and your entire deployment graph) on your local machine before deploying it to production on a cluster.
+
+You don't need to know heavyweight Kubernetes concepts or cloud providers to use Serve, or deal with large dependencies.
+
+:::
+
+:::{tabbed} ML engineer
+
+As an ML engineer, you can use Serve to build and deploy ML models.  You can use it to serve your own models, or to serve models from other ML engineers.
+
+:::
+
+:::{tabbed} ML Platform team
+
+Though Serve specializes in ML model serving, Serve supports arbitrary Python code and therefore integrates well with the MLOps ecosystem. You can use it with model optimizers (ONNX, TVM), model monitoring systems (Seldon Alibi, Arize), model registries (MLFlow, Weights and Biases), machine learning frameworks (XGBoost, Scikit-learn), data app UIs (Gradio, Streamlit), and Web API frameworks (FastAPI, gRPC).
+
+:::
+
+:::{tabbed} Infra engineer
+
+You can scale out the deployment without needing to modify the code using XXX yaml.  Ray Serve cleanly decouples the business logic from the infrastructure.
+
+:::
+
+:::{tabbed} Ray Core user
+
+TODO
+
+:::
+
+:::{tabbed} Ray AIR user
+
+TODO
+
+:::
+
+## How does Serve compare to...
+
+:::{dropdown} TFServing, TorchServe, ONNXRuntime, etc
+:animate: fade-in-slide-down
+
+Ray Serve is *framework agnostic*; you can use any Python framework and libraries.
+We believe data scientists are not bounded a particular machine learning framework.
+They use the best tool available for the job.
+
+Compared to these framework specific solutions, Ray Serve doesn't perform any optimizations
+to make your ML model run faster. However, you can still optimize the models yourself
+and run them in Ray Serve: for example, you can run a model compiled by
+[PyTorch JIT](https://pytorch.org/docs/stable/jit.html).
+
+:::
+
+:::{dropdown} AWS SageMaker, Azure ML, Google AI Platform
+:animate: fade-in-slide-down
+
+Ray Serve brings the scalability and parallelism of these hosted offering to
+your own infrastructure. You can use our [cluster launcher](cluster-cloud)
+to deploy Ray Serve to all major public clouds, K8s, as well as on bare-metal, on-premise machines.
+
+Compared to these offerings, Ray Serve lacks a unified user interface and functionality
+let you manage the lifecycle of the models, visualize it's performance, etc. Ray
+Serve focuses on just model serving and provides the primitives for you to
+build your own ML platform on top.
+
+:::
+
+:::{dropdown} Seldon, KFServing, Cortex
+:animate: fade-in-slide-down
+
+You can develop Ray Serve on your laptop, deploy it on a dev box, and scale it out
+to multiple machines or K8s cluster without changing one lines of code. It's a lot
+easier to get started with when you don't need to provision and manage a K8s cluster.
+When it's time to deploy, you can use the Ray [Cluster Launcher](cluster-cloud)
+to transparently put your Ray Serve application on K8s.
+
+Compare to these frameworks letting you deploy ML models on K8s, Ray Serve lacks
+the ability to declaratively configure your ML application via YAML files. In
+Ray Serve, you configure everything via Python code.
+
+:::
+
 ## Learn More
 
-Check out {ref}`getting-started` and {ref}`serve-key-concepts`, look at the {ref}`serve-faq`,
+Check out {ref}`getting-started` and {ref}`serve-key-concepts`, 
 or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
 
 
@@ -180,18 +259,6 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     .. link-button:: serve-examples
         :type: ref
         :text: Serve Examples
-        :classes: btn-outline-info btn-block
-    ---
-
-    **Serve FAQ**
-    ^^^
-
-    Find answers to commonly asked questions in our detailed FAQ.
-
-    +++
-    .. link-button:: serve-faq
-        :type: ref
-        :text: Ray Serve FAQ
         :classes: btn-outline-info btn-block
     ---
 
