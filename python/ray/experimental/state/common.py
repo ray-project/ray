@@ -14,6 +14,16 @@ DEFAULT_LIMIT = 100
 DEFAULT_LOG_LIMIT = 1000
 MAX_LIMIT = 10000
 
+STATE_OBS_ALPHA_FEEDBACK_MSG = [
+    "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
+    "State Observability APIs is currently in Alpha-Preview. ",
+    "If you have any feedback, you could do so at either way as below:",
+    "  1. Comment on API specification: https://tinyurl.com/api-spec",
+    "  2. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
+    "  3. Follow up in #proj-state-obs-dogfooding slack channel.",
+    "==========================================================",
+]
+
 
 @unique
 class StateResource(Enum):

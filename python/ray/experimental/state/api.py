@@ -50,26 +50,6 @@ Usage:
         data = list_nodes(address="localhost:8265")
     ```
 """
-import logging
-
-logger = logging.getLogger(__name__)
-STATE_OBS_ALPHA_FEEDBACK_MSG = [
-    "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
-    "State Observability APIs is currently in Alpha-Preview. ",
-    "If you have any feedback, you could do so at either way as below:",
-    "  1. Comment on API specification: https://tinyurl.com/api-spec",
-    "  2. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
-    "  3. Follow up in #proj-state-obs-dogfooding slack channel.",
-    "==========================================================",
-]
-
-
-def _log_feedback_prompt(func):
-    def decorator(*args, **kwargs):
-        logger.info("\n".join(STATE_OBS_ALPHA_FEEDBACK_MSG))
-        return func(*args, **kwargs)
-
-    return decorator
 
 
 class StateApiClient(SubmissionClient):
@@ -179,7 +159,6 @@ class StateApiClient(SubmissionClient):
         # Dictionary of `ListApiResponse`
         return response["data"]["result"]
 
-    @_log_feedback_prompt
     def get(
         self,
         resource: StateResource,
@@ -297,7 +276,6 @@ class StateApiClient(SubmissionClient):
                 ),
             )
 
-    @_log_feedback_prompt
     def list(
         self, resource: StateResource, options: ListApiOptions, _explain: bool = False
     ) -> Union[Dict, List]:
@@ -332,7 +310,6 @@ class StateApiClient(SubmissionClient):
             self._print_list_api_warning(resource, list_api_response)
         return list_api_response["result"]
 
-    @_log_feedback_prompt
     def summary(
         self,
         resource: SummaryResource,
@@ -676,7 +653,6 @@ def get_log(
             yield logs
 
 
-@_log_feedback_prompt
 def list_logs(
     api_server_url: str = None,
     node_id: str = None,

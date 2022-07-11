@@ -11,7 +11,6 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 
 from ray.experimental.state.api import (
-    STATE_OBS_ALPHA_FEEDBACK_MSG,
     StateApiClient,
     summarize_tasks,
     summarize_actors,
@@ -24,8 +23,9 @@ from ray.experimental.state.common import (
     GetApiOptions,
     ListApiOptions,
     StateResource,
-    PredicateType,
+    STATE_OBS_ALPHA_FEEDBACK_MSG,
     SupportedFilterType,
+    PredicateType,
 )
 
 logger = logging.getLogger(__name__)
