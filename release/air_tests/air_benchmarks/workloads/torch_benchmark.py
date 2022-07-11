@@ -273,6 +273,8 @@ def main(
 
     print(f"Finished Ray training ({num_epochs} epochs) in {time_taken:.2f} seconds.")
 
+    time.sleep(5)
+
     print("Running Torch vanilla benchmark")
 
     start_time = time.monotonic()
