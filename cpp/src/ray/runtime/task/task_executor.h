@@ -67,9 +67,6 @@ class TaskExecutor {
  public:
   TaskExecutor() = default;
 
-  /// TODO(SongGuyang): support multiple tasks execution
-  std::unique_ptr<ObjectID> Execute(InvocationSpec &invocation);
-
   static void Invoke(
       const TaskSpecification &task_spec,
       std::shared_ptr<msgpack::sbuffer> actor,

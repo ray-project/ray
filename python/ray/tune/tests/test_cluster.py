@@ -346,7 +346,7 @@ def test_migration_checkpoint_removal(
     cluster.wait_for_nodes()
 
     # Remove checkpoint on "remote" node
-    shutil.rmtree(os.path.dirname(t1.checkpoint.dir_or_data))
+    shutil.rmtree(t1.checkpoint.dir_or_data)
 
     if not durable:
         # Recover from driver file

@@ -85,7 +85,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, nullptr, cluster_resource_manager_, NodeID::FromRandom());
+        io_service_, cluster_resource_manager_, NodeID::FromRandom());
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
         io_service_,
         mock_placement_group_scheduler_,
@@ -784,6 +784,45 @@ TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
               scheduling_latency_us);
   ASSERT_TRUE(placement_group->GetStats().end_to_end_creation_latency_us() <
               end_to_end_creation_latency_us);
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestGetAllPlacementGroupInfoLimit) {
+  auto num_pgs = 3;
+  std::atomic<int> registered_placement_group_count(0);
+  for (int i = 0; i < num_pgs; i++) {
+    auto request = Mocker::GenCreatePlacementGroupRequest();
+    RegisterPlacementGroup(request,
+                           [&registered_placement_group_count](const Status &status) {
+                             ++registered_placement_group_count;
+                           });
+  }
+  WaitForExpectedPgCount(1);
+
+  {
+    rpc::GetAllPlacementGroupRequest request;
+    rpc::GetAllPlacementGroupReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    gcs_placement_group_manager_->HandleGetAllPlacementGroup(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(reply.placement_group_table_data().size(), 3);
+    ASSERT_EQ(reply.total(), 3);
+  }
+  {
+    rpc::GetAllPlacementGroupRequest request;
+    rpc::GetAllPlacementGroupReply reply;
+    request.set_limit(2);
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    gcs_placement_group_manager_->HandleGetAllPlacementGroup(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(reply.placement_group_table_data().size(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
 }
 
 }  // namespace gcs
