@@ -5,7 +5,6 @@ import time
 from typing import Dict
 
 import click
-import ray
 import torch
 from torch import nn, distributed
 from torch.utils.data import DataLoader
@@ -161,6 +160,7 @@ def train_torch_vanilla_worker(
 def train_torch_vanilla(*, num_workers: int = 4, use_gpu: bool = False):
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
+    import ray
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
 
     path = os.path.abspath(__file__)
@@ -242,6 +242,7 @@ def main(
             master_port=master_port,
         )
 
+    import ray
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
 
     ray.init("auto")
