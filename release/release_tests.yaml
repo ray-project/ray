@@ -129,6 +129,37 @@
   alert: default
 
 
+- name: air_benchmark_torch_mnist_cpu_4
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 36000
+    script: python workloads/torch_benchmark.py
+
+    wait_for_nodes:
+      num_nodes: 3
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 1800
+
+  alert: default
+
+
 #######################
 # XGBoost release tests
 #######################
