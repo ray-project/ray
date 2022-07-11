@@ -90,7 +90,9 @@ class AbstractRayRuntime : public RayRuntime {
 
   const JobID &GetCurrentJobID();
 
-  virtual const WorkerContext &GetWorkerContext();
+  const ActorID &GetCurrentActorID();
+
+  virtual const WorkerContext &GetWorkerContext() = 0;
 
   static std::shared_ptr<AbstractRayRuntime> GetInstance();
   static std::shared_ptr<AbstractRayRuntime> DoInit();
@@ -100,8 +102,6 @@ class AbstractRayRuntime : public RayRuntime {
   const std::unique_ptr<ray::gcs::GlobalStateAccessor> &GetGlobalStateAccessor();
 
   bool WasCurrentActorRestarted();
-
-  virtual ActorID GetCurrentActorID() { return ActorID::Nil(); }
 
   virtual std::vector<PlacementGroup> GetAllPlacementGroups();
   virtual PlacementGroup GetPlacementGroupById(const std::string &id);

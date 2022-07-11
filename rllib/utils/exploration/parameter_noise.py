@@ -350,7 +350,7 @@ class ParameterNoise(Exploration):
         Args:
             tf_sess (Optional[tf.Session]): The tf-session to use to add the
                 stored noise to the (currently noise-free) weights.
-            override (bool): If True, undo any currently applied noise first,
+            override: If True, undo any currently applied noise first,
                 then add the currently stored noise.
         """
         # Make sure we only add noise to currently noise-free weights.

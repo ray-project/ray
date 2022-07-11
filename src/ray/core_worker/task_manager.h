@@ -270,7 +270,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const;
 
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
-  void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const;
+  void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
  private:
   struct TaskEntry {

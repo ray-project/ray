@@ -87,7 +87,7 @@ void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
 }
 
 std::string AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
-  ObjectID object_id{};
+  ObjectID object_id;
   object_store_->Put(data, &object_id);
   return object_id.Binary();
 }
@@ -199,6 +199,15 @@ std::string AbstractRayRuntime::CallActor(
     func_holder.class_name = typed_descriptor->ClassName();
     invocation_spec = BuildInvocationSpec1(
         TaskType::ACTOR_TASK, func_holder, args, ActorID::FromBinary(actor));
+  } else if (remote_function_holder.lang_type == LangType::JAVA) {
+    const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
+        ray::ActorID::FromBinary(actor));
+    auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
+    auto typed_descriptor = function_descriptor->As<JavaFunctionDescriptor>();
+    RemoteFunctionHolder func_holder = remote_function_holder;
+    func_holder.class_name = typed_descriptor->ClassName();
+    invocation_spec = BuildInvocationSpec1(
+        TaskType::ACTOR_TASK, func_holder, args, ActorID::FromBinary(actor));
   } else {
     invocation_spec = BuildInvocationSpec1(
         TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));
@@ -215,8 +224,8 @@ const JobID &AbstractRayRuntime::GetCurrentJobID() {
   return GetWorkerContext().GetCurrentJobID();
 }
 
-const WorkerContext &AbstractRayRuntime::GetWorkerContext() {
-  return CoreWorkerProcess::GetCoreWorker().GetWorkerContext();
+const ActorID &AbstractRayRuntime::GetCurrentActorID() {
+  return GetWorkerContext().GetCurrentActorID();
 }
 
 void AbstractRayRuntime::AddLocalReference(const std::string &id) {

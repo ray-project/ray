@@ -5,6 +5,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms import cql
+from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
@@ -26,7 +27,7 @@ class TestCQL(unittest.TestCase):
         ray.shutdown()
 
     def test_cql_compilation(self):
-        """Test whether a CQLTrainer can be built with all frameworks."""
+        """Test whether CQL can be built with all frameworks."""
 
         # Learns from a historic-data file.
         # To generate this data, first run:
@@ -51,7 +52,7 @@ class TestCQL(unittest.TestCase):
                 # RLlib algorithm (e.g. PPO or SAC).
                 actions_in_input_normalized=False,
                 # Switch on off-policy evaluation.
-                off_policy_estimation_methods=["is"],
+                off_policy_estimation_methods={"is": {"type": ImportanceSampling}},
             )
             .training(
                 clip_actions=False,
@@ -68,7 +69,8 @@ class TestCQL(unittest.TestCase):
                 evaluation_parallel_to_training=False,
                 evaluation_num_workers=2,
             )
-            .rollouts(rollout_fragment_length=1)
+            .rollouts(num_rollout_workers=0)
+            .reporting(min_time_s_per_iteration=0.0)
         )
         num_iterations = 4
 
@@ -84,7 +86,6 @@ class TestCQL(unittest.TestCase):
                     f"iter={trainer.iteration} "
                     f"R={eval_results['episode_reward_mean']}"
                 )
-
             check_compute_single_action(trainer)
 
             # Get policy and model.
@@ -96,9 +97,9 @@ class TestCQL(unittest.TestCase):
             # Example on how to do evaluation on the trained Trainer
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch).
-            multi_agent_batch = trainer.local_replay_buffer.sample(
-                num_items=config.train_batch_size
-            )
+
+            batch = trainer.workers.local_worker().input_reader.next()
+            multi_agent_batch = batch.as_multi_agent()
             # All experiences have been buffered for `default_policy`
             batch = multi_agent_batch.policy_batches["default_policy"]
 

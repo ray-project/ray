@@ -1,12 +1,11 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
-from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import Deprecated
 
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class DDPGConfig(SimpleQConfig):
-    """Defines a configuration class from which a DDPGTrainer can be built.
+    """Defines a configuration class from which a DDPG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
@@ -44,9 +43,9 @@ class DDPGConfig(SimpleQConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DDPGConfig instance."""
-        super().__init__(trainer_class=trainer_class or DDPGTrainer)
+        super().__init__(algo_class=algo_class or DDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -129,7 +128,7 @@ class DDPGConfig(SimpleQConfig):
         # Deprecated.
         self.worker_side_prioritization = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -205,7 +204,8 @@ class DDPGConfig(SimpleQConfig):
                     -> natural value = 250 / 1 = 250.0
                     -> will make sure that replay+train op will be executed 4x as
                     often as rollout+insert op (4 * 250 = 1000).
-                See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
 
         Returns:
             This updated DDPGConfig object.
@@ -252,24 +252,30 @@ class DDPGConfig(SimpleQConfig):
         return self
 
 
-class DDPGTrainer(SimpleQTrainer):
+class DDPG(SimpleQ):
     @classmethod
-    @override(SimpleQTrainer)
-    # TODO make this return a TrainerConfig
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(SimpleQ)
+    # TODO make this return a AlgorithmConfig
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DDPGConfig().to_dict()
 
-    @override(SimpleQTrainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(SimpleQ)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 
             return DDPGTorchPolicy
-        else:
-            return DDPGTFPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF1Policy
 
-    @override(SimpleQTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+            return DDPGTF1Policy
+        else:
+            from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF2Policy
+
+            return DDPGTF2Policy
+
+    @override(SimpleQ)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
 
         # Call super's validation method.
         super().validate_config(config)

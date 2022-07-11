@@ -1,13 +1,11 @@
-from typing import Dict, Union, List, Optional
+from typing import Dict, List, Optional, Union
 
 import ray
-from ray._raylet import ObjectRef
-from ray._raylet import PlacementGroupID
+from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
+from ray._private.ray_constants import to_memory_units
 from ray._private.utils import hex_to_binary
-from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.ray_constants import to_memory_units
-from ray._private.client_mode_hook import client_mode_should_convert
-from ray._private.client_mode_hook import client_mode_wrap
+from ray._raylet import PlacementGroupID
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
@@ -38,7 +36,11 @@ class PlacementGroup:
     def empty() -> "PlacementGroup":
         return PlacementGroup(PlacementGroupID.nil())
 
-    def __init__(self, id: PlacementGroupID, bundle_cache: Optional[List[Dict]] = None):
+    def __init__(
+        self,
+        id: "ray._raylet.PlacementGroupID",
+        bundle_cache: Optional[List[Dict]] = None,
+    ):
         self.id = id
         self.bundle_cache = bundle_cache
 
@@ -46,7 +48,7 @@ class PlacementGroup:
     def is_empty(self):
         return self.id.is_nil()
 
-    def ready(self) -> ObjectRef:
+    def ready(self) -> "ray._raylet.ObjectRef":
         """Returns an ObjectRef to check ready status.
 
         This API runs a small dummy task to wait for placement group creation.
@@ -103,7 +105,7 @@ class PlacementGroup:
 
 @client_mode_wrap
 def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -> bool:
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     return worker.core_worker.wait_placement_group_ready(pg_id, timeout_seconds)
@@ -111,10 +113,12 @@ def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -
 
 @client_mode_wrap
 def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    return list(ray.state.state.placement_group_table(pg_id)["bundles"].values())
+    return list(
+        ray._private.state.state.placement_group_table(pg_id)["bundles"].values()
+    )
 
 
 @PublicAPI
@@ -152,7 +156,7 @@ def placement_group(
     Return:
         PlacementGroup: Placement group object.
     """
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     if not isinstance(bundles, list):
@@ -195,10 +199,10 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
     """Asynchronously remove placement group.
 
     Args:
-        placement_group (PlacementGroup): The placement group to delete.
+        placement_group: The placement group to delete.
     """
     assert placement_group is not None
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     worker.core_worker.remove_placement_group(placement_group.id)
@@ -215,9 +219,9 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
     """
     if not placement_group_name:
         raise ValueError("Please supply a non-empty value to get_placement_group")
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
-    placement_group_info = ray.state.state.get_placement_group_by_name(
+    placement_group_info = ray._private.state.state.get_placement_group_by_name(
         placement_group_name, worker.namespace
     )
     if placement_group_info is None:
@@ -234,13 +238,13 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     """Get the state of the placement group from GCS.
 
     Args:
-        placement_group (PlacementGroup): placement group to see
+        placement_group: placement group to see
             states.
     """
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
     placement_group_id = placement_group.id if (placement_group is not None) else None
-    return ray.state.state.placement_group_table(placement_group_id)
+    return ray._private.state.state.placement_group_table(placement_group_id)
 
 
 @PublicAPI
@@ -277,7 +281,7 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     if client_mode_should_convert(auto_init=True):
         # Client mode is only a driver.
         return None
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
     pg_id = worker.placement_group_id
     if pg_id.is_nil():
@@ -303,32 +307,34 @@ def check_placement_group_index(
         )
 
 
+def _valid_resource_shape(resources, bundle_specs):
+    """
+    If the resource shape cannot fit into every
+    bundle spec, return False
+    """
+    for bundle in bundle_specs:
+        fit_in_bundle = True
+        for resource, requested_val in resources.items():
+            # Skip "bundle" resource as it is automatically added
+            # to all nodes with bundles by the placement group.
+            if resource == BUNDLE_RESOURCE_LABEL:
+                continue
+            if bundle.get(resource, 0) < requested_val:
+                fit_in_bundle = False
+                break
+        if fit_in_bundle:
+            # If resource request fits in any bundle, it is valid.
+            return True
+    return False
+
+
 def _validate_resource_shape(
     placement_group, resources, placement_resources, task_or_actor_repr
 ):
-    def valid_resource_shape(resources, bundle_specs):
-        """
-        If the resource shape cannot fit into every
-        bundle spec, return False
-        """
-        for bundle in bundle_specs:
-            fit_in_bundle = True
-            for resource, requested_val in resources.items():
-                # Skip "bundle" resource as it is automatically added
-                # to all nodes with bundles by the placement group.
-                if resource == BUNDLE_RESOURCE_LABEL:
-                    continue
-                if bundle.get(resource, 0) < requested_val:
-                    fit_in_bundle = False
-                    break
-            if fit_in_bundle:
-                # If resource request fits in any bundle, it is valid.
-                return True
-        return False
 
     bundles = placement_group.bundle_specs
-    resources_valid = valid_resource_shape(resources, bundles)
-    placement_resources_valid = valid_resource_shape(placement_resources, bundles)
+    resources_valid = _valid_resource_shape(resources, bundles)
+    placement_resources_valid = _valid_resource_shape(placement_resources, bundles)
 
     if not resources_valid:
         raise ValueError(
@@ -352,7 +358,7 @@ def _validate_resource_shape(
         )
 
 
-def configure_placement_group_based_on_context(
+def _configure_placement_group_based_on_context(
     placement_group_capture_child_tasks: bool,
     bundle_index: int,
     resources: Dict,

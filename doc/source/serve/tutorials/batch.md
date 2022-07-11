@@ -71,7 +71,7 @@ converts them into an array, and uses NumPy to add 1 to each element.
 ```
 
 Let's deploy it. Note that in the `@serve.batch` decorator, we are specifying
-specifying the maximum batch size via `max_batch_size=4`. This option limits
+the maximum batch size via `max_batch_size=4`. This option limits
 the maximum possible batch size that will be executed at once.
 
 ```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_batch.py

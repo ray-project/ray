@@ -118,7 +118,7 @@ This example runs a parallel grid search to optimize an example objective functi
 
 .. code-block:: python
 
-    from ray import tune
+    from ray.air import session
 
 
     def objective(step, alpha, beta):
@@ -132,7 +132,7 @@ This example runs a parallel grid search to optimize an example objective functi
             # Iterative training function - can be any arbitrary training procedure.
             intermediate_score = objective(step, alpha, beta)
             # Feed the score back back to Tune.
-            tune.report(mean_loss=intermediate_score)
+            session.report({"mean_loss": intermediate_score})
 
 
     analysis = tune.run(
@@ -179,7 +179,7 @@ It offers high scalability and unified APIs for a
 .. code-block:: python
 
     import gym
-    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.algorithms.ppo import PPO
 
 
     # Define your problem using python and openAI's gym API:
@@ -229,7 +229,7 @@ It offers high scalability and unified APIs for a
 
 
     # Create an RLlib Trainer instance.
-    trainer = PPOTrainer(
+    trainer = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": SimpleCorridor,

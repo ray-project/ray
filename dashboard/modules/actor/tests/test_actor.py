@@ -1,19 +1,18 @@
+import logging
 import os
 import sys
-import logging
-import requests
 import time
 import traceback
-import ray
+
 import pytest
-import ray.dashboard.utils as dashboard_utils
+import requests
+
+import ray
 import ray._private.gcs_pubsub as gcs_pubsub
-from ray.dashboard.tests.conftest import *  # noqa
+import ray.dashboard.utils as dashboard_utils
+from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.modules.actor import actor_consts
-from ray._private.test_utils import (
-    format_web_url,
-    wait_until_server_available,
-)
+from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +151,7 @@ def test_kill_actor(ray_start_with_dashboard):
             pass
 
         def f(self):
-            ray.worker.show_in_dashboard("test")
+            ray._private.worker.show_in_dashboard("test")
             return os.getpid()
 
     a = Actor.remote()

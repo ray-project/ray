@@ -78,7 +78,7 @@ class EntropyCoeffSchedule:
 class KLCoeffMixin:
     """Assigns the `update_kl()` method to a TorchPolicy.
 
-    This is used by Trainers to update the KL coefficient
+    This is used by Algorithms to update the KL coefficient
     after each learning step based on `config.kl_target` and
     the measured KL value (from the train_batch).
     """
@@ -156,7 +156,7 @@ class ValueNetworkMixin:
             state_batches (List[TensorType]): List of state tensors (empty for
                 non-RNNs).
             model (ModelV2): The Model object of the Policy.
-            action_dist (TorchDistributionWrapper): The instantiated distribution
+            action_dist: The instantiated distribution
                 object, resulting from the model's outputs and the given
                 distribution class.
 

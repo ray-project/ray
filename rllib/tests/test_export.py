@@ -5,9 +5,9 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.framework import try_import_tf
-from ray.tune.trial import ExportFormat
+from ray.tune.experiment.trial import ExportFormat
 
 tf1, tf, tfv = try_import_tf()
 
@@ -20,7 +20,7 @@ CONFIGS = {
         "explore": False,
         "observation_filter": "MeanStdFilter",
         "num_workers": 2,
-        "min_time_s_per_reporting": 1,
+        "min_time_s_per_iteration": 1,
         "optimizer": {
             "num_replay_buffer_shards": 1,
         },
@@ -34,7 +34,7 @@ CONFIGS = {
     },
     "DDPG": {
         "explore": False,
-        "min_sample_timesteps_per_reporting": 100,
+        "min_sample_timesteps_per_iteration": 100,
     },
     "DQN": {
         "explore": False,
@@ -72,7 +72,7 @@ def export_test(alg_name, failures, framework="tf"):
             and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
         )
 
-    cls = get_trainer_class(alg_name)
+    cls = get_algorithm_class(alg_name)
     config = CONFIGS[alg_name].copy()
     config["framework"] = framework
     if "DDPG" in alg_name or "SAC" in alg_name:
