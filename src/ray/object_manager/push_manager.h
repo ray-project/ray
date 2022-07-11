@@ -92,9 +92,9 @@ class PushManager {
           num_chunks_to_send(num_chunks) {}
 
     /// Resend all chunks.
-    int64_t ResendAllChunks() { 
+    int64_t ResendAllChunks() {
       int64_t additional_chunks_to_send = num_chunks - num_chunks_to_send;
-      num_chunks_to_send = num_chunks; 
+      num_chunks_to_send = num_chunks;
       return additional_chunks_to_send;
     }
 
