@@ -40,8 +40,8 @@ class FeatureImportance(OffPolicyEstimator):
         
         Example usage: In the example below the feature importance module is used to 
         evaluate the policy and the each feature's importance is computed after each
-        training iteration. The results will be reported in the metrics dictionary 
-        returned by the training function.
+        training iteration. The permutation are repeated `self.repeat` times and the 
+        results are averages across repeats.
 
         ```python
             config = (
