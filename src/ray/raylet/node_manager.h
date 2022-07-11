@@ -240,9 +240,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the information of the agent process when the agent finished register.
   ///
   /// \return The information of the agent process.
-  inline rpc::AgentInfo SyncGetAgentInfo() {
-    return agent_manager_->SyncGetAgentInfo();
-  }
+  inline rpc::AgentInfo SyncGetAgentInfo() { return agent_manager_->SyncGetAgentInfo(); }
 
  private:
   /// Methods for handling nodes.
