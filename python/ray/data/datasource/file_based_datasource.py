@@ -486,6 +486,7 @@ def _resolve_paths_and_filesystem(
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
 
+    need_unwrap_path_protocol = True
     if filesystem and not isinstance(filesystem, FileSystem):
         err_msg = (
             f"The filesystem passed must either conform to "
@@ -502,6 +503,10 @@ def _resolve_paths_and_filesystem(
             raise TypeError(err_msg)
         if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
             raise TypeError(err_msg)
+        if isinstance(filesystem, fsspec.implementations.http.HTTPFileSystem):
+            # If filesystem is fsspec HTTPFileSystem, the protocol prefix of paths
+            # should not be unwrapped/removed.
+            need_unwrap_path_protocol = False
 
         filesystem = PyFileSystem(FSSpecHandler(filesystem))
 
@@ -522,7 +527,7 @@ def _resolve_paths_and_filesystem(
                 raise
         if filesystem is None:
             filesystem = resolved_filesystem
-        else:
+        elif need_unwrap_path_protocol:
             resolved_path = _unwrap_protocol(resolved_path)
         resolved_path = filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
