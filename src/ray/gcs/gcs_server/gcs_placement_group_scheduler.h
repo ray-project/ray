@@ -19,7 +19,6 @@
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -269,7 +268,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param io_context The main event loop.
   /// \param placement_group_info_accessor Used to flush placement_group info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
-  /// \param gcs_resource_manager The resource manager which is used when scheduling.
   /// \param cluster_resource_scheduler The resource scheduler which is used when
   /// scheduling.
   /// \param lease_client_factory Factory to create remote lease client.
@@ -277,7 +275,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       instrumented_io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager,
-      GcsResourceManager &gcs_resource_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       gcs_syncer::RaySyncer *ray_syncer);
@@ -416,7 +413,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Acquire the bundle resources from the cluster resources.
   void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
+  /// Commit the bundle resources to the cluster resources.
+  void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+
   /// Return the bundle resources to the cluster resources.
+  /// It will remove bundle resources AND also add original resources back.
   void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Create scheduling context.
@@ -435,9 +436,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
-
-  /// Reference of GcsResourceManager.
-  GcsResourceManager &gcs_resource_manager_;
 
   /// Reference of ClusterResourceScheduler.
   ClusterResourceScheduler &cluster_resource_scheduler_;

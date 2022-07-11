@@ -25,7 +25,7 @@ trainer = DummyTrainer(
     scaling_config={"num_workers": 1, "use_gpu": False},
     datasets={"train": dataset},
     preprocessor=preprocessor,
-    runtime_seconds=1,  # Stop after this amount or time or 1 epoch is read.
+    num_epochs=1,  # Stop after this number of epochs is read.
     prefetch_blocks=1,  # Number of blocks to prefetch when reading data.
     batch_size=None,  # Use whole blocks as batches.
 )
@@ -86,7 +86,7 @@ print(my_trainer.get_dataset_config())
 
 # __config_4__
 import ray
-from ray import train
+from ray.air import session
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
@@ -94,7 +94,7 @@ from ray.air.config import DatasetConfig
 
 def train_loop_per_worker():
     # By default, bulk loading is used and returns a Dataset object.
-    data_shard: Dataset = train.get_dataset_shard("train")
+    data_shard: Dataset = session.get_dataset_shard("train")
 
     # Manually iterate over the data 10 times (10 epochs).
     for _ in range(10):
@@ -117,7 +117,7 @@ my_trainer.fit()
 
 # __config_5__
 import ray
-from ray import train
+from ray.air import session
 from ray.data import DatasetPipeline
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
@@ -125,7 +125,7 @@ from ray.air.config import DatasetConfig
 
 def train_loop_per_worker():
     # A DatasetPipeline object is returned when `use_stream_api` is set.
-    data_shard: DatasetPipeline = train.get_dataset_shard("train")
+    data_shard: DatasetPipeline = session.get_dataset_shard("train")
 
     # Use iter_epochs(10) to iterate over 10 epochs of data.
     for epoch in data_shard.iter_epochs(10):

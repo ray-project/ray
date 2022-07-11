@@ -161,6 +161,7 @@ GIT_LS_EXCLUDES=(
 
 JAVA_EXCLUDES=(
   'java/api/src/main/java/io/ray/api/ActorCall.java'
+  'java/api/src/main/java/io/ray/api/CppActorCall.java'
   'java/api/src/main/java/io/ray/api/PyActorCall.java'
   'java/api/src/main/java/io/ray/api/RayCall.java'
 )

@@ -1,3 +1,4 @@
+(serve-user-guides)=
 # User Guides
 
 If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick Start](getting_started).

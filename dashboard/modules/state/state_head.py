@@ -18,6 +18,7 @@ from ray.experimental.state.common import (
     SummaryApiResponse,
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
+    DEFAULT_LOG_LIMIT,
 )
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -128,8 +129,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             return self._reply(
                 success=True,
                 error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
+                result=asdict(result),
             )
         except DataSourceUnavailable as e:
             return self._reply(success=False, error_message=str(e), result=None)
@@ -145,8 +145,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             return self._reply(
                 success=True,
                 error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
+                result=asdict(result),
             )
         except DataSourceUnavailable as e:
             return self._reply(success=False, error_message=str(e), result=None)
@@ -187,7 +186,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         glob_filter = req.query.get("glob", "*")
         node_id = req.query.get("node_id", None)
         node_ip = req.query.get("node_ip", None)
-        timeout = req.query.get("timeout", DEFAULT_RPC_TIMEOUT)
+        timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
 
         # TODO(sang): Do input validation from the middleware instead.
         if not node_id and not node_ip:
@@ -232,7 +231,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             actor_id=req.query.get("actor_id", None),
             task_id=req.query.get("task_id", None),
             pid=req.query.get("pid", None),
-            lines=req.query.get("lines", DEFAULT_LIMIT),
+            lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),
         )
 
@@ -270,8 +269,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         return self._reply(
             success=True,
             error_message="",
-            result=asdict(result.result),
-            partial_failure_warning=result.partial_failure_warning,
+            result=asdict(result),
         )
 
     @routes.get("/api/v0/tasks/summarize")

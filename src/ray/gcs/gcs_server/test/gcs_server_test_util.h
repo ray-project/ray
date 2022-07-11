@@ -211,8 +211,8 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to PrepareBundleResources.
-    bool GrantPrepareBundleResources(bool success = true) {
-      Status status = Status::OK();
+    bool GrantPrepareBundleResources(bool success = true,
+                                     const Status &status = Status::OK()) {
       rpc::PrepareBundleResourcesReply reply;
       reply.set_success(success);
       if (lease_callbacks.size() == 0) {
@@ -226,8 +226,8 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to CommitBundleResources.
-    bool GrantCommitBundleResources(bool success = true) {
-      Status status = Status::OK();
+    bool GrantCommitBundleResources(bool success = true,
+                                    const Status &status = Status::OK()) {
       rpc::CommitBundleResourcesReply reply;
       if (commit_callbacks.size() == 0) {
         return false;
