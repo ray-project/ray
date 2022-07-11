@@ -272,7 +272,7 @@ def main(
 
     time_ray = time_taken
 
-    print(f"Finished Ray training in {time_taken:.2f} seconds.")
+    print(f"Finished Ray training ({num_epochs} epochs) in {time_taken:.2f} seconds.")
 
     print("Running Torch vanilla benchmark")
 
@@ -282,7 +282,9 @@ def main(
 
     time_vanilla = time_taken
 
-    print(f"Finished vanilla training in {time_taken:.2f} seconds.")
+    print(
+        f"Finished vanilla training ({num_epochs} epochs) in {time_taken:.2f} seconds."
+    )
 
     result = {
         "torch_mnist_ray": time_ray,
