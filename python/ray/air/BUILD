@@ -87,6 +87,16 @@ py_test(
     args = ["--smoke-test"]
 )
 
+# py_test(
+#     name = "tensorflow_autoencoder_example", # REGRESSION
+#     size = "medium",
+#     main = "examples/tf/tensorflow_autoencoder_example.py",
+#     srcs = ["examples/tf/tensorflow_autoencoder_example.py"],
+#     tags = ["team:ml", "exclusive"],
+#     deps = [":ml_lib"],
+#     args = ["--smoke-test"]
+# )
+
 py_test(
     name = "torch_fashion_mnist_example",
     size = "medium",
