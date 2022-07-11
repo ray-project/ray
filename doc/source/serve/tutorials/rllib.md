@@ -21,7 +21,7 @@ In particular, we show:
 - How to parse the JSON request and evaluate the payload in RLlib.
 
 ```{margin}
-Check out the [Key Concepts](key-concepts) page to learn more general information about Ray Serve.
+Check out the [Key Concepts](serve-key-concepts) page to learn more general information about Ray Serve.
 ```
 
 We will train and checkpoint a simple PPO model with the `CartPole-v0` environment from `gym`.
