@@ -32,4 +32,4 @@ key of the ``param_space`` dict that is passed to your ``Tuner`` initializer:
         :end-before: __config_scaling_2_end__
 
 For details on how Tune resolves search spaces, see 
-:ref:`Tune's search space tutorial <ref-tune-search-space-tutorial>`.
+:ref:`Tune's search space tutorial <tune-search-space-tutorial>`.
