@@ -87,7 +87,8 @@ def train_func(use_ray: bool, config: Dict):
 
     worker_batch_size = batch_size // world_size
 
-    # Download training data from open datasets.
+    # Load datasets. Use download=False to catch errors in preparation, as the
+    # data should have already been downloaded.
     training_data = datasets.FashionMNIST(
         root="/tmp/data_fashion_mnist",
         train=True,
@@ -95,7 +96,6 @@ def train_func(use_ray: bool, config: Dict):
         transform=ToTensor(),
     )
 
-    # Download test data from open datasets.
     test_data = datasets.FashionMNIST(
         root="/tmp/data_fashion_mnist",
         train=False,
@@ -163,10 +163,10 @@ def train_torch_vanilla(*, num_workers: int = 4, use_gpu: bool = False):
     master_port = 12355
 
     node_ip_to_ranks = {
-        node["NodeManagerAddress"]: i
-        for i, node in enumerate(
+        ip: rank
+        for rank, ip in enumerate(
             [
-                n
+                n["NodeManagerAddress"]
                 for n in ray.nodes()
                 if n["Alive"] and n["NodeManagerAddress"] != master_addr
             ],
