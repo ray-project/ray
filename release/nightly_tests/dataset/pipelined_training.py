@@ -269,9 +269,27 @@ def create_dataset(
 @ray.remote
 def consume(split, rank=None, batch_size=None):
     torch_iterator = create_torch_iterator(split, batch_size=batch_size, rank=rank)
+    start = time.perf_counter()
+    batch_start = start
+    batch_wait_time = []
+    num_batches = 0
     for i, (x, y) in enumerate(torch_iterator):
+        num_batches += 1
+        batch_wait = time.perf_counter() - batch_start
+        batch_wait_time.append(batch_wait)
         if i % 10 == 0:
-            print(i)
+            print(f"Consumer #{rank} finishes batch #{i}")
+        batch_start = time.perf_counter()
+
+    duration = time.perf_counter() - start
+    t50 = np.quantile(batch_wait_time, 0.5)
+    t95 = np.quantile(batch_wait_time, 0.95)
+    tmax = np.max(batch_wait_time)
+    print(
+        f"Consumer #{rank} total time: {duration}, total batches: {num_batches}, "
+        f"P50/P95/Max batch wait time (s): {t50}/{t95}/{tmax}."
+    )
+
     return
 
 
