@@ -1,6 +1,7 @@
 import logging
 from six.moves import queue
 import threading
+import time
 
 from ray.util.timer import _Timer
 from ray.rllib.execution.learner_thread import LearnerThread
@@ -143,6 +144,7 @@ class MultiGPULearnerThread(LearnerThread):
             buffer_idx, released = self.ready_tower_stacks_buffer.get()
 
         get_num_samples_loaded_into_buffer = 0
+        total_time = 0
         with self.grad_timer:
             # Use LearnerInfoBuilder as a unified way to build the final
             # results dict from `learn_on_loaded_batch` call(s).
@@ -156,15 +158,17 @@ class MultiGPULearnerThread(LearnerThread):
                 if not self.local_worker.is_policy_to_train(pid):
                     continue
                 policy = self.policy_map[pid]
+                t = time.time()
                 default_policy_results = policy.learn_on_loaded_batch(
                     offset=0, buffer_index=buffer_idx
                 )
+                total_time += time.time() - t
                 learner_info_builder.add_learn_on_batch_results(default_policy_results)
                 self.weights_updated = True
                 get_num_samples_loaded_into_buffer += (
                     policy.get_num_samples_loaded_into_buffer(buffer_idx)
                 )
-
+            print(f"total_learn_time: {total_time}")
             self.learner_info = learner_info_builder.finalize()
 
         if released:
@@ -216,6 +220,7 @@ class _MultiGPULoaderThread(threading.Thread):
                 if not s.local_worker.is_policy_to_train(pid, batch):
                     continue
                 policy = policy_map[pid]
+                t = time.time()
                 if isinstance(batch, SampleBatch):
                     policy.load_batch_into_buffer(
                         batch=batch,
@@ -226,6 +231,7 @@ class _MultiGPULoaderThread(threading.Thread):
                         batch=batch.policy_batches[pid],
                         buffer_index=buffer_idx,
                     )
+                print(f"batch_load_time: {time.time() - t}")
 
         # Tag just-loaded stack as "ready".
         s.ready_tower_stacks.put(buffer_idx)

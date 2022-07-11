@@ -815,6 +815,9 @@ class Impala(Algorithm):
                 self._counters["num_samples_added_to_queue"] += (
                     batch.agent_steps() if self._by_agent_steps else batch.count
                 )
+                self._counters["num_samples_added_to_queue_this_itr"] = (
+                    batch.agent_steps() if self._by_agent_steps else batch.count
+                )
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1
 
@@ -825,7 +828,8 @@ class Impala(Algorithm):
         num_agent_steps_trained = 0
 
         # Loop through output queue and update our counts.
-        for _ in range(self._learner_thread.outqueue.qsize()):
+        out_queue_size = self._learner_thread.outqueue.qsize()
+        for _ in range(out_queue_size):
             if self._learner_thread.is_alive():
                 (
                     env_steps,
@@ -851,6 +855,8 @@ class Impala(Algorithm):
         # Update the steps trained counters.
         self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
         self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
+        self._counters["num_env_steps_trained_this_itr"] = num_env_steps_trained / out_queue_size if out_queue_size else 0
+        self._counters["num_agent_steps_trained_this_itr"] = num_agent_steps_trained / out_queue_size if out_queue_size else 0
 
         return final_learner_info
 

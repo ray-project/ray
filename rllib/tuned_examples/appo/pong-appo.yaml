@@ -3,12 +3,12 @@
 # similar configurations, solved Pong in 10-12 minutes.
 # APPO can also solve Pong in 2.5 million timesteps, which is
 # 2x more efficient than that of IMPALA.
-pong-appo:
+pong-appo-extra-logging:
     env: PongNoFrameskip-v4
     run: APPO
     stop:
         episode_reward_mean: 18.0
-        timesteps_total: 5000000
+        # timesteps_total: 5000000
     config:
         # Works for both torch and tf.
         framework: tf
@@ -18,7 +18,7 @@ pong-appo:
         train_batch_size: 750
         num_workers: 32
         broadcast_interval: 1
-        max_sample_requests_in_flight_per_worker: 1
+        max_sample_requests_in_flight_per_worker: 2
         num_multi_gpu_tower_stacks: 1
         num_envs_per_worker: 8
         minibatch_buffer_size: 4
@@ -29,3 +29,7 @@ pong-appo:
         grad_clip: 10
         model:
           dim: 42
+        _disable_execution_plan_api:
+            grid_search:
+                # - True
+                - False
