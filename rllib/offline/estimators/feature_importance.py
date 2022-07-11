@@ -28,8 +28,7 @@ class FeatureImportance(OffPolicyEstimator):
         repeat: int = 1,
         perturb_fn: Callable[[np.ndarray, int], None] = perturb_fn,
     ):
-        """
-        Feature importance in a model inspection technique that can be used for any
+        """Feature importance in a model inspection technique that can be used for any
         fitted predictor when the data is tablular.
 
         This implementation is also known as permutation importance that is defined to
@@ -74,8 +73,12 @@ class FeatureImportance(OffPolicyEstimator):
         self.perturb_fn = perturb_fn
 
     def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
-        """
-        Estimate the feature importance of the policy. Given a batch of tabular observations, the importance of each feature is computed by perturbing each feature and computing the difference between the perturbed policy and the reference policy. The importance is computed for each feature and each perturbation is repeated `self.repeat` times.
+        """Estimate the feature importance of the policy. 
+        
+        Given a batch of tabular observations, the importance of each feature is 
+        computed by perturbing each feature and computing the difference between the 
+        perturbed policy and the reference policy. The importance is computed for each 
+        feature and each perturbation is repeated `self.repeat` times.
 
         Args:
             batch: the batch of data to use for feature importance.
