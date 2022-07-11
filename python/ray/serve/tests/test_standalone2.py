@@ -655,8 +655,9 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
     reason="Raylet-based scheduler favors (http proxy) actors' owner "
     + "nodes (the head one), so the `EveryNode` option is actually not "
     + "enforced. Besides, the second http proxy does not die with the "
-    + "placeholder, so gcs-based scheduler (which may collocate the "
-    + "second http proxy and the place holder) does not work here.",
+    + "placeholder (happens to both schedulers), so gcs-based scheduler (which "
+    + "may collocate the second http proxy and the place holder) "
+    + "can not shutdown the worker node.",
 )
 def test_autoscaler_shutdown_node_http_everynode(
     shutdown_ray, call_ray_stop_only  # noqa: F811
