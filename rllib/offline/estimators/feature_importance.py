@@ -29,6 +29,38 @@ class FeatureImportance(OffPolicyEstimator):
         perturb_fn: Callable[[np.ndarray, int], None] = perturb_fn,
     ):
         """
+        Feature importance in a model inspection technique that can be used for any 
+        fitted predictor when the data is tablular. 
+        
+        This implementation is also known as permutation importance that is defined to
+        be the variation of the model's prediction when a single feature value is 
+        randomly shuffled. In RLlib it is implemented as a custom OffPolicyEstimator 
+        which is used to evaluate RLlib policies without performing environment 
+        interactions. 
+        
+        Example usage: In the example below the feature importance module is used to 
+        evaluate the policy and the each feature's importance is computed after each
+        training iteration. The results will be reported in the metrics dictionary 
+        returned by the training function.
+
+        ```python
+            config = (
+                AlgorithmConfig()
+                .offline_data(
+                    off_policy_estimation_methods=
+                        {
+                            "feature_importance": {
+                                "type": FeatureImportance, 
+                                "repeat": 10
+                            }
+                        }
+                )
+            )
+
+            algorithm = DQN(config=config)
+            results = algorithm.train()
+        ```
+
         Args:
             name: string to save the feature importance results under.
             policy: the policy to use for feature importance.
@@ -42,6 +74,15 @@ class FeatureImportance(OffPolicyEstimator):
         self.perturb_fn = perturb_fn
 
     def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
+        """
+        Estimate the feature importance of the policy. Given a batch of tabular observations, the importance of each feature is computed by perturbing each feature and computing the difference between the perturbed policy and the reference policy. The importance is computed for each feature and each perturbation is repeated `self.repeat` times.
+        
+        Args:
+            batch: the batch of data to use for feature importance.
+
+        Returns:
+            A list of OffPolicyEstimate objects. Each OffPolicyEstimate object contains a metics name and a dictionary of metrics mapping feature index to its importance.
+        """
 
         obs_batch = batch["obs"]
         n_features = obs_batch.shape[-1]
