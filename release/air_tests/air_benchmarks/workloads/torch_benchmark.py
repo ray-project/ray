@@ -194,7 +194,7 @@ def train_torch_vanilla(*, config: dict, num_workers: int = 4, use_gpu: bool = F
         path,
         "--vanilla-worker",
         "--num-epochs",
-        num_epochs,
+        str(num_epochs),
         "--node-to-rank-str",
         node_to_rank_str,
         "--num-workers",
