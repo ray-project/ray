@@ -115,7 +115,9 @@ class XGBoostPredictor(Predictor):
             if feature_columns:
                 data = data[:, feature_columns]
         elif feature_columns:
-            data = data[feature_columns]
+            data = data[feature_columns].to_numpy()
+        else:
+            data = data.to_numpy()
 
         matrix = xgboost.DMatrix(data, **dmatrix_kwargs)
         df = pd.DataFrame(self.model.predict(matrix, **predict_kwargs))
