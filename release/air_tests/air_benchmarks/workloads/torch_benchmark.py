@@ -128,6 +128,8 @@ def train_func(use_ray: bool, config: Dict):
 
 
 def train_torch_ray_air(*, config: dict, num_workers: int = 4, use_gpu: bool = False):
+    # This function is kicked off by the main() function and runs a full training
+    # run using Ray AIR.
     from ray.train.torch import TorchTrainer
 
     def train_loop(config):
@@ -145,6 +147,8 @@ def train_torch_ray_air(*, config: dict, num_workers: int = 4, use_gpu: bool = F
 def train_torch_vanilla_worker(
     *, config: dict, rank: int, world_size: int, master_addr: str, master_port: int
 ):
+    # This function is kicked off by the main() function and runs the vanilla
+    # training script on a single worker.
     os.environ["MASTER_ADDR"] = master_addr
     os.environ["MASTER_PORT"] = str(master_port)
     distributed.init_process_group("gloo", rank=rank, world_size=world_size)
@@ -155,13 +159,18 @@ def train_torch_vanilla_worker(
 
 
 def train_torch_vanilla(*, num_workers: int = 4, use_gpu: bool = False):
+    # This function is kicked off by the main() function and subsequently kicks
+    # off tasks that run train_torch_vanilla_worker() on the worker nodes.
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
 
     path = os.path.abspath(__file__)
     upload_file_to_all_nodes(path)
     master_addr = ray.util.get_node_ip_address()
-    master_port = 12355
+    master_port = 12355  # hardcoded
 
+    # Each worker needs to know which rank it is. To pass this, we construct a
+    # map of IPs to ranks, which is passed as a string to all workers. The workers
+    # then parse this string to determine their local rank.
     node_ip_to_ranks = {
         ip: rank
         for rank, ip in enumerate(
@@ -211,7 +220,10 @@ def main(
     config = {"lr": 1e-3, "batch_size": 64, "epochs": 4}
 
     if vanilla_worker:
-        node_to_ranks = {
+        # This path is invoked on every worker when kicking off vanilla training.
+        # First we parse the node to rank string into a map and then find out
+        # our local rank.
+        node_ip_to_ranks = {
             ip: rank
             for ip, rank in [
                 ip_rank.split(":", maxsplit=1)
@@ -219,8 +231,9 @@ def main(
             ]
         }
         node_ip = socket.gethostbyname(socket.gethostname())
-        rank = int(node_to_ranks[node_ip])
+        rank = int(node_ip_to_ranks[node_ip])
 
+        # Then we kick off the training function on every worker.
         return train_torch_vanilla_worker(
             config=config,
             rank=rank,
