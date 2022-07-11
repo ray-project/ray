@@ -536,11 +536,15 @@ class MultiAgentEnvWrapper(BaseEnv):
             if env_id in self.dones:
                 raise ValueError("Env {} is already done".format(env_id))
             env = self.envs[env_id]
-            obs, rewards, dones, infos = env.step(agent_dict)
-            assert isinstance(obs, dict), "Not a multi-agent obs"
-            assert isinstance(rewards, dict), "Not a multi-agent reward"
-            assert isinstance(dones, dict), "Not a multi-agent return"
-            assert isinstance(infos, dict), "Not a multi-agent info"
+            try:
+                obs, rewards, dones, infos = env.step(agent_dict)
+                assert isinstance(obs, dict), "Not a multi-agent obs"
+                assert isinstance(rewards, dict), "Not a multi-agent reward"
+                assert isinstance(dones, dict), "Not a multi-agent return"
+                assert isinstance(infos, dict), "Not a multi-agent info"
+            except Exception as e:
+                obs = e
+
             if set(infos).difference(set(obs)):
                 raise ValueError(
                     "Key set for infos must be a subset of obs: "
@@ -563,8 +567,11 @@ class MultiAgentEnvWrapper(BaseEnv):
         if env_id is None:
             env_id = list(range(len(self.envs)))
         for idx in env_id:
-            obs = self.env_states[idx].reset()
-            assert isinstance(obs, dict), "Not a multi-agent obs"
+            try:
+                obs = self.env_states[idx].reset()
+                assert isinstance(obs, dict), "Not a multi-agent obs"
+            except Exception as e:
+                obs = e
             if obs is not None and idx in self.dones:
                 self.dones.remove(idx)
             ret[idx] = obs
@@ -669,8 +676,8 @@ class _MultiAgentEnvState:
         dones = {"__all__": self.last_dones["__all__"]}
         infos = {}
 
-        # If episode is done, release everything we have.
-        if dones["__all__"]:
+        # If episode is done or we have an error, release everything we have.
+        if dones["__all__"] or isinstance(observations, Exception):
             rewards = self.last_rewards
             self.last_rewards = {}
             dones = self.last_dones
@@ -716,7 +723,10 @@ class _MultiAgentEnvState:
         self.last_infos = infos
 
     def reset(self) -> MultiAgentDict:
-        self.last_obs = self.env.reset()
+        try:
+            self.last_obs = self.env.reset()
+        except Exception as e:
+            self.last_obs = e
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
         self.last_infos = {}

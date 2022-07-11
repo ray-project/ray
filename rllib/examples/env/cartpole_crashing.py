@@ -3,6 +3,7 @@ from gym.envs.classic_control import CartPoleEnv
 import numpy as np
 import time
 
+from ray.rllib.examples.env.multi_agent import make_multi_agent
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import EnvError
 
@@ -80,3 +81,6 @@ class CartPoleCrashing(CartPoleEnv):
             )
         # No crash.
         return super().step(action)
+
+
+MultiAgentCartPoleCrashing = make_multi_agent(lambda config: CartPoleCrashing(config))
