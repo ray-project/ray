@@ -138,32 +138,13 @@ MOCK_MODULES = [
     "scipy.stats",
     "setproctitle",
     "tensorflow_probability",
-    "tensorflow",
     "tensorflow.contrib",
     "tensorflow.contrib.all_reduce",
-    "transformers",
-    "transformers.modeling_utils",
-    "transformers.models",
-    "transformers.models.auto",
-    "transformers.pipelines",
-    "transformers.pipelines.table_question_answering",
-    "transformers.trainer",
-    "transformers.training_args",
-    "transformers.trainer_callback",
-    "transformers.utils",
-    "transformers.utils.logging",
-    "transformers.utils.versions",
-    "tree",
     "tensorflow.contrib.all_reduce.python",
     "tensorflow.contrib.layers",
     "tensorflow.contrib.rnn",
     "tensorflow.contrib.slim",
-    "tensorflow.core",
-    "tensorflow.core.util",
-    "tensorflow.keras.callbacks",
-    "tensorflow.python",
-    "tensorflow.python.client",
-    "tensorflow.python.util",
+    "tree",
     "wandb",
     "zoopt",
 ]
@@ -187,8 +168,6 @@ def mock_modules():
         sys.modules[mod_name] = mock_module
 
     sys.modules["ray._raylet"].ObjectRef = make_typing_mock("ray", "ObjectRef")
-
-    sys.modules["tensorflow"].VERSION = "9.9.9"
 
 
 # Add doc files from external repositories to be downloaded during build here

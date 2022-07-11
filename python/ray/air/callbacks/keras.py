@@ -114,15 +114,25 @@ class _Callback(KerasCallback):
 
 @PublicAPI(stability="beta")
 class Callback(_Callback):
-    def __init__(
-        self,
-        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        on: Union[str, List[str]] = "epoch_end",
-        frequency: Union[int, List[int]] = 1,
-    ):
-        """
-        Args:
-            metrics: Metrics to report. If this is a list, each item describes
+    """
+    Keras callback for Ray AIR reporting and checkpointing.
+
+    You can use this in both TuneSession and TrainSession.
+
+    Example:
+        .. code-block: python
+
+            ############# Using it in TrainSession ###############
+            from ray.air.callbacks.keras import Callback
+            def train_loop_per_worker():
+                strategy = tf.distribute.MultiWorkerMirroredStrategy()
+                with strategy.scope():
+                    model = build_model()
+                    #model.compile(...)
+                model.fit(dataset_shard, callbacks=[Callback()])
+
+    Args:
+        metrics: Metrics to report. If this is a list, each item describes
             the metric key reported to Keras, and it will reported under the
             same name. If this is a dict, each key will be the name reported
             and the respective value will be the metric key reported to Keras.
@@ -135,20 +145,14 @@ class Callback(_Callback):
             this is a list, it specifies the checkpoint frequencies for each
             hook individually.
 
-        You can use this in both TuneSession and TrainSession.
+    """
 
-        Example:
-            .. code-block: python
-
-            ############# Using it in TrainSession ###############
-            from ray.air.callbacks.keras import Callback
-            def train_loop_per_worker():
-                strategy = tf.distribute.MultiWorkerMirroredStrategy()
-                with strategy.scope():
-                    model = build_model()
-                    #model.compile(...)
-                model.fit(dataset_shard, callbacks=[Callback()])
-        """
+    def __init__(
+        self,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
+        on: Union[str, List[str]] = "epoch_end",
+        frequency: Union[int, List[int]] = 1,
+    ):
         if isinstance(frequency, list):
             if not isinstance(on, list) or len(frequency) != len(on):
                 raise ValueError(

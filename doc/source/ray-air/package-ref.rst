@@ -126,6 +126,33 @@ Configs
 
 .. autoclass:: ray.air.config.CheckpointConfig
 
+
+.. _air-builtin-callbacks:
+
+Callbacks
+~~~~~~~~~
+
+Comet
+#####
+
+.. autoclass:: ray.air.callbacks.comet.CometLoggerCallback
+
+Keras
+#####
+
+.. autoclass:: ray.air.callbacks.keras.Callback
+    :members:
+
+MLflow
+######
+
+.. autoclass:: ray.air.callbacks.mlflow.MLflowLoggerCallback
+
+Weights and Biases
+##################
+
+.. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
+
 .. _air-session-ref:
 
 Session
