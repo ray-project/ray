@@ -91,7 +91,7 @@ def train_func(use_ray: bool, config: Dict):
     training_data = datasets.FashionMNIST(
         root="/tmp/data_fashion_mnist",
         train=True,
-        download=True,
+        download=False,
         transform=ToTensor(),
     )
 
