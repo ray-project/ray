@@ -464,10 +464,13 @@ class ExperimentAnalysis:
                 passed to ``self.default_metric``.
             mode: One of [min, max]. Defaults to ``self.default_mode``.
             return_path: If True, only returns the path (and not the
-                ``Checkpoint`` object).
+                ``Checkpoint`` object). If using Ray client, it is not
+                guaranteed that this path is available on the local
+                (client) node. Can also contain a cloud URI.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object.
+            :class:`Checkpoint <ray.air.Checkpoint>` object or string
+            if ``return_path=True``.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)

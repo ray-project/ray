@@ -559,7 +559,11 @@ class Trainable:
                 checkpoint_node_ip=None,
             )
 
-    def restore(self, checkpoint_path: str, checkpoint_node_ip: Optional[str] = None):
+    def restore(
+        self,
+        checkpoint_path: Union[str, Checkpoint],
+        checkpoint_node_ip: Optional[str] = None,
+    ):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
@@ -668,7 +672,7 @@ class Trainable:
         with checkpoint.as_directory() as checkpoint_path:
             self.restore(checkpoint_path)
 
-    def delete_checkpoint(self, checkpoint_path: str):
+    def delete_checkpoint(self, checkpoint_path: Union[str, Checkpoint]):
         """Deletes local copy of checkpoint.
 
         Args:
