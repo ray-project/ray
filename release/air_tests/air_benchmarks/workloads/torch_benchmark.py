@@ -217,7 +217,6 @@ def train_torch_vanilla(*, config: dict, num_workers: int = 4, use_gpu: bool = F
 @click.option("--use-gpu", is_flag=True, default=False)
 @click.option("--vanilla-worker", is_flag=True, default=False)
 @click.option("--node-to-rank-str", type=str, default="")
-@click.option("--world-size", type=int, default=4)
 @click.option("--master-addr", type=str, default="")
 @click.option("--master-port", type=int, default=0)
 def main(
