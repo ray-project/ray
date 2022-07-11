@@ -52,7 +52,7 @@ def get_dataset_and_shards(
     """Returns a dataset and a list of shards.
 
     This function uses algorithm configs to create a dataset and a list of shards.
-    The following keys are used to create the dataset:
+    The following config keys are used to create the dataset:
         input: The input type should be "dataset".
         input_config: A dict containing the following key and values:
             `format`: str, speciifies the format of the input data. This will be the 
