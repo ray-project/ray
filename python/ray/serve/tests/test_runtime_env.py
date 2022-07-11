@@ -69,7 +69,7 @@ def test_working_dir_connect_from_new_driver(ray_start, tmp_dir):
 import ray
 from ray import serve
 
-job_config = ray.job_config.JobConfig(runtime_env={{"working_dir": "."}})
+job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
 serve.start(detached=True)
@@ -90,7 +90,7 @@ assert ray.get(handle.remote()) == "world"
 import ray
 from ray import serve
 
-job_config = ray.job_config.JobConfig(runtime_env={{"working_dir": "."}})
+job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
@@ -116,7 +116,7 @@ import os
 import ray
 from ray import serve
 
-job_config = ray.job_config.JobConfig(runtime_env={{"working_dir": "."}})
+job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
 serve.start(detached=True)
@@ -140,7 +140,7 @@ assert ray.get(handle.remote())[1] == "world"
 import ray
 from ray import serve
 
-job_config = ray.job_config.JobConfig(runtime_env={{"working_dir": "."}})
+job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
 serve.start(detached=True)

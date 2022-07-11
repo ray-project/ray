@@ -13,7 +13,7 @@ def test_working_dir_deploy_new_version(ray_start, tmp_dir):
 import ray
 from ray import serve
 
-job_config = ray.job_config.JobConfig(runtime_env={{"working_dir": "."}})
+job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
 serve.start(detached=True)
@@ -37,7 +37,7 @@ assert ray.get(handle.remote()) == "world"
 import ray
 from ray import serve
 
-job_config = ray.job_config.JobConfig(runtime_env={{"working_dir": "."}})
+job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
 serve.start(detached=True)
@@ -77,16 +77,17 @@ def requests_version(request):
 
 
 requests_version.options(
-    ray_actor_options={{
-        "runtime_env": {{
-            "pip": ["ray[serve]", "requests==2.25.1"]
-        }}
-    }}).deploy()
+    ray_actor_options={
+        "runtime_env": {
+            "pip": ["requests==2.25.1"]
+        }
+    }).deploy()
 
 assert requests.get("http://127.0.0.1:8000/requests_version").text == "2.25.1"
 """
 
-    run_string_as_driver(driver)
+    output = run_string_as_driver(driver)
+    print(output)
 
 
 if __name__ == "__main__":
