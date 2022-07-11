@@ -91,15 +91,15 @@ def test_predict_array_with_preprocessor():
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
 def test_predict(batch_type):
-    predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
+    predictor = TensorflowPredictor(model_definition=build_model_multi_input)
 
-    raw_batch = pd.DataFrame([1, 2, 3], columns=["A", "B"])
+    raw_batch = pd.DataFrame({"A": [0.0, 0.0, 0.0], "B": [1.0, 2.0, 3.0]})
     data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
     raw_predictions = predictor.predict(data_batch)
     predictions = convert_batch_type_to_pandas(raw_predictions)
 
-    assert len(predictions) == 2
-    assert predictions.to_numpy().flatten().tolist() == [4, 8, 12]
+    assert len(predictions) == 3
+    assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
 def test_predict_dataframe():
