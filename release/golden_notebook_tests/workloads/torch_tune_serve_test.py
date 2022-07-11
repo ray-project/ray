@@ -256,8 +256,10 @@ if __name__ == "__main__":
     analysis = train_mnist(args.smoke_test, num_workers, use_gpu)
 
     print("Retrieving best model.")
-    best_checkpoint = analysis.best_checkpoint.local_path
-    model = get_remote_model(best_checkpoint)
+    best_checkpoint_path = analysis.get_best_checkpoint(
+        analysis.best_trial, return_path=True
+    )
+    model = get_remote_model(best_checkpoint_path)
 
     print("Setting up Serve.")
     setup_serve(model, use_gpu)
