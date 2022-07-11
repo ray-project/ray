@@ -88,6 +88,32 @@ def test_batch_prediction_fs():
     )
 
 
+def test_batch_prediction_feature_cols():
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+    )
+
+    test_dataset = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+
+    assert batch_predictor.predict(
+        test_dataset, feature_columns=["a"]
+    ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
+
+
+def test_batch_prediction_keep_cols():
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+    )
+
+    test_dataset = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+
+    assert set(
+        batch_predictor.predict(test_dataset, feature_columns=["a"], keep_columns=["b"])
+        .to_pandas()
+        .columns
+    ) == {"a", "b"}
+
+
 if __name__ == "__main__":
     import sys
 

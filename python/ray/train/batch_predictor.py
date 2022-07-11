@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Type, Union
+from typing import Any, Dict, Optional, List, Type, Union
 
 import ray
 from ray.air import Checkpoint
@@ -46,6 +46,8 @@ class BatchPredictor:
         self,
         data: Union[ray.data.Dataset, ray.data.DatasetPipeline],
         *,
+        feature_columns: Optional[List[str]] = None,
+        keep_columns: Optional[List[str]] = None,
         batch_size: int = 4096,
         min_scoring_workers: int = 1,
         max_scoring_workers: Optional[int] = None,
@@ -62,24 +64,40 @@ class BatchPredictor:
             >>> from ray.air import Checkpoint
             >>> from ray.train.predictor import Predictor
             >>> from ray.train.batch_predictor import BatchPredictor
-            >>> # Create a dummy predictor that always returns `42` for each input.
+            >>> # Create a dummy predictor that returns identity as the predictions.
             >>> class DummyPredictor(Predictor):
             ...     @classmethod
             ...     def from_checkpoint(cls, checkpoint, **kwargs):
             ...         return DummyPredictor()
-            ...     def predict(self, data, **kwargs):
-            ...         return pd.DataFrame({"a": [42] * len(data)})
+            ...     def _predict_pandas(self, data_df, **kwargs):
+            ...         return data_df
             >>> # Create a batch predictor for this dummy predictor.
             >>> batch_pred = BatchPredictor( # doctest: +SKIP
             ...     Checkpoint.from_dict({"x": 0}), DummyPredictor)
             >>> # Create a dummy dataset.
-            >>> ds = ray.data.range_tensor(1000, parallelism=4) # doctest: +SKIP
+            >>> ds = ray.data.from_pandas(pd.DataFrame({ # doctest: +SKIP
+            ...     "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
             >>> # Execute batch prediction using this predictor.
-            >>> print(batch_pred.predict(ds)) # doctest: +SKIP
-            Dataset(num_blocks=4, num_rows=1000, schema={a: int64})
+            >>> predictions = batch_pred.predict(ds, # doctest: +SKIP
+            ...     feature_columns=["feature_1"], keep_columns=["label"])
+            >>> print(predictions)
+            Dataset(num_blocks=1, num_rows=3, schema={a: int64, label: int64})
+            >>> # Calculate final accuracy.
+            >>> def calculate_accuracy(df):
+            ...    return pd.DataFrame({"correct": df["predictions"] == df["label"]})
+            >>> correct = predictions.map_batches(calculate_accuracy)
+            >>> print("Final accuracy:", correct.sum(on="correct") / correct.count())
+            Final accuracy: 1.0000
 
         Args:
             data: Ray dataset or pipeline to run batch prediction on.
+            feature_columns: List of columns in data to use for prediction. Columns not
+                specified will be dropped from `data` before being passed to the
+                predictor. If None, use all columns.
+            keep_columns: List of columns in `data` to include in the prediction result.
+                This is useful for calculating final accuracies/metrics on the result
+                dataset. If None, the columns in the output dataset will contain just
+                the prediction results.
             batch_size: Split dataset into batches of this size for prediction.
             min_scoring_workers: Minimum number of scoring actors.
             max_scoring_workers: If set, specify the maximum number of scoring actors.
@@ -97,6 +115,19 @@ class BatchPredictor:
         predictor_cls = self.predictor_cls
         checkpoint_ref = self.checkpoint_ref
         predictor_kwargs = self.predictor_kwargs
+
+        if feature_columns:
+            dropped_dataset = data.map_batches(
+                lambda df: df[feature_columns], batch_size=batch_size
+            )
+        else:
+            dropped_dataset = data
+
+        original_col_ds = None
+        if keep_columns:
+            original_col_ds = data.map_batches(
+                lambda df: df[keep_columns], batch_size=batch_size
+            )
 
         class ScoringWrapper:
             def __init__(self):
@@ -117,13 +148,18 @@ class BatchPredictor:
         ray_remote_args["num_cpus"] = num_cpus_per_worker
         ray_remote_args["num_gpus"] = num_gpus_per_worker
 
-        return data.map_batches(
+        prediction_results = dropped_dataset.map_batches(
             ScoringWrapper,
             compute=compute,
             batch_format="pandas",
             batch_size=batch_size,
             **ray_remote_args,
         )
+
+        if original_col_ds:
+            prediction_results = prediction_results.zip(original_col_ds)
+
+        return prediction_results
 
     def predict_pipelined(
         self,
