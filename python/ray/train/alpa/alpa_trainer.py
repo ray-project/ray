@@ -21,7 +21,7 @@ from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.air.preprocessor import Preprocessor
-
+from ray.tune.trainable import wrap_function
 
 import inspect
 import logging
@@ -66,11 +66,15 @@ except ModuleNotFoundError:
 if TYPE_CHECKING:
     from ray.air.preprocessor import Preprocessor
 
+from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
+
 logger = logging.getLogger(__name__)
 
 
+# @PublicAPI(stability="beta")
+# class AlpaTrainer(BaseTrainer):
 @PublicAPI(stability="beta")
-class AlpaTrainer(BaseTrainer):
+class TorchTrainer(                                                                  ):
     """Alpa: Automating Parallelism trainer.
 
     References:
@@ -111,32 +115,170 @@ class AlpaTrainer(BaseTrainer):
             f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
         )
 
-        self._train_loop = train_loop
-        self._train_loop_config = train_loop_config
+        # self._train_loop = train_loop
+        # self._train_loop_config = train_loop_config
+        
+        # self._datasets = datasets
 
-        self._dataset_config = DatasetConfig.validated(
-            DatasetConfig.merge(self._dataset_config, dataset_config), datasets
-        )
-        
-        self._ingest_spec = DataParallelIngestSpec(
-            dataset_config=self._dataset_config,
-        )
-        
-        self._datasets = datasets
-        
         super(AlpaTrainer, self).__init__(
+            train_loop_per_worker=train_loop_per_worker,
+            train_loop_config=train_loop_config,
+            backend_config=alpa_config,
             scaling_config=scaling_config,
+            dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    def training_loop(self) -> None:
-        self._train_loop(self._datasets, self._train_loop_config)
+
+    # def training_loop(self) -> None:
+    #     self._train_loop(self._datasets, self._train_loop_config)
         
-    @PublicAPI(stability="alpha")
-    def fit(self) -> Result:
-        self.setup()
-        self.preprocess_datasets()
-        self.training_loop()
+    # @PublicAPI(stability="alpha")
+    # def fit(self) -> Result:
+    #     self.setup()
+    #     self.preprocess_datasets()
+    #     self.training_loop()
+
+
+
+
+    def as_trainable(self) -> Type[Trainable]:
+        """Convert self to a ``tune.Trainable`` class."""
+
+        base_config = self._param_dict
+        trainer_cls = self.__class__
+        scaling_config = self.scaling_config
+
+        def train_func(config, checkpoint_dir=None):
+            # config already contains merged values.
+            # Instantiate new Trainer in Trainable.
+            trainer = trainer_cls(**config)
+
+            if checkpoint_dir:
+                trainer.resume_from_checkpoint = Checkpoint.from_directory(
+                    checkpoint_dir
+                )
+
+            trainer.setup()
+            trainer.preprocess_datasets()
+            trainer.training_loop()
+
+        # Change the name of the training function to match the name of the Trainer
+        # class. This will mean the Tune trial name will match the name of Trainer on
+        # stdout messages and the results directory.
+        train_func.__name__ = trainer_cls.__name__
+
+        trainable_cls = wrap_function(train_func)
+
+        class TrainTrainable(trainable_cls):
+            """Add default resources to the Trainable."""
+
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+                # Create a new config by merging the dicts.
+                # run_config is not a tunable hyperparameter so it does not need to be
+                # merged.
+                run_config = base_config.pop("run_config", None)
+                self._merged_config = merge_dicts(base_config, self.config)
+                self._merged_config["run_config"] = run_config
+
+            def _trainable_func(self, config, reporter, checkpoint_dir):
+                # We ignore the config passed by Tune and instead use the merged
+                # config which includes the initial Trainer args.
+                super()._trainable_func(self._merged_config, reporter, checkpoint_dir)
+
+            @classmethod
+            def default_resource_request(cls, config):
+                updated_scaling_config = config.get("scaling_config", scaling_config)
+                scaling_config_dataclass = (
+                    trainer_cls._validate_and_get_scaling_config_data_class(
+                        updated_scaling_config
+                    )
+                )
+                return scaling_config_dataclass.as_placement_group_factory()
+
+        return TrainTrainable
+    
+    
+    
+
+
+@dataclass
+@PublicAPI(stability="alpha")
+class ScalingConfigDataClass:
+
+    trainer_resources: Optional[Dict] = None
+    num_workers: Optional[int] = None
+    use_gpu: bool = False
+    resources_per_worker: Optional[Dict] = None
+    placement_strategy: str = "PACK"
+
+    def __post_init__(self):
+        self.resources_per_worker = (
+            self.resources_per_worker if self.resources_per_worker else {}
+        )
+        if self.resources_per_worker:
+            if not self.use_gpu and self.num_gpus_per_worker > 0:
+                raise ValueError(
+                    "`use_gpu` is False but `GPU` was found in "
+                    "`resources_per_worker`. Either set `use_gpu` to True or "
+                    "remove `GPU` from `resources_per_worker."
+                )
+
+            if self.use_gpu and self.num_gpus_per_worker == 0:
+                raise ValueError(
+                    "`use_gpu` is True but `GPU` is set to 0 in "
+                    "`resources_per_worker`. Either set `use_gpu` to False or "
+                    "request a positive number of `GPU` in "
+                    "`resources_per_worker."
+                )
+
+    @property
+    def num_cpus_per_worker(self):
+        """The number of CPUs to set per worker."""
+        return self.resources_per_worker.get("CPU", 1)
+
+    @property
+    def num_gpus_per_worker(self):
+        """The number of GPUs to set per worker."""
+        return self.resources_per_worker.get("GPU", int(self.use_gpu))
+
+    @property
+    def additional_resources_per_worker(self):
+        """Resources per worker, not including CPU or GPU resources."""
+        return {
+            k: v
+            for k, v in self.resources_per_worker.items()
+            if k not in ["CPU", "GPU"]
+        }
+
+    def as_placement_group_factory(self) -> "PlacementGroupFactory":
+        """Returns a PlacementGroupFactory to specify resources for Tune."""
+        from ray.tune.execution.placement_groups import PlacementGroupFactory
+
+        trainer_resources = (
+            self.trainer_resources if self.trainer_resources else {"CPU": 1}
+        )
+        trainer_bundle = [trainer_resources]
+        worker_resources = {
+            "CPU": self.num_cpus_per_worker,
+            "GPU": self.num_gpus_per_worker,
+        }
+        worker_resources_extra = (
+            {} if self.resources_per_worker is None else self.resources_per_worker
+        )
+        worker_bundles = [
+            {**worker_resources, **worker_resources_extra}
+            for _ in range(self.num_workers if self.num_workers else 0)
+        ]
+        bundles = trainer_bundle + worker_bundles
+        return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
