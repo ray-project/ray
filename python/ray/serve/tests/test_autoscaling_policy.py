@@ -514,8 +514,7 @@ def test_imbalanced_replicas(ongoing_requests):
     # the target_num_ongoing_requests_per_replica, the number of replicas
     # stays the same
     if (
-        np.mean(ongoing_requests)
-        == config.target_num_ongoing_requests_per_replica
+        np.mean(ongoing_requests) == config.target_num_ongoing_requests_per_replica
     ):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
@@ -527,8 +526,7 @@ def test_imbalanced_replicas(ongoing_requests):
     # Check downscaling behavior when average number of requests
     # is lower than target_num_ongoing_requests_per_replica
     elif (
-        np.mean(ongoing_requests)
-        < config.target_num_ongoing_requests_per_replica
+        np.mean(ongoing_requests) < config.target_num_ongoing_requests_per_replica
     ):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
@@ -537,8 +535,7 @@ def test_imbalanced_replicas(ongoing_requests):
         )
 
         if (
-            config.target_num_ongoing_requests_per_replica
-            - np.mean(ongoing_requests)
+            config.target_num_ongoing_requests_per_replica - np.mean(ongoing_requests)
             <= 1
         ):
             # Autoscaling uses a ceiling operator, which means a slightly low
