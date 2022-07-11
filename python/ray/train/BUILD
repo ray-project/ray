@@ -170,6 +170,14 @@ py_test(
 )
 
 py_test(
+    name = "test_huggingface_predictor",
+    size = "medium",
+    srcs = ["tests/test_huggingface_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_huggingface_trainer",
     size = "medium",
     srcs = ["tests/test_huggingface_trainer.py"],
