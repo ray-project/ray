@@ -1,8 +1,10 @@
+import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
+from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
 from ray.train.torch.utils import load_checkpoint
@@ -10,6 +12,8 @@ from ray.train._internal.dl_predictor import DLPredictor
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+logger = logging.getLogger(__name__)
 
 
 class TorchPredictor(DLPredictor):
@@ -19,17 +23,46 @@ class TorchPredictor(DLPredictor):
         model: The torch module to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
+        use_gpu: If set, the model will be moved to GPU on instantiation and
+            prediction happens on GPU.
     """
 
     def __init__(
-        self, model: torch.nn.Module, preprocessor: Optional["Preprocessor"] = None
+        self,
+        model: torch.nn.Module,
+        preprocessor: Optional["Preprocessor"] = None,
+        use_gpu: bool = False,
     ):
         self.model = model
+        self.model.eval()
         self.preprocessor = preprocessor
+
+        # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
+        self.use_gpu = use_gpu
+        if use_gpu:
+            # Ensure input tensor and model live on GPU for GPU inference
+            self.model.to(torch.device("cuda"))
+
+        if (
+            not use_gpu
+            and torch.cuda.device_count() > 0
+            and log_once("torch_predictor_not_using_gpu")
+        ):
+            logger.warning(
+                "You have `use_gpu` as False but there are "
+                f"{torch.cuda.device_count()} GPUs detected on host where "
+                "prediction will only use CPU. Please consider explicitly "
+                "setting `TorchPredictor(use_gpu=True)` or "
+                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                "enable GPU prediction."
+            )
 
     @classmethod
     def from_checkpoint(
-        cls, checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
+        cls,
+        checkpoint: Checkpoint,
+        model: Optional[torch.nn.Module] = None,
+        use_gpu: bool = False,
     ) -> "TorchPredictor":
         """Instantiate the predictor from a Checkpoint.
 
@@ -42,14 +75,18 @@ class TorchPredictor(DLPredictor):
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
                 ``model``.
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU.
         """
         model, preprocessor = load_checkpoint(checkpoint, model)
-        return TorchPredictor(model=model, preprocessor=preprocessor)
+        return TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
     def _array_to_tensor(
         self, numpy_array: np.ndarray, dtype: torch.dtype
     ) -> torch.Tensor:
         torch_tensor = torch.from_numpy(numpy_array).to(dtype)
+        if self.use_gpu:
+            torch_tensor = torch_tensor.to(device="cuda")
 
         # Off-the-shelf torch Modules expect the input size to have at least 2
         # dimensions (batch_size, feature_size). If the tensor for the column
@@ -68,7 +105,6 @@ class TorchPredictor(DLPredictor):
         torch.Tensor, Dict[str, torch.Tensor], List[torch.Tensor], Tuple[torch.Tensor]
     ]:
         with torch.no_grad():
-            self.model.eval()
             output = self.model(tensor)
         return output
 
