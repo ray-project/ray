@@ -50,6 +50,16 @@ Usage:
         data = list_nodes(address="localhost:8265")
     ```
 """
+import logging
+
+logger = logging.getLogger(__name__)
+logger.info(
+    "State Observability is currently in Alpha-Preview. If you have any feedback: \n",
+    "\t1. Comment on API specification: https://tinyurl.com/api-spec \n",
+    "\t2. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46 \n",
+    "\t3. Follow up in #proj-state-obs-dogfooding slack channel.\n",
+    "Start with `ray logs --help`,`ray list --help`,`ray summary --help` for examples.",
+)
 
 
 class StateApiClient(SubmissionClient):
