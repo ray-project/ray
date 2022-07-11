@@ -1,8 +1,5 @@
 # flake8: noqa
 # isort: skip_file
-import os
-os.environ["AWS_DEFAULT_REGION"] = "us-east-2"
-os.environ["AWS_REGION"] = "us-east-2"
 
 # __checkpoint_quick_start__
 from ray.train.tensorflow import to_air_checkpoint
