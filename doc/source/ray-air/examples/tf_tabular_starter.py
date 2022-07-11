@@ -153,7 +153,7 @@ trainer = TensorflowTrainer(
     },
     scaling_config={
         # Number of workers to use for data parallelism.
-        "num_workers": 2,
+        "num_workers": 3,
         # Whether to use GPU acceleration.
         "use_gpu": False,
         # trainer_resources=0 so that the example works on Colab.
