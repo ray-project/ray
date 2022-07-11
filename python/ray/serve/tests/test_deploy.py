@@ -28,18 +28,18 @@ def test_deploy(serve_instance, use_handle):
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    serve.run(d.bind())
+    d.deploy()
     val1, pid1 = call()
     assert val1 == "1"
 
     # Redeploying with the same version and code should do nothing.
-    serve.run(d.bind())
+    d.deploy()
     val2, pid2 = call()
     assert val2 == "1"
     assert pid2 == pid1
 
     # Redeploying with a new version should start a new actor.
-    serve.run(d.options(version="2").bind())
+    d.options(version="2").deploy()
     val3, pid3 = call()
     assert val3 == "1"
     assert pid3 != pid2
@@ -49,14 +49,14 @@ def test_deploy(serve_instance, use_handle):
         return f"2|{os.getpid()}"
 
     # Redeploying with the same version and new code should do nothing.
-    serve.run(d.bind())
+    d.deploy()
     val4, pid4 = call()
     assert val4 == "1"
     assert pid4 == pid3
 
     # Redeploying with new code and a new version should start a new actor
     # running the new code.
-    serve.run(d.options(version="3").bind())
+    d.options(version="3").deploy()
     val5, pid5 = call()
     assert val5 == "2"
     assert pid5 != pid4
@@ -97,7 +97,7 @@ def test_deploy_no_version(serve_instance, use_handle):
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    serve.run(v1.bind())
+    v1.deploy()
     val1, pid1 = call()
     assert val1 == "1"
 
@@ -106,23 +106,23 @@ def test_deploy_no_version(serve_instance, use_handle):
         return f"2|{os.getpid()}"
 
     # Not specifying a version tag should cause it to always be updated.
-    serve.run(v2.bind())
+    v2.deploy()
     val2, pid2 = call()
     assert val2 == "2"
     assert pid2 != pid1
 
-    serve.run(v2.bind())
+    v2.deploy()
     val3, pid3 = call()
     assert val3 == "2"
     assert pid3 != pid2
 
     # Specifying the version should stop updates from happening.
-    serve.run(v2.options(version="1").bind())
+    v2.options(version="1").deploy()
     val4, pid4 = call()
     assert val4 == "2"
     assert pid4 != pid3
 
-    serve.run(v2.options(version="1").bind())
+    v2.options(version="1").deploy()
     val5, pid5 = call()
     assert val5 == "2"
     assert pid5 == pid4
@@ -150,31 +150,31 @@ def test_config_change(serve_instance, use_handle):
         return ret.split("|")[0], ret.split("|")[1]
 
     # First deploy with no user config set.
-    serve.run(D.bind())
+    D.deploy()
     val1, pid1 = call()
     assert val1 == "1"
 
     # Now update the user config without changing versions. Actor should stay
     # alive but return value should change.
-    serve.run(D.options(user_config={"ret": "2"}).bind())
+    D.options(user_config={"ret": "2"}).deploy()
     val2, pid2 = call()
     assert pid2 == pid1
     assert val2 == "2"
 
     # Update the user config without changing the version again.
-    serve.run(D.options(user_config={"ret": "3"}).bind())
+    D.options(user_config={"ret": "3"}).deploy()
     val3, pid3 = call()
     assert pid3 == pid2
     assert val3 == "3"
 
     # Update the version without changing the user config.
-    serve.run(D.options(version="2", user_config={"ret": "3"}).bind())
+    D.options(version="2", user_config={"ret": "3"}).deploy()
     val4, pid4 = call()
     assert pid4 != pid3
     assert val4 == "3"
 
     # Update the version and the user config.
-    serve.run(D.options(version="3", user_config={"ret": "4"}).bind())
+    D.options(version="3", user_config={"ret": "4"}).deploy()
     val5, pid5 = call()
     assert pid5 != pid4
     assert val5 == "4"

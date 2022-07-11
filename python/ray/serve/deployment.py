@@ -186,7 +186,6 @@ class Deployment:
                 other_args_to_resolve={
                     "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
-                    "version": self._version,
                 },
             )
         else:
@@ -198,7 +197,6 @@ class Deployment:
                 other_args_to_resolve={
                     "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
-                    "version": self._version,
                 },
             )
 

@@ -46,10 +46,10 @@ def test_scale_up(ray_cluster):
     serve.start(detached=True)
     client = serve.context._connect()
 
-    serve.run(D.bind())
+    D.deploy()
     pids1 = get_pids(1)
 
-    serve.run(D.options(num_replicas=3).bind(), _blocking=False)
+    D.options(num_replicas=3).deploy(_blocking=False)
 
     # Check that a new replica has not started in 1.0 seconds.  This
     # doesn't guarantee that a new replica won't ever be started, but
@@ -189,10 +189,10 @@ def test_intelligent_scale_down(ray_cluster):
 
         return set(map(len, node_to_actors.values()))
 
-    serve.run(f.options(num_replicas=3).bind())
+    f.options(num_replicas=3).deploy()
     assert get_actor_distributions() == {2, 1}
 
-    serve.run(f.options(num_replicas=2).bind())
+    f.options(num_replicas=2).deploy()
     assert get_actor_distributions() == {2}
 
 

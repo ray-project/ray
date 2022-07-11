@@ -175,7 +175,7 @@ def test_deploy_change_route_prefix(serve_instance):
         ret = requests.get(f"http://localhost:8000/{route}").text
         return ret.split("|")[0], ret.split("|")[1]
 
-    serve.run(d.bind())
+    d.deploy()
     val1, pid1 = call("old")
     assert val1 == "1"
 
@@ -198,7 +198,7 @@ def test_deploy_change_route_prefix(serve_instance):
         assert pid2 == pid1
         return True
 
-    serve.run(d.options(route_prefix="/new").bind())
+    d.options(route_prefix="/new").deploy()
     wait_for_condition(check_switched)
 
 

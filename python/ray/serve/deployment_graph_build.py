@@ -180,11 +180,7 @@ def transform_ray_dag_to_serve_dag(
         deployment_schema: DeploymentSchema = dag_node._bound_other_args_to_resolve[
             "deployment_schema"
         ]
-        version = (
-            dag_node._bound_other_args_to_resolve["version"]
-            if "version" in dag_node._bound_other_args_to_resolve
-            else None
-        )
+
         deployment_shell: Deployment = schema_to_deployment(deployment_schema)
 
         # Prefer user specified name to override the generated one.
@@ -210,7 +206,6 @@ def transform_ray_dag_to_serve_dag(
             init_args=replaced_deployment_init_args,
             init_kwargs=replaced_deployment_init_kwargs,
             route_prefix=route_prefix,
-            version=version,
         )
 
         return DeploymentNode(
