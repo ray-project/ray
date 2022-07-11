@@ -165,7 +165,7 @@ class ClientBuilder:
             job_config=self._job_config,
             _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs,
-            _metadata=self._metadata,
+            metadata=self._metadata,
         )
         get_dashboard_url = ray.remote(ray._private.worker.get_dashboard_url)
         dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
