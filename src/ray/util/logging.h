@@ -86,7 +86,7 @@ enum { ERROR = 0 };
 
 namespace ray {
 /// This function returns the current call stack information.
-std::string GetCallTrace();
+std::string GetStackTrace();
 
 enum class RayLogLevel {
   TRACE = -2,
@@ -271,6 +271,10 @@ class RayLog : public RayLogBase {
   /// worker.
   static void InstallFailureSignalHandler(const char *argv0,
                                           bool call_previous_handler = false);
+
+  /// Install the terminate handler to output call stack when std::terminate() is called
+  /// (e.g. unhandled exception).
+  static void InstallTerminateHandler();
 
   /// To check failure signal handler enabled or not.
   static bool IsFailureSignalHandlerEnabled();
