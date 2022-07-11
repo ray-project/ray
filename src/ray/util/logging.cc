@@ -94,7 +94,8 @@ void TerminateHandler() {
     try {
       std::rethrow_exception(e_ptr);
     } catch (std::exception &e) {
-      RAY_LOG(ERROR) << "Unhandled exception " << e.what();
+      RAY_LOG(ERROR) << "Unhandled exception: " << typeid(e).name()
+                     << ". what(): " << e.what();
     } catch (...) {
       RAY_LOG(ERROR) << "Unhandled unknown exception.";
     }
