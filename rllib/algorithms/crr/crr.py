@@ -221,11 +221,4 @@ class CRR(Algorithm):
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
         self._counters[NUM_GRADIENT_UPDATES] += 1
-        # Train off-policy estimators if neccessary
-        if self.reward_estimators:
-            train_results["off_policy_estimation"] = {}
-            for estimator in self.reward_estimators:
-                train_results["off_policy_estimation"][
-                    estimator.name
-                ] = estimator.train(train_batch)
         return train_results
