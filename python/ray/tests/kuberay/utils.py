@@ -81,6 +81,7 @@ def teardown_kuberay_operator():
         [
             "kubectl",
             "delete",
+            "--ignore-not-found",
             "-k",
             "ray/python/ray/autoscaler/kuberay/config/default",
         ]
