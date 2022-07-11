@@ -58,7 +58,6 @@ from ray.experimental.state.api import (
     get_task,
     get_worker,
     list_actors,
-    list_logs,
     list_jobs,
     list_nodes,
     list_objects,
@@ -2069,20 +2068,23 @@ def test_detail(shutdown_only):
     assert "actor_id" in result.output
 
 
-def _try_state_query(api_func, q):
+def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None):
     """Utility functions for rate limit related e2e tests below"""
     try:
+        # Indicate start of the process
+        if start_q is not None:
+            start_q.put(1)
         api_func()
     except RayStateApiException as e:
         # Other exceptions will be thrown
         if "Max number of in-progress requests" in str(e):
-            q.put(1)
+            res_q.put(1)
         else:
-            q.put(e)
+            res_q.put(e)
     except Exception as e:
-        q.put(e)
+        res_q.put(e)
     else:
-        q.put(0)
+        res_q.put(0)
 
 
 @pytest.mark.skipif(
@@ -2134,17 +2136,49 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         wait_for_condition(lambda: len(list_objects()) > 0)
 
         # Running 3 slow apis to exhaust the limits
+        res_q = mp.Queue()
+        start_q = mp.Queue()  # not used
         procs = [
-            mp.Process(target=lambda: print(list_tasks()), args=()),
-            mp.Process(target=lambda: print(list_nodes()), args=()),
-            mp.Process(target=lambda: print(list_actors()), args=()),
+            mp.Process(
+                target=_try_state_query_expect_rate_limit,
+                args=(
+                    list_nodes,
+                    res_q,
+                    start_q,
+                ),
+            ),
+            mp.Process(
+                target=_try_state_query_expect_rate_limit,
+                args=(
+                    list_tasks,
+                    res_q,
+                    start_q,
+                ),
+            ),
+            mp.Process(
+                target=_try_state_query_expect_rate_limit,
+                args=(
+                    list_actors,
+                    res_q,
+                    start_q,
+                ),
+            ),
         ]
 
         [p.start() for p in procs]
 
+        # Wait for other processes to start so rate limit will be reached
+        def _wait_to_start():
+            started = 0
+            for _ in range(3):
+                started += start_q.get()
+            return started == 3
+
+        wait_for_condition(_wait_to_start)
+
         # Running another 1 should return error
         with pytest.raises(RayStateApiException) as e:
-            print(list_logs(node_id=0))
+            print(list_objects())
         assert "RAY_STATE_SERVER_MAX_HTTP_REQUEST" in str(
             e
         ), f"Expect an exception raised due to rate limit, but have {str(e)}"
@@ -2159,21 +2193,21 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         q = mp.Queue()
         procs = [
             mp.Process(
-                target=_try_state_query,
+                target=_try_state_query_expect_rate_limit,
                 args=(
                     list_objects,
                     q,
                 ),
             ),
             mp.Process(
-                target=_try_state_query,
+                target=_try_state_query_expect_rate_limit,
                 args=(
                     list_runtime_envs,
                     q,
                 ),
             ),
             mp.Process(
-                target=_try_state_query,
+                target=_try_state_query_expect_rate_limit,
                 args=(
                     list_placement_groups,
                     q,
@@ -2266,7 +2300,7 @@ def test_state_api_server_enforce_concurrent_http_requests(
             num_procs = 3
             procs = [
                 threading.Thread(
-                    target=_try_state_query,
+                    target=_try_state_query_expect_rate_limit,
                     args=(
                         api_func,
                         q,
