@@ -281,12 +281,14 @@ TEST(PrintLogTest, TestGetStackTrace) {
 }
 
 int TerminateHandlerLevel0() {
+  RAY_LOG(INFO) << "TerminateHandlerLevel0";
   auto terminate_handler = std::get_terminate();
   (*terminate_handler)();
   return 0;
 }
 
 int TerminateHandlerLevel1() {
+  RAY_LOG(INFO) << "TerminateHandlerLevel1";
   TerminateHandlerLevel0();
   return 1;
 }
