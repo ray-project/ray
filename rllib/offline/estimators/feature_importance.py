@@ -73,19 +73,19 @@ class FeatureImportance(OffPolicyEstimator):
         self.perturb_fn = perturb_fn
 
     def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
-        """Estimate the feature importance of the policy. 
-        
-        Given a batch of tabular observations, the importance of each feature is 
-        computed by perturbing each feature and computing the difference between the 
-        perturbed policy and the reference policy. The importance is computed for each 
+        """Estimate the feature importance of the policy.
+
+        Given a batch of tabular observations, the importance of each feature is
+        computed by perturbing each feature and computing the difference between the
+        perturbed policy and the reference policy. The importance is computed for each
         feature and each perturbation is repeated `self.repeat` times.
 
         Args:
             batch: the batch of data to use for feature importance.
 
         Returns:
-            A list of OffPolicyEstimate objects. Each OffPolicyEstimate object contains 
-            a metics name and a dictionary of metrics mapping feature index to its 
+            A list of OffPolicyEstimate objects. Each OffPolicyEstimate object contains
+            a metics name and a dictionary of metrics mapping feature index to its
             importance.
         """
 
