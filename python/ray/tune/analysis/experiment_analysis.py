@@ -446,8 +446,12 @@ class ExperimentAnalysis:
             raise ValueError("trial should be a string or a Trial instance.")
 
     def get_best_checkpoint(
-        self, trial: Trial, metric: Optional[str] = None, mode: Optional[str] = None
-    ) -> Optional[Checkpoint]:
+        self,
+        trial: Trial,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        return_path: bool = False,
+    ) -> Optional[Union[Checkpoint, str]]:
         """Gets best persistent checkpoint path of provided trial.
 
         Any checkpoints with an associated metric value of ``nan`` will be filtered out.
@@ -458,6 +462,8 @@ class ExperimentAnalysis:
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
             mode: One of [min, max]. Defaults to ``self.default_mode``.
+            return_path: If True, only returns the path (and not the
+                ``Checkpoint`` object).
 
         Returns:
             :class:`Checkpoint <ray.air.Checkpoint>` object.
@@ -484,8 +490,12 @@ class ExperimentAnalysis:
 
         if cloud_path:
             # Prefer cloud path over local path for downsteam processing
+            if return_path:
+                return cloud_path
             return Checkpoint.from_uri(cloud_path)
         elif os.path.exists(best_path):
+            if return_path:
+                return best_path
             return Checkpoint.from_directory(best_path)
         else:
             logger.error(
@@ -496,6 +506,8 @@ class ExperimentAnalysis:
                 f"The checkpoint may be available on a different node - "
                 f"please check this location on worker nodes: {best_path}"
             )
+            if return_path:
+                return best_path
             return None
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
