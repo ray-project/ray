@@ -4,12 +4,19 @@ import platform
 import random
 import sys
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 import ray
-from ray._private.external_storage import create_url_with_offset, parse_url_with_offset
+from ray._private.external_storage import (
+    create_url_with_offset,
+    parse_url_with_offset,
+    _get_unique_spill_filename,
+    FileSystemStorage,
+    ExternalStorageSmartOpenImpl,
+)
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClientOptions
@@ -58,6 +65,30 @@ def assert_no_thrashing(address):
     assert (
         consumed_bytes >= restored_bytes
     ), f"consumed: {consumed_bytes}, restored: {restored_bytes}"
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Doesn't support Windows.")
+def test_spill_file_uniqueness(shutdown_only):
+    ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
+    arr = np.random.rand(128 * 1024)  # 1 MB
+    refs = []
+    refs.append([ray.put(arr)])
+
+    # for the same object_ref, generating spill urls 10 times yields
+    # 10 different urls
+    spill_url_set = {_get_unique_spill_filename(refs) for _ in range(10)}
+    assert len(spill_url_set) == 10
+
+    for StorageType in [FileSystemStorage, ExternalStorageSmartOpenImpl]:
+        with patch.object(
+            StorageType, "_get_objects_from_store"
+        ) as mock_get_objects_from_store:
+            mock_get_objects_from_store.return_value = [(b"somedata", b"metadata")]
+            storage = StorageType("/tmp")
+            spilled_url_set = {
+                storage.spill_objects(refs, [b"localhost"])[0] for _ in range(10)
+            }
+            assert len(spilled_url_set) == 10
 
 
 def test_invalid_config_raises_exception(shutdown_only):
