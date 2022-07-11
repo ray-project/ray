@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, Dict, Optional, Type, Union
 
 import ray
@@ -97,6 +98,13 @@ class BatchPredictor:
         predictor_cls = self.predictor_cls
         checkpoint_ref = self.checkpoint_ref
         predictor_kwargs = self.predictor_kwargs
+        # Automatic set use_gpu in predictor constructor if user provided
+        # explicit GPU resources
+        if (
+            "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
+            and num_gpus_per_worker > 0
+        ):
+            predictor_kwargs["use_gpu"] = True
 
         class ScoringWrapper:
             def __init__(self):
