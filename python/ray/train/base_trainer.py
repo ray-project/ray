@@ -353,7 +353,7 @@ class BaseTrainer(abc.ABC):
         # stdout messages and the results directory.
         train_func.__name__ = trainer_cls.__name__
 
-        trainable_cls = wrap_function(train_func)
+        trainable_cls = wrap_function(train_func, warn=False)
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
