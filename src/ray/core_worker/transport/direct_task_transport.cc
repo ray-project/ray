@@ -585,8 +585,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
         } else {
-          if (!task_spec.GetMessage().retry_exceptions() ||
-              !reply.is_application_level_error() ||
+          if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
               !task_finisher_->RetryTaskIfPossible(task_id)) {
             task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
           }
