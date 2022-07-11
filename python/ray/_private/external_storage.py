@@ -181,14 +181,6 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 f"size of {obtained_data_size}."
             )
 
-    def _get_ique_spill_uri(self, object_refs: List[ObjectRef]):
-        """Generate a unqiue spill uri.
-
-        Args:
-            object_refs: objects to be spilled in this file.
-        """
-        return f"{uuid.uuid4().hex}-multi-{len(object_refs)}"
-
     @abc.abstractmethod
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         """Spill objects to the external storage. Objects are specified
