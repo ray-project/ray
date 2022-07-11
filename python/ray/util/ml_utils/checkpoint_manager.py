@@ -129,7 +129,18 @@ class _TrackedCheckpoint:
             checkpoint_data = ray.get(checkpoint_data)
 
         if isinstance(checkpoint_data, str):
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            try:
+                checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            except FileNotFoundError:
+                logger.error(
+                    f"The requested checkpoint is not available on this node, most "
+                    f"likely because you are using Ray client or disabled "
+                    f"checkpoint synchronization. To avoid this, enable checkpoint "
+                    f"synchronization to cloud storage by specifying a `SyncConfig`. "
+                    f"The checkpoint may be available on a different node - "
+                    f"please check this location on worker nodes: {checkpoint_data}"
+                )
+                return None
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
             checkpoint = Checkpoint.from_bytes(checkpoint_data)

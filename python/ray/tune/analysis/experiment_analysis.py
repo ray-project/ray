@@ -499,10 +499,10 @@ class ExperimentAnalysis:
             return Checkpoint.from_directory(best_path)
         else:
             logger.error(
-                f"No checkpoint locations for {trial} available on "
-                f"this node. To avoid this, you "
-                f"should enable checkpoint synchronization with the"
-                f"`sync_config` argument in Ray Tune. "
+                f"The requested checkpoint for trial {trial} is not available on this "
+                f"node, most likely because you are using Ray client or disabled "
+                f"checkpoint synchronization. To avoid this, enable checkpoint "
+                f"synchronization to cloud storage by specifying a `SyncConfig`. "
                 f"The checkpoint may be available on a different node - "
                 f"please check this location on worker nodes: {best_path}"
             )
