@@ -689,7 +689,8 @@ class DatasetPipeline(Generic[T]):
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "DatasetPipeline[U]":
-        """Apply ``Dataset.map`` to each dataset/window in this pipeline."""
+        """Apply :py:meth:`Dataset.map <ray.data.Dataset.map>` to each dataset/window
+        in this pipeline."""
         return self.foreach_window(
             lambda ds: ds.map(fn, compute=compute, **ray_remote_args)
         )
@@ -707,7 +708,8 @@ class DatasetPipeline(Generic[T]):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "DatasetPipeline[U]":
-        """Apply ``Dataset.map_batches`` to each dataset/window in this pipeline."""
+        """Apply :py:meth:`Dataset.map_batches <ray.data.Dataset.map_batches>` to each
+        dataset/window in this pipeline."""
         return self.foreach_window(
             lambda ds: ds.map_batches(
                 fn,
@@ -729,7 +731,8 @@ class DatasetPipeline(Generic[T]):
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "DatasetPipeline[U]":
-        """Apply ``Dataset.flat_map`` to each dataset/window in this pipeline."""
+        """Apply :py:meth:`Dataset.flat_map <ray.data.Dataset.flat_map>` to each
+        dataset/window in this pipeline."""
         return self.foreach_window(
             lambda ds: ds.flat_map(fn, compute=compute, **ray_remote_args)
         )
@@ -741,7 +744,8 @@ class DatasetPipeline(Generic[T]):
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "DatasetPipeline[T]":
-        """Apply ``Dataset.filter`` to each dataset/window in this pipeline."""
+        """Apply :py:meth:`Dataset.filter <ray.data.Dataset.filter>` to each
+        dataset/window in this pipeline."""
         return self.foreach_window(
             lambda ds: ds.filter(fn, compute=compute, **ray_remote_args)
         )
@@ -754,7 +758,8 @@ class DatasetPipeline(Generic[T]):
         compute: Optional[str] = None,
         **ray_remote_args,
     ) -> "DatasetPipeline[U]":
-        """Apply ``Dataset.add_column`` to each dataset/window in this pipeline."""
+        """Apply :py:meth:`Dataset.add_column <ray.data.Dataset.add_column>` to each
+        dataset/window in this pipeline."""
         return self.foreach_window(
             lambda ds: ds.add_column(col, fn, compute=compute, **ray_remote_args)
         )
@@ -766,34 +771,19 @@ class DatasetPipeline(Generic[T]):
         compute: Optional[str] = None,
         **ray_remote_args,
     ) -> "DatasetPipeline[U]":
-        """Apply ``Dataset.drop_columns`` to each dataset/window in this pipeline."""
+        """Apply :py:meth:`Dataset.drop_columns <ray.data.Dataset.drop_columns>` to
+        each dataset/window in this pipeline."""
         return self.foreach_window(
             lambda ds: ds.drop_columns(cols, compute=compute, **ray_remote_args)
-        )
-
-    def repartition(
-        self, num_blocks: int, *, shuffle: bool = False
-    ) -> "DatasetPipeline[U]":
-        raise DeprecationWarning(
-            "`repartition` has been renamed to `repartition_each_window`."
         )
 
     def repartition_each_window(
         self, num_blocks: int, *, shuffle: bool = False
     ) -> "DatasetPipeline[U]":
-        """Apply ``Dataset.repartition`` to each dataset/window in this pipeline."""
+        """Apply :py:meth:`Dataset.repartition <ray.data.Dataset.repartition>` to each
+        dataset/window in this pipeline."""
         return self.foreach_window(
             lambda ds: ds.repartition(num_blocks, shuffle=shuffle)
-        )
-
-    def random_shuffle(
-        self,
-        *,
-        seed: Optional[int] = None,
-        num_blocks: Optional[int] = None,
-    ) -> "DatasetPipeline[U]":
-        raise DeprecationWarning(
-            "`random_shuffle` has been renamed to `random_shuffle_each_window`."
         )
 
     def random_shuffle_each_window(
@@ -802,34 +792,24 @@ class DatasetPipeline(Generic[T]):
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
     ) -> "DatasetPipeline[U]":
-        """Apply ``Dataset.random_shuffle`` to each dataset/window in this pipeline."""
+        """Apply :py:meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` to
+        each dataset/window in this pipeline."""
         return self.foreach_window(
             lambda ds: ds.random_shuffle(seed=seed, num_blocks=num_blocks)
         )
 
-    def sort(
-        self, key: Optional[KeyFn] = None, descending: bool = False
-    ) -> "DatasetPipeline[U]":
-        raise DeprecationWarning("`sort` has been renamed to `sort_each_window`.")
-
     def sort_each_window(
         self, key: Optional[KeyFn] = None, descending: bool = False
     ) -> "DatasetPipeline[U]":
-        """Apply ``Dataset.sort`` to each dataset/window in this pipeline."""
+        """Apply :py:meth:`Dataset.sort <ray.data.Dataset.sort>` to each dataset/window
+        in this pipeline."""
         return self.foreach_window(lambda ds: ds.sort(key, descending))
-
-    def randomize_block_order(
-        self, *, seed: Optional[int] = None
-    ) -> "DatasetPipeline[U]":
-        raise DeprecationWarning(
-            "`randomize_block_order` has been renamed to "
-            + "`randomize_block_order_each_window`."
-        )
 
     def randomize_block_order_each_window(
         self, *, seed: Optional[int] = None
     ) -> "DatasetPipeline[U]":
-        """Apply ``Dataset.randomize_block_order`` to each dataset/window in this
+        """Apply :py:meth:`Dataset.randomize_block_order
+        <ray.data.Dataset.randomize_block_order>` to each dataset/window in this
         pipeline."""
         return self.foreach_window(lambda ds: ds.randomize_block_order(seed=seed))
 
@@ -845,7 +825,8 @@ class DatasetPipeline(Generic[T]):
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
     ) -> None:
-        """Call ``Dataset.write_json`` on each output dataset of this pipeline."""
+        """Call :py:meth:`Dataset.write_json <ray.data.Dataset.write_json>` on each
+        output dataset of this pipeline."""
         self._write_each_dataset(
             lambda ds: ds.write_json(
                 path,
@@ -871,7 +852,8 @@ class DatasetPipeline(Generic[T]):
         ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
     ) -> None:
-        """Call ``Dataset.write_csv`` on each output dataset of this pipeline."""
+        """Call :py:meth:`Dataset.write_csv <ray.data.Dataset.write_csv>` on each
+        output dataset of this pipeline."""
         self._write_each_dataset(
             lambda ds: ds.write_csv(
                 path,
@@ -897,7 +879,8 @@ class DatasetPipeline(Generic[T]):
         ray_remote_args: Dict[str, Any] = None,
         **arrow_parquet_args,
     ) -> None:
-        """Call ``Dataset.write_parquet`` on each output dataset of this pipeline."""
+        """Call :py:meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` on
+        each output dataset of this pipeline."""
         self._write_each_dataset(
             lambda ds: ds.write_parquet(
                 path,
@@ -918,8 +901,8 @@ class DatasetPipeline(Generic[T]):
         ray_remote_args: Dict[str, Any] = None,
         **write_args,
     ) -> None:
-        """Call ``Dataset.write_datasource`` on each output dataset of this
-        pipeline."""
+        """Call :py:meth:`Dataset.write_datasource <ray.data.Dataset.write_datasource>`
+        on each output dataset of this pipeline."""
         self._write_each_dataset(
             lambda ds: ds.write_datasource(
                 datasource,
@@ -929,18 +912,18 @@ class DatasetPipeline(Generic[T]):
         )
 
     def take(self, limit: int = 20) -> List[T]:
-        """Call ``Dataset.take`` over the stream of output batches from the
-        pipeline"""
+        """Call :py:meth:`Dataset.take <ray.data.Dataset.take>` over the stream of
+        output batches from the pipeline"""
         return Dataset.take(self, limit)
 
     def take_all(self, limit: int = 100000) -> List[T]:
-        """Call ``Dataset.take_all`` over the stream of output batches from the
-        pipeline"""
+        """Call :py:meth:`Dataset.take_all <ray.data.Dataset.take_all>` over the stream
+        of output batches from the pipeline"""
         return Dataset.take_all(self, limit)
 
     def show(self, limit: int = 20) -> None:
-        """Call ``Dataset.show`` over the stream of output batches from the
-        pipeline"""
+        """Call :py:meth:`Dataset.show <ray.data.Dataset.show>` over the stream of
+        output batches from the pipeline"""
         return Dataset.show(self, limit)
 
     def to_tf(
@@ -957,8 +940,8 @@ class DatasetPipeline(Generic[T]):
         batch_size: int = 1,
         drop_last: bool = False,
     ) -> "tf.data.Dataset":
-        """Call ``Dataset.to_tf`` over the stream of output batches from the
-        pipeline"""
+        """Call :py:meth:`Dataset.to_tf <ray.data.Dataset.to_tf>` over the stream of
+        output batches from the pipeline"""
         return Dataset.to_tf(
             self,
             output_signature=output_signature,
@@ -986,8 +969,8 @@ class DatasetPipeline(Generic[T]):
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
     ) -> "torch.utils.data.IterableDataset":
-        """Call ``Dataset.to_torch`` over the stream of output batches from the
-        pipeline"""
+        """Call :py:meth:`Dataset.to_torch <ray.data.Dataset.to_torch>` over the stream
+        of output batches from the pipeline"""
         return Dataset.to_torch(
             self,
             label_column=label_column,
