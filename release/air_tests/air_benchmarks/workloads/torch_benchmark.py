@@ -285,7 +285,7 @@ def main(
     print(f"Finished vanilla training in {time_taken:.2f} seconds.")
 
     result = {
-        "torch_minst_ray": time_ray,
+        "torch_mnist_ray": time_ray,
         "torch_mnist_vanilla": time_vanilla,
     }
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
