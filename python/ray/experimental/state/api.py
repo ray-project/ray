@@ -33,6 +33,12 @@ from ray.experimental.state.exception import RayStateApiException, ServerUnavail
 This file contains API client and methods for querying ray state.
 
 NOTE(rickyyx): This is still a work-in-progress API, and subject to changes.
+State Observability APIs is currently in Alpha-Preview. 
+If you have any feedback, you could do so at either way as below:
+  1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46 ,
+  2. Follow up in #ray-state-observability-dogfooding slack channel of Ray:
+    https://tinyurl.com/2pm26m4a"
+
 
 Usage:
     1. [Recommended] With StateApiClient:

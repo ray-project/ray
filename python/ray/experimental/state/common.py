@@ -18,9 +18,9 @@ STATE_OBS_ALPHA_FEEDBACK_MSG = [
     "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
     "State Observability APIs is currently in Alpha-Preview. ",
     "If you have any feedback, you could do so at either way as below:",
-    "  1. Comment on API specification: https://tinyurl.com/api-spec",
-    "  2. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
-    "  3. Follow up in #proj-state-obs-dogfooding slack channel.",
+    "  1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
+    "  2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
+    "https://tinyurl.com/2pm26m4a",
     "==========================================================",
 ]
 
