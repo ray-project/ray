@@ -49,19 +49,54 @@ def _unzip_if_needed(paths: List[str], format: str):
 def get_dataset_and_shards(
     config: AlgorithmConfigDict, num_workers: int, local_worker: bool
 ) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
+    """Returns a dataset and a list of shards.
+
+    This function uses algorithm configs to create a dataset and a list of shards.
+    The following keys are used to create the dataset:
+        input: The input type should be "dataset".
+        input_config: A dict containing the following key and values:
+            `format`: str, speciifies the format of the input data. This will be the 
+            format that ray dataset supports. See ray.data.dataset.Dataset for 
+            supported formats. Only "parquet" or "json" are supported for now.
+            paths: a single string or a list of strings. Each string is a path to a 
+            file or a directory holding the dataset.
+            `loader_fn`: Callable[None, ray.data.dataset.Dataset], Instead of 
+            specifying paths and format, you can specify a function to load the dataset.
+            `parallelism`: int, The number of workers to use for loading the dataset. 
+            If not specified, it will be set to the number of workers.
+            `num_cpus_per_read_task`: float, The number of CPUs to use for each read 
+            task. If not specified, it will be set to 0.5.
+    
+    Args:
+        config: The config dict for the algorithm.
+        num_workers: The number of workers.
+        local_worker: Whether the worker is local or remote.
+
+    Returns:
+        dataset: The dataset object.
+        shards: A list of dataset shards. If local_worker=False, the first returned shared would be a dummy None shard. 
+    """
+
+
+    # check input and input config keys
     assert config["input"] == "dataset", (
-        "Must specify input as dataset if" " calling `get_dataset_and_shards`"
+        f"Must specify input as dataset if" " calling `get_dataset_and_shards`. Got {config['input']}"
     )
     assert (
         "input_config" in config
     ), "Must specify input_config dict if using Dataset input."
-
+    
+    # check input config format
     input_config = config["input_config"]
-
     format = input_config.get("format")
-    assert format in ("json", "parquet"), (
-        "Offline input data format must be " "parquet " "or json"
-    )
+
+    supported_fmts = ["json", "parquet"]
+    if format is None:
+        assert format in supported_fmts, (
+            f"Offline input data format must be in {supported_fmts}."
+        )
+
+    # check paths and loader_fn since only one of them is required.
     paths = input_config.get("paths")
     loader_fn = input_config.get("loader_fn")
     if loader_fn and (format or paths):
@@ -69,28 +104,29 @@ def get_dataset_and_shards(
             "When using a `loader_fn`, you cannot specify a `format` or `path`."
         )
 
+    # check if at least loader_fn or format + path is specified.
     if not (format and paths) and not loader_fn:
         raise ValueError(
-            "Must specify format and path, or a loader_fn via input_config key"
-            " when using Ray dataset input."
+            f"If using a loader_fn: {loader_fn} that constructs a dataset, "
+            "format: {format} and paths: {paths} must not be specified. If format and "
+            "paths are specified, a loader_fn must not be specified."
         )
 
-    if not isinstance(paths, (list, str)):
-        raise ValueError("Paths must be a list of path strings or a path string")
-    if isinstance(paths, str):
-        paths = [paths]
-    paths = _unzip_if_needed(paths, format)
+    # check paths to be a str or list[str] if not None
+    if paths:
+        if isinstance(paths, str):
+            paths = [paths]
+        elif isinstance(paths, list):
+            assert isinstance(paths[0], str), "Paths must be a list of path strings."
+        else:
+            raise ValueError("Paths must be a path string or a list of path strings.")
+        paths = _unzip_if_needed(paths, format)
 
     parallelism = input_config.get("parallelism", num_workers or 1)
     cpus_per_task = input_config.get(
         "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
     )
 
-    assert loader_fn or (format and paths), (
-        f"If using a loader_fn: {loader_fn} that constructs a dataset, "
-        "format: {format} and paths: {paths} must be specified. If format and "
-        "paths are specified, a loader_fn must not be specified."
-    )
     if loader_fn:
         dataset = loader_fn()
     elif format == "json":
@@ -110,12 +146,13 @@ def get_dataset_and_shards(
         return dataset, [dataset]
     # Remote workers are responsible for sampling:
     else:
+        remote_shards = dataset.repartition(
+            num_blocks=num_workers, shuffle=False
+        ).split(num_workers)
         # Each remote worker gets 1 shard.
         # The first None shard is for the local worker, which
         # shouldn't be doing rollout work anyways.
-        return dataset, [None] + dataset.repartition(
-            num_blocks=num_workers, shuffle=False
-        ).split(num_workers)
+        return dataset, [None] + remote_shards
 
 
 @PublicAPI
