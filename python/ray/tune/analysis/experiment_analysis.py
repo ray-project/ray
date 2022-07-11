@@ -11,6 +11,7 @@ from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf, is_nan
+from ray.util import log_once
 
 try:
     import pandas as pd
@@ -498,14 +499,15 @@ class ExperimentAnalysis:
                 return best_path
             return Checkpoint.from_directory(best_path)
         else:
-            logger.error(
-                f"The requested checkpoint for trial {trial} is not available on this "
-                f"node, most likely because you are using Ray client or disabled "
-                f"checkpoint synchronization. To avoid this, enable checkpoint "
-                f"synchronization to cloud storage by specifying a `SyncConfig`. "
-                f"The checkpoint may be available on a different node - "
-                f"please check this location on worker nodes: {best_path}"
-            )
+            if log_once("checkpoint_not_available"):
+                logger.error(
+                    f"The requested checkpoint for trial {trial} is not available on "
+                    f"this node, most likely because you are using Ray client or "
+                    f"disabled checkpoint synchronization. To avoid this, enable "
+                    f"checkpoint synchronization to cloud storage by specifying a "
+                    f"`SyncConfig`. The checkpoint may be available on a different "
+                    f"node - please check this location on worker nodes: {best_path}"
+                )
             if return_path:
                 return best_path
             return None
