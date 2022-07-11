@@ -1,32 +1,32 @@
 import argparse
+from typing import Dict, Tuple
 
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
+from ray.air.callbacks.keras import Callback as TrainReportCallback
 
 import ray
-import ray.train as train
+from ray.air import session
+from ray.air.config import DatasetConfig
 from ray.data import Dataset
-from ray.data.dataset_pipeline import DatasetPipeline
-from ray.train import Trainer
-from ray.train.tensorflow import prepare_dataset_shard
+from ray.train.tensorflow import TensorflowTrainer, prepare_dataset_shard
 
 
-class TrainReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.report(**logs)
-
-
-def get_dataset_pipeline(a=5, b=10, size=1000) -> DatasetPipeline:
+def get_datasets_and_configs(
+    a=5, b=10, size=1000
+) -> Tuple[Dict[str, Dataset], Dict[str, DatasetConfig]]:
     def get_dataset(a, b, size) -> Dataset:
         items = [i / size for i in range(size)]
         dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
         return dataset
 
-    dataset = get_dataset(a, b, size)
+    datasets = {"train": get_dataset(a, b, size)}
 
-    dataset_pipeline = dataset.repeat().random_shuffle_each_window()
+    # Use dataset pipelining
+    dataset_configs = {
+        "train": DatasetConfig(use_stream_api=True),
+    }
 
-    return dataset_pipeline
+    return datasets, dataset_configs
 
 
 def build_and_compile_model(config):
@@ -55,10 +55,9 @@ def train_func(config):
         # Model building/compiling need to be within `strategy.scope()`.
         multi_worker_model = build_and_compile_model(config)
 
-    dataset_pipeline = train.get_dataset_shard()
+    dataset_pipeline = session.get_dataset_shard("train")
     dataset_iterator = dataset_pipeline.iter_epochs()
 
-    results = []
     for _ in range(epochs):
         dataset = next(dataset_iterator)
         tf_dataset = prepare_dataset_shard(
@@ -71,22 +70,20 @@ def train_func(config):
                 batch_size=batch_size,
             )
         )
-        history = multi_worker_model.fit(tf_dataset, callbacks=[TrainReportCallback()])
-        results.append(history.history)
-    return results
+        multi_worker_model.fit(tf_dataset, callbacks=[TrainReportCallback()])
 
 
 def train_tensorflow_linear(num_workers=2, use_gpu=False):
-    dataset_pipeline = get_dataset_pipeline()
-    trainer = Trainer(backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
-    trainer.start()
-    results = trainer.run(
-        train_func=train_func,
-        dataset=dataset_pipeline,
-        config={"lr": 1e-3, "batch_size": 32, "epochs": 4},
+    datasets, dataset_configs = get_datasets_and_configs()
+    trainer = TensorflowTrainer(
+        train_func,
+        train_loop_config={"lr": 1e-3, "batch_size": 32, "epochs": 4},
+        datasets=datasets,
+        dataset_config=dataset_configs,
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
-    trainer.shutdown()
-    print(f"Results: {results[0]}")
+    results = trainer.fit()
+    print(f"Results: {results.metrics}")
     return results
 
 
@@ -115,8 +112,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        # 1 for datasets
-        num_cpus = args.num_workers + 1
+        # 1 for datasets, 1 for Trainable actor
+        num_cpus = args.num_workers + 2
         num_gpus = args.num_workers if args.use_gpu else 0
         ray.init(num_cpus=num_cpus, num_gpus=num_gpus)
     else:

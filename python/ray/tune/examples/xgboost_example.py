@@ -62,7 +62,8 @@ def train_breast_cancer_cv(config: dict):
 
 def get_best_model_checkpoint(analysis):
     best_bst = xgb.Booster()
-    best_bst.load_model(os.path.join(analysis.best_checkpoint, "model.xgb"))
+    with analysis.best_checkpoint.as_directory() as checkpoint_dir:
+        best_bst.load_model(os.path.join(checkpoint_dir, "model.xgb"))
     accuracy = 1.0 - analysis.best_result["test-error"]
     print(f"Best model parameters: {analysis.best_config}")
     print(f"Best model total accuracy: {accuracy:.4f}")

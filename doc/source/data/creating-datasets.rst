@@ -390,7 +390,7 @@ Supported File Formats
   treating the outermost ndarray dimension as the row dimension. See our
   :ref:`tensor data guide <datasets_tensor_support>` for more information on working
   with tensors in Datasets. Although this simple example demonstrates reading a single
-  file, note that Datasets can also read directories of JSON files, with one tensor
+  file, note that Datasets can also read directories of NumPy files, with one tensor
   block created per file.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
