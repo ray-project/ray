@@ -84,7 +84,9 @@ class FeatureImportance(OffPolicyEstimator):
             batch: the batch of data to use for feature importance.
 
         Returns:
-            A list of OffPolicyEstimate objects. Each OffPolicyEstimate object contains a metics name and a dictionary of metrics mapping feature index to its importance.
+            A list of OffPolicyEstimate objects. Each OffPolicyEstimate object contains 
+            a metics name and a dictionary of metrics mapping feature index to its 
+            importance.
         """
 
         obs_batch = batch["obs"]
