@@ -92,7 +92,11 @@ class PushManager {
           num_chunks_to_send(num_chunks) {}
 
     /// Resend all chunks.
-    void ResendAllChunks() { num_chunks_to_send = num_chunks; }
+    int64_t ResendAllChunks() { 
+      int64_t additional_chunks_to_send = num_chunks - num_chunks_to_send;
+      num_chunks_to_send = num_chunks; 
+      return additional_chunks_to_send;
+    }
 
     /// Send one chunck. Return true if a new chunk is sent, false if no more chunk to
     /// send.

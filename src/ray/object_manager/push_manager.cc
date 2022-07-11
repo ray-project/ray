@@ -26,12 +26,12 @@ void PushManager::StartPush(const NodeID &dest_id,
                             std::function<void(int64_t)> send_chunk_fn) {
   auto push_id = std::make_pair(dest_id, obj_id);
   RAY_CHECK(num_chunks > 0);
-  chunks_remaining_ += num_chunks;
   if (push_info_.contains(push_id)) {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    push_info_[push_id]->ResendAllChunks();
+    chunks_remaining_ += push_info_[push_id]->ResendAllChunks();
   } else {
+    chunks_remaining_ += num_chunks;
     push_info_[push_id].reset(new PushState(num_chunks, send_chunk_fn));
   }
   ScheduleRemainingPushes();
