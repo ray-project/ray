@@ -10,13 +10,13 @@ def train(config):
     this_node_ip = ray.util.get_node_ip_address()
     if config["head_node_ip"] == this_node_ip:
         # On the head node, just run for 10 minutes
-        for i in range(10):
-            tune.report(metric=1)
+        for i in range(20):
+            tune.report(metric=i)
             time.sleep(60)
     else:
         # On worker nodes, run for 3 minutes
         for i in range(3):
-            tune.report(metric=2)
+            tune.report(metric=i)
             time.sleep(60)
 
 
