@@ -26,7 +26,9 @@ class SklearnPredictor(Predictor):
     """
 
     def __init__(
-        self, estimator: BaseEstimator, preprocessor: Optional["Preprocessor"] = None
+        self,
+        estimator: BaseEstimator,
+        preprocessor: Optional["Preprocessor"] = None,
     ):
         self.estimator = estimator
         self.preprocessor = preprocessor
@@ -41,7 +43,6 @@ class SklearnPredictor(Predictor):
             checkpoint: The checkpoint to load the model and
                 preprocessor from. It is expected to be from the result of a
                 ``SklearnTrainer`` run.
-
         """
         estimator, preprocessor = load_checkpoint(checkpoint)
         return SklearnPredictor(estimator=estimator, preprocessor=preprocessor)

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import pytest
 
 import ray
 from ray.air.checkpoint import Checkpoint
@@ -59,8 +60,11 @@ def test_init():
     assert checkpoint_predictor.preprocessor == predictor.preprocessor
 
 
-def test_predict_array():
-    predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_predict_array(use_gpu):
+    predictor = TensorflowPredictor(
+        model_definition=build_model, model_weights=weights, use_gpu=use_gpu
+    )
 
     data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
@@ -69,10 +73,14 @@ def test_predict_array():
     assert predictions.flatten().tolist() == [2, 4, 6]
 
 
-def test_predict_array_with_preprocessor():
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_predict_array_with_preprocessor(use_gpu):
     preprocessor = DummyPreprocessor()
     predictor = TensorflowPredictor(
-        model_definition=build_model, preprocessor=preprocessor, model_weights=weights
+        model_definition=build_model,
+        preprocessor=preprocessor,
+        model_weights=weights,
+        use_gpu=use_gpu,
     )
 
     data_batch = np.array([1, 2, 3])
@@ -82,8 +90,11 @@ def test_predict_array_with_preprocessor():
     assert predictions.flatten().tolist() == [4, 8, 12]
 
 
-def test_predict_dataframe():
-    predictor = TensorflowPredictor(model_definition=build_model_multi_input)
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_predict_dataframe(use_gpu):
+    predictor = TensorflowPredictor(
+        model_definition=build_model_multi_input, use_gpu=use_gpu
+    )
 
     data_batch = pd.DataFrame({"A": [0.0, 0.0, 0.0], "B": [1.0, 2.0, 3.0]})
     predictions = predictor.predict(data_batch)
@@ -92,8 +103,11 @@ def test_predict_dataframe():
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-def test_predict_multi_output():
-    predictor = TensorflowPredictor(model_definition=build_model_multi_output)
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_predict_multi_output(use_gpu):
+    predictor = TensorflowPredictor(
+        model_definition=build_model_multi_output, use_gpu=use_gpu
+    )
 
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
@@ -106,11 +120,12 @@ def test_predict_multi_output():
         assert v.flatten().tolist() == [1, 2, 3]
 
 
-def test_tensorflow_predictor_no_training():
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_tensorflow_predictor_no_training(use_gpu):
     model = build_model()
     checkpoint = to_air_checkpoint(model)
     batch_predictor = BatchPredictor.from_checkpoint(
-        checkpoint, TensorflowPredictor, model_definition=build_model
+        checkpoint, TensorflowPredictor, model_definition=build_model, use_gpu=use_gpu
     )
     predict_dataset = ray.data.range(3)
     predictions = batch_predictor.predict(predict_dataset)

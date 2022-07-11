@@ -117,7 +117,7 @@ py_test(
     name = "test_batch_predictor",
     size = "small",
     srcs = ["tests/test_batch_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib"]
 )
 
@@ -166,7 +166,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", "//python/ray/air:ml_lib"]
 )
 
 py_test(
@@ -269,7 +269,7 @@ py_test(
     name = "test_tensorflow_predictor",
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib"]
 )
 
@@ -293,7 +293,7 @@ py_test(
     name = "test_torch_predictor",
     size = "small",
     srcs = ["tests/test_torch_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib"]
 )
 
@@ -358,4 +358,10 @@ py_test(
 py_library(
     name = "train_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    visibility = [
+        "//python/ray/air:__pkg__",
+        "//python/ray/air:__subpackages__",
+        "//python/ray/train:__pkg__",
+        "//python/ray/train:__subpackages__",
+    ],
 )
