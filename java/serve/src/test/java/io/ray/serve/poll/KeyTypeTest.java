@@ -32,29 +32,27 @@ public class KeyTypeTest {
   @Test
   public void toStringTest() {
     KeyType k1 = new KeyType(LongPollNamespace.ROUTE_TABLE, "k1");
-    Assert.assertEquals(k1.toString(), "(LongPollNamespace.ROUTE_TABLE, k1)");
+    Assert.assertEquals(k1.toString(), "(ROUTE_TABLE,k1)");
 
     KeyType k2 = new KeyType(LongPollNamespace.ROUTE_TABLE, null);
-    Assert.assertEquals(k2.toString(), "LongPollNamespace.ROUTE_TABLE");
+    Assert.assertEquals(k2.toString(), "ROUTE_TABLE");
   }
 
   @Test
   public void parseFromTest() {
-    String key1 = "(LongPollNamespace.ROUTE_TABLE, k1)";
+    String key1 = "(ROUTE_TABLE,k1)";
     KeyType k1 = KeyType.parseFrom(key1);
     Assert.assertEquals(k1.getLongPollNamespace(), LongPollNamespace.ROUTE_TABLE);
     Assert.assertEquals(k1.getKey(), "k1");
 
-    String key2 = "LongPollNamespace.ROUTE_TABLE";
+    String key2 = "ROUTE_TABLE";
     KeyType k2 = KeyType.parseFrom(key2);
     Assert.assertEquals(k2.getLongPollNamespace(), LongPollNamespace.ROUTE_TABLE);
     Assert.assertNull(k2.getKey());
 
-    String key3 = "LongPollNamespace.unknown";
-    try {
-      KeyType.parseFrom(key3);
-      Assert.assertTrue(false, "Expect exception here!");
-    } catch (Exception e) {
-    }
+    String key3 = "k1";
+    KeyType k3 = KeyType.parseFrom(key3);
+    Assert.assertEquals(k3.getKey(), key3);
+    Assert.assertNull(k3.getLongPollNamespace());
   }
 }

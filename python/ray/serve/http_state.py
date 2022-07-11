@@ -40,7 +40,10 @@ class HTTPState:
     ):
         self._controller_name = controller_name
         self._detached = detached
-        self._config = config
+        if config is not None:
+            self._config = config
+        else:
+            self._config = HTTPOptions()
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
         self._proxy_actor_names: Dict[NodeId, str] = dict()
 

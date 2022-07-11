@@ -1,16 +1,19 @@
 from ray.workflow.api import (
     init,
-    get_output,
-    get_status,
-    get_metadata,
+    run,
+    run_async,
     resume,
+    resume_all,
+    resume_async,
     cancel,
     list_all,
-    resume_all,
-    wait_for_event,
-    sleep,
     delete,
-    create,
+    get_output,
+    get_output_async,
+    get_status,
+    get_metadata,
+    sleep,
+    wait_for_event,
     continuation,
     options,
 )
@@ -22,25 +25,31 @@ from ray.workflow.exceptions import (
 from ray.workflow.common import WorkflowStatus
 from ray.workflow.event_listener import EventListener
 
+globals().update(WorkflowStatus.__members__)
+
+
 __all__ = [
+    "init",
+    "run",
+    "run_async",
     "resume",
+    "resume_async",
+    "resume_all",
+    "cancel",
+    "list_all",
+    "delete",
     "get_output",
+    "get_output_async",
+    "get_status",
+    "get_metadata",
+    "sleep",
+    "wait_for_event",
+    "options",
+    "continuation",
+    # events
+    "EventListener",
+    # exceptions
     "WorkflowError",
     "WorkflowExecutionError",
     "WorkflowCancellationError",
-    "resume_all",
-    "cancel",
-    "get_status",
-    "get_metadata",
-    "list_all",
-    "init",
-    "wait_for_event",
-    "sleep",
-    "EventListener",
-    "delete",
-    "create",
-    "continuation",
-    "options",
 ]
-
-globals().update(WorkflowStatus.__members__)

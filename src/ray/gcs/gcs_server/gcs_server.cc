@@ -632,7 +632,7 @@ void GcsServer::InstallEventListeners() {
     gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->OnNodeAdd(node_id);
     gcs_actor_manager_->SchedulePendingActors();
-    gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
+    gcs_heartbeat_manager_->AddNode(*node);
     cluster_task_manager_->ScheduleAndDispatchTasks();
     if (RayConfig::instance().use_ray_syncer()) {
       rpc::Address address;
@@ -655,7 +655,8 @@ void GcsServer::InstallEventListeners() {
         gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
-        raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
+        raylet_client_pool_->Disconnect(node_id);
+        gcs_heartbeat_manager_->RemoveNode(node_id);
         if (RayConfig::instance().use_ray_syncer()) {
           ray_syncer_->Disconnect(node_id.Binary());
         } else {
