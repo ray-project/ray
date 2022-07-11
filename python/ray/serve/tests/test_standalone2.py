@@ -21,6 +21,7 @@ from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.context import get_global_client
 from ray.serve.schema import ServeApplicationSchema
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 
 
 @pytest.fixture
@@ -649,6 +650,14 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         os.unlink(shutdown_file.name)
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="Raylet-based scheduler favors (http proxy) actors' owner "
+    + "nodes (the head one), so the `EveryNode` option is actually not "
+    + "enforced. Besides, the second http proxy does not die with the "
+    + "placeholder, so gcs-based scheduler (which may collocate the "
+    + "second http proxy and the place holder) does not work here.",
+)
 def test_autoscaler_shutdown_node_http_everynode(
     shutdown_ray, call_ray_stop_only  # noqa: F811
 ):

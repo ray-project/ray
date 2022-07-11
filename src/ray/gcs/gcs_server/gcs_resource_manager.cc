@@ -190,9 +190,9 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       FillAggregateLoad(gcs_resources_data, &aggregate_load);
       // We only export gcs's pending info without adding the corresponding
       // `ResourcesData` to the `batch` list. So if gcs has detected cluster full of
-      // actors, we leverage the first node in the `batch` list to export it.
+      // actors, set the dedicated field in reply.
       if (gcs_resources_data.cluster_full_of_actors_detected()) {
-        batch.mutable_batch()->at(0).set_cluster_full_of_actors_detected(true);
+        reply->set_cluster_full_of_actors_detected_by_gcs(true);
       }
     }
 
