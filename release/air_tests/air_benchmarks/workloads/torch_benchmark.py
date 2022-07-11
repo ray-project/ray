@@ -157,7 +157,7 @@ def train_torch_vanilla_worker(
     distributed.destroy_process_group()
 
 
-def train_torch_vanilla(*, num_workers: int = 4, use_gpu: bool = False):
+def train_torch_vanilla(*, config: dict, num_workers: int = 4, use_gpu: bool = False):
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
     import ray
@@ -187,37 +187,49 @@ def train_torch_vanilla(*, num_workers: int = 4, use_gpu: bool = False):
         {f"{ip}:{rank}" for ip, rank in node_ip_to_ranks.items()}
     )
 
-    run_command_on_all_nodes(
-        [
-            "python",
-            path,
-            "--vanilla-worker",
-            "--node-to-rank-str",
-            node_to_rank_str,
-            "--world-size",
-            str(num_workers),
-            "--master-addr",
-            master_addr,
-            "--master-port",
-            str(master_port),
-        ]
-    )
+    num_epochs = config["epochs"]
+
+    cmd = [
+        "python",
+        path,
+        "--vanilla-worker",
+        "--num-epochs",
+        num_epochs,
+        "--node-to-rank-str",
+        node_to_rank_str,
+        "--num-workers",
+        str(num_workers),
+        "--master-addr",
+        master_addr,
+        "--master-port",
+        str(master_port),
+    ]
+
+    if use_gpu:
+        cmd += ["--use-gpu"]
+
+    run_command_on_all_nodes(cmd)
 
 
 @click.command()
-@click.option("-V", "--vanilla-worker", is_flag=True, default=False)
-@click.option("-N", "--node-to-rank-str", type=str, default="")
-@click.option("-w", "--world-size", type=int, default=4)
-@click.option("-M", "--master-addr", type=str, default="")
-@click.option("-P", "--master-port", type=int, default=0)
+@click.option("--num-workers", type=int, default=4)
+@click.option("--num-epochs", type=int, default=4)
+@click.option("--use-gpu", is_flag=True, default=False)
+@click.option("--vanilla-worker", is_flag=True, default=False)
+@click.option("--node-to-rank-str", type=str, default="")
+@click.option("--world-size", type=int, default=4)
+@click.option("--master-addr", type=str, default="")
+@click.option("--master-port", type=int, default=0)
 def main(
+    num_workers: int = 4,
+    num_epochs: int = 4,
+    use_gpu: bool = False,
     vanilla_worker: bool = False,
     node_to_rank_str: str = "",
-    world_size: int = 4,
     master_addr: str = "",
     master_port: int = 0,
 ):
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": 4}
+    config = {"lr": 1e-3, "batch_size": 64, "epochs": num_epochs}
 
     if vanilla_worker:
         # This path is invoked on every worker when kicking off vanilla training.
@@ -237,7 +249,7 @@ def main(
         return train_torch_vanilla_worker(
             config=config,
             rank=rank,
-            world_size=world_size,
+            world_size=num_workers,
             master_addr=master_addr,
             master_port=master_port,
         )
@@ -255,7 +267,7 @@ def main(
     print("Running Torch Ray benchmark")
 
     start_time = time.monotonic()
-    train_torch_ray_air(num_workers=4, use_gpu=False, config=config)
+    train_torch_ray_air(num_workers=4, use_gpu=use_gpu, config=config)
     time_taken = time.monotonic() - start_time
 
     time_ray = time_taken
@@ -265,7 +277,7 @@ def main(
     print("Running Torch vanilla benchmark")
 
     start_time = time.monotonic()
-    train_torch_vanilla(num_workers=4, use_gpu=False)
+    train_torch_vanilla(num_workers=4, use_gpu=use_gpu, config=config)
     time_taken = time.monotonic() - start_time
 
     time_vanilla = time_taken
