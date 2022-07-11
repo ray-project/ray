@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.air.checkpoint import Checkpoint
-from ray.tune.cloud import TrialCheckpoint
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf, is_nan
+from ray.util import log_once
 
 try:
     import pandas as pd
@@ -114,10 +114,6 @@ class ExperimentAnalysis:
             self.fetch_trial_dataframes()
 
         self._sync_config = sync_config
-
-        # If True, will return a legacy TrialCheckpoint class.
-        # If False, will just return a Checkpoint class.
-        self._legacy_checkpoint = True
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
@@ -451,8 +447,12 @@ class ExperimentAnalysis:
             raise ValueError("trial should be a string or a Trial instance.")
 
     def get_best_checkpoint(
-        self, trial: Trial, metric: Optional[str] = None, mode: Optional[str] = None
-    ) -> Optional[Checkpoint]:
+        self,
+        trial: Trial,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        return_path: bool = False,
+    ) -> Optional[Union[Checkpoint, str]]:
         """Gets best persistent checkpoint path of provided trial.
 
         Any checkpoints with an associated metric value of ``nan`` will be filtered out.
@@ -463,9 +463,14 @@ class ExperimentAnalysis:
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
             mode: One of [min, max]. Defaults to ``self.default_mode``.
+            return_path: If True, only returns the path (and not the
+                ``Checkpoint`` object). If using Ray client, it is not
+                guaranteed that this path is available on the local
+                (client) node. Can also contain a cloud URI.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object.
+            :class:`Checkpoint <ray.air.Checkpoint>` object or string
+            if ``return_path=True``.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)
@@ -487,23 +492,27 @@ class ExperimentAnalysis:
         best_path, best_metric = best_path_metrics[0]
         cloud_path = self._parse_cloud_path(best_path)
 
-        if self._legacy_checkpoint:
-            return TrialCheckpoint(local_path=best_path, cloud_path=cloud_path)
-
         if cloud_path:
             # Prefer cloud path over local path for downsteam processing
+            if return_path:
+                return cloud_path
             return Checkpoint.from_uri(cloud_path)
         elif os.path.exists(best_path):
+            if return_path:
+                return best_path
             return Checkpoint.from_directory(best_path)
         else:
-            logger.error(
-                f"No checkpoint locations for {trial} available on "
-                f"this node. To avoid this, you "
-                f"should enable checkpoint synchronization with the"
-                f"`sync_config` argument in Ray Tune. "
-                f"The checkpoint may be available on a different node - "
-                f"please check this location on worker nodes: {best_path}"
-            )
+            if log_once("checkpoint_not_available"):
+                logger.error(
+                    f"The requested checkpoint for trial {trial} is not available on "
+                    f"this node, most likely because you are using Ray client or "
+                    f"disabled checkpoint synchronization. To avoid this, enable "
+                    f"checkpoint synchronization to cloud storage by specifying a "
+                    f"`SyncConfig`. The checkpoint may be available on a different "
+                    f"node - please check this location on worker nodes: {best_path}"
+                )
+            if return_path:
+                return best_path
             return None
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
