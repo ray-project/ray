@@ -74,12 +74,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
                     node_name,
                     node_manager_config,
                     object_manager_config,
-                    gcs_client_,
-                    /*set_agent_info_and_register_node*/
-                    [this](const AgentInfo &agent_info) {
-                      self_node_info_.mutable_agent_info()->CopyFrom(agent_info);
-                      RAY_CHECK_OK(RegisterGcs());
-                    }),
+                    gcs_client_),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -101,6 +96,14 @@ Raylet::Raylet(instrumented_io_context &main_service,
 Raylet::~Raylet() {}
 
 void Raylet::Start() {
+  std::thread register_thread([this]() mutable {
+    SetThreadName("raylet.register_itself");
+    self_node_info_.mutable_agent_info()->CopyFrom(node_manager_.SyncGetAgentInfo());
+    RAY_CHECK_OK(RegisterGcs());
+
+  });
+  register_thread.detach();
+
   // Start listening for clients.
   DoAccept();
 }

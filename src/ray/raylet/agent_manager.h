@@ -57,14 +57,10 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   explicit AgentManager(Options options,
                         DelayExecutorFn delay_executor,
                         RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory,
-                        bool start_agent = true, /* for test */
-                        // Will be nullptr only when testing.
-                        std::function<void(const rpc::AgentInfo &)>
-                            set_agent_info_and_register_node = nullptr)
+                        bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
-        runtime_env_agent_client_factory_(std::move(runtime_env_agent_client_factory)),
-        set_agent_info_and_register_node_(std::move(set_agent_info_and_register_node)) {
+        runtime_env_agent_client_factory_(std::move(runtime_env_agent_client_factory)) {
     if (start_agent) {
       StartAgent();
     }
@@ -93,6 +89,13 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   virtual void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                           DeleteRuntimeEnvIfPossibleCallback callback);
 
+  /// Get the information of the agent process when the agent finished register.
+  ///
+  /// \return The information of the agent process.
+  inline rpc::AgentInfo SyncGetAgentInfo() {
+    return agent_info_promise_.get_future().get();
+  }
+
  private:
   void StartAgent();
 
@@ -100,14 +103,14 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   Options options_;
   pid_t agent_pid_ = 0;
   int agent_port_ = 0;
+  /// promise to get agent info, after the agent finished register.
+  std::promise<rpc::AgentInfo> agent_info_promise_;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;
   std::string agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
-  // Set agent info to `GcsNodeInfo` and register current node to GCS.
-  std::function<void(const rpc::AgentInfo &)> set_agent_info_and_register_node_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
   /// When the grpc port of agent is invalid, set this flag to indicate that agent client
   /// is disable.

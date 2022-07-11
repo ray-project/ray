@@ -50,7 +50,6 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::AgentInfo;
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
 using rpc::HeartbeatTableData;
@@ -153,8 +152,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               const std::string &self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
-              std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::function<void(const AgentInfo &)> set_agent_info_and_register_node);
+              std::shared_ptr<gcs::GcsClient> gcs_client);
 
   /// Process a new client connection.
   ///
@@ -238,6 +236,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       bool include_task_info,
       int64_t limit,
       const std::function<void()> &on_all_replied);
+
+  /// Get the information of the agent process when the agent finished register.
+  ///
+  /// \return The information of the agent process.
+  inline rpc::AgentInfo SyncGetAgentInfo() {
+    return agent_manager_->SyncGetAgentInfo();
+  }
 
  private:
   /// Methods for handling nodes.

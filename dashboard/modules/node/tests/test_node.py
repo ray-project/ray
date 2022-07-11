@@ -11,7 +11,6 @@ import ray
 import threading
 from datetime import datetime, timedelta
 from ray.cluster_utils import Cluster
-from ray._private.state import state
 from ray.dashboard.modules.node.node_consts import (
     LOG_PRUNE_THREASHOLD,
     MAX_LOGS_TO_CACHE,
@@ -23,6 +22,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_succeeded_without_exception,
 )
+from ray._private.state import state
 
 from unittest import mock
 

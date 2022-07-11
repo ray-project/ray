@@ -12,7 +12,6 @@ from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated.common_pb2 import ErrorType
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
-    AgentInfo,
     AvailableResources,
     ErrorTableData,
     GcsEntry,
@@ -38,7 +37,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ActorTableData",
-    "AgentInfo",
     "GcsNodeInfo",
     "AvailableResources",
     "JobTableData",
