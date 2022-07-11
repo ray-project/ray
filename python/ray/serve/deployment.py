@@ -200,7 +200,9 @@ class Deployment:
                 },
             )
 
-    @deprecated(instructions="Check out https://docs.ray.io/en/latest/serve/index.html")
+    @deprecated(
+        instructions="Please see https://docs.ray.io/en/latest/serve/index.html"
+    )
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
@@ -229,14 +231,18 @@ class Deployment:
             _blocking=_blocking,
         )
 
-    @deprecated(instructions="Check out https://docs.ray.io/en/latest/serve/index.html")
+    @deprecated(
+        instructions="Please see https://docs.ray.io/en/latest/serve/index.html"
+    )
     @PublicAPI
     def delete(self):
         """Delete this deployment."""
 
         return get_global_client().delete_deployments([self._name])
 
-    @deprecated(instructions="Check out https://docs.ray.io/en/latest/serve/index.html")
+    @deprecated(
+        instructions="Please see https://docs.ray.io/en/latest/serve/index.html"
+    )
     @PublicAPI
     def get_handle(
         self, sync: Optional[bool] = True

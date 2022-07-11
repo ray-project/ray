@@ -457,7 +457,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
-@deprecated(instructions="Check out https://docs.ray.io/en/latest/serve/index.html")
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
@@ -499,7 +499,7 @@ def get_deployment(name: str) -> Deployment:
     )
 
 
-@deprecated(instructions="Check out https://docs.ray.io/en/latest/serve/index.html")
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
