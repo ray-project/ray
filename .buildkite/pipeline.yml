@@ -424,7 +424,12 @@
 - label: ":kubernetes: operator"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - |
+      cleanup() {
+        if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
+        python python/ray/tests/kuberay/setup/teardown_kuberay.py
+      }
+      trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
     - PYTHON=3.7 ./ci/env/install-dependencies.sh
     # Specifying PYTHON=3.7 above somehow messes up the Ray install.
@@ -451,8 +456,6 @@
       --test_env=PULL_POLICY=IfNotPresent
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...
-    - echo "--- Tearing down KubeRay operator."
-    - python python/ray/tests/kuberay/setup/teardown_kuberay.py
 - label: ":python: Ray DAG Tests"
   conditions:
     [
