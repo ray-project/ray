@@ -1,4 +1,5 @@
 import abc
+import functools
 import inspect
 import os
 import logging
@@ -127,6 +128,16 @@ def construct_train_func(
     """
     signature = inspect.signature(train_func)
     num_params = len(signature.parameters)
+
+    # Discard any returns from the function so that
+    # BackendExecutor doesn't try to deserialize them.
+    # Those returns are inaccesible with AIR anyway.
+    @functools.wraps(train_func)
+    def discard_return_wrapper(*args, **kwargs):
+        train_func(*args, **kwargs)
+
+    wrapped_train_func = discard_return_wrapper
+
     if num_params > 1:
         err_msg = (
             f"{fn_arg_name} should take in 0 or 1 arguments, but it accepts "
@@ -135,9 +146,9 @@ def construct_train_func(
         raise ValueError(err_msg)
     elif num_params == 1:
         config = {} if config is None else config
-        return lambda: train_func(config)
+        return lambda: wrapped_train_func(config)
     else:  # num_params == 0
-        return train_func
+        return wrapped_train_func
 
 
 class Singleton(abc.ABCMeta):
