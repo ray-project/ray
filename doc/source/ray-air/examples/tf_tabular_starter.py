@@ -8,7 +8,10 @@ from ray.air import train_test_split
 
 # Load data.
 import pandas as pd
-bc_df = pd.read_csv("https://air-example-data.s3.us-east-2.amazonaws.com/breast_cancer.csv")
+
+bc_df = pd.read_csv(
+    "https://air-example-data.s3.us-east-2.amazonaws.com/breast_cancer.csv"
+)
 dataset = ray.data.from_pandas(bc_df)
 # Optionally, read directly from s3
 # dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
