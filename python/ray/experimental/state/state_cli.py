@@ -246,7 +246,7 @@ def get(
 
         ray get nodes <node-id>
 
-        ray get nodes <node-id>
+        ray get workers <worker-id>
 
     '''
 
