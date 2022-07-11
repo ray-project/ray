@@ -109,7 +109,7 @@
     cluster_compute: cpt_autoscaling_1-3.yaml
 
   run:
-    timeout: 1500
+    timeout: 3000
     script: python workloads/tune_scale_up_down.py
     wait_for_nodes:
       num_nodes: 0
