@@ -55,8 +55,7 @@ long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
 std::atomic<bool> RayLog::initialized_ = false;
 
-std::string GetStackTrace() {
-  std::string result;
+std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
   static constexpr int MAX_NUM_FRAMES = 64;
   char buf[16 * 1024];
   void *frames[MAX_NUM_FRAMES];
@@ -65,28 +64,28 @@ std::string GetStackTrace() {
   const int num_frames = backtrace(frames, MAX_NUM_FRAMES);
   char **frame_symbols = backtrace_symbols(frames, num_frames);
   for (int i = 0; i < num_frames; ++i) {
-    result.append(frame_symbols[i]);
+    os << frame_symbols[i];
 
     if (absl::Symbolize(frames[i], buf, sizeof(buf))) {
-      result.append(" ").append(buf);
+      os << " " << buf;
     }
 
-    result.append("\n");
+    os << "\n";
   }
   free(frame_symbols);
 #else
   const int num_frames = absl::GetStackTrace(frames, MAX_NUM_FRAMES, 0);
   for (int i = 0; i < num_frames; ++i) {
     if (absl::Symbolize(frames[i], buf, sizeof(buf))) {
-      result.append(buf);
+      os << buf;
     } else {
-      result.append("unknown");
+      os << "unknown";
     }
-    result.append("\n");
+    os << "\n";
   }
 #endif
 
-  return result;
+  return os;
 }
 
 void TerminateHandler() {
@@ -101,7 +100,7 @@ void TerminateHandler() {
     }
   }
 
-  RAY_LOG(ERROR) << GetStackTrace();
+  RAY_LOG(ERROR) << "Stack trace: \n " << ray::StackTrace();
 
   std::abort();
 }
@@ -155,10 +154,10 @@ class SpdLogMessage final {
     }
 
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      stream() << "\n*** StackTrace Information ***\n" << ray::GetStackTrace();
+      stream() << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     }
     if (expose_osstream_) {
-      *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::GetStackTrace();
+      *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     }
     // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
     logger->log(

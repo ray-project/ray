@@ -85,8 +85,10 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
-/// This function returns the current call stack information.
-std::string GetStackTrace();
+class StackTrace {
+  /// This dumps the current stack trace information.
+  friend std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace);
+};
 
 enum class RayLogLevel {
   TRACE = -2,

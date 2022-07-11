@@ -256,7 +256,9 @@ TEST(PrintLogTest, TestCheckOp) {
 }
 
 std::string TestFunctionLevel0() {
-  std::string stack_trace = GetStackTrace();
+  std::ostringstream oss;
+  oss << ray::StackTrace();
+  std::string stack_trace = oss.str();
   RAY_LOG(INFO) << "TestFunctionLevel0\n" << stack_trace;
   return stack_trace;
 }
@@ -271,7 +273,7 @@ std::string TestFunctionLevel2() {
   return TestFunctionLevel1();
 }
 
-TEST(PrintLogTest, TestGetStackTrace) {
+TEST(PrintLogTest, TestStackTrace) {
   auto ret0 = TestFunctionLevel0();
   EXPECT_TRUE(ret0.find("TestFunctionLevel0") != std::string::npos) << ret0;
   auto ret1 = TestFunctionLevel1();
