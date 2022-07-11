@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import ray
 from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
+from ray.util import log_once
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.ml_utils.util import is_nan
 
@@ -129,7 +130,20 @@ class _TrackedCheckpoint:
             checkpoint_data = ray.get(checkpoint_data)
 
         if isinstance(checkpoint_data, str):
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            try:
+                checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            except FileNotFoundError:
+                if log_once("checkpoint_not_available"):
+                    logger.error(
+                        f"The requested checkpoint is not available on this node, "
+                        f"most likely because you are using Ray client or disabled "
+                        f"checkpoint synchronization. To avoid this, enable checkpoint "
+                        f"synchronization to cloud storage by specifying a "
+                        f"`SyncConfig`. The checkpoint may be available on a different "
+                        f"node - please check this location on worker nodes: "
+                        f"{checkpoint_data}"
+                    )
+                return None
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
             checkpoint = Checkpoint.from_bytes(checkpoint_data)

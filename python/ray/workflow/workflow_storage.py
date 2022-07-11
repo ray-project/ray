@@ -17,9 +17,9 @@ from ray.types import ObjectRef
 from ray.workflow.common import (
     TaskID,
     WorkflowStatus,
-    WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
 )
+from ray.workflow.exceptions import WorkflowNotFoundError
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow import serialization_context
