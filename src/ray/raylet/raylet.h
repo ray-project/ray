@@ -97,6 +97,10 @@ class Raylet {
   boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
   local_stream_socket socket_;
+
+  /// Wait until the agent process is finished register and
+  /// send the register the current node request in this thread.
+  std::thread register_thread_;
 };
 
 }  // namespace raylet

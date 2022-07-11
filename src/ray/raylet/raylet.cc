@@ -96,13 +96,11 @@ Raylet::Raylet(instrumented_io_context &main_service,
 Raylet::~Raylet() {}
 
 void Raylet::Start() {
-  std::thread register_thread([this]() mutable {
+  register_thread_ = std::thread([this]() mutable {
     SetThreadName("raylet.register_itself");
     self_node_info_.mutable_agent_info()->CopyFrom(node_manager_.SyncGetAgentInfo());
     RAY_CHECK_OK(RegisterGcs());
-
   });
-  register_thread.detach();
 
   // Start listening for clients.
   DoAccept();
@@ -125,6 +123,9 @@ ray::Status Raylet::RegisterGcs() {
                   << ":" << self_node_info_.object_manager_port()
                   << " hostname: " << self_node_info_.node_manager_address();
     RAY_CHECK_OK(node_manager_.RegisterGcs());
+    if (register_thread_.joinable()) {
+      register_thread_.join();
+    }
   };
 
   RAY_RETURN_NOT_OK(
