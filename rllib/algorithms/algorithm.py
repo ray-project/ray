@@ -803,7 +803,7 @@ class Algorithm(Trainable):
             logger.info(f"Evaluating current policy for {duration} {unit}.")
 
             metrics = None
-            total_batch = SampleBatch()
+            all_batches = []
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
@@ -818,7 +818,7 @@ class Algorithm(Trainable):
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
                     if self.reward_estimators:
-                        total_batch = concat_samples([total_batch, batch])
+                        all_batches = all_batches.append(batch)
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
@@ -836,7 +836,7 @@ class Algorithm(Trainable):
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
                     if self.reward_estimators:
-                        total_batch = concat_samples([total_batch, batch])
+                        all_batches = all_batches.append(batch)
 
             # Evaluation worker set has n remote workers.
             else:
@@ -875,7 +875,7 @@ class Algorithm(Trainable):
                             _agent_steps if self._by_agent_steps else _env_steps
                         )
                     if self.reward_estimators:
-                        total_batch = concat_samples([total_batch, *batches])
+                        all_batches = all_batches.extend(batches)
 
                     agent_steps_this_iter += _agent_steps
                     env_steps_this_iter += _env_steps
@@ -897,11 +897,13 @@ class Algorithm(Trainable):
             # TODO: Remove this key at some point. Here for backward compatibility.
             metrics["timesteps_this_iter"] = env_steps_this_iter
 
-            # Compute off-policy estimates
-            metrics["off_policy_estimator"] = {}
-            for estimator in self.reward_estimators:
-                estimates = estimator.estimate(total_batch)
-                metrics["off_policy_estimator"][estimator.name] = estimates
+            if self.reward_estimators:
+                # Compute off-policy estimates
+                metrics["off_policy_estimator"] = {}
+                total_batch = concat_samples(all_batches)
+                for estimator in self.reward_estimators:
+                    estimates = estimator.estimate(total_batch)
+                    metrics["off_policy_estimator"][estimator.name] = estimates
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
