@@ -507,6 +507,30 @@ def test_preserve_whether_base_datasets_can_be_cleared(ray_start_regular_shared)
     assert not p2._base_datasets_can_be_cleared
 
 
+def test_dataset_used_in_pipeline(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 3, 4, 5])
+    assert not ds._used_from_dataset_pipeline
+    # repeat()
+    for dss in ds.repeat(3).iter_datasets():
+        assert dss._used_from_dataset_pipeline
+    for dss in ds.map_batches(lambda x: x).repeat(3).iter_datasets():
+        assert dss._used_from_dataset_pipeline
+    for dss in ds.repeat(3).map_batches(lambda x: x).iter_datasets():
+        assert dss._used_from_dataset_pipeline
+    # window()
+    for dss in ds.window(blocks_per_window=1).iter_datasets():
+        assert dss._used_from_dataset_pipeline
+    for dss in ds.map_batches(lambda x: x).window(blocks_per_window=1).iter_datasets():
+        assert dss._used_from_dataset_pipeline
+    for dss in ds.window(blocks_per_window=1).map_batches(lambda x: x).iter_datasets():
+        assert dss._used_from_dataset_pipeline
+    # rewindow()
+    for dss in (
+        ds.window(blocks_per_window=1).rewindow(blocks_per_window=2).iter_datasets()
+    ):
+        assert dss._used_from_dataset_pipeline
+
+
 if __name__ == "__main__":
     import sys
 

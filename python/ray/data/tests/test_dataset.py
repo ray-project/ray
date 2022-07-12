@@ -4086,6 +4086,26 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
         ctx.use_push_based_shuffle = original
 
 
+def test_no_eager_gc_in_equal_splitting_lazy_dataset(ray_start_regular_shared):
+    ds = (
+        ray.data.range(100, parallelism=10).map_batches(lambda x: x).experimental_lazy()
+    )
+    for batch in ds.iter_batches():
+        pass
+    assert ds._lazy
+    assert not ds._used_from_dataset_pipeline
+    # Splitting 10 blocks into 3 groups, so there must be a block that will be
+    # splitted in order to equalize the outputs. However, we should not GC the
+    # input block even if ds is lazy (we can do that only if ds is used in a
+    # DatasetPipeline, which is not the case here).
+    dss = ds.split(3, equal=True)
+    for split in dss:
+        split.show()
+    # This iteration ensures that the blocks of ds still exist.
+    for batch in ds.iter_batches():
+        pass
+
+
 def test_parquet_read_spread(ray_start_cluster, tmp_path):
     cluster = ray_start_cluster
     cluster.add_node(

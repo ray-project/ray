@@ -400,6 +400,7 @@ class DatasetPipeline(Generic[T]):
                     assert res.num_blocks() <= blocks_per_window, res
                     if self._buffer.num_blocks() == 0:
                         self._buffer = None
+                    res._used_from_dataset_pipeline = True
                     return lambda: res
                 except StopIteration:
                     # Return the left-over data as a single window.
