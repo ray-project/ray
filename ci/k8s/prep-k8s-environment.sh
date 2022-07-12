@@ -16,6 +16,9 @@ chmod +x kubectl
 mv ./kubectl /usr/bin/kubectl
 kubectl version --client
 
+# Delete dangling clusters
+kind delete clusters --all
+
 # Create the cluster
 time kind create cluster --wait 120s --config ./ci/k8s/kind.config.yaml
 docker ps

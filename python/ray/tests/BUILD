@@ -387,7 +387,7 @@ py_test(
 
 py_test(
     name = "kuberay/test_autoscaling_e2e",
-    size = "medium",
+    size = "large",
     srcs = SRCS + ["kuberay/test_autoscaling_e2e.py"],
     tags = ["exclusive", "kuberay_operator", "team:serverless"],
     deps = ["//:ray_lib"],
