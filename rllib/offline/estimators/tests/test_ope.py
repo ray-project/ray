@@ -20,7 +20,7 @@ import gym
 class TestOPE(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, local_mode=True)
+        ray.init(num_cpus=4)
         rllib_dir = Path(__file__).parent.parent.parent.parent
         train_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         eval_data = train_data
