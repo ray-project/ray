@@ -5,17 +5,16 @@
 # --------------------------------------------------------------------
 load("//bazel:python.bzl", "py_test_module_list")
 
-SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": glob([
-        "**/conftest.py",
-    ]),
-    "//conditions:default": [],
-})
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"],
+    deps = ["//python/ray/tests:conftest"],
+)
 
 py_test_module_list(
   files = glob(["tests/test_*.py"]),
   size = "large",
   extra_srcs = SRCS,
   tags = ["team:core", "exclusive"],
-  deps = ["//:ray_lib"],
+  deps = ["//:ray_lib", ":conftest"],
 )
