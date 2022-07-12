@@ -44,9 +44,21 @@ def assert_deployments_live(names: List[str]):
     assert all_deployments_live, f'"{nonliving_deployment}" deployment is not live.'
 
 
-@pytest.fixture
+def checkRayStop():
+    try:
+        requests.get("http://localhost:52365/api/ray/version")
+        return False
+    except Exception:
+        return True
+
+
+@pytest.fixture(scope="function")
 def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        lambda: checkRayStop() is True,
+        timeout=15,
+    )
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
         lambda: requests.get("http://localhost:52365/api/ray/version").status_code
@@ -55,6 +67,10 @@ def ray_start_stop():
     )
     yield
     subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        lambda: checkRayStop() is True,
+        timeout=15,
+    )
 
 
 def test_start_shutdown(ray_start_stop):
@@ -65,7 +81,6 @@ def test_start_shutdown(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-    ray.shutdown()
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
@@ -426,8 +441,6 @@ def test_build(ray_start_stop, node):
 @pytest.mark.parametrize("use_command", [True, False])
 def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     """Check that CLI is idempotent even if controller dies."""
-    ray.shutdown()
-
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
