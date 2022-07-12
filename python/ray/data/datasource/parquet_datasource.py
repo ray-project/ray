@@ -39,7 +39,7 @@ FILE_READING_RETRY = 8
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
 # raw pyarrow file fragment causes S3 network calls.
-class SerializedPiece:
+class _SerializedPiece:
     def __init__(self, frag: "ParquetFileFragment"):
         self._data = cloudpickle.dumps(
             (frag.format, frag.path, frag.filesystem, frag.partition_expression)
@@ -58,7 +58,7 @@ class SerializedPiece:
 
 # Visible for test mocking.
 def _deserialize_pieces(
-    serialized_pieces: List[SerializedPiece],
+    serialized_pieces: List[_SerializedPiece],
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     return [p.deserialize() for p in serialized_pieces]
 
@@ -71,7 +71,7 @@ def _deserialize_pieces(
 # with ray.data parallelism setting at high value like the default 200
 # Such connection failure can be restored with some waiting and retry.
 def _deserialize_pieces_with_retry(
-    serialized_pieces: List[SerializedPiece],
+    serialized_pieces: List[_SerializedPiece],
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     min_interval = 0
     final_exception = None
@@ -146,10 +146,6 @@ class _ParquetDatasourceReader(Reader):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
     ):
-        # NOTE: We override the base class FileBasedDatasource.prepare_read
-        # method in order to leverage pyarrow's ParquetDataset abstraction,
-        # which simplifies partitioning logic. We still use
-        # FileBasedDatasource's write side (do_write), however.
         _check_pyarrow_version()
         import pyarrow as pa
         import pyarrow.parquet as pq
@@ -202,6 +198,10 @@ class _ParquetDatasourceReader(Reader):
         return total_size * PARQUET_DECOMPRESSION_MULTIPLIER
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
+        # method in order to leverage pyarrow's ParquetDataset abstraction,
+        # which simplifies partitioning logic. We still use
+        # FileBasedDatasource's write side (do_write), however.
         read_tasks = []
         for pieces, metadata in zip(
             np.array_split(self._pq_ds.pieces, parallelism),
@@ -209,7 +209,7 @@ class _ParquetDatasourceReader(Reader):
         ):
             if len(pieces) <= 0:
                 continue
-            serialized_pieces = [SerializedPiece(p) for p in pieces]
+            serialized_pieces = [_SerializedPiece(p) for p in pieces]
             input_files = [p.path for p in pieces]
             meta = self._meta_provider(
                 input_files,
@@ -240,7 +240,7 @@ class _ParquetDatasourceReader(Reader):
 
 
 def _read_pieces(
-    block_udf, reader_args, columns, schema, serialized_pieces: List[SerializedPiece]
+    block_udf, reader_args, columns, schema, serialized_pieces: List[_SerializedPiece]
 ) -> Iterator["pyarrow.Table"]:
     # Deserialize after loading the filesystem class.
     pieces: List[
@@ -300,7 +300,7 @@ def _fetch_metadata_remotely(
     for pcs in np.array_split(pieces, parallelism):
         if len(pcs) == 0:
             continue
-        metas.append(remote_fetch_metadata.remote([SerializedPiece(p) for p in pcs]))
+        metas.append(remote_fetch_metadata.remote([_SerializedPiece(p) for p in pcs]))
     metas = meta_fetch_bar.fetch_until_complete(metas)
     return list(itertools.chain.from_iterable(metas))
 
