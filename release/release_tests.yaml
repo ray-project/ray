@@ -142,7 +142,7 @@
     cluster_compute: compute_cpu_4.yaml
 
   run:
-    timeout: 36000
+    timeout: 3600
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
 
     wait_for_nodes:
@@ -167,7 +167,7 @@
     cluster_compute: compute_cpu_1.yaml
 
   run:
-    timeout: 36000
+    timeout: 3600
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
 
     type: sdk_command
@@ -189,7 +189,7 @@
     cluster_compute: compute_cpu_4.yaml
 
   run:
-    timeout: 36000
+    timeout: 7200
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
 
     wait_for_nodes:
