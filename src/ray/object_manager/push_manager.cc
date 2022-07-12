@@ -29,7 +29,7 @@ void PushManager::StartPush(const NodeID &dest_id,
   if (push_info_.contains(push_id)) {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    chunks_remaining_ += push_info_[push_id]->ResendAllChunks();
+    chunks_remaining_ += push_info_[push_id]->ResendAllChunks(send_chunk_fn);
   } else {
     chunks_remaining_ += num_chunks;
     push_info_[push_id].reset(new PushState(num_chunks, send_chunk_fn));

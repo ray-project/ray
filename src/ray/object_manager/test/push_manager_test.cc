@@ -92,7 +92,9 @@ TEST(TestPushManager, TestPushState) {
     ASSERT_EQ(sent_chunks, expected_chunks);
 
     // resend chunks when 1 chunk is in flight.
-    ASSERT_EQ(1, state.ResendAllChunks());
+    ASSERT_EQ(1, state.ResendAllChunks([&](int64_t chunk_id) {
+      sent_chunks.push_back(chunk_id);
+    }));
     ASSERT_EQ(state.num_chunks, 3);
     ASSERT_EQ(state.next_chunk_id, 1);
     ASSERT_EQ(state.num_chunks_inflight, 1);
@@ -155,9 +157,6 @@ TEST(TestPushManager, TestRetryDuplicates) {
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
   ASSERT_EQ(pm.NumPushesInFlight(), 0);
-  for (int i = 0; i < 10; i++) {
-    ASSERT_EQ(results[i], 1);
-  }
 }
 
 TEST(TestPushManager, TestMultipleTransfers) {

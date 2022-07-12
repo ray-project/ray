@@ -77,7 +77,7 @@ class PushManager {
     /// total number of chunks of this object.
     const int64_t num_chunks;
     /// The function to send chunks with.
-    const std::function<void(int64_t)> chunk_send_fn;
+    std::function<void(int64_t)> chunk_send_fn;
     /// The index of the next chunk to send.
     int64_t next_chunk_id;
     /// The number of chunks pending completion.
@@ -93,7 +93,8 @@ class PushManager {
           num_chunks_to_send(num_chunks) {}
 
     /// Resend all chunks.
-    int64_t ResendAllChunks() {
+    int64_t ResendAllChunks(std::function<void(int64_t)> send_fn) {
+      chunk_send_fn = send_fn;
       int64_t additional_chunks_to_send = num_chunks - num_chunks_to_send;
       num_chunks_to_send = num_chunks;
       return additional_chunks_to_send;
