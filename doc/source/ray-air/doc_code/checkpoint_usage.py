@@ -27,6 +27,7 @@ import pandas as pd
 import ray
 from ray.air import train_test_split
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 
 
 bc_df = pd.read_csv(
@@ -40,7 +41,7 @@ dataset = ray.data.from_pandas(bc_df)
 train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
 
 trainer = XGBoostTrainer(
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     label_column="target",
     params={
         "objective": "binary:logistic",
