@@ -1,5 +1,9 @@
 """Convert a jupytext-compliant format in to a python script
-and execute it with parsed arguments."""
+and execute it with parsed arguments.
+
+Any cell with 'remove_cell' tag in metadata will not be included
+in the converted python script.
+"""
 
 import argparse
 import subprocess
@@ -9,7 +13,7 @@ from pathlib import Path
 
 import jupytext
 
-parser = argparse.ArgumentParser(description="Run a jupytext parsable file.")
+parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument(
     "--path",
     help="path to the jupytext-compatible file",
@@ -19,6 +23,24 @@ parser.add_argument(
     action="store_true",
     help="if true, will attempt to find path recursively in cwd",
 )
+
+
+def filter_out_cells_with_remove_cell_tag(cells: list):
+    """Filters out cells which contain the 'remove_cell' tag in metadata"""
+
+    def should_keep_cell(cell):
+        tags = cell.metadata.get("tags")
+        if tags:
+            return "remove_cell" not in tags
+        return True
+
+    return [cell for cell in cells if should_keep_cell(cell)]
+
+
+def postprocess_notebook(notebook):
+    notebook.cells = filter_out_cells_with_remove_cell_tag(notebook.cells)
+    return notebook
+
 
 if __name__ == "__main__":
 
@@ -33,6 +55,8 @@ if __name__ == "__main__":
     with open(path, "r") as f:
         notebook = jupytext.read(f)
 
+    notebook = postprocess_notebook(notebook)
+
     name = ""
     with tempfile.NamedTemporaryFile("w", delete=False) as f:
         jupytext.write(notebook, f, fmt="py:percent")
@@ -40,6 +64,7 @@ if __name__ == "__main__":
 
     remainder.insert(0, name)
     remainder.insert(0, sys.executable)
+    print(remainder)
 
     # Run the notebook
     subprocess.run(remainder, check=True)
