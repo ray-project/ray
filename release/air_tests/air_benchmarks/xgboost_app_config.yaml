@@ -10,5 +10,5 @@ python:
 
 post_build_cmds:
   - pip3 uninstall ray -y || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - pip3 install -U --force-reinstall --no-deps xgboost xgboost_ray lightgbm_ray petastorm  # Avoid caching
+  - pip3 install -U --force-reinstall --no-deps xgboost xgboost_ray  # Avoid caching
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
