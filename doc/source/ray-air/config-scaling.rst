@@ -18,8 +18,8 @@ To use ``ScalingConfig`` when training a model, pass in the ``scaling_config`` p
         :end-before: __config_scaling_1_end__
 
 
-Tune Usage
-----------
+Ray Tune Usage
+--------------
 
 You can also treat some scaling config variables as hyperparameters and optimize them using Tune. 
 
