@@ -63,7 +63,7 @@ def _unzip_if_needed(paths: List[str], format: str):
 
 @PublicAPI
 def get_dataset_and_shards(
-    config: AlgorithmConfigDict, *, num_workers: int = 0, local_worker: bool = True
+    config: AlgorithmConfigDict, num_workers: int = 0, local_worker: bool = True
 ) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
     """Returns a dataset and a list of shards.
 
@@ -100,7 +100,6 @@ def get_dataset_and_shards(
         shards: A list of dataset shards. If local_worker=False, the first returned
         shared would be a dummy None shard.
     """
-
     # check input and input config keys
     assert config["input"] == "dataset", (
         f"Must specify input as dataset if"
