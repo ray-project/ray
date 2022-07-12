@@ -26,7 +26,6 @@ py_test_run_all_notebooks(
         "hyperopt_example.ipynb", # REGRESSION
         "sigopt_example.ipynb", # REGRESSION
         "tune-pytorch-cifar.ipynb", # REGRESSION
-        "tune-sklearn.ipynb", # REGRESSION
     ],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
