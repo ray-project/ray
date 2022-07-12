@@ -1,4 +1,4 @@
-.. _config-scaling:
+.. _air-scaling-config:
 
 Configuring scaling
 ===================

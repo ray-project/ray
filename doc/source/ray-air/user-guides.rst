@@ -36,7 +36,7 @@ AIR Feature Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: config-scaling
+    .. link-button:: air-scaling-config
         :type: ref
         :text: How to configure scaling for training and tuning?
         :classes: btn-link btn-block stretched-link
