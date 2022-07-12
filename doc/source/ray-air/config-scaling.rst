@@ -3,7 +3,7 @@
 Configuring scaling
 ===================
 
-Ths guide describes how you can use the ``ScalingConfig`` object configure resource utilization at the
+Ths guide describes how you can use the ``ScalingConfig`` object to configure resource utilization at the
 per-run level when training models with Ray AIR.
 
 Train Usage
