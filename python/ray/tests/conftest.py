@@ -14,9 +14,9 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import List, Tuple
 from unittest import mock
+import signal
 
 import pytest
-import psutil
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -136,8 +136,7 @@ def _ray_start(**kwargs):
     # Make ensure agent process is died.
     for pid in agent_pids:
         try:
-            p = psutil.Process(pid)
-            p.kill()
+            os.kill(pid, signal.SIGKILL)
         except Exception:
             pass
 

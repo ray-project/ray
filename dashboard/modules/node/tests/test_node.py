@@ -528,7 +528,7 @@ def test_logs_max_count(
     )
 
 
-def test_node_register_with_agent(ray_start_cluster_2_nodes):
+def test_node_register_with_agent(ray_start_cluster_head):
     def test_agent_port(pid, port):
         p = psutil.Process(pid)
         assert p.cmdline()[2].endswith("dashboard/agent.py")
@@ -544,8 +544,9 @@ def test_node_register_with_agent(ray_start_cluster_2_nodes):
 
     for node_info in state.node_table():
         agent_info = node_info["AgentInfo"]
-        assert agent_info["ip_address"] == node_info["NodeManagerAddress"]
-        test_agent_port(agent_info["pid"], agent_info["port"])
+        assert agent_info["IpAddress"] == node_info["NodeManagerAddress"]
+        test_agent_port(agent_info["Pid"], agent_info["GrpcPort"])
+        test_agent_port(agent_info["Pid"], agent_info["HttpPort"])
 
 
 if __name__ == "__main__":
