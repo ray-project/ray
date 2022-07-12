@@ -64,6 +64,8 @@ class ConfigInternal {
   rpc::JobConfig_ActorLifetime default_actor_lifetime =
       rpc::JobConfig_ActorLifetime_NON_DETACHED;
 
+  std::string ray_namespace = "";
+
   static ConfigInternal &Instance() {
     static ConfigInternal config;
     return config;
