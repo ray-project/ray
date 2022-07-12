@@ -2315,8 +2315,13 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   {
     absl::MutexLock guard(&objects_need_to_report_mutex_);
     auto it = objects_need_to_report_.find(global_owner_id);
-    if (it != objects_need_to_report_.end() && it->second.count(object_id)) {
-      it->second.erase(object_id);
+    if (it != objects_need_to_report_.end()) {
+      if (it->second.count(object_id)) {
+        it->second.erase(object_id);
+      }
+      if (it->second.size() == 0) {
+        objects_need_to_report_.erase(it);
+      }
     }
   }
   GetLocalObjectManager().EraseObjectAndCheckpointURL(object_id);
