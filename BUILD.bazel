@@ -545,6 +545,7 @@ cc_library(
         ":raylet_client_lib",
         ":scheduler",
         ":worker_rpc",
+        "@boost//:bimap",
         "@com_google_absl//absl/container:btree",
     ],
 )

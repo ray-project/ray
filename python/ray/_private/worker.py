@@ -84,6 +84,7 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
+from ray.widgets import Template
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -971,6 +972,20 @@ class RayContext(BaseContext, Mapping):
         # Include disconnect() to stay consistent with ClientContext
         ray.shutdown()
 
+    def _repr_html_(self):
+        if self.dashboard_url:
+            dashboard_row = Template("context_dashrow.html.j2").render(
+                dashboard_url="http://" + self.dashboard_url
+            )
+        else:
+            dashboard_row = None
+
+        return Template("context.html.j2").render(
+            python_version=self.python_version,
+            ray_version=self.ray_version,
+            dashboard_row=dashboard_row,
+        )
+
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
@@ -1092,7 +1107,7 @@ def init(
             is true.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace: Namespace to use
+        namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         storage: [Experimental] Specify a URI for persistent cluster-wide storage.
@@ -2773,9 +2788,9 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
-        retry_exceptions: Only for *remote functions*. This specifies whether
-            application-level errors should be retried up to max_retries times.
-            This can be a boolean or a list of exceptions that should be retried.
+        retry_exceptions: Only for *remote functions*. This specifies
+            whether application-level errors should be retried
+            up to max_retries times.
         scheduling_strategy: Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it
