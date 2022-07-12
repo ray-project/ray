@@ -15,9 +15,21 @@ GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
 
 
-@pytest.fixture
+def checkRayStop():
+    try:
+        requests.get("http://localhost:52365/api/ray/version")
+        return False
+    except Exception:
+        return True
+
+
+@pytest.fixture(scope="function")
 def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        lambda: checkRayStop() is True,
+        timeout=15,
+    )
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
         lambda: requests.get("http://localhost:52365/api/ray/version").status_code
@@ -26,6 +38,10 @@ def ray_start_stop():
     )
     yield
     subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        lambda: checkRayStop() is True,
+        timeout=15,
+    )
 
 
 def deploy_and_check_config(config: Dict):
