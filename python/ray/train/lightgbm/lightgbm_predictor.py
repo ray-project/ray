@@ -1,3 +1,4 @@
+import numpy as np
 from typing import TYPE_CHECKING, List, Optional, Union
 
 import lightgbm
@@ -104,15 +105,39 @@ class LightGBMPredictor(Predictor):
             Prediction result.
 
         """
+        feature_names = None
         if TENSOR_COLUMN_NAME in data:
             data = data[TENSOR_COLUMN_NAME].to_numpy()
-
             if feature_columns:
+                # In this case feature_columns is a list of integers
                 data = data[:, feature_columns]
         elif feature_columns:
+            # feature_columns is a list of integers or strings
             data = data[feature_columns].to_numpy()
+            # Only set the feature names if they are strings
+            if all(isinstance(fc, str) for fc in feature_columns):
+                feature_names = feature_columns
         else:
+            feature_columns = data.columns.tolist()
             data = data.to_numpy()
+
+            if all(isinstance(fc, str) for fc in feature_columns):
+                feature_names = feature_columns
+
+        # Turn into dataframe to make dtype resolution easy
+        data = pd.DataFrame(data, columns=feature_names)
+        data = data.infer_objects()
+
+        # Pandas does not detect categorical dtypes. Any remaining object
+        # dtypes are probably categories, so convert them.
+        update_dtypes = {}
+        for column in data.columns:
+            dtype = data.dtypes[column]
+            if dtype == np.object:
+                update_dtypes[column] = pd.CategoricalDtype()
+
+        if update_dtypes:
+            data = data.astype(update_dtypes, copy=False)
 
         df = pd.DataFrame(self.model.predict(data, **predict_kwargs))
         df.columns = (
