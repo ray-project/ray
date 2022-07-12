@@ -143,7 +143,7 @@
 
   run:
     timeout: 36000
-    script: python workloads/torch_benchmark.py run  --num-epochs 4 --num-workers 4 --cpus-per-worker 8
+    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
 
     wait_for_nodes:
       num_nodes: 3
