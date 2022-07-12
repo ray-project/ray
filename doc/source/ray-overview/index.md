@@ -40,10 +40,10 @@ Check out our detailed [installation guide](installation.rst).
 
 Preprocess your data with a ``Preprocessor``.
 
-```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
     :language: python
-    :start-after: __air_xgb_preprocess_start__
-    :end-before: __air_xgb_preprocess_end__
+    :start-after: __air_generic_preprocess_start__
+    :end-before: __air_generic_preprocess_end__
 ```
 `````
 
@@ -51,7 +51,7 @@ Preprocess your data with a ``Preprocessor``.
 
 Train a model with an ``XGBoostTrainer``.
 
-```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
     :language: python
     :start-after: __air_xgb_train_start__
     :end-before: __air_xgb_train_end__
@@ -62,7 +62,7 @@ Train a model with an ``XGBoostTrainer``.
 
 Use the trained model for batch prediction with a ``BatchPredictor``.
 
-```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
     :language: python
     :start-after: __air_xgb_batchpred_start__
     :end-before: __air_xgb_batchpred_end__
