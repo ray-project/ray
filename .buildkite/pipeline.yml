@@ -428,6 +428,7 @@
       cleanup() {
         if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
         python python/ray/tests/kuberay/setup/teardown_kuberay.py
+        kind delete cluster
       }
       trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
