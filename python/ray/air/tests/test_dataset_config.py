@@ -225,7 +225,7 @@ class TestBatch(DataParallelTrainer):
 
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             **kwargs,
         )
 
