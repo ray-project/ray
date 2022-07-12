@@ -1648,10 +1648,17 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_ope",
+    name = "test_dataset_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_dataset_reader.py"]
+)
+
+py_test(
+    name = "test_feature_importance",
     tags = ["team:rllib", "offline", "torch_only"],
     size = "medium",
-    srcs = ["offline/estimators/tests/test_ope.py"]
+    srcs = ["offline/estimators/tests/test_feature_importance.py"]
 )
 
 py_test(
@@ -1662,10 +1669,10 @@ py_test(
 )
 
 py_test(
-    name = "test_dataset_reader",
-    tags = ["team:rllib", "offline"],
-    size = "small",
-    srcs = ["offline/tests/test_dataset_reader.py"]
+    name = "test_ope",
+    tags = ["team:rllib", "offline", "torch_only"],
+    size = "medium",
+    srcs = ["offline/estimators/tests/test_ope.py"]
 )
 
 
