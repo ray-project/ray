@@ -1,6 +1,5 @@
 import json
 import os
-import socket
 import time
 from typing import Dict
 
@@ -10,6 +9,9 @@ from torch import nn, distributed
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
+
+
+CONFIG = {"lr": 1e-3, "batch_size": 64}
 
 
 # Define model
@@ -126,7 +128,13 @@ def train_func(use_ray: bool, config: Dict):
             print(f"Reporting loss: {loss:.4f}")
 
 
-def train_torch_ray_air(*, config: dict, num_workers: int = 4, use_gpu: bool = False):
+def train_torch_ray_air(
+    *,
+    config: dict,
+    num_workers: int = 4,
+    cpus_per_worker: int = 8,
+    use_gpu: bool = False,
+):
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.torch import TorchTrainer
@@ -137,14 +145,24 @@ def train_torch_ray_air(*, config: dict, num_workers: int = 4, use_gpu: bool = F
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config={
+            "num_workers": num_workers,
+            "resources_per_worker": {"CPU": cpus_per_worker},
+            "use_gpu": use_gpu,
+        },
     )
     result = trainer.fit()
     print(f"Last result: {result.metrics}")
 
 
 def train_torch_vanilla_worker(
-    *, config: dict, rank: int, world_size: int, master_addr: str, master_port: int
+    *,
+    config: dict,
+    rank: int,
+    world_size: int,
+    master_addr: str,
+    master_port: int,
+    use_gpu: bool = False,
 ):
     # This function is kicked off by the main() function and runs the vanilla
     # training script on a single worker.
@@ -157,104 +175,75 @@ def train_torch_vanilla_worker(
     distributed.destroy_process_group()
 
 
-def train_torch_vanilla(*, config: dict, num_workers: int = 4, use_gpu: bool = False):
+def train_torch_vanilla(
+    *,
+    config: dict,
+    num_workers: int = 4,
+    cpus_per_worker: int = 8,
+    use_gpu: bool = False,
+):
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
     import ray
-    from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
+    from benchmark_util import upload_file_to_all_nodes, run_commands_with_resources
 
     path = os.path.abspath(__file__)
     upload_file_to_all_nodes(path)
     master_addr = ray.util.get_node_ip_address()
     master_port = 12355  # hardcoded
 
-    # Each worker needs to know which rank it is. To pass this, we construct a
-    # map of IPs to ranks, which is passed as a string to all workers. The workers
-    # then parse this string to determine their local rank.
-    node_ip_to_ranks = {
-        ip: rank
-        for rank, ip in enumerate(
-            [
-                n["NodeManagerAddress"]
-                for n in ray.nodes()
-                if n["Alive"] and n["NodeManagerAddress"] != master_addr
-            ],
-            start=1,
-        )
-    }
-    node_ip_to_ranks[master_addr] = 0
-    node_to_rank_str = ",".join(
-        {f"{ip}:{rank}" for ip, rank in node_ip_to_ranks.items()}
-    )
-
     num_epochs = config["epochs"]
 
-    cmd = [
-        "python",
-        path,
-        "--vanilla-worker",
-        "--num-epochs",
-        str(num_epochs),
-        "--node-to-rank-str",
-        node_to_rank_str,
-        "--num-workers",
-        str(num_workers),
-        "--master-addr",
-        master_addr,
-        "--master-port",
-        str(master_port),
+    cmds = [
+        [
+            "python",
+            path,
+            "worker",
+            "--num-epochs",
+            str(num_epochs),
+            "--num-workers",
+            str(num_workers),
+            "--rank",
+            str(rank),
+            "--master-addr",
+            master_addr,
+            "--master-port",
+            str(master_port),
+            "--use-gpu" if use_gpu else "",
+        ]
+        for rank in range(num_workers)
     ]
 
-    if use_gpu:
-        cmd += ["--use-gpu"]
+    run_commands_with_resources(
+        cmds,
+        resources={
+            "CPU": cpus_per_worker,
+            "GPU": int(use_gpu),
+        },
+    )
 
-    run_command_on_all_nodes(cmd)
+
+@click.group(help="Run Torch benchmarks")
+def cli():
+    pass
 
 
-@click.command()
-@click.option("--num-workers", type=int, default=4)
+@cli.command(help="Kick off Ray and vanilla benchmarks")
 @click.option("--num-epochs", type=int, default=4)
+@click.option("--num-workers", type=int, default=4)
+@click.option("--cpus-per-worker", type=int, default=8)
 @click.option("--use-gpu", is_flag=True, default=False)
-@click.option("--vanilla-worker", is_flag=True, default=False)
-@click.option("--node-to-rank-str", type=str, default="")
-@click.option("--master-addr", type=str, default="")
-@click.option("--master-port", type=int, default=0)
-def main(
-    num_workers: int = 4,
+def run(
     num_epochs: int = 4,
+    num_workers: int = 4,
+    cpus_per_worker: int = 8,
     use_gpu: bool = False,
-    vanilla_worker: bool = False,
-    node_to_rank_str: str = "",
-    master_addr: str = "",
-    master_port: int = 0,
 ):
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": num_epochs}
-
-    if vanilla_worker:
-        # This path is invoked on every worker when kicking off vanilla training.
-        # First we parse the node to rank string into a map and then find out
-        # our local rank.
-        node_ip_to_ranks = {
-            ip: rank
-            for ip, rank in [
-                ip_rank.split(":", maxsplit=1)
-                for ip_rank in node_to_rank_str.split(",")
-            ]
-        }
-        node_ip = socket.gethostbyname(socket.gethostname())
-        rank = int(node_ip_to_ranks[node_ip])
-
-        # Then we kick off the training function on every worker.
-        return train_torch_vanilla_worker(
-            config=config,
-            rank=rank,
-            world_size=num_workers,
-            master_addr=master_addr,
-            master_port=master_port,
-        )
-
     import ray
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
+
+    config = CONFIG.copy()
+    config["epochs"] = num_epochs
 
     ray.init("auto")
     print("Preparing Torch benchmark: Downloading MNIST")
@@ -266,7 +255,12 @@ def main(
     print("Running Torch Ray benchmark")
 
     start_time = time.monotonic()
-    train_torch_ray_air(num_workers=4, use_gpu=use_gpu, config=config)
+    train_torch_ray_air(
+        num_workers=num_workers,
+        cpus_per_worker=cpus_per_worker,
+        use_gpu=use_gpu,
+        config=config,
+    )
     time_taken = time.monotonic() - start_time
 
     time_ray = time_taken
@@ -294,6 +288,39 @@ def main(
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
+
+
+@cli.command(help="Run PyTorch vanilla worker")
+@click.option("--num-epochs", type=int, default=4)
+@click.option("--num-workers", type=int, default=4)
+@click.option("--rank", type=int, default=0)
+@click.option("--master-addr", type=str, default="")
+@click.option("--master-port", type=int, default=0)
+@click.option("--use-gpu", is_flag=True, default=False)
+def worker(
+    num_epochs: int = 4,
+    num_workers: int = 4,
+    rank: int = 0,
+    master_addr: str = "",
+    master_port: int = 0,
+    use_gpu: bool = False,
+):
+    config = CONFIG.copy()
+    config["epochs"] = num_epochs
+
+    # Then we kick off the training function on every worker.
+    return train_torch_vanilla_worker(
+        config=config,
+        rank=rank,
+        world_size=num_workers,
+        master_addr=master_addr,
+        master_port=master_port,
+        use_gpu=use_gpu,
+    )
+
+
+def main():
+    return cli()
 
 
 if __name__ == "__main__":

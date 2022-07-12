@@ -129,7 +129,7 @@
   alert: default
 
 
-- name: air_benchmark_torch_mnist_cpu_4
+- name: air_benchmark_torch_mnist_4_cpu_nodes
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -143,7 +143,7 @@
 
   run:
     timeout: 36000
-    script: python workloads/torch_benchmark.py --num-workers 4 --num-epochs 20
+    script: python workloads/torch_benchmark.py run  --num-epochs 4 --num-workers 4 --cpus-per-worker 8
 
     wait_for_nodes:
       num_nodes: 3
