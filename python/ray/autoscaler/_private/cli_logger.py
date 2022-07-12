@@ -258,7 +258,6 @@ def _isatty():
     try:
         # https://stackoverflow.com/questions/6108330/
         # checking-for-interactive-shell-in-a-python-script
-        print(f"jjyao {sys.__stdin__.isatty()}")
         return sys.__stdin__.isatty()
     except Exception:
         # sometimes this can fail due to closed output

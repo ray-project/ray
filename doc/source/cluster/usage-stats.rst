@@ -52,7 +52,7 @@ Ray will decide whether usage stats collection should be enabled or not by consi
 
 #. If neither is set and the console is interactive, then the user will be prompted to enable or disable the collection. If the console is non-interactive, usage stats collection will be enabled by default. The decision will be saved to ``~/.ray/config.json``, so the prompt is only shown once.
 
-Note: usage stats collection is not enabled when using local dev clusters started via ``ray.init()``. This means that Ray will never collect data from third-party library users not using Ray directly.
+Note: usage stats collection is not enabled when using local dev clusters started via ``ray.init()`` unless it's a nightly wheel. This means that Ray will never collect data from third-party library users not using Ray directly.
 
 If usage stats collection is enabled, a background process on the head node will collect the usage stats
 and report to ``https://usage-stats.ray.io/`` every hour. The reported usage stats will also be saved to
