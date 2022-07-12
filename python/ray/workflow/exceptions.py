@@ -1,5 +1,5 @@
 from ray.util.annotations import PublicAPI
-from ray.workflow.common import StepID
+from ray.workflow.common import TaskID
 
 
 class WorkflowError(Exception):
@@ -24,8 +24,8 @@ class WorkflowStepNotRecoverableError(WorkflowError):
     """Raise the exception when we find a workflow step cannot be recovered
     using the checkpointed inputs."""
 
-    def __init__(self, step_id: StepID):
-        self.message = f"Workflow step[id={step_id}] is not recoverable"
+    def __init__(self, task_id: TaskID):
+        self.message = f"Workflow step[id={task_id}] is not recoverable"
         super().__init__(self.message)
 
 
@@ -34,4 +34,21 @@ class WorkflowNotResumableError(WorkflowError):
 
     def __init__(self, workflow_id: str):
         self.message = f"Workflow[id={workflow_id}] is not resumable."
+        super().__init__(self.message)
+
+
+@PublicAPI(stability="beta")
+class WorkflowNotFoundError(WorkflowError):
+    def __init__(self, workflow_id: str):
+        self.message = f"Workflow[id={workflow_id}] was referenced but doesn't exist."
+        super().__init__(self.message)
+
+
+@PublicAPI(stability="beta")
+class WorkflowRunningError(WorkflowError):
+    def __init__(self, operation: str, workflow_id: str):
+        self.message = (
+            f"{operation} couldn't be completed becasue "
+            f"Workflow[id={workflow_id}] is still running."
+        )
         super().__init__(self.message)
