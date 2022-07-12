@@ -42,6 +42,11 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
     "RAY_AGENT_ADDRESS environment variable."
 )
 
+def str_presenter(dumper: yaml.Dumper, data):
+    # check for multiline string
+    if len(data.splitlines()) > 1: 
+        return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data)
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
 def cli():
@@ -315,6 +320,7 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
+        yaml.SafeDumper.add_representer(str, str_presenter)
         print(yaml.safe_dump(app_status, default_flow_style=False, sort_keys=False))
 
 
