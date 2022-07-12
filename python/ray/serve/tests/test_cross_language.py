@@ -22,7 +22,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     config.deployment_language = JAVA
     config.is_cross_language = True
 
-    replica_config = ReplicaConfig(
+    replica_config = ReplicaConfig.create(
         "io.ray.serve.util.ExampleEchoDeployment",
         init_args=["my_prefix "],
     )
@@ -53,6 +53,10 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
         RequestWrapper(body=msgpack_serialize("hello")).SerializeToString(),
     )
     assert ray.get(out) == "my_prefix hello"
+
+    handle = serve.get_deployment("my_java").get_handle()
+    handle_out = handle.remote("hello handle")
+    assert ray.get(handle_out) == "my_prefix hello handle"
 
     ray.get(controller.delete_deployment.remote(deployment_name))
     client._wait_for_deployment_deleted(deployment_name)

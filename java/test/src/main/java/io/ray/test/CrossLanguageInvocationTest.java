@@ -2,11 +2,14 @@ package io.ray.test;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.ActorHandle;
+import io.ray.api.CppActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.exception.CrossLanguageException;
 import io.ray.api.exception.RayException;
+import io.ray.api.function.CppActorClass;
+import io.ray.api.function.CppActorMethod;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -28,6 +31,7 @@ import org.testng.annotations.Test;
 public class CrossLanguageInvocationTest extends BaseTest {
 
   private static final String PYTHON_MODULE = "test_cross_language_invocation";
+  private static final String CPP_LIBRARY = "cpp/counter";
 
   @BeforeClass
   public void beforeClass() {
@@ -48,9 +52,22 @@ public class CrossLanguageInvocationTest extends BaseTest {
       throw new RuntimeException(e);
     }
 
+    // Write the test Cpp file to the temp dir.
+    in = CrossLanguageInvocationTest.class.getResourceAsStream("/" + CPP_LIBRARY + ".so");
+    File cppFile = new File(tempDir.getAbsolutePath() + File.separator + CPP_LIBRARY + ".so");
+    try {
+      FileUtils.copyInputStreamToFile(in, cppFile);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+
     System.setProperty(
         "ray.job.code-search-path",
-        System.getProperty("java.class.path") + File.pathSeparator + tempDir.getAbsolutePath());
+        System.getProperty("java.class.path")
+            + File.pathSeparator
+            + tempDir.getAbsolutePath()
+            + File.pathSeparator
+            + cppFile.getAbsolutePath());
   }
 
   @Test
@@ -151,6 +168,15 @@ public class CrossLanguageInvocationTest extends BaseTest {
     ObjectRef<byte[]> res =
         actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "2".getBytes());
+  }
+
+  // TODO(WangTaoTheTonic): This hangs on Mac and can't be detected by `flakey-tests.ray.io`.
+  // Disable it for now and fix it later.
+  @Test(enabled = false)
+  public void testCallingCppActor() {
+    CppActorHandle actor = Ray.actor(CppActorClass.of("CreateCounter", "Counter")).remote();
+    ObjectRef<Integer> res = actor.task(CppActorMethod.of("Plus1", Integer.class)).remote();
+    Assert.assertEquals(res.get(), Integer.valueOf(1));
   }
 
   @Test
@@ -374,26 +400,6 @@ public class CrossLanguageInvocationTest extends BaseTest {
         Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_python_raise_exception", Object.class))
             .remote();
     return res.get();
-  }
-
-  public static class TestActor {
-
-    public TestActor(byte[] v) {
-      value = v;
-    }
-
-    public byte[] concat(byte[] v) {
-      byte[] c = new byte[value.length + v.length];
-      System.arraycopy(value, 0, c, 0, value.length);
-      System.arraycopy(v, 0, c, value.length, v.length);
-      return c;
-    }
-
-    public byte[] getValue() {
-      return value;
-    }
-
-    private byte[] value;
   }
 
   public void testPyCallJavaOeveridedMethodWithDefault() {

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import ray
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
@@ -27,12 +27,13 @@ from ray.tune.schedulers import (
 )
 
 from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
-from ray.tune.suggest._mock import _MockSearcher
-from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial, _TuneCheckpoint
+from ray.tune.search._mock import _MockSearcher
+from ray.tune.search import ConcurrencyLimiter
+from ray.tune.experiment import Trial
 from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 _register_all()
 
@@ -238,7 +239,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 class _MockTrialExecutor(RayTrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
-        trial.restored_checkpoint = checkpoint_obj.value
+        trial.restored_checkpoint = checkpoint_obj.dir_or_data
         trial.status = Trial.RUNNING
         return True
 
@@ -248,8 +249,12 @@ class _MockTrialExecutor(RayTrialExecutor):
     def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=_TuneCheckpoint.PERSISTENT, result=None):
-        return _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, trial.trainable_name, result)
+    def save(self, trial, type=CheckpointStorage.PERSISTENT, result=None):
+        return _TrackedCheckpoint(
+            dir_or_data=trial.trainable_name,
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics=result,
+        )
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -307,7 +312,7 @@ class _MockTrialRunner:
         return {t for t in self.trials if t.status != Trial.TERMINATED}
 
     def _pause_trial(self, trial):
-        self.trial_executor.save(trial, _TuneCheckpoint.MEMORY, None)
+        self.trial_executor.save(trial, CheckpointStorage.MEMORY, None)
         trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
@@ -785,7 +790,7 @@ class BOHBSuite(unittest.TestCase):
         )
 
     def testNonstopBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         def train(cfg, checkpoint_dir=None):
             start = 0
@@ -838,11 +843,18 @@ class _MockTrial(Trial):
         self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
-        self.restored_checkpoint = checkpoint.value
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
+            self.restored_checkpoint = checkpoint.dir_or_data["data"]
+        else:
+            self.restored_checkpoint = checkpoint.dir_or_data
 
     @property
     def checkpoint(self):
-        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, self.trainable_name, None)
+        return _TrackedCheckpoint(
+            dir_or_data={"data": self.trainable_name},
+            storage_mode=CheckpointStorage.MEMORY,
+            metrics=None,
+        )
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -2299,7 +2311,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
 
     def testAnonymousMetricEndToEndBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         self._testAnonymousMetricEndToEnd(HyperBandForBOHB, TuneBOHB())
 

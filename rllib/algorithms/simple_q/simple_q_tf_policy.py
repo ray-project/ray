@@ -1,198 +1,207 @@
 """TensorFlow policy class used for Simple Q-Learning"""
 
 import logging
-from typing import List, Tuple, Type
+from typing import Dict, List, Tuple, Type, Union
 
-import gym
 import ray
-from ray.rllib.models import ModelCatalog
+from ray.rllib.algorithms.simple_q.utils import make_q_models
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy import Policy
-from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import TargetNetworkMixin
-from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.policy.tf_mixins import TargetNetworkMixin, compute_gradients
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorStructType,
+    TensorType,
+)
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
-Q_SCOPE = "q_func"
-Q_TARGET_SCOPE = "target_q_func"
 
-
-def build_q_models(
-    policy: Policy,
-    obs_space: gym.spaces.Space,
-    action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
-) -> ModelV2:
-    """Build q_model and target_model for Simple Q learning
-
-    Note that this function works for both Tensorflow and PyTorch.
+# We need this builder function because we want to share the same
+# custom logics between TF1 dynamic and TF2 eager policies.
+def get_simple_q_tf_policy(
+    base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]
+) -> Type:
+    """Construct a SimpleQTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
-        policy: The Policy, which will use the model for optimization.
-        obs_space (gym.spaces.Space): The policy's observation space.
-        action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
+        base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        ModelV2: The Model for the Policy to use.
-            Note: The target q model will not be returned, just assigned to
-            `policy.target_model`.
+        A TF Policy to be used with MAMLTrainer.
     """
-    if not isinstance(action_space, gym.spaces.Discrete):
-        raise UnsupportedSpaceException(
-            "Action space {} is not supported for DQN.".format(action_space)
-        )
 
-    model = ModelCatalog.get_model_v2(
-        obs_space=obs_space,
-        action_space=action_space,
-        num_outputs=action_space.n,
-        model_config=config["model"],
-        framework=config["framework"],
-        name=Q_SCOPE,
-    )
+    class SimpleQTFPolicy(TargetNetworkMixin, base):
+        def __init__(
+            self,
+            obs_space,
+            action_space,
+            config,
+            existing_model=None,
+            existing_inputs=None,
+        ):
+            # First thing first, enable eager execution if necessary.
+            base.enable_eager_execution_if_necessary()
 
-    policy.target_model = ModelCatalog.get_model_v2(
-        obs_space=obs_space,
-        action_space=action_space,
-        num_outputs=action_space.n,
-        model_config=config["model"],
-        framework=config["framework"],
-        name=Q_TARGET_SCOPE,
-    )
+            config = dict(
+                ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig().to_dict(),
+                **config,
+            )
 
-    return model
+            # Initialize base class.
+            base.__init__(
+                self,
+                obs_space,
+                action_space,
+                config,
+                existing_inputs=existing_inputs,
+                existing_model=existing_model,
+            )
+
+            # Note: this is a bit ugly, but loss and optimizer initialization must
+            # happen after all the MixIns are initialized.
+            self.maybe_initialize_optimizer_and_loss()
+
+            TargetNetworkMixin.__init__(self, obs_space, action_space, config)
+
+        @override(base)
+        def make_model(self) -> ModelV2:
+            """Builds Q-model and target Q-model for Simple Q learning."""
+            model, self.target_model = make_q_models(self)
+            return model
+
+        @override(base)
+        def action_distribution_fn(
+            self,
+            model: ModelV2,
+            *,
+            obs_batch: TensorType,
+            state_batches: TensorType,
+            **kwargs,
+        ) -> Tuple[TensorType, type, List[TensorType]]:
+            # Compute the Q-values for each possible action, using our Q-value network.
+            q_vals = self._compute_q_values(self.model, obs_batch, is_training=False)
+            return q_vals, Categorical, state_batches
+
+        def xyz_compute_actions(
+            self,
+            *,
+            input_dict,
+            explore=True,
+            timestep=None,
+            episodes=None,
+            is_training=False,
+            **kwargs,
+        ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
+            if timestep is None:
+                timestep = self.global_timestep
+            # Compute the Q-values for each possible action, using our Q-value network.
+            q_vals = self._compute_q_values(
+                self.model, input_dict[SampleBatch.OBS], is_training=is_training
+            )
+            # Use a Categorical distribution for the exploration component.
+            # This way, it may either sample storchastically (e.g. when using SoftQ)
+            # or deterministically/greedily (e.g. when using EpsilonGreedy).
+            distribution = Categorical(q_vals, self.model)
+            # Call the exploration component's `get_exploration_action` method to
+            # explore, if necessary.
+            actions, logp = self.exploration.get_exploration_action(
+                action_distribution=distribution, timestep=timestep, explore=explore
+            )
+            # Return (exploration) actions, state_outs (empty list), and extra outs.
+            return (
+                actions,
+                [],
+                {
+                    "q_values": q_vals,
+                    SampleBatch.ACTION_LOGP: logp,
+                    SampleBatch.ACTION_PROB: tf.exp(logp),
+                    SampleBatch.ACTION_DIST_INPUTS: q_vals,
+                },
+            )
+
+        @override(base)
+        def loss(
+            self,
+            model: Union[ModelV2, "tf.keras.Model"],
+            dist_class: Type[TFActionDistribution],
+            train_batch: SampleBatch,
+        ) -> Union[TensorType, List[TensorType]]:
+            # q network evaluation
+            q_t = self._compute_q_values(self.model, train_batch[SampleBatch.CUR_OBS])
+
+            # target q network evalution
+            q_tp1 = self._compute_q_values(
+                self.target_model,
+                train_batch[SampleBatch.NEXT_OBS],
+            )
+            if not hasattr(self, "q_func_vars"):
+                self.q_func_vars = model.variables()
+                self.target_q_func_vars = self.target_model.variables()
+
+            # q scores for actions which we know were selected in the given state.
+            one_hot_selection = tf.one_hot(
+                tf.cast(train_batch[SampleBatch.ACTIONS], tf.int32), self.action_space.n
+            )
+            q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
+
+            # compute estimate of best possible value starting from state at t + 1
+            dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+            q_tp1_best_one_hot_selection = tf.one_hot(
+                tf.argmax(q_tp1, 1), self.action_space.n
+            )
+            q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
+            q_tp1_best_masked = (1.0 - dones) * q_tp1_best
+
+            # compute RHS of bellman equation
+            q_t_selected_target = (
+                train_batch[SampleBatch.REWARDS]
+                + self.config["gamma"] * q_tp1_best_masked
+            )
+
+            # compute the error (potentially clipped)
+            td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
+            loss = tf.reduce_mean(huber_loss(td_error))
+
+            # save TD error as an attribute for outside access
+            self.td_error = td_error
+
+            return loss
+
+        @override(base)
+        def compute_gradients_fn(
+            self, optimizer: LocalOptimizer, loss: TensorType
+        ) -> ModelGradients:
+            return compute_gradients(self, optimizer, loss)
+
+        @override(base)
+        def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
+            return {"td_error": self.td_error}
+
+        def _compute_q_values(
+            self, model: ModelV2, obs_batch: TensorType, is_training=None
+        ) -> TensorType:
+            _is_training = (
+                is_training
+                if is_training is not None
+                else self._get_is_training_placeholder()
+            )
+            model_out, _ = model(
+                SampleBatch(obs=obs_batch, _is_training=_is_training), [], None
+            )
+
+            return model_out
+
+    return SimpleQTFPolicy
 
 
-def get_distribution_inputs_and_class(
-    policy: Policy,
-    q_model: ModelV2,
-    obs_batch: TensorType,
-    *,
-    explore=True,
-    is_training=True,
-    **kwargs
-) -> Tuple[TensorType, type, List[TensorType]]:
-    """Build the action distribution"""
-    q_vals = compute_q_values(policy, q_model, obs_batch, explore, is_training)
-    q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
-
-    policy.q_values = q_vals
-    return (
-        policy.q_values,
-        (TorchCategorical if policy.config["framework"] == "torch" else Categorical),
-        [],
-    )  # state-outs
-
-
-def build_q_losses(
-    policy: Policy,
-    model: ModelV2,
-    dist_class: Type[TFActionDistribution],
-    train_batch: SampleBatch,
-) -> TensorType:
-    """Constructs the loss for SimpleQTFPolicy.
-
-    Args:
-        policy: The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
-        dist_class (Type[ActionDistribution]): The action distribution class.
-        train_batch: The training data.
-
-    Returns:
-        TensorType: A single loss tensor.
-    """
-    # q network evaluation
-    q_t = compute_q_values(
-        policy, policy.model, train_batch[SampleBatch.CUR_OBS], explore=False
-    )
-
-    # target q network evalution
-    q_tp1 = compute_q_values(
-        policy, policy.target_model, train_batch[SampleBatch.NEXT_OBS], explore=False
-    )
-    if not hasattr(policy, "q_func_vars"):
-        policy.q_func_vars = model.variables()
-        policy.target_q_func_vars = policy.target_model.variables()
-
-    # q scores for actions which we know were selected in the given state.
-    one_hot_selection = tf.one_hot(
-        tf.cast(train_batch[SampleBatch.ACTIONS], tf.int32), policy.action_space.n
-    )
-    q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
-
-    # compute estimate of best possible value starting from state at t + 1
-    dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
-    q_tp1_best_one_hot_selection = tf.one_hot(
-        tf.argmax(q_tp1, 1), policy.action_space.n
-    )
-    q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
-    q_tp1_best_masked = (1.0 - dones) * q_tp1_best
-
-    # compute RHS of bellman equation
-    q_t_selected_target = (
-        train_batch[SampleBatch.REWARDS] + policy.config["gamma"] * q_tp1_best_masked
-    )
-
-    # compute the error (potentially clipped)
-    td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
-    loss = tf.reduce_mean(huber_loss(td_error))
-
-    # save TD error as an attribute for outside access
-    policy.td_error = td_error
-
-    return loss
-
-
-def compute_q_values(
-    policy: Policy, model: ModelV2, obs: TensorType, explore, is_training=None
-) -> TensorType:
-    _is_training = (
-        is_training
-        if is_training is not None
-        else policy._get_is_training_placeholder()
-    )
-    model_out, _ = model(SampleBatch(obs=obs, _is_training=_is_training), [], None)
-
-    return model_out
-
-
-def setup_late_mixins(
-    policy: Policy,
-    obs_space: gym.spaces.Space,
-    action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
-) -> None:
-    """Call all mixin classes' constructors before SimpleQTFPolicy initialization.
-
-    Args:
-        policy: The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
-        config: The Policy's config.
-    """
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
-
-
-# Build a child class of `DynamicTFPolicy`, given the custom functions defined
-# above.
-SimpleQTFPolicy: Type[DynamicTFPolicy] = build_tf_policy(
-    name="SimpleQTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.simple_q.simple_q.DEFAULT_CONFIG,
-    make_model=build_q_models,
-    action_distribution_fn=get_distribution_inputs_and_class,
-    loss_fn=build_q_losses,
-    extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
-    extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
-    after_init=setup_late_mixins,
-    mixins=[TargetNetworkMixin],
-)
+SimpleQTF1Policy = get_simple_q_tf_policy(DynamicTFPolicyV2)
+SimpleQTF2Policy = get_simple_q_tf_policy(EagerTFPolicyV2)

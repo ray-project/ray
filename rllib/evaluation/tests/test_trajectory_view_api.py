@@ -5,7 +5,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
@@ -58,14 +58,14 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["rollout_fragment_length"] = 4
 
         for _ in framework_iterator(config):
-            trainer = dqn.DQN(
+            algo = dqn.DQN(
                 config, env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv"
             )
-            policy = trainer.get_policy()
+            policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
-            assert len(view_req_policy) == 10, view_req_policy
+            assert len(view_req_policy) == 11, view_req_policy
             for key in [
                 SampleBatch.OBS,
                 SampleBatch.ACTIONS,
@@ -84,7 +84,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
-            rollout_worker = trainer.workers.local_worker()
+            rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
             expected_count = (
                 config["num_envs_per_worker"] * config["rollout_fragment_length"]
@@ -92,7 +92,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             assert sample_batch.count == expected_count
             for v in sample_batch.values():
                 assert len(v) == expected_count
-            trainer.stop()
+            algo.stop()
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):
         """Tests, whether Policy/Model return correct LSTM ViewRequirements."""
@@ -104,13 +104,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["lstm_use_prev_reward"] = True
 
         for _ in framework_iterator(config):
-            trainer = ppo.PPO(config, env="CartPole-v0")
-            policy = trainer.get_policy()
+            algo = ppo.PPO(config, env="CartPole-v0")
+            policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 20, (len(view_req_policy), view_req_policy)
+            assert len(view_req_policy) == 21, (len(view_req_policy), view_req_policy)
             for key in [
                 SampleBatch.OBS,
                 SampleBatch.ACTIONS,
@@ -142,7 +142,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
-            trainer.stop()
+            algo.stop()
 
     def test_traj_view_attention_net(self):
         config = ppo.DEFAULT_CONFIG.copy()
@@ -168,16 +168,16 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["env_config"] = {"config": {"start_at_t": 1}}  # first obs is [1.0]
 
         for _ in framework_iterator(config, frameworks="tf2"):
-            trainer = ppo.PPO(
+            algo = ppo.PPO(
                 config,
                 env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
             )
-            rw = trainer.workers.local_worker()
+            rw = algo.workers.local_worker()
             sample = rw.sample()
-            assert sample.count == trainer.config["rollout_fragment_length"]
-            results = trainer.train()
+            assert sample.count == algo.config["rollout_fragment_length"]
+            results = algo.train()
             assert results["timesteps_total"] == config["train_batch_size"]
-            trainer.stop()
+            algo.stop()
 
     def test_traj_view_next_action(self):
         action_space = Discrete(2)
@@ -318,8 +318,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             normalize_actions=False,
             num_envs=1,
         )
-        batch = rollout_worker_w_api.sample()
-        print(batch)
+        batch = rollout_worker_w_api.sample()  # noqa: F841
 
     def test_counting_by_agent_steps(self):
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
@@ -341,10 +340,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["env_config"] = {"num_agents": num_agents}
 
         num_iterations = 2
-        trainer = ppo.PPO(config=config)
+        algo = ppo.PPO(config=config)
         results = None
         for i in range(num_iterations):
-            results = trainer.train()
+            results = algo.train()
         self.assertEqual(results["agent_timesteps_total"], results["timesteps_total"])
         self.assertEqual(
             results["num_env_steps_trained"] * num_agents,
@@ -358,7 +357,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             results["agent_timesteps_total"],
             (num_iterations + 1) * config["train_batch_size"],
         )
-        trainer.stop()
+        algo.stop()
 
     def test_get_single_step_input_dict_batch_repeat_value_larger_1(self):
         """Test whether a SampleBatch produces the correct 1-step input dict."""

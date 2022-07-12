@@ -1,15 +1,15 @@
-from abc import abstractmethod, ABCMeta
 import logging
-from typing import Dict, List, Optional, TYPE_CHECKING, Union
+from abc import ABCMeta, abstractmethod
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +173,8 @@ class SampleCollector(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    # TODO(jungong) : Remove this API call once we completely move to
+    # connector based sample collection.
     @abstractmethod
     def get_inference_input_dict(self, policy_id: PolicyID) -> \
             Dict[str, TensorType]:

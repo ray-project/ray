@@ -10,9 +10,8 @@ from collections import OrderedDict
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
-from ray.tune.ray_trial_executor import (
+from ray.tune.execution.ray_trial_executor import (
     _ExecutorEvent,
     _ExecutorEventType,
     RayTrialExecutor,
@@ -21,11 +20,12 @@ from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
 
 from ray.tune.callback import warnings
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune import Callback
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.experiment import Experiment
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
 class TestCallback(Callback):
@@ -150,8 +150,10 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(self.callback.state["trial_start"]["trial"].trial_id, "two")
 
         # Just a placeholder object ref for cp.value.
-        cp = _TuneCheckpoint(
-            _TuneCheckpoint.PERSISTENT, value=ray.put(1), result={TRAINING_ITERATION: 0}
+        cp = _TrackedCheckpoint(
+            dir_or_data=ray.put(1),
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics={TRAINING_ITERATION: 0},
         )
         trials[0].saving_to = cp
 
@@ -287,12 +289,6 @@ class TrialRunnerCallbacks(unittest.TestCase):
         callbacks = create_default_callbacks([LoggerCallback()], SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
-
-        # This should throw an error as the syncer comes before the logger
-        with self.assertRaises(ValueError):
-            callbacks = create_default_callbacks(
-                [SyncerCallback(None), LoggerCallback()], SyncConfig(), None
-            )
 
         # This should be reordered but preserve the regular callback order
         [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]

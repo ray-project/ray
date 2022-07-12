@@ -43,16 +43,18 @@ void ProcessHelper::StartRayNode(const int port,
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
-  std::this_thread::sleep_for(std::chrono::seconds(5));
+  auto spawn_result = Process::Spawn(cmdargs, true);
+  RAY_CHECK(!spawn_result.second);
+  spawn_result.first.Wait();
   return;
 }
 
 void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
-  std::this_thread::sleep_for(std::chrono::seconds(3));
+  auto spawn_result = Process::Spawn(cmdargs, true);
+  RAY_CHECK(!spawn_result.second);
+  spawn_result.first.Wait();
   return;
 }
 
@@ -143,9 +145,13 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.task_execution_callback = callback;
   options.startup_token = ConfigInternal::Instance().startup_token;
   rpc::JobConfig job_config;
+  job_config.set_default_actor_lifetime(
+      ConfigInternal::Instance().default_actor_lifetime);
+
   for (const auto &path : ConfigInternal::Instance().code_search_path) {
     job_config.add_code_search_path(path);
   }
+  job_config.set_ray_namespace(ConfigInternal::Instance().ray_namespace);
   std::string serialized_job_config;
   RAY_CHECK(job_config.SerializeToString(&serialized_job_config));
   options.serialized_job_config = serialized_job_config;

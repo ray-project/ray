@@ -10,9 +10,9 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.logger import NoopLogger
-from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.function_runner import with_parameters, wrap_function, FuncCheckpointUtil
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.trainable.util import TrainableUtil
+from ray.tune.trainable import with_parameters, wrap_function, FuncCheckpointUtil
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.schedulers import ResourceChangingScheduler
 
@@ -321,7 +321,7 @@ class FunctionApiTest(unittest.TestCase):
                     f.write("hello")
 
         [trial] = tune.run(train).trials
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
+        assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log"))
 
     def testCheckpointFunctionAtEndContext(self):
         def train(config, checkpoint_dir=False):
@@ -333,7 +333,7 @@ class FunctionApiTest(unittest.TestCase):
                     f.write("hello")
 
         [trial] = tune.run(train).trials
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
+        assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log"))
 
     def testVariousCheckpointFunctionAtEnd(self):
         def train(config, checkpoint_dir=False):
@@ -349,7 +349,7 @@ class FunctionApiTest(unittest.TestCase):
                     f.write("goodbye")
 
         [trial] = tune.run(train, keep_checkpoints_num=3).trials
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log2"))
+        assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log2"))
 
     def testReuseCheckpoint(self):
         def train(config, checkpoint_dir=None):
@@ -369,8 +369,8 @@ class FunctionApiTest(unittest.TestCase):
             train,
             config={"max_iter": 5},
         ).trials
-        last_ckpt = trial.checkpoint.value
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
+        last_ckpt = trial.checkpoint.dir_or_data
+        assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log"))
         analysis = tune.run(train, config={"max_iter": 10}, restore=last_ckpt)
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 5
@@ -393,7 +393,7 @@ class FunctionApiTest(unittest.TestCase):
                 tune.report(test=i, training_iteration=i)
 
         analysis = tune.run(train, max_failures=3)
-        last_ckpt = analysis.trials[0].checkpoint.value
+        last_ckpt = analysis.trials[0].checkpoint.dir_or_data
         assert os.path.exists(os.path.join(last_ckpt, "ckpt.log"))
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10

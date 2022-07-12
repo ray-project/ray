@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 import ray
 
 from ray.air.config import RunConfig
-from ray.air.trainer import Trainer
+from ray.train.trainer import BaseTrainer
 from ray.tune import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -47,7 +47,7 @@ class Tuner:
         from ray import tune
         from ray.data import from_pandas
         from ray.air.config import RunConfig
-        from ray.air.train.integrations.xgboost import XGBoostTrainer
+        from ray.train.xgboost import XGBoostTrainer
         from ray.tune.tuner import Tuner
 
         def get_dataset():
@@ -111,7 +111,7 @@ class Tuner:
                 str,
                 Callable,
                 Type[Trainable],
-                Trainer,
+                BaseTrainer,
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,

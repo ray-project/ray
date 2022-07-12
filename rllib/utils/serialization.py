@@ -1,11 +1,18 @@
 import base64
-import gym
 import io
-import numpy as np
-from typing import Dict
 import zlib
+from typing import Dict
+
+import gym
+import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.spaces.flexdict import FlexDict
+from ray.rllib.utils.spaces.repeated import Repeated
+from ray.rllib.utils.spaces.simplex import Simplex
+
+# TODO(jungong) : We need to handle RLlib custom space types,
+# FlexDict, Repeated, and Simplex.
 
 
 def _serialize_ndarray(array: np.ndarray) -> str:
@@ -88,6 +95,29 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
             "spaces": {k: gym_space_to_dict(sp) for k, sp in sp.spaces.items()},
         }
 
+    def _simplex(sp: Simplex) -> Dict:
+        return {
+            "space": "simplex",
+            "shape": sp._shape,  # shape is a tuple.
+            "concentration": sp.concentration,
+            "dtype": sp.dtype.str,
+        }
+
+    def _repeated(sp: Repeated) -> Dict:
+        return {
+            "space": "repeated",
+            "child_space": gym_space_to_dict(sp.child_space),
+            "max_len": sp.max_len,
+        }
+
+    def _flex_dict(sp: FlexDict) -> Dict:
+        d = {
+            "space": "flex_dict",
+        }
+        for k, s in sp.spaces:
+            d[k] = gym_space_to_dict(s)
+        return d
+
     if isinstance(space, gym.spaces.Box):
         return _box(space)
     elif isinstance(space, gym.spaces.Discrete):
@@ -98,6 +128,12 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _tuple(space)
     elif isinstance(space, gym.spaces.Dict):
         return _dict(space)
+    elif isinstance(space, Simplex):
+        return _simplex(space)
+    elif isinstance(space, Repeated):
+        return _repeated(space)
+    elif isinstance(space, FlexDict):
+        return _flex_dict(space)
     else:
         raise ValueError("Unknown space type for serialization, ", type(space))
 
@@ -148,12 +184,27 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         spaces = {k: gym_space_from_dict(sp) for k, sp in d["spaces"].items()}
         return gym.spaces.Dict(spaces=spaces)
 
+    def _simplex(d: Dict) -> Simplex:
+        return Simplex(**__common(d))
+
+    def _repeated(d: Dict) -> Repeated:
+        child_space = gym_space_from_dict(d["child_space"])
+        return Repeated(child_space=child_space, max_len=d["max_len"])
+
+    def _flex_dict(d: Dict) -> FlexDict:
+        del d["space"]
+        spaces = {k: gym_space_from_dict(s) for k, s in d.items()}
+        return FlexDict(spaces=spaces)
+
     space_map = {
         "box": _box,
         "discrete": _discrete,
         "multi-discrete": _multi_discrete,
         "tuple": _tuple,
         "dict": _dict,
+        "simplex": _simplex,
+        "repeated": _repeated,
+        "flex_dict": _flex_dict,
     }
 
     space_type = d["space"]

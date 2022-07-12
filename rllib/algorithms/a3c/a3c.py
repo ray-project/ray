@@ -2,12 +2,10 @@ import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.actor import ActorHandle
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.parallel_requests import (
-    AsyncRequestsManager,
-)
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -22,16 +20,16 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
-    PartialTrainerConfigDict,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class A3CConfig(TrainerConfig):
-    """Defines a configuration class from which a A3C Trainer can be built.
+class A3CConfig(AlgorithmConfig):
+    """Defines a configuration class from which a A3C Algorithm can be built.
 
     Example:
         >>> from ray import tune
@@ -39,7 +37,7 @@ class A3CConfig(TrainerConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -60,9 +58,9 @@ class A3CConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a A3CConfig instance."""
-        super().__init__(trainer_class=trainer_class or A3C)
+        super().__init__(algo_class=algo_class or A3C)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -78,18 +76,18 @@ class A3CConfig(TrainerConfig):
         self.entropy_coeff_schedule = None
         self.sample_async = True
 
-        # Override some of TrainerConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.rollout_fragment_length = 10
         self.lr = 0.0001
         # Min time (in seconds) per reporting.
         # This causes not every call to `training_iteration` to be reported,
         # but to wait until n seconds have passed and then to summarize the
         # thus far collected results.
-        self.min_time_s_per_reporting = 5
+        self.min_time_s_per_iteration = 5
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -125,7 +123,7 @@ class A3CConfig(TrainerConfig):
                 to async buffering of batches.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -152,21 +150,21 @@ class A3CConfig(TrainerConfig):
         return self
 
 
-class A3C(Trainer):
+class A3C(Algorithm):
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return A3CConfig().to_dict()
 
-    @override(Trainer)
-    def setup(self, config: PartialTrainerConfigDict):
+    @override(Algorithm)
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
         self._worker_manager = AsyncRequestsManager(
             self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1
         )
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -175,8 +173,8 @@ class A3C(Trainer):
         if config["num_workers"] <= 0 and config["sample_async"]:
             raise ValueError("`num_workers` for A3C must be >= 1!")
 
-    @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(Algorithm)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
 
@@ -190,7 +188,7 @@ class A3C(Trainer):
 
             return A3CEagerTFPolicy
 
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Shortcut.
         local_worker = self.workers.local_worker()
 
@@ -256,7 +254,7 @@ class A3C(Trainer):
 
         return learner_info_builder.finalize()
 
-    @override(Trainer)
+    @override(Algorithm)
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -266,7 +264,9 @@ class A3C(Trainer):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        self._worker_manager.remove_workers(removed_workers)
+        self._worker_manager.remove_workers(
+            removed_workers, remove_in_flight_requests=True
+        )
         self._worker_manager.add_workers(new_workers)
 
 

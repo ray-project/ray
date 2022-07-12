@@ -126,9 +126,7 @@ def get_remote_model(remote_model_checkpoint_path):
 
 
 def get_model(model_checkpoint_path):
-    checkpoint_dict = Trainer.load_checkpoint_from_path(
-        model_checkpoint_path + "/checkpoint"
-    )
+    checkpoint_dict = Trainer.load_checkpoint_from_path(model_checkpoint_path)
     model_state = checkpoint_dict["model_state_dict"]
 
     model = ResNet18(None)
@@ -258,8 +256,10 @@ if __name__ == "__main__":
     analysis = train_mnist(args.smoke_test, num_workers, use_gpu)
 
     print("Retrieving best model.")
-    best_checkpoint = analysis.best_checkpoint.local_path
-    model = get_remote_model(best_checkpoint)
+    best_checkpoint_path = analysis.get_best_checkpoint(
+        analysis.best_trial, return_path=True
+    )
+    model = get_remote_model(best_checkpoint_path)
 
     print("Setting up Serve.")
     setup_serve(model, use_gpu)

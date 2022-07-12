@@ -4,10 +4,12 @@
 Ray Train API
 =============
 
-.. _train-api-trainer:
-
 Trainer
 -------
+
+.. warning::
+    This Trainer API is deprecated and no longer supported. For an overview of the new :ref:`air` Trainer API,
+    see :ref:`air-trainer-ref`.
 
 .. autoclass:: ray.train.Trainer
     :members:
@@ -31,6 +33,7 @@ TorchConfig
 ~~~~~~~~~~~
 
 .. autoclass:: ray.train.torch.TorchConfig
+    :noindex:
 
 .. _train-api-tensorflow-config:
 
@@ -38,6 +41,7 @@ TensorflowConfig
 ~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.tensorflow.TensorflowConfig
+    :noindex:
 
 .. _train-api-horovod-config:
 
@@ -45,6 +49,7 @@ HorovodConfig
 ~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.horovod.HorovodConfig
+    :noindex:
 
 .. _train-api-backend-interfaces:
 
@@ -109,42 +114,6 @@ TorchTensorboardProfilerCallback
 
 .. autoclass:: ray.train.callbacks.TorchTensorboardProfilerCallback
 
-ResultsPreprocessors
-~~~~~~~~~~~~~~~~~~~~
-
-.. _train-api-results-preprocessor:
-
-ResultsPreprocessor
-+++++++++++++++++++
-
-.. autoclass:: ray.train.callbacks.results_preprocessors.ResultsPreprocessor
-    :members:
-
-SequentialResultsPreprocessor
-+++++++++++++++++++++++++++++++
-
-.. autoclass:: ray.train.callbacks.results_preprocessors.SequentialResultsPreprocessor
-
-IndexedResultsPreprocessor
-+++++++++++++++++++++++++++++++
-
-.. autoclass:: ray.train.callbacks.results_preprocessors.IndexedResultsPreprocessor
-
-ExcludedKeysResultsPreprocessor
-+++++++++++++++++++++++++++++++
-
-.. autoclass:: ray.train.callbacks.results_preprocessors.ExcludedKeysResultsPreprocessor
-
-Checkpointing
--------------
-
-.. _train-api-checkpoint-strategy:
-
-CheckpointStrategy
-~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.CheckpointStrategy
-
 .. _train-api-func-utils:
 
 Training Function Utilities
@@ -196,6 +165,7 @@ train.torch.prepare_model
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.prepare_model
+    :noindex:
 
 .. _train-api-torch-prepare-data-loader:
 
@@ -203,17 +173,20 @@ train.torch.prepare_data_loader
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.prepare_data_loader
+    :noindex:
 
 train.torch.prepare_optimizer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.prepare_optimizer
+    :noindex:
 
 
 train.torch.backward
 ~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.backward
+    :noindex:
 
 .. _train-api-torch-get-device:
 
@@ -221,11 +194,13 @@ train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
+    :noindex:
 
 train.torch.enable_reproducibility
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.enable_reproducibility
+    :noindex:
 
 .. _train-api-torch-worker-profiler:
 
@@ -233,12 +208,14 @@ train.torch.accelerate
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.accelerate
+    :noindex:
 
 train.torch.TorchWorkerProfiler
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.torch.TorchWorkerProfiler
     :members:
+    :noindex:
 
 .. _train-api-tensorflow-utils:
 
@@ -249,3 +226,4 @@ train.tensorflow.prepare_dataset_shard
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.tensorflow.prepare_dataset_shard
+    :noindex:

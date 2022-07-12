@@ -2,7 +2,7 @@
 Proximal Policy Optimization (PPO)
 ==================================
 
-This file defines the distributed Trainer class for proximal policy
+This file defines the distributed Algorithm class for proximal policy
 optimization.
 See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 
@@ -11,10 +11,11 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 
 import logging
 from typing import List, Optional, Type, Union
+import math
 
 from ray.util.debug import log_once
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
 )
@@ -26,21 +27,25 @@ from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class PPOConfig(TrainerConfig):
-    """Defines a configuration class from which a PPO Trainer can be built.
+class PPOConfig(AlgorithmConfig):
+    """Defines a configuration class from which a PPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
@@ -48,7 +53,7 @@ class PPOConfig(TrainerConfig):
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -71,9 +76,9 @@ class PPOConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or PPO)
+        super().__init__(algo_class=algo_class or PPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -94,7 +99,7 @@ class PPOConfig(TrainerConfig):
         self.grad_clip = None
         self.kl_target = 0.01
 
-        # Override some of TrainerConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.lr = 5e-5
@@ -102,7 +107,10 @@ class PPOConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(TrainerConfig)
+        # Deprecated keys.
+        self.vf_share_layers = DEPRECATED_VALUE
+
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -121,6 +129,8 @@ class PPOConfig(TrainerConfig):
         vf_clip_param: Optional[float] = None,
         grad_clip: Optional[float] = None,
         kl_target: Optional[float] = None,
+        # Deprecated.
+        vf_share_layers=None,
         **kwargs,
     ) -> "PPOConfig":
         """Sets the training related configuration.
@@ -154,7 +164,7 @@ class PPOConfig(TrainerConfig):
             kl_target: Target value for KL divergence.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -189,6 +199,14 @@ class PPOConfig(TrainerConfig):
             self.grad_clip = grad_clip
         if kl_target is not None:
             self.kl_target = kl_target
+
+        if vf_share_layers is not None:
+            self.model["vf_share_layers"] = vf_share_layers
+            deprecation_warning(
+                old="ppo.DEFAULT_CONFIG['vf_share_layers']",
+                new="PPOConfig().training(model={'vf_share_layers': ...})",
+                error=False,
+            )
 
         return self
 
@@ -267,20 +285,20 @@ def warn_about_bad_reward_scales(config, result):
     return result
 
 
-class PPO(Trainer):
-    # TODO: Change the return value of this method to return a TrainerConfig object
+class PPO(Algorithm):
+    # TODO: Change the return value of this method to return a AlgorithmConfig object
     #  instead.
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return PPOConfig().to_dict()
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        """Validates the Trainer's config dict.
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
+        """Validates the Algorithm's config dict.
 
         Args:
-            config: The Trainer's config to check.
+            config: The Algorithm's config to check.
 
         Raises:
             ValueError: In case something is wrong with the config.
@@ -325,8 +343,9 @@ class PPO(Trainer):
             config["train_batch_size"] > 0
             and config["train_batch_size"] % calculated_min_rollout_size != 0
         ):
-            new_rollout_fragment_length = config["train_batch_size"] // (
-                num_workers * config["num_envs_per_worker"]
+            new_rollout_fragment_length = math.ceil(
+                config["train_batch_size"]
+                / (num_workers * config["num_envs_per_worker"])
             )
             logger.warning(
                 "`train_batch_size` ({}) cannot be achieved with your other "
@@ -362,8 +381,8 @@ class PPO(Trainer):
                 "simple_optimizer=True if this doesn't work for you."
             )
 
-    @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(Algorithm)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 
@@ -378,7 +397,7 @@ class PPO(Trainer):
             return PPOTF2Policy
 
     @ExperimentalAPI
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         if self._by_agent_steps:
             train_batch = synchronous_parallel_sample(
@@ -407,7 +426,7 @@ class PPO(Trainer):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
         # For each policy: update KL scale and warn about possible issues
