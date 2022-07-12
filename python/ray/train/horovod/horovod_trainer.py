@@ -68,6 +68,9 @@ class HorovodTrainer(DataParallelTrainer):
             # Returns the rank of the worker on the current node.
             session.get_local_rank()
 
+    Any returns from the ``train_loop_per_worker`` will be discarded and not
+    used or persisted anywhere.
+
     You could use ``TensorflowPredictor`` or ``TorchPredictor`` in conjunction with
     HorovodTrainer. You must save the model under the "model" kwarg in the
     ``Checkpoint`` passed to ``session.report()``, so that it can be used by
