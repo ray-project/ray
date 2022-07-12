@@ -6,7 +6,7 @@ from typing import Dict
 import click
 import torch
 from torch import nn, distributed
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, DistributedSampler
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
@@ -52,7 +52,7 @@ def train_epoch(
 
         if batch % 100 == 0:
             loss, current = loss.item(), batch * len(X)
-            print(f"[{local_rank}] loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            print(f"[rank={local_rank}] loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
 def validate_epoch(dataloader, model, loss_fn, world_size: int, local_rank: int):
@@ -68,7 +68,7 @@ def validate_epoch(dataloader, model, loss_fn, world_size: int, local_rank: int)
     test_loss /= num_batches
     correct /= size
     print(
-        f"[{local_rank}] Test Error: \n "
+        f"[rank={local_rank}] Test Error: \n "
         f"Accuracy: {(100 * correct):>0.1f}%, "
         f"Avg loss: {test_loss:>8f} \n"
     )
@@ -83,6 +83,7 @@ def train_func(use_ray: bool, config: Dict):
     batch_size = config["batch_size"]
     lr = config["lr"]
     epochs = config["epochs"]
+    shuffle = config.get("shuffle", False)
 
     if use_ray:
         world_size = session.get_world_size()
@@ -110,8 +111,36 @@ def train_func(use_ray: bool, config: Dict):
     )
 
     # Create data loaders.
-    train_dataloader = DataLoader(training_data, batch_size=worker_batch_size)
-    test_dataloader = DataLoader(test_data, batch_size=worker_batch_size)
+    train_dataloader = DataLoader(
+        training_data, shuffle=shuffle, batch_size=worker_batch_size
+    )
+    test_dataloader = DataLoader(
+        test_data, shuffle=shuffle, batch_size=worker_batch_size
+    )
+
+    if use_ray:
+        train_dataloader = train.torch.prepare_data_loader(train_dataloader)
+        test_dataloader = train.torch.prepare_data_loader(test_dataloader)
+    else:
+
+        def with_sampler(loader: DataLoader):
+            data_loader_args = {
+                "dataset": loader.dataset,
+                "batch_size": loader.batch_size,
+                "shuffle": False,
+                "num_workers": loader.num_workers,
+                "collate_fn": loader.collate_fn,
+                "pin_memory": loader.pin_memory,
+                "drop_last": loader.drop_last,
+                "timeout": loader.timeout,
+                "worker_init_fn": loader.worker_init_fn,
+                "generator": loader.generator,
+                "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
+            }
+            return DataLoader(**data_loader_args)
+
+        train_dataloader = with_sampler(train_dataloader)
+        test_dataloader = with_sampler(test_dataloader)
 
     # Create model.
     model = NeuralNetwork()
