@@ -87,6 +87,9 @@ class TorchTrainer(DataParallelTrainer):
             # Returns the current torch device.
             train.torch.get_device()
 
+    Any returns from the ``train_loop_per_worker`` will be discarded and not
+    used or persisted anywhere.
+
     To save a model to use for the ``TorchPredictor``, you must save it under the
     "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 

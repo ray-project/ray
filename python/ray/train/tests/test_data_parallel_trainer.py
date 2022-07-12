@@ -150,6 +150,26 @@ def test_invalid_train_loop(ray_start_4_cpus):
         DataParallelTrainer(train_loop_per_worker=train_loop)
 
 
+def test_bad_return_in_train_loop(ray_start_4_cpus):
+    """Test to check if returns from train loop are discarded."""
+
+    # Simulates what happens with eg. torch models
+    class FailOnUnpickle:
+        def __reduce__(self):
+            raise RuntimeError("Failing")
+
+    def train_loop(config):
+        session.report({"loss": 1})
+        return FailOnUnpickle()
+
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_loop, scaling_config=scale_config
+    )
+
+    # No exception should happen here
+    trainer.fit()
+
+
 def test_tune(ray_start_4_cpus):
     def train_func(config):
         session.report({"loss": config["x"]})
