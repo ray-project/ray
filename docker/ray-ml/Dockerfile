@@ -11,8 +11,8 @@ COPY requirements_tune.txt ./requirements_tune.txt
 COPY requirements_train.txt ./
 COPY requirements_upstream.txt ./
 
-RUN [ "${PYTHON_VERSION}" = "3.6.12" ] && sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
-RUN [ "${PYTHON_VERSION}" = "3.6.12" ] && sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
+RUN if [ "${PYTHON_VERSION}" = "3.6.12" ]; then sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub ; fi
+RUN if [ "${PYTHON_VERSION}" = "3.6.12" ]; then sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub ; fi
 
 RUN sudo apt-get update \
     && sudo apt-get install -y gcc \
