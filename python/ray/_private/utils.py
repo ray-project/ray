@@ -1017,6 +1017,7 @@ def deprecated(
     removal_release: Optional[str] = None,
     removal_date: Optional[str] = None,
     warn_once: bool = True,
+    stacklevel=2,
 ):
     """
     Creates a decorator for marking functions as deprecated. The decorator
@@ -1036,6 +1037,7 @@ def deprecated(
         warn_once: If true, the deprecation warning will only be logged
             on the first invocation. Otherwise, the deprecation warning will
             be logged on every invocation. Defaults to True.
+        stacklevel: adjust the warnings stacklevel to trace the source call
 
     Returns:
         A decorator to be used for wrapping deprecated functions.
@@ -1066,7 +1068,7 @@ def deprecated(
                     )
                     + (f" {instructions}" if instructions is not None else "")
                 )
-                warnings.warn(msg)
+                warnings.warn(msg, stacklevel=stacklevel)
             return func(*args, **kwargs)
 
         return new_func
