@@ -74,6 +74,7 @@ def __main__():
         "training_time": training_time,
         "prediction_time": prediction_time,
     }
+    print("Results:", result)
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
