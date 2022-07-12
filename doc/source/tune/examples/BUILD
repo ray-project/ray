@@ -23,7 +23,6 @@ py_test_run_all_notebooks(
         "ocr_example.ipynb", # REGRESSION
         "bohb_example.ipynb", # REGRESSION
         "horovod_simple.ipynb", # REGRESSION
-        "hyperopt_example.ipynb", # REGRESSION
         "sigopt_example.ipynb", # REGRESSION
         "tune-pytorch-cifar.ipynb", # REGRESSION
         "tune-sklearn.ipynb", # REGRESSION
