@@ -523,6 +523,19 @@ def _resolve_paths_and_filesystem(
                     _encode_url(path), filesystem
                 )
                 resolved_path = _decode_url(resolved_path)
+            elif "Unrecognized filesystem type in URI" in str(e):
+                scheme = urllib.parse.urlparse(path, allow_fragments=False).scheme
+                if scheme in ["http", "https"]:
+                    # If scheme of path is HTTP and filesystem is not resolved,
+                    # try to use fsspec HTTPFileSystem. This expects fsspec is
+                    # installed.
+                    from fsspec.implementations.http import HTTPFileSystem
+
+                    resolved_filesystem = PyFileSystem(FSSpecHandler(HTTPFileSystem()))
+                    resolved_path = path
+                    need_unwrap_path_protocol = False
+                else:
+                    raise
             else:
                 raise
         if filesystem is None:

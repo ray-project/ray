@@ -13,6 +13,7 @@ import pytest
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
+from fsspec.implementations.http import HTTPFileSystem
 from pytest_lazyfixture import lazy_fixture
 
 import ray
@@ -41,6 +42,11 @@ from ray.data.datasource.parquet_datasource import (
     _deserialize_pieces_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.mock_http_server import (  # noqa
+    http_server,
+    http_file,
+    data_count,
+)
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
@@ -320,6 +326,14 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds_df = pd.concat([ds_df1, ds_df2])
     df = pd.concat([df1, df2])
     assert ds_df.equals(df)
+
+
+def test_fsspec_http_file_system(ray_start_regular_shared, http_server):
+    ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
+    assert ds.count() == data_count
+    # Test auto-resolve of HTTP file system when it is not provided.
+    ds = ray.data.read_text(http_file)
+    assert ds.count() == data_count
 
 
 def test_read_example_data(ray_start_regular_shared, tmp_path):
