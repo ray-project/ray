@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
 
+# TODO: @avnishn what is the use of this function anymore?
 def _get_resource_bundles(config: AlgorithmConfigDict):
     input_config = config.get("input_config", {})
     parallelism = input_config.get("parallelism", config.get("num_workers", 1))
@@ -27,27 +28,39 @@ def _get_resource_bundles(config: AlgorithmConfigDict):
     return [{"CPU": math.ceil(parallelism * cpus_per_task)}]
 
 
+def _unzip_this_path(fpath: Path, extract_path: str):
+    # TODO: Fix this later to support s3 paths in zip format as well.
+    if str(fpath).startswith("s3://"):
+        raise ValueError("unzip_if_needed currently does not support remote paths from s3")
+    with zipfile.ZipFile(str(fpath), "r") as zip_ref:
+        zip_ref.extractall(extract_path)
+
 def _unzip_if_needed(paths: List[str], format: str):
     """If a path in paths is a zip file, unzip it and use path of the unzipped file"""
-    ret = []
+    ret_paths = []
     for path in paths:
-        fpath = Path(path).absolute()
-        if not fpath.exists():
-            fpath = Path(__file__).parent.parent / path
-        if not fpath.exists():
-            raise FileNotFoundError(f"File not found: {path}")
-        if re.search("\\.zip$", str(fpath)):
-            with zipfile.ZipFile(str(fpath), "r") as zip_ref:
-                zip_ref.extractall(str(fpath.parent))
-            fpath = re.sub("\\.zip$", f".{format}", str(fpath))
-        fpath = str(fpath)
-        ret.append(fpath)
-    return ret
+        if re.search("\\.zip$", str(path)):
+            extract_path = './'
+            try:
+                _unzip_this_path(str(path), extract_path)
+            except FileNotFoundError:
+                # intrepreted as a relative path to rllib folder
+                try: 
+                    # TODO: remove this later when we replace all tests with s3 paths
+                    _unzip_this_path(Path(__file__).parent.parent / path, extract_path)
+                except FileNotFoundError:
+                    raise FileNotFoundError(f"File not found: {path}")
+            
+            unzipped_path = str(Path(extract_path) / f"{Path(path).stem}.{format}")
+            ret_paths.append(unzipped_path)
+        else:
+            ret_paths.append(path)
+    return ret_paths
 
 
 @PublicAPI
 def get_dataset_and_shards(
-    config: AlgorithmConfigDict, num_workers: int, local_worker: bool
+    config: AlgorithmConfigDict, *, num_workers: int = 0, local_worker: bool = True
 ) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
     """Returns a dataset and a list of shards.
 
@@ -58,25 +71,31 @@ def get_dataset_and_shards(
             `format`: str, speciifies the format of the input data. This will be the 
             format that ray dataset supports. See ray.data.dataset.Dataset for 
             supported formats. Only "parquet" or "json" are supported for now.
-            paths: a single string or a list of strings. Each string is a path to a 
-            file or a directory holding the dataset.
+            `paths`: str, a single string or a list of strings. Each string is a path 
+            to a file or a directory holding the dataset. It can be either a local path 
+            or a remote path (e.g. to an s3 bucket).
             `loader_fn`: Callable[None, ray.data.dataset.Dataset], Instead of 
             specifying paths and format, you can specify a function to load the dataset.
-            `parallelism`: int, The number of workers to use for loading the dataset. 
+            `parallelism`: int, The number of tasks to use for loading the dataset. 
             If not specified, it will be set to the number of workers.
             `num_cpus_per_read_task`: float, The number of CPUs to use for each read 
             task. If not specified, it will be set to 0.5.
     
     Args:
         config: The config dict for the algorithm.
-        num_workers: The number of workers.
-        local_worker: Whether the worker is local or remote.
+        num_workers: The number of shards to create for remote workers.
+        local_worker: Whether to create a dataset shard for the local_worker.
+        If `num_workers = 0`, always create a single shared for the local worker. If 
+        `num_workers > 0` and `local_worker=True` create a None dataset shard for the 
+        local worker and insert it at the beginning of the returned list. If 
+        `num_workers > 0` and `local_worker=False`, just return the shards for remote 
+        workers. This behavior is inherited from `ray.rllib.evaluation.worker_set.
+        WorkerSet`.
 
     Returns:
         dataset: The dataset object.
         shards: A list of dataset shards. If local_worker=False, the first returned shared would be a dummy None shard. 
     """
-
 
     # check input and input config keys
     assert config["input"] == "dataset", (
@@ -91,9 +110,9 @@ def get_dataset_and_shards(
     format = input_config.get("format")
 
     supported_fmts = ["json", "parquet"]
-    if format is None:
-        assert format in supported_fmts, (
-            f"Offline input data format must be in {supported_fmts}."
+    if format is not None and format not in supported_fmts:
+        raise ValueError(
+            f"Unsupported format {format}. Supported formats are {supported_fmts}"
         )
 
     # check paths and loader_fn since only one of them is required.
@@ -113,7 +132,7 @@ def get_dataset_and_shards(
         )
 
     # check paths to be a str or list[str] if not None
-    if paths:
+    if paths is not None:
         if isinstance(paths, str):
             paths = [paths]
         elif isinstance(paths, list):
@@ -141,18 +160,22 @@ def get_dataset_and_shards(
         raise ValueError("Un-supported Ray dataset format: ", format)
 
     # Local worker will be responsible for sampling.
-    if local_worker and num_workers == 0:
+    if num_workers == 0:
         # Dataset is the only shard we need.
         return dataset, [dataset]
     # Remote workers are responsible for sampling:
     else:
+        # Each remote worker gets 1 shard.
         remote_shards = dataset.repartition(
             num_blocks=num_workers, shuffle=False
         ).split(num_workers)
-        # Each remote worker gets 1 shard.
-        # The first None shard is for the local worker, which
-        # shouldn't be doing rollout work anyways.
-        return dataset, [None] + remote_shards
+
+        if local_worker:
+            # The first None shard is for the local worker, which
+            # shouldn't be doing rollout work anyways.
+            return dataset, [None] + remote_shards
+        # Otherwise, just return the remote shards.
+        return dataset, remote_shards
 
 
 @PublicAPI

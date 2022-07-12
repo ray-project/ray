@@ -1664,7 +1664,7 @@ py_test(
 py_test(
     name = "test_dataset_reader",
     tags = ["team:rllib", "offline"],
-    size = "small",
+    size = "medium",
     srcs = ["offline/tests/test_dataset_reader.py"]
 )
 
