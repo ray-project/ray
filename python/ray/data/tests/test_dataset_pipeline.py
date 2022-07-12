@@ -531,6 +531,13 @@ def test_dataset_used_in_pipeline(ray_start_regular_shared):
         assert dss._used_from_dataset_pipeline
 
 
+def test_drop_columns(ray_start_regular_shared):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds = ray.data.from_pandas(df)
+    pipe = ds.repeat()
+    assert pipe.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
+
+
 if __name__ == "__main__":
     import sys
 

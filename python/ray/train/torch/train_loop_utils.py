@@ -4,12 +4,14 @@ import os
 import random
 import types
 import warnings
+import collections
 
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import ray
 from ray import train
+from ray.air import session
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import PYTORCH_PROFILER_KEY
 from torch.optim import Optimizer
@@ -282,7 +284,11 @@ class _TorchAccelerator(Accelerator):
         """
         ddp_kwargs = ddp_kwargs or {}
 
-        rank = train.local_rank()
+        # Backwards compatibility
+        try:
+            rank = session.get_local_rank()
+        except Exception:
+            rank = train.local_rank()
 
         device = self.get_device()
 
@@ -327,7 +333,13 @@ class _TorchAccelerator(Accelerator):
             # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
             model.__getstate__ = types.MethodType(model_get_state, model)
 
-        if wrap_ddp and train.world_size() > 1:
+        # Backwards compatibility
+        try:
+            world_size = session.get_world_size()
+        except Exception:
+            world_size = train.world_size()
+
+        if wrap_ddp and world_size > 1:
             logger.info("Wrapping provided model in DDP.")
             if torch.cuda.is_available():
                 model = DistributedDataParallel(
@@ -365,13 +377,21 @@ class _TorchAccelerator(Accelerator):
                 if ``move_to_device`` is False.
         """
 
+        # Backwards compatibility
+        try:
+            world_size = session.get_world_size()
+            world_rank = session.get_world_rank()
+        except Exception:
+            world_size = train.world_size()
+            world_rank = train.world_rank()
+
         # Only add Distributed Sampler if the following conditions hold:
         # 1. More than one training worker is being used.
         # 2. A DistributedSampler has not already been added by the user.
         # 3. The dataset is not an IterableDataset. Samplers do not worker with
         # IterableDatasets.
         if (
-            train.world_size() > 1
+            world_size > 1
             and not isinstance(data_loader.sampler, DistributedSampler)
             and not (
                 hasattr(data_loader, "dataset")
@@ -413,7 +433,7 @@ class _TorchAccelerator(Accelerator):
                 using_default_sampler = isinstance(
                     loader.sampler, (SequentialSampler, RandomSampler)
                 )
-                if not using_default_sampler and train.world_rank() == 0:
+                if not using_default_sampler and world_rank == 0:
                     logger.warn(
                         f"The {loader.sampler.__class__.__name__} will be overwritten "
                         "with a DistributedSampler. You can disable this by setting "
@@ -529,7 +549,18 @@ class _WrappedDataLoader(DataLoader):
             return i
 
         with torch.cuda.stream(self._memcpy_stream):
-            return tuple(try_move_device(i) for i in item)
+            if isinstance(item, collections.abc.Mapping):
+                item_on_device = {k: self._move_to_device(v) for k, v in item.items()}
+            elif isinstance(item, (tuple, list)):
+                item_on_device = type(item)(self._move_to_device(i) for i in item)
+            elif isinstance(item, torch.Tensor):
+                item_on_device = try_move_device(item)
+            else:
+                logger.info(
+                    f"Data type {type(item)} doesn't support being moved to device."
+                )
+
+            return item_on_device
 
     def _wait_for_batch(self, item):
         if self._memcpy_stream is None:

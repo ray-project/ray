@@ -1,8 +1,9 @@
 import pytest
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 import torch
 
 import ray
-from ray import train
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
@@ -39,7 +40,7 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
 def test_torch_e2e(ray_start_4_cpus):
     def train_func():
         model = torch.nn.Linear(1, 1)
-        train.save_checkpoint(model=model)
+        session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
     scaling_config = {"num_workers": 2}
     trainer = TorchTrainer(
@@ -65,7 +66,7 @@ def test_torch_e2e(ray_start_4_cpus):
 def test_torch_e2e_state_dict(ray_start_4_cpus):
     def train_func():
         model = torch.nn.Linear(1, 1).state_dict()
-        train.save_checkpoint(model=model)
+        session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
     scaling_config = {"num_workers": 2}
     trainer = TorchTrainer(

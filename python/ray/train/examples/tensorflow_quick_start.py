@@ -1,11 +1,11 @@
 # flake8: noqa
 # fmt: off
+# isort: skip_file
 
 # __tf_setup_begin__
 
 import numpy as np
 import tensorflow as tf
-
 
 def mnist_dataset(batch_size):
     (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
@@ -78,15 +78,13 @@ if __name__ == "__main__":
 
     # __tf_trainer_begin__
 
-    from ray.train import Trainer
-
-    trainer = Trainer(backend="tensorflow", num_workers=4)
+    from ray.train.tensorflow import TensorflowTrainer
 
     # For GPU Training, set `use_gpu` to True.
-    # trainer = Trainer(backend="tensorflow", num_workers=4, use_gpu=True)
+    use_gpu = False
 
-    trainer.start()
-    results = trainer.run(train_func_distributed)
-    trainer.shutdown()
+    trainer = TensorflowTrainer(train_func_distributed, scaling_config={"num_workers":4, "use_gpu":use_gpu})
+
+    trainer.fit()
 
     # __tf_trainer_end__

@@ -41,7 +41,6 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.api import get_log, list_logs
 from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
@@ -424,7 +423,7 @@ def debug(address):
 @click.option(
     "--dashboard-agent-listen-port",
     type=int,
-    default=0,
+    default=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     help="the port for dashboard agents to listen for http on.",
 )
 @click.option(
@@ -2292,6 +2291,10 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
         KubeRay cluster configs.
     `ray kuberay-autoscaler` is NOT a public CLI.
     """
+    # Delay import to avoid introducing Ray core dependency on the Python Kubernetes
+    # client.
+    from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
+
     run_kuberay_autoscaler(cluster_name, cluster_namespace)
 
 
