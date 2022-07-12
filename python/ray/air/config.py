@@ -148,7 +148,10 @@ class ScalingConfigDataClass:
         if worker_bundles:
             first_bundle = worker_bundles[0]
             if not all(bundle == first_bundle for bundle in worker_bundles[1:]):
-                raise ValueError()
+                raise ValueError(
+                    "All worker bundles (any other than the first one) "
+                    "must be equal to each other."
+                )
             use_gpu = bool(first_bundle.get("GPU"))
             num_workers = len(worker_bundles)
             resources_per_worker = first_bundle
