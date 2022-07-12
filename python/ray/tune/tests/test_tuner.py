@@ -17,7 +17,6 @@ from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.tune import Callback, TuneError
-from ray.tune.cloud import TrialCheckpoint
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -128,7 +127,6 @@ class TunerTest(unittest.TestCase):
             _tuner_kwargs={"max_concurrent_trials": 1},
         )
         results = tuner.fit()
-        assert not isinstance(results.get_best_result().checkpoint, TrialCheckpoint)
         assert len(results) == 4
 
     def test_tuner_with_xgboost_trainer_driver_fail_and_resume(self):
