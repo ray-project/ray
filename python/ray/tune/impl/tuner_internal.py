@@ -174,6 +174,11 @@ class TunerInternal:
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
+            fail_fast=(
+                self._run_config.failure_config.fail_fast
+                if self._run_config.failure_config
+                else False
+            ),
             verbose=self._run_config.verbose,
         )
 
