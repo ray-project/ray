@@ -63,7 +63,6 @@ def test_pip(start_cluster):
 
 
 if __name__ == "__main__":
-    import sys
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
