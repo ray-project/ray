@@ -31,26 +31,29 @@ def _get_resource_bundles(config: AlgorithmConfigDict):
 def _unzip_this_path(fpath: Path, extract_path: str):
     # TODO: Fix this later to support s3 paths in zip format as well.
     if str(fpath).startswith("s3://"):
-        raise ValueError("unzip_if_needed currently does not support remote paths from s3")
+        raise ValueError(
+            "unzip_if_needed currently does not support remote paths from s3"
+        )
     with zipfile.ZipFile(str(fpath), "r") as zip_ref:
         zip_ref.extractall(extract_path)
+
 
 def _unzip_if_needed(paths: List[str], format: str):
     """If a path in paths is a zip file, unzip it and use path of the unzipped file"""
     ret_paths = []
     for path in paths:
         if re.search("\\.zip$", str(path)):
-            extract_path = './'
+            extract_path = "./"
             try:
                 _unzip_this_path(str(path), extract_path)
             except FileNotFoundError:
                 # intrepreted as a relative path to rllib folder
-                try: 
+                try:
                     # TODO: remove this later when we replace all tests with s3 paths
                     _unzip_this_path(Path(__file__).parent.parent / path, extract_path)
                 except FileNotFoundError:
                     raise FileNotFoundError(f"File not found: {path}")
-            
+
             unzipped_path = str(Path(extract_path) / f"{Path(path).stem}.{format}")
             ret_paths.append(unzipped_path)
         else:
@@ -68,43 +71,45 @@ def get_dataset_and_shards(
     The following config keys are used to create the dataset:
         input: The input type should be "dataset".
         input_config: A dict containing the following key and values:
-            `format`: str, speciifies the format of the input data. This will be the 
-            format that ray dataset supports. See ray.data.dataset.Dataset for 
+            `format`: str, speciifies the format of the input data. This will be the
+            format that ray dataset supports. See ray.data.dataset.Dataset for
             supported formats. Only "parquet" or "json" are supported for now.
-            `paths`: str, a single string or a list of strings. Each string is a path 
-            to a file or a directory holding the dataset. It can be either a local path 
+            `paths`: str, a single string or a list of strings. Each string is a path
+            to a file or a directory holding the dataset. It can be either a local path
             or a remote path (e.g. to an s3 bucket).
-            `loader_fn`: Callable[None, ray.data.dataset.Dataset], Instead of 
+            `loader_fn`: Callable[None, ray.data.dataset.Dataset], Instead of
             specifying paths and format, you can specify a function to load the dataset.
-            `parallelism`: int, The number of tasks to use for loading the dataset. 
+            `parallelism`: int, The number of tasks to use for loading the dataset.
             If not specified, it will be set to the number of workers.
-            `num_cpus_per_read_task`: float, The number of CPUs to use for each read 
+            `num_cpus_per_read_task`: float, The number of CPUs to use for each read
             task. If not specified, it will be set to 0.5.
-    
+
     Args:
         config: The config dict for the algorithm.
         num_workers: The number of shards to create for remote workers.
         local_worker: Whether to create a dataset shard for the local_worker.
-        If `num_workers = 0`, always create a single shared for the local worker. If 
-        `num_workers > 0` and `local_worker=True` create a None dataset shard for the 
-        local worker and insert it at the beginning of the returned list. If 
-        `num_workers > 0` and `local_worker=False`, just return the shards for remote 
+        If `num_workers = 0`, always create a single shared for the local worker. If
+        `num_workers > 0` and `local_worker=True` create a None dataset shard for the
+        local worker and insert it at the beginning of the returned list. If
+        `num_workers > 0` and `local_worker=False`, just return the shards for remote
         workers. This behavior is inherited from `ray.rllib.evaluation.worker_set.
         WorkerSet`.
 
     Returns:
         dataset: The dataset object.
-        shards: A list of dataset shards. If local_worker=False, the first returned shared would be a dummy None shard. 
+        shards: A list of dataset shards. If local_worker=False, the first returned
+        shared would be a dummy None shard.
     """
 
     # check input and input config keys
     assert config["input"] == "dataset", (
-        f"Must specify input as dataset if" " calling `get_dataset_and_shards`. Got {config['input']}"
+        f"Must specify input as dataset if"
+        f" calling `get_dataset_and_shards`. Got {config['input']}"
     )
     assert (
         "input_config" in config
     ), "Must specify input_config dict if using Dataset input."
-    
+
     # check input config format
     input_config = config["input_config"]
     format = input_config.get("format")
