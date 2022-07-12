@@ -92,7 +92,7 @@ class PushManager {
           num_chunks_inflight(0),
           num_chunks_to_send(num_chunks) {}
 
-    /// Resend all chunks.
+    /// Resend all chunks and returns how many more chunks will be sent.
     int64_t ResendAllChunks(std::function<void(int64_t)> send_fn) {
       chunk_send_fn = send_fn;
       int64_t additional_chunks_to_send = num_chunks - num_chunks_to_send;
