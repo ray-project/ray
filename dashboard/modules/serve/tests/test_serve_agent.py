@@ -7,9 +7,10 @@ import requests
 
 import ray
 from ray import serve
+import ray.tests.conftest
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
-from ray.tests.conftest import ray_start_stop
+
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"

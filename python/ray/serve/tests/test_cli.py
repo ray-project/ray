@@ -15,7 +15,8 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.tests.conftest import tmp_working_dir, ray_start_stop  # noqa: F401, E501
+from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+import ray.tests.conftest
 
 CONNECTION_ERROR_MSG = "connection error"
 
