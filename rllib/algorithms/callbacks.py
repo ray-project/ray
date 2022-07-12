@@ -14,7 +14,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     PublicAPI,
-    is_overridden,
 )
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
@@ -322,9 +321,11 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
-    @Deprecated(old="on_trainer_init(trainer, **kwargs)",
-                new="on_algorithm_init(algorithm, **kwargs)",
-                error=True)
+    @Deprecated(
+        old="on_trainer_init(trainer, **kwargs)",
+        new="on_algorithm_init(algorithm, **kwargs)",
+        error=True,
+    )
     def on_trainer_init(self, *args, **kwargs):
         raise DeprecationWarning
 
