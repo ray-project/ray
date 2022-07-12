@@ -4,7 +4,7 @@ import ray
 from ray.util.annotations import Deprecated, PublicAPI
 
 
-@Deprecated
+@Deprecated(message="Use ray.util.multiprocessing instead.")
 @PublicAPI(stability="beta")
 class ActorPool:
     """Utility class to operate on a fixed pool of actors.
