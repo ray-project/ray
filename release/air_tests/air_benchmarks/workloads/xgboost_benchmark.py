@@ -1,5 +1,6 @@
 from functools import wraps
 import json
+from multiprocessing import Process, Queue
 import os
 import time
 import xgboost as xgb
@@ -17,19 +18,43 @@ from ray.train.batch_predictor import BatchPredictor
 _XGB_MODEL_PATH = "model.json"
 
 
-def time_it(f):
+def run_in_separate_process(f):
+    """Runs f in a separate process.
+
+    Note: f should take "queue" as a kwarg and communicates
+    its result through the queue.
+    """
+
     @wraps(f)
     def wrapper(*args, **kwargs):
-        start = time.monotonic()
-        result = f(*args, **kwargs)
-        time_taken = time.monotonic() - start
-        print(f"{f.__name__} takes {time_taken} seconds.")
-        return result, time_taken
+        q = Queue()
+        p = Process(target=f, args=args, kwargs={"queue": q})
+        p.start()
+        p.join()
+        return q.get()
 
     return wrapper
 
 
-@time_it
+def time_it_in_separate_process(f):
+    """Times f in a separate process and
+    sends its result and the time take through a queue."""
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        q = kwargs.pop("queue")
+        assert q
+        start = time.monotonic()
+        result = f(*args, **kwargs)
+        time_taken = time.monotonic() - start
+        print(f"{f.__name__} takes {time_taken} seconds.")
+        q.put((result, time_taken))
+
+    return wrapper
+
+
+@run_in_separate_process
+@time_it_in_separate_process
 def run_xgboost_training():
     ds = data.read_parquet(
         "s3://air-example-data-2/100G-xgboost-data.parquet/"
@@ -49,7 +74,8 @@ def run_xgboost_training():
     return result
 
 
-@time_it
+@run_in_separate_process
+@time_it_in_separate_process
 def run_xgboost_prediction(model_path: str):
     model = xgb.Booster()
     model.load_model(model_path)
