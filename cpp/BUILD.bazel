@@ -242,6 +242,9 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
+    # NOTE(WangTaoTheTonic): For java x-lang tests. See //java:all_tests
+    # and `CrossLanguageInvocationTest.java`.
+    visibility = ["//java:__subpackages__"],
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",

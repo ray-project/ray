@@ -10,6 +10,7 @@ import io.ray.api.exception.CrossLanguageException;
 import io.ray.api.exception.RayException;
 import io.ray.api.function.CppActorClass;
 import io.ray.api.function.CppActorMethod;
+import io.ray.api.function.CppFunction;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -31,7 +32,7 @@ import org.testng.annotations.Test;
 public class CrossLanguageInvocationTest extends BaseTest {
 
   private static final String PYTHON_MODULE = "test_cross_language_invocation";
-  private static final String CPP_LIBRARY = "cpp/counter";
+  private static final String[] CPP_LIBRARYS = {"counter", "plus"};
 
   @BeforeClass
   public void beforeClass() {
@@ -44,7 +45,8 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
     // Write the test Python file to the temp dir.
     InputStream in =
-        CrossLanguageInvocationTest.class.getResourceAsStream("/" + PYTHON_MODULE + ".py");
+        CrossLanguageInvocationTest.class.getResourceAsStream(
+            File.separator + PYTHON_MODULE + ".py");
     File pythonFile = new File(tempDir.getAbsolutePath() + File.separator + PYTHON_MODULE + ".py");
     try {
       FileUtils.copyInputStreamToFile(in, pythonFile);
@@ -52,22 +54,22 @@ public class CrossLanguageInvocationTest extends BaseTest {
       throw new RuntimeException(e);
     }
 
-    // Write the test Cpp file to the temp dir.
-    in = CrossLanguageInvocationTest.class.getResourceAsStream("/" + CPP_LIBRARY + ".so");
-    File cppFile = new File(tempDir.getAbsolutePath() + File.separator + CPP_LIBRARY + ".so");
-    try {
-      FileUtils.copyInputStreamToFile(in, cppFile);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
+    // Write the test Cpp files to the temp dir.
+    for (String lib : CPP_LIBRARYS) {
+      in =
+          CrossLanguageInvocationTest.class.getResourceAsStream(
+              File.separator + "cpp" + File.separator + lib + ".so");
+      File cppFile = new File(tempDir.getAbsolutePath() + File.separator + lib + ".so");
+      try {
+        FileUtils.copyInputStreamToFile(in, cppFile);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
     }
 
     System.setProperty(
         "ray.job.code-search-path",
-        System.getProperty("java.class.path")
-            + File.pathSeparator
-            + tempDir.getAbsolutePath()
-            + File.pathSeparator
-            + cppFile.getAbsolutePath());
+        System.getProperty("java.class.path") + File.pathSeparator + tempDir.getAbsolutePath());
   }
 
   @Test
@@ -168,6 +170,27 @@ public class CrossLanguageInvocationTest extends BaseTest {
     ObjectRef<byte[]> res =
         actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "2".getBytes());
+  }
+
+  @Test
+  public void testCallingCppFunction() {
+    // Test calling a simple C++ function.
+    ObjectRef<Integer> res = Ray.task(CppFunction.of("Plus", Integer.class), 1, 2).remote();
+    Assert.assertEquals(res.get(), Integer.valueOf(3));
+    // Test calling a C++ function that returns a large object.
+    ObjectRef<int[]> res1 =
+        Ray.task(CppFunction.of("ReturnLargeArray", int[].class), new int[100000]).remote();
+    Assert.assertEquals(res1.get().length, 100000);
+    // Test calling a C++ function with String type input/output.
+    ObjectRef<String> res2 = Ray.task(CppFunction.of("Echo", String.class), "CallCpp").remote();
+    Assert.assertEquals(res2.get(), "CallCpp");
+    // Test calling a C++ function that throws an exception.
+    Assert.expectThrows(
+        Exception.class,
+        () -> {
+          ObjectRef<Object> res3 = Ray.task(CppFunction.of("ThrowTask")).remote();
+          res3.get();
+        });
   }
 
   // TODO(WangTaoTheTonic): This hangs on Mac and can't be detected by `flakey-tests.ray.io`.
