@@ -186,6 +186,12 @@ class PlacementGroupFactory:
                 resources[k] = resources.get(k, 0) + v
         return resources
 
+    @property
+    @DeveloperAPI
+    def strategy(self) -> str:
+        """Returns the placement strategy"""
+        return self._strategy
+
     def _bind(self):
         sig = signature(placement_group)
         try:
