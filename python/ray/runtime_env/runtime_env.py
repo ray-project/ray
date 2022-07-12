@@ -433,17 +433,12 @@ class RuntimeEnv(dict):
         return plugin_uris
 
     def __setitem__(self, key: str, value: Any) -> None:
-<<<<<<< HEAD:python/ray/runtime_env.py
-        res_value = value
-        RuntimeEnvPluginSchemaManager.validate(key, res_value)
-=======
         if is_dataclass(value):
             jsonable_type = asdict(value)
         else:
             jsonable_type = value
         RuntimeEnvPluginSchemaManager.validate(key, jsonable_type)
         res_value = jsonable_type
->>>>>>> 50c7680... support strong type by @dataclass:python/ray/runtime_env/runtime_env.py
         if key in RuntimeEnv.known_fields and key in OPTION_TO_VALIDATION_FN:
             res_value = OPTION_TO_VALIDATION_FN[key](jsonable_type)
             if res_value is None:
