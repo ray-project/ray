@@ -156,7 +156,7 @@ trainer = TensorflowTrainer(
     },
     scaling_config={
         # Number of workers to use for data parallelism.
-        "num_workers": 3,
+        "num_workers": 2,
         # Whether to use GPU acceleration.
         "use_gpu": False,
         # trainer_resources=0 so that the example works on Colab.
@@ -184,7 +184,7 @@ from ray.tune.tuner import Tuner, TuneConfig
 tuner = Tuner(
     trainer,
     param_space=param_space,
-    tune_config=TuneConfig(num_samples=5, metric=metric, mode="min"),
+    tune_config=TuneConfig(num_samples=3, metric=metric, mode="min"),
 )
 # Execute tuning.
 result_grid = tuner.fit()
