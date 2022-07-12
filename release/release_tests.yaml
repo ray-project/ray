@@ -103,13 +103,14 @@
 
   frequency: nightly
   team: ml
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: cpt_autoscaling_1-3.yaml
 
   run:
-    timeout: 3000
+    timeout: 6000
     script: python workloads/tune_scale_up_down.py
     wait_for_nodes:
       num_nodes: 0

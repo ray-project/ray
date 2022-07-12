@@ -9,8 +9,8 @@ from ray import tune
 def train(config):
     this_node_ip = ray.util.get_node_ip_address()
     if config["head_node_ip"] == this_node_ip:
-        # On the head node, just run for 10 minutes
-        for i in range(40):
+        # On the head node, run for 60 minutes
+        for i in range(60):
             tune.report(metric=i)
             time.sleep(60)
     else:
