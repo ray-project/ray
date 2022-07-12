@@ -87,6 +87,16 @@ py_test(
     args = ["--smoke-test"]
 )
 
+# py_test(
+#     name = "tensorflow_autoencoder_example", # REGRESSION
+#     size = "medium",
+#     main = "examples/tf/tensorflow_autoencoder_example.py",
+#     srcs = ["examples/tf/tensorflow_autoencoder_example.py"],
+#     tags = ["team:ml", "exclusive"],
+#     deps = [":ml_lib"],
+#     args = ["--smoke-test"]
+# )
+
 py_test(
     name = "torch_fashion_mnist_example",
     size = "medium",
@@ -162,22 +172,6 @@ py_test(
 )
 
 py_test(
-    name = "test_batch_predictor",
-    size = "small",
-    srcs = ["tests/test_batch_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_batchpredictor_runtime",
-    size = "medium",
-    srcs = ["tests/test_batchpredictor_runtime.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
@@ -210,25 +204,9 @@ py_test(
 )
 
 py_test(
-    name = "test_huggingface_predictor",
-    size = "medium",
-    srcs = ["tests/test_huggingface_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_lightgbm_predictor",
+    name = "test_keras_callback",
     size = "small",
-    srcs = ["tests/test_lightgbm_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_predictor",
-    size = "small",
-    srcs = ["tests/test_predictor.py"],
+    srcs = ["tests/test_keras_callback.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -242,57 +220,9 @@ py_test(
 )
 
 py_test(
-    name = "test_rl_predictor",
+    name = "test_tensor_extension",
     size = "small",
-    srcs = ["tests/test_rl_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_sklearn_predictor",
-    size = "small",
-    srcs = ["tests/test_sklearn_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_tensorflow_predictor",
-    size = "small",
-    srcs = ["tests/test_tensorflow_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_tensorflow_utils",
-    size = "small",
-    srcs = ["tests/test_tensorflow_utils.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_torch_predictor",
-    size = "small",
-    srcs = ["tests/test_torch_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_torch_utils",
-    size = "small",
-    srcs = ["tests/test_torch_utils.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_xgboost_predictor",
-    size = "small",
-    srcs = ["tests/test_xgboost_predictor.py"],
+    srcs = ["tests/test_tensor_extension.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -302,4 +232,10 @@ py_test(
 py_library(
     name = "ml_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    visibility = [
+        "//python/ray/air:__pkg__",
+        "//python/ray/air:__subpackages__",
+        "//python/ray/train:__pkg__",
+        "//python/ray/train:__subpackages__",
+    ],
 )

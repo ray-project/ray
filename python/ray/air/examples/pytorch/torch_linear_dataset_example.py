@@ -1,18 +1,18 @@
 import argparse
 import random
 from typing import Tuple
+from ray.air.checkpoint import Checkpoint
 
 import torch
 import torch.nn as nn
 
 import ray
 import ray.train as train
-from ray.data import Dataset
-from ray.air import train_test_split
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.torch import TorchPredictor
+from ray.air import session, train_test_split
 from ray.air.result import Result
-from ray.train.torch import TorchTrainer
+from ray.data import Dataset
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.torch import TorchPredictor, TorchTrainer
 
 
 def get_datasets(a=5, b=10, size=1000, split=0.8) -> Tuple[Dataset]:
@@ -65,8 +65,8 @@ def train_func(config):
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
-    train_dataset_shard = train.get_dataset_shard("train")
-    validation_dataset = train.get_dataset_shard("validation")
+    train_dataset_shard = session.get_dataset_shard("train")
+    validation_dataset = session.get_dataset_shard("validation")
 
     model = nn.Linear(1, hidden_size)
     model = train.torch.prepare_model(model)
@@ -96,13 +96,12 @@ def train_func(config):
         device = train.torch.get_device()
 
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
-        if train.world_rank() == 0:
+        if session.get_world_rank() == 0:
             result = validate_epoch(validation_torch_dataset, model, loss_fn, device)
         else:
             result = {}
-        train.report(**result)
         results.append(result)
-        train.save_checkpoint(model=model)
+        session.report(result, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
     return results
 

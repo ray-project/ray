@@ -1,5 +1,5 @@
 # flake8: noqa
-
+# isort: skip_file
 
 # __preprocessor_setup_start__
 import pandas as pd
@@ -82,25 +82,23 @@ with checkpoint.as_directory() as checkpoint_path:
 
 
 # __predictor_start__
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.xgboost import XGBoostPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.xgboost import XGBoostPredictor
 
 test_dataset = ray.data.from_items([{"x": x} for x in range(2, 32, 3)])
 
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
-predicted_labels = batch_predictor.predict(test_dataset)
-print(predicted_labels.to_pandas())
-#    predictions
-# 0     0.098437
-# 1     5.604667
-# 2    11.405312
-# 3    15.684700
-# 4    23.990948
-# 5    29.900211
-# 6    34.599442
-# 7    40.696899
-# 8    45.681076
-# 9    50.290031
+predicted_probabilities = batch_predictor.predict(test_dataset)
+predicted_probabilities.show()
+# {'predictions': 0.09843720495700836}
+# {'predictions': 5.604666709899902}
+# {'predictions': 11.405311584472656}
+# {'predictions': 15.684700012207031}
+# {'predictions': 23.990947723388672}
+# {'predictions': 29.900211334228516}
+# {'predictions': 34.59944152832031}
+# {'predictions': 40.6968994140625}
+# {'predictions': 45.68107604980469}
 # __predictor_end__
 
 

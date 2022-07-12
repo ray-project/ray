@@ -26,10 +26,18 @@ Preprocessors
 
 .. _air-trainer-ref:
 
-Trainer
-~~~~~~~
+Trainers and Predictors
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.trainer.BaseTrainer
+    :members:
+
+.. autoclass:: ray.train.predictor.Predictor
+    :members:
+
+.. autoclass:: ray.train.predictor.DataBatchType
+
+.. autoclass:: ray.train.batch_predictor.BatchPredictor
     :members:
 
 .. automodule:: ray.train.xgboost
@@ -81,49 +89,14 @@ Tuner
 .. automodule:: ray.tune.result_grid
     :members:
 
-Predictors
-~~~~~~~~~~
-
-.. autoclass:: ray.air.predictor.Predictor
-    :members:
-
-.. autoclass:: ray.air.predictor.DataBatchType
-
-.. autoclass:: ray.air.batch_predictor.BatchPredictor
-    :members:
-
-.. automodule:: ray.air.predictors.integrations.xgboost
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.lightgbm
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.tensorflow
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.torch
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.sklearn
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.predictors.integrations.huggingface
-    :members:
-    :show-inheritance:
-
 .. _air-serve-integration:
 
 Serving
 ~~~~~~~
 
-.. autoclass:: ray.serve.model_wrappers.ModelWrapperDeployment
+.. autoclass:: ray.serve.air_integrations.PredictorDeployment
 
-.. autoclass:: ray.serve.model_wrappers.ModelWrapper
+.. autoclass:: ray.serve.air_integrations.PredictorWrapper
 
 .. _air-results-ref:
 
@@ -151,3 +124,39 @@ Configs
 .. automodule:: ray.air.config
     :members:
 
+.. autoclass:: ray.air.config.CheckpointConfig
+
+
+.. _air-builtin-callbacks:
+
+Callbacks
+~~~~~~~~~
+
+Comet
+#####
+
+.. autoclass:: ray.air.callbacks.comet.CometLoggerCallback
+
+Keras
+#####
+
+.. autoclass:: ray.air.callbacks.keras.Callback
+    :members:
+
+MLflow
+######
+
+.. autoclass:: ray.air.callbacks.mlflow.MLflowLoggerCallback
+
+Weights and Biases
+##################
+
+.. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
+
+.. _air-session-ref:
+
+Session
+~~~~~~~
+
+.. automodule:: ray.air.session
+    :members:

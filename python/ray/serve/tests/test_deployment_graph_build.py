@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.experimental.dag import InputNode
+from ray.dag import InputNode
 from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.deployment_graph_build import (
     transform_ray_dag_to_serve_dag,
@@ -23,7 +23,7 @@ from ray.serve.tests.resources.test_dags import (
     get_multi_instantiation_class_nested_deployment_arg_dag,
     get_simple_func_dag,
 )
-from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.dag.utils import _DAGNodeNameGenerator
 
 
 def _validate_consistent_python_output(
@@ -46,7 +46,7 @@ def _validate_consistent_python_output(
 )
 def test_build_simple_func_dag(serve_instance):
     ray_dag, _ = get_simple_func_dag()
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
@@ -65,7 +65,7 @@ def test_build_simple_func_dag(serve_instance):
 def test_simple_single_class(serve_instance):
     ray_dag, _ = get_simple_class_with_class_method_dag()
 
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
@@ -77,49 +77,17 @@ def test_simple_single_class(serve_instance):
     )
 
 
-def test_single_class_with_valid_ray_options(serve_instance):
-    with InputNode() as dag_input:
-        model = Model.options(num_cpus=1, memory=1000).bind(2, ratio=0.3)
-        ray_dag = model.forward.bind(dag_input)
-
-    with DAGNodeNameGenerator() as node_name_generator:
-        serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
-        )
-    deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    assert len(deployments) == 1
-    deployments[0].deploy()
-    _validate_consistent_python_output(
-        deployments[0], ray_dag, deployments[0].name, input=1, output=0.6
-    )
-
-    deployment = serve.get_deployment(deployments[0].name)
-    assert deployment.ray_actor_options.get("num_cpus") == 1
-    assert deployment.ray_actor_options.get("memory") == 1000
-    assert deployment.ray_actor_options.get("runtime_env") == {}
-
-
 def test_single_class_with_invalid_deployment_options(serve_instance):
-    with InputNode() as dag_input:
-        model = Model.options(name="my_deployment").bind(2, ratio=0.3)
-        ray_dag = model.forward.bind(dag_input)
-
-    with DAGNodeNameGenerator() as node_name_generator:
-        serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
-        )
-    deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    assert len(deployments) == 1
-    with pytest.raises(
-        ValueError, match="Specifying 'name' in ray_actor_options is not allowed"
-    ):
-        deployments[0].deploy()
+    with pytest.raises(TypeError, match="name must be a string"):
+        with InputNode() as dag_input:
+            model = Model.options(name=123).bind(2, ratio=0.3)
+            _ = model.forward.bind(dag_input)
 
 
 def test_func_class_with_class_method_dag(serve_instance):
     ray_dag, _ = get_func_class_with_class_method_dag()
 
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
@@ -127,7 +95,7 @@ def test_func_class_with_class_method_dag(serve_instance):
     serve_executor_root_dag = serve_root_dag.apply_recursive(
         transform_serve_dag_to_serve_executor_dag
     )
-    assert len(deployments) == 2
+    assert len(deployments) == 3
     for deployment in deployments:
         deployment.deploy()
 
@@ -143,7 +111,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     """
     ray_dag, _ = get_multi_instantiation_class_deployment_in_init_args_dag()
 
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
@@ -165,7 +133,7 @@ def test_shared_deployment_handle(serve_instance):
     """
     ray_dag, _ = get_shared_deployment_handle_dag()
 
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
@@ -188,7 +156,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     """
     ray_dag, _ = get_multi_instantiation_class_nested_deployment_arg_dag()
 
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
@@ -216,7 +184,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
 def test_get_pipeline_input_node():
     # 1) No InputNode found
     ray_dag = combine.bind(1, 2)
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
@@ -234,7 +202,7 @@ def test_get_pipeline_input_node():
     with pytest.raises(
         AssertionError, match="Each DAG should only have one unique InputNode"
     ):
-        with DAGNodeNameGenerator() as node_name_generator:
+        with _DAGNodeNameGenerator() as node_name_generator:
             serve_dag = ray_dag.apply_recursive(
                 lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
             )
@@ -243,7 +211,7 @@ def test_get_pipeline_input_node():
 
 def test_unique_name_reset_upon_build(serve_instance):
     ray_dag, _ = get_multi_instantiation_class_deployment_in_init_args_dag()
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
@@ -251,7 +219,7 @@ def test_unique_name_reset_upon_build(serve_instance):
     assert deployments[0].name == "Model"
     assert deployments[1].name == "Model_1"
 
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )

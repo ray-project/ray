@@ -1,4 +1,5 @@
 import abc
+from functools import partial
 import threading
 from typing import (
     Callable,
@@ -30,7 +31,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial
+    from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
 
@@ -419,7 +420,8 @@ class SyncerCallback(Callback):
 
     def _get_trial_sync_process(self, trial: "Trial"):
         return self._sync_processes.setdefault(
-            trial.trial_id, _BackgroundProcess(sync_dir_between_nodes)
+            trial.trial_id,
+            _BackgroundProcess(partial(sync_dir_between_nodes, max_size_bytes=None)),
         )
 
     def _remove_trial_sync_process(self, trial: "Trial"):

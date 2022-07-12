@@ -1,37 +1,37 @@
-from typing import Dict, List
 import glob
 import io
 import json
 from collections import defaultdict
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import Dict, List
 
 import pytest
 
 import ray
 import ray.train as train
 from ray.train import Trainer
-from ray.train.backend import BackendConfig, Backend
+from ray.train._internal.results_preprocessors.preprocessor import (
+    SequentialResultsPreprocessor,
+)
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
 from ray.train.callbacks import (
-    TrainingCallback,
     JsonLoggerCallback,
     PrintCallback,
     TBXLoggerCallback,
     TorchTensorboardProfilerCallback,
+    TrainingCallback,
 )
 from ray.train.callbacks.logging import (
     MLflowLoggerCallback,
     _TrainCallbackLogdirManager,
 )
 from ray.train.constants import (
-    TRAINING_ITERATION,
-    DETAILED_AUTOFILLED_KEYS,
     BASIC_AUTOFILLED_KEYS,
+    DETAILED_AUTOFILLED_KEYS,
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-)
-from ray.train._internal.worker_group import WorkerGroup
-from ray.train._internal.results_preprocessors.preprocessor import (
-    SequentialResultsPreprocessor,
+    TRAINING_ITERATION,
 )
 
 try:
@@ -277,8 +277,9 @@ def test_torch_tensorboard_profiler_callback(ray_start_4_cpus, tmp_path):
     num_epochs = 2
 
     def train_func():
-        from ray.train.torch import TorchWorkerProfiler
         from torch.profiler import profile, record_function, schedule
+
+        from ray.train.torch import TorchWorkerProfiler
 
         twp = TorchWorkerProfiler()
         with profile(
@@ -351,7 +352,8 @@ def test_hotfix_callback_nested_recusive_calling():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

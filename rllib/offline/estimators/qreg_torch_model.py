@@ -6,14 +6,14 @@ import numpy as np
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType, ModelConfigDict
 
 torch, nn = try_import_torch()
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class QRegTorchModel:
     """Pytorch implementation of the Q-Reg model from
     https://arxiv.org/pdf/1911.06854.pdf
@@ -175,7 +175,7 @@ class QRegTorchModel:
                 q_values, _ = self.q_model({"obs": obs[idxs]}, [], None)
                 q_acts = torch.gather(
                     q_values, -1, actions[idxs].unsqueeze(-1)
-                ).squeeze()
+                ).squeeze(-1)
                 loss = discounts[idxs] * ps[idxs] * (returns[idxs] - q_acts) ** 2
                 loss = torch.mean(loss)
                 self.optimizer.zero_grad()
@@ -205,7 +205,7 @@ class QRegTorchModel:
         q_values, _ = self.q_model({"obs": obs}, [], None)
         if actions is not None:
             actions = torch.tensor(actions, device=self.device, dtype=int)
-            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
+            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
         return q_values.detach()
 
     def estimate_v(

@@ -4,19 +4,15 @@ import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
-from ray.util import PublicAPI
-from ray.air.checkpoint import Checkpoint
-from ray.train.constants import TRAIN_DATASET_KEY
-from ray.air.config import (
-    RunConfig,
-    ScalingConfig,
-    ScalingConfigDataClass,
-)
-from ray.air.result import Result
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.air.result import Result
+from ray.train.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
 from ray.tune.error import TuneError
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
+from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.dict import merge_dicts
 
@@ -65,15 +61,16 @@ class BaseTrainer(abc.ABC):
 
     **How do I create a new Trainer?**
 
-    Subclass ``ray.train.BaseTrainer``, and override the ``training_loop``
+    Subclass ``ray.train.trainer.BaseTrainer``, and override the ``training_loop``
     method, and optionally ``setup``.
 
     .. code-block:: python
 
         import torch
 
-        from ray.train import BaseTrainer
+        from ray.train.trainer import BaseTrainer
         from ray import tune
+        from ray.air import session
 
 
         class MyPytorchTrainer(BaseTrainer):
@@ -110,7 +107,7 @@ class BaseTrainer(abc.ABC):
 
                     # Use Tune functions to report intermediate
                     # results.
-                    tune.report(loss=loss, epoch=epoch_idx)
+                    session.report({"loss": loss, "epoch": epoch_idx})
 
     **How do I use an existing Trainer or one of my custom Trainers?**
 
@@ -287,7 +284,7 @@ class BaseTrainer(abc.ABC):
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
         You can use the :ref:`Tune Function API functions <tune-function-docstring>`
-        (``tune.report()`` and ``tune.save_checkpoint()``) inside
+        (``session.report()`` and ``session.get_checkpoint()``) inside
         this training loop.
 
         Example:
@@ -299,7 +296,7 @@ class BaseTrainer(abc.ABC):
                     def training_loop(self):
                         for epoch_idx in range(5):
                             ...
-                            tune.report(epoch=epoch_idx)
+                            session.report({"epoch": epoch_idx})
 
         """
         raise NotImplementedError
@@ -356,10 +353,15 @@ class BaseTrainer(abc.ABC):
         # stdout messages and the results directory.
         train_func.__name__ = trainer_cls.__name__
 
-        trainable_cls = wrap_function(train_func)
+        trainable_cls = wrap_function(train_func, warn=False)
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
+
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)

@@ -1,11 +1,14 @@
-from typing import Dict, List, Union, Optional, TypeVar
 import copy
 from collections import deque
 from collections.abc import Mapping, Sequence
+from typing import Dict, List, Optional, TypeVar, Union
+
+from ray.util.annotations import Deprecated
 
 T = TypeVar("T")
 
 
+@Deprecated
 def merge_dicts(d1: dict, d2: dict) -> dict:
     """
     Args:
@@ -20,6 +23,7 @@ def merge_dicts(d1: dict, d2: dict) -> dict:
     return merged
 
 
+@Deprecated
 def deep_update(
     original: dict,
     new_dict: dict,
@@ -92,6 +96,7 @@ def deep_update(
     return original
 
 
+@Deprecated
 def flatten_dict(
     dt: Dict,
     delimiter: str = "/",
@@ -144,6 +149,7 @@ def flatten_dict(
     return dt
 
 
+@Deprecated
 def unflatten_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
     """Unflatten dict. Does not support unflattening lists."""
     dict_type = type(dt)
@@ -164,6 +170,7 @@ def unflatten_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
     return out
 
 
+@Deprecated
 def unflatten_list_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
     """Unflatten nested dict and list.
 
@@ -212,6 +219,7 @@ def unflatten_list_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
     return out
 
 
+@Deprecated
 def unflattened_lookup(
     flat_key: str, lookup: Union[Mapping, Sequence], delimiter: str = "/", **kwargs
 ) -> Union[Mapping, Sequence]:

@@ -1,19 +1,20 @@
-import numpy as np
+import os
 import platform
-import pytest
 import sys
 import time
-import os
+
+import numpy as np
+import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
+from ray._private.test_utils import make_global_state_accessor, wait_for_condition
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
 )
-from ray._private.test_utils import wait_for_condition, make_global_state_accessor
 
 
 @pytest.mark.skipif(
@@ -49,9 +50,9 @@ def test_load_balancing_under_constrained_memory(
 
     @ray.remote
     def f(i, x):
-        print(i, ray.worker.global_worker.node.unique_id)
+        print(i, ray._private.worker.global_worker.node.unique_id)
         time.sleep(0.1)
-        return ray.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     deps = [create_object.remote() for _ in range(num_tasks)]
     for i, dep in enumerate(deps):
@@ -83,7 +84,7 @@ def test_critical_object_store_mem_resource_utilization(ray_start_cluster):
 
     @ray.remote
     def f():
-        return ray.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     # Wait for resource availabilities to propagate.
     time.sleep(1)
@@ -112,7 +113,7 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         @ray.remote(scheduling_strategy="DEFAULT")
         def get_node_id_1():
-            return ray.worker.global_worker.current_node_id
+            return ray._private.worker.global_worker.current_node_id
 
         head_node_id = ray.get(get_node_id_1.options(resources={"head": 1}).remote())
         worker_node_id = ray.get(
@@ -126,7 +127,7 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
         )
         def get_node_id_2():
-            return ray.worker.global_worker.current_node_id
+            return ray._private.worker.global_worker.current_node_id
 
         assert (
             ray.get(get_node_id_2.options(scheduling_strategy="DEFAULT").remote())
@@ -135,7 +136,7 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         @ray.remote
         def get_node_id_3():
-            return ray.worker.global_worker.current_node_id
+            return ray._private.worker.global_worker.current_node_id
 
         @ray.remote(
             num_cpus=1,
@@ -146,7 +147,7 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
         class Actor1:
             def get_node_ids(self):
                 return [
-                    ray.worker.global_worker.current_node_id,
+                    ray._private.worker.global_worker.current_node_id,
                     # Use parent's placement group
                     ray.get(get_node_id_3.remote()),
                     ray.get(
@@ -177,7 +178,7 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
 
         @ray.remote(scheduling_strategy="DEFAULT")
         def get_node_id_1():
-            return ray.worker.global_worker.current_node_id
+            return ray._private.worker.global_worker.current_node_id
 
         worker_node_id = ray.get(
             get_node_id_1.options(resources={"worker": 1}).remote()
@@ -200,7 +201,7 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
         )
         def get_node_id_2():
-            return ray.worker.global_worker.current_node_id
+            return ray._private.worker.global_worker.current_node_id
 
         assert ray.get(get_node_id_2.remote()) == worker_node_id
 
@@ -210,7 +211,7 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
         )
         class Actor1:
             def get_node_id(self):
-                return ray.worker.global_worker.current_node_id
+                return ray._private.worker.global_worker.current_node_id
 
         actor1 = Actor1.remote()
         assert ray.get(actor1.get_node_id.remote()) == worker_node_id
@@ -218,7 +219,7 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
         @ray.remote
         class Actor2:
             def get_node_id(self):
-                return ray.worker.global_worker.current_node_id
+                return ray._private.worker.global_worker.current_node_id
 
         actor2 = Actor2.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
@@ -716,4 +717,7 @@ def test_data_locality_spilled_objects(
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

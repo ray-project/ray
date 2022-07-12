@@ -1,24 +1,19 @@
 import argparse
+
 import numpy as np
-
-
 import tensorflow as tf
-from ray.air.batch_predictor import BatchPredictor
-from tensorflow.keras.callbacks import Callback
 
 import ray
-import ray.train as train
-from ray.data import Dataset
-from ray.train.tensorflow import prepare_dataset_shard
-from ray.train.tensorflow import TensorflowTrainer
-from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
+from ray.air import session
+from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
 from ray.air.result import Result
-
-
-class TrainCheckpointReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{"model": self.model.get_weights()})
-        train.report(**logs)
+from ray.data import Dataset
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.tensorflow import (
+    TensorflowPredictor,
+    TensorflowTrainer,
+    prepare_dataset_shard,
+)
 
 
 def get_dataset(a=5, b=10, size=1000) -> Dataset:
@@ -52,7 +47,7 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = train.get_dataset_shard("train")
+    dataset = session.get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):
@@ -98,9 +93,8 @@ def predict_linear(result: Result) -> Dataset:
 
     predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
 
-    pandas_predictions = predictions.to_pandas(float("inf"))
-
-    print(f"PREDICTIONS\n{pandas_predictions}")
+    print("PREDICTIONS")
+    predictions.show()
 
     return predictions
 

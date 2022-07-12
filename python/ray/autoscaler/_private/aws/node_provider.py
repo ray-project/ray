@@ -6,8 +6,9 @@ from collections import OrderedDict, defaultdict
 from typing import Any, Dict, List
 
 import botocore
+from boto3.resources.base import ServiceResource
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
     CLOUDWATCH_AGENT_INSTALLED_TAG,
@@ -54,7 +55,7 @@ def from_aws_format(tags):
     return tags
 
 
-def make_ec2_client(region, max_retries, aws_credentials=None):
+def make_ec2_resource(region, max_retries, aws_credentials=None) -> ServiceResource:
     """Make client, retrying requests up to `max_retries`."""
     aws_credentials = aws_credentials or {}
     return resource_cache("ec2", region, max_retries, **aws_credentials)
@@ -99,12 +100,12 @@ class AWSNodeProvider(NodeProvider):
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", True)
         aws_credentials = provider_config.get("aws_credentials")
 
-        self.ec2 = make_ec2_client(
+        self.ec2 = make_ec2_resource(
             region=provider_config["region"],
             max_retries=BOTO_MAX_RETRIES,
             aws_credentials=aws_credentials,
         )
-        self.ec2_fail_fast = make_ec2_client(
+        self.ec2_fail_fast = make_ec2_resource(
             region=provider_config["region"],
             max_retries=0,
             aws_credentials=aws_credentials,
