@@ -24,11 +24,6 @@ class LinearDataset(torch.utils.data.Dataset):
         return len(self.x)
 
 
-class LinearDatasetDict(LinearDataset):
-    def __getitem__(self, index):
-        return {"x": self.x[index, None], "y": self.y[index, None]}
-
-
 def train_epoch(dataloader, model, loss_fn, optimizer):
     for X, y in dataloader:
         # Compute prediction error

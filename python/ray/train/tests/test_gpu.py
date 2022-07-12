@@ -21,7 +21,7 @@ from ray.train.examples.tensorflow_mnist_example import (
 from ray.train.examples.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.examples.torch_linear_example import LinearDataset, LinearDatasetDict
+from ray.train.examples.torch_linear_example import LinearDataset
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
@@ -40,6 +40,13 @@ def ray_start_1_cpu_1_gpu():
     address_info = ray.init(num_cpus=1, num_gpus=1)
     yield address_info
     ray.shutdown()
+
+
+class LinearDatasetDict(LinearDataset):
+    """Modifies the LinearDataset to return a Dict instead of a Tuple."""
+
+    def __getitem__(self, index):
+        return {"x": self.x[index, None], "y": self.y[index, None]}
 
 
 # TODO: Refactor as a backend test.
