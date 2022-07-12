@@ -112,6 +112,7 @@ def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
     fn_arg_name: Optional[str] = "train_func",
+    discard_returns: bool = False,
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
     Args:
@@ -121,6 +122,7 @@ def construct_train_func(
             ``train_func``. If None then an empty Dict will be created.
         fn_arg_name (Optional[str]): The name of training function to use for error
             messages.
+        discard_returns: Whether to discard any returns from train_func or not.
     Returns:
         A valid training function.
     Raises:
@@ -129,14 +131,17 @@ def construct_train_func(
     signature = inspect.signature(train_func)
     num_params = len(signature.parameters)
 
-    # Discard any returns from the function so that
-    # BackendExecutor doesn't try to deserialize them.
-    # Those returns are inaccesible with AIR anyway.
-    @functools.wraps(train_func)
-    def discard_return_wrapper(*args, **kwargs):
-        train_func(*args, **kwargs)
+    if discard_returns:
+        # Discard any returns from the function so that
+        # BackendExecutor doesn't try to deserialize them.
+        # Those returns are inaccesible with AIR anyway.
+        @functools.wraps(train_func)
+        def discard_return_wrapper(*args, **kwargs):
+            train_func(*args, **kwargs)
 
-    wrapped_train_func = discard_return_wrapper
+        wrapped_train_func = discard_return_wrapper
+    else:
+        wrapped_train_func = train_func
 
     if num_params > 1:
         err_msg = (

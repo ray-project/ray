@@ -317,6 +317,7 @@ class DataParallelTrainer(BaseTrainer):
             self._train_loop_per_worker,
             self._train_loop_config,
             fn_arg_name="train_loop_per_worker",
+            discard_returns=True,
         )
 
         additional_resources_per_worker = (
