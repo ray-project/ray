@@ -3,7 +3,6 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 import tensorflow as tf
-import pytest
 
 import ray
 from ray.air.checkpoint import Checkpoint
