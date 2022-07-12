@@ -12,6 +12,7 @@ from torchvision.transforms import ToTensor
 
 
 CONFIG = {"lr": 1e-3, "batch_size": 64}
+VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
 
 
 # Define model
@@ -34,7 +35,9 @@ class NeuralNetwork(nn.Module):
         return logits
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer, world_size: int):
+def train_epoch(
+    dataloader, model, loss_fn, optimizer, world_size: int, local_rank: int
+):
     size = len(dataloader.dataset) // world_size
     model.train()
     for batch, (X, y) in enumerate(dataloader):
@@ -49,10 +52,10 @@ def train_epoch(dataloader, model, loss_fn, optimizer, world_size: int):
 
         if batch % 100 == 0:
             loss, current = loss.item(), batch * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            print(f"[{local_rank}] loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
-def validate_epoch(dataloader, model, loss_fn, world_size: int):
+def validate_epoch(dataloader, model, loss_fn, world_size: int, local_rank: int):
     size = len(dataloader.dataset) // world_size
     num_batches = len(dataloader)
     model.eval()
@@ -65,7 +68,7 @@ def validate_epoch(dataloader, model, loss_fn, world_size: int):
     test_loss /= num_batches
     correct /= size
     print(
-        f"Test Error: \n "
+        f"[{local_rank}] Test Error: \n "
         f"Accuracy: {(100 * correct):>0.1f}%, "
         f"Avg loss: {test_loss:>8f} \n"
     )
@@ -83,8 +86,10 @@ def train_func(use_ray: bool, config: Dict):
 
     if use_ray:
         world_size = session.get_world_size()
+        local_rank = distributed.get_rank()
     else:
         world_size = distributed.get_world_size()
+        local_rank = distributed.get_rank()
 
     worker_batch_size = batch_size // world_size
 
@@ -111,21 +116,40 @@ def train_func(use_ray: bool, config: Dict):
     # Create model.
     model = NeuralNetwork()
 
+    # Prepare model
     if use_ray:
         model = train.torch.prepare_model(model)
     else:
         model = nn.parallel.DistributedDataParallel(model)
+        device = torch.device("cpu")
+        model = model.to(device)
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
     for _ in range(epochs):
-        train_epoch(train_dataloader, model, loss_fn, optimizer, world_size=world_size)
-        loss = validate_epoch(test_dataloader, model, loss_fn, world_size=world_size)
+        train_epoch(
+            train_dataloader,
+            model,
+            loss_fn,
+            optimizer,
+            world_size=world_size,
+            local_rank=local_rank,
+        )
+        loss = validate_epoch(
+            test_dataloader,
+            model,
+            loss_fn,
+            world_size=world_size,
+            local_rank=local_rank,
+        )
         if use_ray:
             session.report(dict(loss=loss))
         else:
             print(f"Reporting loss: {loss:.4f}")
+            if local_rank == 0:
+                with open(VANILLA_RESULT_JSON, "w") as f:
+                    json.dump({"loss": loss}, f)
 
 
 def train_torch_ray_air(
@@ -134,7 +158,7 @@ def train_torch_ray_air(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-):
+) -> float:
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.torch import TorchTrainer
@@ -146,6 +170,7 @@ def train_torch_ray_air(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
         scaling_config={
+            "trainer_resources": {"CPU": 0},
             "num_workers": num_workers,
             "resources_per_worker": {"CPU": cpus_per_worker},
             "use_gpu": use_gpu,
@@ -153,6 +178,7 @@ def train_torch_ray_air(
     )
     result = trainer.fit()
     print(f"Last result: {result.metrics}")
+    return result.metrics["loss"]
 
 
 def train_torch_vanilla_worker(
@@ -181,7 +207,8 @@ def train_torch_vanilla(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-):
+    master_port: int = 12355,
+) -> float:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
     import ray
@@ -190,7 +217,7 @@ def train_torch_vanilla(
     path = os.path.abspath(__file__)
     upload_file_to_all_nodes(path)
     master_addr = ray.util.get_node_ip_address()
-    master_port = 12355  # hardcoded
+    master_port = master_port
 
     num_epochs = config["epochs"]
 
@@ -209,8 +236,8 @@ def train_torch_vanilla(
             master_addr,
             "--master-port",
             str(master_port),
-            "--use-gpu" if use_gpu else "",
         ]
+        + (["--use-gpu"] if use_gpu else [])
         for rank in range(num_workers)
     ]
 
@@ -221,6 +248,13 @@ def train_torch_vanilla(
             "GPU": int(use_gpu),
         },
     )
+
+    if os.path.exists(VANILLA_RESULT_JSON):
+        with open(VANILLA_RESULT_JSON, "r") as f:
+            result = json.load(f)
+        return result["loss"]
+
+    return 0.0
 
 
 @click.group(help="Run Torch benchmarks")
@@ -233,11 +267,13 @@ def cli():
 @click.option("--num-workers", type=int, default=4)
 @click.option("--cpus-per-worker", type=int, default=8)
 @click.option("--use-gpu", is_flag=True, default=False)
+@click.option("--master-port", type=int, default=12355)
 def run(
     num_epochs: int = 4,
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
+    master_port: int = 12355,
 ):
     import ray
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
@@ -255,7 +291,7 @@ def run(
     print("Running Torch Ray benchmark")
 
     start_time = time.monotonic()
-    train_torch_ray_air(
+    loss_ray = train_torch_ray_air(
         num_workers=num_workers,
         cpus_per_worker=cpus_per_worker,
         use_gpu=use_gpu,
@@ -265,29 +301,53 @@ def run(
 
     time_ray = time_taken
 
-    print(f"Finished Ray training ({num_epochs} epochs) in {time_taken:.2f} seconds.")
+    print(
+        f"Finished Ray training ({num_epochs} epochs) in {time_taken:.2f} seconds. "
+        f"Observed loss = {loss_ray:.4f}"
+    )
 
     time.sleep(5)
 
     print("Running Torch vanilla benchmark")
 
     start_time = time.monotonic()
-    train_torch_vanilla(num_workers=4, use_gpu=use_gpu, config=config)
+    loss_vanilla = train_torch_vanilla(
+        num_workers=4, use_gpu=use_gpu, config=config, master_port=master_port
+    )
     time_taken = time.monotonic() - start_time
 
     time_vanilla = time_taken
 
     print(
-        f"Finished vanilla training ({num_epochs} epochs) in {time_taken:.2f} seconds."
+        f"Finished vanilla training ({num_epochs} epochs) in {time_taken:.2f} seconds. "
+        f"Observed loss = {loss_vanilla:.4f}"
     )
 
     result = {
-        "torch_mnist_ray": time_ray,
-        "torch_mnist_vanilla": time_vanilla,
+        "torch_mnist_ray_time_s": time_ray,
+        "torch_mnist_ray_loss": loss_ray,
+        "torch_mnist_vanilla_time_s": time_vanilla,
+        "torch_mnist_vanilla_loss": loss_vanilla,
     }
+
+    print("Results:", result)
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
+
+    ratio = (time_ray / time_vanilla) if time_vanilla != 0 else 1.0
+    if ratio > 1.15:
+        raise RuntimeError(
+            f"Training on Ray took {time_ray:.2f} seconds, which is more than "
+            f"1.15x of the vanilla training time of {time_vanilla:.2f} seconds "
+            f"({ratio:.2f}x)."
+        )
+
+    print(
+        f"Training on Ray took {time_ray:.2f} seconds vs. vanilla training time "
+        f"of {time_vanilla:.2f} seconds, which is acceptable performance "
+        f"({ratio:.2f}x)."
+    )
 
 
 @cli.command(help="Run PyTorch vanilla worker")

@@ -55,7 +55,7 @@ def upload_file_to_all_nodes(path: str):
 
 @ray.remote
 def _run_command(cmd: str):
-    return subprocess.check_output(cmd)
+    return subprocess.check_call(cmd)
 
 
 def run_command_on_all_nodes(cmd: List[str]):
