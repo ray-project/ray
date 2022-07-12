@@ -50,6 +50,7 @@ from ray.serve.utils import (
     install_serve_encoders_to_fastapi,
 )
 from ray.util.annotations import PublicAPI
+from ray._private.utils import deprecated
 
 logger = logging.getLogger(__file__)
 
@@ -456,6 +457,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
@@ -497,6 +499,7 @@ def get_deployment(name: str) -> Deployment:
     )
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
