@@ -17,7 +17,7 @@ worker_node_types:
 aws:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
-        Ebs:
+          Ebs:
             Iops: 5000
             Throughput: 1000
             VolumeSize: 1000
