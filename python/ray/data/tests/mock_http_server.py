@@ -1,4 +1,4 @@
-# extracted from aioboto3
+# extracted from fsspec
 #    https://github.com/fsspec/filesystem_spec/blob/a8cfd9c52a20c930c67ff296b60dbcda89d64db9/fsspec/tests/conftest.py
 import contextlib
 import threading
