@@ -209,7 +209,6 @@ batch_predictor = BatchPredictor.from_checkpoint(
 )
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
-print("PREDICTED LOG PROBABILITIES")
 predicted_probabilities.show()
 # {'predictions': 0.033036969602108}
 # {'predictions': 0.05944341793656349}
