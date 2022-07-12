@@ -6,7 +6,7 @@ from ray.rllib.offline.estimators.off_policy_estimator import (
 )
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
@@ -20,16 +20,19 @@ torch, nn = try_import_torch()
 logger = logging.getLogger()
 
 
-@ExperimentalAPI
+@DeveloperAPI
 def train_test_split(
     batch: SampleBatchType,
     train_test_split_val: float = 0.0,
     k: int = 0,
 ) -> Generator[Tuple[List[SampleBatch]], None, None]:
-    """Utility function that returns either a train/test split or
+    """Utility function to split a batch into training and evaluation episodes.
+
+    This function returns an iterator with either a train/test split or
     a k-fold cross validation generator over episodes from the given batch.
     By default, `k` is set to 0.0, which sets eval_batch = batch
     and train_batch to an empty SampleBatch.
+
     Args:
         batch: A SampleBatch of episodes to split
         train_test_split_val: Split the batch into a training batch with
@@ -37,6 +40,7 @@ def train_test_split(
         with `(1 - train_test_split_val) * n_episodes` episodes. If not
         specified, use `k` for k-fold cross validation instead.
         k: k-fold cross validation for training model and evaluating OPE.
+
     Returns:
         A tuple with two SampleBatches (eval_batch, train_batch)
     """
@@ -68,7 +72,7 @@ def train_test_split(
     return
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class DirectMethod(OffPolicyEstimator):
     """The Direct Method estimator.
 
