@@ -192,21 +192,6 @@ class HyperOptSearch(Searcher):
 
             for i in range(len(self._points_to_evaluate)):
                 config = self._points_to_evaluate[i]
-                # TODO(ml-team): Make this check more robust
-                space_without_constants = {
-                    k
-                    for k, v in self._space.items()
-                    if isinstance(v, (Apply, list, dict))
-                }
-                if set(config) != space_without_constants:
-                    raise ValueError(
-                        "Each entry in `points_to_evaluate` must have exactly "
-                        "the same keys as the search space (excluding constants). "
-                        "Missing keys: "
-                        f"{space_without_constants - set(config)} "
-                        "Extra keys: "
-                        f"{set(config) - space_without_constants}"
-                    )
                 self._convert_categories_to_indices(config)
             # HyperOpt treats initial points as LIFO, reverse to get FIFO
             self._points_to_evaluate = list(reversed(self._points_to_evaluate))
@@ -226,6 +211,7 @@ class HyperOptSearch(Searcher):
                     _lookup(config_dict[key], space_dict[key], k)
             else:
                 if (
+                    key in space_dict and
                     isinstance(space_dict[key], hpo.base.pyll.Apply)
                     and space_dict[key].name == "switch"
                 ):
@@ -294,9 +280,11 @@ class HyperOptSearch(Searcher):
             )
 
         if self._points_to_evaluate > 0:
+            using_point_to_evaluate = True
             new_trial = self._hpopt_trials.trials[self._points_to_evaluate - 1]
             self._points_to_evaluate -= 1
         else:
+            using_point_to_evaluate = False
             new_ids = self._hpopt_trials.new_trial_ids(1)
             self._hpopt_trials.refresh()
 
@@ -324,11 +312,25 @@ class HyperOptSearch(Searcher):
             self.domain.expr, ctrl, hpo.base.Ctrl, memo
         )
 
-        suggested_config = hpo.pyll.rec_eval(
-            self.domain.expr,
-            memo=memo,
-            print_node_on_error=self.domain.rec_eval_print_node_on_error,
-        )
+        try:
+            suggested_config = hpo.pyll.rec_eval(
+                self.domain.expr,
+                memo=memo,
+                print_node_on_error=self.domain.rec_eval_print_node_on_error,
+            )
+        except (AssertionError, TypeError) as e:
+            if using_point_to_evaluate and (isinstance(e, AssertionError) or  "GarbageCollected" in str(e)):
+                raise ValueError(
+                    "HyperOpt encountered a GarbageCollected switch argument. "
+                    "Usually this is caused by a config in `points_to_evaluate` missing "
+                    "a key present in `space`. Ensure that `points_to_evaluate` contains "
+                    "all non-constant keys from `space`.\n"
+                    "Config from `points_to_evaluate`: "
+                    f"{config}\n"
+                    "HyperOpt search space: "
+                    f"{self._space}"
+                ) from e
+            raise e
         return copy.deepcopy(suggested_config)
 
     def on_trial_result(self, trial_id: str, result: Dict) -> None:
