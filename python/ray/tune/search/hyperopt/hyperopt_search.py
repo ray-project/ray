@@ -192,8 +192,11 @@ class HyperOptSearch(Searcher):
 
             for i in range(len(self._points_to_evaluate)):
                 config = self._points_to_evaluate[i]
+                # TODO(ml-team): Make this check more robust
                 space_without_constants = {
-                    k for k, v in self._space.items() if isinstance(v, Apply)
+                    k
+                    for k, v in self._space.items()
+                    if isinstance(v, (Apply, list, dict))
                 }
                 if set(config) != space_without_constants:
                     raise ValueError(
