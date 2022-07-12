@@ -259,10 +259,13 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
             try:
                 if not ray.is_initialized():
                     try:
-                        address = self._dashboard_head.gcs_address
+                        address = self.get_gcs_address()
                         logger.info(f"Connecting to ray with address={address}")
+                        # Init ray without logging to driver
+                        # to avoid infinite logging issue.
                         ray.init(
                             address=address,
+                            log_to_driver=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:
