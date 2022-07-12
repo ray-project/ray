@@ -516,6 +516,13 @@ class FunctionTrainable(Trainable):
         # as a new checkpoint.
         self._status_reporter.set_checkpoint(checkpoint, is_new=False)
 
+    def _restore_from_checkpoint_obj(self, checkpoint: Checkpoint):
+        self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
+            self.logdir
+        )
+        checkpoint.to_directory(self.temp_checkpoint_dir)
+        self.restore(self.temp_checkpoint_dir)
+
     def restore_from_object(self, obj):
         self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
             self.logdir

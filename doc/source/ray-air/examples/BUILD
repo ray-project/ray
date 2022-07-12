@@ -1,10 +1,26 @@
+load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
+
 
 filegroup(
     name = "air_examples",
-    srcs = glob(["*.ipynb"]),
+    srcs = glob(["*.ipynb", "*.py"]),
     visibility = ["//doc:__subpackages__"]
 )
+
+# --------------------------------------------------------------------
+# Test all doc/source/ray-air/examples code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["*.py"],
+    exclude = [],
+    extra_srcs = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml", "ray_air"],
+)
+
 
 # --------------------------------------------------------------------
 # Test all doc/source/ray-air/examples notebooks.
