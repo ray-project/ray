@@ -182,7 +182,6 @@ batch_predictor = BatchPredictor.from_checkpoint(
 )
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
-print("PREDICTED PROBABILITIES")
 predicted_probabilities.show()
 # {'predictions': array([1.], dtype=float32)}
 # {'predictions': array([0.], dtype=float32)}

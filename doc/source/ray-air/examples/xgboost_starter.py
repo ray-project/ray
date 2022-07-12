@@ -84,7 +84,6 @@ checkpoint = best_result.checkpoint
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
-print("PREDICTED PROBABILITIES")
 predicted_probabilities.show()
 # {'predictions': 0.9970690608024597}
 # {'predictions': 0.9943051934242249}
