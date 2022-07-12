@@ -30,8 +30,10 @@ try:
     hyperopt_logger = logging.getLogger("hyperopt")
     hyperopt_logger.setLevel(logging.WARNING)
     import hyperopt as hpo
+    from hyperopt.pyll import Apply
 except ImportError:
     hpo = None
+    Apply = None
 
 from ray.tune.error import TuneError
 
@@ -190,6 +192,18 @@ class HyperOptSearch(Searcher):
 
             for i in range(len(self._points_to_evaluate)):
                 config = self._points_to_evaluate[i]
+                space_without_constants = {
+                    k for k, v in self._space.items() if isinstance(v, Apply)
+                }
+                if set(config) != space_without_constants:
+                    raise ValueError(
+                        "Each entry in `points_to_evaluate` must have exactly "
+                        "the same keys as the search space (excluding constants). "
+                        "Missing keys: "
+                        f"{space_without_constants - set(config)} "
+                        "Extra keys: "
+                        f"{set(config) - space_without_constants}"
+                    )
                 self._convert_categories_to_indices(config)
             # HyperOpt treats initial points as LIFO, reverse to get FIFO
             self._points_to_evaluate = list(reversed(self._points_to_evaluate))
