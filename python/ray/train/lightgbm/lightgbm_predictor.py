@@ -110,7 +110,9 @@ class LightGBMPredictor(Predictor):
             if feature_columns:
                 data = data[:, feature_columns]
         elif feature_columns:
-            data = data[feature_columns]
+            data = data[feature_columns].to_numpy()
+        else:
+            data = data.to_numpy()
 
         df = pd.DataFrame(self.model.predict(data, **predict_kwargs))
         df.columns = (
