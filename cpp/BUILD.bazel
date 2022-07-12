@@ -8,7 +8,7 @@ cc_binary(
     copts = COPTS,
     linkopts = select({
         "@bazel_tools//src/conditions:darwin": [
-            "-Wl,-exported_symbols_list,$(location :symbols/ray_api_exported_symbols_mac.lds)",
+            #TODO(larry): Hide the symbols when we make it work on mac.
         ],
         "@bazel_tools//src/conditions:windows": [
             #TODO(larry): Hide the symbols when we make it work on Windows.
