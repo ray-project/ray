@@ -186,6 +186,10 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       code_search_path = absolute_path;
     }
   }
+  if (worker_type == WorkerType::DRIVER) {
+    ray_namespace =
+        config.ray_namespace.empty() ? GenerateUUIDV4() : config.ray_namespace;
+  }
 };
 
 void ConfigInternal::SetBootstrapAddress(std::string_view address) {

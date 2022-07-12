@@ -145,7 +145,8 @@ ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, {});
 }
 
-ActorID LocalModeTaskSubmitter::GetActor(const std::string &actor_name) const {
+ActorID LocalModeTaskSubmitter::GetActor(const std::string &actor_name,
+                                         const std::string &ray_namespace) const {
   absl::MutexLock lock(&named_actors_mutex_);
   auto it = named_actors_.find(actor_name);
   if (it == named_actors_.end()) {

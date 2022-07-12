@@ -39,6 +39,12 @@ class ActorCreator {
     return *this;
   }
 
+  ActorCreator &SetName(std::string name, std::string ray_namespace) {
+    create_options_.name = std::move(name);
+    create_options_.ray_namespace = std::move(ray_namespace);
+    return *this;
+  }
+
   ActorCreator &SetResources(std::unordered_map<std::string, double> resources) {
     create_options_.resources = std::move(resources);
     return *this;
