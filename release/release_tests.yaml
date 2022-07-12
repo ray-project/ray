@@ -146,7 +146,7 @@
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
 
     wait_for_nodes:
-      num_nodes: 3
+      num_nodes: 4
 
     type: sdk_command
     file_manager: job
