@@ -1,5 +1,4 @@
 import numpy as np
-import os
 import random
 from typing import Optional
 
@@ -32,20 +31,6 @@ def update_global_seed_if_necessary(
     if framework == "torch":
         torch, _ = try_import_torch()
         torch.manual_seed(seed)
-        # See https://github.com/pytorch/pytorch/issues/47672.
-        cuda_version = torch.version.cuda
-        if cuda_version is not None and float(torch.version.cuda) >= 10.2:
-            os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
-        else:
-            from distutils.version import LooseVersion
-
-            if LooseVersion(torch.__version__) >= LooseVersion("1.8.0"):
-                # Not all Operations support this.
-                torch.use_deterministic_algorithms(True)
-            else:
-                torch.set_deterministic(True)
-        # This is only for Convolution no problem.
-        torch.backends.cudnn.deterministic = True
     elif framework == "tf2" or framework == "tfe":
         tf1, tf, _ = try_import_tf()
         # Tf2.x.
