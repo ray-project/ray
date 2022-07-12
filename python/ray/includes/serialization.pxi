@@ -542,8 +542,8 @@ cdef class RawSerializedObject(SerializedObject):
 cdef class RaySerializationResult(SerializedObject):
     _type_id: bytes
     _in_band_buffer: bytes
-    # type ID -> buffer ID -> buffer
-    _out_of_band_buffers: Optional[Mapping[bytes, Mapping[int, memoryview]]]
+    # buffer ID -> buffer
+    _out_of_band_buffers: Optional[Mapping[bytes, memoryview]]
 
     cdef:
         # A bytes that contains the final serialization result

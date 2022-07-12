@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Mapping, Tuple
 from ray._raylet import RaySerializationResult, SerializedObject
-from ray import ObjectRef
 import logging
 import ray
 import msgpack
@@ -103,26 +102,4 @@ class BytesInBandSerializer(RaySerializer):
         return ray_serialization_result.in_band_buffer
 
 
-class MemoryviewOutOfBandSerializer(RaySerializer):
-    TYPE_ID = b"ray_serde_memoryview"
-
-    def serialize(self, instance: memoryview) -> RaySerializationResult:
-        random_id = ObjectRef.from_random().binary()
-        oob_buffers = {MemoryviewOutOfBandSerializer.TYPE_ID: {random_id: instance}}
-        return RaySerializationResult(
-            MemoryviewOutOfBandSerializer.TYPE_ID, random_id, oob_buffers
-        )
-
-    def deserialize(self, ray_serialization_result: RaySerializationResult) -> bytes:
-        memoryview_id = ray_serialization_result.in_band_buffer
-        return ray_serialization_result.out_of_band_buffers[
-            MemoryviewOutOfBandSerializer.TYPE_ID
-        ][memoryview_id]
-
-
 _register_serializer(BytesInBandSerializer.TYPE_ID, type(b""), BytesInBandSerializer())
-_register_serializer(
-    MemoryviewOutOfBandSerializer.TYPE_ID,
-    type(memoryview(b"")),
-    MemoryviewOutOfBandSerializer(),
-)
