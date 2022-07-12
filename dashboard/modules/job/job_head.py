@@ -20,9 +20,7 @@ from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import (
     http_uri_components_to_uri,
     JobInfo,
-    JobLogsResponse,
     JobStatus,
-    JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
@@ -51,8 +49,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._job_manager = None
         self._gcs_job_info_stub = None
 
-    async def _parse_and_validate_request(self, req: Request,
-                                          request_type: dataclass) -> Any:
+    async def _parse_and_validate_request(
+        self, req: Request, request_type: dataclass
+    ) -> Any:
         """Parse request and cast to request type. If parsing failed, return a
         Response object with status 400 and stacktrace instead.
         """
@@ -184,8 +183,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)),
-            content_type="application/json")
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
 
     @routes.get("/api/jobs/{submission_id}")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
@@ -207,11 +206,15 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             submission_id=submission_id,
             job_id=driver.id if driver else None,
             driver=driver,
-            type="submission")
+            type="submission",
+        )
 
         return Response(
-            text=json.dumps(dataclasses.asdict(job_response), ),
-            content_type="application/json")
+            text=json.dumps(
+                dataclasses.asdict(job_response),
+            ),
+            content_type="application/json",
+        )
 
     @routes.get("/api/jobs/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
@@ -226,22 +229,26 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 id=submission_id,
                 submission_id=submission_id,
                 job_id=submission_job_drivers.get(submission_id).id
-                if submission_id in submission_job_drivers else None,
+                if submission_id in submission_job_drivers
+                else None,
                 driver=submission_job_drivers.get(submission_id),
-                type="submission")
+                type="submission",
+            )
             for submission_id, job in submission_jobs.items()
         ]
         return Response(
-            text=json.dumps([
-                *[
-                    dataclasses.asdict(submission_job)
-                    for submission_job in submission_jobs
-                ],
-                *[
-                    dataclasses.asdict(job_info)
-                    for job_info in driver_jobs.values()
-                ],
-            ]),
+            text=json.dumps(
+                [
+                    *[
+                        dataclasses.asdict(submission_job)
+                        for submission_job in submission_jobs
+                    ],
+                    *[
+                        dataclasses.asdict(job_info)
+                        for job_info in driver_jobs.values()
+                    ],
+                ]
+            ),
             content_type="application/json",
         )
 
@@ -273,14 +280,15 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     job_id=job_id,
                     type="driver",
                     status=JobStatus.SUCCEEDED
-                    if job_table_entry.is_dead else JobStatus.RUNNING,
+                    if job_table_entry.is_dead
+                    else JobStatus.RUNNING,
                     entrypoint="",
                     start_time=job_table_entry.start_time,
                     end_time=job_table_entry.end_time,
                     metadata=metadata,
                     runtime_env=RuntimeEnv.deserialize(
-                        job_table_entry.config.runtime_env_info.
-                        serialized_runtime_env).to_dict(),
+                        job_table_entry.config.runtime_env_info.serialized_runtime_env
+                    ).to_dict(),
                     driver=driver,
                 )
                 jobs[job_id] = job
@@ -305,11 +313,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
 
-        resp = JobLogsResponse(
-            logs=self._job_manager.get_job_logs(submission_id))
+        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(submission_id))
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)),
-            content_type="application/json")
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
 
     @routes.get("/api/jobs/{submission_id}/logs/tail")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
@@ -333,7 +340,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             self._job_manager = JobManager()
 
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel)
+            self._dashboard_head.aiogrpc_gcs_channel
+        )
 
     @staticmethod
     def is_minimal_module():
@@ -343,8 +351,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 # TODO(aguo): Replace this with pydantic
 @dataclass
 class JobResponse:
-    """Response model of a job
-    """
+    """Response model of a job"""
+
     #: The type of job. Either "submission" or "driver"
     type: str
     #: The status of the job.
@@ -358,8 +366,8 @@ class JobResponse:
     #: The job id. An id that is created for every driver that is launched in ray.
     #  This can be used to fetch data about jobs using ray core apis.
     job_id: Optional[str] = None
-    #: A submission id is an id created for every submission job. It can be used to fetch
-    #  data about jobs using the job submission apis.
+    #: A submission id is an id created for every submission job. It can be used
+    #  to fetch data about jobs using the job submission apis.
     submission_id: Optional[str] = None
     #: The driver related to this job. For submission jobs,
     #  it is the last driver launched by that job submission,
@@ -382,8 +390,10 @@ class JobResponse:
     def __post_init__(self):
         if self.message is None:
             if self.status == JobStatus.PENDING:
-                self.message = ("Job has not started yet, likely waiting "
-                                "for the runtime_env to be set up.")
+                self.message = (
+                    "Job has not started yet, likely waiting "
+                    "for the runtime_env to be set up."
+                )
             elif self.status == JobStatus.RUNNING:
                 self.message = "Job is currently running."
             elif self.status == JobStatus.STOPPED:
