@@ -71,6 +71,7 @@ class PushManager {
   std::string DebugString() const;
 
  private:
+  FRIEND_TEST(TestPushManager, TestPushState);
   /// Tracks the state of an active object push to another node.
   struct PushState {
     /// total number of chunks of this object.
