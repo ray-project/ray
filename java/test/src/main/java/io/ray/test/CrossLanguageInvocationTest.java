@@ -170,9 +170,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
     Assert.assertEquals(res.get(), "2".getBytes());
   }
 
-  // TODO(WangTaoTheTonic): This hangs on Mac and can't be detected by `flakey-tests.ray.io`.
-  // Disable it for now and fix it later.
-  @Test(enabled = false)
+  @Test
   public void testCallingCppActor() {
     CppActorHandle actor = Ray.actor(CppActorClass.of("CreateCounter", "Counter")).remote();
     ObjectRef<Integer> res = actor.task(CppActorMethod.of("Plus1", Integer.class)).remote();
