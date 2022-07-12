@@ -18,6 +18,7 @@ def train_loop_per_worker():
         for batch in data_shard.iter_batches():
             print("Do some training on batch", batch)
 
+
 trainer = TorchTrainer(
     train_loop_per_worker,
     scaling_config=ScalingConfig(num_workers=1),
@@ -44,6 +45,7 @@ def train_loop_per_worker():
     for _ in range(10):
         for batch in data_shard.iter_batches():
             print("Do some training on batch", batch)
+
 
 trainer = TorchTrainer(
     train_loop_per_worker,

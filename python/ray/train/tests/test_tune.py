@@ -121,7 +121,9 @@ def test_tune_error(ray_start_4_cpus):
         raise RuntimeError("Error in training function!")
 
     trainer = DataParallelTrainer(
-        train_func, backend_config=TestConfig(), scaling_config=ScalingConfig(num_workers=1)
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer,
@@ -141,7 +143,9 @@ def test_tune_checkpoint(ray_start_4_cpus):
         )
 
     trainer = DataParallelTrainer(
-        train_func, backend_config=TestConfig(), scaling_config=ScalingConfig(num_workers=1)
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer,
@@ -170,7 +174,9 @@ def test_reuse_checkpoint(ray_start_4_cpus):
             )
 
     trainer = DataParallelTrainer(
-        train_func, backend_config=TestConfig(), scaling_config=ScalingConfig(num_workers=1)
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer,
@@ -208,7 +214,9 @@ def test_retry(ray_start_4_cpus):
             )
 
     trainer = DataParallelTrainer(
-        train_func, backend_config=TestConfig(), scaling_config=ScalingConfig(num_workers=1)
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))

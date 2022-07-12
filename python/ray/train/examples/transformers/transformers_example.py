@@ -617,7 +617,9 @@ def main():
         trainer = TorchTrainer(
             train_func,
             train_loop_config=config,
-            scaling_config=ScalingConfig(num_workers=args.num_workers, use_gpu=args.use_gpu),
+            scaling_config=ScalingConfig(
+                num_workers=args.num_workers, use_gpu=args.use_gpu
+            ),
         )
         results = trainer.fit()
         print(results.metrics)

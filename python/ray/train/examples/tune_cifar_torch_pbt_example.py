@@ -155,7 +155,9 @@ if __name__ == "__main__":
 
     trainer = TorchTrainer(
         train_func,
-        scaling_config=ScalingConfig(num_workers=args.num_workers, use_gpu=args.use_gpu),
+        scaling_config=ScalingConfig(
+            num_workers=args.num_workers, use_gpu=args.use_gpu
+        ),
     )
     pbt_scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
