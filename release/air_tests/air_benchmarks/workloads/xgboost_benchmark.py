@@ -62,7 +62,7 @@ def run_xgboost_prediction(model_path: str):
     return result
 
 
-def __main__():
+def main():
     print("Running xgboost training benchmark...")
     result, training_time = run_xgboost_training()
     xgboost_model = load_checkpoint(result.checkpoint)[0]
@@ -78,3 +78,7 @@ def __main__():
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
+
+
+if __name__ == "__main__":
+    main()
