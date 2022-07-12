@@ -3,7 +3,7 @@ import json
 import logging
 import traceback
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -163,18 +163,19 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    @routes.post("/api/jobs/{job_id}/stop")
+    @routes.post("/api/jobs/{submission_id}/stop")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def stop_job(self, req: Request) -> Response:
-        job_id = req.match_info["job_id"]
-        if not self.job_exists(job_id):
+        # TODO(aguo): Accept job_id along side of submission_ids
+        submission_id = req.match_info["submission_id"]
+        if not self.job_exists(submission_id):
             return Response(
-                text=f"Job {job_id} does not exist",
+                text=f"Job {submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
 
         try:
-            stopped = self._job_manager.stop_job(job_id)
+            stopped = self._job_manager.stop_job(submission_id)
             resp = JobStopResponse(stopped=stopped)
         except Exception:
             return Response(
@@ -189,6 +190,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/jobs/{submission_id}")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def get_job_info(self, req: Request) -> Response:
+        # TODO(aguo): Accept job_id along side of submission_ids
         submission_id = req.match_info["submission_id"]
         if not self.job_exists(submission_id):
             return Response(
@@ -231,7 +233,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         ]
         return Response(
             text=json.dumps([
-                *submission_jobs,
+                *[
+                    dataclasses.asdict(submission_job)
+                    for submission_job in submission_jobs
+                ],
                 *[
                     dataclasses.asdict(job_info)
                     for job_info in driver_jobs.values()
@@ -245,7 +250,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         The first dictionary contains all driver jobs and is keyed by the job's id.
         The second dictionary contains drivers that belong to submission jobs.
-        It's keyed by the submission job's id. Only the last driver of a submission job is returned.
+        It's keyed by the submission job's submission id.
+        Only the last driver of a submission job is returned.
         """
         request = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
@@ -288,35 +294,38 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return jobs, submission_job_drivers
 
-    @routes.get("/api/jobs/{job_id}/logs")
+    @routes.get("/api/jobs/{submission_id}/logs")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def get_job_logs(self, req: Request) -> Response:
-        job_id = req.match_info["job_id"]
-        if not self.job_exists(job_id):
+        # TODO(aguo): Accept job_id along side of submission_ids
+        submission_id = req.match_info["submission_id"]
+        if not self.job_exists(submission_id):
             return Response(
-                text=f"Job {job_id} does not exist",
+                text=f"Job {submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
 
-        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job_id))
+        resp = JobLogsResponse(
+            logs=self._job_manager.get_job_logs(submission_id))
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")
 
-    @routes.get("/api/jobs/{job_id}/logs/tail")
+    @routes.get("/api/jobs/{submission_id}/logs/tail")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def tail_job_logs(self, req: Request) -> Response:
-        job_id = req.match_info["job_id"]
-        if not self.job_exists(job_id):
+        # TODO(aguo): Accept job_id along side of submission_ids
+        submission_id = req.match_info["submission_id"]
+        if not self.job_exists(submission_id):
             return Response(
-                text=f"Job {job_id} does not exist",
+                text=f"Job {submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
 
         ws = aiohttp.web.WebSocketResponse()
         await ws.prepare(req)
 
-        async for lines in self._job_manager.tail_job_logs(job_id):
+        async for lines in self._job_manager.tail_job_logs(submission_id):
             await ws.send_str(lines)
 
     async def run(self, server):
@@ -331,22 +340,55 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return False
 
 
+# TODO(aguo): Replace this with pydantic
 @dataclass
-class JobResponse(JobInfo):
+class JobResponse:
     """Response model of a job
     """
     #: The type of job. Either "submission" or "driver"
     type: str
-    #: The primary id of a job. Currently the "submission_id" for backwards-compatibility reasons.
-    #  Eventually, the job_id will be the main id.
-    id: Optional[str]
+    #: The status of the job.
+    status: JobStatus
+    #: The entrypoint command for this job.
+    entrypoint: Optional[str] = None
+    #: The primary id of a job. The job_id will be the primary id in the long term.
+    #  For backwards compatibility reasons, submission type jobs use submission ids
+    #  as the primary id.
+    id: Optional[str] = None
     #: The job id. An id that is created for every driver that is launched in ray.
     #  This can be used to fetch data about jobs using ray core apis.
-    job_id: Optional[str]
+    job_id: Optional[str] = None
     #: A submission id is an id created for every submission job. It can be used to fetch
     #  data about jobs using the job submission apis.
-    submission_id: Optional[str]
+    submission_id: Optional[str] = None
     #: The driver related to this job. For submission jobs,
     #  it is the last driver launched by that job submission,
     #  or None if there is no driver.
     driver: Optional[DriverInfo] = None
+    #: A message describing the status in more detail.
+    message: Optional[str] = None
+    # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
+    # Internal error, user script error
+    error_type: Optional[str] = None
+    #: The time when the job was started.  A Unix timestamp in ms.
+    start_time: Optional[int] = None
+    #: The time when the job moved into a terminal state.  A Unix timestamp in ms.
+    end_time: Optional[int] = None
+    #: Arbitrary user-provided metadata for the job.
+    metadata: Optional[Dict[str, str]] = None
+    #: The runtime environment for the job.
+    runtime_env: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        if self.message is None:
+            if self.status == JobStatus.PENDING:
+                self.message = ("Job has not started yet, likely waiting "
+                                "for the runtime_env to be set up.")
+            elif self.status == JobStatus.RUNNING:
+                self.message = "Job is currently running."
+            elif self.status == JobStatus.STOPPED:
+                self.message = "Job was intentionally stopped."
+            elif self.status == JobStatus.SUCCEEDED:
+                self.message = "Job finished successfully."
+            elif self.status == JobStatus.FAILED:
+                self.message = "Job failed."

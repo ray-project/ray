@@ -67,6 +67,8 @@ export type JobListRsp = UnifedJob[];
 
 export type UnifedJob = {
   id: string;
+  job_id: string | null;
+  submission_id: string | null;
   type: string;
   status: string;
   entrypoint: string;

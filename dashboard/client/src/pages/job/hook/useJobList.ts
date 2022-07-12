@@ -11,13 +11,13 @@ export const useJobList = () => {
   const { ipLogMap } = useContext(GlobalContext);
   const [filter, setFilter] = useState<
     {
-      key: "id" | "status";
+      key: "job_id" | "status";
       val: string;
     }[]
   >([]);
   const refreshRef = useRef(isRefreshing);
   const tot = useRef<NodeJS.Timeout>();
-  const changeFilter = (key: "id" | "status", val: string) => {
+  const changeFilter = (key: "job_id" | "status", val: string) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -56,7 +56,7 @@ export const useJobList = () => {
   }, [getJob]);
   return {
     jobList: jobList.filter((node) =>
-      filter.every((f) => node[f.key] && node[f.key].includes(f.val)),
+      filter.every((f) => node[f.key] && (node[f.key] ?? "").includes(f.val)),
     ),
     msg,
     isRefreshing,

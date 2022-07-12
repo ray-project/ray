@@ -13,7 +13,7 @@ import dayjs from "dayjs";
 import React from "react";
 import { Link } from "react-router-dom";
 import Loading from "../../components/Loading";
-import { SearchInput, SearchSelect } from "../../components/SearchComponent";
+import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { useJobList } from "./hook/useJobList";
 
@@ -24,7 +24,14 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const columns = ["ID", "Driver ID", "Status", "Logs", "StartTime", "EndTime"];
+const columns = [
+  "Job ID",
+  "Submission ID",
+  "Status",
+  "Logs",
+  "StartTime",
+  "EndTime",
+];
 
 const JobList = () => {
   const classes = useStyles();
@@ -56,8 +63,8 @@ const JobList = () => {
       <TitleCard title="Job List">
         <TableContainer>
           <SearchInput
-            label="ID"
-            onChange={(value) => changeFilter("id", value)}
+            label="Job ID"
+            onChange={(value) => changeFilter("job_id", value)}
           />
           <SearchInput
             label="Page Size"
@@ -89,14 +96,25 @@ const JobList = () => {
                   page.pageNo * page.pageSize,
                 )
                 .map(
-                  ({ id = "", driver, type, status, start_time, end_time }) => (
+                  ({
+                    id = "",
+                    job_id,
+                    submission_id,
+                    driver,
+                    type,
+                    status,
+                    start_time,
+                    end_time,
+                  }) => (
                     <TableRow key={id}>
-                      <TableCell align="center">{id}</TableCell>
+                      <TableCell align="center">{job_id ?? "-"}</TableCell>
                       <TableCell align="center">
-                        {driver ? driver.id : "-"}
+                        {submission_id ?? "-"}
                       </TableCell>
                       <TableCell align="center">{status}</TableCell>
                       <TableCell align="center">
+                        {/* TODO(aguo): Also show logs for the job id instead
+                        of just the submission's logs */}
                         {driver && ipLogMap[driver.ip_address] ? (
                           <Link
                             to={`/log/${encodeURIComponent(
