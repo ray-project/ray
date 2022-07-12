@@ -25,11 +25,11 @@ pong-appo-extra-logging:
         num_sgd_iter: 2
         vf_loss_coeff: 1.0
         clip_param: 0.3
-        num_gpus: 1
+        num_gpus: 0
         grad_clip: 10
         model:
           dim: 42
         _disable_execution_plan_api:
             grid_search:
-                # - True
-                - False
+                - True
+                # - False
