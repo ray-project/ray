@@ -42,6 +42,13 @@ def ray_start_1_cpu_1_gpu():
     ray.shutdown()
 
 
+class LinearDatasetDict(LinearDataset):
+    """Modifies the LinearDataset to return a Dict instead of a Tuple."""
+
+    def __getitem__(self, index):
+        return {"x": self.x[index, None], "y": self.y[index, None]}
+
+
 # TODO: Refactor as a backend test.
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
@@ -92,8 +99,9 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
 
 
 # TODO: Refactor as a backend test.
-def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
-    data_loader = DataLoader(LinearDataset(a=1, b=2, size=10))
+@pytest.mark.parametrize("dataset", (LinearDataset, LinearDatasetDict))
+def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
+    data_loader = DataLoader(dataset(a=1, b=2, size=10))
 
     def train_fn():
         wrapped_data_loader = train.torch.prepare_data_loader(data_loader)
@@ -102,12 +110,20 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
         assert isinstance(wrapped_data_loader.sampler, DistributedSampler)
 
         # Make sure you can properly iterate through the DataLoader.
-        for batch in wrapped_data_loader:
-            X = batch[0]
-            y = batch[1]
+        # Case where the dataset returns a tuple or list from __getitem__.
+        if isinstance(wrapped_data_loader.dataset[0], (tuple, list)):
+            for batch in wrapped_data_loader:
+                x = batch[0]
+                y = batch[1]
 
-            # Make sure the data is on the correct device.
-            assert X.is_cuda and y.is_cuda
+                # Make sure the data is on the correct device.
+                assert x.is_cuda and y.is_cuda
+        # Case where the dataset returns a dict from __getitem__.
+        elif isinstance(wrapped_data_loader.dataset[0], dict):
+            for batch in wrapped_data_loader:
+                for x, y in zip(batch["x"], batch["y"]):
+                    # Make sure the data is on the correct device.
+                    assert x.is_cuda and y.is_cuda
 
     trainer = Trainer("torch", num_workers=2, use_gpu=True)
     trainer.start()
