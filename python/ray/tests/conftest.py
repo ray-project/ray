@@ -133,7 +133,7 @@ def _ray_start(**kwargs):
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    # Make ensure agent process is died.
+    # Make sure the agent process is dead.
     for pid in agent_pids:
         try:
             os.kill(pid, signal.SIGKILL)
