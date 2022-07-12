@@ -22,7 +22,7 @@ if __name__ == "__main__":
     )
     results = trainer.fit()
     result = results.metrics
-    assert result[TRAINING_ITERATION] == num_workers
+    assert result[TRAINING_ITERATION] == num_epochs
 
     loss = list(results.metrics_dataframe["loss"])
     assert len(loss) == num_epochs
