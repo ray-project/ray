@@ -39,7 +39,7 @@ parts:
         - file: ray-air/examples/feast_example
     - file: ray-air/package-ref
 
-  - caption: AIR Libraries
+  - caption: Ray Libraries
     chapters:
       - file: data/dataset
         title: Ray Data
