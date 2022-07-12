@@ -4,7 +4,7 @@ import os
 import traceback
 import warnings
 from contextlib import contextmanager
-from typing import Dict, Optional, Set
+from typing import TYPE_CHECKING, Dict, Optional, Set
 
 import ray
 from ray.air._internal.session import Session
@@ -18,6 +18,9 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
+
+if TYPE_CHECKING:
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +58,8 @@ class _TuneSessionImpl(Session):
         return self._status_reporter.trial_id
 
     @property
-    def trial_resources(self) -> Dict[str, float]:
-        return self._status_reporter.trial_resources.required_resources
+    def trial_resources(self) -> "PlacementGroupFactory":
+        return self._status_reporter.trial_resources
 
 
 @PublicAPI

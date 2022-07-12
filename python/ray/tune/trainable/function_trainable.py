@@ -9,7 +9,7 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Type
 
 from six.moves import queue
 
@@ -591,7 +591,7 @@ class FunctionTrainable(Trainable):
 
 def wrap_function(
     train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
-):
+) -> Type["FunctionTrainable"]:
     inherit_from = (FunctionTrainable,)
 
     if hasattr(train_func, "__mixins__"):
