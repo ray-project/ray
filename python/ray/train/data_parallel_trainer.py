@@ -106,6 +106,9 @@ class DataParallelTrainer(BaseTrainer):
             # Returns the rank of the worker on the current node.
             session.get_local_rank()
 
+    Any returns from the ``train_loop_per_worker`` will be discarded and not
+    used or persisted anywhere.
+
     **How do I use ``DataParallelTrainer`` or any of its subclasses?**
 
     Example:
