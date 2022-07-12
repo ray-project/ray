@@ -1,3 +1,5 @@
+import tempfile
+import os
 from pathlib import Path
 import unittest
 
@@ -30,7 +32,7 @@ class TestDatasetReader(unittest.TestCase):
 
         ioctx = IOContext(config={"train_batch_size": 1200}, worker_index=0)
         reader = DatasetReader(ioctx, dataset)
-        assert len(reader.next()) == 1200
+        assert len(reader.next()) >= 1200
 
     def test_dataset_shard_with_only_local(self):
         """Tests whether the dataset_shard function works correctly for a single shard
@@ -177,54 +179,99 @@ class TestUnzipIfNeeded(unittest.TestCase):
     def test_relative_zip(self):
         """Tests whether the unzip_if_needed function works correctly on relative zip
         files"""
-        unzipped_paths = _unzip_if_needed(
-            [str(Path(self.relative_path) / "enormous.zip")], "json"
-        )
-        self.assertEqual(
-            str(Path(unzipped_paths[0]).absolute()),
-            str(Path("./").absolute() / "enormous.json"),
-        )
+
+        # this should work regardless of where th current working directory is.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cwdir = os.getcwd()
+            os.chdir(tmp_dir)
+            unzipped_paths = _unzip_if_needed(
+                [str(Path(self.relative_path) / "enormous.zip")], "json"
+            )
+            self.assertEqual(
+                str(Path(unzipped_paths[0]).absolute()),
+                str(Path("./").absolute() / "enormous.json"),
+            )
+
+            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            os.chdir(cwdir)
 
     def test_absolute_zip(self):
         """Tests whether the unzip_if_needed function works correctly on absolute zip
         files"""
-        unzipped_paths = _unzip_if_needed(
-            [str(Path(self.absolute_path) / "enormous.zip")], "json"
-        )
-        self.assertEqual(
-            str(Path(unzipped_paths[0]).absolute()),
-            str(Path("./").absolute() / "enormous.json"),
-        )
+
+        # this should work regardless of where th current working directory is.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cwdir = os.getcwd()
+            os.chdir(tmp_dir)
+            unzipped_paths = _unzip_if_needed(
+                [str(Path(self.absolute_path) / "enormous.zip")], "json"
+            )
+            self.assertEqual(
+                str(Path(unzipped_paths[0]).absolute()),
+                str(Path("./").absolute() / "enormous.json"),
+            )
+
+            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            os.chdir(cwdir)
 
     def test_s3_json(self):
         """Tests whether the unzip_if_needed function works correctly on s3 json
         files"""
-        unzipped_paths = _unzip_if_needed([self.s3_path + "/large.json"], "json")
-        self.assertEqual(
-            unzipped_paths[0],
-            self.s3_path + "/large.json",
-        )
+
+        # this should work regardless of where th current working directory is.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cwdir = os.getcwd()
+            os.chdir(tmp_dir)
+            unzipped_paths = _unzip_if_needed([self.s3_path + "/large.json"], "json")
+            self.assertEqual(
+                unzipped_paths[0],
+                self.s3_path + "/large.json",
+            )
+
+            os.chdir(cwdir)
 
     def test_relative_json(self):
         """Tests whether the unzip_if_needed function works correctly on relative json
         files"""
-        unzipped_paths = _unzip_if_needed(
-            [str(Path(self.relative_path) / "large.json")], "json"
-        )
-        self.assertEqual(
-            str(Path(unzipped_paths[0]).absolute()),
-            str(Path(self.relative_path).absolute() / "large.json"),
-        )
+        # this should work regardless of where th current working directory is.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cwdir = os.getcwd()
+            os.chdir(tmp_dir)
+            unzipped_paths = _unzip_if_needed(
+                [str(Path(self.relative_path) / "large.json")], "json"
+            )
+            self.assertEqual(
+                os.path.realpath(str(Path(unzipped_paths[0]).absolute())),
+                os.path.realpath(
+                    str(
+                        Path(__file__).parent.parent.parent
+                        / self.relative_path
+                        / "large.json"
+                    )
+                ),
+            )
+
+            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            os.chdir(cwdir)
 
     def test_absolute_json(self):
         """Tests whether the unzip_if_needed function works correctly on absolute json
         files"""
-        unzipped_paths = _unzip_if_needed(
-            [str(Path(self.absolute_path) / "large.json")], "json"
-        )
-        self.assertEqual(
-            unzipped_paths[0], str(Path(self.absolute_path).absolute() / "large.json")
-        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cwdir = os.getcwd()
+            os.chdir(tmp_dir)
+            unzipped_paths = _unzip_if_needed(
+                [str(Path(self.absolute_path) / "large.json")], "json"
+            )
+            self.assertEqual(
+                os.path.realpath(unzipped_paths[0]),
+                os.path.realpath(
+                    str(Path(self.absolute_path).absolute() / "large.json")
+                ),
+            )
+
+            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            os.chdir(cwdir)
 
 
 if __name__ == "__main__":

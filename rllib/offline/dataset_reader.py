@@ -29,11 +29,6 @@ def _get_resource_bundles(config: AlgorithmConfigDict):
 
 
 def _unzip_this_path(fpath: Path, extract_path: str):
-    # TODO: Fix this later to support s3 paths in zip format as well.
-    if str(fpath).startswith("s3://"):
-        raise ValueError(
-            "unzip_if_needed currently does not support remote paths from s3"
-        )
     with zipfile.ZipFile(str(fpath), "r") as zip_ref:
         zip_ref.extractall(extract_path)
 
@@ -43,6 +38,11 @@ def _unzip_if_needed(paths: List[str], format: str):
     ret_paths = []
     for path in paths:
         if re.search("\\.zip$", str(path)):
+            # TODO: We need to add unzip support for s3
+            if str(path).startswith("s3://"):
+                raise ValueError(
+                    "unzip_if_needed currently does not support remote paths from s3"
+                )
             extract_path = "./"
             try:
                 _unzip_this_path(str(path), extract_path)
@@ -54,10 +54,21 @@ def _unzip_if_needed(paths: List[str], format: str):
                 except FileNotFoundError:
                     raise FileNotFoundError(f"File not found: {path}")
 
-            unzipped_path = str(Path(extract_path) / f"{Path(path).stem}.{format}")
+            unzipped_path = str(
+                Path(extract_path).absolute() / f"{Path(path).stem}.{format}"
+            )
             ret_paths.append(unzipped_path)
         else:
-            ret_paths.append(path)
+            # TODO: We can get rid of this logic when we replace all tests with s3 paths
+            if str(path).startswith("s3://"):
+                ret_paths.append(path)
+            else:
+                if not Path(path).exists():
+                    relative_path = str(Path(__file__).parent.parent / path)
+                    if not Path(relative_path).exists():
+                        raise FileNotFoundError(f"File not found: {path}")
+                    path = relative_path
+                ret_paths.append(path)
     return ret_paths
 
 
