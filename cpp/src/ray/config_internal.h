@@ -75,6 +75,8 @@ class ConfigInternal {
 
   void SetBootstrapAddress(std::string_view address);
 
+  void UpdateSessionDir(const std::string dir);
+
   ConfigInternal(ConfigInternal const &) = delete;
 
   void operator=(ConfigInternal const &) = delete;
