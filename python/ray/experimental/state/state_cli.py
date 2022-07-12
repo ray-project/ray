@@ -21,8 +21,8 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     GetApiOptions,
     ListApiOptions,
-    StateResource,
     PredicateType,
+    StateResource,
     SupportedFilterType,
 )
 
