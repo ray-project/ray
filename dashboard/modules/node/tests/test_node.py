@@ -546,7 +546,12 @@ def test_node_register_with_agent(ray_start_cluster_head):
         agent_info = node_info["AgentInfo"]
         assert agent_info["IpAddress"] == node_info["NodeManagerAddress"]
         test_agent_port(agent_info["Pid"], agent_info["GrpcPort"])
-        test_agent_port(agent_info["Pid"], agent_info["HttpPort"])
+        if agent_info["HttpPort"] >= 0:
+            test_agent_port(agent_info["Pid"], agent_info["HttpPort"])
+        else:
+            # Port conflicts may be caused that the previous
+            # test did not kill the agent cleanly
+            assert agent_info["HttpPort"] == -1
 
 
 if __name__ == "__main__":
