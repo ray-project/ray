@@ -10,6 +10,7 @@ import tempfile
 import time
 from typing import Any, Dict, Generator, List, Optional
 import yaml
+import os
 
 import ray
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -18,22 +19,117 @@ from ray.job_submission import JobStatus, JobSubmissionClient
 logger = logging.getLogger(__name__)
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent / "scripts"
+TEST_CR_PATH = (
+    pathlib.Path(__file__).resolve().parent / "setup" / "raycluster_test.yaml"
+)
+TEST_CLUSTER_NAME = "raycluster-test"
+
+# Parent directory of Ray repository
+RAY_PARENT = str(pathlib.Path(__file__).resolve().parents[5])
+
+RAYCLUSTERS_QUALIFIED = "rayclusters.ray.io"
+
+LOG_FORMAT = "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
 
 
-def wait_for_crd(crd_name: str, tries=60, backoff_s=5):
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format=LOG_FORMAT,
+    )
+
+
+def switch_to_ray_parent_dir():
+    # Switch to parent of Ray repo, because that's what the doc examples do.
+    logger.info("Switching to parent of Ray directory.")
+    os.chdir(RAY_PARENT)
+
+
+def setup_kuberay_operator():
+    """Set up KubeRay operator and Ray autoscaler RBAC."""
+    switch_to_ray_parent_dir()
+    logger.info("Cloning KubeRay and setting up KubeRay configuration.")
+    # For faster run-time when triggering the test locally, don't run the init
+    # script if it has already been run.
+    subprocess.check_call(
+        [
+            "bash",
+            "-c",
+            (
+                "ls ray/python/ray/autoscaler/kuberay/config ||"
+                " ./ray/python/ray/autoscaler/kuberay/init-config.sh"
+            ),
+        ]
+    )
+    logger.info("Creating KubeRay operator.")
+    subprocess.check_call(
+        [
+            "kubectl",
+            "create",
+            "-k",
+            "ray/python/ray/autoscaler/kuberay/config/default",
+        ]
+    )
+
+
+def teardown_kuberay_operator():
+    logger.info("Switching to parent of Ray directory.")
+    os.chdir(RAY_PARENT)
+
+    logger.info("Deleting operator.")
+    subprocess.check_call(
+        [
+            "kubectl",
+            "delete",
+            "--ignore-not-found",
+            "-k",
+            "ray/python/ray/autoscaler/kuberay/config/default",
+        ]
+    )
+
+    logger.info("Double-checking no pods left over in namespace ray-system.")
+    wait_for_pods(goal_num_pods=0, namespace="ray-system")
+
+
+def wait_for_raycluster_crd(tries=60, backoff_s=5):
     """CRD creation can take a bit of time after the client request.
     This function waits until the crd with the provided name is registered.
     """
+    switch_to_ray_parent_dir()
+    logger.info("Making sure RayCluster CRD has been registered.")
     for i in range(tries):
         get_crd_output = subprocess.check_output(["kubectl", "get", "crd"]).decode()
-        if crd_name in get_crd_output:
-            logger.info(f"Confirmed existence of CRD {crd_name}.")
-            return
+        if RAYCLUSTERS_QUALIFIED in get_crd_output:
+            logger.info("Confirmed existence of RayCluster CRD.")
+            break
         elif i < tries - 1:
-            logger.info(f"Still waiting to register CRD {crd_name}")
+            logger.info("Still waiting to register RayCluster CRD.")
             time.sleep(backoff_s)
         else:
-            raise Exception(f"Failed to register CRD {crd_name}")
+            raise Exception("Failed to register RayCluster CRD.")
+
+    # Create a test RayCluster CR to make sure that the CRD is fully registered.
+    for i in range(tries):
+        try:
+            subprocess.check_call(["kubectl", "apply", "-f", TEST_CR_PATH])
+            break
+        except subprocess.CalledProcessError as e:
+            logger.info("Can't create RayCluster CR.")
+            if i < tries - 1:
+                logger.info("Retrying.")
+                time.sleep(backoff_s)
+            else:
+                logger.info("Giving up.")
+                raise e from None
+
+    # Confirm the test RayCluster exists.
+    out = subprocess.check_output(["kubectl", "get", RAYCLUSTERS_QUALIFIED]).decode()
+    assert TEST_CLUSTER_NAME in out, out
+
+    # Delete the test RayCluster.
+    subprocess.check_call(["kubectl", "delete", "-f", TEST_CR_PATH])
+    # Make sure the associated resources are gone before proceeding.
+    wait_for_pods(goal_num_pods=0, namespace="default")
 
 
 def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> None:

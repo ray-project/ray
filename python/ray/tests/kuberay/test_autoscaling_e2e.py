@@ -1,7 +1,6 @@
 import copy
 import logging
 import os
-import pathlib
 import tempfile
 import unittest
 import subprocess
@@ -16,6 +15,8 @@ from ray.tests.kuberay.utils import (
     get_raycluster,
     ray_client_port_forward,
     ray_job_submit,
+    setup_logging,
+    switch_to_ray_parent_dir,
     kubectl_exec_python_script,
     kubectl_logs,
     kubectl_patch,
@@ -23,7 +24,6 @@ from ray.tests.kuberay.utils import (
     wait_for_pods,
     wait_for_pod_to_start,
     wait_for_ray_health,
-    wait_for_crd,
 )
 
 from ray.tests.kuberay.scripts import (
@@ -33,14 +33,10 @@ from ray.tests.kuberay.scripts import (
 )
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s",
-)
 
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.
-RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:448f52")
+RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:nightly-py38")
 # By default, use the same image for the autoscaler and Ray containers.
 AUTOSCALER_IMAGE = os.environ.get("AUTOSCALER_IMAGE", RAY_IMAGE)
 # Set to IfNotPresent in kind CI.
@@ -48,11 +44,7 @@ PULL_POLICY = os.environ.get("PULL_POLICY", "Always")
 logger.info(f"Using image `{RAY_IMAGE}` for Ray containers.")
 logger.info(f"Using image `{AUTOSCALER_IMAGE}` for Autoscaler containers.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
-# The default "rayproject/ray:413fe0" is the currently pinned autoscaler image
-# (to be replaced with rayproject/ray:1.12.0 upon 1.12.0 release).
 
-# Parent directory of Ray repository
-RAY_PARENT = str(pathlib.Path(__file__).resolve().parents[5])
 # Path to example config rel RAY_PARENT
 EXAMPLE_CLUSTER_PATH = "ray/python/ray/autoscaler/kuberay/ray-cluster.complete.yaml"
 
@@ -67,38 +59,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
     """e2e verification of autoscaling following the steps in the Ray documentation.
     kubectl is used throughout, as that reflects the instructions in the docs.
     """
-
-    def setUp(self):
-        """Set up KubeRay operator and Ray autoscaler RBAC."""
-
-        # Switch to parent of Ray repo, because that's what the doc examples do.
-        logger.info("Switching to parent of Ray directory.")
-        os.chdir(RAY_PARENT)
-
-        logger.info("Cloning KubeRay and setting up KubeRay configuration.")
-        # For faster run-time when triggering the test locally, don't run the init
-        # script if it has already been run.
-        subprocess.check_call(
-            [
-                "bash",
-                "-c",
-                (
-                    "ls ray/python/ray/autoscaler/kuberay/config ||"
-                    " ./ray/python/ray/autoscaler/kuberay/init-config.sh"
-                ),
-            ]
-        )
-        logger.info("Creating KubeRay operator.")
-        subprocess.check_call(
-            [
-                "kubectl",
-                "create",
-                "-k",
-                "ray/python/ray/autoscaler/kuberay/config/default",
-            ]
-        )
-        logger.info("Making sure RayCluster CRD has been registered.")
-        wait_for_crd("rayclusters.ray.io")
 
     def _get_ray_cr_config(
         self, min_replicas=0, cpu_replicas=0, gpu_replicas=0
@@ -242,6 +202,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         The `num-cpus` arg to Ray start is 1 for each Ray container; thus Ray accounts
         1 CPU for each Ray node in the test.
         """
+        switch_to_ray_parent_dir()
+
         # Cluster creation
         logger.info("Creating a RayCluster with no worker pods.")
         self._apply_ray_cr(min_replicas=0, cpu_replicas=0, gpu_replicas=0)
@@ -424,26 +386,10 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Confirming Ray pods are gone.")
         wait_for_pods(goal_num_pods=0, namespace=RAY_CLUSTER_NAMESPACE)
 
-    def tearDown(self):
-        """Clean resources following the instructions in the docs."""
-
-        logger.info("Deleting operator.")
-        subprocess.check_call(
-            [
-                "kubectl",
-                "delete",
-                "-k",
-                "ray/python/ray/autoscaler/kuberay/config/default",
-            ]
-        )
-
-        logger.info("Double-checking no pods left over.")
-        wait_for_pods(goal_num_pods=0, namespace=RAY_CLUSTER_NAMESPACE)
-        wait_for_pods(goal_num_pods=0, namespace="ray-system")
-
 
 if __name__ == "__main__":
     import pytest
     import sys
 
+    setup_logging()
     sys.exit(pytest.main(["-vv", __file__]))
