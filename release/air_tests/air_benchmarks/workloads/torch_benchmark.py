@@ -349,7 +349,11 @@ def run(
 
         start_time = time.monotonic()
         loss_vanilla = train_torch_vanilla(
-            num_workers=4, use_gpu=use_gpu, config=config, master_port=master_port + run
+            num_workers=num_workers,
+            cpus_per_worker=cpus_per_worker,
+            use_gpu=use_gpu,
+            config=config,
+            master_port=master_port + run,
         )
         time_taken = time.monotonic() - start_time
 
