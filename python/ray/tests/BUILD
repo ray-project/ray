@@ -1,5 +1,15 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
+py_library(
+  name = "conftest",
+  srcs = glob(["**/conftest.py"]),
+  visibility = [
+    "//python/ray/tests:__subpackages__",
+    "//python/ray/dashboard:__pkg__",
+    "//python/ray/data:__pkg__",
+  ],
+)
+
 SRCS = [] + select({
     "@bazel_tools//src/conditions:windows": glob([
         # TODO(mehrdadn): This should be added for all platforms once resulting errors are fixed
