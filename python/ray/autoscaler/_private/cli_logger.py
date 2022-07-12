@@ -167,7 +167,7 @@ def _format_msg(
     no_format: bool = None,
     _tags: Dict[str, Any] = None,
     _numbered: Tuple[str, int, int] = None,
-    **kwargs: Any
+    **kwargs: Any,
 ):
     """Formats a message for printing.
 
@@ -258,6 +258,7 @@ def _isatty():
     try:
         # https://stackoverflow.com/questions/6108330/
         # checking-for-interactive-shell-in-a-python-script
+        print(f"jjyao {sys.__stdin__.isatty()}")
         return sys.__stdin__.isatty()
     except Exception:
         # sometimes this can fail due to closed output
@@ -576,7 +577,7 @@ class _CliLogger:
         *args: Any,
         _level_str: str = "INFO",
         end: str = None,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """Prints a message.
 
@@ -640,7 +641,7 @@ class _CliLogger:
         _abort: bool = False,
         _default: bool = False,
         _timeout_s: Optional[float] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """Display a confirmation dialog.
 
