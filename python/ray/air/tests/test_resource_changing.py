@@ -41,7 +41,12 @@ def train_fn(config):
     for epoch in range(start_epoch, config["num_epochs"]):
         checkpoint = Checkpoint.from_dict(dict(epoch=epoch))
         session.report(
-            {"metric": config["metric"] * epoch, "epoch": epoch}, checkpoint=checkpoint
+            {
+                "metric": config["metric"] * epoch,
+                "epoch": epoch,
+                "num_cpus": session.get_trial_resources().required_resources["CPU"],
+            },
+            checkpoint=checkpoint,
         )
 
 
@@ -71,7 +76,10 @@ class AssertingXGBoostTrainer(XGBoostTrainer):
 
 
 def test_data_parallel_trainer(ray_start_8_cpus):
-    trainer = AssertingDataParallelTrainer(train_fn, scaling_config=dict(num_workers=2))
+    num_workers = 2
+    trainer = AssertingDataParallelTrainer(
+        train_fn, scaling_config=dict(num_workers=num_workers)
+    )
     tuner = Tuner(
         trainer,
         param_space={
@@ -94,6 +102,8 @@ def test_data_parallel_trainer(ray_start_8_cpus):
     )
     result_grid = tuner.fit()
     assert not any(x.error for x in result_grid)
+    # + 1 for Trainable
+    assert result_grid.get_dataframe()["num_cpus"].max() > num_workers + 1
 
 
 def test_gbdt_trainer(ray_start_8_cpus):
