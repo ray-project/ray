@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI(stability="alpha")
 class Checkpoint:
-    """Ray ML Checkpoint.
+    """Ray AIR Checkpoint.
 
     This implementation provides methods to translate between
     different checkpoint storage locations: Local storage, external storage
