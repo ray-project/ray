@@ -23,6 +23,7 @@ checkpoint = to_air_checkpoint(model)
 
 
 # __use_trainer_checkpoint_start__
+import pandas as pd
 import ray
 from ray.air import train_test_split
 from ray.train.xgboost import XGBoostTrainer
