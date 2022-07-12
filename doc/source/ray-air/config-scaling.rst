@@ -21,7 +21,7 @@ To use ``ScalingConfig`` when training a model, pass in the ``scaling_config`` p
 Ray Tune Usage
 --------------
 
-You can also treat some scaling config variables as hyperparameters and optimize them using Tune. 
+You can also treat some scaling config variables as hyperparameters and optimize them using Ray Tune. 
 
 Rather than passing in the ``scaling_config`` parameter to ``Trainer``, instead set the ``scaling_config``
 key of the ``param_space`` dict that is passed to your ``Tuner`` initializer:
