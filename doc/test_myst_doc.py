@@ -1,7 +1,7 @@
 """Convert a jupytext-compliant format in to a python script
 and execute it with parsed arguments.
 
-Any cell with 'remove_cell' tag in metadata will not be included
+Any cell with 'remove_cell_ci' tag in metadata will not be included
 in the converted python script.
 """
 
@@ -25,20 +25,20 @@ parser.add_argument(
 )
 
 
-def filter_out_cells_with_remove_cell_tag(cells: list):
-    """Filters out cells which contain the 'remove_cell' tag in metadata"""
+def filter_out_cells_with_remove_cell_ci_tag(cells: list):
+    """Filters out cells which contain the 'remove_cell_ci' tag in metadata"""
 
     def should_keep_cell(cell):
         tags = cell.metadata.get("tags")
         if tags:
-            return "remove_cell" not in tags
+            return "remove_cell_ci" not in tags
         return True
 
     return [cell for cell in cells if should_keep_cell(cell)]
 
 
 def postprocess_notebook(notebook):
-    notebook.cells = filter_out_cells_with_remove_cell_tag(notebook.cells)
+    notebook.cells = filter_out_cells_with_remove_cell_ci_tag(notebook.cells)
     return notebook
 
 
