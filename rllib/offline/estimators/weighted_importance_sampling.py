@@ -1,9 +1,8 @@
-from ray.rllib.offline.estimators.off_policy_estimator import (
-    OffPolicyEstimator,
-    action_log_likelihood,
-)
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
 import numpy as np
 from typing import Dict, Any
@@ -28,7 +27,10 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         estimates = {"v_old": [], "v_new": [], "v_gain": []}
         for episode in batch.split_by_episode():
             rewards, old_prob = episode["rewards"], episode["action_prob"]
-            new_prob = np.exp(action_log_likelihood(self.policy, episode))
+            log_likelihoods = compute_log_likelihoods_from_input_dict(
+                self.policy, episode
+            )
+            new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
             # calculate importance ratios
             p = []

@@ -29,13 +29,13 @@ class TestOPE(unittest.TestCase):
         cls.gamma = 0.99
         n_eval_episodes = 20
         n_iters = 10
-        cls.q_model_config = {"n_iters": n_iters * n_eval_episodes}
+        cls.q_model_config = {"n_iters": n_iters}
 
         config = (
             DQNConfig()
             .environment(env=env_name)
             .training(gamma=cls.gamma)
-            .rollouts(num_rollout_workers=3, batch_mode="complete_episodes")
+            .rollouts(num_rollout_workers=2, batch_mode="complete_episodes")
             .exploration(
                 explore=True,
                 exploration_config={

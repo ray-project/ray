@@ -8,7 +8,7 @@ from ray.rllib.offline.estimators.feature_importance import FeatureImportance
 
 class TestFeatureImportance(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=4)
 
     def tearDown(self):
         ray.shutdown()
@@ -24,7 +24,7 @@ class TestFeatureImportance(unittest.TestCase):
                 name="feature_importance", policy=policy, gamma=0.0, repeat=repeat
             )
 
-            estimate = evaluator.estimate(sample_batch)[0].metrics
+            estimate = evaluator.estimate(sample_batch)
 
             # check if the estimate is positive
             assert all([val > 0 for val in estimate.values()])

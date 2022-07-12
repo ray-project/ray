@@ -818,7 +818,7 @@ class Algorithm(Trainable):
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
                     if self.reward_estimators:
-                        all_batches = all_batches.append(batch)
+                        all_batches.append(batch)
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
@@ -836,7 +836,7 @@ class Algorithm(Trainable):
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
                     if self.reward_estimators:
-                        all_batches = all_batches.append(batch)
+                        all_batches.append(batch)
 
             # Evaluation worker set has n remote workers.
             else:
@@ -875,7 +875,7 @@ class Algorithm(Trainable):
                             _agent_steps if self._by_agent_steps else _env_steps
                         )
                     if self.reward_estimators:
-                        all_batches = all_batches.extend(batches)
+                        all_batches.extend(batches)
 
                     agent_steps_this_iter += _agent_steps
                     env_steps_this_iter += _env_steps
