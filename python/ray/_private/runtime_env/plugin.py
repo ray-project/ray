@@ -92,7 +92,7 @@ class RuntimeEnvPlugin(ABC):
 
 
 class RuntimeEnvPluginManager:
-    """This mananger is used to load plugins in runtime env agent."""
+    """This manager is used to load plugins in runtime env agent."""
 
     def __init__(self):
         self.plugins = {}
