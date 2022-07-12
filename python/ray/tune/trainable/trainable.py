@@ -17,7 +17,6 @@ from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
-from ray.tune.cloud import TrialCheckpoint
 from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -553,7 +552,18 @@ class Trainable:
         shutil.rmtree(temp_container_dir)
         return obj_ref
 
-    def restore(self, checkpoint_path: str, checkpoint_node_ip: Optional[str] = None):
+    def _restore_from_checkpoint_obj(self, checkpoint: Checkpoint):
+        with checkpoint.as_directory() as converted_checkpoint_path:
+            return self.restore(
+                checkpoint_path=converted_checkpoint_path,
+                checkpoint_node_ip=None,
+            )
+
+    def restore(
+        self,
+        checkpoint_path: Union[str, Checkpoint],
+        checkpoint_node_ip: Optional[str] = None,
+    ):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
@@ -585,9 +595,9 @@ class Trainable:
                 on cloud storage.
 
         """
-        # Ensure TrialCheckpoints are converted
-        if isinstance(checkpoint_path, TrialCheckpoint):
-            checkpoint_path = checkpoint_path.local_path
+        # Ensure Checkpoints are converted
+        if isinstance(checkpoint_path, Checkpoint):
+            return self._restore_from_checkpoint_obj(checkpoint_path)
 
         if not self._maybe_load_from_cloud(checkpoint_path) and (
             # If a checkpoint source IP is given
@@ -662,15 +672,15 @@ class Trainable:
         with checkpoint.as_directory() as checkpoint_path:
             self.restore(checkpoint_path)
 
-    def delete_checkpoint(self, checkpoint_path: str):
+    def delete_checkpoint(self, checkpoint_path: Union[str, Checkpoint]):
         """Deletes local copy of checkpoint.
 
         Args:
             checkpoint_path: Path to checkpoint.
         """
-        # Ensure TrialCheckpoints are converted
-        if isinstance(checkpoint_path, TrialCheckpoint):
-            checkpoint_path = checkpoint_path.local_path
+        # Ensure Checkpoints are converted
+        if isinstance(checkpoint_path, Checkpoint) and checkpoint_path._local_path:
+            checkpoint_path = checkpoint_path._local_path
 
         try:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
