@@ -2,6 +2,7 @@
 # isort: skip_file
 
 # __air_generic_preprocess_start__
+from python.ray.air.config import ScalingConfig
 import ray
 from ray.data.preprocessors import StandardScaler
 from ray.air import train_test_split
@@ -65,6 +66,7 @@ from tensorflow.keras import layers
 
 from ray import train
 from ray.air import session
+from ray.air.config import ScalingConfig
 from ray.air.callbacks.keras import Callback as KerasCallback
 from ray.train.tensorflow import (
     TensorflowTrainer,
@@ -154,14 +156,14 @@ trainer = TensorflowTrainer(
         # Optimizer args.
         "lr": 0.0001,
     },
-    scaling_config={
+    scaling_config=ScalingConfig(
         # Number of workers to use for data parallelism.
-        "num_workers": 2,
+        num_workers=2,
         # Whether to use GPU acceleration.
-        "use_gpu": False,
+        use_gpu=False,
         # trainer_resources=0 so that the example works on Colab.
-        "trainer_resources": {"CPU": 0},
-    },
+        trainer_resources={"CPU": 0},
+    ),
     datasets={"train": train_dataset},
     preprocessor=preprocessor,
 )

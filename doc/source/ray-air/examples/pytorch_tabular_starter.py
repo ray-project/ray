@@ -64,6 +64,7 @@ from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
 from ray import train
 from ray.air import session
+from ray.air.config import ScalingConfig
 from ray.train.torch import TorchTrainer, to_air_checkpoint
 
 
@@ -128,14 +129,14 @@ trainer = TorchTrainer(
         # Optimizer args.
         "lr": 0.001,
     },
-    scaling_config={
+    scaling_config=ScalingConfig(
         # Number of workers to use for data parallelism.
-        "num_workers": 3,
+        num_workers=3,
         # Whether to use GPU acceleration.
-        "use_gpu": False,
+        use_gpu=False,
         # trainer_resources=0 so that the example works on Colab.
-        "trainer_resources": {"CPU": 0},
-    },
+        trainer_resources={"CPU": 0},
+    ),
     datasets={"train": train_dataset},
     preprocessor=preprocessor,
 )

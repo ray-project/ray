@@ -2,6 +2,7 @@
 # isort: skip_file
 
 # __air_generic_preprocess_start__
+from python.ray.air.config import ScalingConfig
 import ray
 from ray.data.preprocessors import StandardScaler
 from ray.air import train_test_split
@@ -32,14 +33,15 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 
 # __air_xgb_train_start__
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 
 trainer = XGBoostTrainer(
-    scaling_config={
+    scaling_config=ScalingConfig(
         # Number of workers to use for data parallelism.
-        "num_workers": 2,
+        num_workers=2,
         # Whether to use GPU acceleration.
-        "use_gpu": False,
-    },
+        use_gpu=False,
+    ),
     label_column="target",
     num_boost_round=20,
     params={
