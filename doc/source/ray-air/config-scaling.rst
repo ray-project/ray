@@ -31,5 +31,5 @@ key of the ``param_space`` dict that is passed to your ``Tuner`` initializer:
         :start-after: __config_scaling_2__
         :end-before: __config_scaling_2_end__
 
-For details on how Tune resolves search spaces, see 
-:ref:`Tune's search space tutorial <tune-search-space-tutorial>`.
+For details on how Ray Tune resolves search spaces, see 
+:ref:`Ray Tune's search space tutorial <tune-search-space-tutorial>`.
