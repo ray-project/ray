@@ -26,8 +26,9 @@ enum AgentRpcStatus {
 
 message RegisterAgentRequest {
   int32 agent_pid = 1;
-  int32 agent_port = 2;
-  string agent_ip_address = 3;
+  int32 agent_grpc_port = 2;
+  int32 agent_http_port = 3;
+  string agent_ip_address = 4;
 }
 
 message RegisterAgentReply {

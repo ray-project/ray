@@ -187,9 +187,10 @@ class GlobalState:
                 "MetricsExportPort": item.metrics_export_port,
                 "NodeName": item.node_name,
                 "AgentInfo": {
-                    "ip_address": item.agent_info.ip_address,
-                    "port": item.agent_info.port,
-                    "pid": item.agent_info.pid,
+                    "IpAddress": item.agent_info.ip_address,
+                    "GrpcPort": item.agent_info.grpc_port,
+                    "HttpPort": item.agent_info.http_port,
+                    "Pid": item.agent_info.pid,
                 },
             }
             node_info["alive"] = node_info["Alive"]

@@ -16,6 +16,7 @@ from typing import List, Tuple
 from unittest import mock
 
 import pytest
+import psutil
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -125,10 +126,20 @@ def _ray_start(**kwargs):
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init(**init_kwargs)
+    agent_pids = []
+    for node in ray.nodes():
+        agent_pids.append(int(node["AgentInfo"]["Pid"]))
 
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Make ensure agent process is died.
+    for pid in agent_pids:
+        try:
+            p = psutil.Process(pid)
+            p.kill()
+        except Exception:
+            pass
 
 
 @pytest.fixture

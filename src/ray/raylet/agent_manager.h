@@ -102,7 +102,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
  private:
   Options options_;
   pid_t agent_pid_ = 0;
-  int agent_port_ = 0;
+  int agent_grpc_port_ = 0;
+  int agent_http_port_ = 0;
   /// promise to get agent info, after the agent finished register.
   std::promise<rpc::AgentInfo> agent_info_promise_;
   /// Whether or not we intend to start the agent.  This is false if we

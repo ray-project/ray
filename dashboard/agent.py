@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import io
-import json
 import logging
 import logging.handlers
 import os
@@ -13,7 +12,6 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -259,11 +257,6 @@ class DashboardAgent:
         # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
-        internal_kv._internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
-            json.dumps([http_port, self.grpc_port]),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
 
         # Register agent to agent manager.
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
@@ -273,7 +266,8 @@ class DashboardAgent:
         await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
                 agent_pid=os.getpid(),
-                agent_port=self.grpc_port,
+                agent_grpc_port=self.grpc_port,
+                agent_http_port=http_port,
                 agent_ip_address=self.ip,
             )
         )

@@ -30,15 +30,16 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
                                        rpc::RegisterAgentReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
   agent_ip_address_ = request.agent_ip_address();
-  agent_port_ = request.agent_port();
+  agent_grpc_port_ = request.agent_grpc_port();
+  agent_http_port_ = request.agent_http_port();
   agent_pid_ = request.agent_pid();
   // TODO(SongGuyang): We should remove this after we find better port resolution.
-  // Note: `agent_port_` should be 0 if the grpc port of agent is in conflict.
-  if (agent_port_ != 0) {
+  // Note: `agent_grpc_port_` should be 0 if the grpc port of agent is in conflict.
+  if (agent_grpc_port_ != 0) {
     runtime_env_agent_client_ =
-        runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
+        runtime_env_agent_client_factory_(agent_ip_address_, agent_grpc_port_);
     RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
-                  << ", port: " << agent_port_ << ", pid: " << agent_pid_;
+                  << ", port: " << agent_grpc_port_ << ", pid: " << agent_pid_;
   } else {
     RAY_LOG(WARNING) << "The GRPC port of the Ray agent is invalid (0), ip: "
                      << agent_ip_address_ << ", pid: " << agent_pid_
@@ -50,7 +51,8 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
 
   rpc::AgentInfo agent_info;
   agent_info.set_ip_address(agent_ip_address_);
-  agent_info.set_port(agent_port_);
+  agent_info.set_grpc_port(agent_grpc_port_);
+  agent_info.set_http_port(agent_http_port_);
   agent_info.set_pid(agent_pid_);
   agent_info_promise_.set_value(agent_info);
 }

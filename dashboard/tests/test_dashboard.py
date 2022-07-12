@@ -107,7 +107,6 @@ def test_basic(ray_start_with_dashboard):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
     address_info = ray_start_with_dashboard
-    node_id = address_info["node_id"]
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
@@ -143,11 +142,6 @@ def test_basic(ray_start_with_dashboard):
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
     )
     assert dashboard_rpc_address is not None
-    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-    agent_ports = ray.experimental.internal_kv._internal_kv_get(
-        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-    )
-    assert agent_ports is not None
 
 
 def test_raylet_and_agent_share_fate(shutdown_only):
@@ -792,7 +786,6 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
 )
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
-
     all_processes = ray._private.worker._global_node.all_processes
     dashboard_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
     dashboard_proc = psutil.Process(dashboard_info.process.pid)
