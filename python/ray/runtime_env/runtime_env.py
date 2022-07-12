@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from copy import deepcopy
+from dataclasses import asdict, is_dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf import json_format
@@ -12,6 +13,7 @@ from ray._private.runtime_env.conda import get_uri as get_conda_uri
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
+from ray._private.thirdparty.dacite import from_dict
 from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
@@ -431,16 +433,28 @@ class RuntimeEnv(dict):
         return plugin_uris
 
     def __setitem__(self, key: str, value: Any) -> None:
-        res_value = value
-        RuntimeEnvPluginSchemaManager.validate(key, res_value)
+        if is_dataclass(value):
+            jsonable_type = asdict(value)
+        else:
+            jsonable_type = value
+        RuntimeEnvPluginSchemaManager.validate(key, jsonable_type)
+        res_value = jsonable_type
         if key in RuntimeEnv.known_fields and key in OPTION_TO_VALIDATION_FN:
-            res_value = OPTION_TO_VALIDATION_FN[key](value)
+            res_value = OPTION_TO_VALIDATION_FN[key](jsonable_type)
             if res_value is None:
                 return
         return super().__setitem__(key, res_value)
 
     def set(self, name: str, value: Any) -> None:
         self.__setitem__(name, value)
+
+    def get(self, name, default=None, data_class=None):
+        if name not in self:
+            return default
+        if not data_class:
+            return self.__getitem__(name)
+        else:
+            return from_dict(data_class=data_class, data=self.__getitem__(name))
 
     @classmethod
     def deserialize(cls, serialized_runtime_env: str) -> "RuntimeEnv":  # noqa: F821

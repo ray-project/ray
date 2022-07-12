@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 class RuntimeEnvPluginSchemaManager:
     """This manager is used to load plugin json schemas."""
 
-    default_schema_path = os.path.join(os.path.dirname(__file__), "schemas")
+    default_schema_path = os.path.join(
+        os.path.dirname(__file__), "../../runtime_env/schemas"
+    )
     schemas = {}
     loaded = False
 
