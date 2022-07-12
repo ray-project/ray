@@ -194,6 +194,12 @@ ray_files += [
     for filename in filenames
 ]
 
+# Files for ray.init html template.
+ray_files += [
+    "ray/widgets/templates/context_dashrow.html.j2",
+    "ray/widgets/templates/context.html.j2",
+]
+
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
