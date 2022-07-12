@@ -3,7 +3,7 @@ import json
 import logging
 import traceback
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -186,58 +186,62 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")
 
-    @routes.get("/api/jobs/{job_id}")
+    @routes.get("/api/jobs/{submission_id}")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def get_job_info(self, req: Request) -> Response:
-        job_id = req.match_info["job_id"]
-        if not self.job_exists(job_id):
+        submission_id = req.match_info["submission_id"]
+        if not self.job_exists(submission_id):
             return Response(
-                text=f"Job {job_id} does not exist",
+                text=f"Job {submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
 
-        data: JobInfo = self._job_manager.get_job_info(job_id)
+        data: JobInfo = self._job_manager.get_job_info(submission_id)
+        _, submission_job_drivers = await self._get_driver_jobs()
+        driver = submission_job_drivers.get(submission_id)
+        job_response = JobResponse(
+            **dataclasses.asdict(data),
+            id=submission_id,
+            submission_id=submission_id,
+            job_id=driver.id if driver else None,
+            driver=driver,
+            type="submission")
+
         return Response(
-            text=json.dumps(dataclasses.asdict(data)),
+            text=json.dumps(dataclasses.asdict(job_response), ),
             content_type="application/json")
 
     @routes.get("/api/jobs/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def list_jobs(self, req: Request) -> Response:
-        data: dict[str, JobInfo] = self._job_manager.list_jobs()
-        return Response(
-            text=json.dumps({
-                job_id: dataclasses.asdict(job_info)
-                for job_id, job_info in data.items()
-            }),
-            content_type="application/json",
-        )
-
-    @routes.get("/api/all_jobs/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
-    async def list_jobs(self, req: Request) -> Response:
         driver_jobs, submission_job_drivers = await self._get_driver_jobs()
+
+        # TODO(aguo): convert _job_manager.list_jobs to an async function.
         submission_jobs = self._job_manager.list_jobs()
-        for job_id, job in submission_jobs.items():
-            job.driver = submission_job_drivers.get(job_id)
+        submission_jobs = [
+            JobResponse(
+                **dataclasses.asdict(job),
+                id=submission_id,
+                submission_id=submission_id,
+                job_id=submission_job_drivers.get(submission_id).id
+                if submission_id in submission_job_drivers else None,
+                driver=submission_job_drivers.get(submission_id),
+                type="submission")
+            for submission_id, job in submission_jobs.items()
+        ]
         return Response(
             text=json.dumps([
-                *[{
-                    **dataclasses.asdict(job_info),
-                    "id": job_id,
-                    "type": "submission",
-                } for job_id, job_info in submission_jobs.items()],
-                *[{
-                    **dataclasses.asdict(job_info), "id": job_id,
-                    "type": "driver"
-                } for job_id, job_info in driver_jobs.items()],
+                *submission_jobs,
+                *[
+                    dataclasses.asdict(job_info)
+                    for job_info in driver_jobs.values()
+                ],
             ]),
             content_type="application/json",
         )
 
     async def _get_driver_jobs(self):
-        """
-        Returns a tuple of dictionaries related to drivers.
+        """Returns a tuple of dictionaries related to drivers.
 
         The first dictionary contains all driver jobs and is keyed by the job's id.
         The second dictionary contains drivers that belong to submission jobs.
@@ -258,7 +262,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     ip_address=job_table_entry.driver_ip_address,
                     pid=job_table_entry.driver_pid,
                 )
-                job = JobInfo(
+                job = JobResponse(
+                    id=job_id,
+                    job_id=job_id,
+                    type="driver",
                     status=JobStatus.SUCCEEDED
                     if job_table_entry.is_dead else JobStatus.RUNNING,
                     entrypoint="",
@@ -270,7 +277,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                         serialized_runtime_env).to_dict(),
                     driver=driver,
                 )
-                jobs[f"raydriver_{job_id}"] = job
+                jobs[job_id] = job
             else:
                 driver = DriverInfo(
                     id=job_id,
@@ -322,3 +329,24 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @staticmethod
     def is_minimal_module():
         return False
+
+
+@dataclass
+class JobResponse(JobInfo):
+    """Response model of a job
+    """
+    #: The type of job. Either "submission" or "driver"
+    type: str
+    #: The primary id of a job. Currently the "submission_id" for backwards-compatibility reasons.
+    #  Eventually, the job_id will be the main id.
+    id: Optional[str]
+    #: The job id. An id that is created for every driver that is launched in ray.
+    #  This can be used to fetch data about jobs using ray core apis.
+    job_id: Optional[str]
+    #: A submission id is an id created for every submission job. It can be used to fetch
+    #  data about jobs using the job submission apis.
+    submission_id: Optional[str]
+    #: The driver related to this job. For submission jobs,
+    #  it is the last driver launched by that job submission,
+    #  or None if there is no driver.
+    driver: Optional[DriverInfo] = None

@@ -82,9 +82,6 @@ class JobInfo:
     metadata: Optional[Dict[str, str]] = None
     #: The runtime environment for the job.
     runtime_env: Optional[Dict[str, Any]] = None
-    #: The driver related to this job. For submission jobs,
-    #  it is the first driver launched by that job submission.
-    driver: Optional[DriverInfo] = None
 
     def __post_init__(self):
         if self.message is None:
