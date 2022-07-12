@@ -4,12 +4,18 @@ from typing import Optional
 import gym
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.util.data_batch_conversion import (
+    convert_pandas_to_batch_type,
+    convert_batch_type_to_pandas,
+)
 from ray.data.preprocessor import Preprocessor
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.policy import Policy
+from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.rl import RLTrainer
 from ray.train.rl.rl_predictor import RLPredictor
 from ray.tune.trainable.util import TrainableUtil
@@ -73,22 +79,26 @@ def create_checkpoint(
     return Checkpoint.from_dict(checkpoint_data)
 
 
-@pytest.mark.parametrize("batch_type", [np.array, pd.DataFrame])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_no_preprocessor(batch_type, batch_size):
     checkpoint = create_checkpoint()
     predictor = RLPredictor.from_checkpoint(checkpoint)
 
     # Observations
-    obs = batch_type([[1.0] * 10] * batch_size)
-    actions = predictor.predict(obs)
+    data = pd.DataFrame([[1.0] * 10] * batch_size)
+    obs = convert_pandas_to_batch_type(data, type=TYPE_TO_ENUM[batch_type])
+
+    # Predictions
+    predictions = predictor.predict(obs)
+    actions = convert_batch_type_to_pandas(predictions)
 
     assert len(actions) == batch_size
     # We add [0., 1.) to 1.0, so actions should be in [1., 2.)
     assert all(1.0 <= action.item() < 2.0 for action in np.array(actions))
 
 
-@pytest.mark.parametrize("batch_type", [np.array, pd.DataFrame])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_with_preprocessor(batch_type, batch_size):
     preprocessor = _DummyPreprocessor()
@@ -96,8 +106,12 @@ def test_predict_with_preprocessor(batch_type, batch_size):
     predictor = RLPredictor.from_checkpoint(checkpoint)
 
     # Observations
-    obs = batch_type([[1.0] * 10] * batch_size)
-    actions = predictor.predict(obs)
+    data = pd.DataFrame([[1.0] * 10] * batch_size)
+    obs = convert_pandas_to_batch_type(data, type=TYPE_TO_ENUM[batch_type])
+
+    # Predictions
+    predictions = predictor.predict(obs)
+    actions = convert_batch_type_to_pandas(predictions)
 
     assert len(actions) == batch_size
     # Preprocessor doubles observations to 2.0, then we add [0., 1.),

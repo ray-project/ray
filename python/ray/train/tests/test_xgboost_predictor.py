@@ -4,12 +4,16 @@ import tempfile
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pytest
 import xgboost as xgb
 
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
+from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor
+from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.xgboost import XGBoostPredictor, to_air_checkpoint
 
 
@@ -50,11 +54,13 @@ def test_init():
     assert checkpoint_predictor.preprocessor.attr == predictor.preprocessor.attr
 
 
-def test_predict():
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+def test_predict(batch_type):
     preprocessor = DummyPreprocessor()
     predictor = XGBoostPredictor(model=model, preprocessor=preprocessor)
 
-    data_batch = np.array([[1, 2], [3, 4], [5, 6]])
+    raw_batch = pd.DataFrame([[1, 2], [3, 4], [5, 6]])
+    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
@@ -102,7 +108,5 @@ def test_predict_no_preprocessor_no_training():
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

@@ -15,7 +15,8 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
     import pyarrow
-    import pyarrow.Table as pa_table
+
+    pa_table = pyarrow.Table
 except ImportError:
     pa_table = None
 
