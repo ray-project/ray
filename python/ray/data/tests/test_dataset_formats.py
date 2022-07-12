@@ -42,11 +42,7 @@ from ray.data.datasource.parquet_datasource import (
     _deserialize_pieces_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.mock_http_server import (  # noqa
-    http_server,
-    http_file,
-    data_count,
-)
+from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
