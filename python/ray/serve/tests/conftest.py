@@ -80,4 +80,3 @@ def serve_instance(_shared_serve_instance):
     _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.handle_cache.clear()
-

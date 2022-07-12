@@ -8,7 +8,6 @@ import shutil
 import socket
 import subprocess
 import tempfile
-import requests
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -30,7 +29,6 @@ from ray._private.services import (
 )
 from ray._private.test_utils import (
     get_and_run_node_killer,
-    wait_for_condition,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
@@ -956,32 +954,3 @@ def set_runtime_env_plugin_schemas(request):
         yield runtime_env_plugin_schemas
     finally:
         del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
-
-
-def check_ray_stop():
-    try:
-        requests.get("http://localhost:52365/api/ray/version")
-        return False
-    except Exception:
-        return True
-
-
-@pytest.fixture(scope="function")
-def ray_start_stop():
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(
-        check_ray_stop(),
-        timeout=15,
-    )
-    subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
-        == 200,
-        timeout=15,
-    )
-    yield
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(
-        check_ray_stop(),
-        timeout=15,
-    )

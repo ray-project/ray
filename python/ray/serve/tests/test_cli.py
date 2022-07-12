@@ -16,7 +16,6 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
-import ray.tests.conftest
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -43,6 +42,35 @@ def assert_deployments_live(names: List[str]):
         else:
             all_deployments_live, nonliving_deployment = False, deployment_name
     assert all_deployments_live, f'"{nonliving_deployment}" deployment is not live.'
+
+
+def check_ray_stop():
+    try:
+        requests.get("http://localhost:52365/api/ray/version")
+        return False
+    except Exception:
+        return True
+
+
+@pytest.fixture(scope="function")
+def ray_start_stop():
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop(),
+        timeout=15,
+    )
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+    yield
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop(),
+        timeout=15,
+    )
 
 
 def test_start_shutdown(ray_start_stop):

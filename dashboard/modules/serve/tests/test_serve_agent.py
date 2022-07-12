@@ -1,4 +1,5 @@
 import copy
+import subprocess
 import sys
 from typing import Dict
 
@@ -7,13 +8,40 @@ import requests
 
 import ray
 from ray import serve
-import ray.tests.conftest
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
 
-
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
+
+
+def check_ray_stop():
+    try:
+        requests.get("http://localhost:52365/api/ray/version")
+        return False
+    except Exception:
+        return True
+
+
+@pytest.fixture(scope="function")
+def ray_start_stop():
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop(),
+        timeout=15,
+    )
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+    yield
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop(),
+        timeout=15,
+    )
 
 
 def deploy_and_check_config(config: Dict):
