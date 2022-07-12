@@ -9,7 +9,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
-from ray.serve.tests.conftest import *  # noqa: F401, E501
+from ray.serve.tests.conftest import *  # noqa: F401 F403
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
