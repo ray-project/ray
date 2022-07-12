@@ -108,7 +108,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::unordered_map<std::string, double> resources;
   std::string name = create_options.name;
-  std::string ray_namespace = "";
+  std::string ray_namespace = create_options.ray_namespace;
   BundleID bundle_id = GetBundleID(create_options);
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
@@ -120,18 +120,17 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
         bundle_id.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  ray::core::ActorCreationOptions actor_options{
-      create_options.max_restarts,
-      /*max_task_retries=*/0,
-      create_options.max_concurrency,
-      create_options.resources,
-      resources,
-      /*dynamic_worker_options=*/{},
-      /*is_detached=*/std::make_optional<bool>(false),
-      name,
-      ray_namespace,
-      /*is_asyncio=*/false,
-      scheduling_strategy};
+  ray::core::ActorCreationOptions actor_options{create_options.max_restarts,
+                                                /*max_task_retries=*/0,
+                                                create_options.max_concurrency,
+                                                create_options.resources,
+                                                resources,
+                                                /*dynamic_worker_options=*/{},
+                                                /*is_detached=*/std::nullopt,
+                                                name,
+                                                ray_namespace,
+                                                /*is_asyncio=*/false,
+                                                scheduling_strategy};
   ActorID actor_id;
   auto status = core_worker.CreateActor(
       BuildRayFunction(invocation), invocation.args, actor_options, "", &actor_id);
@@ -146,9 +145,12 @@ ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, task_options);
 }
 
-ActorID NativeTaskSubmitter::GetActor(const std::string &actor_name) const {
+ActorID NativeTaskSubmitter::GetActor(const std::string &actor_name,
+                                      const std::string &ray_namespace) const {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-  auto pair = core_worker.GetNamedActorHandle(actor_name, "");
+  const std::string ns =
+      ray_namespace.empty() ? core_worker.GetJobConfig().ray_namespace() : ray_namespace;
+  auto pair = core_worker.GetNamedActorHandle(actor_name, ns);
   if (!pair.second.ok()) {
     RAY_LOG(WARNING) << pair.second.message();
     return ActorID::Nil();

@@ -11,7 +11,10 @@ from collections import defaultdict
 from enum import Enum
 from subprocess import CalledProcessError
 from typing import Callable, Dict, List, Optional
-from unittest.mock import Mock
+from unittest.mock import (
+    Mock,
+    patch,
+)
 
 import grpc
 import jsonschema
@@ -26,6 +29,7 @@ from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutos
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.constants import FOREGROUND_NODE_LAUNCH_KEY
 from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import (
     _DEFAULT_CONFIGS,
@@ -3533,6 +3537,29 @@ MemAvailable:   33000000 kB
         head_node_config = node_types["ray.head.default"]
         assert head_node_config["min_workers"] == 0
         assert head_node_config["max_workers"] == 0
+
+    def testAutoscalerInitFailure(self):
+        """Validates error handling for failed autoscaler initialization in the
+        Monitor.
+        """
+
+        class AutoscalerInitFailException(Exception):
+            pass
+
+        class FaultyAutoscaler:
+            def __init__(self, *args, **kwargs):
+                raise AutoscalerInitFailException
+
+        with patch("ray._private.utils.publish_error_to_driver") as mock_publish:
+            with patch.multiple(
+                "ray.autoscaler._private.monitor",
+                StandardAutoscaler=FaultyAutoscaler,
+                _internal_kv_initialized=Mock(return_value=False),
+            ):
+                monitor = Monitor(address="Here", autoscaling_config="")
+                with pytest.raises(AutoscalerInitFailException):
+                    monitor.run()
+                mock_publish.assert_called_once()
 
 
 def test_import():

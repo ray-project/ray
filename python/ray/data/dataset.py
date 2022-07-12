@@ -35,7 +35,13 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage, Stage
+from ray.data._internal.plan import (
+    AllToAllStage,
+    ExecutionPlan,
+    OneToOneStage,
+    Stage,
+    RandomizeBlocksStage,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import (
@@ -169,7 +175,9 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool,
-        force_lazy: bool = False,
+        *,
+        defer_execution: bool = False,
+        used_from_dataset_pipeline: bool = False,
     ):
         """Construct a Dataset (internal API).
 
@@ -183,8 +191,9 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
+        self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
-        if not lazy and not force_lazy:
+        if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
@@ -526,6 +535,42 @@ class Dataset(Generic[T]):
             process_batch, batch_format="pandas", compute=compute, **ray_remote_args
         )
 
+    def drop_columns(
+        self,
+        cols: List[str],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[U]":
+        """Drop one or more columns from the dataset.
+
+        This is a blocking operation.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range_table(100) # doctest: +SKIP
+            >>> # Add a new column equal to value * 2.
+            >>> ds = ds.add_column( # doctest: +SKIP
+            ...     "new_col", lambda df: df["value"] * 2)
+            >>> # Drop the existing "value" column.
+            >>> ds = ds.drop_columns(["value"]) # doctest: +SKIP
+
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            cols: Names of the columns to drop. If any name does not exist,
+                an exception will be raised.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+
+        return self.map_batches(
+            lambda batch: batch.drop(columns=cols), compute=compute, **ray_remote_args
+        )
+
     def flat_map(
         self,
         fn: RowUDF,
@@ -777,7 +822,7 @@ class Dataset(Generic[T]):
             )
             force_lazy = False
 
-        return Dataset(plan, self._epoch, self._lazy, force_lazy=force_lazy)
+        return Dataset(plan, self._epoch, self._lazy, defer_execution=force_lazy)
 
     def random_shuffle(
         self,
@@ -861,26 +906,11 @@ class Dataset(Generic[T]):
                 based on system randomness.
 
         Returns:
-            The shuffled dataset.
+            The block-shuffled dataset.
         """
 
-        def do_randomize_block_order(block_list, *_):
-            num_blocks = block_list.executed_num_blocks()  # Blocking.
-            if num_blocks == 0:
-                return block_list, {}
-
-            randomized_block_list = block_list.randomize_block_order(seed)
-
-            return randomized_block_list, {}
-
-        plan = self._plan.with_stage(
-            AllToAllStage(
-                "randomize_block_order",
-                None,
-                do_randomize_block_order,
-            )
-        )
-        return Dataset(plan, self._epoch, self._lazy)
+        plan = self._plan.with_stage(RandomizeBlocksStage(seed))
+        return Dataset(plan, self._epoch, self._lazy, defer_execution=True)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -1150,6 +1180,7 @@ class Dataset(Generic[T]):
                         ),
                         self._epoch,
                         self._lazy,
+                        used_from_dataset_pipeline=self._used_from_dataset_pipeline,
                     )
                     for blocks in np.array_split(block_refs, n)
                 ],
@@ -1262,6 +1293,7 @@ class Dataset(Generic[T]):
                     ),
                     self._epoch,
                     self._lazy,
+                    used_from_dataset_pipeline=self._used_from_dataset_pipeline,
                 )
                 for actor in locality_hints
             ],
@@ -1451,6 +1483,7 @@ class Dataset(Generic[T]):
             ExecutionPlan(blocklist, dataset_stats),
             max_epoch,
             self._lazy,
+            used_from_dataset_pipeline=self._used_from_dataset_pipeline,
         )
 
     def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
@@ -2943,10 +2976,13 @@ class Dataset(Generic[T]):
             number of records.
         """
 
-        if self.count() > limit:
+        count = self.count()
+        if count > limit:
             raise ValueError(
-                "The dataset has more than the given limit of {} records. "
-                "Use ds.limit(N).to_pandas().".format(limit)
+                f"The dataset has more than the given limit of {limit} "
+                f"records: {count}. If you are sure that a DataFrame with "
+                f"{count} rows will fit in local memory, use "
+                f"ds.to_pandas(limit={count})."
             )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
@@ -3077,10 +3113,11 @@ class Dataset(Generic[T]):
         from ray.data.dataset_pipeline import DatasetPipeline
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
@@ -3092,9 +3129,10 @@ class Dataset(Generic[T]):
             raise ValueError("`times` must be >= 1, got {}".format(times))
 
         class Iterator:
-            def __init__(self, blocks):
+            def __init__(self, blocks, used_from_dataset_pipeline):
                 self._blocks = blocks
                 self._i = 0
+                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
@@ -3108,6 +3146,7 @@ class Dataset(Generic[T]):
                         ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
                         epoch,
                         lazy=False,
+                        used_from_dataset_pipeline=True,
                     )
                     ds._set_uuid(uuid)
                     return ds
@@ -3115,17 +3154,25 @@ class Dataset(Generic[T]):
                 return gen
 
         class Iterable:
-            def __init__(self, blocks):
+            def __init__(self, blocks, used_from_dataset_pipeline):
                 self._blocks = blocks
+                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __iter__(self):
-                return Iterator(self._blocks)
+                return Iterator(self._blocks, self._used_from_dataset_pipeline)
 
-        pipe = DatasetPipeline(Iterable(blocks), False, length=times or float("inf"))
+        pipe = DatasetPipeline(
+            Iterable(blocks, self._used_from_dataset_pipeline),
+            False,
+            length=times or float("inf"),
+        )
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage), ds._epoch, True
+                    ds._plan.with_stage(read_stage),
+                    ds._epoch,
+                    True,
+                    used_from_dataset_pipeline=True,
                 )
             )
         return pipe
@@ -3198,19 +3245,21 @@ class Dataset(Generic[T]):
             raise ValueError("A windowing scheme must be specified.")
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
             read_stage = None
 
         class Iterator:
-            def __init__(self, splits, epoch):
+            def __init__(self, splits, epoch, used_from_dataset_pipeline):
                 self._splits = splits.copy()
                 self._epoch = epoch
+                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __next__(self) -> "Dataset[T]":
                 if not self._splits:
@@ -3220,14 +3269,17 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True
+                        ExecutionPlan(blocks, outer_stats),
+                        self._epoch,
+                        lazy=True,
+                        used_from_dataset_pipeline=True,
                     )
                     return ds
 
                 return gen
 
         class Iterable:
-            def __init__(self, blocks, epoch):
+            def __init__(self, blocks, epoch, used_from_dataset_pipeline):
                 if bytes_per_window:
                     self._splits = blocks.split_by_bytes(bytes_per_window)
                 else:
@@ -3260,16 +3312,22 @@ class Dataset(Generic[T]):
                         )
                     )
                 self._epoch = epoch
+                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __iter__(self):
-                return Iterator(self._splits, self._epoch)
+                return Iterator(
+                    self._splits, self._epoch, self._used_from_dataset_pipeline
+                )
 
-        it = Iterable(blocks, self._epoch)
+        it = Iterable(blocks, self._epoch, self._used_from_dataset_pipeline)
         pipe = DatasetPipeline(it, False, length=len(it._splits))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage), ds._epoch, True
+                    ds._plan.with_stage(read_stage),
+                    ds._epoch,
+                    True,
+                    used_from_dataset_pipeline=True,
                 )
             )
         if auto_repartition:
@@ -3468,6 +3526,8 @@ class Dataset(Generic[T]):
                 left_metadata.append(ray.get(m0))
                 right_blocks.append(b1)
                 right_metadata.append(ray.get(m1))
+                if self._lazy and self._used_from_dataset_pipeline:
+                    ray._private.internal_api.free(b, local_only=False)
             count += num_rows
 
         split_duration = time.perf_counter() - start_time
@@ -3493,6 +3553,7 @@ class Dataset(Generic[T]):
             ),
             self._epoch,
             self._lazy,
+            used_from_dataset_pipeline=self._used_from_dataset_pipeline,
         )
         if return_right_half:
             right_meta_for_stats = [
@@ -3517,6 +3578,7 @@ class Dataset(Generic[T]):
                 ),
                 self._epoch,
                 self._lazy,
+                used_from_dataset_pipeline=self._used_from_dataset_pipeline,
             )
         else:
             right = None

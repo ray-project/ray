@@ -1,15 +1,19 @@
-import os
-
+import numpy as np
 import tensorflow as tf
 
 from ray.air import session
 from ray.air.callbacks.keras import Callback
+from ray.air.constants import MODEL_KEY
 from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     build_model,
     get_dataset,
 )
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.tensorflow import TensorflowTrainer, prepare_dataset_shard
+from ray.train.tensorflow import (
+    TensorflowTrainer,
+    prepare_dataset_shard,
+    TensorflowPredictor,
+)
 
 
 def train_func(config: dict):
@@ -39,7 +43,7 @@ def train_func(config: dict):
         multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
 
 
-def test_keras_callback():
+def test_keras_callback_e2e():
     epochs = 3
     scaling_config = {"num_workers": 2}
     config = {
@@ -52,8 +56,15 @@ def test_keras_callback():
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
     checkpoint = trainer.fit().checkpoint
-    with checkpoint.as_directory() as ckpt_dir:
-        assert os.path.exists(os.path.join(ckpt_dir, "saved_model.pb"))
+    checkpoint_dict = checkpoint.to_dict()
+    assert MODEL_KEY in checkpoint_dict
+
+    predictor = TensorflowPredictor.from_checkpoint(
+        checkpoint, model_definition=build_model
+    )
+
+    items = np.random.uniform(0, 1, size=(10, 1))
+    predictor.predict(data=items)
 
 
 if __name__ == "__main__":

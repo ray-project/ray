@@ -177,6 +177,7 @@ linkcheck_ignore = [
     r"https://huggingface.co/*",  # seems to be flaky
     r"https://www.meetup.com/*",  # seems to be flaky
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
+    r"http://localhost[:/].*",  # Ignore localhost links
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -304,6 +305,10 @@ def setup(app):
         defer="defer",
     )
     app.add_js_file("js/docsearch.js", defer="defer")
+
+    # https://github.com/medmunds/rate-the-docs for allowing users
+    # to give thumbs up / down and feedback on existing docs pages.
+    app.add_js_file("js/rate-the-docs.es.min.js")
 
     # Custom docstring processor
     app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)

@@ -185,6 +185,14 @@ class SubmissionClient:
         headers: Optional[Dict[str, Any]] = None,
     ):
 
+        # Remove any trailing slashes
+        if address is not None and address.endswith("/"):
+            address = address.rstrip("/")
+            logger.debug(
+                "The submission address cannot contain trailing slashes. Removing "
+                f'them from the requested submission address of "{address}".'
+            )
+
         cluster_info = parse_cluster_info(
             address, create_cluster_if_needed, cookies, metadata, headers
         )
@@ -198,13 +206,21 @@ class SubmissionClient:
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
     ):
+        self._check_connection_and_version_with_url(min_version, version_error_message)
+
+    def _check_connection_and_version_with_url(
+        self,
+        min_version: str = "1.9",
+        version_error_message: str = None,
+        url: str = "/api/version",
+    ):
         if version_error_message is None:
             version_error_message = (
                 f"Please ensure the cluster is running Ray {min_version} or higher."
             )
 
         try:
-            r = self._do_request("GET", "/api/version")
+            r = self._do_request("GET", url)
             if r.status_code == 404:
                 raise RuntimeError(version_error_message)
             r.raise_for_status()
