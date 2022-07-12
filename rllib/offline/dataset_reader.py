@@ -74,7 +74,7 @@ def _unzip_if_needed(paths: List[str], format: str):
 
 @PublicAPI
 def get_dataset_and_shards(
-    config: AlgorithmConfigDict, num_workers: int = 0, local_worker: bool = True
+    config: AlgorithmConfigDict, num_workers: int = 0
 ) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
     """Returns a dataset and a list of shards.
 
@@ -98,18 +98,11 @@ def get_dataset_and_shards(
     Args:
         config: The config dict for the algorithm.
         num_workers: The number of shards to create for remote workers.
-        local_worker: Whether to create a dataset shard for the local_worker.
-        If `num_workers = 0`, always create a single shared for the local worker. If
-        `num_workers > 0` and `local_worker=True` create a None dataset shard for the
-        local worker and insert it at the beginning of the returned list. If
-        `num_workers > 0` and `local_worker=False`, just return the shards for remote
-        workers. This behavior is inherited from `ray.rllib.evaluation.worker_set.
-        WorkerSet`.
 
     Returns:
         dataset: The dataset object.
-        shards: A list of dataset shards. If local_worker=False, the first returned
-        shared would be a dummy None shard.
+        shards: A list of dataset shards. For num_workers > 0 the first returned
+        shared would be a dummy None shard for local_worker.
     """
     # check input and input config keys
     assert config["input"] == "dataset", (
@@ -185,12 +178,9 @@ def get_dataset_and_shards(
             num_blocks=num_workers, shuffle=False
         ).split(num_workers)
 
-        if local_worker:
-            # The first None shard is for the local worker, which
-            # shouldn't be doing rollout work anyways.
-            return dataset, [None] + remote_shards
-        # Otherwise, just return the remote shards.
-        return dataset, remote_shards
+        # The first None shard is for the local worker, which
+        # shouldn't be doing rollout work anyways.
+        return dataset, [None] + remote_shards
 
 
 @PublicAPI
