@@ -27,7 +27,7 @@ def check_ray_stop():
 def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
     wait_for_condition(
-        check_ray_stop(),
+        check_ray_stop,
         timeout=15,
     )
     subprocess.check_output(["ray", "start", "--head"])
@@ -39,7 +39,7 @@ def ray_start_stop():
     yield
     subprocess.check_output(["ray", "stop", "--force"])
     wait_for_condition(
-        check_ray_stop(),
+        check_ray_stop,
         timeout=15,
     )
 
