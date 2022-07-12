@@ -125,3 +125,19 @@ class OffPolicyEstimator:
     )
     def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
         return action_log_likelihood(self.policy, batch)
+
+    @Deprecated(
+        old="OffPolicyEstimator.process(batch) -> OffPolicyEstimator.get_metrics()",
+        new="OffPolicyEstimator.estimate(batch)",
+        error=True,
+    )
+    def process(self, batch: SampleBatchType) -> None:
+        pass
+
+    @Deprecated(
+        old="OffPolicyEstimator.process(batch) -> OffPolicyEstimator.get_metrics()",
+        new="OffPolicyEstimator.estimate(batch)",
+        error=True,
+    )
+    def get_metrics(self) -> Dict[str, Any]:
+        pass
