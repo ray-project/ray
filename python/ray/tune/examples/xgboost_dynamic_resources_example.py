@@ -22,12 +22,18 @@ CHECKPOINT_FILENAME = "model.xgb"
 
 def get_best_model_checkpoint(analysis):
     best_bst = xgb.Booster()
-    try:
-        with open(analysis.best_checkpoint, "rb") as inputFile:
-            _, _, raw_model = pickle.load(inputFile)
-        best_bst.load_model(bytearray(raw_model))
-    except IsADirectoryError:
-        best_bst.load_model(os.path.join(analysis.best_checkpoint, CHECKPOINT_FILENAME))
+
+    with analysis.best_checkpoint.as_directory() as checkpoint_dir:
+        to_load = os.path.join(checkpoint_dir, CHECKPOINT_FILENAME)
+
+        if not os.path.exists(to_load):
+            # Class trainable
+            with open(os.path.join(checkpoint_dir, "checkpoint"), "rb") as f:
+                _, _, raw_model = pickle.load(f)
+            to_load = bytearray(raw_model)
+
+        best_bst.load_model(to_load)
+
     accuracy = 1.0 - analysis.best_result["eval-logloss"]
     print(f"Best model parameters: {analysis.best_config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
