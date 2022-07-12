@@ -200,5 +200,14 @@ void ConfigInternal::SetBootstrapAddress(std::string_view address) {
       address.data() + pos + 1, address.data() + address.size(), bootstrap_port);
   RAY_CHECK(ret.ec == std::errc());
 }
+
+void ConfigInternal::UpdateSessionDir(const std::string dir) {
+  if (session_dir.empty()) {
+    session_dir = dir;
+  }
+  if (logs_dir.empty()) {
+    logs_dir = session_dir + "/logs";
+  }
+}
 }  // namespace internal
 }  // namespace ray
