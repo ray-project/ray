@@ -1,7 +1,11 @@
 import os
 
+import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
+from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
+from ray.train.predictor import TYPE_TO_ENUM
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.pipelines import pipeline
 
@@ -36,7 +40,10 @@ class DummyPreprocessor(Preprocessor):
         return df
 
 
-def test_predict(tmpdir, ray_start_runtime_env):
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+def test_predict(tmpdir, ray_start_runtime_env, batch_type):
+    dtype_prompts = convert_pandas_to_batch_type(prompts, type=TYPE_TO_ENUM[batch_type])
+
     @ray.remote
     def test(use_preprocessor):
         os.chdir(tmpdir)
@@ -55,7 +62,7 @@ def test_predict(tmpdir, ray_start_runtime_env):
             preprocessor=preprocessor,
         )
 
-        predictions = predictor.predict(prompts)
+        predictions = predictor.predict(dtype_prompts)
 
         assert len(predictions) == 3
         if preprocessor:
