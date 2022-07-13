@@ -1250,20 +1250,23 @@ def test_tensorizer():
     new_ds = prep.transform(ds)
     df = new_ds.to_pandas()
     assert "c" in df
+    x = df["c"].iloc[0]
+    assert x.to_numpy().tolist() == [1, 1]
 
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)
     prep = Tensorizer(["a", "b"], "c")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="'b'"):
         prep.transform(ds)
 
-    # check it works with
+    # check it works with string types
     df = pd.DataFrame({"a": ["string", "string2", "string3"]})
     ds = ray.data.from_pandas(df)
     prep = Tensorizer(["a"], "huh")
     new_ds = prep.transform(ds)
-    new_ds.show()
+    assert "huh" in df
+
 
 
 def test_tokenizer():

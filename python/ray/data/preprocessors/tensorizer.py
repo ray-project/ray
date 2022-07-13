@@ -52,5 +52,5 @@ class Tensorizer(Preprocessor):
     def __repr__(self):
         return (
             f"Tensorizer(columns={self.columns}, "
-            f"num_features={self.num_features}, dtype={self.dtype})"
+            f"output_column={self.output_column}, dtype={self.dtype})"
         )
