@@ -189,9 +189,11 @@ def test_get_serve_status(shutdown_ray):
 
 
 def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_function):
+    """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
+
     @ray.remote
     def run_graph():
-
+        """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
         from ray._private.utils import import_attr
         from ray.serve.api import build
@@ -237,6 +239,7 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
 
 
 def test_controller_deserialization_args_and_kwargs():
+    """Ensures init_args and init_kwargs stay serialized in controller."""
 
     ray.init()
     client = serve.start()
@@ -245,6 +248,8 @@ def test_controller_deserialization_args_and_kwargs():
         pass
 
     def generate_pid_based_deserializer(pid, raw_deserializer):
+        """Cannot be deserialized by the process with specified pid."""
+
         def deserializer(*args):
 
             import os
@@ -594,6 +599,7 @@ def test_controller_recover_and_delete():
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
+    """Check that serve.shutdown() works on a remote Ray cluster."""
 
     deploy_serve_script = (
         "import ray\n"
