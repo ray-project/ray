@@ -51,10 +51,6 @@ class Stage:
         """Execute this stage against the given blocks."""
         raise NotImplementedError
 
-    def finalize(self, next_stage: Optional["Stage"]) -> "Stage":
-        """Give each stage a chance to replace itself during optimization."""
-        return self
-
     def can_fuse(self, other: "Stage") -> bool:
         """Return whether this can be fused with another stage."""
         raise NotImplementedError
@@ -343,8 +339,8 @@ class ExecutionPlan:
         """
         context = DatasetContext.get_current()
         blocks, stats, stages = self._get_source_blocks_and_stages()
-        stages = [s1.finalize(s2) for s1, s2 in zip(stages, stages[1:] + [None])]
-        stages = [s for s in stages if s is not None]
+        if context.optimize_prune_stages:
+            stages = _prune_stages(stages)
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
         if context.optimize_fuse_stages:
@@ -642,32 +638,6 @@ class OneToOneStage(Stage):
         return blocks, {}
 
 
-class GenerateStage(Stage):
-    """A stage that creates another when finalized."""
-
-    def __init__(
-        self,
-        name: str,
-        gen_stage: Callable[[Optional[Stage]], Optional[Stage]],
-    ):
-        super().__init__(name, -1)
-        self.gen_stage = gen_stage
-
-    def finalize(self, next_stage):
-        return self.gen_stage(next_stage)
-
-    def can_fuse(self, prev: Stage):
-        raise AssertionError("should be replaced prior to optimization")
-
-    def fuse(self, prev: Stage):
-        raise AssertionError("should be replaced prior to optimization")
-
-    def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
-    ) -> Tuple[BlockList, dict]:
-        raise AssertionError("should be replaced prior to optimization")
-
-
 class AllToAllStage(Stage):
     """A stage that transforms blocks holistically (e.g., shuffle)."""
 
@@ -758,6 +728,15 @@ class RandomizeBlocksStage(AllToAllStage):
         return randomized_block_list, {}
 
 
+class RepartitionStage(AllToAllStage):
+    pass
+
+
+class AutoRepartitionStage(RepartitionStage):
+    def should_execute(self, next_stages: List[Stage]) -> bool:
+        return True
+
+
 def _rewrite_read_stages(
     blocks: BlockList,
     stats: DatasetStats,
@@ -817,6 +796,28 @@ def _rewrite_read_stage(
     stats = DatasetStats(stages={}, parent=None)
     stages.insert(0, stage)
     return block_list, stats, stages
+
+
+def _prune_stages(stages: List[Stage]) -> List[Stage]:
+    """Prune unnecessary stages.
+
+    This applies to AutoRepartition stages specifically.
+
+    Args:
+        stages: Stages to try to prune.
+
+    Returns:
+        Pruned list of stages.
+    """
+
+    output = []
+    for i, s in enumerate(stages):
+        if isinstance(s, AutoRepartitionStage):
+            if s.should_execute(stages[i + 1:]):
+                output.append(s)
+        else:
+            output.append(s)
+    return output
 
 
 def _reorder_stages(stages: List[Stage]) -> List[Stage]:
