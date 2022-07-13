@@ -19,7 +19,6 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
 """
 import glob
 import multiprocessing as mp
-import multiprocessing.connection
 import os
 import re
 import sys
@@ -116,9 +115,7 @@ def _unlink_test_ssh_key():
         pass
 
 
-def _start_ray_and_block(
-    runner, child_conn: multiprocessing.connection.Connection, as_head: bool
-):
+def _start_ray_and_block(runner, child_conn: mp.connection.Connection, as_head: bool):
     """Utility function to start a CLI command with `ray start --block`
 
     This function is expected to be run in another process, where `child_conn` is used

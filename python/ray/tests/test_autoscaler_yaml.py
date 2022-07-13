@@ -93,7 +93,7 @@ class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
             try:
-                if os.path.join("aws", "example-multi-node-type.yaml") in config_path:
+                if "aws/example-multi-node-type.yaml" in config_path:
                     # aws tested in testValidateDefaultConfigAWSMultiNodeTypes.
                     continue
                 if "local" in config_path:

@@ -10,12 +10,6 @@ py_library(
     ),
 )
 
-py_library(
-    name = "conftest",
-    srcs = ["tests/conftest.py"],
-    deps = ["//python/ray/tests:conftest"],
-)
-
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["**/test*.py"],
@@ -26,15 +20,6 @@ py_test_run_all_subdirectory(
         "tests/test_state_head.py"
     ],
     extra_srcs = [],
-    data = [
-        "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
-        "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
-        "modules/snapshot/snapshot_schema.json",
-        "modules/tests/test_config_files/basic_runtime_env.yaml",
-    ] + glob([
-        "modules/job/tests/subprocess_driver_scripts/*.py",
-    ]),
-    deps = [":conftest"],
     tags = ["exclusive", "team:serve"],
 )
 
@@ -42,7 +27,6 @@ py_test(
     name = "test_node",
     size = "medium",
     srcs = ["modules/node/tests/test_node.py"],
-    deps = [":conftest"],
     tags = ["exclusive", "team:serve"],
 )
 
@@ -50,7 +34,6 @@ py_test(
     name = "test_dashboard",
     size = "medium",
     srcs = ["tests/test_dashboard.py"],
-    deps = [":conftest"],
     tags = ["exclusive", "team:serve"],
 )
 
