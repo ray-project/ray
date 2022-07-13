@@ -29,6 +29,7 @@ tabulate
 uvicorn==0.16.0
 werkzeug
 wandb
+tensorflow
 transformers
 
 # Ray libraries

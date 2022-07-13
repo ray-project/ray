@@ -55,19 +55,55 @@ long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
 std::atomic<bool> RayLog::initialized_ = false;
 
-std::string GetCallTrace() {
-  std::vector<void *> local_stack;
-  local_stack.resize(50);
-  absl::GetStackTrace(local_stack.data(), 50, 0);
-  static constexpr size_t buf_size = 16 * 1024;
-  char buf[buf_size];
-  std::string output;
-  for (auto &stack : local_stack) {
-    if (absl::Symbolize(stack, buf, buf_size)) {
-      output.append("    ").append(buf).append("\n");
+std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
+  static constexpr int MAX_NUM_FRAMES = 64;
+  char buf[16 * 1024];
+  void *frames[MAX_NUM_FRAMES];
+
+#ifndef _WIN32
+  const int num_frames = backtrace(frames, MAX_NUM_FRAMES);
+  char **frame_symbols = backtrace_symbols(frames, num_frames);
+  for (int i = 0; i < num_frames; ++i) {
+    os << frame_symbols[i];
+
+    if (absl::Symbolize(frames[i], buf, sizeof(buf))) {
+      os << " " << buf;
+    }
+
+    os << "\n";
+  }
+  free(frame_symbols);
+#else
+  const int num_frames = absl::GetStackTrace(frames, MAX_NUM_FRAMES, 0);
+  for (int i = 0; i < num_frames; ++i) {
+    if (absl::Symbolize(frames[i], buf, sizeof(buf))) {
+      os << buf;
+    } else {
+      os << "unknown";
+    }
+    os << "\n";
+  }
+#endif
+
+  return os;
+}
+
+void TerminateHandler() {
+  // Print the exception info, if any.
+  if (auto e_ptr = std::current_exception()) {
+    try {
+      std::rethrow_exception(e_ptr);
+    } catch (std::exception &e) {
+      RAY_LOG(ERROR) << "Unhandled exception: " << typeid(e).name()
+                     << ". what(): " << e.what();
+    } catch (...) {
+      RAY_LOG(ERROR) << "Unhandled unknown exception.";
     }
   }
-  return output;
+
+  RAY_LOG(ERROR) << "Stack trace: \n " << ray::StackTrace();
+
+  std::abort();
 }
 
 inline const char *ConstBasename(const char *filepath) {
@@ -119,10 +155,10 @@ class SpdLogMessage final {
     }
 
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      stream() << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
+      stream() << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     }
     if (expose_osstream_) {
-      *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
+      *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     }
     // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
     logger->log(
@@ -354,6 +390,8 @@ void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_h
   absl::InstallFailureSignalHandler(options);
   is_failure_signal_handler_installed_ = true;
 }
+
+void RayLog::InstallTerminateHandler() { std::set_terminate(TerminateHandler); }
 
 bool RayLog::IsLevelEnabled(RayLogLevel log_level) {
   return log_level >= severity_threshold_;

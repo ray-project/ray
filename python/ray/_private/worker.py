@@ -975,7 +975,7 @@ class RayContext(BaseContext, Mapping):
     def _repr_html_(self):
         if self.dashboard_url:
             dashboard_row = Template("context_dashrow.html.j2").render(
-                dashboard_url=self.dashboard_url
+                dashboard_url="http://" + self.dashboard_url
             )
         else:
             dashboard_row = None
@@ -1107,7 +1107,7 @@ def init(
             is true.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace: Namespace to use
+        namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         storage: [Experimental] Specify a URI for persistent cluster-wide storage.
