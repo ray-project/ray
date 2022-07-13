@@ -28,8 +28,7 @@ logger = logging.getLogger(__name__)
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
 def get_simple_q_tf_policy(
-    name: str,
-    base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]
+    name: str, base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]
 ) -> Type:
     """Construct a SimpleQTFPolicy inheriting either dynamic or eager base policies.
 

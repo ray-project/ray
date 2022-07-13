@@ -100,7 +100,9 @@ class TargetNetworkMixin:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_ddpg_tf_policy(name: str, base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> Type:
+def get_ddpg_tf_policy(
+    name: str, base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]
+) -> Type:
     """Construct a DDPGTFPolicy inheriting either dynamic or eager base policies.
 
     Args:

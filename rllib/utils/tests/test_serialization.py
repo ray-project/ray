@@ -3,7 +3,12 @@ import unittest
 import gym
 import numpy as np
 
-from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict, space_from_dict, space_to_dict
+from ray.rllib.utils.serialization import (
+    gym_space_from_dict,
+    gym_space_to_dict,
+    space_from_dict,
+    space_to_dict,
+)
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -137,10 +142,12 @@ class TestGymCheckEnv(unittest.TestCase):
 
     def test_original_space(self):
         space = gym.spaces.Box(low=0.0, high=1.0, shape=(10,))
-        space.original_space = gym.spaces.Dict({
-            "obs1": gym.spaces.Box(low=0.0, high=1.0, shape=(3,)),
-            "obs2": gym.spaces.Box(low=0.0, high=1.0, shape=(7,)),
-        })
+        space.original_space = gym.spaces.Dict(
+            {
+                "obs1": gym.spaces.Box(low=0.0, high=1.0, shape=(3,)),
+                "obs2": gym.spaces.Box(low=0.0, high=1.0, shape=(7,)),
+            }
+        )
 
         d = space_to_dict(space)
         sp = space_from_dict(d)
