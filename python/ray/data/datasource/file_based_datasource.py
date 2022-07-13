@@ -375,6 +375,8 @@ class _FileBasedDatasourceReader(Reader):
         if open_stream_args is None:
             open_stream_args = {}
 
+        open_input_source = self._open_input_source
+
         def read_files(
             read_paths: List[str],
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
@@ -415,9 +417,7 @@ class _FileBasedDatasourceReader(Reader):
                     # Non-Snappy compression, pass as open_input_stream() arg so Arrow
                     # can take care of streaming decompression for us.
                     open_stream_args["compression"] = compression
-                with FileBasedDatasource._open_input_source(
-                    fs, read_path, **open_stream_args
-                ) as f:
+                with open_input_source(fs, read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
