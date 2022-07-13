@@ -9,6 +9,7 @@ from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
 from ray.train.torch.utils import load_checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="alpha")
 class TorchPredictor(DLPredictor):
     """A predictor for PyTorch models.
 

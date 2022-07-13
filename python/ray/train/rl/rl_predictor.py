@@ -9,11 +9,13 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 from ray.train.predictor import Predictor
 from ray.train.rl.utils import load_checkpoint
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 class RLPredictor(Predictor):
     """A predictor for RLlib policies.
 
