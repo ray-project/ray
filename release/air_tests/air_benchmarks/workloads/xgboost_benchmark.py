@@ -18,43 +18,23 @@ from ray.train.batch_predictor import BatchPredictor
 _XGB_MODEL_PATH = "model.json"
 
 
-def run_in_separate_process(f):
-    """Runs f in a separate process.
-
-    Note: f should take "queue" as a kwarg and communicates
-    its result through the queue.
-    """
+def run_and_time_it(f):
+    """Runs f in a separate process and time it."""
 
     @wraps(f)
     def wrapper(*args, **kwargs):
-        q = Queue()
-        p = Process(target=f, args=args, kwargs={"queue": q})
+        p = Process(target=f, args=args)
+        start = time.monotonic()
         p.start()
         p.join()
-        return q.get()
-
-    return wrapper
-
-
-def time_it_in_separate_process(f):
-    """Times f in a separate process and
-    sends its result and the time take through a queue."""
-
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        q = kwargs.pop("queue")
-        assert q
-        start = time.monotonic()
-        result = f(*args, **kwargs)
         time_taken = time.monotonic() - start
         print(f"{f.__name__} takes {time_taken} seconds.")
-        q.put((result, time_taken))
+        return time_taken
 
     return wrapper
 
 
-@run_in_separate_process
-@time_it_in_separate_process
+@run_and_time_it
 def run_xgboost_training():
     ds = data.read_parquet(
         "s3://air-example-data-2/100G-xgboost-data.parquet/"
@@ -71,11 +51,12 @@ def run_xgboost_training():
         datasets={"train": ds},
     )
     result = trainer.fit()
-    return result
+    xgboost_model = load_checkpoint(result.checkpoint)[0]
+    xgboost_model.save_model(_XGB_MODEL_PATH)
+    ray.shutdown()
 
 
-@run_in_separate_process
-@time_it_in_separate_process
+@run_and_time_it
 def run_xgboost_prediction(model_path: str):
     model = xgb.Booster()
     model.load_model(model_path)
@@ -90,12 +71,9 @@ def run_xgboost_prediction(model_path: str):
 
 def main():
     print("Running xgboost training benchmark...")
-    result, training_time = run_xgboost_training()
-    xgboost_model = load_checkpoint(result.checkpoint)[0]
-    xgboost_model.save_model(_XGB_MODEL_PATH)
-    ray.shutdown()
+    training_time = run_xgboost_training()
     print("Running xgboost prediction benchmark...")
-    _, prediction_time = run_xgboost_prediction(_XGB_MODEL_PATH)
+    prediction_time = run_xgboost_prediction(_XGB_MODEL_PATH)
     result = {
         "training_time": training_time,
         "prediction_time": prediction_time,
