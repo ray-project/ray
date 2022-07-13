@@ -13,12 +13,15 @@ if __name__ == "__main__":
     ray.init(address=os.environ.get("RAY_ADDRESS", "auto"))
     start_time = time.time()
 
-    num_workers = 7  # 1 reserved for trainable
+    num_workers = 8
     num_epochs = 10
     trainer = HorovodTrainer(
         horovod_torch_train_func,
         train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
-        scaling_config=dict(num_workers=num_workers),
+        scaling_config=dict(
+            num_workers=num_workers,
+            trainer_resources={"CPU": 0},
+        ),
     )
     results = trainer.fit()
     result = results.metrics
