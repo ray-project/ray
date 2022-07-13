@@ -1,4 +1,5 @@
 import os
+import tempfile
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type, Union
 
 import torch
@@ -10,6 +11,7 @@ from transformers.trainer import TRAINING_ARGS_NAME, WEIGHTS_NAME
 
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
 )
 from ray.air._internal.torch_utils import load_torch_model
 from ray.air.checkpoint import Checkpoint
@@ -17,6 +19,42 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+
+@PublicAPI(stability="alpha")
+def to_air_checkpoint(
+    model: Union[transformers.modeling_utils.PreTrainedModel, torch.nn.Module],
+    tokenizer: Optional[transformers.PreTrainedTokenizer] = None,
+    preprocessor: Optional["Preprocessor"] = None,
+    path: Optional[str] = None,
+) -> Checkpoint:
+    """Convert a pretrained Transformers model to AIR checkpoint for serve or inference.
+
+    Args:
+        model: Either a ``transformers.PreTrainedModel``, or a trained PyTorch model.
+        tokenizer: Tokenizer to use.
+        preprocessor: A fitted preprocessor. The preprocessing logic will
+            be applied to serve/inference.
+        path: The directory where the checkpoint will be stored to.
+            If None, a temporary directory will be created.
+    Returns:
+        A Ray AIR checkpoint.
+
+    """
+    if not path:
+        path = tempfile.mkdtemp()
+    if not isinstance(model, transformers.modeling_utils.PreTrainedModel):
+        state_dict = model.state_dict()
+        torch.save(state_dict, os.path.join(path, WEIGHTS_NAME))
+    else:
+        model.save_pretrained(path)
+    if tokenizer:
+        tokenizer.save_pretrained(path)
+    if preprocessor:
+        save_preprocessor_to_dir(preprocessor, path)
+    checkpoint = Checkpoint.from_directory(path)
+
+    return checkpoint
 
 
 @PublicAPI(stability="alpha")
