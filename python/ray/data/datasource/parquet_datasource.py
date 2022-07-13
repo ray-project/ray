@@ -1,28 +1,29 @@
-import logging
 import itertools
-from typing import Callable, Optional, List, Union, Iterator, TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
 
-if TYPE_CHECKING:
-    import pyarrow
-
-import ray
-from ray.types import ObjectRef
-from ray.data.block import Block
-from ray.data.context import DatasetContext
-from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
-from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
-from ray.data.datasource.file_meta_provider import (
-    ParquetMetadataProvider,
-    DefaultParquetMetadataProvider,
-)
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
+from ray.data.block import Block
+from ray.data.context import DatasetContext
+from ray.data.datasource.datasource import Reader, ReadTask
+from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
+from ray.data.datasource.file_meta_provider import (
+    DefaultParquetMetadataProvider,
+    ParquetMetadataProvider,
+)
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
+import ray.cloudpickle as cloudpickle
+
+if TYPE_CHECKING:
+    import pyarrow
+    from pyarrow.dataset import ParquetFileFragment
 
 
 logger = logging.getLogger(__name__)
@@ -36,38 +37,30 @@ PARQUET_READER_ROW_BATCH_SIZE = 100000
 FILE_READING_RETRY = 8
 
 
-def _register_parquet_file_fragment_serialization():
-    from pyarrow.dataset import ParquetFileFragment
+# TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
+# raw pyarrow file fragment causes S3 network calls.
+class _SerializedPiece:
+    def __init__(self, frag: "ParquetFileFragment"):
+        self._data = cloudpickle.dumps(
+            (frag.format, frag.path, frag.filesystem, frag.partition_expression)
+        )
 
-    def serialize(frag):
-        return (frag.format, frag.path, frag.filesystem, frag.partition_expression)
+    def deserialize(self) -> "ParquetFileFragment":
+        # Implicitly trigger S3 subsystem initialization by importing
+        # pyarrow.fs.
+        import pyarrow.fs  # noqa: F401
 
-    def deserialize(obj):
-        file_format, path, filesystem, partition_expression = obj
+        (file_format, path, filesystem, partition_expression) = cloudpickle.loads(
+            self._data
+        )
         return file_format.make_fragment(path, filesystem, partition_expression)
 
-    ray.util.register_serializer(
-        ParquetFileFragment, serializer=serialize, deserializer=deserialize
-    )
 
-
-def _deregister_parquet_file_fragment_serialization():
-    from pyarrow.dataset import ParquetFileFragment
-
-    ray.util.deregister_serializer(ParquetFileFragment)
-
-
-# This is the bare bone deserializing function with no retry
-# easier to mock its behavior for testing when isolated from retry logic
+# Visible for test mocking.
 def _deserialize_pieces(
-    serialized_pieces: str,
+    serialized_pieces: List[_SerializedPiece],
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
-    from ray import cloudpickle
-
-    pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(
-        serialized_pieces
-    )
-    return pieces
+    return [p.deserialize() for p in serialized_pieces]
 
 
 # This retry helps when the upstream datasource is not able to handle
@@ -78,7 +71,7 @@ def _deserialize_pieces(
 # with ray.data parallelism setting at high value like the default 200
 # Such connection failure can be restored with some waiting and retry.
 def _deserialize_pieces_with_retry(
-    serialized_pieces: str,
+    serialized_pieces: List[_SerializedPiece],
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     min_interval = 0
     final_exception = None
@@ -86,8 +79,8 @@ def _deserialize_pieces_with_retry(
         try:
             return _deserialize_pieces(serialized_pieces)
         except Exception as e:
-            import time
             import random
+            import time
 
             retry_timing = (
                 ""
@@ -138,9 +131,13 @@ class ParquetDatasource(ParquetBaseDatasource):
         [{"a": 1, "b": "foo"}, ...]
     """
 
-    def prepare_read(
+    def create_reader(self, **kwargs):
+        return _ParquetDatasourceReader(**kwargs)
+
+
+class _ParquetDatasourceReader(Reader):
+    def __init__(
         self,
-        parallelism: int,
         paths: Union[str, List[str]],
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         columns: Optional[List[str]] = None,
@@ -148,17 +145,10 @@ class ParquetDatasource(ParquetBaseDatasource):
         meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
-    ) -> List[ReadTask]:
-        """Creates and returns read tasks for a Parquet file-based datasource."""
-        # NOTE: We override the base class FileBasedDatasource.prepare_read
-        # method in order to leverage pyarrow's ParquetDataset abstraction,
-        # which simplifies partitioning logic. We still use
-        # FileBasedDatasource's write side (do_write), however.
+    ):
         _check_pyarrow_version()
-        from ray import cloudpickle
         import pyarrow as pa
         import pyarrow.parquet as pq
-        import numpy as np
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         if len(paths) == 1:
@@ -175,59 +165,6 @@ class ParquetDatasource(ParquetBaseDatasource):
                 [schema.field(column) for column in columns], schema.metadata
             )
 
-        def read_pieces(serialized_pieces: str) -> Iterator[pa.Table]:
-            # Implicitly trigger S3 subsystem initialization by importing
-            # pyarrow.fs.
-            import pyarrow.fs  # noqa: F401
-
-            # Deserialize after loading the filesystem class.
-            try:
-                _register_parquet_file_fragment_serialization()
-                pieces: List[
-                    "pyarrow._dataset.ParquetFileFragment"
-                ] = _deserialize_pieces_with_retry(serialized_pieces)
-            finally:
-                _deregister_parquet_file_fragment_serialization()
-
-            # Ensure that we're reading at least one dataset fragment.
-            assert len(pieces) > 0
-
-            from pyarrow.dataset import _get_partition_keys
-
-            ctx = DatasetContext.get_current()
-            output_buffer = BlockOutputBuffer(
-                block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
-            )
-
-            logger.debug(f"Reading {len(pieces)} parquet pieces")
-            use_threads = reader_args.pop("use_threads", False)
-            for piece in pieces:
-                part = _get_partition_keys(piece.partition_expression)
-                batches = piece.to_batches(
-                    use_threads=use_threads,
-                    columns=columns,
-                    schema=schema,
-                    batch_size=PARQUET_READER_ROW_BATCH_SIZE,
-                    **reader_args,
-                )
-                for batch in batches:
-                    table = pyarrow.Table.from_batches([batch], schema=schema)
-                    if part:
-                        for col, value in part.items():
-                            table = table.set_column(
-                                table.schema.get_field_index(col),
-                                col,
-                                pa.array([value] * len(table)),
-                            )
-                    # If the table is empty, drop it.
-                    if table.num_rows > 0:
-                        output_buffer.add_block(table)
-                        if output_buffer.has_next():
-                            yield output_buffer.next()
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
-
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
             dummy_table = schema.empty_table()
@@ -243,50 +180,127 @@ class ParquetDatasource(ParquetBaseDatasource):
                 inferred_schema = schema
         else:
             inferred_schema = schema
+        self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+        self._pq_ds = pq_ds
+        self._meta_provider = meta_provider
+        self._inferred_schema = inferred_schema
+        self._block_udf = _block_udf
+        self._reader_args = reader_args
+        self._columns = columns
+        self._schema = schema
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        # TODO(ekl) better estimate the in-memory size here.
+        PARQUET_DECOMPRESSION_MULTIPLIER = 5
+        total_size = 0
+        for meta in self._metadata:
+            total_size += meta.serialized_size
+        return total_size * PARQUET_DECOMPRESSION_MULTIPLIER
+
+    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
+        # method in order to leverage pyarrow's ParquetDataset abstraction,
+        # which simplifies partitioning logic. We still use
+        # FileBasedDatasource's write side (do_write), however.
         read_tasks = []
-        metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
-        try:
-            _register_parquet_file_fragment_serialization()
-            for pieces, metadata in zip(
-                np.array_split(pq_ds.pieces, parallelism),
-                np.array_split(metadata, parallelism),
-            ):
-                if len(pieces) <= 0:
-                    continue
-                serialized_pieces = cloudpickle.dumps(pieces)
-                input_files = [p.path for p in pieces]
-                meta = meta_provider(
-                    input_files,
-                    inferred_schema,
-                    pieces=pieces,
-                    prefetched_metadata=metadata,
+        for pieces, metadata in zip(
+            np.array_split(self._pq_ds.pieces, parallelism),
+            np.array_split(self._metadata, parallelism),
+        ):
+            if len(pieces) <= 0:
+                continue
+            serialized_pieces = [_SerializedPiece(p) for p in pieces]
+            input_files = [p.path for p in pieces]
+            meta = self._meta_provider(
+                input_files,
+                self._inferred_schema,
+                pieces=pieces,
+                prefetched_metadata=metadata,
+            )
+            block_udf, reader_args, columns, schema = (
+                self._block_udf,
+                self._reader_args,
+                self._columns,
+                self._schema,
+            )
+            read_tasks.append(
+                ReadTask(
+                    lambda p=serialized_pieces: _read_pieces(
+                        block_udf,
+                        reader_args,
+                        columns,
+                        schema,
+                        p,
+                    ),
+                    meta,
                 )
-                read_tasks.append(
-                    ReadTask(lambda p=serialized_pieces: read_pieces(p), meta)
-                )
-        finally:
-            _deregister_parquet_file_fragment_serialization()
+            )
 
         return read_tasks
+
+
+def _read_pieces(
+    block_udf, reader_args, columns, schema, serialized_pieces: List[_SerializedPiece]
+) -> Iterator["pyarrow.Table"]:
+    # Deserialize after loading the filesystem class.
+    pieces: List[
+        "pyarrow._dataset.ParquetFileFragment"
+    ] = _deserialize_pieces_with_retry(serialized_pieces)
+
+    # Ensure that we're reading at least one dataset fragment.
+    assert len(pieces) > 0
+
+    import pyarrow as pa
+    from pyarrow.dataset import _get_partition_keys
+
+    ctx = DatasetContext.get_current()
+    output_buffer = BlockOutputBuffer(
+        block_udf=block_udf,
+        target_max_block_size=ctx.target_max_block_size,
+    )
+
+    logger.debug(f"Reading {len(pieces)} parquet pieces")
+    use_threads = reader_args.pop("use_threads", False)
+    for piece in pieces:
+        part = _get_partition_keys(piece.partition_expression)
+        batches = piece.to_batches(
+            use_threads=use_threads,
+            columns=columns,
+            schema=schema,
+            batch_size=PARQUET_READER_ROW_BATCH_SIZE,
+            **reader_args,
+        )
+        for batch in batches:
+            table = pa.Table.from_batches([batch], schema=schema)
+            if part:
+                for col, value in part.items():
+                    table = table.set_column(
+                        table.schema.get_field_index(col),
+                        col,
+                        pa.array([value] * len(table)),
+                    )
+            # If the table is empty, drop it.
+            if table.num_rows > 0:
+                output_buffer.add_block(table)
+                if output_buffer.has_next():
+                    yield output_buffer.next()
+    output_buffer.finalize()
+    if output_buffer.has_next():
+        yield output_buffer.next()
 
 
 def _fetch_metadata_remotely(
     pieces: List["pyarrow._dataset.ParquetFileFragment"],
 ) -> List[ObjectRef["pyarrow.parquet.FileMetaData"]]:
-    from ray import cloudpickle
 
     remote_fetch_metadata = cached_remote_fn(_fetch_metadata_serialization_wrapper)
     metas = []
     parallelism = min(len(pieces) // PIECES_PER_META_FETCH, 100)
     meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    try:
-        _register_parquet_file_fragment_serialization()
-        for pcs in np.array_split(pieces, parallelism):
-            if len(pcs) == 0:
-                continue
-            metas.append(remote_fetch_metadata.remote(cloudpickle.dumps(pcs)))
-    finally:
-        _deregister_parquet_file_fragment_serialization()
+    for pcs in np.array_split(pieces, parallelism):
+        if len(pcs) == 0:
+            continue
+        metas.append(remote_fetch_metadata.remote([_SerializedPiece(p) for p in pcs]))
     metas = meta_fetch_bar.fetch_until_complete(metas)
     return list(itertools.chain.from_iterable(metas))
 
@@ -294,18 +308,10 @@ def _fetch_metadata_remotely(
 def _fetch_metadata_serialization_wrapper(
     pieces: str,
 ) -> List["pyarrow.parquet.FileMetaData"]:
-    # Implicitly trigger S3 subsystem initialization by importing
-    # pyarrow.fs.
-    import pyarrow.fs  # noqa: F401
 
-    # Deserialize after loading the filesystem class.
-    try:
-        _register_parquet_file_fragment_serialization()
-        pieces: List[
-            "pyarrow._dataset.ParquetFileFragment"
-        ] = _deserialize_pieces_with_retry(pieces)
-    finally:
-        _deregister_parquet_file_fragment_serialization()
+    pieces: List[
+        "pyarrow._dataset.ParquetFileFragment"
+    ] = _deserialize_pieces_with_retry(pieces)
 
     return _fetch_metadata(pieces)
 

@@ -25,7 +25,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
-from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
+from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
@@ -187,119 +187,23 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
 
-    def prepare_read(
+    def _open_input_source(
         self,
-        parallelism: int,
-        paths: Union[str, List[str]],
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-        partition_filter: PathPartitionFilter = None,
-        # TODO(ekl) deprecate this once read fusion is available.
-        _block_udf: Optional[Callable[[Block], Block]] = None,
-        **reader_args,
-    ) -> List[ReadTask]:
-        """Creates and returns read tasks for a file-based datasource."""
-        _check_pyarrow_version()
-        import numpy as np
+        filesystem: "pyarrow.fs.FileSystem",
+        path: str,
+        **open_args,
+    ) -> "pyarrow.NativeFile":
+        """Opens a source path for reading and returns the associated Arrow NativeFile.
 
-        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        paths, file_sizes = meta_provider.expand_paths(paths, filesystem)
-        if partition_filter is not None:
-            filtered_paths = partition_filter(paths)
-            if not filtered_paths:
-                raise ValueError(
-                    "All provided and expanded paths have been filtered out by "
-                    "the path filter; please change the provided paths or the "
-                    f"path filter.\nPaths: {paths}\nFilter: {partition_filter}"
-                )
-            paths = filtered_paths
+        The default implementation opens the source path as a sequential input stream.
 
-        read_stream = self._read_stream
+        Implementations that do not support streaming reads (e.g. that require random
+        access) should override this method.
+        """
+        return filesystem.open_input_stream(path, **open_args)
 
-        filesystem = _wrap_s3_serialization_workaround(filesystem)
-        read_options = reader_args.get("read_options")
-        if read_options is not None:
-            import pyarrow.json as pajson
-
-            if isinstance(read_options, pajson.ReadOptions):
-                _register_arrow_json_readoptions_serializer()
-
-        if open_stream_args is None:
-            open_stream_args = {}
-
-        def read_files(
-            read_paths: List[str],
-            fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
-        ) -> Iterable[Block]:
-            logger.debug(f"Reading {len(read_paths)} files.")
-            if isinstance(fs, _S3FileSystemWrapper):
-                fs = fs.unwrap()
-            ctx = DatasetContext.get_current()
-            output_buffer = BlockOutputBuffer(
-                block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
-            )
-            for read_path in read_paths:
-                compression = open_stream_args.pop("compression", None)
-                if compression is None:
-                    import pyarrow as pa
-
-                    try:
-                        # If no compression manually given, try to detect
-                        # compression codec from path.
-                        compression = pa.Codec.detect(read_path).name
-                    except (ValueError, TypeError):
-                        # Arrow's compression inference on the file path
-                        # doesn't work for Snappy, so we double-check ourselves.
-                        import pathlib
-
-                        suffix = pathlib.Path(read_path).suffix
-                        if suffix and suffix[1:] == "snappy":
-                            compression = "snappy"
-                        else:
-                            compression = None
-                if compression == "snappy":
-                    # Pass Snappy compression as a reader arg, so datasource subclasses
-                    # can manually handle streaming decompression in
-                    # self._read_stream().
-                    reader_args["compression"] = compression
-                    reader_args["filesystem"] = fs
-                elif compression is not None:
-                    # Non-Snappy compression, pass as open_input_stream() arg so Arrow
-                    # can take care of streaming decompression for us.
-                    open_stream_args["compression"] = compression
-                with self._open_input_source(fs, read_path, **open_stream_args) as f:
-                    for data in read_stream(f, read_path, **reader_args):
-                        output_buffer.add_block(data)
-                        if output_buffer.has_next():
-                            yield output_buffer.next()
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
-
-        # fix https://github.com/ray-project/ray/issues/24296
-        parallelism = min(parallelism, len(paths))
-
-        read_tasks = []
-        for read_paths, file_sizes in zip(
-            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
-        ):
-            if len(read_paths) <= 0:
-                continue
-
-            meta = meta_provider(
-                read_paths,
-                schema,
-                rows_per_file=self._rows_per_file(),
-                file_sizes=file_sizes,
-            )
-            read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
-            )
-            read_tasks.append(read_task)
-
-        return read_tasks
+    def create_reader(self, **kwargs):
+        return _FileBasedDatasourceReader(self, **kwargs)
 
     def _rows_per_file(self):
         """Returns the number of rows per file, or None if unknown."""
@@ -322,21 +226,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _read_file()."
         )
-
-    def _open_input_source(
-        self,
-        filesystem: "pyarrow.fs.FileSystem",
-        path: str,
-        **open_args,
-    ) -> "pyarrow.NativeFile":
-        """Opens a source path for reading and returns the associated Arrow NativeFile.
-
-        The default implementation opens the source path as a sequential input stream.
-
-        Implementations that do not support streaming reads (e.g. that require random
-        access) should override this method.
-        """
-        return filesystem.open_input_stream(path, **open_args)
 
     def do_write(
         self,
@@ -427,6 +316,138 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         if cls._FILE_EXTENSION is None:
             return None
         return FileExtensionFilter(cls._FILE_EXTENSION)
+
+
+class _FileBasedDatasourceReader(Reader):
+    def __init__(
+        self,
+        delegate: FileBasedDatasource,
+        paths: Union[str, List[str]],
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+        partition_filter: PathPartitionFilter = None,
+        # TODO(ekl) deprecate this once read fusion is available.
+        _block_udf: Optional[Callable[[Block], Block]] = None,
+        **reader_args,
+    ):
+        _check_pyarrow_version()
+        self._delegate = delegate
+        self._schema = schema
+        self._open_stream_args = open_stream_args
+        self._meta_provider = meta_provider
+        self._partition_filter = partition_filter
+        self._block_udf = _block_udf
+        self._reader_args = reader_args
+        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        self._paths, self._file_sizes = meta_provider.expand_paths(
+            paths, self._filesystem
+        )
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        total_size = 0
+        for sz in self._file_sizes:
+            if sz is not None:
+                total_size += sz
+        return total_size
+
+    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        import numpy as np
+
+        open_stream_args = self._open_stream_args
+        reader_args = self._reader_args
+        _block_udf = self._block_udf
+
+        paths, file_sizes = self._paths, self._file_sizes
+        if self._partition_filter is not None:
+            paths = self._partition_filter(paths)
+
+        read_stream = self._delegate._read_stream
+        filesystem = _wrap_s3_serialization_workaround(self._filesystem)
+        read_options = reader_args.get("read_options")
+        if read_options is not None:
+            import pyarrow.json as pajson
+
+            if isinstance(read_options, pajson.ReadOptions):
+                _register_arrow_json_readoptions_serializer()
+
+        if open_stream_args is None:
+            open_stream_args = {}
+
+        open_input_source = self._delegate._open_input_source
+
+        def read_files(
+            read_paths: List[str],
+            fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
+        ) -> Iterable[Block]:
+            logger.debug(f"Reading {len(read_paths)} files.")
+            if isinstance(fs, _S3FileSystemWrapper):
+                fs = fs.unwrap()
+            ctx = DatasetContext.get_current()
+            output_buffer = BlockOutputBuffer(
+                block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
+            )
+            for read_path in read_paths:
+                compression = open_stream_args.pop("compression", None)
+                if compression is None:
+                    import pyarrow as pa
+
+                    try:
+                        # If no compression manually given, try to detect
+                        # compression codec from path.
+                        compression = pa.Codec.detect(read_path).name
+                    except (ValueError, TypeError):
+                        # Arrow's compression inference on the file path
+                        # doesn't work for Snappy, so we double-check ourselves.
+                        import pathlib
+
+                        suffix = pathlib.Path(read_path).suffix
+                        if suffix and suffix[1:] == "snappy":
+                            compression = "snappy"
+                        else:
+                            compression = None
+                if compression == "snappy":
+                    # Pass Snappy compression as a reader arg, so datasource subclasses
+                    # can manually handle streaming decompression in
+                    # self._delegate._read_stream().
+                    reader_args["compression"] = compression
+                    reader_args["filesystem"] = fs
+                elif compression is not None:
+                    # Non-Snappy compression, pass as open_input_stream() arg so Arrow
+                    # can take care of streaming decompression for us.
+                    open_stream_args["compression"] = compression
+                with open_input_source(fs, read_path, **open_stream_args) as f:
+                    for data in read_stream(f, read_path, **reader_args):
+                        output_buffer.add_block(data)
+                        if output_buffer.has_next():
+                            yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
+
+        # fix https://github.com/ray-project/ray/issues/24296
+        parallelism = min(parallelism, len(paths))
+
+        read_tasks = []
+        for read_paths, file_sizes in zip(
+            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
+        ):
+            if len(read_paths) <= 0:
+                continue
+
+            meta = self._meta_provider(
+                read_paths,
+                self._schema,
+                rows_per_file=self._delegate._rows_per_file(),
+                file_sizes=file_sizes,
+            )
+            read_task = ReadTask(
+                lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
+            )
+            read_tasks.append(read_task)
+
+        return read_tasks
 
 
 # TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and
