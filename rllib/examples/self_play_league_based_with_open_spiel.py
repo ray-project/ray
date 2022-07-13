@@ -242,7 +242,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
 
                     def _set(worker):
                         worker.set_policy_mapping_fn(policy_mapping_fn)
-                        worker.set_policies_to_train(self.trainable_policies)
+                        worker.set_is_policy_to_train(self.trainable_policies)
 
                     algorithm.workers.foreach_worker(_set)
                 else:
