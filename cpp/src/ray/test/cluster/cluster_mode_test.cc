@@ -21,7 +21,6 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "counter.h"
-#include "cpp/include/ray/api/ray_config.h"
 #include "plus.h"
 
 int cmd_argc = 0;
