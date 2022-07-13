@@ -1161,13 +1161,11 @@ const std::shared_ptr<WorkerInterface> WorkerPool::GetNewestWorker(
   for (const auto &entry : states_by_lang_) {
     auto state = entry.second;
     for (const auto &worker : state.registered_workers) {
-      RAY_LOG(ERROR) << worker->GetActorId();
       auto proc_startup_token = worker->GetStartupToken();
       auto it = state.worker_processes.find(proc_startup_token);
       if (it != state.worker_processes.end()) {
-        RAY_LOG(ERROR) << "st " << std::chrono::high_resolution_clock::to_time_t(it->second.start_time) << " " << worker->GetActorId();
         if (it->second.start_time > newest_worker_start_time) {
-          RAY_LOG(ERROR) << "setting to be killed " << worker->GetActorId();
+          RAY_LOG(DEBUG) << "setting worker to be killed " << worker->GetActorId();
           newest_worker_start_time = it->second.start_time;
           result = worker;
         }

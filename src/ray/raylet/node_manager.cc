@@ -2804,7 +2804,7 @@ bool NodeManager::TryLocalGC() {
           DestroyWorker(worker,
               rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
               absl::StrCat("Worker ",
-                  worker->WorkerId().Hex(),
+                  worker->GetActorId(),
                   " exits due to memory pressure "));
         }
       }
