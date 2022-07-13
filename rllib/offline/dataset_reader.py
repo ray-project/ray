@@ -264,7 +264,10 @@ class DatasetReader(InputReader):
         if isinstance(batch, SampleBatch):
             out = []
             for sub_batch in batch.split_by_episode():
-                out.append(self._default_policy.postprocess_trajectory(sub_batch))
+                if self._default_policy is not None:
+                    out.append(self._default_policy.postprocess_trajectory(sub_batch))
+                else:
+                    out.append(sub_batch)
             return SampleBatch.concat_samples(out)
         else:
             # TODO(ekl) this is trickier since the alignments between agent

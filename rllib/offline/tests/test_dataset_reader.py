@@ -17,7 +17,11 @@ class TestDatasetReader(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
-        cls.dset_path = "s3://air-example-data/rllib/cartpole/large.json"
+        # TODO(Kourosh): Hitting S3 in CI is currently broken due to some AWS
+        # credentials issue, unskip this test once that's fixed or once ported to moto.
+
+        # cls.dset_path = "s3://air-example-data/rllib/cartpole/large.json"
+        cls.dset_path = "tests/data/pendulum/large.json"
 
     @classmethod
     def tearDownClass(cls) -> None:
