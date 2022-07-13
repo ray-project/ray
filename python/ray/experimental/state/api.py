@@ -8,7 +8,6 @@ import requests
 import ray
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.experimental.state.common import (
-    SummaryApiOptions,
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -20,12 +19,13 @@ from ray.experimental.state.common import (
     NodeState,
     ObjectState,
     PlacementGroupState,
+    PredicateType,
     StateResource,
+    SummaryApiOptions,
+    SummaryResource,
     SupportedFilterType,
     TaskState,
     WorkerState,
-    SummaryResource,
-    PredicateType,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
