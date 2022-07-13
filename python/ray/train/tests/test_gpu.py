@@ -348,6 +348,8 @@ def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
 def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
+def test_concurrent_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
+    tune_tensorflow_mnist(num_workers=1, use_gpu=True, num_samples=2)
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
     from ray.train.examples.torch_linear_dataset_example import train_linear
