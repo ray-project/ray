@@ -157,7 +157,7 @@ public class RuntimeEnvTest {
     testDownloadAndLoadPackagesForTask(FOO_ZIP_URL, FOO_CLASS_NAME);
   }
 
-  /// This case tests that a task needs 2 jars for load different classes.
+  /// This case tests that a task needs 2 jars for load differBuilderent classes.
   public void testMultipleJars() {
     testDownloadAndLoadPackagesForTask(
         ImmutableList.of(FOO_JAR_URL, BAR_JAR_URL),

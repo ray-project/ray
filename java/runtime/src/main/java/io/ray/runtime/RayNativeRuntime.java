@@ -1,9 +1,7 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.protobuf.util.JsonFormat;
-import com.google.protobuf.util.JsonFormat.Printer;
+import com.google.gson.Gson;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.exception.RayIntentionalSystemExitException;
 import io.ray.api.id.ActorId;
@@ -20,7 +18,6 @@ import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
-import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnv;
 import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnvInfo;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.runner.RunManager;
@@ -29,6 +26,7 @@ import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -115,21 +113,17 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .setRayNamespace(rayConfig.namespace);
         RuntimeEnvInfo.Builder runtimeEnvInfoBuilder = RuntimeEnvInfo.newBuilder();
         if (rayConfig.runtimeEnvImpl != null) {
-          RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
+          Map<String, Object> runtimeEnvMap = new HashMap<>();
           if (!rayConfig.runtimeEnvImpl.getEnvVars().isEmpty()) {
-            runtimeEnvBuilder.putAllEnvVars(rayConfig.runtimeEnvImpl.getEnvVars());
+            runtimeEnvMap.put("env_vars", rayConfig.runtimeEnvImpl.getEnvVars());
           }
 
           final List<String> jarUrls = rayConfig.runtimeEnvImpl.getJars();
           if (jarUrls != null && !jarUrls.isEmpty()) {
-            runtimeEnvBuilder.getJavaRuntimeEnvBuilder().addAllDependentJars(jarUrls);
+            runtimeEnvMap.put("java_jars", jarUrls);
           }
-          Printer printer = JsonFormat.printer();
-          try {
-            runtimeEnvInfoBuilder.setSerializedRuntimeEnv(printer.print(runtimeEnvBuilder));
-          } catch (InvalidProtocolBufferException e) {
-            throw new RuntimeException(e);
-          }
+          runtimeEnvInfoBuilder.setSerializedRuntimeEnv(new Gson().toJson(runtimeEnvMap));
+
         } else {
           runtimeEnvInfoBuilder.setSerializedRuntimeEnv("{}");
         }

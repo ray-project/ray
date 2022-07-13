@@ -1,5 +1,6 @@
 package io.ray.runtime.runtimeenv;
 
+import com.google.gson.Gson;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
 import io.ray.api.runtimeenv.RuntimeEnv;
@@ -35,21 +36,15 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     // Get serializedRuntimeEnv
     String serializedRuntimeEnv = "{}";
 
-    RuntimeEnvCommon.RuntimeEnv.Builder protoRuntimeEnvBuilder =
-        RuntimeEnvCommon.RuntimeEnv.newBuilder();
-    JsonFormat.Printer printer = JsonFormat.printer();
+    Map<String, Object> runtimeEnvMap = new HashMap<>();
     if (!envVars.isEmpty()) {
-      protoRuntimeEnvBuilder.putAllEnvVars(envVars);
+      runtimeEnvMap.put("env_vars", envVars);
     }
     if (!jars.isEmpty()) {
-      protoRuntimeEnvBuilder.getJavaRuntimeEnvBuilder().addAllDependentJars(jars);
+      runtimeEnvMap.put("java_jars", jars);
     }
 
-    try {
-      serializedRuntimeEnv = printer.print(protoRuntimeEnvBuilder);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException(e);
-    }
+    serializedRuntimeEnv = new Gson().toJson(runtimeEnvMap);
 
     // Get serializedRuntimeEnvInfo
     if (serializedRuntimeEnv.equals("{}") || serializedRuntimeEnv.isEmpty()) {
@@ -58,7 +53,7 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     RuntimeEnvCommon.RuntimeEnvInfo.Builder protoRuntimeEnvInfoBuilder =
         RuntimeEnvCommon.RuntimeEnvInfo.newBuilder();
     protoRuntimeEnvInfoBuilder.setSerializedRuntimeEnv(serializedRuntimeEnv);
-    printer = JsonFormat.printer();
+    JsonFormat.Printer printer = JsonFormat.printer();
     try {
       return printer.print(protoRuntimeEnvInfoBuilder);
     } catch (InvalidProtocolBufferException e) {
