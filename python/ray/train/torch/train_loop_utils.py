@@ -467,7 +467,9 @@ class _TorchAccelerator(Accelerator):
         if torch.cuda.is_available():
             gpu_ids = ray.get_gpu_ids()
             if len(gpu_ids) > 0:
-                device_id = gpu_ids[0]
+                gpu_id = gpu_ids[0]
+                cuda_visible_list = list(map(int, ray._private.utils.get_cuda_visible_devices()))
+                device_id = cuda_visible_list.index(gpu_id)
             else:
                 # If called on the driver or outside of Ray Train, return the
                 # 0th device.
