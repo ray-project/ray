@@ -487,7 +487,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
 
-    // If the actor is already dead, immediately mark the task object is failed.
+    // If the actor is already dead, immediately mark the task object as failed.
     // Otherwise, start the grace period before marking the object as dead.
     bool is_actor_dead = (queue.state == rpc::ActorTableData::DEAD);
     const auto &death_cause = queue.death_cause;
