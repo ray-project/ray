@@ -211,8 +211,8 @@ class HyperOptSearch(Searcher):
                     _lookup(config_dict[key], space_dict[key], k)
             else:
                 if (
-                    key in space_dict and
-                    isinstance(space_dict[key], hpo.base.pyll.Apply)
+                    key in space_dict
+                    and isinstance(space_dict[key], hpo.base.pyll.Apply)
                     and space_dict[key].name == "switch"
                 ):
                     if len(space_dict[key].pos_args) > 0:
@@ -319,11 +319,15 @@ class HyperOptSearch(Searcher):
                 print_node_on_error=self.domain.rec_eval_print_node_on_error,
             )
         except (AssertionError, TypeError) as e:
-            if using_point_to_evaluate and (isinstance(e, AssertionError) or  "GarbageCollected" in str(e)):
+            if using_point_to_evaluate and (
+                isinstance(e, AssertionError) or "GarbageCollected" in str(e)
+            ):
                 raise ValueError(
                     "HyperOpt encountered a GarbageCollected switch argument. "
-                    "Usually this is caused by a config in `points_to_evaluate` missing "
-                    "a key present in `space`. Ensure that `points_to_evaluate` contains "
+                    "Usually this is caused by a config in "
+                    "`points_to_evaluate` "
+                    "missing a key present in `space`. Ensure that "
+                    "`points_to_evaluate` contains "
                     "all non-constant keys from `space`.\n"
                     "Config from `points_to_evaluate`: "
                     f"{config}\n"
