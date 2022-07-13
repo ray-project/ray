@@ -1,10 +1,10 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { GlobalContext } from "../../../App";
 import { getJobList } from "../../../service/job";
-import { UnifedJob } from "../../../type/job";
+import { UnifiedJob } from "../../../type/job";
 
 export const useJobList = () => {
-  const [jobList, setList] = useState<UnifedJob[]>([]);
+  const [jobList, setList] = useState<UnifiedJob[]>([]);
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const [msg, setMsg] = useState("Loading the job list...");
   const [isRefreshing, setRefresh] = useState(true);
@@ -38,7 +38,9 @@ export const useJobList = () => {
 
     if (rsp) {
       setList(
-        rsp.data.sort((a, b) => (b.start_time ?? 0) - (a.start_time ?? 0)),
+        Object.values<UnifiedJob>(rsp.data).sort(
+          (a, b) => (b.start_time ?? 0) - (a.start_time ?? 0),
+        ),
       );
       setMsg("Fetched jobs");
     }

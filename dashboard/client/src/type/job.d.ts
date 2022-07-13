@@ -63,9 +63,9 @@ export type JobDetailRsp = {
   result: boolean;
 };
 
-export type JobListRsp = UnifedJob[];
+export type JobListRsp = { [id: str]: UnifiedJob };
 
-export type UnifedJob = {
+export type UnifiedJob = {
   id: string;
   job_id: string | null;
   submission_id: string | null;

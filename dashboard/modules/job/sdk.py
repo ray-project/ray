@@ -14,8 +14,8 @@ from ray.dashboard.modules.job.common import (
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
-    JobInfo,
     JobLogsResponse,
+    JobDetails,
 )
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
@@ -34,12 +34,12 @@ class JobSubmissionClient(SubmissionClient):
     """
 
     def __init__(
-        self,
-        address: Optional[str] = None,
-        create_cluster_if_needed: bool = False,
-        cookies: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, Any]] = None,
+            self,
+            address: Optional[str] = None,
+            create_cluster_if_needed: bool = False,
+            cookies: Optional[Dict[str, Any]] = None,
+            metadata: Optional[Dict[str, Any]] = None,
+            headers: Optional[Dict[str, Any]] = None,
     ):
         """Initialize a JobSubmissionClient and check the connection to the cluster.
 
@@ -59,8 +59,7 @@ class JobSubmissionClient(SubmissionClient):
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
-                "installation: `pip install 'ray[default']``"
-            )
+                "installation: `pip install 'ray[default']``")
         super().__init__(
             address=address,
             create_cluster_if_needed=create_cluster_if_needed,
@@ -77,12 +76,12 @@ class JobSubmissionClient(SubmissionClient):
 
     @PublicAPI(stability="beta")
     def submit_job(
-        self,
-        *,
-        entrypoint: str,
-        job_id: Optional[str] = None,
-        runtime_env: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, str]] = None,
+            self,
+            *,
+            entrypoint: str,
+            job_id: Optional[str] = None,
+            runtime_env: Optional[Dict[str, Any]] = None,
+            metadata: Optional[Dict[str, str]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
 
@@ -135,7 +134,8 @@ class JobSubmissionClient(SubmissionClient):
         )
 
         logger.debug(f"Submitting job with job_id={job_id}.")
-        r = self._do_request("POST", "/api/jobs/", json_data=dataclasses.asdict(req))
+        r = self._do_request(
+            "POST", "/api/jobs/", json_data=dataclasses.asdict(req))
 
         if r.status_code == 200:
             return JobSubmitResponse(**r.json()).job_id
@@ -144,8 +144,8 @@ class JobSubmissionClient(SubmissionClient):
 
     @PublicAPI(stability="beta")
     def stop_job(
-        self,
-        job_id: str,
+            self,
+            job_id: str,
     ) -> bool:
         """Request a job to exit asynchronously.
 
@@ -176,9 +176,9 @@ class JobSubmissionClient(SubmissionClient):
 
     @PublicAPI(stability="beta")
     def get_job_info(
-        self,
-        job_id: str,
-    ) -> JobInfo:
+            self,
+            job_id: str,
+    ) -> JobDetails:
         """Get the latest status and other information associated with a job.
 
         Example:
@@ -203,12 +203,12 @@ class JobSubmissionClient(SubmissionClient):
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            return JobInfo(**r.json())
+            return JobDetails(**r.json())
         else:
             self._raise_error(r)
 
     @PublicAPI(stability="beta")
-    def list_jobs(self) -> Dict[str, JobInfo]:
+    def list_jobs(self) -> Dict[str, JobDetails]:
         """List all jobs along with their status and other information.
 
         Lists all jobs that have ever run on the cluster, including jobs that are
@@ -220,10 +220,14 @@ class JobSubmissionClient(SubmissionClient):
             >>> client.submit_job(entrypoint="echo hello") # doctest: +SKIP
             >>> client.submit_job(entrypoint="sleep 2") # doctest: +SKIP
             >>> client.list_jobs() # doctest: +SKIP
-            {'raysubmit_4LamXRuQpYdSMg7J': JobInfo(status='SUCCEEDED',
+            {'raysubmit_4LamXRuQpYdSMg7J': JobDetails(status='SUCCEEDED',
+            id='raysubmit_4LamXRuQpYdSMg7J', type='submission',
+            submission_id='raysubmit_4LamXRuQpYdSMg7J', job_id='03000000',
             message='Job finished successfully.', error_type=None,
             start_time=1647388711, end_time=1647388712, metadata={}, runtime_env={}),
-            'raysubmit_1dxCeNvG1fCMVNHG': JobInfo(status='RUNNING',
+            'raysubmit_1dxCeNvG1fCMVNHG': JobDetails(status='RUNNING',
+            id='raysubmit_1dxCeNvG1fCMVNHG', type='submission',
+            submission_id='raysubmit_1dxCeNvG1fCMVNHG', job_id='04000000',
             message='Job is currently running.', error_type=None,
             start_time=1647454832, end_time=None, metadata={}, runtime_env={})}
 
@@ -238,7 +242,7 @@ class JobSubmissionClient(SubmissionClient):
         if r.status_code == 200:
             jobs_info_json = r.json()
             jobs_info = {
-                job_id: JobInfo(**job_info_json)
+                job_id: JobDetails(**job_info_json)
                 for job_id, job_info_json in jobs_info_json.items()
             }
             return jobs_info
@@ -322,11 +326,9 @@ class JobSubmissionClient(SubmissionClient):
             job server fails.
         """
         async with aiohttp.ClientSession(
-            cookies=self._cookies, headers=self._headers
-        ) as session:
+                cookies=self._cookies, headers=self._headers) as session:
             ws = await session.ws_connect(
-                f"{self._address}/api/jobs/{job_id}/logs/tail"
-            )
+                f"{self._address}/api/jobs/{job_id}/logs/tail")
 
             while True:
                 msg = await ws.receive()

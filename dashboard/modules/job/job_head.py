@@ -3,7 +3,7 @@ import json
 import logging
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -28,6 +28,7 @@ from ray.dashboard.modules.job.common import (
     validate_request_type,
     JOB_ID_METADATA_KEY,
     DriverInfo,
+    JobDetails,
 )
 from ray.dashboard.modules.version import (
     CURRENT_VERSION,
@@ -49,9 +50,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._job_manager = None
         self._gcs_job_info_stub = None
 
-    async def _parse_and_validate_request(
-        self, req: Request, request_type: dataclass
-    ) -> Any:
+    async def _parse_and_validate_request(self, req: Request,
+                                          request_type: dataclass) -> Any:
         """Parse request and cast to request type. If parsing failed, return a
         Response object with status 400 and stacktrace instead.
         """
@@ -183,8 +183,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json")
 
     @routes.get("/api/jobs/{submission_id}")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
@@ -200,7 +200,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         data: JobInfo = self._job_manager.get_job_info(submission_id)
         _, submission_job_drivers = await self._get_driver_jobs()
         driver = submission_job_drivers.get(submission_id)
-        job_response = JobResponse(
+        job = JobDetails(
             **dataclasses.asdict(data),
             id=submission_id,
             submission_id=submission_id,
@@ -210,9 +210,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
         return Response(
-            text=json.dumps(
-                dataclasses.asdict(job_response),
-            ),
+            text=json.dumps(job.dict()),
             content_type="application/json",
         )
 
@@ -224,31 +222,27 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # TODO(aguo): convert _job_manager.list_jobs to an async function.
         submission_jobs = self._job_manager.list_jobs()
         submission_jobs = [
-            JobResponse(
+            JobDetails(
                 **dataclasses.asdict(job),
                 id=submission_id,
                 submission_id=submission_id,
                 job_id=submission_job_drivers.get(submission_id).id
-                if submission_id in submission_job_drivers
-                else None,
+                if submission_id in submission_job_drivers else None,
                 driver=submission_job_drivers.get(submission_id),
                 type="submission",
-            )
-            for submission_id, job in submission_jobs.items()
+            ) for submission_id, job in submission_jobs.items()
         ]
         return Response(
-            text=json.dumps(
-                [
-                    *[
-                        dataclasses.asdict(submission_job)
-                        for submission_job in submission_jobs
-                    ],
-                    *[
-                        dataclasses.asdict(job_info)
-                        for job_info in driver_jobs.values()
-                    ],
-                ]
-            ),
+            text=json.dumps({
+                **{
+                    submission_job.id: submission_job.dict()
+                    for submission_job in submission_jobs
+                },
+                **{
+                    job_info.id: job_info.dict()
+                    for job_info in driver_jobs.values()
+                },
+            }),
             content_type="application/json",
         )
 
@@ -275,20 +269,19 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     ip_address=job_table_entry.driver_ip_address,
                     pid=job_table_entry.driver_pid,
                 )
-                job = JobResponse(
+                job = JobDetails(
                     id=job_id,
                     job_id=job_id,
                     type="driver",
                     status=JobStatus.SUCCEEDED
-                    if job_table_entry.is_dead
-                    else JobStatus.RUNNING,
+                    if job_table_entry.is_dead else JobStatus.RUNNING,
                     entrypoint="",
                     start_time=job_table_entry.start_time,
                     end_time=job_table_entry.end_time,
                     metadata=metadata,
                     runtime_env=RuntimeEnv.deserialize(
-                        job_table_entry.config.runtime_env_info.serialized_runtime_env
-                    ).to_dict(),
+                        job_table_entry.config.runtime_env_info.
+                        serialized_runtime_env).to_dict(),
                     driver=driver,
                 )
                 jobs[job_id] = job
@@ -313,10 +306,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
 
-        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(submission_id))
+        resp = JobLogsResponse(
+            logs=self._job_manager.get_job_logs(submission_id))
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json")
 
     @routes.get("/api/jobs/{submission_id}/logs/tail")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
@@ -340,65 +334,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             self._job_manager = JobManager()
 
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel
-        )
+            self._dashboard_head.aiogrpc_gcs_channel)
 
     @staticmethod
     def is_minimal_module():
         return False
-
-
-# TODO(aguo): Replace this with pydantic
-@dataclass
-class JobResponse:
-    """Response model of a job"""
-
-    #: The type of job. Either "submission" or "driver"
-    type: str
-    #: The status of the job.
-    status: JobStatus
-    #: The entrypoint command for this job.
-    entrypoint: Optional[str] = None
-    #: The primary id of a job. The job_id will be the primary id in the long term.
-    #  For backwards compatibility reasons, submission type jobs use submission ids
-    #  as the primary id.
-    id: Optional[str] = None
-    #: The job id. An id that is created for every driver that is launched in ray.
-    #  This can be used to fetch data about jobs using ray core apis.
-    job_id: Optional[str] = None
-    #: A submission id is an id created for every submission job. It can be used
-    #  to fetch data about jobs using the job submission apis.
-    submission_id: Optional[str] = None
-    #: The driver related to this job. For submission jobs,
-    #  it is the last driver launched by that job submission,
-    #  or None if there is no driver.
-    driver: Optional[DriverInfo] = None
-    #: A message describing the status in more detail.
-    message: Optional[str] = None
-    # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
-    # Internal error, user script error
-    error_type: Optional[str] = None
-    #: The time when the job was started.  A Unix timestamp in ms.
-    start_time: Optional[int] = None
-    #: The time when the job moved into a terminal state.  A Unix timestamp in ms.
-    end_time: Optional[int] = None
-    #: Arbitrary user-provided metadata for the job.
-    metadata: Optional[Dict[str, str]] = None
-    #: The runtime environment for the job.
-    runtime_env: Optional[Dict[str, Any]] = None
-
-    def __post_init__(self):
-        if self.message is None:
-            if self.status == JobStatus.PENDING:
-                self.message = (
-                    "Job has not started yet, likely waiting "
-                    "for the runtime_env to be set up."
-                )
-            elif self.status == JobStatus.RUNNING:
-                self.message = "Job is currently running."
-            elif self.status == JobStatus.STOPPED:
-                self.message = "Job was intentionally stopped."
-            elif self.status == JobStatus.SUCCEEDED:
-                self.message = "Job finished successfully."
-            elif self.status == JobStatus.FAILED:
-                self.message = "Job failed."
