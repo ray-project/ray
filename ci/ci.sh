@@ -131,8 +131,8 @@ test_core() {
       ;;
   esac
   # shellcheck disable=SC2046
-  # bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
-  exit 2
+  bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
+  ls asdfasdf
 }
 
 prepare_docker() {
