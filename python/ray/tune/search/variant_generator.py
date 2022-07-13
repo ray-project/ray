@@ -48,22 +48,11 @@ def generate_variants(
     Yields:
         (Dict of resolved variables, Spec object)
     """
-    # Avoids circular import
-    from ray.air.config import ScalingConfig
-
     for resolved_vars, spec in _generate_variants(
         unresolved_spec,
         constant_grid_search=constant_grid_search,
         random_state=random_state,
     ):
-        if (
-            "config" in spec
-            and "scaling_config" in spec["config"]
-            and isinstance(spec["config"]["scaling_config"], dict)
-        ):
-            spec["config"]["scaling_config"] = ScalingConfig(
-                **spec["config"]["scaling_config"]
-            )
         assert not _unresolved_values(spec)
         yield resolved_vars, spec
 

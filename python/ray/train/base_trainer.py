@@ -369,21 +369,22 @@ class BaseTrainer(abc.ABC):
                 run_config = base_config.pop("run_config", None)
                 self._merged_config = merge_dicts(base_config, self.config)
                 self._merged_config["run_config"] = run_config
+                merged_scaling_config = self._merged_config.get("scaling_config")
+                if isinstance(merged_scaling_config, dict):
+                    merged_scaling_config = ScalingConfig(**merged_scaling_config)
                 self._merged_config[
                     "scaling_config"
                 ] = self._reconcile_scaling_config_with_trial_resources(
-                    self._merged_config.get("scaling_config")
+                    merged_scaling_config
                 )
 
             def _reconcile_scaling_config_with_trial_resources(
-                self, scaling_config: Union[ScalingConfigDataClass, Dict[str, Any]]
-            ) -> Dict[str, Any]:
+                self, scaling_config: ScalingConfig
+            ) -> ScalingConfig:
                 """
                 ResourceChangingScheduler workaround.
 
                 Ensures that the scaling config matches trial resources.
-                Returns a dict so that `_validate_attributes` passes
-                (change when switching scaling_config to the dataclass).
 
                 This should be replaced with RCS returning a ScalingConfig
                 in the future.
@@ -395,24 +396,20 @@ class BaseTrainer(abc.ABC):
                     return scaling_config
 
                 if scaling_config:
-                    scaling_config = (
-                        trainer_cls._validate_and_get_scaling_config_data_class(
-                            scaling_config
-                        )
+                    scaling_config = trainer_cls._validate_scaling_config(
+                        scaling_config
                     )
                 scaling_config_from_trial_resources = (
-                    ScalingConfigDataClass.from_placement_group_factory(trial_resources)
+                    ScalingConfig.from_placement_group_factory(trial_resources)
                 )
 
                 # This check should always pass if ResourceChangingScheduler is not
                 # used.
                 if scaling_config_from_trial_resources != scaling_config:
-                    scaling_config = (
-                        trainer_cls._validate_and_get_scaling_config_data_class(
-                            scaling_config_from_trial_resources
-                        )
+                    scaling_config = trainer_cls._validate_scaling_config(
+                        scaling_config_from_trial_resources
                     )
-                return scaling_config.__dict__
+                return scaling_config
 
             def _trainable_func(self, config, reporter, checkpoint_dir):
                 # We ignore the config passed by Tune and instead use the merged
@@ -422,6 +419,8 @@ class BaseTrainer(abc.ABC):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
+                if isinstance(updated_scaling_config, dict):
+                    updated_scaling_config = ScalingConfig(**updated_scaling_config)
                 validated_scaling_config = trainer_cls._validate_scaling_config(
                     updated_scaling_config
                 )

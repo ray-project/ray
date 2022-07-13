@@ -71,7 +71,7 @@ class ScalingConfig:
                     "`resources_per_worker."
                 )
 
-    def __eq__(self, o: "ScalingConfigDataClass") -> bool:
+    def __eq__(self, o: "ScalingConfig") -> bool:
         if not isinstance(o, type(self)):
             return False
         return self.as_placement_group_factory() == o.as_placement_group_factory()
@@ -134,7 +134,7 @@ class ScalingConfig:
     @classmethod
     def from_placement_group_factory(
         cls, pgf: "PlacementGroupFactory"
-    ) -> "ScalingConfigDataClass":
+    ) -> "ScalingConfig":
         """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
         if pgf.head_bundle_is_empty:
             trainer_resources = {}
@@ -159,7 +159,7 @@ class ScalingConfig:
             num_workers = len(worker_bundles)
             resources_per_worker = first_bundle
 
-        return ScalingConfigDataClass(
+        return ScalingConfig(
             trainer_resources=trainer_resources,
             num_workers=num_workers,
             use_gpu=use_gpu,
