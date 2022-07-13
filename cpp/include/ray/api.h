@@ -162,6 +162,11 @@ PlacementGroup GetPlacementGroup(const std::string &name);
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
 
+/// Get the namespace of this job.
+inline std::string GetNamespace() {
+  return ray::internal::GetRayRuntime()->GetNamespace();
+}
+
 // --------- inline implementation ------------
 
 template <typename T>

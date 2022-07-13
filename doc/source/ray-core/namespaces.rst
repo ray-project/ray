@@ -192,3 +192,14 @@ You can access to the current namespace using :ref:`runtime_context APIs <runtim
         } finally {
             Ray.shutdown();
         }
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        ray::RayConfig config;
+        config.ray_namespace = "colors";
+        ray::Init(config);
+        // Will print the information about "colors" namespace.
+        std::cout << ray::GetNamespace() << std::endl;
+        ray::Shutdown();
