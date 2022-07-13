@@ -11,6 +11,21 @@ class Tensorizer(Preprocessor):
 
     A tensor column is a a column consisting of ndarrays as elements.
 
+    Example:
+        >>> import pandas as pd
+        >>> from ray.data.preprocessors import Tensorizer
+        >>> df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 3, 4],})
+        >>> ds = ray.data.from_pandas(df)
+        >>> prep = Tensorizer(["a", "b"], "c")
+        >>> new_ds = prep.transform(ds)
+        >>> df = new_ds.to_pandas()
+        #         c
+        # 0  [1, 1]
+        # 1  [2, 2]
+        #       ...
+        >>> x = df["c"].iloc[0]
+        >>> assert x.to_numpy().tolist() == [1, 1]
+
     Args:
         columns: A list of column names that should be
             concatenated into a single column. After concatenation,
@@ -40,7 +55,9 @@ class Tensorizer(Preprocessor):
         specified_set = set(self.columns)
         missing_columns = specified_set - ds_columns.intersection(specified_set)
         if missing_columns:
-            raise ValueError(f"Missing specified columns from dataset: {missing_columns}")
+            raise ValueError(
+                f"Missing specified columns from dataset: {missing_columns}"
+            )
 
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)

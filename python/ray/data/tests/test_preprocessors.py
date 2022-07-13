@@ -28,6 +28,7 @@ from ray.data.preprocessors.encoder import Categorizer, MultiHotEncoder
 from ray.data.preprocessors.hasher import FeatureHasher
 from ray.data.preprocessors.normalizer import Normalizer
 from ray.data.preprocessors.scaler import MaxAbsScaler, RobustScaler
+from ray.data.preprocessors.tensorizer import Tensorizer
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
@@ -1243,8 +1244,15 @@ def test_power_transformer():
 
     assert out_df.equals(expected_df)
 
+
 def test_tensorizer():
-    df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 3, 4],})
+    """Tests basic Tensorizer functionality."""
+    df = pd.DataFrame(
+        {
+            "a": [1, 2, 3, 4],
+            "b": [1, 2, 3, 4],
+        }
+    )
     ds = ray.data.from_pandas(df)
     prep = Tensorizer(["a", "b"], "c")
     new_ds = prep.transform(ds)
@@ -1266,7 +1274,6 @@ def test_tensorizer():
     prep = Tensorizer(["a"], "huh")
     new_ds = prep.transform(ds)
     assert "huh" in df
-
 
 
 def test_tokenizer():

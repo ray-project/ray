@@ -53,7 +53,10 @@ def concat_for_tensor(dataframe):
 
 
 # Chain the preprocessors together.
-preprocessor = Chain(preprocessor, BatchMapper(concat_for_tensor))
+preprocessor = Chain(
+    preprocessor,
+    Tensorizer(columns=schema_order, output_column="input", dtype=np.float32),
+)
 # __air_tf_preprocess_end__
 
 
