@@ -46,6 +46,7 @@ class LearnerThread(threading.Thread):
         """
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
+        self.outqueue_size = WindowStat("size", 50)
         self.local_worker = local_worker
         self.inqueue = queue.Queue(maxsize=learner_queue_size)
         self.outqueue = queue.Queue()
@@ -96,6 +97,7 @@ class LearnerThread(threading.Thread):
         # Put tuple: env-steps, agent-steps, and learner info into the queue.
         self.outqueue.put((batch.count, batch.agent_steps(), self.learner_info))
         self.learner_queue_size.push(self.inqueue.qsize())
+        self.outqueue_size.push(self.outqueue.qsize())
 
     def add_learner_metrics(self, result: Dict, overwrite_learner_info=True) -> Dict:
         """Add internal metrics to a result dict."""
@@ -107,8 +109,10 @@ class LearnerThread(threading.Thread):
             result["info"].update(
                 {
                     "learner_queue": self.learner_queue_size.stats(),
+                    "outqueue": self.outqueue_size.stats(),
                     LEARNER_INFO: copy.deepcopy(self.learner_info),
                     "timing_breakdown": {
+                        "learner_num_steps": self.num_steps,
                         "learner_grad_time_ms": timer_to_ms(self.grad_timer),
                         "learner_load_time_ms": timer_to_ms(self.load_timer),
                         "learner_load_wait_time_ms": timer_to_ms(self.load_wait_timer),
@@ -120,7 +124,9 @@ class LearnerThread(threading.Thread):
             result["info"].update(
                 {
                     "learner_queue": self.learner_queue_size.stats(),
+                    "outqueue": self.outqueue_size.stats(),
                     "timing_breakdown": {
+                        "learner_num_steps": self.num_steps,
                         "learner_grad_time_ms": timer_to_ms(self.grad_timer),
                         "learner_load_time_ms": timer_to_ms(self.load_timer),
                         "learner_load_wait_time_ms": timer_to_ms(self.load_wait_timer),

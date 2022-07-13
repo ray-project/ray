@@ -136,6 +136,7 @@ class MultiGPULearnerThread(LearnerThread):
             learner_queue_timeout,
             num_sgd_iter,
         )
+        self.num_steps = 0
 
     @override(LearnerThread)
     def step(self) -> None:
@@ -158,6 +159,11 @@ class MultiGPULearnerThread(LearnerThread):
                 if not self.local_worker.is_policy_to_train(pid):
                     continue
                 policy = self.policy_map[pid]
+
+
+                # loaded_batch = policy._loaded_batches[0][0]
+                # print(loaded_batch)
+
                 t = time.time()
                 default_policy_results = policy.learn_on_loaded_batch(
                     offset=0, buffer_index=buffer_idx
@@ -168,7 +174,8 @@ class MultiGPULearnerThread(LearnerThread):
                 get_num_samples_loaded_into_buffer += (
                     policy.get_num_samples_loaded_into_buffer(buffer_idx)
                 )
-            print(f"total_learn_time: {total_time}")
+            # print(f"total_learn_time: {total_time}")
+            self.num_steps += 1
             self.learner_info = learner_info_builder.finalize()
 
         if released:
@@ -183,6 +190,7 @@ class MultiGPULearnerThread(LearnerThread):
             )
         )
         self.learner_queue_size.push(self.inqueue.qsize())
+        self.outqueue_size.push(self.outqueue.qsize())
 
 
 class _MultiGPULoaderThread(threading.Thread):
@@ -231,7 +239,7 @@ class _MultiGPULoaderThread(threading.Thread):
                         batch=batch.policy_batches[pid],
                         buffer_index=buffer_idx,
                     )
-                print(f"batch_load_time: {time.time() - t}")
+                # print(f"batch_load_time: {time.time() - t}")
 
         # Tag just-loaded stack as "ready".
         s.ready_tower_stacks.put(buffer_idx)

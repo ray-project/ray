@@ -137,7 +137,8 @@ class ImpalaConfig(AlgorithmConfig):
         self.num_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
-        self.min_time_s_per_iteration = 10
+        # self.min_time_s_per_iteration = 10
+        self.min_sample_timesteps_per_iteration = int(50e3)
         # __sphinx_doc_end__
         # fmt: on
 
@@ -835,7 +836,7 @@ class Impala(Algorithm):
                     env_steps,
                     agent_steps,
                     learner_results,
-                ) = self._learner_thread.outqueue.get(timeout=0.001)
+                ) = self._learner_thread.outqueue.get(timeout=0.01)
                 num_env_steps_trained += env_steps
                 num_agent_steps_trained += agent_steps
                 if learner_results:
