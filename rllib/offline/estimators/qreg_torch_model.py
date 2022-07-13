@@ -29,7 +29,7 @@ class QRegTorchModel:
         lr: float = 1e-3,
         delta: float = 1e-4,
         clip_grad_norm: float = 100.0,
-        minibatch_size: int = 32,
+        minibatch_size: int = None,
     ) -> None:
         """
         Args:
@@ -49,8 +49,9 @@ class QRegTorchModel:
             delta = 1e-4,
             # Clip gradients to this maximum value
             clip_grad_norm = 100.0,
-            # Minibatch size for training Q-function
-            minibatch_size = 32,
+            # Minibatch size for training Q-function;
+            # if None, train on the whole batch
+            minibatch_size = None,
         """
         self.policy = policy
         assert isinstance(
@@ -171,12 +172,14 @@ class QRegTorchModel:
             # Update before next episode
             eps_begin = eps_end
 
+        if self.minibatch_size is None:
+            minibatch_size = batch.count
         indices = np.arange(batch.count)
         for _ in range(self.n_iters):
             minibatch_losses = []
             np.random.shuffle(indices)
-            for idx in range(0, batch.count, self.minibatch_size):
-                idxs = indices[idx : idx + self.minibatch_size]
+            for idx in range(0, batch.count, minibatch_size):
+                idxs = indices[idx : idx + minibatch_size]
                 q_values, _ = self.q_model({"obs": obs[idxs]}, [], None)
                 q_acts = torch.gather(
                     q_values, -1, actions[idxs].unsqueeze(-1)

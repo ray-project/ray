@@ -29,7 +29,7 @@ class FQETorchModel:
         lr: float = 1e-3,
         delta: float = 1e-4,
         clip_grad_norm: float = 100.0,
-        minibatch_size: int = 32,
+        minibatch_size: int = None,
         tau: float = 0.05,
     ) -> None:
         """
@@ -50,8 +50,9 @@ class FQETorchModel:
             delta = 1e-4,
             # Clip gradients to this maximum value
             clip_grad_norm = 100.0,
-            # Minibatch size for training Q-function
-            minibatch_size = 32,
+            # Minibatch size for training Q-function;
+            # if None, train on the whole batch
+            minibatch_size = None,
             # Polyak averaging factor for target Q-function
             tau = 0.05
         """
@@ -114,11 +115,13 @@ class FQETorchModel:
             A list of losses for each training iteration
         """
         losses = []
+        if self.minibatch_size is None:
+            minibatch_size = batch.count
         for _ in range(self.n_iters):
             minibatch_losses = []
             batch.shuffle()
-            for idx in range(0, batch.count, self.minibatch_size):
-                minibatch = batch[idx : idx + self.minibatch_size]
+            for idx in range(0, batch.count, minibatch_size):
+                minibatch = batch[idx : idx + minibatch_size]
                 obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
                 actions = torch.tensor(
                     minibatch[SampleBatch.ACTIONS],
