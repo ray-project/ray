@@ -376,8 +376,8 @@ class BaseTrainer(abc.ABC):
                 )
 
             def _reconcile_scaling_config_with_trial_resources(
-                self, scaling_config: Union[ScalingConfigDataClass, Dict[str, Any]]
-            ) -> Dict[str, Any]:
+                self, scaling_config: ScalingConfig
+            ) -> ScalingConfig:
                 """
                 ResourceChangingScheduler workaround.
 
@@ -395,24 +395,20 @@ class BaseTrainer(abc.ABC):
                     return scaling_config
 
                 if scaling_config:
-                    scaling_config = (
-                        trainer_cls._validate_and_get_scaling_config_data_class(
-                            scaling_config
-                        )
+                    scaling_config = trainer_cls._validate_scaling_config(
+                        scaling_config
                     )
                 scaling_config_from_trial_resources = (
-                    ScalingConfigDataClass.from_placement_group_factory(trial_resources)
+                    ScalingConfig.from_placement_group_factory(trial_resources)
                 )
 
                 # This check should always pass if ResourceChangingScheduler is not
                 # used.
                 if scaling_config_from_trial_resources != scaling_config:
-                    scaling_config = (
-                        trainer_cls._validate_and_get_scaling_config_data_class(
-                            scaling_config_from_trial_resources
-                        )
+                    scaling_config = trainer_cls._validate_scaling_config(
+                        scaling_config_from_trial_resources
                     )
-                return scaling_config.__dict__
+                return scaling_config
 
             def _trainable_func(self, config, reporter, checkpoint_dir):
                 # We ignore the config passed by Tune and instead use the merged

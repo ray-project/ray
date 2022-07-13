@@ -132,7 +132,7 @@ def test_scaling_config_pgf_equivalance(
     trainer_resources, resources_per_worker_and_use_gpu, num_workers, placement_strategy
 ):
     resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
-    scaling_config = ScalingConfigDataClass(
+    scaling_config = ScalingConfig(
         trainer_resources=trainer_resources,
         num_workers=num_workers,
         resources_per_worker=resources_per_worker,
@@ -140,7 +140,7 @@ def test_scaling_config_pgf_equivalance(
         placement_strategy=placement_strategy,
     )
     pgf = scaling_config.as_placement_group_factory()
-    scaling_config_from_pgf = ScalingConfigDataClass.from_placement_group_factory(pgf)
+    scaling_config_from_pgf = ScalingConfig.from_placement_group_factory(pgf)
     assert scaling_config == scaling_config_from_pgf
     assert scaling_config_from_pgf.as_placement_group_factory() == pgf
 
