@@ -111,37 +111,30 @@ def train_func(use_ray: bool, config: Dict):
         transform=ToTensor(),
     )
 
-    # Create data loaders.
+    if use_ray:
+        # Ray adds DistributedSampler in train.torch.prepare_data_loader below
+        training_sampler = None
+        test_sampler = None
+    else:
+        # In vanilla PyTorch we create the distributed sampler here
+        training_sampler = DistributedSampler(training_data, shuffle=shuffle)
+        test_sampler = DistributedSampler(test_data, shuffle=shuffle)
+
+    # Create data loaders and potentially pass distributed sampler
     train_dataloader = DataLoader(
-        training_data, shuffle=shuffle, batch_size=worker_batch_size
+        training_data,
+        shuffle=shuffle,
+        batch_size=worker_batch_size,
+        sampler=training_sampler,
     )
     test_dataloader = DataLoader(
-        test_data, shuffle=shuffle, batch_size=worker_batch_size
+        test_data, shuffle=shuffle, batch_size=worker_batch_size, sampler=test_sampler
     )
 
     if use_ray:
+        # In Ray, we now retrofit the DistributedSampler
         train_dataloader = train.torch.prepare_data_loader(train_dataloader)
         test_dataloader = train.torch.prepare_data_loader(test_dataloader)
-    else:
-
-        def with_sampler(loader: DataLoader):
-            data_loader_args = {
-                "dataset": loader.dataset,
-                "batch_size": loader.batch_size,
-                "shuffle": False,
-                "num_workers": loader.num_workers,
-                "collate_fn": loader.collate_fn,
-                "pin_memory": loader.pin_memory,
-                "drop_last": loader.drop_last,
-                "timeout": loader.timeout,
-                "worker_init_fn": loader.worker_init_fn,
-                "generator": loader.generator,
-                "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
-            }
-            return DataLoader(**data_loader_args)
-
-        train_dataloader = with_sampler(train_dataloader)
-        test_dataloader = with_sampler(test_dataloader)
 
     # Create model.
     model = NeuralNetwork()
@@ -222,9 +215,11 @@ def train_torch_vanilla_worker(
 ):
     # This function is kicked off by the main() function and runs the vanilla
     # training script on a single worker.
+    backend = "nccl" if use_gpu else "gloo"
+
     os.environ["MASTER_ADDR"] = master_addr
     os.environ["MASTER_PORT"] = str(master_port)
-    distributed.init_process_group("gloo", rank=rank, world_size=world_size)
+    distributed.init_process_group(backend=backend, rank=rank, world_size=world_size)
 
     train_func(use_ray=False, config=config)
 
