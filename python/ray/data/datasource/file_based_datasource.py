@@ -187,8 +187,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
 
-    @staticmethod
     def _open_input_source(
+        self,
         filesystem: "pyarrow.fs.FileSystem",
         path: str,
         **open_args,
@@ -375,7 +375,7 @@ class _FileBasedDatasourceReader(Reader):
         if open_stream_args is None:
             open_stream_args = {}
 
-        open_input_source = self._open_input_source
+        open_input_source = self._delegate._open_input_source
 
         def read_files(
             read_paths: List[str],
