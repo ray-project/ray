@@ -545,6 +545,7 @@ cc_library(
         ":raylet_client_lib",
         ":scheduler",
         ":worker_rpc",
+        "@boost//:bimap",
         "@com_google_absl//absl/container:btree",
     ],
 )
@@ -1400,7 +1401,11 @@ cc_test(
     name = "logging_test",
     size = "small",
     srcs = ["src/ray/util/logging_test.cc"],
-    args = ["--gtest_filter=PrintLogTest*"],
+    args = [
+        "--gtest_filter=PrintLogTest*",
+        # Disable so we can test terminate handler.
+        "--gtest_catch_exceptions=0",
+    ],
     copts = COPTS,
     tags = ["team:core"],
     deps = [

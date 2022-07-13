@@ -9,7 +9,7 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Type
 
 from six.moves import queue
 
@@ -516,6 +516,13 @@ class FunctionTrainable(Trainable):
         # as a new checkpoint.
         self._status_reporter.set_checkpoint(checkpoint, is_new=False)
 
+    def _restore_from_checkpoint_obj(self, checkpoint: Checkpoint):
+        self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
+            self.logdir
+        )
+        checkpoint.to_directory(self.temp_checkpoint_dir)
+        self.restore(self.temp_checkpoint_dir)
+
     def restore_from_object(self, obj):
         self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
             self.logdir
@@ -584,7 +591,7 @@ class FunctionTrainable(Trainable):
 
 def wrap_function(
     train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
-):
+) -> Type["FunctionTrainable"]:
     inherit_from = (FunctionTrainable,)
 
     if hasattr(train_func, "__mixins__"):
