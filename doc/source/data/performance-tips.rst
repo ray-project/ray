@@ -109,13 +109,13 @@ This can be used in conjunction with column pruning when appropriate to get the 
 Tuning Read Parallelism
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, Ray requests 0.5 CPUs per read task, which means two read tasks can concurrently execute per CPU.
+By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
 For data sources that can benefit from higher degress of I/O parallelism, you can specify a lower ``num_cpus`` value for the read function via the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
-The number of read tasks can also be increased by increasing the ``parallelism`` parameter.
-For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to create up to 1000 read tasks.
-Typically, increasing the number of read tasks only helps if you have more cluster CPUs than the default parallelism.
+By default, Datasets automatically selects the read parallelism based on the current cluster size and dataset size.
+However, the number of read tasks can also be increased manually via the ``parallelism`` parameter.
+For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
 
 Tuning Max Block Size
 ~~~~~~~~~~~~~~~~~~~~~
