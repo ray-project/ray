@@ -13,10 +13,11 @@
 // limitations under the License.
 
 #include "ray/rpc/common.h"
-#include "ray/util/logging.h"
 
 #include <fstream>
 #include <sstream>
+
+#include "ray/util/logging.h"
 
 namespace ray::rpc {
 

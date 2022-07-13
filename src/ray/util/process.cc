@@ -377,7 +377,8 @@ Process::Process(const char *argv[],
                  const ProcessEnvironment &env,
                  const std::string &std_streams_redirect_file_prefix) {
   (void)io_service;
-  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, std_streams_redirect_file_prefix);
+  ProcessFD procfd =
+      ProcessFD::spawnvpe(argv, ec, decouple, env, std_streams_redirect_file_prefix);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }

@@ -24,8 +24,7 @@ def enable_test_worker_log_redirected():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_worker_log_redirected(enable_test_worker_log_redirected,
-                               ray_start_regular):
+def test_worker_log_redirected(enable_test_worker_log_redirected, ray_start_regular):
     session_dir = ray.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Session dir not found."
 
@@ -41,7 +40,7 @@ def test_worker_log_redirected(enable_test_worker_log_redirected,
                     if line.strip() == expected:
                         ok = True
                         break
-        assert (ok)
+        assert ok
 
     futures = f.remote()
     pid = ray.get(futures)

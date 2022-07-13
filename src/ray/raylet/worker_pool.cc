@@ -553,7 +553,8 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
 }
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
-                                 const ProcessEnvironment &env, const std::string &std_streams_redirect_file_prefix) {
+                                 const ProcessEnvironment &env,
+                                 const std::string &std_streams_redirect_file_prefix) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::string debug_info;
     debug_info.append("Starting worker process with command:");
@@ -584,7 +585,12 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   }
   argv.push_back(NULL);
 
-  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env, std_streams_redirect_file_prefix);
+  Process child(argv.data(),
+                io_service_,
+                ec,
+                /*decouple=*/false,
+                env,
+                std_streams_redirect_file_prefix);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
