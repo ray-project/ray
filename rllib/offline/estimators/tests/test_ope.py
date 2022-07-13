@@ -20,28 +20,28 @@ import gym
 class TestOPE(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=6)
         rllib_dir = Path(__file__).parent.parent.parent.parent
         train_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         eval_data = train_data
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        n_eval_episodes = 20
+        n_episodes = 20
         n_iters = 10
         # Ensure standalone and Algorithm OPE run same number of overall iterations
-        cls.q_model_config = {"n_iters": n_iters * n_eval_episodes}
+        cls.q_model_config = {"n_iters": n_iters * n_episodes}
 
         config = (
             DQNConfig()
             .environment(env=env_name)
             .training(gamma=cls.gamma)
-            .rollouts(num_rollout_workers=2, batch_mode="complete_episodes")
+            .rollouts(num_rollout_workers=3, batch_mode="complete_episodes")
             .framework("torch")
             .offline_data(input_=train_data)
             .evaluation(
                 evaluation_interval=None,
-                evaluation_duration=n_eval_episodes,
+                evaluation_duration=n_episodes,
                 evaluation_num_workers=1,
                 evaluation_duration_unit="episodes",
                 evaluation_config={"input": eval_data},
@@ -70,13 +70,13 @@ class TestOPE(unittest.TestCase):
         cls.algo = config.build()
 
         # Train DQN for evaluation policy
-        for _ in range(n_eval_episodes):
+        for _ in range(n_episodes):
             cls.algo.train()
 
-        # Read n_eval_episodes of data, assuming that one line is one episode
+        # Read n_episodes of data, assuming that one line is one episode
         reader = JsonReader(eval_data)
         cls.batch = reader.next()
-        for _ in range(n_eval_episodes - 1):
+        for _ in range(n_episodes - 1):
             cls.batch = concat_samples([cls.batch, reader.next()])
         cls.n_episodes = len(cls.batch.split_by_episode())
         print("Episodes:", cls.n_episodes, "Steps:", cls.batch.count)
@@ -88,7 +88,7 @@ class TestOPE(unittest.TestCase):
         # Simulate Monte-Carlo rollouts
         mc_ret = []
         env = gym.make(env_name)
-        for _ in range(n_eval_episodes):
+        for _ in range(n_episodes):
             obs = env.reset()
             done = False
             rewards = []

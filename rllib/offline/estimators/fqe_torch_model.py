@@ -25,12 +25,12 @@ class FQETorchModel:
         policy: Policy,
         gamma: float,
         model: ModelConfigDict = None,
-        n_iters: int = 160,
+        n_iters: int = 1,
         lr: float = 1e-3,
         delta: float = 1e-4,
         clip_grad_norm: float = 100.0,
-        batch_size: int = 32,
-        tau: float = 1.0,
+        minibatch_size: int = 32,
+        tau: float = 0.05,
     ) -> None:
         """
         Args:
@@ -42,8 +42,8 @@ class FQETorchModel:
                         "fcnet_activation": "relu",
                         "vf_share_layers": True,
                     },
-            # Maximum number of training iterations to run on the batch
-            n_iters = 160,
+            # Number of training iterations to run on the batch
+            n_iters = 1,
             # Learning rate for Q-function optimizer
             lr = 1e-3,
             # Early stopping if the mean loss < delta
@@ -51,7 +51,7 @@ class FQETorchModel:
             # Clip gradients to this maximum value
             clip_grad_norm = 100.0,
             # Minibatch size for training Q-function
-            batch_size = 32,
+            minibatch_size = 32,
             # Polyak averaging factor for target Q-function
             tau = 0.05
         """
@@ -59,9 +59,6 @@ class FQETorchModel:
         assert isinstance(
             policy.action_space, Discrete
         ), f"{self.__class__.__name__} only supports discrete action spaces!"
-        assert (
-            policy.config["batch_mode"] == "complete_episodes"
-        ), f"{self.__class__.__name__} only supports `batch_mode`=`complete_episodes`"
         self.gamma = gamma
         self.observation_space = policy.observation_space
         self.action_space = policy.action_space
@@ -94,7 +91,7 @@ class FQETorchModel:
         self.lr = lr
         self.delta = delta
         self.clip_grad_norm = clip_grad_norm
-        self.batch_size = batch_size
+        self.minibatch_size = minibatch_size
         self.tau = tau
         self.optimizer = torch.optim.Adam(self.q_model.variables(), self.lr)
         initializer = get_initializer("xavier_uniform", framework="torch")
@@ -120,8 +117,8 @@ class FQETorchModel:
         for _ in range(self.n_iters):
             minibatch_losses = []
             batch.shuffle()
-            for idx in range(0, batch.count, self.batch_size):
-                minibatch = batch[idx : idx + self.batch_size]
+            for idx in range(0, batch.count, self.minibatch_size):
+                minibatch = batch[idx : idx + self.minibatch_size]
                 obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
                 actions = torch.tensor(
                     minibatch[SampleBatch.ACTIONS],
