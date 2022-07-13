@@ -162,7 +162,7 @@ class RuntimeContext(object):
         if self.worker.mode != ray._private.worker.WORKER_MODE:
             logger.warning(
                 "This method is only available when the process is a "
-                "worker. Current mode: {self.worker.mode}"
+                f"worker. Current mode: {self.worker.mode}"
             )
             return None
         task_id = self.worker.current_task_id
@@ -240,7 +240,7 @@ class RuntimeContext(object):
         """
         return self.worker.placement_group_id
 
-    def get_current_placement_group_id(self) -> str:
+    def get_current_placement_group_id(self) -> Optional[str]:
         """Get the current Placement group ID of this worker.
 
         Returns:

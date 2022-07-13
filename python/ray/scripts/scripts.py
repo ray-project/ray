@@ -612,7 +612,7 @@ def start(
         )
     if raylet_socket_name is not None:
         warnings.warn(
-            "raylet_socket_nameis deprecated and will be removed. You are not "
+            "raylet_socket_name is deprecated and will be removed. You are not "
             "supposed to specify this parameter as it's internal.",
             DeprecationWarning,
             stacklevel=2,

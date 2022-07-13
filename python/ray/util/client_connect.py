@@ -11,7 +11,10 @@ from ray.util.annotations import Deprecated
 from ray.util.client import ray
 
 
-@Deprecated(message="Use ray.init() instead.")
+@Deprecated(
+    message="Use ray.init() instead. See detailed usage at "
+    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init"
+)
 def connect(
     conn_str: str,
     secure: bool = False,
@@ -51,7 +54,10 @@ def connect(
     return conn
 
 
-@Deprecated(message="Use ray.shutdown() instead.")
+@Deprecated(
+    message="Use ray.shutdown() instead. See detailed usage at "
+    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-shutdown"
+)
 def disconnect():
     """Disconnects from server; is idempotent."""
     return ray.disconnect()
