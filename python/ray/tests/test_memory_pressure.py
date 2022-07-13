@@ -60,9 +60,6 @@ def test_memory_pressure_kill_worker(shutdown_only):
     with pytest.raises(ray.exceptions.RayActorError) as exception:
         ray.get(leaker.allocate.remote(bytes_to_alloc, node_high_memory_monitor_min_interval_s))
 
-    # with pytest.raises(ValueError) as _:
-    #     ray.get_actor("leaker2")
-
 
 def test_memory_pressure_kill_newest_worker(shutdown_only):
     node_high_memory_usage_fraction = 0.7
