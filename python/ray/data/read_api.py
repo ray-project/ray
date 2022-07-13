@@ -14,7 +14,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
-    _estimate_avail_cpus,
+    _autodetect_parallelism,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
@@ -34,7 +34,6 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
-    Reader,
     ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -1165,36 +1164,6 @@ def _get_read_tasks(
         min_safe_parallelism,
         reader.get_read_tasks(requested_parallelism),
     )
-
-
-def _autodetect_parallelism(
-    parallelism: int, cur_pg: Optional[PlacementGroup], reader: Optional[Reader] = None
-) -> (int, int):
-    """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
-    # Autodetect parallelism requested. The heuristic here are that we should try
-    # to create as many blocks needed to saturate available resources, and also keep
-    # block sizes below the target memory size, but no more. Creating too many
-    # blocks is inefficient.
-    min_safe_parallelism = 1
-    ctx = DatasetContext.get_current()
-    if reader:
-        mem_size = reader.estimate_inmemory_data_size()
-        if mem_size is not None:
-            min_safe_parallelism = max(1, int(mem_size / ctx.target_max_block_size))
-    else:
-        mem_size = None
-    if parallelism < 0:
-        if parallelism != -1:
-            raise ValueError("`parallelism` must either be -1 or a positive integer.")
-        # Start with 2x the number of cores as a baseline, with a min floor.
-        avail_cpus = _estimate_avail_cpus(cur_pg)
-        parallelism = max(ctx.min_parallelism, min_safe_parallelism, avail_cpus * 2)
-        logger.debug(
-            f"Autodetected parallelism={parallelism} based on "
-            f"estimated_available_cpus={avail_cpus} and "
-            f"estimated_data_size={mem_size}."
-        )
-    return parallelism, min_safe_parallelism
 
 
 def _resolve_parquet_args(

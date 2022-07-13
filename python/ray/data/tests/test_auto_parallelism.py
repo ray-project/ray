@@ -1,8 +1,98 @@
 import pytest
+from dataclasses import dataclass
 
 import ray
 from ray.data.context import DatasetContext
+from ray.data._internal.util import _autodetect_parallelism
 from ray.tests.conftest import *  # noqa
+
+
+@dataclass
+class TestCase:
+    avail_cpus: int
+    data_size: int
+    expected_parallelism: int
+
+
+MB = 1024 * 1024
+GB = 1024 * MB
+
+TEST_CASES = [
+    TestCase(
+        avail_cpus=4,
+        data_size=1024,
+        expected_parallelism=8,  # avail_cpus has precedence
+    ),
+    TestCase(
+        avail_cpus=4,
+        data_size=1 * MB,
+        expected_parallelism=10,  # MIN_BLOCK_SIZE has precedence
+    ),
+    TestCase(
+        avail_cpus=4,
+        data_size=2 * MB,
+        expected_parallelism=20,  # MIN_BLOCK_SIZE has precedence
+    ),
+    TestCase(
+        avail_cpus=4,
+        data_size=10 * MB,
+        expected_parallelism=102,  # MIN_BLOCK_SIZE has precedence
+    ),
+    TestCase(
+        avail_cpus=4,
+        data_size=1 * GB,
+        expected_parallelism=200,  # MIN_PARALLELISM has precedence
+    ),
+    TestCase(
+        avail_cpus=4,
+        data_size=10 * GB,
+        expected_parallelism=200,  # MIN_PARALLELISM has precedence
+    ),
+    TestCase(
+        avail_cpus=150,
+        data_size=10 * GB,
+        expected_parallelism=300,  # avail_cpus has precedence
+    ),
+    TestCase(
+        avail_cpus=400,
+        data_size=10 * GB,
+        expected_parallelism=800,  # avail_cpus has precedence
+    ),
+    TestCase(
+        avail_cpus=4,
+        data_size=1000 * GB,
+        expected_parallelism=2000,  # MAX_BLOCK_SIZE has precedence
+    ),
+    TestCase(
+        avail_cpus=4,
+        data_size=10000 * GB,
+        expected_parallelism=20000,  # MAX_BLOCK_SIZE has precedence
+    ),
+]
+
+
+def run_test(test: TestCase):
+    print("TESTING", test)
+
+    class MockReader:
+        def __init__(self, size):
+            self.size = size
+
+        def estimate_inmemory_data_size(self):
+            return self.size
+
+    result, _ = _autodetect_parallelism(
+        parallelism=-1,
+        cur_pg=None,
+        reader=MockReader(test.data_size),
+        avail_cpus=test.avail_cpus,
+    )
+    assert result == test.expected_parallelism, (result, test)
+
+
+def test_autodetect_parallelism():
+    for test in TEST_CASES:
+        run_test(test)
 
 
 def test_auto_parallelism_basic(shutdown_only):

@@ -1,9 +1,13 @@
 import logging
-from typing import Union, Optional
+from typing import Union, Optional, TYPE_CHECKING
 from types import ModuleType
 
 import ray
 from ray.util.placement_group import PlacementGroup
+from ray.data.context import DatasetContext
+
+if TYPE_CHECKING:
+    from ray.data.datasource import Reader
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +60,73 @@ def _check_pyarrow_version():
             _VERSION_VALIDATED = True
 
 
-def _estimate_available_parallelism() -> int:
-    cur_pg = ray.util.get_current_placement_group()
-    return _estimate_avail_cpus(cur_pg)
+def _autodetect_parallelism(
+    parallelism: int,
+    cur_pg: Optional["PlacementGroup"],
+    reader: Optional["Reader"] = None,
+    avail_cpus: Optional[int] = None,
+) -> (int, int):
+    """Returns parallelism to use and the min safe parallelism to avoid OOMs.
+
+    This detects parallelism based on three heuristic functions:
+
+     1) Available CPUs. We detect how many CPUs are available for use in the cluster,
+        and ensure the parallelism is high enough to make use of the CPUs.
+     2) Min block size. We try to avoid creating blocks smaller than this threshold,
+        to avoid the overhead of tiny blocks.
+     3) Max block size. We try to avoid creating blocks larger than this threshold,
+        since it can lead to OOM errors during processing.
+
+    Args:
+        parallelism: The user-requested parallelism, or -1 for auto-detection.
+        cur_pg: The current placement group, to be used for avail cpu calculation.
+        reader: The datasource reader, to be used for data size estimation.
+        avail_cpus: Override avail cpus detection (for testing only).
+
+    Returns:
+        Tuple of detected parallelism (only if -1 was specified), and the min safe
+        parallelism (which can be used to generate warnings about large blocks).
+    """
+    min_safe_parallelism = 1
+    ctx = DatasetContext.get_current()
+    if reader:
+        mem_size = reader.estimate_inmemory_data_size()
+        if mem_size is not None:
+            min_safe_parallelism = max(1, int(mem_size / ctx.target_max_block_size))
+            max_reasonable_parallelism = max(
+                1, int(mem_size / ctx.target_min_block_size)
+            )
+    else:
+        mem_size = None
+        max_reasonable_parallelism = 9999999
+    if parallelism < 0:
+        if parallelism != -1:
+            raise ValueError("`parallelism` must either be -1 or a positive integer.")
+        # Start with 2x the number of cores as a baseline, with a min floor.
+        avail_cpus = avail_cpus or _estimate_avail_cpus(cur_pg)
+        parallelism = max(
+            min(ctx.min_parallelism, max_reasonable_parallelism),
+            min_safe_parallelism,
+            avail_cpus * 2,
+        )
+        logger.debug(
+            f"Autodetected parallelism={parallelism} based on "
+            f"estimated_available_cpus={avail_cpus} and "
+            f"estimated_data_size={mem_size}."
+        )
+    return parallelism, min_safe_parallelism
 
 
-def _estimate_avail_cpus(cur_pg: Optional[PlacementGroup]) -> int:
+def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
+
+    If we aren't in a placement group, this is trivially the number of CPUs in the
+    cluster. Otherwise, we try to calculate how large the placement group is relative
+    to the size of the cluster.
+
+    Args:
+        cur_pg: The current placement group, if any.
+    """
     cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
     cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
 
@@ -84,3 +149,11 @@ def _estimate_avail_cpus(cur_pg: Optional[PlacementGroup]) -> int:
         return min(cluster_cpus, pg_cpus)
 
     return cluster_cpus
+
+
+def _estimate_available_parallelism() -> int:
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
+
+    If we are currently in a placement group, take that into account."""
+    cur_pg = ray.util.get_current_placement_group()
+    return _estimate_avail_cpus(cur_pg)

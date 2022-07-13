@@ -813,7 +813,7 @@ def _prune_stages(stages: List[Stage]) -> List[Stage]:
     output = []
     for i, s in enumerate(stages):
         if isinstance(s, AutoRepartitionStage):
-            if s.should_execute(stages[i + 1:]):
+            if s.should_execute(stages[i + 1 :]):
                 output.append(s)
         else:
             output.append(s)
