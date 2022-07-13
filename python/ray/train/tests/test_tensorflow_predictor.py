@@ -1,13 +1,19 @@
 import numpy as np
 import pandas as pd
-import tensorflow as tf
+import pyarrow as pa
 import pytest
+import tensorflow as tf
 
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.util.data_batch_conversion import (
+    convert_pandas_to_batch_type,
+    convert_batch_type_to_pandas,
+)
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
+from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.tensorflow import TensorflowPredictor, to_air_checkpoint
 
 
@@ -90,6 +96,19 @@ def test_predict_array_with_preprocessor(use_gpu):
     assert predictions.flatten().tolist() == [4, 8, 12]
 
 
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+def test_predict(batch_type):
+    predictor = TensorflowPredictor(model_definition=build_model_multi_input)
+
+    raw_batch = pd.DataFrame({"A": [0.0, 0.0, 0.0], "B": [1.0, 2.0, 3.0]})
+    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+    raw_predictions = predictor.predict(data_batch)
+    predictions = convert_batch_type_to_pandas(raw_predictions)
+
+    assert len(predictions) == 3
+    assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
+
+
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_dataframe(use_gpu):
     predictor = TensorflowPredictor(
@@ -134,7 +153,5 @@ def test_tensorflow_predictor_no_training(use_gpu):
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
