@@ -249,6 +249,15 @@ class PredictorWrapper(SimpleSchemaIngress):
         """Perform inference directly without HTTP."""
         return await self.predict_impl(inp)
 
+    def reconfigure(self, config):
+        """Reconfigure model from config checkpoint"""
+        from ray.air.checkpoint import Checkpoint
+
+        predictor_cls = _load_predictor_cls(config["predictor_cls"])
+        self.model = predictor_cls.from_checkpoint(
+            Checkpoint.from_dict(config["checkpoint"])
+        )
+
 
 @serve.deployment
 class PredictorDeployment(PredictorWrapper):
