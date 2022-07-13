@@ -11,7 +11,7 @@ _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
 
 # The max target block size in bytes for reads and transformations.
-DEFAULT_TARGET_MAX_BLOCK_SIZE = 2048 * 1024 * 1024
+DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
 # Whether block splitting is on by default
 DEFAULT_BLOCK_SPLITTING_ENABLED = False
@@ -32,6 +32,9 @@ DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
 
 # Whether to furthermore fuse prior map tasks with shuffle stages.
 DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
+
+# Minimum amount of parallelism to auto-detect for a dataset.
+DEFAULT_MIN_PARALLELISM = 8
 
 # Wether to use actor based block prefetcher.
 DEFAULT_ACTOR_PREFETCHER_ENABLED = True
@@ -71,6 +74,7 @@ class DatasetContext:
         pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
         use_polars: bool,
+        min_parallelism: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
@@ -88,6 +92,7 @@ class DatasetContext:
         )
         self.scheduling_strategy = scheduling_strategy
         self.use_polars = use_polars
+        self.min_parallelism = min_parallelism
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -118,6 +123,7 @@ class DatasetContext:
                     pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
                     use_polars=DEFAULT_USE_POLARS,
+                    min_parallelism=DEFAULT_MIN_PARALLELISM,
                 )
 
             if (

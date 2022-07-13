@@ -31,6 +31,7 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
+    Reader,
     ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -39,6 +40,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.placement_group import PlacementGroup
 
 if TYPE_CHECKING:
     import dask
@@ -56,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
+def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
@@ -75,7 +77,14 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     Returns:
         Dataset holding the items.
     """
-    block_size = max(1, len(items) // parallelism)
+
+    detected_parallelism, _ = _autodetect_parallelism(
+        parallelism, ray.util.get_current_placement_group()
+    )
+    block_size = max(
+        1,
+        len(items) // detected_parallelism,
+    )
 
     blocks: List[ObjectRef[Block]] = []
     metadata: List[BlockMetadata] = []
@@ -105,7 +114,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
 
 
 @PublicAPI
-def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
+def range(n: int, *, parallelism: int = -1) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
     Examples:
@@ -130,7 +139,7 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
 
 
 @PublicAPI
-def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
+def range_table(n: int, *, parallelism: int = -1) -> Dataset[ArrowRow]:
     """Create a tabular dataset from a range of integers [0..n).
 
     Examples:
@@ -164,7 +173,7 @@ def range_arrow(*args, **kwargs):
 
 @PublicAPI
 def range_tensor(
-    n: int, *, shape: Tuple = (1,), parallelism: int = 200
+    n: int, *, shape: Tuple = (1,), parallelism: int = -1
 ) -> Dataset[ArrowRow]:
     """Create a Tensor dataset from a range of integers [0..n).
 
@@ -208,7 +217,7 @@ def range_tensor(
 def read_datasource(
     datasource: Datasource[T],
     *,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **read_args,
 ) -> Dataset[T]:
@@ -217,7 +226,9 @@ def read_datasource(
     Args:
         datasource: The datasource to read data from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the available partitioning of the datasource.
+            limited by the available partitioning of the datasource. If set to -1,
+            parallelism will be automatically chosen based on the available cluster
+            resources and estimated in-memory data size.
         read_args: Additional kwargs to pass to the datasource impl.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
 
@@ -227,6 +238,7 @@ def read_datasource(
     ctx = DatasetContext.get_current()
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
+    cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
         partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
@@ -238,23 +250,37 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        read_tasks = datasource.prepare_read(parallelism, **read_args)
+        requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
+            datasource, ctx, cur_pg, parallelism, read_args
+        )
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
-        prepare_read = cached_remote_fn(
-            _prepare_read, retry_exceptions=False, num_cpus=0
+        get_read_tasks = cached_remote_fn(
+            _get_read_tasks, retry_exceptions=False, num_cpus=0
         )
-        read_tasks = ray.get(
-            prepare_read.remote(
+
+        requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
+            get_read_tasks.remote(
                 datasource,
                 ctx,
+                cur_pg,
                 parallelism,
                 _wrap_and_register_arrow_serialization_workaround(read_args),
             )
         )
 
-    if len(read_tasks) < parallelism and (
+    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
+        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
+        logger.warning(
+            f"The blocks of this dataset are estimated to be {perc}x larger than the "
+            "target block size "
+            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
+            "out-of-memory errors during processing. Consider reducing the size of "
+            "input files or using `.repartition(n)` to increase the number of "
+            "dataset blocks."
+        )
+    elif len(read_tasks) < requested_parallelism and (
         len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
@@ -289,7 +315,7 @@ def read_parquet(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
@@ -348,7 +374,7 @@ def read_parquet_bulk(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
@@ -443,7 +469,7 @@ def read_json(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
@@ -504,7 +530,7 @@ def read_csv(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
@@ -568,7 +594,7 @@ def read_text(
     errors: str = "ignore",
     drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
@@ -630,7 +656,7 @@ def read_numpy(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[
@@ -688,7 +714,7 @@ def read_binary_files(
     *,
     include_paths: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
@@ -1072,12 +1098,92 @@ def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMet
     )
 
 
-def _prepare_read(
-    ds: Datasource, ctx: DatasetContext, parallelism: int, kwargs: dict
-) -> List[ReadTask]:
+def _get_read_tasks(
+    ds: Datasource,
+    ctx: DatasetContext,
+    cur_pg: Optional[PlacementGroup],
+    parallelism: int,
+    kwargs: dict,
+) -> (int, int, List[ReadTask]):
+    """Generates read tasks.
+
+    Args:
+        ds: Datasource to read from.
+        ctx: Dataset config to use.
+        cur_pg: The current placement group, if any.
+        parallelism: The user-requested parallelism, or -1 for autodetection.
+        kwargs: Additional kwargs to pass to the reader.
+
+    Returns:
+        Request parallelism from the datasource, the min safe parallelism to avoid
+        OOM, and the list of read tasks generated.
+    """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     DatasetContext._set_current(ctx)
-    return ds.prepare_read(parallelism, **kwargs)
+    reader = ds.create_reader(**kwargs)
+    requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
+        parallelism, cur_pg, reader
+    )
+    return (
+        requested_parallelism,
+        min_safe_parallelism,
+        reader.get_read_tasks(requested_parallelism),
+    )
+
+
+def _autodetect_parallelism(
+    parallelism: int, cur_pg: Optional[PlacementGroup], reader: Optional[Reader] = None
+) -> (int, int):
+    """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
+    # Autodetect parallelism requested. The heuristic here are that we should try
+    # to create as many blocks needed to saturate available resources, and also keep
+    # block sizes below the target memory size, but no more. Creating too many
+    # blocks is inefficient.
+    min_safe_parallelism = 1
+    ctx = DatasetContext.get_current()
+    if reader:
+        mem_size = reader.estimate_inmemory_data_size()
+        if mem_size is not None:
+            min_safe_parallelism = max(1, int(mem_size / ctx.target_max_block_size))
+    else:
+        mem_size = None
+    if parallelism < 0:
+        if parallelism != -1:
+            raise ValueError("`parallelism` must either be -1 or a positive integer.")
+        # Start with 2x the number of cores as a baseline, with a min floor.
+        avail_cpus = _estimate_avail_cpus(cur_pg)
+        parallelism = max(ctx.min_parallelism, min_safe_parallelism, avail_cpus * 2)
+        logger.debug(
+            f"Autodetected parallelism={parallelism} based on "
+            f"estimated_available_cpus={avail_cpus} and "
+            f"estimated_data_size={mem_size}."
+        )
+    return parallelism, min_safe_parallelism
+
+
+def _estimate_avail_cpus(cur_pg: Optional[PlacementGroup]) -> int:
+    cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
+    cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
+
+    # If we're in a placement group, we shouldn't assume the entire cluster's
+    # resources are available for us to use. Estimate an upper bound on what's
+    # reasonable to assume is available for datasets to use.
+    if cur_pg:
+        pg_cpus = 0
+        for bundle in cur_pg.bundle_specs:
+            # Calculate the proportion of the cluster this placement group "takes up".
+            # Then scale our cluster_cpus proportionally to avoid over-parallelizing
+            # if there are many parallel Tune trials using the cluster.
+            cpu_fraction = bundle.get("CPU", 0) / max(1, cluster_cpus)
+            gpu_fraction = bundle.get("GPU", 0) / max(1, cluster_gpus)
+            max_fraction = max(cpu_fraction, gpu_fraction)
+            # Over-parallelize by up to a factor of 2, but no more than that. It's
+            # preferrable to over-estimate than under-estimate.
+            pg_cpus += 2 * int(max_fraction * cluster_cpus)
+
+        return min(cluster_cpus, pg_cpus)
+
+    return cluster_cpus
 
 
 def _resolve_parquet_args(

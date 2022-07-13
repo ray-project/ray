@@ -377,7 +377,7 @@ def test_zip_arrow(ray_start_regular_shared):
 def test_batch_tensors(ray_start_regular_shared):
     import torch
 
-    ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
+    ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
     res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
