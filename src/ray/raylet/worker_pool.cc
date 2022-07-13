@@ -438,9 +438,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   }
   std::string std_streams_redirect_file_prefix = log_dir_;
   std_streams_redirect_file_prefix.append("/")
-      .append(ray::LanguageString(language))
+      .append(LanguageString(language))
       .append("-")
-      .append(ray::WorkerTypeString(worker_type))
+      .append(WorkerTypeString(worker_type))
       .append("-")
       .append(job_id.Hex())
       .append("-");

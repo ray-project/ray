@@ -13,11 +13,39 @@
 // limitations under the License.
 
 #include "ray/rpc/common.h"
+#include "ray/util/logging.h"
 
 #include <fstream>
 #include <sstream>
 
 namespace ray::rpc {
+
+std::string WorkerTypeString(WorkerType type) {
+  // TODO(suquark): Use proto3 utils to get the string.
+  if (type == WorkerType::DRIVER) {
+    return "driver";
+  } else if (type == WorkerType::WORKER) {
+    return "worker";
+  } else if (type == WorkerType::SPILL_WORKER) {
+    return "spill_worker";
+  } else if (type == WorkerType::RESTORE_WORKER) {
+    return "restore_worker";
+  }
+  RAY_CHECK(false);
+  return "";
+}
+
+std::string LanguageString(Language language) {
+  if (language == Language::PYTHON) {
+    return "python";
+  } else if (language == Language::JAVA) {
+    return "java";
+  } else if (language == Language::CPP) {
+    return "cpp";
+  }
+  RAY_CHECK(false);
+  return "";
+}
 
 std::string ReadCert(const std::string &cert_filepath) {
   std::ifstream t(cert_filepath);

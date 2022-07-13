@@ -14,7 +14,15 @@
 
 #include <string>
 
+#include "src/ray/protobuf/common.pb.h"
+
 namespace ray::rpc {
+
+// Return a string representation of the worker type.
+std::string WorkerTypeString(WorkerType type);
+
+// Return a string representation of the language.
+std::string LanguageString(Language language);
 
 // Utility to read cert file from a particular location
 std::string ReadCert(const std::string &cert_filepath);

@@ -27,12 +27,6 @@ namespace core {
 
 using WorkerType = rpc::WorkerType;
 
-// Return a string representation of the worker type.
-std::string WorkerTypeString(WorkerType type);
-
-// Return a string representation of the language.
-std::string LanguageString(Language language);
-
 // Return a string representation of the named actor to cache, in format of
 // `namespace-[job_id-]actor_name`
 std::string GenerateCachedActorName(const std::string &ns, const std::string &actor_name);
