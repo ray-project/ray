@@ -5,8 +5,10 @@ cartpole_crr:
       evaluation/episode_reward_mean: 200
       training_iteration: 100
     config:
-        input:
-          - 'tests/data/cartpole/large.json'
+        input: 'dataset'
+        input_config:         
+            paths: 'tests/data/cartpole/large.json'
+            format: 'json'
         num_workers: 3
         framework: torch
         gamma: 0.99

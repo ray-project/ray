@@ -186,6 +186,10 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       code_search_path = absolute_path;
     }
   }
+  if (worker_type == WorkerType::DRIVER) {
+    ray_namespace =
+        config.ray_namespace.empty() ? GenerateUUIDV4() : config.ray_namespace;
+  }
 };
 
 void ConfigInternal::SetBootstrapAddress(std::string_view address) {
@@ -195,6 +199,15 @@ void ConfigInternal::SetBootstrapAddress(std::string_view address) {
   auto ret = std::from_chars(
       address.data() + pos + 1, address.data() + address.size(), bootstrap_port);
   RAY_CHECK(ret.ec == std::errc());
+}
+
+void ConfigInternal::UpdateSessionDir(const std::string dir) {
+  if (session_dir.empty()) {
+    session_dir = dir;
+  }
+  if (logs_dir.empty()) {
+    logs_dir = session_dir + "/logs";
+  }
 }
 }  // namespace internal
 }  // namespace ray

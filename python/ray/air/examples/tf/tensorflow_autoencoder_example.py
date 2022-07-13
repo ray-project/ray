@@ -12,7 +12,7 @@ from ray.data.datasource import SimpleTensorFlowDatasource
 from ray.air.batch_predictor import BatchPredictor
 from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.air.result import Result
-from ray.air.train.integrations.tensorflow import TensorflowTrainer
+from ray.train.tensorflow import TensorflowTrainer
 from ray.train.tensorflow import prepare_dataset_shard
 from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
 

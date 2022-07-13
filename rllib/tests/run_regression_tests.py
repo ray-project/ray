@@ -39,7 +39,7 @@ parser.add_argument(
     required=True,
     help="The directory in which to find all yamls to test.",
 )
-parser.add_argument("--num-cpus", type=int, default=6)
+parser.add_argument("--num-cpus", type=int, default=8)
 parser.add_argument(
     "--local-mode",
     action="store_true",
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     else:
         yaml_files = rllib_dir.rglob(args.yaml_dir + "/*.yaml")
         yaml_files = sorted(
-            map(lambda path: str(path.absolute()), yaml_files), reverse=True
+            map(lambda path: str(path.absolute()), yaml_files), reverse=True  # noqa
         )
 
     print("Will run the following regression tests:")
