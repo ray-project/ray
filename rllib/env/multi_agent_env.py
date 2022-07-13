@@ -615,12 +615,6 @@ class MultiAgentEnvWrapper(BaseEnv):
         for idx in env_id:
             # Recreate the sub-env.
             self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
-            # self.envs[idx] = self.make_env(idx)
-            ## Replace the multi-agent env state at the index.
-            # self._init_env_state(idx)
-            # Remove done flag at index.
-            # if idx in self.dones:
-            #    self.dones.remove(idx)
 
     @override(BaseEnv)
     def get_sub_environments(
