@@ -79,8 +79,7 @@ def test_memory_omitted_option(ray_shutdown):
         return "world"
 
     ray.init(num_gpus=3, namespace="serve")
-    serve.start()
-    hello.deploy()
+    serve.run(hello.bind())
 
     assert ray.get(hello.get_handle().remote()) == "world"
 
@@ -91,13 +90,12 @@ def test_serve_namespace(shutdown_ray, detached, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
     with ray.init(namespace=ray_namespace):
-        serve.start(detached=detached)
 
         @serve.deployment
         def f(*args):
             return "got f"
 
-        f.deploy()
+        serve.run(f.bind())
 
         actors = ray.util.list_named_actors(all_namespaces=True)
 
@@ -113,23 +111,22 @@ def test_update_num_replicas(shutdown_ray, detached):
     """Test updating num_replicas."""
 
     with ray.init():
-        serve.start(detached=detached)
 
         @serve.deployment(num_replicas=2)
         def f(*args):
             return "got f"
 
-        f.deploy()
+        serve.run(f.bind())
 
         actors = ray.util.list_named_actors(all_namespaces=True)
 
-        f.options(num_replicas=4).deploy()
+        serve.run(f.options(num_replicas=4).bind())
         updated_actors = ray.util.list_named_actors(all_namespaces=True)
 
         # Check that only 2 new replicas were created
         assert len(updated_actors) == len(actors) + 2
 
-        f.options(num_replicas=1).deploy()
+        serve.run(f.options(num_replicas=1).bind())
         updated_actors = ray.util.list_named_actors(all_namespaces=True)
 
         # Check that all but 1 replica has spun down
@@ -174,14 +171,14 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
 def test_get_serve_status(shutdown_ray):
 
     ray.init()
-    client = serve.start()
 
     @serve.deployment
     def f(*args):
         return "Hello world"
 
-    f.deploy()
+    serve.run(f.bind())
 
+    client = get_global_client()
     status_info_1 = client.get_serve_status()
     assert status_info_1.app_status.status == "RUNNING"
     assert status_info_1.deployment_statuses[0].name == "f"
@@ -192,11 +189,9 @@ def test_get_serve_status(shutdown_ray):
 
 
 def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_function):
-    """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
-
     @ray.remote
     def run_graph():
-        """Deploys a Serve application to the controller's Ray cluster."""
+
         from ray import serve
         from ray._private.utils import import_attr
         from ray.serve.api import build
@@ -242,7 +237,6 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
 
 
 def test_controller_deserialization_args_and_kwargs():
-    """Ensures init_args and init_kwargs stay serialized in controller."""
 
     ray.init()
     client = serve.start()
@@ -252,7 +246,6 @@ def test_controller_deserialization_args_and_kwargs():
 
     def generate_pid_based_deserializer(pid, raw_deserializer):
         def deserializer(*args):
-            """Cannot be deserialized by the process with specified pid."""
 
             import os
 
@@ -276,7 +269,7 @@ def test_controller_deserialization_args_and_kwargs():
         def __call__(self, request):
             return self.arg_str + self.kwarg_str
 
-    Echo.deploy(PidBasedString("hello "), kwarg_str=PidBasedString("world!"))
+    serve.run(Echo.bind(PidBasedString("hello "), kwarg_str=PidBasedString("world!")))
 
     assert requests.get("http://localhost:8000/Echo").text == "hello world!"
 
@@ -601,7 +594,6 @@ def test_controller_recover_and_delete():
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
-    """Check that serve.shutdown() works on a remote Ray cluster."""
 
     deploy_serve_script = (
         "import ray\n"
@@ -614,7 +606,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         "def f(*args):\n"
         '   return "got f"\n'
         "\n"
-        "f.deploy()\n"
+        "serve.run(f.bind())\n"
     )
 
     shutdown_serve_script = (

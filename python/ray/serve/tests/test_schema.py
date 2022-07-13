@@ -628,9 +628,8 @@ def test_deployment_to_schema_to_deployment():
         "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
     ]
 
-    serve.start()
-    deployment.deploy()
-    assert ray.get(deployment.get_handle().remote()) == "Hello world!"
+    handle = serve.run(deployment.bind())
+    assert ray.get(handle.remote()) == "Hello world!"
     assert requests.get("http://localhost:8000/hello").text == "Hello world!"
     serve.shutdown()
 

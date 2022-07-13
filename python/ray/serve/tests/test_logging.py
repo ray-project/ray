@@ -26,8 +26,7 @@ def test_handle_access_log(serve_instance):
         def throw(self, *args):
             raise RuntimeError("blah blah blah")
 
-    Handler.deploy()
-    h = Handler.get_handle()
+    h = serve.run(Handler.bind())
 
     f = io.StringIO()
     with redirect_stderr(f):
@@ -74,7 +73,7 @@ def test_http_access_log(serve_instance):
 
         return "hi"
 
-    fn.deploy()
+    serve.run(fn.bind())
 
     f = io.StringIO()
     with redirect_stderr(f):
@@ -110,8 +109,7 @@ def test_user_logs(serve_instance):
         logger.info("user log message")
         return serve.get_replica_context().replica_tag
 
-    fn.deploy()
-    handle = fn.get_handle()
+    handle = serve.run(fn.bind())
 
     f = io.StringIO()
     with redirect_stderr(f):
@@ -135,8 +133,7 @@ def test_disable_access_log(serve_instance):
         def __call__(self, *args):
             return serve.get_replica_context().replica_tag
 
-    A.deploy()
-    handle = A.get_handle()
+    handle = serve.run(A.bind())
 
     f = io.StringIO()
     with redirect_stderr(f):
@@ -161,7 +158,7 @@ def test_deprecated_deployment_logger(serve_instance):
             self.count += 1
             logger.info(f"count: {self.count}")
 
-    Counter.deploy()
+    serve.run(Counter.bind())
     f = io.StringIO()
     with redirect_stderr(f):
         requests.get("http://127.0.0.1:8000/counter/")

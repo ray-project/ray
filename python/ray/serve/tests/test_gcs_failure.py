@@ -56,7 +56,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
         print("RET=", ret)
         return ret
 
-    d.deploy()
+    serve.run(d.bind())
     pid = call()
 
     # Kill the GCS
@@ -74,7 +74,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
     with pytest.raises(Exception):
         wait_for_condition(lambda: call() != pid, timeout=4)
 
-    d.deploy()
+    serve.run(d.bind())
 
     # Make sure redeploy happens
     assert pid != call()
@@ -86,7 +86,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     # Redeploy should fail
     with pytest.raises(KVStoreError):
-        d.options().deploy()
+        serve.run(d.options().bind())
 
     # TODO: Check status not change once ray serve cover rollback
 
