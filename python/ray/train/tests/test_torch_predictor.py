@@ -1,11 +1,17 @@
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 import torch
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.util.data_batch_conversion import (
+    convert_pandas_to_batch_type,
+    convert_batch_type_to_pandas,
+)
 from ray.data.preprocessor import Preprocessor
+from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchPredictor, to_air_checkpoint
 
 
@@ -59,6 +65,19 @@ def test_predict_model_not_training(model, use_gpu):
     predictor.predict(data_batch)
 
     assert not predictor.model.training
+
+
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+def test_predict(batch_type):
+    predictor = TorchPredictor(model=DummyModelMultiInput())
+
+    raw_batch = pd.DataFrame({"X0": [0.0, 0.0, 0.0], "X1": [1.0, 2.0, 3.0]})
+    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+    raw_predictions = predictor.predict(data_batch, dtype=torch.float)
+    predictions = convert_batch_type_to_pandas(raw_predictions)
+
+    assert len(predictions) == 3
+    assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])

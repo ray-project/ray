@@ -46,7 +46,7 @@ def validate_config(config: AlgorithmConfigDict) -> None:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
+def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     """Construct a PPOTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -227,8 +227,11 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
                 self, sample_batch, other_agent_batches, episode
             )
 
+    PPOTFPolicy.__name__ = name
+    PPOTFPolicy.__qualname__ = name
+
     return PPOTFPolicy
 
 
-PPOTF1Policy = get_ppo_tf_policy(DynamicTFPolicyV2)
-PPOTF2Policy = get_ppo_tf_policy(EagerTFPolicyV2)
+PPOTF1Policy = get_ppo_tf_policy("PPOTF1Policy", DynamicTFPolicyV2)
+PPOTF2Policy = get_ppo_tf_policy("PPOTF2Policy", EagerTFPolicyV2)
