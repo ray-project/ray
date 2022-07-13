@@ -2,10 +2,10 @@
 # isort: skip_file
 
 # __air_generic_preprocess_start__
-from python.ray.air.config import ScalingConfig
 import ray
 from ray.data.preprocessors import StandardScaler
 from ray.air import train_test_split
+from ray.air.config import ScalingConfig
 
 # Load data.
 import pandas as pd
