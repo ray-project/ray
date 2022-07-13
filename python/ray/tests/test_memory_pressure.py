@@ -56,7 +56,7 @@ def test_memory_pressure_kill_worker(shutdown_only):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.6)
     ray.get(leaker.allocate.remote(bytes_to_alloc, node_high_memory_monitor_min_interval_s))
 
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.85)
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.90)
     with pytest.raises(ray.exceptions.RayActorError) as exception:
         ray.get(leaker.allocate.remote(bytes_to_alloc, node_high_memory_monitor_min_interval_s))
 
