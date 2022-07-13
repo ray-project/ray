@@ -259,6 +259,7 @@ def read_datasource(
     else:
         auto_repartition = False
 
+    # TODO: take into account num_cpus in remote args for parallelism detection
     if force_local:
         ideal_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
             datasource, ctx, cur_pg, parallelism, read_args
@@ -303,31 +304,32 @@ def read_datasource(
         if not parallel_enough:
             if auto_repartition:
                 logger.warning(
-                    f"This dataset will be auto-repartitioned from {len(read_tasks)} "
+                    f"This dataset will be repartitioned from {len(read_tasks)} "
                     "to {ideal_parallelism} blocks to "
                     "increase its available parallelism. Specify the `parallelism` "
                     "arg to disable automatic repartitioning."
                 )
-                ds = ds.repartition(-1)
+                ds = ds.repartition_if_needed(ideal_parallelism)
             else:
                 logger.warning(
                     f"The number of blocks in this dataset ({len(read_tasks)}) "
                     "limits its parallelism to {len(read_tasks)} "
-                    "concurrent tasks. This is much less than the number of "
-                    "available CPU slots in the cluster. Use `.repartition(n)` to "
+                    "concurrent tasks. This is much less than the requested read "
+                    "parallelism of {ideal_parallelism}. Use `.repartition(n)` to "
                     "increase the number of dataset blocks."
                 )
         elif not memory_safe:
             if auto_repartition:
                 logger.warning(
-                    f"This dataset will be auto-repartitioned from {len(read_tasks)} "
+                    f"This dataset will be repartitioned from {len(read_tasks)} "
                     f"to {ideal_parallelism} "
-                    "blocks to reduce their average size in memory to less than "
+                    "blocks, to reduce the risk of out-of-memory errors processing "
+                    "blocks larger than "
                     f"{int(ctx.target_max_block_size / 1024 / 1024)} MiB. "
                     "Specify the `parallelism` arg to disable automatic "
                     "repartitioning."
                 )
-                ds = ds.repartition(-1)
+                ds = ds.repartition_if_needed(ideal_parallelism)
             else:
                 perc = 1 + round(
                     (min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1
