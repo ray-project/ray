@@ -45,7 +45,7 @@ class OffPolicyEstimator:
               - v_target: The estimated discounted return for `self.policy`,
                 averaged over episodes in the batch
               - v_target_std: The standard deviation corresponding to v_target
-              - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes in the batch
+              - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
               - v_gain_std: The standard deviation corresponding to v_gain
         """
         raise NotImplementedError

@@ -37,13 +37,6 @@ class TestOPE(unittest.TestCase):
             .environment(env=env_name)
             .training(gamma=cls.gamma)
             .rollouts(num_rollout_workers=2, batch_mode="complete_episodes")
-            .exploration(
-                explore=True,
-                exploration_config={
-                    "type": "SoftQ",
-                    "temperature": 1.0,
-                },
-            )
             .framework("torch")
             .offline_data(input_=train_data)
             .evaluation(
