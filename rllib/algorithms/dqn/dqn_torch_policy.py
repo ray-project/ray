@@ -3,6 +3,7 @@
 from typing import Dict, List, Tuple
 
 import gym
+import numpy as np
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS,
@@ -333,7 +334,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
         q_logits_t_selected,
         q_tp1_best,
         q_probs_tp1_best,
-        train_batch[PRIO_WEIGHTS],
+        train_batch.get(PRIO_WEIGHTS, np.ones(len(train_batch))),
         train_batch[SampleBatch.REWARDS],
         train_batch[SampleBatch.DONES].float(),
         config["gamma"],
