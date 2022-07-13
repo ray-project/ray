@@ -7,6 +7,7 @@ from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata, RequestWrapper
 from ray.tests.conftest import shutdown_only, maybe_external_redis  # noqa: F401
 
 
+@pytest.mark.skip(reason="TIMEOUT, see https://github.com/ray-project/ray/issues/26513")
 def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     ray.init(
         num_cpus=8,
