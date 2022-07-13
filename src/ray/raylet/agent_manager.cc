@@ -80,7 +80,7 @@ void AgentManager::StartAgent() {
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
   env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
-  Process child(argv.data(), nullptr, ec, false, env);
+  Process child(argv.data(), nullptr, ec, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent with return value " << ec << ": "

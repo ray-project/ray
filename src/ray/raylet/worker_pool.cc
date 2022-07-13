@@ -575,7 +575,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   }
   argv.push_back(NULL);
 
-  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
+  Process child(argv.data(), io_service_, ec, env);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {

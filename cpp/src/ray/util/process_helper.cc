@@ -43,7 +43,7 @@ void ProcessHelper::StartRayNode(const int port,
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  auto spawn_result = Process::Spawn(cmdargs, true);
+  auto spawn_result = Process::Spawn(cmdargs);
   RAY_CHECK(!spawn_result.second);
   spawn_result.first.Wait();
   return;
@@ -52,7 +52,7 @@ void ProcessHelper::StartRayNode(const int port,
 void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  auto spawn_result = Process::Spawn(cmdargs, true);
+  auto spawn_result = Process::Spawn(cmdargs);
   RAY_CHECK(!spawn_result.second);
   spawn_result.first.Wait();
   return;
