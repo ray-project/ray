@@ -415,7 +415,7 @@ class _TorchAccelerator(Accelerator):
 
                 def seeded_worker_init_fn(worker_init_fn):
                     def wrapper(worker_id):
-                        worker_seed = torch.initial_seed() % 2 ** 32
+                        worker_seed = torch.initial_seed() % 2**32
                         np.random.seed(worker_seed)
                         random.seed(worker_seed)
                         worker_init_fn(worker_id)
@@ -468,7 +468,9 @@ class _TorchAccelerator(Accelerator):
             gpu_ids = ray.get_gpu_ids()
             if len(gpu_ids) > 0:
                 gpu_id = gpu_ids[0]
-                cuda_visible_list = list(map(int, ray._private.utils.get_cuda_visible_devices()))
+                cuda_visible_list = list(
+                    map(int, ray._private.utils.get_cuda_visible_devices())
+                )
                 device_id = cuda_visible_list.index(gpu_id)
             else:
                 # If called on the driver or outside of Ray Train, return the

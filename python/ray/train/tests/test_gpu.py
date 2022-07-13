@@ -43,7 +43,7 @@ def ray_start_1_cpu_1_gpu():
 
 
 # TODO: Refactor as a backend test.
-@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     def train_fn():
         return train.torch.get_device().index
@@ -62,6 +62,8 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         assert devices == [0, 0]
     elif num_gpus_per_worker == 1:
         assert devices == [0, 1]
+    elif num_gpus_per_worker == 2:
+        assert devices == [0]
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
@@ -348,8 +350,10 @@ def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
 def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
+
 def test_concurrent_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     tune_tensorflow_mnist(num_workers=1, use_gpu=True, num_samples=2)
+
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
     from ray.train.examples.torch_linear_dataset_example import train_linear
