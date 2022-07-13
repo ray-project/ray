@@ -379,6 +379,7 @@ class SampleBatch(dict):
         else:
             return [self]
 
+        assert sum(s.count for s in slices) == self.count, (slices, self.count)
         return slices
 
     @Deprecated(new="SampleBatch[start:stop]", error=False)
