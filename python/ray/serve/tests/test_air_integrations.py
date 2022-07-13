@@ -209,6 +209,33 @@ def test_air_integrations_in_pipeline(serve_instance):
     return resp.json() == {"value": [42], "batch_size": 1}
 
 
+def test_air_integrations_reconfigure(serve_instance):
+    path = tempfile.mkdtemp()
+    uri = f"file://{path}/test_uri"
+    Checkpoint.from_dict({"increment": 2}).to_uri(uri)
+
+    predictor_cls = "ray.serve.tests.test_air_integrations.AdderPredictor"
+    additional_config = {
+        "checkpoint": {"increment": 5},
+        "predictor_cls": "ray.serve.tests.test_air_integrations.AdderPredictor",
+    }
+
+    with InputNode() as dag_input:
+        m1 = PredictorDeployment.options(user_config=additional_config).bind(
+            predictor_cls=predictor_cls,
+            checkpoint=uri,
+        )
+        dag = m1.predict.bind(dag_input)
+    deployments = build(Ingress.bind(dag))
+    for d in deployments:
+        d.deploy()
+
+    resp = requests.post("http://127.0.0.1:8000/ingress", json={"array": [40]})
+    print(resp.text)
+    resp.raise_for_status()
+    return resp.json() == {"value": [45], "batch_size": 1}
+
+
 if __name__ == "__main__":
     import sys
 
