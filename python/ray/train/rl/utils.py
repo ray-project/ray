@@ -8,6 +8,7 @@ from ray.air._internal.checkpointing import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -16,6 +17,7 @@ RL_TRAINER_CLASS_FILE = "trainer_class.pkl"
 RL_CONFIG_FILE = "config.pkl"
 
 
+@PublicAPI(stability="alpha")
 def load_checkpoint(
     checkpoint: Checkpoint,
     env: Optional[EnvType] = None,

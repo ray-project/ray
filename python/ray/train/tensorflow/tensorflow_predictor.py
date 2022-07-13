@@ -10,6 +10,7 @@ from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.air.checkpoint import Checkpoint
 from ray.train.data_parallel_trainer import _load_checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="alpha")
 class TensorflowPredictor(DLPredictor):
     """A predictor for TensorFlow models.
 

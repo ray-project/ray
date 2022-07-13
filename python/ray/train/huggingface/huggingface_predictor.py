@@ -11,11 +11,13 @@ from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.train.predictor import Predictor
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 class HuggingFacePredictor(Predictor):
     """A predictor for HuggingFace Transformers PyTorch models.
 

@@ -10,11 +10,13 @@ from ray.train.predictor import Predictor
 from ray.train.sklearn._sklearn_utils import _set_cpu_params
 from ray.train.sklearn.utils import load_checkpoint
 from ray.util.joblib import register_ray
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 class SklearnPredictor(Predictor):
     """A predictor for scikit-learn compatible estimators.
 
