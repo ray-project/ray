@@ -36,6 +36,7 @@ from ray.data.datasource import (
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
+    _SerializedPiece,
     _deserialize_pieces_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa
@@ -360,7 +361,6 @@ def test_read_pandas_data_array_column(ray_start_regular_shared):
 def test_parquet_deserialize_pieces_with_retry(
     ray_start_regular_shared, fs, data_path, monkeypatch
 ):
-    from ray import cloudpickle
 
     setup_data_path = _unwrap_protocol(data_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -376,7 +376,7 @@ def test_parquet_deserialize_pieces_with_retry(
     pq_ds = pq.ParquetDataset(
         data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
     )
-    serialized_pieces = cloudpickle.dumps(pq_ds.pieces)
+    serialized_pieces = [_SerializedPiece(p) for p in pq_ds.pieces]
 
     # test 1st attempt succeed
     pieces = _deserialize_pieces_with_retry(serialized_pieces)
