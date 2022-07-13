@@ -113,13 +113,18 @@ def test_batch_prediction_keep_cols():
         Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
     )
 
-    test_dataset = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+    test_dataset = ray.data.from_pandas(
+        pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]})
+    )
 
-    assert set(
-        batch_predictor.predict(test_dataset, feature_columns=["a"], keep_columns=["b"])
-        .to_pandas()
-        .columns
-    ) == {"a", "b"}
+    output_df = batch_predictor.predict(
+        test_dataset, feature_columns=["a"], keep_columns=["b"]
+    ).to_pandas()
+
+    assert set(output_df.columns) == {"a", "b"}
+
+    assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
+    assert output_df["b"].tolist() == [4, 5, 6]
 
 
 def test_automatic_enable_gpu_from_num_gpus_per_worker():

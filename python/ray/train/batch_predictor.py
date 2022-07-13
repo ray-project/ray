@@ -124,19 +124,6 @@ class BatchPredictor:
         ):
             predictor_kwargs["use_gpu"] = True
 
-        if feature_columns:
-            dropped_dataset = data.map_batches(
-                lambda df: df[feature_columns], batch_size=batch_size
-            )
-        else:
-            dropped_dataset = data
-
-        original_col_ds = None
-        if keep_columns:
-            original_col_ds = data.map_batches(
-                lambda df: df[keep_columns], batch_size=batch_size
-            )
-
         class ScoringWrapper:
             def __init__(self):
                 checkpoint = Checkpoint.from_object_ref(checkpoint_ref)
@@ -145,7 +132,15 @@ class BatchPredictor:
                 )
 
             def __call__(self, batch):
-                prediction_output = self.predictor.predict(batch, **predict_kwargs)
+                if feature_columns:
+                    prediction_batch = batch[feature_columns]
+                else:
+                    prediction_batch = batch
+                prediction_output = self.predictor.predict(
+                    prediction_batch, **predict_kwargs
+                )
+                if keep_columns:
+                    prediction_output[keep_columns] = batch[keep_columns]
                 return convert_batch_type_to_pandas(prediction_output)
 
         compute = ray.data.ActorPoolStrategy(
@@ -156,16 +151,13 @@ class BatchPredictor:
         ray_remote_args["num_cpus"] = num_cpus_per_worker
         ray_remote_args["num_gpus"] = num_gpus_per_worker
 
-        prediction_results = dropped_dataset.map_batches(
+        prediction_results = data.map_batches(
             ScoringWrapper,
             compute=compute,
             batch_format="pandas",
             batch_size=batch_size,
             **ray_remote_args,
         )
-
-        if original_col_ds:
-            prediction_results = prediction_results.zip(original_col_ds)
 
         return prediction_results
 
