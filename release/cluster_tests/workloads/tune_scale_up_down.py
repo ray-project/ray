@@ -9,8 +9,8 @@ from ray import tune
 def train(config):
     this_node_ip = ray.util.get_node_ip_address()
     if config["head_node_ip"] == this_node_ip:
-        # On the head node, run for 60 minutes
-        for i in range(60):
+        # On the head node, run for 30 minutes
+        for i in range(30):
             tune.report(metric=i)
             time.sleep(60)
     else:
@@ -25,7 +25,7 @@ class NodeCountCallback(tune.Callback):
         self.node_counts = []
 
     def on_step_begin(self, iteration, trials, **info):
-        node_count = len(ray.nodes())
+        node_count = len([n for n in ray.nodes() if n["Alive"]])
         self.node_counts.append(node_count)
 
 
@@ -34,7 +34,9 @@ def main():
 
     head_node_ip = ray.util.get_node_ip_address()
 
-    assert len(ray.nodes()) == 1, "Too many nodes available at start of script"
+    assert (
+        len([n for n in ray.nodes() if n["Alive"]]) == 1
+    ), "Too many nodes available at start of script"
 
     node_counter = NodeCountCallback()
 
