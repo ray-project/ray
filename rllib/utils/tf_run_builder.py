@@ -73,7 +73,7 @@ def _run_timeline(sess, ops, debug_name, feed_dict=None, timeline_dir=None):
     if timeline_dir:
         from tensorflow.python.client import timeline
 
-        run_options = tf1.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_options = tf1.RunOptions(trace_level=tf1.RunOptions.FULL_TRACE)
         run_metadata = tf1.RunMetadata()
         start = time.time()
         fetches = sess.run(
