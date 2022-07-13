@@ -21,7 +21,7 @@ def to_air_checkpoint(
     Args:
         model: A pretrained model.
         preprocessor: A fitted preprocessor. The preprocessing logic will
-            be applied to serve/inference.
+            be applied to the inputs for serving/inference.
     Returns:
         A Ray Air checkpoint.
     """

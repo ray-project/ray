@@ -27,7 +27,7 @@ def to_air_checkpoint(
     Args:
         booster: A pretrained lightgbm model.
         preprocessor: A fitted preprocessor. The preprocessing logic will
-            be applied to serve/inference.
+            be applied to the inputs for serving/inference.
         path: The directory where the checkpoint will be stored to.
             If None, a temporary directory will be created.
     Returns:
