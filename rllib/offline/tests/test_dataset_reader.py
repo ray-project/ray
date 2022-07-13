@@ -2,6 +2,7 @@ import tempfile
 import os
 from pathlib import Path
 import unittest
+import pytest
 
 
 import ray
@@ -141,14 +142,16 @@ class TestUnzipIfNeeded(unittest.TestCase):
             Path(__file__).parent.parent.parent / "tests" / "data" / "pendulum"
         )
 
-    # def test_s3_zip(self):
-    #     """Tests whether the unzip_if_needed function works correctly on s3 zip
-    #     files"""
-    #     unzipped_paths = _unzip_if_needed([self.s3_path + "/enormous.zip"], "json")
-    #     self.assertEqual(
-    #         str(Path(unzipped_paths[0]).absolute()),
-    #         str(Path("./").absolute() / "enormous.json")
-    #     )
+    # @TODO: unskip when this is fixed
+    @pytest.mark.skip(reason="Shouldn't hit S3 in CI")
+    def test_s3_zip(self):
+        """Tests whether the unzip_if_needed function works correctly on s3 zip
+        files"""
+        unzipped_paths = _unzip_if_needed([self.s3_path + "/enormous.zip"], "json")
+        self.assertEqual(
+            str(Path(unzipped_paths[0]).absolute()),
+            str(Path("./").absolute() / "enormous.json"),
+        )
 
     def test_relative_zip(self):
         """Tests whether the unzip_if_needed function works correctly on relative zip
@@ -188,6 +191,8 @@ class TestUnzipIfNeeded(unittest.TestCase):
             assert all([Path(fpath).exists() for fpath in unzipped_paths])
             os.chdir(cwdir)
 
+    # @TODO: unskip when this is fixed
+    @pytest.mark.skip(reason="Shouldn't hit S3 in CI")
     def test_s3_json(self):
         """Tests whether the unzip_if_needed function works correctly on s3 json
         files"""
