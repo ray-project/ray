@@ -353,6 +353,21 @@ class Algorithm(Trainable):
         self.workers: Optional[WorkerSet] = None
         self.train_exec_impl = None
 
+        # Offline RL settings.
+        input_evaluation = config.get("input_evaluation")
+        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
+            ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
+            deprecation_warning(
+                old="config.input_evaluation={}".format(input_evaluation),
+                new='config["evaluation_config"]'
+                '["off_policy_estimation_methods"]={}'.format(
+                    ope_dict,
+                ),
+                error=False,
+                help="Running OPE during training is not recommended.",
+            )
+            config["off_policy_estimation_methods"] = ope_dict
+
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the `build_trainer` utility function).
         # Instead, sub-classes should override the Trainable's `setup()`
@@ -594,14 +609,6 @@ class Algorithm(Trainable):
         if evaluate_this_iter and not self.config["evaluation_parallel_to_training"]:
             results.update(self._run_one_evaluation(train_future=None))
 
-        # Collect rollout worker metrics.
-        episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
-            local_worker,
-            self._remote_workers_for_metrics,
-            self._episodes_to_be_collected,
-            timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
-        )
-
         # Attach latest available evaluation results to train results,
         # if necessary.
         if not evaluate_this_iter and self.config["always_attach_evaluation_results"]:
@@ -618,9 +625,14 @@ class Algorithm(Trainable):
                     "sync_filters_on_rollout_workers_timeout_s"
                 ],
             )
-
             # Collect worker metrics and add combine them with `results`.
             if self.config["_disable_execution_plan_api"]:
+                episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
+                    local_worker,
+                    self._remote_workers_for_metrics,
+                    self._episodes_to_be_collected,
+                    timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
+                )
                 results = self._compile_iteration_results(
                     episodes_this_iter=episodes_this_iter,
                     step_ctx=train_iter_ctx,
@@ -797,6 +809,11 @@ class Algorithm(Trainable):
                     # 1 episode per returned batch.
                     if unit == "episodes":
                         num_units_done += len(batches)
+                        # Make sure all batches are exactly one episode.
+                        for ma_batch in batches:
+                            ma_batch = ma_batch.as_multi_agent()
+                            for batch in ma_batch.policy_batches.values():
+                                assert np.sum(batch[SampleBatch.DONES])
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
@@ -1833,9 +1850,10 @@ class Algorithm(Trainable):
 
                 default_policy_cls = self.get_default_policy_class(config)
                 if any(
-                    (p[0] or default_policy_cls) is None
+                    (p.policy_class or default_policy_cls) is None
                     or not issubclass(
-                        p[0] or default_policy_cls, (DynamicTFPolicy, TorchPolicy)
+                        p.policy_class or default_policy_cls,
+                        (DynamicTFPolicy, TorchPolicy),
                     )
                     for p in config["multiagent"]["policies"].values()
                 ):
@@ -1852,32 +1870,6 @@ class Algorithm(Trainable):
                     "`simple_optimizer=False` not supported for "
                     "framework={}!".format(framework)
                 )
-
-        # Offline RL settings.
-        input_evaluation = config.get("input_evaluation")
-        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.input_evaluation: {}".format(input_evaluation),
-                new="config.off_policy_estimation_methods={}".format(input_evaluation),
-                error=False,
-            )
-            config["off_policy_estimation_methods"] = input_evaluation
-        if isinstance(config["off_policy_estimation_methods"], list) or isinstance(
-            config["off_policy_estimation_methods"], tuple
-        ):
-            ope_dict = {
-                str(ope): {"type": ope} for ope in self.off_policy_estimation_methods
-            }
-            deprecation_warning(
-                old="config.off_policy_estimation_methods={}".format(
-                    self.off_policy_estimation_methods
-                ),
-                new="config.off_policy_estimation_methods={}".format(
-                    ope_dict,
-                ),
-                error=False,
-            )
-            config["off_policy_estimation_methods"] = ope_dict
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well
@@ -2102,7 +2094,9 @@ class Algorithm(Trainable):
         removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
         if recreate:
-            removed_workers, new_workers = worker_set.recreate_failed_workers()
+            removed_workers, new_workers = worker_set.recreate_failed_workers(
+                local_worker_for_synching=self.workers.local_worker()
+            )
         elif ignore:
             removed_workers = worker_set.remove_failed_workers()
 
@@ -2265,7 +2259,7 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the training iteration.
         """
-        results = {}
+        results = None
         # Create a step context ...
         with TrainIterCtx(algo=self) as train_iter_ctx:
             # .. so we can query it whether we should stop the iteration loop (e.g.
@@ -2393,6 +2387,9 @@ class Algorithm(Trainable):
         # Evaluation results.
         if "evaluation" in iteration_results:
             results["evaluation"] = iteration_results.pop("evaluation")
+            results["evaluation"]["num_healthy_workers"] = len(
+                self.evaluation_workers.remote_workers()
+            )
 
         # Custom metrics and episode media.
         results["custom_metrics"] = iteration_results.pop("custom_metrics", {})
@@ -2530,7 +2527,6 @@ class TrainIterCtx:
         self.algo = algo
 
     def __enter__(self):
-        self.started = False
         # Before first call to `step()`, `results` is expected to be None ->
         # Start with self.failures=-1 -> set to 0 before the very first call
         # to `self.step()`.
@@ -2554,8 +2550,7 @@ class TrainIterCtx:
     def should_stop(self, results):
 
         # Before first call to `step()`.
-        if self.started is False:
-            self.started = True
+        if results is None:
             # Fail after n retries.
             self.failures += 1
             if self.failures > self.failure_tolerance:
@@ -2599,8 +2594,7 @@ class TrainIterCtx:
             # env|train timesteps have been processed (or these min
             # values are not provided by the user).
             if (
-                results is not None
-                and (not min_t or time.time() - self.time_start >= min_t)
+                (not min_t or time.time() - self.time_start >= min_t)
                 and (not min_sample_ts or self.sampled >= min_sample_ts)
                 and (not min_train_ts or self.trained >= min_train_ts)
             ):

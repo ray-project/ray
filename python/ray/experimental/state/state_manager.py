@@ -22,8 +22,8 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllWorkerInfoRequest,
 )
 from ray.core.generated.node_manager_pb2 import (
-    GetNodeStatsReply,
-    GetNodeStatsRequest,
+    GetObjectsInfoReply,
+    GetObjectsInfoRequest,
     GetTasksInfoReply,
     GetTasksInfoRequest,
 )
@@ -40,6 +40,7 @@ from ray.core.generated.runtime_env_agent_pb2 import (
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
+from ray.experimental.state.common import MAX_LIMIT
 from ray.experimental.state.exception import DataSourceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -205,9 +206,12 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_actor_info(
-        self, timeout: int = None
+        self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllActorInfoReply]:
-        request = GetAllActorInfoRequest()
+        if not limit:
+            limit = MAX_LIMIT
+
+        request = GetAllActorInfoRequest(limit=limit)
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=timeout
         )
@@ -215,9 +219,12 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_placement_group_info(
-        self, timeout: int = None
+        self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllPlacementGroupReply]:
-        request = GetAllPlacementGroupRequest()
+        if not limit:
+            limit = MAX_LIMIT
+
+        request = GetAllPlacementGroupRequest(limit=limit)
         reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
             request, timeout=timeout
         )
@@ -233,9 +240,12 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_worker_info(
-        self, timeout: int = None
+        self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllWorkerInfoReply]:
-        request = GetAllWorkerInfoRequest()
+        if not limit:
+            limit = MAX_LIMIT
+
+        request = GetAllWorkerInfoRequest(limit=limit)
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
             request, timeout=timeout
         )
@@ -261,39 +271,50 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_task_info(
-        self, node_id: str, timeout: int = None
+        self, node_id: str, timeout: int = None, limit: int = None
     ) -> Optional[GetTasksInfoReply]:
+        if not limit:
+            limit = MAX_LIMIT
+
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
 
-        reply = await stub.GetTasksInfo(GetTasksInfoRequest(), timeout=timeout)
+        reply = await stub.GetTasksInfo(
+            GetTasksInfoRequest(limit=limit), timeout=timeout
+        )
         return reply
 
     @handle_grpc_network_errors
     async def get_object_info(
-        self, node_id: str, timeout: int = None
-    ) -> Optional[GetNodeStatsReply]:
+        self, node_id: str, timeout: int = None, limit: int = None
+    ) -> Optional[GetObjectsInfoReply]:
+        if not limit:
+            limit = MAX_LIMIT
+
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
 
-        reply = await stub.GetNodeStats(
-            GetNodeStatsRequest(include_memory_info=True),
+        reply = await stub.GetObjectsInfo(
+            GetObjectsInfoRequest(limit=limit),
             timeout=timeout,
         )
         return reply
 
     @handle_grpc_network_errors
     async def get_runtime_envs_info(
-        self, node_id: str, timeout: int = None
+        self, node_id: str, timeout: int = None, limit: int = None
     ) -> Optional[GetRuntimeEnvsInfoReply]:
+        if not limit:
+            limit = MAX_LIMIT
+
         stub = self._runtime_env_agent_stub.get(node_id)
         if not stub:
             raise ValueError(f"Agent for a node id, {node_id} doesn't exist.")
 
         reply = await stub.GetRuntimeEnvsInfo(
-            GetRuntimeEnvsInfoRequest(),
+            GetRuntimeEnvsInfoRequest(limit=limit),
             timeout=timeout,
         )
         return reply

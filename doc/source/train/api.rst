@@ -4,10 +4,12 @@
 Ray Train API
 =============
 
-.. _train-api-trainer:
-
 Trainer
 -------
+
+.. warning::
+    This Trainer API is deprecated and no longer supported. For an overview of the new :ref:`air` Trainer API,
+    see :ref:`air-trainer-ref`.
 
 .. autoclass:: ray.train.Trainer
     :members:
@@ -111,16 +113,6 @@ TorchTensorboardProfilerCallback
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.callbacks.TorchTensorboardProfilerCallback
-
-Checkpointing
--------------
-
-.. _train-api-checkpoint-strategy:
-
-CheckpointStrategy
-~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.CheckpointStrategy
 
 .. _train-api-func-utils:
 

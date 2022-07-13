@@ -9,6 +9,7 @@ from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
@@ -39,6 +40,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
@@ -138,6 +140,10 @@ class ImpalaConfig(AlgorithmConfig):
         self.min_time_s_per_iteration = 10
         # __sphinx_doc_end__
         # fmt: on
+
+        # TODO: IMPALA/APPO had to be rolled-back to old execution-plan API due
+        #  to issues with the MixIn Buffer (in process of being fixed atm).
+        self._disable_execution_plan_api = False
 
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
@@ -610,22 +616,37 @@ class Impala(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        unprocessed_sample_batches = self.get_samples_from_workers()
+        # Get references to sampled SampleBatches from our workers.
+        unprocessed_sample_batches_refs = self.get_samples_from_workers()
+        # Tag workers that actually produced ready sample batches this iteration.
+        # Those workers will have to get updated at the end of the iteration.
+        self.workers_that_need_updates |= unprocessed_sample_batches_refs.keys()
 
-        self.workers_that_need_updates |= unprocessed_sample_batches.keys()
-
+        # Send the collected batches (still object refs) to our aggregation workers.
         if self.config["num_aggregation_workers"] > 0:
-            batch = self.process_experiences_tree_aggregation(
-                unprocessed_sample_batches
+            batches = self.process_experiences_tree_aggregation(
+                unprocessed_sample_batches_refs
             )
+        # Resolve collected batches here on local process (using the mixin buffer).
         else:
-            batch = self.process_experiences_directly(unprocessed_sample_batches)
+            batches = self.process_experiences_directly(unprocessed_sample_batches_refs)
 
-        self.concatenate_batches_and_pre_queue(batch)
+        # Increase sampling counters now that we have the actual SampleBatches on
+        # the local process (and can measure their sizes).
+        for batch in batches:
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+
+        # Concatenate single batches into batches of size `train_batch_size`.
+        self.concatenate_batches_and_pre_queue(batches)
+        # Move train batches (of size `train_batch_size`) onto learner queue.
         self.place_processed_samples_on_learner_queue()
+        # Extract most recent train results from learner thread.
         train_results = self.process_trained_results()
 
-        self.update_workers_if_necessary()
+        # Sync worker weights.
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self.update_workers_if_necessary()
 
         return train_results
 
@@ -658,12 +679,12 @@ class Impala(Algorithm):
             )
 
         def record_steps_trained(item):
-            count, fetches, _ = item
+            env_steps, agent_steps, fetches = item
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
             # thread is executing outside the pipeline.
-            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
-            metrics.counters[STEPS_TRAINED_COUNTER] += count
+            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = env_steps
+            metrics.counters[STEPS_TRAINED_COUNTER] += env_steps
             return item
 
         # This sub-flow updates the steps trained counter based on learner
@@ -679,7 +700,7 @@ class Impala(Algorithm):
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
         if config["after_train_step"]:
-            merged_op = merged_op.for_each(lambda t: t[1]).for_each(
+            merged_op = merged_op.for_each(lambda t: t[2]).for_each(
                 config["after_train_step"](workers, config)
             )
 
@@ -765,7 +786,11 @@ class Impala(Algorithm):
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
 
-    def get_samples_from_workers(self) -> Dict[ActorHandle, List[SampleBatch]]:
+    def get_samples_from_workers(
+        self,
+    ) -> Dict[
+        Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
+    ]:
         # Perform asynchronous sampling on all (remote) rollout workers.
         if self.workers.remote_workers():
             self._sampling_actor_manager.call_on_all_available(
@@ -782,26 +807,24 @@ class Impala(Algorithm):
         return sample_batches
 
     def place_processed_samples_on_learner_queue(self) -> None:
-        self._counters["num_samples_added_to_queue"] = 0
-
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:
                 self._learner_thread.inqueue.put(batch, block=False)
                 self.batches_to_place_on_learner.pop(0)
-                self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-                self._counters["num_samples_added_to_queue"] = batch.count
+                self._counters["num_samples_added_to_queue"] += (
+                    batch.agent_steps() if self._by_agent_steps else batch.count
+                )
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1
 
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
-        final_learner_info = {}
         learner_infos = []
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
 
+        # Loop through output queue and update our counts.
         for _ in range(self._learner_thread.outqueue.qsize()):
             if self._learner_thread.is_alive():
                 (
@@ -814,9 +837,11 @@ class Impala(Algorithm):
                 if learner_results:
                     learner_infos.append(learner_results)
             else:
-                raise RuntimeError("The learner thread died in while training")
+                raise RuntimeError("The learner thread died while training")
+        # Nothing new happened since last time, use the same learner stats.
         if not learner_infos:
             final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
+        # Accumulate learner stats using the `LearnerInfoBuilder` utility.
         else:
             builder = LearnerInfoBuilder()
             for info in learner_infos:
@@ -831,7 +856,7 @@ class Impala(Algorithm):
 
     def process_experiences_directly(
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
-    ) -> Union[SampleBatchType, None]:
+    ) -> List[SampleBatchType]:
         processed_batches = []
         batches = [
             sample_batch_ref
@@ -852,7 +877,7 @@ class Impala(Algorithm):
 
     def process_experiences_tree_aggregation(
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
-    ) -> Union[SampleBatchType, None]:
+    ) -> List[SampleBatchType]:
         batches = [
             sample_batch_ref
             for refs_batch in actor_to_sample_batches_refs.values()
@@ -860,12 +885,14 @@ class Impala(Algorithm):
         ]
         ready_processed_batches = []
         for batch in batches:
-            self._aggregator_actor_manager.call(
+            success = self._aggregator_actor_manager.call(
                 lambda actor, b: actor.process_episodes(b), fn_kwargs={"b": batch}
             )
+            if not success:
+                self._counters["num_times_no_aggregation_worker_available"] += 1
 
         waiting_processed_sample_batches: Dict[
-            ActorHandle, List[ObjectRef]
+            ActorHandle, List[SampleBatchType]
         ] = self._aggregator_actor_manager.get_ready()
         for ready_sub_batches in waiting_processed_sample_batches.values():
             ready_processed_batches.extend(ready_sub_batches)
