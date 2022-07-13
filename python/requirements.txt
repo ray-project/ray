@@ -11,7 +11,7 @@ click >= 7.0, <= 8.0.4
 cloudpickle
 filelock
 frozenlist
-gpustat >= 1.0.0b1
+gpustat == 1.0.0b1
 grpcio >= 1.28.1, <= 1.43.0
 jsonschema
 msgpack >= 1.0.0, < 2.0.0
@@ -78,7 +78,7 @@ pexpect
 Pillow; platform_system != "Windows"
 pygments
 pyspark==3.1.2
-pytest==5.4.3
+pytest==7.0.1
 pytest-asyncio==0.16.0
 pytest-rerunfailures
 pytest-sugar

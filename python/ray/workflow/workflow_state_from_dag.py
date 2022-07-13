@@ -67,9 +67,9 @@ def workflow_state_from_dag(
 
     # TODO(suquark): remove this cyclic importing later by changing the way of
     # task ID assignment.
-    from ray.workflow.workflow_access import get_or_create_management_actor
+    from ray.workflow.workflow_access import get_management_actor
 
-    mgr = get_or_create_management_actor()
+    mgr = get_management_actor()
     context = workflow_context.get_workflow_step_context()
 
     def _node_visitor(node: Any) -> Any:

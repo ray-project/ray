@@ -306,6 +306,10 @@ def setup(app):
     )
     app.add_js_file("js/docsearch.js", defer="defer")
 
+    # https://github.com/medmunds/rate-the-docs for allowing users
+    # to give thumbs up / down and feedback on existing docs pages.
+    app.add_js_file("js/rate-the-docs.es.min.js")
+
     # Custom docstring processor
     app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
 
