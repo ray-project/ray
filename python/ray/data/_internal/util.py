@@ -68,7 +68,7 @@ def _autodetect_parallelism(
 ) -> (int, int):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
-    This detects parallelism based on three heuristic functions (highest to lowest
+    This detects parallelism based on the following heuristics (highest to lowest
     precedence):
 
      1) Available CPUs. We detect how many CPUs are available for use in the cluster,
