@@ -1,6 +1,6 @@
 from functools import wraps
 import json
-from multiprocessing import Process, Queue
+from multiprocessing import Process
 import os
 import time
 import xgboost as xgb
