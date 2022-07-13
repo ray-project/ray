@@ -921,6 +921,19 @@ cc_test(
 )
 
 cc_test(
+    name = "dependency_resolver_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/dependency_resolver_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "direct_task_transport_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],

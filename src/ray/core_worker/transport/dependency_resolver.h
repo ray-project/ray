@@ -44,14 +44,54 @@ class LocalDependencyResolver {
   ///
   /// Postcondition: all direct call id arguments that haven't been spilled to plasma
   /// are converted to values and all remaining arguments are arguments in the task spec.
+  ///
+  /// \param[in] task The task whose dependencies we should resolve.
+  /// \param[in] on_dependencies_resolved A callback to call once the task's dependencies
+  /// have been resolved. Note that we will not call this if the dependency
+  /// resolution is cancelled.
   void ResolveDependencies(TaskSpecification &task,
-                           std::function<void(Status)> on_complete);
+                           std::function<void(Status)> on_dependencies_resolved);
+
+  /// Cancel resolution of the given task's dependencies. Its registered
+  /// callback will not be called.
+  void CancelDependencyResolution(const TaskID &task_id);
 
   /// Return the number of tasks pending dependency resolution.
   /// TODO(ekl) this should be exposed in worker stats.
-  int NumPendingTasks() const { return num_pending_; }
+  int64_t NumPendingTasks() const {
+    absl::MutexLock lock(&mu_);
+    return pending_tasks_.size();
+  }
 
  private:
+  struct TaskState {
+    TaskState(TaskSpecification t,
+              const std::unordered_set<ObjectID> &deps,
+              const std::unordered_set<ActorID> &actor_ids,
+              std::function<void(Status)> on_dependencies_resolved)
+        : task(t),
+          local_dependencies(),
+          actor_dependencies_remaining(actor_ids.size()),
+          status(Status::OK()),
+          on_dependencies_resolved(on_dependencies_resolved) {
+      for (const auto &dep : deps) {
+        local_dependencies.emplace(dep, nullptr);
+      }
+      obj_dependencies_remaining = local_dependencies.size();
+    }
+    /// The task to be run.
+    TaskSpecification task;
+    /// The local dependencies to resolve for this task. Objects are nullptr if not yet
+    /// resolved.
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
+    /// Number of local dependencies that aren't yet resolved (have nullptrs in the above
+    /// map).
+    size_t actor_dependencies_remaining;
+    size_t obj_dependencies_remaining;
+    Status status;
+    std::function<void(Status)> on_dependencies_resolved;
+  };
+
   /// The in-memory store.
   CoreWorkerMemoryStore &in_memory_store_;
 
@@ -62,8 +102,10 @@ class LocalDependencyResolver {
   /// Number of tasks pending dependency resolution.
   std::atomic<int> num_pending_;
 
+  absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_ GUARDED_BY(mu_);
+
   /// Protects against concurrent access to internal state.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 };
 
 }  // namespace core
