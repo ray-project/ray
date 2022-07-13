@@ -40,6 +40,7 @@ from ray.data._internal.plan import (
     ExecutionPlan,
     OneToOneStage,
     Stage,
+    GenerateStage,
     RandomizeBlocksStage,
 )
 from ray.data._internal.progress_bar import ProgressBar
@@ -50,6 +51,7 @@ from ray.data._internal.shuffle_and_partition import (
 )
 from ray.data._internal.sort import sort_impl
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import _estimate_available_parallelism
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -793,7 +795,7 @@ class Dataset(Generic[T]):
                 else:
                     max_downstream_parallelism = float("inf")
                 max_parallelism = min(
-                    max_downstream_parallelism, estimate_available_parallelism()
+                    max_downstream_parallelism, _estimate_available_parallelism()
                 )
                 ideal_num_blocks = max_parallelism * 2
                 logger.info(
@@ -3312,12 +3314,14 @@ class Dataset(Generic[T]):
             nblocks = [s.initial_num_blocks() for s in it._splits]
             if len(nblocks) > 1:
                 nblocks = sorted(nblocks)[1:]  # Trim off the last one.
-            max_P = estimate_available_parallelism()
+            max_P = _estimate_available_parallelism()
             print("maxP vs nblocks", max_P, nblocks)
             if min(nblocks) < max_P * 0.8:
                 print("Trigger auto repartition")
                 print(
-                    "Warning: this may indicate you need to run the initial read with higher parallelism, which would avoid this step and can increase read parallelism."
+                    "Warning: this may indicate you need to run the initial "
+                    "read with higher parallelism, which would avoid this step "
+                    "and can increase read parallelism."
                 )
                 print("TODO: can we re-run the read with higher p automatically?")
                 pipe = pipe.repartition_each_window(-1)

@@ -14,7 +14,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
-    _estimate_available_parallelism,
+    _estimate_avail_cpus,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
@@ -255,14 +255,12 @@ def read_datasource(
     if parallelism <= 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must be either -1 or a positive integer.")
-        parallelism = max(200, _estimate_available_parallelism() * 2)
         auto_repartition = True
     else:
-        parallelism = 200
         auto_repartition = False
 
     if force_local:
-        requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
+        ideal_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
             datasource, ctx, cur_pg, parallelism, read_args
         )
     else:
@@ -272,7 +270,7 @@ def read_datasource(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
         )
 
-        requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
+        ideal_parallelism, min_safe_parallelism, read_tasks = ray.get(
             get_read_tasks.remote(
                 datasource,
                 ctx,
@@ -299,26 +297,49 @@ def read_datasource(
         0,
         False,
     )
-    if read_tasks and len(read_tasks) < requested_parallelism:
-        if auto_repartition:
-            ds = ds.repartition(-1)
-        elif len(read_tasks) < min_safe_parallelism * 0.7:
-            perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
-            logger.warning(
-                f"The blocks of this dataset are estimated to be {perc}x larger than the "
-                "target block size "
-                f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
-                "out-of-memory errors during processing. Consider reducing the size of "
-                "input files or using `.repartition(n)` to increase the number of "
-                "dataset blocks."
-            )
-        elif len(read_tasks) < ray.available_resources().get("CPU", 1) // 2:
-            logger.warning(
-                "The number of blocks in this dataset ({}) limits its parallelism to {} "
-                "concurrent tasks. This is much less than the number of available "
-                "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
-                "dataset blocks.".format(len(read_tasks), len(read_tasks))
-            )
+    if read_tasks:
+        parallel_enough = len(read_tasks) >= ideal_parallelism // 2
+        memory_safe = len(read_tasks) >= min_safe_parallelism * 0.7
+        if not parallel_enough:
+            if auto_repartition:
+                logger.warning(
+                    f"This dataset will be auto-repartitioned from {len(read_tasks)} "
+                    "to {ideal_parallelism} blocks to "
+                    "increase its available parallelism. Specify the `parallelism` "
+                    "arg to disable automatic repartitioning."
+                )
+                ds = ds.repartition(-1)
+            else:
+                logger.warning(
+                    f"The number of blocks in this dataset ({len(read_tasks)}) "
+                    "limits its parallelism to {len(read_tasks)} "
+                    "concurrent tasks. This is much less than the number of "
+                    "available CPU slots in the cluster. Use `.repartition(n)` to "
+                    "increase the number of dataset blocks."
+                )
+        elif not memory_safe:
+            if auto_repartition:
+                logger.warning(
+                    f"This dataset will be auto-repartitioned from {len(read_tasks)} "
+                    f"to {ideal_parallelism} "
+                    "blocks to reduce their average size in memory to less than "
+                    f"{int(ctx.target_max_block_size / 1024 / 1024)} MiB. "
+                    "Specify the `parallelism` arg to disable automatic "
+                    "repartitioning."
+                )
+                ds = ds.repartition(-1)
+            else:
+                perc = 1 + round(
+                    (min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1
+                )
+                logger.warning(
+                    f"The blocks of this dataset are estimated to be {perc}x larger "
+                    "than the target block size "
+                    f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may "
+                    "lead to out-of-memory errors during processing. Consider "
+                    "reducing the size of input files or using `.repartition(n)` "
+                    "to increase the number of dataset blocks."
+                )
     return ds
 
 
@@ -1172,31 +1193,6 @@ def _autodetect_parallelism(
             f"estimated_data_size={mem_size}."
         )
     return parallelism, min_safe_parallelism
-
-
-def _estimate_avail_cpus(cur_pg: Optional[PlacementGroup]) -> int:
-    cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
-    cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
-
-    # If we're in a placement group, we shouldn't assume the entire cluster's
-    # resources are available for us to use. Estimate an upper bound on what's
-    # reasonable to assume is available for datasets to use.
-    if cur_pg:
-        pg_cpus = 0
-        for bundle in cur_pg.bundle_specs:
-            # Calculate the proportion of the cluster this placement group "takes up".
-            # Then scale our cluster_cpus proportionally to avoid over-parallelizing
-            # if there are many parallel Tune trials using the cluster.
-            cpu_fraction = bundle.get("CPU", 0) / max(1, cluster_cpus)
-            gpu_fraction = bundle.get("GPU", 0) / max(1, cluster_gpus)
-            max_fraction = max(cpu_fraction, gpu_fraction)
-            # Over-parallelize by up to a factor of 2, but no more than that. It's
-            # preferrable to over-estimate than under-estimate.
-            pg_cpus += 2 * int(max_fraction * cluster_cpus)
-
-        return min(cluster_cpus, pg_cpus)
-
-    return cluster_cpus
 
 
 def _resolve_parquet_args(
