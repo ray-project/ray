@@ -559,6 +559,7 @@ class _WrappedDataLoader(DataLoader):
                 logger.info(
                     f"Data type {type(item)} doesn't support being moved to device."
                 )
+                item_on_device = item
 
             return item_on_device
 
