@@ -1685,14 +1685,16 @@ py_test(
     name = "test_json_reader",
     tags = ["team:rllib", "offline"],
     size = "small",
-    srcs = ["offline/tests/test_json_reader.py"]
+    srcs = ["offline/tests/test_json_reader.py"],
+    data = ["tests/data/pendulum/large.json"],
 )
 
 py_test(
     name = "test_ope",
     tags = ["team:rllib", "offline", "torch_only"],
     size = "medium",
-    srcs = ["offline/estimators/tests/test_ope.py"]
+    srcs = ["offline/estimators/tests/test_ope.py"],
+    data = ["tests/data/cartpole/large.json"],
 )
 
 
