@@ -1,6 +1,13 @@
 import logging
-from typing import Union
+from typing import Union, Optional, TYPE_CHECKING
 from types import ModuleType
+
+import ray
+from ray.data.context import DatasetContext
+
+if TYPE_CHECKING:
+    from ray.data.datasource import Reader
+    from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
 
@@ -51,3 +58,69 @@ def _check_pyarrow_version():
             )
         else:
             _VERSION_VALIDATED = True
+
+
+def _autodetect_parallelism(
+    parallelism: int,
+    cur_pg: Optional["PlacementGroup"],
+    reader: Optional["Reader"] = None,
+    avail_cpus: Optional[int] = None,
+) -> (int, int):
+    """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
+    # Autodetect parallelism requested. The heuristic here are that we should try
+    # to create as many blocks needed to saturate available resources, and also keep
+    # block sizes below the target memory size, but no more. Creating too many
+    # blocks is inefficient.
+    min_safe_parallelism = 1
+    ctx = DatasetContext.get_current()
+    if reader:
+        mem_size = reader.estimate_inmemory_data_size()
+        if mem_size is not None:
+            min_safe_parallelism = max(1, int(mem_size / ctx.target_max_block_size))
+            max_reasonable_parallelism = max(
+                1, int(mem_size / ctx.target_min_block_size)
+            )
+    else:
+        mem_size = None
+        max_reasonable_parallelism = 9999999
+    if parallelism < 0:
+        if parallelism != -1:
+            raise ValueError("`parallelism` must either be -1 or a positive integer.")
+        # Start with 2x the number of cores as a baseline, with a min floor.
+        avail_cpus = avail_cpus or _estimate_avail_cpus(cur_pg)
+        parallelism = max(
+            min(ctx.min_parallelism, max_reasonable_parallelism),
+            min_safe_parallelism,
+            avail_cpus * 2,
+        )
+        logger.debug(
+            f"Autodetected parallelism={parallelism} based on "
+            f"estimated_available_cpus={avail_cpus} and "
+            f"estimated_data_size={mem_size}."
+        )
+    return parallelism, min_safe_parallelism
+
+
+def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
+    cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
+    cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
+
+    # If we're in a placement group, we shouldn't assume the entire cluster's
+    # resources are available for us to use. Estimate an upper bound on what's
+    # reasonable to assume is available for datasets to use.
+    if cur_pg:
+        pg_cpus = 0
+        for bundle in cur_pg.bundle_specs:
+            # Calculate the proportion of the cluster this placement group "takes up".
+            # Then scale our cluster_cpus proportionally to avoid over-parallelizing
+            # if there are many parallel Tune trials using the cluster.
+            cpu_fraction = bundle.get("CPU", 0) / max(1, cluster_cpus)
+            gpu_fraction = bundle.get("GPU", 0) / max(1, cluster_gpus)
+            max_fraction = max(cpu_fraction, gpu_fraction)
+            # Over-parallelize by up to a factor of 2, but no more than that. It's
+            # preferrable to over-estimate than under-estimate.
+            pg_cpus += 2 * int(max_fraction * cluster_cpus)
+
+        return min(cluster_cpus, pg_cpus)
+
+    return cluster_cpus
