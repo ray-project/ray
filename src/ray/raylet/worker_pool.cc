@@ -1150,7 +1150,7 @@ void WorkerPool::TryKillingIdleWorkers() {
 void WorkerPool::CollectWorkerStats() {
   for (const auto &worker : GetAllRegisteredWorkers()) {
     auto uss = worker->GetProcess().UssBytes();
-    RAY_LOG(INFO) << "PID uss " << uss;
+    RAY_LOG(DEBUG) << "PID uss " << uss;
   }
 }
 
