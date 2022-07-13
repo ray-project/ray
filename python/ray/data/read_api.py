@@ -81,7 +81,9 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     """
 
     detected_parallelism, _ = _autodetect_parallelism(
-        parallelism, ray.util.get_current_placement_group()
+        parallelism,
+        ray.util.get_current_placement_group(),
+        DatasetContext.get_current(),
     )
     block_size = max(
         1,
@@ -1124,7 +1126,7 @@ def _get_read_tasks(
     DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
-        parallelism, cur_pg, reader
+        parallelism, cur_pg, DatasetContext.get_current(), reader
     )
     return (
         requested_parallelism,

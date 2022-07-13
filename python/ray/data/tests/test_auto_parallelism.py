@@ -89,6 +89,7 @@ def run_test(test: TestCase):
     result, _ = _autodetect_parallelism(
         parallelism=-1,
         cur_pg=None,
+        ctx=DatasetContext.get_current(),
         reader=MockReader(test.data_size),
         avail_cpus=test.avail_cpus,
     )

@@ -63,6 +63,7 @@ def _check_pyarrow_version():
 def _autodetect_parallelism(
     parallelism: int,
     cur_pg: Optional["PlacementGroup"],
+    ctx: DatasetContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, int):
@@ -82,6 +83,7 @@ def _autodetect_parallelism(
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
         cur_pg: The current placement group, to be used for avail cpu calculation.
+        ctx: The current Dataset context to use for configs.
         reader: The datasource reader, to be used for data size estimation.
         avail_cpus: Override avail cpus detection (for testing only).
 
@@ -90,7 +92,6 @@ def _autodetect_parallelism(
         parallelism (which can be used to generate warnings about large blocks).
     """
     min_safe_parallelism = 1
-    ctx = DatasetContext.get_current()
     if reader:
         mem_size = reader.estimate_inmemory_data_size()
         if mem_size is not None:
