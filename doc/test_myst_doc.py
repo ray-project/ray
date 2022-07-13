@@ -23,6 +23,11 @@ parser.add_argument(
     action="store_true",
     help="if true, will attempt to find path recursively in cwd",
 )
+parser.add_argument(
+    "--no-postprocess",
+    action="store_true",
+    help="if true, will not postprocess the notebook",
+)
 
 
 def filter_out_cells_with_remove_cell_ci_tag(cells: list):
@@ -56,7 +61,8 @@ if __name__ == "__main__":
     with open(path, "r") as f:
         notebook = jupytext.read(f)
 
-    notebook = postprocess_notebook(notebook)
+    if not args.no_postprocess:
+        notebook = postprocess_notebook(notebook)
 
     name = ""
     with tempfile.NamedTemporaryFile("w", delete=False) as f:
