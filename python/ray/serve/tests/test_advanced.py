@@ -14,9 +14,7 @@ def test_serve_forceful_shutdown(serve_instance):
         while True:
             time.sleep(1000)
 
-    sleeper.deploy()
-
-    handle = sleeper.get_handle()
+    handle = serve.run(sleeper.bind())
     ref = handle.remote()
     sleeper.delete()
 
@@ -37,8 +35,7 @@ def test_serve_graceful_shutdown(serve_instance):
         async def __call__(self, signal_actor):
             await signal_actor.wait.remote()
 
-    Wait.deploy()
-    handle = Wait.get_handle()
+    handle = serve.run(Wait.bind())
     refs = [handle.remote(signal) for _ in range(10)]
 
     # Wait for all the queries to be enqueued
@@ -95,8 +92,8 @@ def test_parallel_start(serve_instance):
         def __call__(self):
             return "Ready"
 
-    LongStartingServable.deploy()
-    ray.get(LongStartingServable.get_handle().remote(), timeout=10)
+    handle = serve.run(LongStartingServable.bind())
+    ray.get(handle.remote(), timeout=10)
 
 
 if __name__ == "__main__":

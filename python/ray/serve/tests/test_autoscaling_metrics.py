@@ -87,8 +87,7 @@ def test_e2e(serve_instance):
         def __call__(self):
             time.sleep(0.5)
 
-    A.deploy()
-    handle = A.get_handle()
+    handle = serve.run(A.bind())
     [handle.remote() for _ in range(100)]
 
     # Wait for metrics to propagate
