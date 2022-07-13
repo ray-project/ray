@@ -99,6 +99,15 @@ def reset_lib_usage():
     ray_usage_lib._recorded_library_usages.clear()
 
 
+@pytest.fixture
+def reset_ray_version_commit():
+    saved_ray_version = ray.__version__
+    saved_ray_commit = ray.__commit__
+    yield
+    ray.__version__ = saved_ray_version
+    ray.__commit__ = saved_ray_commit
+
+
 def test_parse_extra_usage_tags(monkeypatch):
     with monkeypatch.context() as m:
         # Test a normal case.
@@ -243,7 +252,13 @@ def clear_loggers():
 # test is terminated. It seems like loggers are shared across drivers
 # although we call ray.shutdown().
 def test_usage_stats_prompt(
-    monkeypatch, capsys, tmp_path, reset_lib_usage, shutdown_only, clear_loggers
+    monkeypatch,
+    capsys,
+    tmp_path,
+    reset_lib_usage,
+    shutdown_only,
+    clear_loggers,
+    reset_ray_version_commit,
 ):
     """
     Test usage stats prompt is shown in the proper cases.
@@ -345,8 +360,6 @@ def test_usage_stats_prompt(
         m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
         tmp_usage_stats_config_path = tmp_path / "config5.json"
         m.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
-        saved_ray_version = ray.__version__
-        saved_ray_commit = ray.__commit__
         ray.__version__ = "2.0.0"
         ray.__commit__ = "xyzf"
         ray.init()
@@ -359,16 +372,12 @@ def test_usage_stats_prompt(
         assert (
             usage_constants.USAGE_STATS_ENABLED_FOR_RAY_INIT_MESSAGE not in captured.out
         )
-        ray.__version__ = saved_ray_version
-        ray.__commit__ = saved_ray_commit
 
     with monkeypatch.context() as m:
         # Usage stats is enabled for ray.init() for nightly wheel.
         m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
         tmp_usage_stats_config_path = tmp_path / "config6.json"
         m.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
-        saved_ray_version = ray.__version__
-        saved_ray_commit = ray.__commit__
         ray.__version__ = "2.0.0.dev0"
         ray.__commit__ = "xyzf"
         ray.init()
@@ -378,40 +387,27 @@ def test_usage_stats_prompt(
             usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_FOR_RAY_INIT_MESSAGE
             in captured.out
         )
-        ray.__version__ = saved_ray_version
-        ray.__commit__ = saved_ray_commit
 
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
-        saved_ray_version = ray.__version__
-        saved_ray_commit = ray.__commit__
         ray.__version__ = "2.0.0.dev0"
         ray.__commit__ = "xyzf"
         ray.init()
         ray.shutdown()
         captured = capsys.readouterr()
         assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
-        ray.__version__ = saved_ray_version
-        ray.__commit__ = saved_ray_commit
 
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        saved_ray_version = ray.__version__
-        saved_ray_commit = ray.__commit__
         ray.__version__ = "2.0.0.dev0"
         ray.__commit__ = "xyzf"
         ray.init()
         ray.shutdown()
         captured = capsys.readouterr()
         assert usage_constants.USAGE_STATS_ENABLED_FOR_RAY_INIT_MESSAGE in captured.out
-        ray.__version__ = saved_ray_version
-        ray.__commit__ = saved_ray_commit
 
 
-def test_is_nightly_wheel():
-    saved_ray_version = ray.__version__
-    saved_ray_commit = ray.__commit__
-
+def test_is_nightly_wheel(reset_ray_version_commit):
     ray.__version__ = "2.0.0"
     ray.__commit__ = "xyz"
     assert not ray_usage_lib.is_nightly_wheel()
@@ -423,9 +419,6 @@ def test_is_nightly_wheel():
     ray.__version__ = "2.0.0dev0"
     ray.__commit__ = "xyz"
     assert ray_usage_lib.is_nightly_wheel()
-
-    ray.__version__ = saved_ray_version
-    ray.__commit__ = saved_ray_commit
 
 
 def test_usage_lib_cluster_metadata_generation(
