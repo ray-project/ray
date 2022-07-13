@@ -1,5 +1,4 @@
 import copy
-import subprocess
 import sys
 from typing import Dict
 
@@ -10,22 +9,10 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
+from ray.serve.tests.conftest import *  # noqa: F401 F403
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
-
-
-@pytest.fixture
-def ray_start_stop():
-    subprocess.check_output(["ray", "stop", "--force"])
-    subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
-        == 200,
-        timeout=15,
-    )
-    yield
-    subprocess.check_output(["ray", "stop", "--force"])
 
 
 def deploy_and_check_config(config: Dict):
