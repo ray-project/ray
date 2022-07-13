@@ -48,12 +48,10 @@ py_test_run_all_notebooks(
 
 py_test_run_all_notebooks(
     size = "large",
-    include = [],
+    include = ["huggingface_text_classification.ipynb"],
     exclude = [
-        "huggingface_text_classification.ipynb", # REGRESSION!
         "torch_incremental_learning.ipynb" # REGRESSION!
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
-    allow_empty = True  # REGRESSION
 )
