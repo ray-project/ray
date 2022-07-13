@@ -270,6 +270,8 @@ class TuneBOHB(Searcher):
             self.trial_to_params[trial_id],
         )
 
+    # BOHB Specific.
+    # TODO(team-ml): Refactor alongside HyperBandForBOHB
     def on_pause(self, trial_id: str):
         self.paused.add(trial_id)
         self.running.remove(trial_id)
