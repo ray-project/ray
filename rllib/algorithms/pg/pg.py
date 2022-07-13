@@ -86,7 +86,7 @@ class PG(Algorithm):
         else:
             from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
 
-            return PGTF1Policy
+            return PGTF2Policy
 
 
 # Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!
