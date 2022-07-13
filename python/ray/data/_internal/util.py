@@ -77,6 +77,9 @@ def _autodetect_parallelism(
      3) Max block size. We try to avoid creating blocks larger than this threshold,
         since it can lead to OOM errors during processing.
 
+    These heuristics take precedence over the default parallelism of 200. If none of
+    the heuristics apply, the default value of 200 is used.
+
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
         cur_pg: The current placement group, to be used for avail cpu calculation.
