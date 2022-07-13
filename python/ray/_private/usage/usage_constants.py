@@ -17,7 +17,7 @@ USAGE_STATS_ENABLED_FOR_CLI_MESSAGE = (
 
 USAGE_STATS_ENABLED_FOR_RAY_INIT_MESSAGE = (
     "Usage stats collection is enabled. To disable this, run the following command:"
-    " `ray disable-usage-stats` before `ray.init()`. "
+    " `ray disable-usage-stats` before starting Ray. "
     "See https://docs.ray.io/en/master/cluster/usage-stats.html for more details."
 )
 
@@ -25,7 +25,7 @@ USAGE_STATS_DISABLED_MESSAGE = "Usage stats collection is disabled."
 
 USAGE_STATS_ENABLED_BY_DEFAULT_FOR_CLI_MESSAGE = (
     "Usage stats collection is enabled by default without user confirmation "
-    "because this stdin is detected to be non-interactively. "
+    "because this terminal is detected to be non-interactive. "
     "To disable this, add `--disable-usage-stats` to the command that starts "
     "the cluster, or run the following command:"
     " `ray disable-usage-stats` before starting the cluster. "
@@ -35,7 +35,7 @@ USAGE_STATS_ENABLED_BY_DEFAULT_FOR_CLI_MESSAGE = (
 USAGE_STATS_ENABLED_BY_DEFAULT_FOR_RAY_INIT_MESSAGE = (
     "Usage stats collection is enabled by default for nightly wheels. "
     "To disable this, run the following command:"
-    " `ray disable-usage-stats` before `ray.init()`. "
+    " `ray disable-usage-stats` before starting Ray. "
     "See https://docs.ray.io/en/master/cluster/usage-stats.html for more details."
 )
 
