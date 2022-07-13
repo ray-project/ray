@@ -233,7 +233,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             read_paths: List[str],
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
-            logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
             ctx = DatasetContext.get_current()
@@ -269,11 +268,13 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                     # Non-Snappy compression, pass as open_input_stream() arg so Arrow
                     # can take care of streaming decompression for us.
                     open_stream_args["compression"] = compression
+
                 with self._open_input_source(fs, read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
                             yield output_buffer.next()
+
             output_buffer.finalize()
             if output_buffer.has_next():
                 yield output_buffer.next()
@@ -336,7 +337,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         Implementations that do not support streaming reads (e.g. that require random
         access) should override this method.
         """
-        return filesystem.open_input_stream(path, **open_args)
+        return filesystem.open_input_file(path, **open_args)
 
     def do_write(
         self,
