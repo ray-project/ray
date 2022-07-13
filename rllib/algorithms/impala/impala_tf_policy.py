@@ -254,7 +254,7 @@ class VTraceOptimizer:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
+def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     """Construct an ImpalaTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -437,8 +437,11 @@ def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
         def get_batch_divisibility_req(self) -> int:
             return self.config["rollout_fragment_length"]
 
+    ImpalaTFPolicy.__name__ = name
+    ImpalaTFPolicy.__qualname__ = name
+
     return ImpalaTFPolicy
 
 
-ImpalaTF1Policy = get_impala_tf_policy(DynamicTFPolicyV2)
-ImpalaTF2Policy = get_impala_tf_policy(EagerTFPolicyV2)
+ImpalaTF1Policy = get_impala_tf_policy("ImpalaTF1Policy", DynamicTFPolicyV2)
+ImpalaTF2Policy = get_impala_tf_policy("ImpalaTF2Policy", EagerTFPolicyV2)

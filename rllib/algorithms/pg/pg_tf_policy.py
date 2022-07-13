@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_pg_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
+def get_pg_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     """Construct a PGTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -140,8 +140,11 @@ def get_pg_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
                 "policy_loss": self.policy_loss,
             }
 
+    PGTFPolicy.__name__ = name
+    PGTFPolicy.__qualname__ = name
+
     return PGTFPolicy
 
 
-PGStaticGraphTFPolicy = get_pg_tf_policy(DynamicTFPolicyV2)
-PGEagerTFPolicy = get_pg_tf_policy(EagerTFPolicyV2)
+PGTF1Policy = get_pg_tf_policy("PGTF1Policy", DynamicTFPolicyV2)
+PGTF2Policy = get_pg_tf_policy("PGTF2Policy", EagerTFPolicyV2)

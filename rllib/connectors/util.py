@@ -49,7 +49,7 @@ def get_agent_connectors_from_config(
 
 
 @PublicAPI(stability="alpha")
-def get_action_connectors_from_trainer_config(
+def get_action_connectors_from_config(
     ctx: ConnectorContext,
     config: TrainerConfigDict,
 ) -> ActionConnectorPipeline:
@@ -79,7 +79,7 @@ def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
 
     policy.agent_connectors = get_agent_connectors_from_config(ctx, config)
-    policy.action_connectors = get_action_connectors_from_trainer_config(ctx, config)
+    policy.action_connectors = get_action_connectors_from_config(ctx, config)
 
     logger.info("Using connectors:")
     logger.info(policy.agent_connectors.__str__(indentation=4))

@@ -16,8 +16,8 @@ import ray
 from ray import tune
 from ray.rllib.algorithms.pg import (
     PG,
-    PGEagerTFPolicy,
-    PGStaticGraphTFPolicy,
+    PGTF2Policy,
+    PGTF1Policy,
     PGTorchPolicy,
 )
 from ray.rllib.algorithms.registry import get_algorithm_class
@@ -155,9 +155,9 @@ def run_with_custom_entropy_loss(args, stop):
 
     policy_cls = {
         "torch": PGTorchPolicy,
-        "tf": PGStaticGraphTFPolicy,
-        "tf2": PGEagerTFPolicy,
-        "tfe": PGEagerTFPolicy,
+        "tf": PGTF1Policy,
+        "tf2": PGTF2Policy,
+        "tfe": PGTF2Policy,
     }[args.framework]
 
     class EntropyPolicy(policy_cls):
