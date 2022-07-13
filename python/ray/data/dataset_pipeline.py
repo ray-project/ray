@@ -794,7 +794,6 @@ class DatasetPipeline(Generic[T]):
             ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
             0,
             True,
-            used_from_dataset_pipeline=True,
         )
         # Apply all pipeline operations to the dummy dataset.
         for stage in self._stages:
@@ -807,10 +806,7 @@ class DatasetPipeline(Generic[T]):
         for stage in stages:
             optimized_stages.append(
                 lambda ds, stage=stage: Dataset(
-                    ds._plan.with_stage(stage),
-                    ds._epoch,
-                    True,
-                    used_from_dataset_pipeline=True,
+                    ds._plan.with_stage(stage), ds._epoch, True
                 )
             )
         self._optimized_stages = optimized_stages
