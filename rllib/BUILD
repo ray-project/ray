@@ -497,7 +497,27 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/cartpole-crashing-with_remote-envs-pg.yaml"],
+    data = ["tuned_examples/pg/cartpole-crashing-with-remote-envs-pg.yaml"],
+    args = ["--yaml-dir=tuned_examples/pg"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_cartpole_crashing_pg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-pg.yaml"],
+    args = ["--yaml-dir=tuned_examples/pg"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_cartpole_crashing_with_remote_envs_pg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
 )
 

@@ -20,8 +20,11 @@ multi-agent-cartpole-crashing-pg:
                 # in its place and will take this long (sleep) to "initialize".
                 init_time_s: 1.0
         horizon: 200
-        num_workers: 2
-        num_envs_per_worker: 5
+        num_workers: 4
+        num_envs_per_worker: 3
+        # Use parallel remote envs.
+        remote_worker_envs: true
+
         # Switch on resiliency for failed sub environments (within a vectorized stack).
         restart_failed_sub_environments: true
         # Also ignore worker failures, however, this should not matter as we don't

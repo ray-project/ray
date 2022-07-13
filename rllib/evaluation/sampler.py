@@ -1029,12 +1029,13 @@ def _process_observations(
             # If an episode was marked faulty, perform regular postprocessing
             # (to e.g. properly flush and clean up the SampleCollector's buffers),
             # but then discard the entire batch and don't return it.
-            ma_sample_batch = sample_collector.postprocess_episode(
-                episode,
-                is_done=is_done or (hit_horizon and not soft_horizon),
-                check_dones=check_dones,
-                build=episode.is_faulty or not multiple_episodes_in_batch,
-            )
+            if not episode.is_faulty or episode.length > 0:
+                ma_sample_batch = sample_collector.postprocess_episode(
+                    episode,
+                    is_done=is_done or (hit_horizon and not soft_horizon),
+                    check_dones=check_dones,
+                    build=episode.is_faulty or not multiple_episodes_in_batch,
+                )
             if not episode.is_faulty:
                 if ma_sample_batch:
                     outputs.append(ma_sample_batch)
@@ -1070,9 +1071,12 @@ def _process_observations(
                 }
             else:
                 del active_episodes[env_id]
-                resetted_obs: Dict[
-                    EnvID, Dict[AgentID, EnvObsType]
-                ] = base_env.try_reset(env_id)
+                while True:
+                    resetted_obs: Dict[
+                        EnvID, Dict[AgentID, EnvObsType]
+                    ] = base_env.try_reset(env_id)
+                    if not isinstance(resetted_obs[env_id], Exception):
+                        break
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
                 if horizon != float("inf"):
@@ -1080,6 +1084,7 @@ def _process_observations(
                         "Setting episode horizon requires reset() support "
                         "from the environment."
                     )
+
             # Creates a new episode if this is not async return.
             # If reset is async, we will get its result in some future poll.
             elif resetted_obs != ASYNC_RESET_RETURN:

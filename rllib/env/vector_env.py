@@ -166,6 +166,7 @@ class VectorEnv:
         num_envs: int = 1,
         remote_envs: bool = False,
         remote_env_batch_wait_ms: int = 0,
+        restart_failed_sub_environments: bool = False,
     ) -> "BaseEnv":
         """Converts an RLlib MultiAgentEnv into a BaseEnv object.
 
@@ -192,7 +193,6 @@ class VectorEnv:
         Returns:
             The resulting BaseEnv object.
         """
-        del make_env, num_envs, remote_envs, remote_env_batch_wait_ms
         env = VectorEnvWrapper(self)
         return env
 
@@ -227,10 +227,9 @@ class _VectorizedGymEnv(VectorEnv):
             observation_space: The observation space. If None, use
                 existing_envs[0]'s observation space.
             restart_failed_sub_environments: If True and any sub-environment (within
-                a vectorized env) throws any error during env stepping, the
-                Sampler will try to restart the faulty sub-environment. This is done
-                without disturbing the other (still intact) sub-environment and without
-                the RolloutWorker crashing.
+                a vectorized env) throws any error during env stepping, we will try to
+                restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environments.
         """
         self.envs = existing_envs
         self.make_env = make_env
@@ -255,7 +254,16 @@ class _VectorizedGymEnv(VectorEnv):
     def reset_at(self, index: Optional[int] = None) -> EnvObsType:
         if index is None:
             index = 0
-        return self.envs[index].reset()
+        try:
+            obs = self.envs[index].reset()
+        except Exception as e:
+            if self.restart_failed_sub_environments:
+                logger.exception(e.args[0])
+                self.restart_at(index)
+                obs = e
+            else:
+                raise e
+        return obs
 
     @override(VectorEnv)
     def restart_at(self, index: Optional[int] = None) -> None:

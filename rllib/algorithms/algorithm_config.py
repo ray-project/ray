@@ -901,7 +901,7 @@ class AlgorithmConfig:
         actions_in_input_normalized=None,
         input_evaluation=None,
         off_policy_estimation_methods=None,
-        postprocess_inputs=None,
+        postprocess_inputs=None,  # `def postprocess_trajectory()`
         shuffle_buffer_size=None,
         output=None,
         output_config=None,
