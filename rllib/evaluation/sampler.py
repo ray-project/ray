@@ -1072,10 +1072,12 @@ def _process_observations(
             else:
                 del active_episodes[env_id]
                 while True:
-                    resetted_obs: Dict[
-                        EnvID, Dict[AgentID, EnvObsType]
+                    resetted_obs: Optional[
+                        Dict[EnvID, Dict[AgentID, EnvObsType]]
                     ] = base_env.try_reset(env_id)
-                    if not isinstance(resetted_obs[env_id], Exception):
+                    if resetted_obs is None or not isinstance(
+                        resetted_obs[env_id], Exception
+                    ):
                         break
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
