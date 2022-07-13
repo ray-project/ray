@@ -224,7 +224,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -565,9 +564,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
-  /// A callback to get the job config of an actor based on its job id. This is
-  /// necessary for actor creation.
-  std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config_;
   /// Runtime environment manager for GC purpose
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
