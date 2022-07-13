@@ -7,11 +7,13 @@ from ray.air.checkpoint import Checkpoint
 
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.horovod.config import HorovodConfig
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 class HorovodTrainer(DataParallelTrainer):
     """A Trainer for data parallel Horovod training.
 
