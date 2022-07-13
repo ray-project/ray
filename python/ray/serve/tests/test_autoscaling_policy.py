@@ -195,12 +195,11 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    handle = A.get_handle()
     [handle.remote() for _ in range(100)]
 
     # scale up one more replica from min_replicas
@@ -241,12 +240,11 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    handle = A.get_handle()
     [handle.remote() for _ in range(100)]
 
     # scale up one more replica from min_replicas
@@ -280,7 +278,7 @@ def test_initial_num_replicas(mock, serve_instance):
         def __call__(self):
             return "ok!"
 
-    A.deploy()
+    serve.run(A.bind())
 
     controller = serve_instance._controller
     assert get_num_running_replicas(controller, A) == 2
@@ -607,12 +605,11 @@ def test_e2e_bursty(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    handle = A.get_handle()
     [handle.remote() for _ in range(100)]
 
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 2)
@@ -665,12 +662,12 @@ def test_e2e_intermediate_downscaling(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    handle = A.get_handle()
+    A.get_handle()
     [handle.remote() for _ in range(50)]
 
     wait_for_condition(
@@ -720,7 +717,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
     print("Deployed A with min_replicas 1 and max_replicas 10.")
 
     controller = serve_instance._controller
@@ -728,7 +725,6 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     assert get_num_running_replicas(controller, A) == 0
 
-    handle = A.get_handle()
     [handle.remote() for _ in range(400)]
     print("Issued 400 requests.")
 
@@ -742,17 +738,19 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     time.sleep(3)
     print("Issued 458 requests. Request routing in-progress.")
 
-    A.options(
-        _autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 2,
-            "max_replicas": 20,
-            "look_back_period_s": 0.2,
-            "downscale_delay_s": 0.2,
-            "upscale_delay_s": 0.2,
-        },
-        version="v1",
-    ).deploy()
+    serve.run(
+        A.options(
+            _autoscaling_config={
+                "metrics_interval_s": 0.1,
+                "min_replicas": 2,
+                "max_replicas": 20,
+                "look_back_period_s": 0.2,
+                "downscale_delay_s": 0.2,
+                "upscale_delay_s": 0.2,
+            },
+            version="v1",
+        ).bind()
+    )
     print("Redeployed A.")
 
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 20)
@@ -774,17 +772,19 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     assert get_deployment_start_time(controller, A) == start_time
 
     # scale down to 0
-    A.options(
-        _autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 0,
-            "max_replicas": 20,
-            "look_back_period_s": 0.2,
-            "downscale_delay_s": 0.2,
-            "upscale_delay_s": 0.2,
-        },
-        version="v1",
-    ).deploy()
+    serve.run(
+        A.options(
+            _autoscaling_config={
+                "metrics_interval_s": 0.1,
+                "min_replicas": 0,
+                "max_replicas": 20,
+                "look_back_period_s": 0.2,
+                "downscale_delay_s": 0.2,
+                "upscale_delay_s": 0.2,
+            },
+            version="v1",
+        ).bind()
+    )
     print("Redeployed A.")
 
     wait_for_condition(lambda: get_num_running_replicas(controller, A) < 1)
