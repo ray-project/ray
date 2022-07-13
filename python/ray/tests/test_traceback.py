@@ -315,7 +315,10 @@ RuntimeError: Failed to unpickle serialized exception"""
     try:
         ray.get(f.remote())
     except Exception as ex:
-        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
+        python310_extra_exc_msg = "test_unpickleable_stacktrace.<locals>.NoPickleError."
+        assert clean_noqa(expected_output) == scrub_traceback(str(ex)).replace(
+            f"TypeError: {python310_extra_exc_msg}", "TypeError: "
+        )
 
 
 def test_serialization_error_message(shutdown_only):
@@ -351,29 +354,30 @@ def test_serialization_error_message(shutdown_only):
         task_with_unserializable_arg.remote(lock)
 
     def scrub_traceback(ex):
-        return re.sub("object at .*> for a", "object at ADDRESS> for a", ex)
+        ex = re.sub("object at .*> for a", "object at ADDRESS> for a", ex)
+        ex = re.sub(
+            r"com_github_ray_project_ray\.python\.ray\.tests\.test_traceback",
+            "test_traceback",
+            ex,
+        )
+        ex = re.sub(r"python\.ray\.tests\.test_traceback", "test_traceback", ex)
+        return ex
 
-    test_prefix = "com_github_ray_project_ray.python.ray.tests."
-
-    assert clean_noqa(expected_output_task) == scrub_traceback(
-        str(excinfo.value)
-    ).replace(test_prefix, "")
+    assert clean_noqa(expected_output_task) == scrub_traceback(str(excinfo.value))
     """
     Test an actor with an unserializable object.
     """
     with pytest.raises(TypeError) as excinfo:
         a = A.remote(lock)
         print(a)
-    assert clean_noqa(expected_output_actor) == scrub_traceback(
-        str(excinfo.value)
-    ).replace(test_prefix, "")
+    assert clean_noqa(expected_output_actor) == scrub_traceback(str(excinfo.value))
     """
     Test the case where an unserializable object is captured by tasks.
     """
     with pytest.raises(TypeError) as excinfo:
         capture_lock.remote()
-    assert clean_noqa(expected_capture_output_task) == str(excinfo.value).replace(
-        test_prefix, ""
+    assert clean_noqa(expected_capture_output_task) == scrub_traceback(
+        str(excinfo.value)
     )
     """
     Test the case where an unserializable object is captured by actors.
@@ -381,8 +385,8 @@ def test_serialization_error_message(shutdown_only):
     with pytest.raises(TypeError) as excinfo:
         b = B.remote()
         print(b)
-    assert clean_noqa(expected_capture_output_actor) == str(excinfo.value).replace(
-        test_prefix, ""
+    assert clean_noqa(expected_capture_output_actor) == scrub_traceback(
+        str(excinfo.value)
     )
 
 
