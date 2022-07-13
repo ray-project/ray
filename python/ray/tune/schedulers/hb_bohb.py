@@ -97,9 +97,19 @@ class HyperBandForBOHB(HyperBandScheduler):
         if not bracket.filled() or any(
             status != Trial.PAUSED for t, status in statuses if t is not trial
         ):
+            # BOHB Specific. This hack existed in old Ray versions
+            # and was removed, but it needs to be brought back
+            # as otherwise the BOHB doesn't behave as intended.
+            # There should be a better API for this.
+            # TODO(team-ml): Refactor alongside HyperBandForBOHB
+            trial_runner._search_alg.searcher.on_pause(trial.trial_id)
             return TrialScheduler.PAUSE
         action = self._process_bracket(trial_runner, bracket)
         return action
+
+    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+        # Hack. See comment in on_trial_result
+        trial_runner._search_alg.searcher.on_unpause(trial.trial_id)
 
     def choose_trial_to_run(
         self, trial_runner: "trial_runner.TrialRunner", allow_recurse: bool = True
