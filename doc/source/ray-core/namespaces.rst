@@ -24,6 +24,14 @@ first connect to the cluster.
       System.setProperty("ray.job.namespace", "hello"); // set it before Ray.init()
       Ray.init();
 
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+      ray::RayConfig config;
+      config.ray_namespace = "hello";
+      ray::Init(config);
+
 Please refer to `Driver Options <configure.html#driver-options>`__ for ways of configuring a Java application.
 
 Named actors are only accessible within their namespaces.
@@ -105,6 +113,44 @@ Named actors are only accessible within their namespaces.
             Ray.shutdown();
         }
 
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // `ray start --head` has been run to launch a local cluster.
+
+        // Job 1 creates two actors, "orange" and "purple" in the "colors" namespace.
+        ray::RayConfig config;
+        config.address = "ray://localhost:10001";
+        config.ray_namespace = "colors";
+        ray::Init(config);
+        ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("orange").Remote();
+        ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("purple").Remote();
+        ray::Shutdown();
+
+        // Job 2 is now connecting to a different namespace.
+        ray::RayConfig config;
+        config.address = "ray://localhost:10001";
+        config.ray_namespace = "fruits";
+        ray::Init(config);
+        // This fails because "orange" was defined in the "colors" namespace.
+        ray::GetActor<Counter>("orange"); // return nullptr;
+        // This succceeds because the name "orange" is unused in this namespace.
+        ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("orange").Remote();
+        ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("watermelon").Remote();
+        ray::Shutdown();
+
+        // Job 3 connects to the original "colors" namespace.
+        ray::RayConfig config;
+        config.address = "ray://localhost:10001";
+        config.ray_namespace = "colors";
+        ray::Init(config);
+        // This fails because "watermelon" was in the fruits namespace.
+        ray::GetActor<Counter>("watermelon"); // return nullptr;
+        // This returns the "orange" actor we created in the first job, not the second.
+        ray::GetActor<Counter>("orange");
+        ray::Shutdown();
+
 Anonymous namespaces
 --------------------
 
@@ -159,6 +205,27 @@ will not have access to actors in other namespaces.
         } finally {
             Ray.shutdown();
         }
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // `ray start --head` has been run to launch a local cluster.
+
+        // Job 1 connects to an anonymous namespace by default.
+        ray::RayConfig config;
+        config.address = "ray://localhost:10001";
+        ray::Init(config);
+        ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor").Remote();
+        ray::Shutdown();
+
+        // Job 2 connects to a _different_ anonymous namespace by default
+        ray::RayConfig config;
+        config.address = "ray://localhost:10001";
+        ray::Init(config);
+        // This succeeds because the second job is in its own namespace.
+        ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor").Remote();
+        ray::Shutdown();
 
 .. note::
 
