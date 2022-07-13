@@ -466,11 +466,14 @@ class _TorchAccelerator(Accelerator):
         """Gets the correct torch device to use for training."""
         if torch.cuda.is_available():
             gpu_ids = ray.get_gpu_ids()
+
             if len(gpu_ids) > 0:
                 gpu_id = gpu_ids[0]
-                cuda_visible_list = list(
-                    map(int, ray._private.utils.get_cuda_visible_devices())
-                )
+                cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+                assert (
+                    cuda_visible_str and cuda_visible_str != "NoDevFiles"
+                ), "CUDA_VISIBLE_DEVICES is not set or empty."
+                cuda_visible_list = list(map(int, cuda_visible_str.split(",")))
                 device_id = cuda_visible_list.index(gpu_id)
             else:
                 # If called on the driver or outside of Ray Train, return the
