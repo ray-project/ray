@@ -39,6 +39,20 @@ Trainers
     :members:
     :show-inheritance:
 
+Training Result
+~~~~~~~~~~~~~~~
+
+.. automodule:: ray.air.result
+    :members:
+
+Checkpoint
+~~~~~~~~~~
+
+.. _air-checkpoint-ref:
+
+.. automodule:: ray.air.checkpoint
+    :members:
+
 Predictors
 ~~~~~~~~~~
 
@@ -61,9 +75,6 @@ Tuner
 .. automodule:: ray.tune.result_grid
     :members:
 
-.. automodule:: ray.air.result
-    :members:
-
 .. _air-serve-integration:
 
 Serving
@@ -74,14 +85,6 @@ Serving
 .. autoclass:: ray.serve.air_integrations.PredictorWrapper
 
 .. _air-results-ref:
-
-Checkpoint
-~~~~~~~~~~
-
-.. _air-checkpoint-ref:
-
-.. automodule:: ray.air.checkpoint
-    :members:
 
 
 Configs
