@@ -49,6 +49,13 @@ class LinearDatasetDict(LinearDataset):
         return {"x": self.x[index, None], "y": self.y[index, None]}
 
 
+class NonTensorDataset(LinearDataset):
+    """Modifies the LinearDataset to also return non-tensor objects."""
+
+    def __getitem__(self, index):
+        return {"x": self.x[index, None], "y": 2}
+
+
 # TODO: Refactor as a backend test.
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
@@ -99,7 +106,9 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
 
 
 # TODO: Refactor as a backend test.
-@pytest.mark.parametrize("dataset", (LinearDataset, LinearDatasetDict))
+@pytest.mark.parametrize(
+    "dataset", (LinearDataset, LinearDatasetDict, NonTensorDataset)
+)
 def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
     data_loader = DataLoader(dataset(a=1, b=2, size=10))
 
@@ -111,7 +120,7 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
 
         # Make sure you can properly iterate through the DataLoader.
         # Case where the dataset returns a tuple or list from __getitem__.
-        if isinstance(wrapped_data_loader.dataset[0], (tuple, list)):
+        if isinstance(dataset, LinearDataset):
             for batch in wrapped_data_loader:
                 x = batch[0]
                 y = batch[1]
@@ -119,11 +128,17 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
                 # Make sure the data is on the correct device.
                 assert x.is_cuda and y.is_cuda
         # Case where the dataset returns a dict from __getitem__.
-        elif isinstance(wrapped_data_loader.dataset[0], dict):
+        elif isinstance(dataset, LinearDatasetDict):
             for batch in wrapped_data_loader:
                 for x, y in zip(batch["x"], batch["y"]):
                     # Make sure the data is on the correct device.
                     assert x.is_cuda and y.is_cuda
+
+        elif isinstance(dataset, NonTensorDataset):
+            for batch in wrapped_data_loader:
+                for x, y in zip(batch["x"], batch["y"]):
+                    # Make sure the data is on the correct device.
+                    assert x.is_cuda and y == 2
 
     trainer = Trainer("torch", num_workers=2, use_gpu=True)
     trainer.start()
