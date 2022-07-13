@@ -1,4 +1,5 @@
 import os
+import tempfile
 from typing import TYPE_CHECKING, Optional, Tuple
 
 import lightgbm
@@ -17,20 +18,24 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 def to_air_checkpoint(
-    path: str,
     booster: lightgbm.Booster,
     preprocessor: Optional["Preprocessor"] = None,
+    path: Optional[str] = None,
 ) -> Checkpoint:
     """Convert a pretrained model to AIR checkpoint for serve or inference.
 
     Args:
-        path: The directory path where model and preprocessor steps are stored to.
         booster: A pretrained lightgbm model.
         preprocessor: A fitted preprocessor. The preprocessing logic will
             be applied to serve/inference.
+        path: The directory where the checkpoint will be stored to.
+            If None, a temporary directory will be created.
     Returns:
-        A Ray Air checkpoint.
+        A Ray AIR checkpoint.
     """
+    if not path:
+        path = tempfile.mkdtemp()
+
     booster.save_model(os.path.join(path, MODEL_KEY))
 
     if preprocessor:
