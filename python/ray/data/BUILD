@@ -14,6 +14,7 @@ py_library(
 py_test_module_list(
   files = glob(["tests/test_*.py"]),
   size = "large",
+  extra_srcs = [],
   tags = ["team:core", "exclusive"],
   deps = ["//:ray_lib", ":conftest"],
 )
