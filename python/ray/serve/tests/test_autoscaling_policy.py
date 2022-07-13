@@ -177,7 +177,7 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": 3,
@@ -222,7 +222,7 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 2,
@@ -268,7 +268,7 @@ def test_initial_num_replicas(mock, serve_instance):
     """
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "min_replicas": 2,
             "max_replicas": 4,
         },
@@ -587,7 +587,7 @@ def test_e2e_bursty(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 2,
@@ -644,7 +644,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 20,
@@ -699,7 +699,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 10,
@@ -740,7 +740,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     serve.run(
         A.options(
-            _autoscaling_config={
+            autoscaling_config={
                 "metrics_interval_s": 0.1,
                 "min_replicas": 2,
                 "max_replicas": 20,
@@ -774,7 +774,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     # scale down to 0
     serve.run(
         A.options(
-            _autoscaling_config={
+            autoscaling_config={
                 "metrics_interval_s": 0.1,
                 "min_replicas": 0,
                 "max_replicas": 20,
@@ -802,7 +802,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 10,
@@ -839,7 +839,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     first_deployment_replicas = get_running_replica_tags(controller, A)
 
     A.options(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 2,
             "max_replicas": 10,
