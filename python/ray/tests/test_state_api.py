@@ -417,9 +417,9 @@ def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers)
 
     expected_elapsed = [1.25, 2.5, 5.0]
     expected_lines = []
-    for i, line in enumerate(lines[1:]):
+    for elapsed in expected_elapsed:
         expected_lines.append(
-            f"({expected_elapsed[i]} / 10 seconds) Waiting for the "
+            f"({elapsed} / 10 seconds) Waiting for the "
             "response from the API "
             "server address http://127.0.0.1:8265/api/v0/delay/5."
         )
