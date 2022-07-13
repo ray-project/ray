@@ -31,6 +31,7 @@ def filter_out_cells_with_remove_cell_ci_tag(cells: list):
     def should_keep_cell(cell):
         tags = cell.metadata.get("tags")
         if tags:
+            # Both - and _ for consistent behavior with built-in tags
             return "remove_cell_ci" not in tags and "remove-cell-ci" not in tags
         return True
 
@@ -64,7 +65,6 @@ if __name__ == "__main__":
 
     remainder.insert(0, name)
     remainder.insert(0, sys.executable)
-    print(remainder)
 
     # Run the notebook
     subprocess.run(remainder, check=True)
