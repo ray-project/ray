@@ -352,35 +352,32 @@ class SampleBatch(dict):
             [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
         """
 
-        # No eps_id in data -> Make sure there are no "dones" in the middle
-        # and add eps_id automatically.
-        if SampleBatch.EPS_ID not in self:
-            # TODO: (sven) Shouldn't we rather split by DONEs then and not
-            #  add fake eps-ids (0s) at all?
-            if SampleBatch.DONES in self:
-                assert not any(self[SampleBatch.DONES][:-1])
-            self[SampleBatch.EPS_ID] = np.repeat(0, self.count)
-            return [self]
-
-        # Produce a new slice whenever we find a new episode ID.
         slices = []
-        cur_eps_id = self[SampleBatch.EPS_ID][0]
-        offset = 0
-        for i in range(self.count):
-            next_eps_id = self[SampleBatch.EPS_ID][i]
-            if next_eps_id != cur_eps_id:
-                slices.append(self[offset:i])
-                offset = i
-                cur_eps_id = next_eps_id
-        # Add final slice.
-        slices.append(self[offset : self.count])
+        if SampleBatch.EPS_ID in self:
+            # Produce a new slice whenever we find a new episode ID.
+            cur_eps_id = self[SampleBatch.EPS_ID][0]
+            offset = 0
+            for i in range(self.count):
+                next_eps_id = self[SampleBatch.EPS_ID][i]
+                if next_eps_id != cur_eps_id:
+                    slices.append(self[offset:i])
+                    offset = i
+                    cur_eps_id = next_eps_id
+            # Add final slice.
+            slices.append(self[offset : self.count])
 
-        # TODO: (sven) Are these checks necessary? Should be all ok according
-        #  to above logic.
-        for s in slices:
-            slen = len(set(s[SampleBatch.EPS_ID]))
-            assert slen == 1, (s, slen)
-        assert sum(s.count for s in slices) == self.count, (slices, self.count)
+        elif SampleBatch.DONES in self:
+            # No eps_id in data -> split by dones instead
+            offset = 0
+            for i in range(self.count):
+                if self[SampleBatch.DONES][i]:
+                    slices.append(self[offset : i + 1])
+                    offset = i + 1
+            # Add final slice.
+            if offset != self.count:
+                slices.append(self[offset : self.count])
+        else:
+            return [self]
 
         return slices
 
