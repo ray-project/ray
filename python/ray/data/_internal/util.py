@@ -66,11 +66,27 @@ def _autodetect_parallelism(
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, int):
-    """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
-    # Autodetect parallelism requested. The heuristic here are that we should try
-    # to create as many blocks needed to saturate available resources, and also keep
-    # block sizes below the target memory size, but no more. Creating too many
-    # blocks is inefficient.
+    """Returns parallelism to use and the min safe parallelism to avoid OOMs.
+
+    This detects parallelism based on three heuristic functions:
+
+     1) Available CPUs. We detect how many CPUs are available for use in the cluster,
+        and ensure the parallelism is high enough to make use of the CPUs.
+     2) Min block size. We try to avoid creating blocks smaller than this threshold,
+        to avoid the overhead of tiny blocks.
+     3) Max block size. We try to avoid creating blocks larger than this threshold,
+        since it can lead to OOM errors during processing.
+
+    Args:
+        parallelism: The user-requested parallelism, or -1 for auto-detection.
+        cur_pg: The current placement group, to be used for avail cpu calculation.
+        reader: The datasource reader, to be used for data size estimation.
+        avail_cpus: Override avail cpus detection (for testing only).
+
+    Returns:
+        Tuple of detected parallelism (only if -1 was specified), and the min safe
+        parallelism (which can be used to generate warnings about large blocks).
+    """
     min_safe_parallelism = 1
     ctx = DatasetContext.get_current()
     if reader:
@@ -102,6 +118,15 @@ def _autodetect_parallelism(
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
+
+    If we aren't in a placement group, this is trivially the number of CPUs in the
+    cluster. Otherwise, we try to calculate how large the placement group is relative
+    to the size of the cluster.
+
+    Args:
+        cur_pg: The current placement group, if any.
+    """
     cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
     cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
 

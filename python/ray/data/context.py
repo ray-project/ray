@@ -11,10 +11,12 @@ _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
 
 # The max target block size in bytes for reads and transformations.
+# We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
 # Datasets will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over MIN_SAFE_PARALLELISM.
+# We choose 100KiB to be consistent with the Ray object inline threshold (100KiB).
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 100 * 1024
 
 # Whether block splitting is on by default
