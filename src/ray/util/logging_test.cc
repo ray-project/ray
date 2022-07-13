@@ -255,10 +255,13 @@ TEST(PrintLogTest, TestCheckOp) {
   ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
 }
 
+#ifndef _WIN32
 std::string TestFunctionLevel0() {
-  std::string call_trace = GetCallTrace();
-  RAY_LOG(INFO) << "TestFunctionLevel0\n" << call_trace;
-  return call_trace;
+  std::ostringstream oss;
+  oss << ray::StackTrace();
+  std::string stack_trace = oss.str();
+  RAY_LOG(INFO) << "TestFunctionLevel0\n" << stack_trace;
+  return stack_trace;
 }
 
 std::string TestFunctionLevel1() {
@@ -271,37 +274,39 @@ std::string TestFunctionLevel2() {
   return TestFunctionLevel1();
 }
 
-#ifndef _WIN32
-TEST(PrintLogTest, CallstackTraceTest) {
+TEST(PrintLogTest, TestStackTrace) {
   auto ret0 = TestFunctionLevel0();
-  EXPECT_TRUE(ret0.find("TestFunctionLevel0") != std::string::npos);
+  EXPECT_TRUE(ret0.find("TestFunctionLevel0") != std::string::npos) << ret0;
   auto ret1 = TestFunctionLevel1();
-  EXPECT_TRUE(ret1.find("TestFunctionLevel1") != std::string::npos);
+  EXPECT_TRUE(ret1.find("TestFunctionLevel1") != std::string::npos) << ret1;
   auto ret2 = TestFunctionLevel2();
-  EXPECT_TRUE(ret2.find("TestFunctionLevel2") != std::string::npos);
+  EXPECT_TRUE(ret2.find("TestFunctionLevel2") != std::string::npos) << ret2;
+}
+
+int TerminateHandlerLevel0() {
+  RAY_LOG(INFO) << "TerminateHandlerLevel0";
+  auto terminate_handler = std::get_terminate();
+  (*terminate_handler)();
+  return 0;
+}
+
+int TerminateHandlerLevel1() {
+  RAY_LOG(INFO) << "TerminateHandlerLevel1";
+  TerminateHandlerLevel0();
+  return 1;
+}
+
+TEST(PrintLogTest, TestTerminateHandler) {
+  ray::RayLog::InstallTerminateHandler();
+  ASSERT_DEATH(TerminateHandlerLevel1(),
+               ".*TerminateHandlerLevel0.*TerminateHandlerLevel1.*");
 }
 #endif
 
-/// Catch abort signal handler for testing RAY_CHECK.
-/// We'd better to run the following test case manually since process
-/// will terminated if abort signal raising.
-/*
-bool get_abort_signal = false;
-void signal_handler(int signum) {
-  RAY_LOG(WARNING) << "Interrupt signal (" << signum << ") received.";
-  get_abort_signal = signum == SIGABRT;
-  exit(0);
+TEST(PrintLogTest, TestFailureSignalHandler) {
+  ray::RayLog::InstallFailureSignalHandler(nullptr);
+  ASSERT_DEATH(abort(), ".*SIGABRT received.*");
 }
-
-TEST(PrintLogTest, RayCheckAbortTest) {
-  get_abort_signal = false;
-  // signal(SIGABRT, signal_handler);
-  ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(0) << "Check for aborting";
-  sleep(1);
-  EXPECT_TRUE(get_abort_signal);
-}
-*/
 
 }  // namespace ray
 

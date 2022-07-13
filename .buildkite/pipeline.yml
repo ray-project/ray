@@ -424,7 +424,13 @@
 - label: ":kubernetes: operator"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - |
+      cleanup() {
+        if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
+        python python/ray/tests/kuberay/setup/teardown_kuberay.py
+        kind delete cluster
+      }
+      trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
     - PYTHON=3.7 ./ci/env/install-dependencies.sh
     # Specifying PYTHON=3.7 above somehow messes up the Ray install.
@@ -442,6 +448,8 @@
     - docker tag rayproject/ray:nightly-py37-cpu ray-ci:kuberay-test
     # Load the image into the kind node.
     - kind load docker-image ray-ci:kuberay-test
+    - echo "--- Setting up KubeRay operator."
+    - python python/ray/tests/kuberay/setup/setup_kuberay.py
     - echo "--- Running the test."
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=kuberay_operator
