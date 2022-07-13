@@ -72,26 +72,6 @@ class TestDatasetReader(unittest.TestCase):
             isinstance(remote_shard, ray.data.Dataset) for remote_shard in shards[1:]
         )
 
-    # def test_dataset_shard_only_remote_workers(self):
-    #     """Tests whether the dataset_shard function works correctly for the remote
-    #     workers with just the dataset shards for the remote workers."""
-
-    #     config = {
-    #         "input": "dataset",
-    #         "input_config": {"format": "json", "paths": self.dset_path},
-    #     }
-    #     NUM_WORKERS = 4
-
-    #     _, shards = get_dataset_and_shards(
-    #         config, num_workers=NUM_WORKERS, local_worker=False
-    #     )
-
-    #     assert len(shards) == NUM_WORKERS
-    #     assert shards[0] is not None
-    #     assert all(
-    #         isinstance(remote_shard, ray.data.Dataset) for remote_shard in shards
-    #     )
-
     def test_dataset_shard_with_task_parallelization(self):
         """Tests whether the dataset_shard function works correctly with parallelism
         for reading the dataset."""
