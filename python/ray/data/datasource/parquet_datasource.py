@@ -190,12 +190,14 @@ class _ParquetDatasourceReader(Reader):
         self._schema = schema
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        # TODO(ekl) better estimate the in-memory size here.
-        PARQUET_DECOMPRESSION_MULTIPLIER = 5
+        # TODO(ekl/chengsu) better estimate the in-memory size here,
+        # when columns pruning is used.
         total_size = 0
-        for meta in self._metadata:
-            total_size += meta.serialized_size
-        return total_size * PARQUET_DECOMPRESSION_MULTIPLIER
+        for file_metadata in self._metadata:
+            for row_group_idx in range(file_metadata.num_row_groups):
+                row_group_metadata = file_metadata.row_group(row_group_idx)
+                total_size += row_group_metadata.total_byte_size
+        return total_size
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
