@@ -79,12 +79,12 @@ class Preprocessor:
                         else None,
                         self._obs_space,
                     )
-            except AttributeError:
+            except AttributeError as e:
                 raise ValueError(
                     "Observation for a Box/MultiBinary/MultiDiscrete space "
                     "should be an np.array, not a Python list.",
                     observation,
-                )
+                ) from e
         self._i += 1
 
     @property
