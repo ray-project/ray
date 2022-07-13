@@ -61,7 +61,7 @@ steps:
     - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
 
-- label: ":mac: :apple: Ray Core and Libraries"
+- label: ":mac: :apple: Ray Core, Dashboard and Serve"
   <<: *common
   conditions: ["RAY_CI_SERVE_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
