@@ -355,6 +355,9 @@ install_dependencies() {
     # For Ray Core and Ray Serve DAG visualization docs test
     sudo apt-get install -y graphviz
     pip install -U pydot  # For DAG visualization
+    # For the dataset examples
+    sudo apt-get install -y tesseract-ocr
+    pip install -U pytesseract
   fi
 
   # Additional RLlib test dependencies.
@@ -395,9 +398,6 @@ install_dependencies() {
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
-    # For the dataset examples
-    sudo apt-get install -y tesseract-ocr
-    pip install -U pytesseract
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
