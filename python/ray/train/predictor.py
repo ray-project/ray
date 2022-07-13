@@ -15,7 +15,8 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
     import pyarrow
-    import pyarrow.Table as pa_table
+
+    pa_table = pyarrow.Table
 except ImportError:
     pa_table = None
 
@@ -96,7 +97,8 @@ class Predictor(abc.ABC):
             directly to ``_predict_pandas``.
 
         Returns:
-            DataBatchType: Prediction result.
+            DataBatchType: Prediction result. The return type will be the same as the
+                input type.
         """
         data_df = convert_batch_type_to_pandas(data)
 

@@ -24,6 +24,7 @@ from gym.spaces import Discrete, MultiDiscrete, Space
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
+from ray.rllib.connectors.util import create_connectors_for_policy
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -344,24 +345,18 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            off_policy_estimation_methods: A dict that specifies how to
-                evaluate the current policy.
-                This only has an effect when reading offline experiences
-                ("input" is not "sampler").
-                Available key-value pairs:
-                - {"simulation": None}: Run the environment in the background, but use
-                this data for evaluation only and not for learning.
-                - {ope_name: {"type": ope_type, args}}. where `ope_name` is an arbitrary
-                string under which the metrics for this OPE estimator are saved,
-                and `ope_type` can be any subclass of OffPolicyEstimator, e.g.
-                ray.rllib.offline.estimators::ImportanceSampling
-                or your own custom subclass.
+            off_policy_estimation_methods: Specify how to evaluate the current policy,
+                along with any optional config parameters. This only has an effect when
+                reading offline experiences ("input" is not "sampler").
+                Available keys:
+                {ope_method_name: {"type": ope_type, ...}} where `ope_method_name`
+                is a user-defined string to save the OPE results under, and
+                `ope_type` can be any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.estimators.is::ImportanceSampling
+                or your own custom subclass, or the full class path to the subclass.
                 You can also add additional config arguments to be passed to the
-                OffPolicyEstimator e.g.
-                off_policy_estimation_methods = {
-                "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
-                "dm_64": {"type": DirectMethod, "batch_size": 64},
-                }
+                OffPolicyEstimator in the dict, e.g.
+                {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
                 See ray/rllib/offline/estimators for more information.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
@@ -741,10 +736,14 @@ class RolloutWorker(ParallelIteratorWorker):
                     error=False,
                 )
                 method_type = ope_types[method_type]
-            if name == "simulation":
-                logger.warning(
-                    "Requested 'simulation' input evaluation method: "
-                    "will discard all sampler outputs and keep only metrics."
+            if method_type == "simulation":
+                deprecation_warning(
+                    old='off_policy_estimation_methods={"simulation"}',
+                    new='input="sampler"',
+                    help="The `simulation` estimation method has been deprecated."
+                    "If you want to run online evaluation on your data, use"
+                    'config.evaluation_config["input"] = "sampler" instead.',
+                    error=False,
                 )
                 sample_async = True
             # TODO: Allow for this to be a full classpath string as well, then construct
@@ -767,7 +766,7 @@ class RolloutWorker(ParallelIteratorWorker):
             else:
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
-                    "either `simulation|is|wis|dm|dr` or a sub-class of ray.rllib."
+                    "either a class path or a sub-class of ray.rllib."
                     "offline.estimators.off_policy_estimator::OffPolicyEstimator"
                 )
 
@@ -791,12 +790,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
-                blackhole_outputs="simulation" in off_policy_estimation_methods,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
                 sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
+                blackhole_outputs="simulation" in off_policy_estimation_methods,
             )
             # Start the Sampler thread.
             self.sampler.start()
@@ -863,7 +862,6 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> print(worker.sample()) # doctest: +SKIP
             SampleBatch({"obs": [...], "action": [...], ...})
         """
-
         if self.fake_sampler and self.last_batch is not None:
             return self.last_batch
         elif self.input_reader is None:
@@ -893,9 +891,8 @@ class RolloutWorker(ParallelIteratorWorker):
             max_batches = self.num_envs
         else:
             max_batches = float("inf")
-
-        while (
-            steps_so_far < self.rollout_fragment_length and len(batches) < max_batches
+        while steps_so_far < self.rollout_fragment_length and (
+            len(batches) < max_batches or self.policy_config.get("offline_sampling")
         ):
             batch = self.input_reader.next()
             steps_so_far += (
@@ -913,9 +910,8 @@ class RolloutWorker(ParallelIteratorWorker):
         self.output_writer.write(batch)
 
         # Do off-policy estimation, if needed.
-        if self.reward_estimators:
-            for estimator in self.reward_estimators:
-                estimator.process(batch)
+        for estimator in self.reward_estimators:
+            estimator.process(batch)
 
         if log_once("sample_end"):
             logger.info("Completed sample batch:\n\n{}\n".format(summarize(batch)))
@@ -1563,6 +1559,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 "filters": filters,
                 "state": state,
                 "policy_specs": policy_specs,
+                "policy_config": self.policy_config,
             }
         )
 
@@ -1605,7 +1602,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         action_space=policy_spec.action_space,
                         config=policy_spec.config,
                     )
-            else:
+            if pid in self.policy_map:
                 self.policy_map[pid].set_state(state)
 
     @DeveloperAPI
@@ -1901,6 +1898,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy_spec.config,  # overrides.
                 merged_conf,
             )
+
+            if (
+                policy_config.get("enable_connectors", False)
+                and name in self.policy_map
+            ):
+                create_connectors_for_policy(self.policy_map[name], policy_config)
 
         if self.worker_index == 0:
             logger.info(f"Built policy map: {self.policy_map}")

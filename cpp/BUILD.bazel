@@ -8,7 +8,7 @@ cc_binary(
     copts = COPTS,
     linkopts = select({
         "@bazel_tools//src/conditions:darwin": [
-            "-Wl,-exported_symbols_list,$(location :symbols/ray_api_exported_symbols_mac.lds)",
+            #TODO(larry): Hide the symbols when we make it work on mac.
         ],
         "@bazel_tools//src/conditions:windows": [
             #TODO(larry): Hide the symbols when we make it work on Windows.
@@ -242,6 +242,9 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
+    # NOTE(WangTaoTheTonic): For java x-lang tests. See //java:all_tests
+    # and `CrossLanguageInvocationTest.java`.
+    visibility = ["//java:__subpackages__"],
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
@@ -321,7 +324,5 @@ py_test_module_list(
         "small_size_python_tests",
         "team:core",
     ],
-    deps = [
-        ":ray_api",
-    ],
+    deps = [],
 )

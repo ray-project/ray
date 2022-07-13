@@ -110,6 +110,39 @@ def test_scaling_config_validate_config_bad_allowed_keys():
     assert "are not present in" in str(exc_info.value)
 
 
+@pytest.mark.parametrize(
+    "trainer_resources", [None, {}, {"CPU": 1}, {"CPU": 2, "GPU": 1}, {"CPU": 0}]
+)
+@pytest.mark.parametrize("num_workers", [None, 1, 2])
+@pytest.mark.parametrize(
+    "resources_per_worker_and_use_gpu",
+    [
+        (None, False),
+        (None, True),
+        ({}, False),
+        ({"CPU": 1}, False),
+        ({"CPU": 2, "GPU": 1}, True),
+        ({"CPU": 0}, False),
+    ],
+)
+@pytest.mark.parametrize("placement_strategy", ["PACK", "SPREAD"])
+def test_scaling_config_pgf_equivalance(
+    trainer_resources, resources_per_worker_and_use_gpu, num_workers, placement_strategy
+):
+    resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
+    scaling_config = ScalingConfigDataClass(
+        trainer_resources=trainer_resources,
+        num_workers=num_workers,
+        resources_per_worker=resources_per_worker,
+        use_gpu=use_gpu,
+        placement_strategy=placement_strategy,
+    )
+    pgf = scaling_config.as_placement_group_factory()
+    scaling_config_from_pgf = ScalingConfigDataClass.from_placement_group_factory(pgf)
+    assert scaling_config == scaling_config_from_pgf
+    assert scaling_config_from_pgf.as_placement_group_factory() == pgf
+
+
 def test_datasets():
     with pytest.raises(ValueError):
         DummyTrainer(datasets="invalid")

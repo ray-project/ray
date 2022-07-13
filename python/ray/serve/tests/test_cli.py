@@ -44,13 +44,6 @@ def assert_deployments_live(names: List[str]):
     assert all_deployments_live, f'"{nonliving_deployment}" deployment is not live.'
 
 
-@pytest.fixture
-def ray_start_stop():
-    subprocess.check_output(["ray", "start", "--head"])
-    yield
-    subprocess.check_output(["ray", "stop", "--force"])
-
-
 def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "start"])
     subprocess.check_output(["serve", "shutdown", "-y"])
@@ -59,7 +52,6 @@ def test_start_shutdown(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
@@ -107,7 +99,7 @@ def test_deploy(ray_start_stop):
 
         print("Deploying arithmetic config.")
         deploy_response = subprocess.check_output(
-            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:8265/"]
+            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:52365/"]
         )
         assert success_message_fragment in deploy_response
         print("Deploy request sent successfully.")
@@ -170,7 +162,7 @@ def test_status(ray_start_stop):
 
     wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
     status_response = subprocess.check_output(
-        ["serve", "status", "-a", "http://localhost:8265/"]
+        ["serve", "status", "-a", "http://localhost:52365/"]
     )
     serve_status = yaml.safe_load(status_response)
 
@@ -420,7 +412,6 @@ def test_build(ray_start_stop, node):
 @pytest.mark.parametrize("use_command", [True, False])
 def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     """Check that CLI is idempotent even if controller dies."""
-
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )

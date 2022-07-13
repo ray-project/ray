@@ -21,6 +21,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
 from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
@@ -32,7 +33,7 @@ from ray._private.test_utils import (
     init_log_pubsub,
     setup_tls,
     teardown_tls,
-    test_external_redis,
+    enable_external_redis,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -98,7 +99,7 @@ def _setup_redis(request):
 
 @pytest.fixture
 def maybe_external_redis(request):
-    if test_external_redis():
+    if enable_external_redis():
         with _setup_redis(request):
             yield
     else:
@@ -293,16 +294,24 @@ def ray_start_object_store_memory(request, maybe_external_redis):
 
 @pytest.fixture
 def call_ray_start(request):
-    parameter = getattr(
-        request,
-        "param",
+    default_cmd = (
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "--max-worker-port=0 --port 0"
     )
+    parameter = getattr(request, "param", default_cmd)
+    env = None
+
+    if isinstance(parameter, dict):
+        if "env" in parameter:
+            env = {**parameter.get("env"), **os.environ}
+
+        parameter = parameter.get("cmd", default_cmd)
+
     command_args = parameter.split(" ")
+
     try:
         out = ray._private.utils.decode(
-            subprocess.check_output(command_args, stderr=subprocess.STDOUT)
+            subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
     except Exception as e:
         print(type(e), e)
@@ -318,7 +327,7 @@ def call_ray_start(request):
     # Disconnect from the Ray cluster.
     ray.shutdown()
     # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"], env=env)
 
 
 @pytest.fixture
@@ -933,3 +942,15 @@ def set_runtime_env_plugins(request):
         yield runtime_env_plugins
     finally:
         del os.environ["RAY_RUNTIME_ENV_PLUGINS"]
+
+
+@pytest.fixture
+def set_runtime_env_plugin_schemas(request):
+    runtime_env_plugin_schemas = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = runtime_env_plugin_schemas
+        # Clear and reload schemas.
+        RuntimeEnvPluginSchemaManager.clear()
+        yield runtime_env_plugin_schemas
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
