@@ -7,11 +7,13 @@ from ray.air.checkpoint import Checkpoint
 
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.horovod.config import HorovodConfig
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 class HorovodTrainer(DataParallelTrainer):
     """A Trainer for data parallel Horovod training.
 
@@ -67,6 +69,9 @@ class HorovodTrainer(DataParallelTrainer):
 
             # Returns the rank of the worker on the current node.
             session.get_local_rank()
+
+    Any returns from the ``train_loop_per_worker`` will be discarded and not
+    used or persisted anywhere.
 
     You could use ``TensorflowPredictor`` or ``TorchPredictor`` in conjunction with
     HorovodTrainer. You must save the model under the "model" kwarg in the

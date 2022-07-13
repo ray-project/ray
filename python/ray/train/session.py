@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     # avoid circular import
     from ray.data import Dataset, DatasetPipeline
     from ray.train._internal.session import _TrainSession
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class _TrainSessionImpl(Session):
@@ -41,7 +42,7 @@ class _TrainSessionImpl(Session):
         return self._session.trial_info.id
 
     @property
-    def trial_resources(self) -> Dict[str, float]:
+    def trial_resources(self) -> "PlacementGroupFactory":
         return self._session.trial_info.resources
 
     @property
