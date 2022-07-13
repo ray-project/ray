@@ -288,13 +288,13 @@ class MAML(Algorithm):
 
             return MAMLTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLStaticGraphTFPolicy
+            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLTF1Policy
 
-            return MAMLStaticGraphTFPolicy
+            return MAMLTF1Policy
         else:
-            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLEagerTFPolicy
+            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLTF2Policy
 
-            return MAMLEagerTFPolicy
+            return MAMLTF2Policy
 
     @staticmethod
     @override(Algorithm)

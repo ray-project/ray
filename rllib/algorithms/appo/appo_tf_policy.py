@@ -84,7 +84,7 @@ class TargetNetworkMixin:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_appo_tf_policy(base: type) -> type:
+def get_appo_tf_policy(name: str, base: type) -> type:
     """Construct an APPOTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -434,8 +434,11 @@ def get_appo_tf_policy(base: type) -> type:
         def get_batch_divisibility_req(self) -> int:
             return self.config["rollout_fragment_length"]
 
+    APPOTFPolicy.__name__ = name
+    APPOTFPolicy.__qualname__ = name
+
     return APPOTFPolicy
 
 
-APPOTF1Policy = get_appo_tf_policy(DynamicTFPolicyV2)
-APPOTF2Policy = get_appo_tf_policy(EagerTFPolicyV2)
+APPOTF1Policy = get_appo_tf_policy("APPOTF1Policy", DynamicTFPolicyV2)
+APPOTF2Policy = get_appo_tf_policy("APPOTF2Policy", EagerTFPolicyV2)
