@@ -54,22 +54,6 @@ def test_ray_log_redirected(ray_start_regular):
     wait_for_condition(lambda: all(map(file_exists_and_not_empty, all_worker_logs)))
 
 
-def test_oom(ray_start_regular):
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            pass
-
-        def get_pid(self):
-            sleep(10)
-            return os.getpid()
-
-    actor = Actor.remote()
-
-    while True:
-        remote_pid = ray.get(actor.get_pid.remote())
-        print(remote_pid)
-
 if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

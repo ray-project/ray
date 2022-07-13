@@ -723,7 +723,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
                  << ", port: " << port << ", register cost: " << duration.count()
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
-  
+
   state.registered_workers.insert(worker);
 
   // Send the reply immediately for worker registrations.
