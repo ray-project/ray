@@ -150,6 +150,41 @@ HeartbeatSender::~HeartbeatSender() {
   heartbeat_thread_.reset();
 }
 
+std::tuple<uint64_t, uint64_t> GetSystemAvailableMemoryBytes() {
+  std::string meminfo_path = "/proc/meminfo";
+  std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
+  if (!meminfo_ifs.is_open()) {
+      RAY_LOG(ERROR) << " file not found " << meminfo_path;
+      return {0, 0};
+  }
+  std::string line;
+  std::string title;
+  uint64_t value;
+  std::string unit;
+
+  uint64_t mem_total_bytes = 0;
+  uint64_t mem_available_bytes = 0;
+  uint64_t mem_free_bytes = 0;
+  uint64_t cached_bytes = 0;
+  while (std::getline(meminfo_ifs, line)) {
+      std::istringstream iss(line);
+      iss >> title >> value >> unit;
+      if (title == "MemAvailable:") {
+          mem_available_bytes = value;
+      } else if (title == "MemFree:") {
+          mem_free_bytes = value;
+      } else if (title == "Cached:") {
+          cached_bytes = value;
+      } else if (title == "MemTotal:") {
+          mem_total_bytes = value;
+      }
+  }
+  if (mem_available_bytes > 0) {
+    return {mem_available_bytes, mem_total_bytes};
+  }
+  return {mem_free_bytes + cached_bytes, mem_total_bytes};
+}
+
 void HeartbeatSender::Heartbeat() {
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
@@ -327,6 +362,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
+      node_high_memory_throttler_(RayConfig::instance().node_high_memory_monitor_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
@@ -2753,6 +2789,28 @@ bool NodeManager::TryLocalGC() {
     DoLocalGC(triggered_by_global_gc);
     should_local_gc_ = false;
   }
+
+  if (RayConfig::instance().node_high_memory_monitor_min_interval_s() > 0) {
+    if (node_high_memory_throttler_.AbleToRun()) {
+      node_high_memory_throttler_.RunNow();
+      auto [available_memory_bytes, total_memory_bytes]
+          = GetSystemAvailableMemoryBytes();
+      auto used = total_memory_bytes - available_memory_bytes;
+      bool node_high_memory_usage = static_cast<float>(used) / total_memory_bytes
+          > RayConfig::instance().node_high_memory_usage_fraction();
+      if (node_high_memory_usage) {
+        auto worker = worker_pool_.GetNewestWorker();
+        if (worker != nullptr) {
+          DestroyWorker(worker,
+              rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+              absl::StrCat("Worker ",
+                  worker->WorkerId().Hex(),
+                  " exits due to memory pressure "));
+        }
+      }
+    }
+  }
+
   return triggered_by_global_gc;
 }
 

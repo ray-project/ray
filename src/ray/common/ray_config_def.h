@@ -68,6 +68,14 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// The duration between raylet check memory pressure and send gc request
 RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
+/// Threshold when the node is considered to be using a lot of memory,
+/// ranging from [0, 1]
+RAY_CONFIG(float, node_high_memory_usage_fraction, 0.9)
+
+/// The interval between runs of the high memory usage monitor.
+/// Disabled when this value is 0.
+RAY_CONFIG(uint64_t, node_high_memory_monitor_min_interval_s, 0)
+
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.

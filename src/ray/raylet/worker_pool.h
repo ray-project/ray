@@ -403,6 +403,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Collects work stats such as memory utilization.
   void CollectWorkerStats();
 
+  /// Finds the newest worker.
+  ///
+  /// \return the newest or null if there is no worker
+  const std::shared_ptr<WorkerInterface> GetNewestWorker(
+      bool filter_dead_workers = false, bool filter_io_workers = false) const;
+
  protected:
   void update_worker_startup_token_counter();
 

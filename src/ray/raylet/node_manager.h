@@ -764,6 +764,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Throttler for global gc
   Throttler global_gc_throttler_;
 
+  /// Throttler for node high memory usage
+  Throttler node_high_memory_throttler_;
+
   /// Seconds to initialize a local gc
   const uint64_t local_gc_interval_ns_;
 
