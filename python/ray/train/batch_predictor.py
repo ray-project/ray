@@ -39,9 +39,7 @@ class BatchPredictor:
     def from_checkpoint(
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs
     ) -> "BatchPredictor":
-        return cls(
-            checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs
-        )
+        return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
     def predict(
         self,
