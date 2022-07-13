@@ -1243,6 +1243,28 @@ def test_power_transformer():
 
     assert out_df.equals(expected_df)
 
+def test_tensorizer():
+    df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 3, 4],})
+    ds = ray.data.from_pandas(df)
+    prep = Tensorizer(["a", "b"], "c")
+    new_ds = prep.transform(ds)
+    df = new_ds.to_pandas()
+    assert "c" in df
+
+    df = pd.DataFrame({"a": [1, 2, 3, 4]})
+    ds = ray.data.from_pandas(df)
+    prep = Tensorizer(["a", "b"], "c")
+
+    with pytest.raises(ValueError):
+        prep.transform(ds)
+
+    # check it works with
+    df = pd.DataFrame({"a": ["string", "string2", "string3"]})
+    ds = ray.data.from_pandas(df)
+    prep = Tensorizer(["a"], "huh")
+    new_ds = prep.transform(ds)
+    new_ds.show()
+
 
 def test_tokenizer():
     """Tests basic Tokenizer functionality."""

@@ -33,27 +33,16 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 import numpy as np
 import pandas as pd
 
-from ray.data.preprocessors import BatchMapper, Chain
+from ray.data.preprocessors import BatchMapper, Chain, Tensorizer
 
 # Get the training data schema
 schema_order = [k for k in train_dataset.schema().names if k != "target"]
 
-
-def concat_for_tensor(dataframe):
-    # Concatenate the dataframe into a single tensor.
-    from ray.data.extensions import TensorArray
-
-    result = {}
-    input_data = dataframe[schema_order].to_numpy(dtype=np.float32)
-    result["input"] = TensorArray(input_data)
-    if "target" in dataframe:
-        target_data = dataframe["target"].to_numpy(dtype=np.float32)
-        result["target"] = TensorArray(target_data)
-    return pd.DataFrame(result)
-
-
 # Chain the preprocessors together.
-preprocessor = Chain(preprocessor, BatchMapper(concat_for_tensor))
+preprocessor = Chain(
+    preprocessor,
+    Tensorizer(columns=schema_order, output_column="input", dtype=np.float32),
+)
 # __air_pytorch_preprocess_end__
 
 
@@ -92,7 +81,6 @@ def train_loop_per_worker(config):
         data_iterator = dataset.iter_batches(
             batch_format="numpy", batch_size=batch_size
         )
-
         for d in data_iterator:
             yield torch.Tensor(d["input"]).float(), torch.Tensor(d["target"]).float()
 
