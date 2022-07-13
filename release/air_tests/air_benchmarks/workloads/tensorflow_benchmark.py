@@ -1,11 +1,13 @@
 import json
 import os
+import socket
 import time
+from contextlib import closing
 
 import click
 import numpy as np
 import tensorflow as tf
-
+from typing import List
 
 CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
@@ -19,8 +21,7 @@ def mnist_dataset(batch_size: int) -> tf.data.Dataset:
     y_train = y_train.astype(np.int64)
     train_dataset = (
         tf.data.Dataset.from_tensor_slices((x_train, y_train))
-        .shuffle(60000)
-        .repeat()
+        .shuffle(60000, seed=1234)
         .batch(batch_size)
     )
     return train_dataset
@@ -49,11 +50,12 @@ def train_func(use_ray: bool, config: dict):
 
     per_worker_batch_size = config.get("batch_size", 64)
     epochs = config.get("epochs", 3)
-    steps_per_epoch = config.get("steps_per_epoch", 70)
+    steps_per_epoch = config.get("steps_per_epoch", None)
     learning_rate = config.get("lr", 0.001)
 
     tf_config = json.loads(os.environ["TF_CONFIG"])
     num_workers = len(tf_config["cluster"]["worker"])
+    local_rank = tf_config["task"]["index"]
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
 
@@ -76,6 +78,14 @@ def train_func(use_ray: bool, config: dict):
         callbacks=callbacks,
     )
     results = history.history
+    loss = results["loss"][-1]
+
+    if not use_ray:
+        print(f"Reporting loss: {loss:.4f}")
+        if local_rank == 0:
+            with open(VANILLA_RESULT_JSON, "w") as f:
+                json.dump({"loss": loss}, f)
+
     return results
 
 
@@ -113,13 +123,19 @@ def train_tf_vanilla_worker(
     config: dict,
     rank: int,
     world_size: int,
-    master_addr: str,
-    master_port: int,
+    worker_ip_port_list: List[str],
     use_gpu: bool = False,
 ):
     # This function is kicked off by the main() function and runs the vanilla
     # training script on a single worker.
-    # Todo: missing
+    assert world_size == len(worker_ip_port_list)
+
+    tf_config = {
+        "cluster": {"worker": worker_ip_port_list},
+        "task": {"type": "worker", "index": rank},
+    }
+    os.environ["TF_CONFIG"] = json.dumps(tf_config)
+
     train_func(use_ray=False, config=config)
 
 
@@ -129,19 +145,41 @@ def train_tf_vanilla(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-    master_port: int = 12355,
 ) -> float:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_tf_vanilla_worker() on the worker nodes.
     import ray
-    from benchmark_util import upload_file_to_all_nodes, run_commands_with_resources
+    from benchmark_util import (
+        upload_file_to_all_nodes,
+        create_actors_with_resources,
+        run_commands_on_actors,
+        run_fn_on_actors,
+    )
 
     path = os.path.abspath(__file__)
     upload_file_to_all_nodes(path)
-    master_addr = ray.util.get_node_ip_address()
-    master_port = master_port
 
     num_epochs = config["epochs"]
+
+    actors = create_actors_with_resources(
+        num_actors=num_workers,
+        resources={
+            "CPU": cpus_per_worker,
+            "GPU": int(use_gpu),
+        },
+    )
+
+    def get_ip_port():
+        ip = ray.util.get_node_ip_address()
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            s.bind(("localhost", 0))
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            port = s.getsockname()[1]
+        return ip, port
+
+    ips_ports = run_fn_on_actors(actors=actors, fn=get_ip_port)
+    ip_port_list = [f"{ip}:{port}" for ip, port in ips_ports]
+    ip_port_str = ",".join(ip_port_list)
 
     cmds = [
         [
@@ -154,22 +192,14 @@ def train_tf_vanilla(
             str(num_workers),
             "--rank",
             str(rank),
-            "--master-addr",
-            master_addr,
-            "--master-port",
-            str(master_port),
+            "--worker-ip-ports",
+            ip_port_str,
         ]
         + (["--use-gpu"] if use_gpu else [])
         for rank in range(num_workers)
     ]
 
-    run_commands_with_resources(
-        cmds,
-        resources={
-            "CPU": cpus_per_worker,
-            "GPU": int(use_gpu),
-        },
-    )
+    run_commands_on_actors(actors=actors, cmds=cmds)
 
     if os.path.exists(VANILLA_RESULT_JSON):
         with open(VANILLA_RESULT_JSON, "r") as f:
@@ -190,14 +220,12 @@ def cli():
 @click.option("--num-workers", type=int, default=4)
 @click.option("--cpus-per-worker", type=int, default=8)
 @click.option("--use-gpu", is_flag=True, default=False)
-@click.option("--master-port", type=int, default=12355)
 def run(
     num_runs: int = 1,
     num_epochs: int = 4,
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-    master_port: int = 12355,
 ):
     import ray
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
@@ -234,26 +262,21 @@ def run(
             f"[Run {run}/{num_runs}] Finished Ray training ({num_epochs} epochs) in "
             f"{time_taken:.2f} seconds. Observed loss = {loss_ray:.4f}"
         )
-        #
-        # time.sleep(5)
-        #
-        # print(f"[Run {run}/{num_runs}] Running Tensorflow vanilla benchmark")
-        #
-        # start_time = time.monotonic()
-        # loss_vanilla = train_tf_vanilla(
-        #     num_workers=num_workers,
-        #     cpus_per_worker=cpus_per_worker,
-        #     use_gpu=use_gpu,
-        #     config=config,
-        #     master_port=master_port + run,
-        # )
-        # time_taken = time.monotonic() - start_time
-        #
-        # time_vanilla = time_taken
 
-        # Todo: remove
-        time_vanilla = time_ray
-        loss_vanilla = loss_ray
+        time.sleep(5)
+
+        print(f"[Run {run}/{num_runs}] Running Tensorflow vanilla benchmark")
+
+        start_time = time.monotonic()
+        loss_vanilla = train_tf_vanilla(
+            num_workers=num_workers,
+            cpus_per_worker=cpus_per_worker,
+            use_gpu=use_gpu,
+            config=config,
+        )
+        time_taken = time.monotonic() - start_time
+
+        time_vanilla = time_taken
 
         print(
             f"[Run {run}/{num_runs}] Finished vanilla training ({num_epochs} epochs) "
@@ -320,27 +343,27 @@ def run(
 @click.option("--num-epochs", type=int, default=4)
 @click.option("--num-workers", type=int, default=4)
 @click.option("--rank", type=int, default=0)
-@click.option("--master-addr", type=str, default="")
-@click.option("--master-port", type=int, default=0)
+@click.option("--worker-ip-ports", type=str, default="")
 @click.option("--use-gpu", is_flag=True, default=False)
 def worker(
     num_epochs: int = 4,
     num_workers: int = 4,
     rank: int = 0,
-    master_addr: str = "",
-    master_port: int = 0,
+    worker_ip_ports: str = "",
     use_gpu: bool = False,
 ):
     config = CONFIG.copy()
     config["epochs"] = num_epochs
+
+    # Parse worker ip ports
+    worker_ip_port_list = worker_ip_ports.split(",")
 
     # Then we kick off the training function on every worker.
     return train_tf_vanilla_worker(
         config=config,
         rank=rank,
         world_size=num_workers,
-        master_addr=master_addr,
-        master_port=master_port,
+        worker_ip_port_list=worker_ip_port_list,
         use_gpu=use_gpu,
     )
 
