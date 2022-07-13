@@ -19,7 +19,12 @@ py_library(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["**/test*.py"],
-    exclude = ["modules/test/**", "modules/node/tests/test_node.py", "tests/test_dashboard.py"],
+    exclude = [
+        "modules/test/**", 
+        "modules/node/tests/test_node.py", 
+        "tests/test_dashboard.py", 
+        "tests/test_state_head.py"
+    ],
     extra_srcs = [],
     data = [
         "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
@@ -47,4 +52,11 @@ py_test(
     srcs = ["tests/test_dashboard.py"],
     deps = [":conftest"],
     tags = ["exclusive", "team:serve"],
+)
+
+py_test(
+    name = "test_state_head",
+    size = "small",
+    srcs = ["tests/test_state_head.py"],
+    tags = ["team:core"],
 )

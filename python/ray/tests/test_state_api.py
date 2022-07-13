@@ -2068,6 +2068,275 @@ def test_detail(shutdown_only):
     assert "actor_id" in result.output
 
 
+def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None):
+    """Utility functions for rate limit related e2e tests below"""
+    try:
+        # Indicate start of the process
+        if start_q is not None:
+            start_q.put(1)
+        api_func()
+    except RayStateApiException as e:
+        # Other exceptions will be thrown
+        if "Max number of in-progress requests" in str(e):
+            res_q.put(1)
+        else:
+            res_q.put(e)
+    except Exception as e:
+        res_q.put(e)
+    else:
+        res_q.put(0)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Lambda test functions could not be pickled on Windows",
+)
+def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
+    import queue
+    import multiprocessing as mp
+    import os
+    import signal
+
+    # Set environment
+    with monkeypatch.context() as m:
+        m.setenv("RAY_STATE_SERVER_MAX_HTTP_REQUEST", "3")
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            (
+                "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000,"
+                "NodeInfoGcsService.grpc_server.GetAllNodeInfo=1000000:1000000,"
+                "ActorInfoGcsService.grpc_server.GetAllActorInfo=10000000:10000000"
+            ),
+        )
+
+        # Set up scripts
+        ray.init()
+
+        @ray.remote
+        def f():
+            import time
+
+            time.sleep(30)
+
+        @ray.remote
+        class Actor:
+            pass
+
+        task = f.remote()  # noqa
+        actor = Actor.remote()  # noqa
+        actor_runtime_env = Actor.options(  # noqa
+            runtime_env={"pip": ["requests"]}
+        ).remote()
+        pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
+
+        _objs = [ray.put(x) for x in range(10)]  # noqa
+
+        # list_objects() will wait for raylets to be registered, which
+        # means `list_tasks` will also see the registered raylets.
+        wait_for_condition(lambda: len(list_objects()) > 0)
+
+        # Running 3 slow apis to exhaust the limits
+        res_q = mp.Queue()
+        start_q = mp.Queue()  # not used
+        procs = [
+            mp.Process(
+                target=_try_state_query_expect_rate_limit,
+                args=(
+                    list_nodes,
+                    res_q,
+                    start_q,
+                ),
+            ),
+            mp.Process(
+                target=_try_state_query_expect_rate_limit,
+                args=(
+                    list_tasks,
+                    res_q,
+                    start_q,
+                ),
+            ),
+            mp.Process(
+                target=_try_state_query_expect_rate_limit,
+                args=(
+                    list_actors,
+                    res_q,
+                    start_q,
+                ),
+            ),
+        ]
+
+        [p.start() for p in procs]
+
+        # Wait for other processes to start so rate limit will be reached
+        def _wait_to_start():
+            started = 0
+            for _ in range(3):
+                started += start_q.get()
+            return started == 3
+
+        wait_for_condition(_wait_to_start)
+
+        # Running another 1 should return error
+        with pytest.raises(RayStateApiException) as e:
+            print(list_objects())
+        assert "RAY_STATE_SERVER_MAX_HTTP_REQUEST" in str(
+            e
+        ), f"Expect an exception raised due to rate limit, but have {str(e)}"
+
+        # Kill the 3 slow running threads
+        [os.kill(p.pid, signal.SIGKILL) for p in procs]
+        [p.join() for p in procs]
+        for p in procs:
+            assert not p.is_alive(), "Slow queries should be killed"
+
+        # Running another 3 should return no error
+        q = mp.Queue()
+        procs = [
+            mp.Process(
+                target=_try_state_query_expect_rate_limit,
+                args=(
+                    list_objects,
+                    q,
+                ),
+            ),
+            mp.Process(
+                target=_try_state_query_expect_rate_limit,
+                args=(
+                    list_runtime_envs,
+                    q,
+                ),
+            ),
+            mp.Process(
+                target=_try_state_query_expect_rate_limit,
+                args=(
+                    list_placement_groups,
+                    q,
+                ),
+            ),
+        ]
+
+        [p.start() for p in procs]
+
+        max_concurrent_reqs_error = 0
+        for _ in range(len(procs)):
+            try:
+                res = q.get(timeout=10)
+                if isinstance(res, Exception):
+                    assert False, f"State API error: {res}"
+                elif isinstance(res, int):
+                    max_concurrent_reqs_error += res
+                else:
+                    raise ValueError(res)
+            except queue.Empty:
+                assert False, "Failed to get some results from a subprocess"
+
+        assert max_concurrent_reqs_error == 0, "All requests should be successful"
+        [p.join(5) for p in procs]
+        for proc in procs:
+            assert not proc.is_alive(), "All processes should exit"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Lambda test functions could not be pickled on Windows",
+)
+@pytest.mark.parametrize(
+    "api_func",
+    [
+        # NOTE(rickyyx): arbitrary list of APIs, not exhaustive.
+        list_objects,
+        list_tasks,
+        list_actors,
+        list_nodes,
+        list_placement_groups,
+    ],
+)
+def test_state_api_server_enforce_concurrent_http_requests(
+    api_func, monkeypatch, shutdown_only
+):
+    import time
+    import threading
+    import queue
+
+    # Set environment
+    with monkeypatch.context() as m:
+        max_requests = 2
+        m.setenv("RAY_STATE_SERVER_MAX_HTTP_REQUEST", str(max_requests))
+        # All relevant calls delay to 2 secs
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            (
+                "NodeManagerService.grpc_server.GetTasksInfo=200000:200000,"
+                "NodeManagerService.grpc_server.GetObjectsInfo=200000:200000,"
+                "ActorInfoGcsService.grpc_server.GetAllActorInfo=200000:200000,"
+                "NodeInfoGcsService.grpc_server.GetAllNodeInfo=200000:200000,"
+                "PlacementGroupInfoGcsService.grpc_server.GetAllPlacementGroup="
+                "200000:200000"
+            ),
+        )
+
+        ray.init()
+
+        # Set up scripts
+        @ray.remote
+        def f():
+            time.sleep(30)
+
+        @ray.remote
+        class Actor:
+            pass
+
+        task = f.remote()  # noqa
+        actor = Actor.remote()  # noqa
+        actor_runtime_env = Actor.options(  # noqa
+            runtime_env={"pip": ["requests"]}
+        ).remote()
+        pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
+
+        _objs = [ray.put(x) for x in range(10)]  # noqa
+
+        def verify():
+            q = queue.Queue()
+            num_procs = 3
+            procs = [
+                threading.Thread(
+                    target=_try_state_query_expect_rate_limit,
+                    args=(
+                        api_func,
+                        q,
+                    ),
+                )
+                for _ in range(num_procs)
+            ]
+
+            [p.start() for p in procs]
+
+            max_concurrent_reqs_error = 0
+            for _ in range(num_procs):
+                try:
+                    res = q.get(timeout=10)
+                    if isinstance(res, Exception):
+                        assert False, f"State API error: {res}"
+                    elif isinstance(res, int):
+                        max_concurrent_reqs_error += res
+                    else:
+                        raise ValueError(res)
+                except queue.Empty:
+                    assert False, "Failed to get some results from a subprocess"
+
+            # We should run into max in-progress requests errors
+            assert (
+                max_concurrent_reqs_error == num_procs - max_requests
+            ), f"{num_procs - max_requests} requests should be rate limited"
+            [p.join(5) for p in procs]
+            for proc in procs:
+                assert not proc.is_alive(), "All threads should exit"
+
+            return True
+
+        wait_for_condition(verify)
+
+
 if __name__ == "__main__":
     import os
     import sys
