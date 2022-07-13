@@ -28,7 +28,7 @@ from ray.data.preprocessors.encoder import Categorizer, MultiHotEncoder
 from ray.data.preprocessors.hasher import FeatureHasher
 from ray.data.preprocessors.normalizer import Normalizer
 from ray.data.preprocessors.scaler import MaxAbsScaler, RobustScaler
-from ray.data.preprocessors.tensorizer import Tensorizer
+from ray.data.preprocessors.concatenator import Concatenator
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
@@ -1245,8 +1245,8 @@ def test_power_transformer():
     assert out_df.equals(expected_df)
 
 
-def test_tensorizer():
-    """Tests basic Tensorizer functionality."""
+def test_concatenator():
+    """Tests basic Concatenator functionality."""
     df = pd.DataFrame(
         {
             "a": [1, 2, 3, 4],
@@ -1254,16 +1254,18 @@ def test_tensorizer():
         }
     )
     ds = ray.data.from_pandas(df)
-    prep = Tensorizer(["a", "b"], "c")
+    prep = Concatenator(output_column="c")
     new_ds = prep.transform(ds)
     df = new_ds.to_pandas()
     assert "c" in df
     x = df["c"].iloc[0]
     assert x.to_numpy().tolist() == [1, 1]
 
+    assert "c" in prep.__repr__()
+
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)
-    prep = Tensorizer(["a", "b"], "c")
+    prep = Concatenator(output_column="c", exclude=["b"])
 
     with pytest.raises(ValueError, match="'b'"):
         prep.transform(ds)
@@ -1271,7 +1273,7 @@ def test_tensorizer():
     # check it works with string types
     df = pd.DataFrame({"a": ["string", "string2", "string3"]})
     ds = ray.data.from_pandas(df)
-    prep = Tensorizer(["a"], "huh")
+    prep = Concatenator(output_column="huh")
     new_ds = prep.transform(ds)
     assert "huh" in df
 

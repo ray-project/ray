@@ -17,7 +17,7 @@ from ray.data.preprocessors.scaler import (
     MaxAbsScaler,
     RobustScaler,
 )
-from ray.data.preprocessors.tensorizer import Tensorizer
+from ray.data.preprocessors.concatenator import Concatenator
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
@@ -41,6 +41,6 @@ __all__ = [
     "RobustScaler",
     "SimpleImputer",
     "StandardScaler",
-    "Tensorizer",
+    "Concatenator",
     "Tokenizer",
 ]

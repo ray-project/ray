@@ -33,15 +33,12 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 import numpy as np
 import pandas as pd
 
-from ray.data.preprocessors import BatchMapper, Chain, Tensorizer
-
-# Get the training data schema
-schema_order = [k for k in train_dataset.schema().names if k != "target"]
+from ray.data.preprocessors import Concatenator, Chain
 
 # Chain the preprocessors together.
 preprocessor = Chain(
     preprocessor,
-    Tensorizer(columns=schema_order, output_column="input", dtype=np.float32),
+    Concatenator(output_column="input", exclude=["target"], dtype=np.float32),
 )
 # __air_pytorch_preprocess_end__
 
@@ -102,7 +99,7 @@ def train_loop_per_worker(config):
         session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
 
 
-num_features = len(schema_order)
+num_features = len(train_dataset.schema().names) - 1
 
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,

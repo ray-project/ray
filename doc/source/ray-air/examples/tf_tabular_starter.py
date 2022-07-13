@@ -33,29 +33,12 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 import numpy as np
 import pandas as pd
 
-from ray.data.preprocessors import BatchMapper, Chain
-
-# Get the training data schema
-schema_order = [k for k in train_dataset.schema().names if k != "target"]
-
-
-def concat_for_tensor(dataframe):
-    # Concatenate the dataframe into a single tensor.
-    from ray.data.extensions import TensorArray
-
-    result = {}
-    input_data = dataframe[schema_order].to_numpy(dtype=np.float32)
-    result["input"] = TensorArray(input_data)
-    if "target" in dataframe:
-        target_data = dataframe["target"].to_numpy(dtype=np.float32)
-        result["target"] = TensorArray(target_data)
-    return pd.DataFrame(result)
-
+from ray.data.preprocessors import Concatenator, Chain
 
 # Chain the preprocessors together.
 preprocessor = Chain(
     preprocessor,
-    Tensorizer(columns=schema_order, output_column="input", dtype=np.float32),
+    Concatenator(output_column="input", exclude=["target"], dtype=np.float32),
 )
 # __air_tf_preprocess_end__
 
@@ -143,7 +126,7 @@ def train_loop_per_worker(config):
     return results
 
 
-num_features = len(schema_order)
+num_features = len(train_dataset.schema().names) - 1
 
 trainer = TensorflowTrainer(
     train_loop_per_worker=train_loop_per_worker,
@@ -152,7 +135,7 @@ trainer = TensorflowTrainer(
         "batch_size": 128,
         # Number of epochs to train each task for.
         "num_epochs": 50,
-        # Number of columns of datset
+        # Number of columns of dataset
         "num_features": num_features,
         # Optimizer args.
         "lr": 0.0001,

@@ -6,17 +6,17 @@ from ray.data.extensions import TensorArray
 from ray.data.preprocessor import Preprocessor
 
 
-class Tensorizer(Preprocessor):
+class Concatenator(Preprocessor):
     """Create tensor columns via concatenation.
 
     A tensor column is a a column consisting of ndarrays as elements.
 
     Example:
         >>> import pandas as pd
-        >>> from ray.data.preprocessors import Tensorizer
+        >>> from ray.data.preprocessors import Concatenator
         >>> df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 3, 4],})
         >>> ds = ray.data.from_pandas(df)
-        >>> prep = Tensorizer(["a", "b"], "c")
+        >>> prep = Concatenator(["a", "b"], "c")
         >>> new_ds = prep.transform(ds)
         >>> df = new_ds.to_pandas()
         #         c
@@ -27,11 +27,10 @@ class Tensorizer(Preprocessor):
         >>> assert x.to_numpy().tolist() == [1, 1]
 
     Args:
-        columns: A list of column names that should be
-            concatenated into a single column. After concatenation,
-            these columns will be dropped.
         output_column: output_column is a string that represents the
             name of the outputted, concatenated tensor.
+        exclude: A list of column names that should be excluded
+            from concatenation. All other columns will be dropped.
         dtype: Optional. The dtype to convert the output column array to.
 
     Raises:
@@ -42,32 +41,40 @@ class Tensorizer(Preprocessor):
 
     def __init__(
         self,
-        columns: List[str],
         output_column: str,
+        exclude: Optional[List[str]] = None,
         dtype: Optional[np.dtype] = None,
     ):
-        self.columns = columns
         self.output_column = output_column
+        self.exclude_columns = exclude or []
         self.dtype = dtype
 
     def _validate(self, df: pd.DataFrame):
         ds_columns = set(df)
-        specified_set = set(self.columns)
+        specified_set = set(self.exclude_columns)
         missing_columns = specified_set - ds_columns.intersection(specified_set)
         if missing_columns:
             raise ValueError(
-                f"Missing specified columns from dataset: {missing_columns}"
+                f"Missing columns specified in 'exclude': {missing_columns}"
             )
 
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
-        concatenated = df[self.columns].to_numpy(dtype=self.dtype)
-        df = df.drop(columns=self.columns)
+        columns_to_concat = list(set(df) - set(self.exclude_columns))
+        concatenated = df[columns_to_concat].to_numpy(dtype=self.dtype)
+        df = df.drop(columns=columns_to_concat)
         df[self.output_column] = TensorArray(concatenated)
         return df
 
     def __repr__(self):
         return (
-            f"Tensorizer(columns={self.columns}, "
-            f"output_column={self.output_column}, dtype={self.dtype})"
+            f"Concatenator(output_column={self.output_column}, "
+            f"exclude={self.exclude_columns}, dtype={self.dtype})"
         )
+
+    df = pd.DataFrame(
+        {
+            "a": [1, 2, 3, 4],
+            "b": [1, 2, 3, 4],
+        }
+    )
