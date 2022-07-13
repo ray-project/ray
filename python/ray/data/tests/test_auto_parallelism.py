@@ -59,6 +59,11 @@ TEST_CASES = [
         expected_parallelism=800,  # avail_cpus has precedence
     ),
     TestCase(
+        avail_cpus=400,
+        data_size=1 * MB,
+        expected_parallelism=800,  # avail_cpus has precedence
+    ),
+    TestCase(
         avail_cpus=4,
         data_size=1000 * GB,
         expected_parallelism=2000,  # MAX_BLOCK_SIZE has precedence
