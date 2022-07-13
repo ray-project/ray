@@ -131,8 +131,8 @@ test_core() {
       ;;
   esac
   # shellcheck disable=SC2046
-  bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
-  set -eo pipefail
+  #bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
+  set -e
   ls asdfasdf
   ls xyz
 }
