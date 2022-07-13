@@ -22,7 +22,6 @@ py_test_run_all_notebooks(
         "nyc_taxi_basic_processing.ipynb", # REGRESSION
         "ocr_example.ipynb", # REGRESSION
         "sigopt_example.ipynb", # REGRESSION
-        "tune-sklearn.ipynb", # REGRESSION
     ],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
