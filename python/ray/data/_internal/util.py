@@ -68,7 +68,8 @@ def _autodetect_parallelism(
 ) -> (int, int):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
-    This detects parallelism based on three heuristic functions:
+    This detects parallelism based on the following heuristics (highest to lowest
+    precedence):
 
      1) Available CPUs. We detect how many CPUs are available for use in the cluster,
         and ensure the parallelism is high enough to make use of the CPUs.
@@ -76,6 +77,7 @@ def _autodetect_parallelism(
         to avoid the overhead of tiny blocks.
      3) Max block size. We try to avoid creating blocks larger than this threshold,
         since it can lead to OOM errors during processing.
+     4) If none of the above apply, the default parallelism of 200 is used.
 
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
