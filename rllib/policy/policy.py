@@ -36,7 +36,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
+from ray.rllib.utils.serialization import space_from_dict, space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
@@ -108,8 +108,8 @@ class PolicySpec:
             # That will allow us to load a policy checkpoint even if the class
             # does not exist anymore (e.g., renamed).
             "policy_class": self.policy_class,
-            "observation_space": gym_space_to_dict(self.observation_space),
-            "action_space": gym_space_to_dict(self.action_space),
+            "observation_space": space_to_dict(self.observation_space),
+            "action_space": space_to_dict(self.action_space),
             "config": self.config,
         }
 
@@ -117,8 +117,8 @@ class PolicySpec:
     def deserialize(cls, spec: Dict) -> "PolicySpec":
         return cls(
             policy_class=spec["policy_class"],
-            observation_space=gym_space_from_dict(spec["observation_space"]),
-            action_space=gym_space_from_dict(spec["action_space"]),
+            observation_space=space_from_dict(spec["observation_space"]),
+            action_space=space_from_dict(spec["action_space"]),
             config=spec["config"],
         )
 

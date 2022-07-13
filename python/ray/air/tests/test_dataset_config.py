@@ -44,6 +44,7 @@ class TestBasic(DataParallelTrainer):
                     else:
                         assert shard.count() == v, shard
 
+        kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
             scaling_config={"num_workers": num_workers},
@@ -204,6 +205,7 @@ class TestStream(DataParallelTrainer):
                 results.append(epoch.take())
             check_results_fn(data_shard, results)
 
+        kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
             scaling_config={"num_workers": 1},
@@ -223,6 +225,7 @@ class TestBatch(DataParallelTrainer):
             results = data_shard.take()
             check_results_fn(data_shard, results)
 
+        kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
             scaling_config={"num_workers": 1},
