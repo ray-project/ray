@@ -195,6 +195,7 @@ def policy_inference(
         outputs.append(acd.output)
     return outputs
 
+
 @PublicAPI
 def compute_log_likelihoods_from_input_dict(
     policy: "Policy", batch: Union[SampleBatch, Dict[str, TensorStructType]]

@@ -29,7 +29,8 @@ class TestOPE(unittest.TestCase):
         cls.gamma = 0.99
         n_eval_episodes = 20
         n_iters = 10
-        cls.q_model_config = {"n_iters": n_iters}
+        # Ensure standalone and Algorithm OPE run same number of overall iterations
+        cls.q_model_config = {"n_iters": n_iters * n_eval_episodes}
 
         config = (
             DQNConfig()
@@ -129,8 +130,8 @@ class TestOPE(unittest.TestCase):
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_new"]
-        self.std_ret[name] = estimates["v_new_std"]
+        self.mean_ret[name] = estimates["v_target"]
+        self.std_ret[name] = estimates["v_target_std"]
 
     def test_wis(self):
         name = "wis"
@@ -140,8 +141,8 @@ class TestOPE(unittest.TestCase):
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_new"]
-        self.std_ret[name] = estimates["v_new_std"]
+        self.mean_ret[name] = estimates["v_target"]
+        self.std_ret[name] = estimates["v_target_std"]
 
     def test_dm_fqe(self):
         name = "dm_fqe"
@@ -153,8 +154,8 @@ class TestOPE(unittest.TestCase):
         )
         self.losses[name] = estimator.train(self.batch)
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_new"]
-        self.std_ret[name] = estimates["v_new_std"]
+        self.mean_ret[name] = estimates["v_target"]
+        self.std_ret[name] = estimates["v_target_std"]
 
     def test_dr_fqe(self):
         name = "dr_fqe"
@@ -166,8 +167,8 @@ class TestOPE(unittest.TestCase):
         )
         self.losses[name] = estimator.train(self.batch)
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_new"]
-        self.std_ret[name] = estimates["v_new_std"]
+        self.mean_ret[name] = estimates["v_target"]
+        self.std_ret[name] = estimates["v_target_std"]
 
     def test_dm_qreg(self):
         name = "dm_qreg"
@@ -179,8 +180,8 @@ class TestOPE(unittest.TestCase):
         )
         self.losses[name] = estimator.train(self.batch)
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_new"]
-        self.std_ret[name] = estimates["v_new_std"]
+        self.mean_ret[name] = estimates["v_target"]
+        self.std_ret[name] = estimates["v_target_std"]
 
     def test_dr_qreg(self):
         name = "dr_qreg"
@@ -192,15 +193,15 @@ class TestOPE(unittest.TestCase):
         )
         self.losses[name] = estimator.train(self.batch)
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_new"]
-        self.std_ret[name] = estimates["v_new_std"]
+        self.mean_ret[name] = estimates["v_target"]
+        self.std_ret[name] = estimates["v_target_std"]
 
     def test_ope_in_algo(self):
         results = self.algo.evaluate()
         print("OPE in Algorithm results")
         estimates = results["evaluation"]["off_policy_estimator"]
-        mean_est = {k: v["v_new"] for k, v in estimates.items()}
-        std_est = {k: v["v_new_std"] for k, v in estimates.items()}
+        mean_est = {k: v["v_target"] for k, v in estimates.items()}
+        std_est = {k: v["v_target_std"] for k, v in estimates.items()}
 
         print("Mean:")
         print(*list(mean_est.items()), sep="\n")

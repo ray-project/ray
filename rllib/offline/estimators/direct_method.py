@@ -56,26 +56,26 @@ class DirectMethod(OffPolicyEstimator):
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
         self.check_can_estimate_for(batch)
-        estimates = {"v_old": [], "v_new": [], "v_gain": []}
+        estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
         # Split data into train and test batches
         for episode in batch.split_by_episode():
             rewards = episode["rewards"]
-            v_old = 0.0
-            v_new = 0.0
+            v_behavior = 0.0
+            v_target = 0.0
             for t in range(episode.count):
-                v_old += rewards[t] * self.gamma ** t
+                v_behavior += rewards[t] * self.gamma ** t
 
             init_step = episode[0:1]
-            v_new = self.model.estimate_v(init_step)
-            v_new = convert_to_numpy(v_new).item()
+            v_target = self.model.estimate_v(init_step)
+            v_target = convert_to_numpy(v_target).item()
 
-            estimates["v_old"].append(v_old)
-            estimates["v_new"].append(v_new)
-            estimates["v_gain"].append(v_new / max(v_old, 1e-8))
-        estimates["v_old_std"] = np.std(estimates["v_old"])
-        estimates["v_old"] = np.mean(estimates["v_old"])
-        estimates["v_new_std"] = np.std(estimates["v_new"])
-        estimates["v_new"] = np.mean(estimates["v_new"])
+            estimates["v_behavior"].append(v_behavior)
+            estimates["v_target"].append(v_target)
+            estimates["v_gain"].append(v_target / max(v_behavior, 1e-8))
+        estimates["v_behavior_std"] = np.std(estimates["v_behavior"])
+        estimates["v_behavior"] = np.mean(estimates["v_behavior"])
+        estimates["v_target_std"] = np.std(estimates["v_target"])
+        estimates["v_target"] = np.mean(estimates["v_target"])
         estimates["v_gain_std"] = np.std(estimates["v_gain"])
         estimates["v_gain"] = np.mean(estimates["v_gain"])
         return estimates

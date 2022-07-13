@@ -58,7 +58,7 @@ class DoublyRobust(OffPolicyEstimator):
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
         self.check_can_estimate_for(batch)
-        estimates = {"v_old": [], "v_new": [], "v_gain": []}
+        estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
         # Calculate doubly robust OPE estimates
         for episode in batch.split_by_episode():
             rewards, old_prob = episode["rewards"], episode["action_prob"]
@@ -67,8 +67,8 @@ class DoublyRobust(OffPolicyEstimator):
             )
             new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
-            v_old = 0.0
-            v_new = 0.0
+            v_behavior = 0.0
+            v_target = 0.0
             q_values = self.model.estimate_q(episode)
             q_values = convert_to_numpy(q_values)
             v_values = self.model.estimate_v(episode)
@@ -76,19 +76,19 @@ class DoublyRobust(OffPolicyEstimator):
             assert q_values.shape == v_values.shape == (episode.count,)
 
             for t in reversed(range(episode.count)):
-                v_old = rewards[t] + self.gamma * v_old
-                v_new = v_values[t] + (new_prob[t] / old_prob[t]) * (
-                    rewards[t] + self.gamma * v_new - q_values[t]
+                v_behavior = rewards[t] + self.gamma * v_behavior
+                v_target = v_values[t] + (new_prob[t] / old_prob[t]) * (
+                    rewards[t] + self.gamma * v_target - q_values[t]
                 )
-            v_new = v_new.item()
+            v_target = v_target.item()
 
-            estimates["v_old"].append(v_old)
-            estimates["v_new"].append(v_new)
-            estimates["v_gain"].append(v_new / max(v_old, 1e-8))
-        estimates["v_old_std"] = np.std(estimates["v_old"])
-        estimates["v_old"] = np.mean(estimates["v_old"])
-        estimates["v_new_std"] = np.std(estimates["v_new"])
-        estimates["v_new"] = np.mean(estimates["v_new"])
+            estimates["v_behavior"].append(v_behavior)
+            estimates["v_target"].append(v_target)
+            estimates["v_gain"].append(v_target / max(v_behavior, 1e-8))
+        estimates["v_behavior_std"] = np.std(estimates["v_behavior"])
+        estimates["v_behavior"] = np.mean(estimates["v_behavior"])
+        estimates["v_target_std"] = np.std(estimates["v_target"])
+        estimates["v_target"] = np.mean(estimates["v_target"])
         estimates["v_gain_std"] = np.std(estimates["v_gain"])
         estimates["v_gain"] = np.mean(estimates["v_gain"])
         return estimates

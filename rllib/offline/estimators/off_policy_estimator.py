@@ -40,12 +40,12 @@ class OffPolicyEstimator:
             dict can be any arbitrary mapping of strings to OPE metrics.
 
             By default, the returned dict consists of the following metrics:
-              - v_old: The discounted return averaged over episodes in the batch
-              - v_old_std: The standard deviation corresponding to v_old
-              - v_new: The estimated discounted return for `self.policy`,
+              - v_behavior: The discounted return averaged over episodes in the batch
+              - v_behavior_std: The standard deviation corresponding to v_behavior
+              - v_target: The estimated discounted return for `self.policy`,
                 averaged over episodes in the batch
-              - v_new_std: The standard deviation corresponding to v_new
-              - v_gain: v_new / max(v_old, 1e-8), averaged over episodes in the batch
+              - v_target_std: The standard deviation corresponding to v_target
+              - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes in the batch
               - v_gain_std: The standard deviation corresponding to v_gain
         """
         raise NotImplementedError
