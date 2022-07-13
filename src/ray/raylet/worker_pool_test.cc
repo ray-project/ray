@@ -90,17 +90,13 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
       reply.set_error_message(BAD_RUNTIME_ENV_ERROR_MSG);
     } else {
-      rpc::RuntimeEnv runtime_env;
-      if (google::protobuf::util::JsonStringToMessage(request.serialized_runtime_env(),
-                                                      &runtime_env)
-              .ok()) {
-        auto it = runtime_env_reference.find(request.serialized_runtime_env());
-        if (it == runtime_env_reference.end()) {
-          runtime_env_reference[request.serialized_runtime_env()] = 1;
-        } else {
-          runtime_env_reference[request.serialized_runtime_env()] += 1;
-        }
+      auto it = runtime_env_reference.find(request.serialized_runtime_env());
+      if (it == runtime_env_reference.end()) {
+        runtime_env_reference[request.serialized_runtime_env()] = 1;
+      } else {
+        runtime_env_reference[request.serialized_runtime_env()] += 1;
       }
+
       reply.set_status(rpc::AGENT_RPC_STATUS_OK);
       reply.set_serialized_runtime_env_context("{\"dummy\":\"dummy\"}");
     }
@@ -524,7 +520,7 @@ class WorkerPoolTest : public ::testing::Test {
 
 static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfo(
     const std::vector<std::string> uris, bool eager_install = false) {
-  rpc::RuntimeEnv runtime_env;
+  json runtime_env;
   for (auto &uri : uris) {
     runtime_env.mutable_uris()->mutable_py_modules_uris()->Add(std::string(uri));
   }

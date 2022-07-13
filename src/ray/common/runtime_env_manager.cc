@@ -28,10 +28,16 @@ void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
 void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
                                         const rpc::RuntimeEnvInfo &runtime_env_info) {
   const auto &uris = runtime_env_info.uris();
-  for (const auto &uri : uris) {
+  if (!uris.working_dir_uri().empty()) {
+    const auto &uri = uris.working_dir_uri();
     uri_reference_[uri]++;
     id_to_uris_[hex_id].push_back(uri);
-    RAY_LOG(DEBUG) << "Added URI Reference " << uri << " for id " << hex_id;
+    RAY_LOG(DEBUG) << "[working_dir] Added URI Reference " << uri << " for id " << hex_id;
+  }
+  for (const auto &uri : uris.py_modules_uris()) {
+    uri_reference_[uri]++;
+    id_to_uris_[hex_id].push_back(uri);
+    RAY_LOG(DEBUG) << "[py_modules] Added URI Reference " << uri << " for id " << hex_id;
   }
   PrintDebugString();
 }

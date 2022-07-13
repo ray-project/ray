@@ -1396,7 +1396,12 @@ def get_runtime_env_info(
 
     proto_runtime_env_info = ProtoRuntimeEnvInfo()
 
-    proto_runtime_env_info.uris[:] = runtime_env.get_uris()
+    if runtime_env.get_working_dir_uri():
+        proto_runtime_env_info.uris.working_dir_uri = runtime_env.get_working_dir_uri()
+    if len(runtime_env.get_py_modules_uris()) > 0:
+        proto_runtime_env_info.uris.py_modules_uris[
+            :
+        ] = runtime_env.get_py_modules_uris()
 
     # TODO(Catch-Bull): overload `__setitem__` for `RuntimeEnv`, change the
     # runtime_env of all internal code from dict to RuntimeEnv.

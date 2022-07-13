@@ -163,12 +163,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   job_config_->ParseFromString(serialized_job_config);
   auto job_serialized_runtime_env =
       job_config_->runtime_env_info().serialized_runtime_env();
+  job_runtime_env_info_.reset(new rpc::RuntimeEnvInfo);
+  *job_runtime_env_info_ = job_config_->runtime_env_info();
   if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
-    job_runtime_env_.reset(new rpc::RuntimeEnv());
-    RAY_CHECK(google::protobuf::util::JsonStringToMessage(
-                  job_config_->runtime_env_info().serialized_runtime_env(),
-                  job_runtime_env_.get())
-                  .ok());
+    job_runtime_env_.reset(new json());
+    *job_runtime_env_ = json::parse(job_serialized_runtime_env);
   }
 
   // Start RPC server after all the task receivers are properly initialized and we have
@@ -1447,64 +1446,33 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
       });
 }
 
-rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
-    const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
+json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent) {
   // By default, the child runtime env inherits non-specified options from the
   // parent. There is one exception to this:
   //     - The env_vars dictionaries are merged, so environment variables
   //       not specified by the child are still inherited from the parent.
-
-  // Override environment variables.
-  google::protobuf::Map<std::string, std::string> result_env_vars(parent->env_vars());
-  result_env_vars.insert(child.env_vars().begin(), child.env_vars().end());
-  // Inherit all other non-specified options from the parent.
-  rpc::RuntimeEnv result_runtime_env(*parent);
-  // TODO(SongGuyang): avoid dupliacated fields.
-  result_runtime_env.MergeFrom(child);
-  if (child.python_runtime_env().py_modules().size() > 0 &&
-      parent->python_runtime_env().py_modules().size() > 0) {
-    result_runtime_env.mutable_python_runtime_env()->clear_py_modules();
-    for (auto &module : child.python_runtime_env().py_modules()) {
-      result_runtime_env.mutable_python_runtime_env()->add_py_modules(module);
+  json result_runtime_env = *parent;
+  for (json::iterator it = child.begin(); it != child.end(); ++it) {
+    if (it.key() == "env_vars" && result_runtime_env.contains("env_vars")) {
+      json env_vars = it.value();
+      json merged_env_vars = result_runtime_env["env_vars"];
+      for (json::iterator nit = env_vars.begin(); nit != env_vars.end(); ++nit) {
+        merged_env_vars[nit.key()] = nit.value();
+      }
+      result_runtime_env["env_vars"] = merged_env_vars;
+    } else {
+      result_runtime_env[it.key()] = it.value();
     }
-    result_runtime_env.mutable_uris()->clear_py_modules_uris();
-    result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
-        child.uris().py_modules_uris());
-  }
-  if (child.python_runtime_env().has_pip_runtime_env() &&
-      parent->python_runtime_env().has_pip_runtime_env()) {
-    result_runtime_env.mutable_python_runtime_env()->clear_pip_runtime_env();
-    result_runtime_env.mutable_python_runtime_env()->mutable_pip_runtime_env()->CopyFrom(
-        child.python_runtime_env().pip_runtime_env());
-  }
-  if (!result_env_vars.empty()) {
-    result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
-                                                  result_env_vars.end());
   }
   return result_runtime_env;
-}
-
-static std::vector<std::string> GetUrisFromRuntimeEnv(
-    const rpc::RuntimeEnv *runtime_env) {
-  std::vector<std::string> result;
-  if (runtime_env == nullptr) {
-    return result;
-  }
-  if (!runtime_env->uris().working_dir_uri().empty()) {
-    const auto &uri = runtime_env->uris().working_dir_uri();
-    result.emplace_back(uri);
-  }
-  for (const auto &uri : runtime_env->uris().py_modules_uris()) {
-    result.emplace_back(uri);
-  }
-  return result;
 }
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info) {
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
   // yet, we will overwrite the filed eager_install when it did.
-  std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
+  std::shared_ptr<json> parent = nullptr;
+  std::shared_ptr<rpc::RuntimeEnvInfo> parent_runtime_env_info = nullptr;
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
   runtime_env_info.reset(new rpc::RuntimeEnvInfo());
 
@@ -1516,52 +1484,34 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
 
   if (options_.worker_type == WorkerType::DRIVER) {
     if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {
-      runtime_env_info->set_serialized_runtime_env(
-          job_config_->runtime_env_info().serialized_runtime_env());
-      runtime_env_info->clear_uris();
-      for (const std::string &uri : GetUrisFromRuntimeEnv(job_runtime_env_.get())) {
-        runtime_env_info->add_uris(uri);
-      }
-
-      return runtime_env_info;
+      return job_runtime_env_info_;
     }
     parent = job_runtime_env_;
+    parent_runtime_env_info = job_runtime_env_info_;
   } else {
     if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {
-      runtime_env_info->set_serialized_runtime_env(
-          worker_context_.GetCurrentSerializedRuntimeEnv());
-      runtime_env_info->clear_uris();
-      for (const std::string &uri :
-           GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get())) {
-        runtime_env_info->add_uris(uri);
-      }
-
-      return runtime_env_info;
+      return worker_context_.GetCurrentRuntimeEnvInfo();
     }
     parent = worker_context_.GetCurrentRuntimeEnv();
+    parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
   if (parent) {
     std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
-    rpc::RuntimeEnv child_runtime_env;
-    if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env,
-                                                     &child_runtime_env)
-             .ok()) {
-      RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env
-                       << ". serialized runtime env info: "
-                       << serialized_runtime_env_info;
-      // TODO(SongGuyang): We pass the raw string here and the task will fail after an
-      // exception raised in runtime env agent. Actually, we can fail the task here.
-      return runtime_env_info;
-    }
+    json child_runtime_env = json::parse(serialized_runtime_env);
     auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
-    std::string serialized_override_runtime_env;
-    RAY_CHECK(google::protobuf::util::MessageToJsonString(
-                  override_runtime_env, &serialized_override_runtime_env)
-                  .ok());
+    auto serialized_override_runtime_env = override_runtime_env.dump();
     runtime_env_info->set_serialized_runtime_env(serialized_override_runtime_env);
-    runtime_env_info->clear_uris();
-    for (const std::string &uri : GetUrisFromRuntimeEnv(&override_runtime_env)) {
-      runtime_env_info->add_uris(uri);
+    if (runtime_env_info->uris().working_dir_uri().empty() &&
+        !parent_runtime_env_info->uris().working_dir_uri().empty()) {
+      runtime_env_info->mutable_uris()->set_working_dir_uri(
+          parent_runtime_env_info->uris().working_dir_uri());
+    }
+    if (runtime_env_info->uris().py_modules_uris().size() == 0 &&
+        parent_runtime_env_info->uris().py_modules_uris().size() != 0) {
+      runtime_env_info->mutable_uris()->clear_py_modules_uris();
+      for (const std::string &uri : parent_runtime_env_info->uris().py_modules_uris()) {
+        runtime_env_info->mutable_uris()->add_py_modules_uris(uri);
+      }
     }
     return runtime_env_info;
   } else {
