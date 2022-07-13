@@ -70,27 +70,27 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, help="json or envvars", default="envvars")
     args = parser.parse_args()
 
-    RAY_CI_ML_AFFECTED = 0
-    RAY_CI_TUNE_AFFECTED = 0
-    RAY_CI_TRAIN_AFFECTED = 0
+    RAY_CI_ML_AFFECTED = 1
+    RAY_CI_TUNE_AFFECTED = 1
+    RAY_CI_TRAIN_AFFECTED = 1
     # Whether only the most important (high-level) RLlib tests should be run.
     # Set to 1 for any changes to Ray Tune or python source files that are
     # NOT related to Serve, Dashboard or Train.
-    RAY_CI_RLLIB_AFFECTED = 0
+    RAY_CI_RLLIB_AFFECTED = 1
     # Whether all RLlib tests should be run.
     # Set to 1 only when a source file in `ray/rllib` has been changed.
-    RAY_CI_RLLIB_DIRECTLY_AFFECTED = 0
-    RAY_CI_SERVE_AFFECTED = 0
-    RAY_CI_CORE_CPP_AFFECTED = 0
-    RAY_CI_CPP_AFFECTED = 0
-    RAY_CI_JAVA_AFFECTED = 0
-    RAY_CI_PYTHON_AFFECTED = 0
-    RAY_CI_LINUX_WHEELS_AFFECTED = 0
-    RAY_CI_MACOS_WHEELS_AFFECTED = 0
-    RAY_CI_DASHBOARD_AFFECTED = 0
-    RAY_CI_DOCKER_AFFECTED = 0
-    RAY_CI_DOC_AFFECTED = 0
-    RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 0
+    RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
+    RAY_CI_SERVE_AFFECTED = 1
+    RAY_CI_CORE_CPP_AFFECTED = 1
+    RAY_CI_CPP_AFFECTED = 1
+    RAY_CI_JAVA_AFFECTED = 1
+    RAY_CI_PYTHON_AFFECTED = 1
+    RAY_CI_LINUX_WHEELS_AFFECTED = 1
+    RAY_CI_MACOS_WHEELS_AFFECTED = 1
+    RAY_CI_DASHBOARD_AFFECTED = 1
+    RAY_CI_DOCKER_AFFECTED = 1
+    RAY_CI_DOC_AFFECTED = 1
+    RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1
 
     if is_pull_request():
         commit_range = get_commit_range()
