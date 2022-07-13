@@ -4,7 +4,6 @@ import os
 import random
 import types
 import warnings
-import collections
 
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -549,18 +548,7 @@ class _WrappedDataLoader(DataLoader):
             return i
 
         with torch.cuda.stream(self._memcpy_stream):
-            if isinstance(item, collections.abc.Mapping):
-                item_on_device = {k: self._move_to_device(v) for k, v in item.items()}
-            elif isinstance(item, (tuple, list)):
-                item_on_device = type(item)(self._move_to_device(i) for i in item)
-            elif isinstance(item, torch.Tensor):
-                item_on_device = try_move_device(item)
-            else:
-                logger.info(
-                    f"Data type {type(item)} doesn't support being moved to device."
-                )
-
-            return item_on_device
+            return tuple(try_move_device(i) for i in item)
 
     def _wait_for_batch(self, item):
         if self._memcpy_stream is None:
