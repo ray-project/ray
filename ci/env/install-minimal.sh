@@ -33,7 +33,7 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
-  pytest==7.0.1 \
+  pytest==5.4.3 \
   numpy
 
 # Train requirements.
