@@ -1,6 +1,7 @@
 import numpy as np
-import ray.experimental.array.remote as ra
+
 import ray
+import ray.experimental.array.remote as ra
 
 BLOCK_SIZE = 10
 

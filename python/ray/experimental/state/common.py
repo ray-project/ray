@@ -1,11 +1,11 @@
 import logging
 from abc import ABC
-from dataclasses import dataclass, fields, field
+from dataclasses import dataclass, field, fields
 from enum import Enum, unique
-from typing import List, Optional, Set, Tuple, Union, Dict
+from typing import Dict, List, Optional, Set, Tuple, Union
 
-from ray.dashboard.modules.job.common import JobInfo
 from ray.core.generated.common_pb2 import TaskType
+from ray.dashboard.modules.job.common import JobInfo
 
 logger = logging.getLogger(__name__)
 

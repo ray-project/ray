@@ -22,8 +22,8 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllWorkerInfoRequest,
 )
 from ray.core.generated.node_manager_pb2 import (
-    GetObjectsInfoRequest,
     GetObjectsInfoReply,
+    GetObjectsInfoRequest,
     GetTasksInfoReply,
     GetTasksInfoRequest,
 )
@@ -40,8 +40,8 @@ from ray.core.generated.runtime_env_agent_pb2 import (
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
-from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.common import MAX_LIMIT
+from ray.experimental.state.exception import DataSourceUnavailable
 
 logger = logging.getLogger(__name__)
 

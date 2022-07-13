@@ -1,22 +1,21 @@
-from . import random
-from . import linalg
+from . import linalg, random
 from .core import (
     BLOCK_SIZE,
     DistArray,
-    assemble,
-    zeros,
-    ones,
-    copy,
-    eye,
-    triu,
-    tril,
-    blockwise_dot,
-    dot,
-    transpose,
     add,
-    subtract,
+    assemble,
+    blockwise_dot,
+    copy,
+    dot,
+    eye,
     numpy_to_dist,
+    ones,
     subblocks,
+    subtract,
+    transpose,
+    tril,
+    triu,
+    zeros,
 )
 
 __all__ = [
