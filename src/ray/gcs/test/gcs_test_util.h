@@ -97,7 +97,7 @@ struct Mocker {
       int max_restarts = 0,
       bool detached = false,
       const std::string &name = "",
-      const std::string &ray_namespace = "") {
+      const std::string &ray_namespace = "test") {
     rpc::Address owner_address;
     owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
