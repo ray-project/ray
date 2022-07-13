@@ -1,3 +1,3 @@
 import tensorflow as tf
 
-tf.keras.datasets.mnist.load_data()
+tf.keras.datasets.fashion_mnist.load_data()

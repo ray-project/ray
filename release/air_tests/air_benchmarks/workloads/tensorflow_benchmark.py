@@ -12,7 +12,7 @@ VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
 
 
 def mnist_dataset(batch_size: int) -> tf.data.Dataset:
-    (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
+    (x_train, y_train), _ = tf.keras.datasets.fashion_mnist.load_data()
     # The `x` arrays are in uint8 and have values in the [0, 255] range.
     # You need to convert them to float32 with values in the [0, 1] range.
     x_train = x_train / np.float32(255)
@@ -30,10 +30,9 @@ def build_cnn_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
             tf.keras.Input(shape=(28, 28)),
-            tf.keras.layers.Reshape(target_shape=(28, 28, 1)),
-            tf.keras.layers.Conv2D(32, 3, activation="relu"),
             tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(128, activation="relu"),
+            tf.keras.layers.Dense(512, activation="relu"),
+            tf.keras.layers.Dense(512, activation="relu"),
             tf.keras.layers.Dense(10),
         ]
     )
