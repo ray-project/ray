@@ -96,6 +96,37 @@ def test_batch_prediction_fs():
     )
 
 
+def test_batch_prediction_feature_cols():
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+    )
+
+    test_dataset = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+
+    assert batch_predictor.predict(
+        test_dataset, feature_columns=["a"]
+    ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
+
+
+def test_batch_prediction_keep_cols():
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+    )
+
+    test_dataset = ray.data.from_pandas(
+        pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]})
+    )
+
+    output_df = batch_predictor.predict(
+        test_dataset, feature_columns=["a"], keep_columns=["b"]
+    ).to_pandas()
+
+    assert set(output_df.columns) == {"a", "b"}
+
+    assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
+    assert output_df["b"].tolist() == [4, 5, 6]
+
+
 def test_automatic_enable_gpu_from_num_gpus_per_worker():
     """
     Test we automatically set underlying Predictor creation use_gpu to True if
