@@ -649,7 +649,7 @@ def get_or_create_head_node(
             yes, "No head node found. Launching a new cluster.", _abort=True
         )
         cli_logger.newline()
-        usage_lib.show_usage_stats_prompt()
+        usage_lib.show_usage_stats_prompt(cli=True)
 
     if head_node:
         if restart_only:
@@ -662,7 +662,7 @@ def get_or_create_head_node(
                 _abort=True,
             )
             cli_logger.newline()
-            usage_lib.show_usage_stats_prompt()
+            usage_lib.show_usage_stats_prompt(cli=True)
         elif no_restart:
             cli_logger.print(
                 "Cluster Ray runtime will not be restarted due to `{}`.",
@@ -679,7 +679,7 @@ def get_or_create_head_node(
                 yes, cf.bold("Cluster Ray runtime will be restarted."), _abort=True
             )
             cli_logger.newline()
-            usage_lib.show_usage_stats_prompt()
+            usage_lib.show_usage_stats_prompt(cli=True)
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
