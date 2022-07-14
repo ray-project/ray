@@ -388,10 +388,10 @@ class VectorEnvWrapper(BaseEnv):
         from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 
         assert env_id is None or isinstance(env_id, int)
+        env_id = env_id if env_id is not None else 0
+        obs = self.vector_env.reset_at(env_id)
         return {
-            env_id
-            if env_id is not None
-            else 0: {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
+            env_id: obs if isinstance(obs, Exception) else {_DUMMY_AGENT_ID: obs} 
         }
 
     @override(BaseEnv)

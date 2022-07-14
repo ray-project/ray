@@ -56,7 +56,7 @@ class CartPoleCrashing(CartPoleEnv):
         self.timesteps = 0
         # Should we crash?
         if np.random.random() < self.p_crash_reset or (
-            self.crash_after_n_steps and self.crash_after_n_steps == 0
+            self.crash_after_n_steps is not None and self.crash_after_n_steps == 0
         ):
             raise EnvError(
                 "Simulated env crash in `reset()`! Feel free to use any "
