@@ -146,7 +146,7 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
 
 def test_callable_classes(shutdown_only):
     ray.init(num_cpus=1)
-    ds = ray.data.range(10)
+    ds = ray.data.range(10, parallelism=10)
 
     class StatefulFn:
         def __init__(self):
@@ -4243,7 +4243,7 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
     ray.init(include_dashboard=False, num_cpus=1)
 
     cpus = ray.available_resources()["CPU"]
-    ds = ray.data.range(5)
+    ds = ray.data.range(5, parallelism=5)
     aps = ray.data.ActorPoolStrategy(max_size=5)
     blocks = ds._plan.execute()
 
