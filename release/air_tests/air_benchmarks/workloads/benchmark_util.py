@@ -1,5 +1,7 @@
+from functools import wraps
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import ray
@@ -75,3 +77,14 @@ def run_commands_with_resources(
         ).remote(cmd=cmd)
         futures.append(future)
     return ray.get(futures)
+
+
+def time_it(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        start = time.monotonic()
+        f(*args, **kwargs)
+        time_taken = time.monotonic() - start
+        return time_taken
+
+    return wrapper
