@@ -16,12 +16,14 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/util/process.h"
 
+using json = nlohmann::json;
 namespace ray {
 
 namespace raylet {
@@ -521,15 +523,11 @@ class WorkerPoolTest : public ::testing::Test {
 static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfo(
     const std::vector<std::string> uris, bool eager_install = false) {
   json runtime_env;
-  for (auto &uri : uris) {
-    runtime_env.mutable_uris()->mutable_py_modules_uris()->Add(std::string(uri));
-  }
-  std::string runtime_env_string;
-  google::protobuf::util::MessageToJsonString(runtime_env, &runtime_env_string);
+  runtime_env["py_modules"] = uris;
   rpc::RuntimeEnvInfo runtime_env_info;
-  runtime_env_info.set_serialized_runtime_env(runtime_env_string);
+  runtime_env_info.set_serialized_runtime_env(runtime_env.dump());
   for (auto &uri : uris) {
-    runtime_env_info.mutable_uris()->Add(std::string(uri));
+    runtime_env_info.mutable_uris()->add_py_modules_uris(std::string(uri));
   }
   runtime_env_info.mutable_runtime_env_config()->set_eager_install(eager_install);
   return runtime_env_info;
