@@ -153,7 +153,7 @@
 
   alert: default
 
-
+# Ray AIR distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_cpu_4x1
   group: AIR tests
   working_dir: air_tests/air_benchmarks
@@ -216,6 +216,81 @@
   run:
     timeout: 5400
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+# Ray AIR distributed Tensorflow benchmarks
+- name: air_benchmark_tensorflow_mnist_cpu_4x1
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_4.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_tensorflow_mnist_cpu_1x4
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_1.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_tensorflow_mnist_cpu_4x4
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  stable: false
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_4.yaml
+
+  run:
+    timeout: 5400
+    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
 
     wait_for_nodes:
       num_nodes: 4
