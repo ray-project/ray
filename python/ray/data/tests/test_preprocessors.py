@@ -28,6 +28,7 @@ from ray.data.preprocessors.encoder import Categorizer, MultiHotEncoder
 from ray.data.preprocessors.hasher import FeatureHasher
 from ray.data.preprocessors.normalizer import Normalizer
 from ray.data.preprocessors.scaler import MaxAbsScaler, RobustScaler
+from ray.data.preprocessors.concatenator import Concatenator
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
@@ -1242,6 +1243,60 @@ def test_power_transformer():
     expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
 
     assert out_df.equals(expected_df)
+
+
+def test_concatenator():
+    """Tests basic Concatenator functionality."""
+    df = pd.DataFrame(
+        {
+            "a": [1, 2, 3, 4],
+            "b": [1, 2, 3, 4],
+        }
+    )
+    ds = ray.data.from_pandas(df)
+    prep = Concatenator(output_column_name="c")
+    new_ds = prep.transform(ds)
+    for i, row in enumerate(new_ds.take()):
+        assert np.array_equal(row["c"].to_numpy(), np.array([i + 1, i + 1]))
+
+    # Test repr
+    assert "c" in prep.__repr__()
+    assert "include" in prep.__repr__()
+    assert "exclude" in prep.__repr__()
+
+    df = pd.DataFrame({"a": [1, 2, 3, 4]})
+    ds = ray.data.from_pandas(df)
+    prep = Concatenator(output_column_name="c", exclude=["b"], raise_if_missing=True)
+
+    with pytest.raises(ValueError, match="'b'"):
+        prep.transform(ds)
+
+    # Test exclude working
+    df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5], "c": [3, 4, 5, 6]})
+    ds = ray.data.from_pandas(df)
+    prep = Concatenator(exclude=["b"])
+    new_ds = prep.transform(ds)
+    for i, row in enumerate(new_ds.take()):
+        assert set(row) == {"concat_out", "b"}
+
+    # Test include working
+    prep = Concatenator(include=["a", "b"])
+    new_ds = prep.transform(ds)
+    for i, row in enumerate(new_ds.take()):
+        assert set(row) == {"concat_out", "c"}
+
+    # Test exclude overrides include
+    prep = Concatenator(include=["a", "b"], exclude=["b"])
+    new_ds = prep.transform(ds)
+    for i, row in enumerate(new_ds.take()):
+        assert set(row) == {"concat_out", "b", "c"}
+
+    # check it works with string types
+    df = pd.DataFrame({"a": ["string", "string2", "string3"]})
+    ds = ray.data.from_pandas(df)
+    prep = Concatenator(output_column_name="huh")
+    new_ds = prep.transform(ds)
+    assert "huh" in set(new_ds.schema().names)
 
 
 def test_tokenizer():
