@@ -68,7 +68,7 @@ class HuggingFacePredictor(Predictor):
         with checkpoint.as_directory() as checkpoint_path:
             preprocessor = load_preprocessor_from_dir(checkpoint_path)
             pipeline = pipeline(model=checkpoint_path, **pipeline_kwargs)
-        return HuggingFacePredictor(
+        return cls(
             pipeline=pipeline,
             preprocessor=preprocessor,
         )

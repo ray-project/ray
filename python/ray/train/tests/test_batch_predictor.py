@@ -26,7 +26,7 @@ class DummyPredictor(Predictor):
         cls, checkpoint: Checkpoint, use_gpu: bool = False, **kwargs
     ) -> "DummyPredictor":
         checkpoint_data = checkpoint.to_dict()
-        return DummyPredictor(**checkpoint_data, use_gpu=use_gpu)
+        return cls(**checkpoint_data, use_gpu=use_gpu)
 
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         # Need to throw exception here instead of constructor to surface the
@@ -44,7 +44,7 @@ class DummyPredictorFS(DummyPredictor):
             # simulate reading
             time.sleep(1)
         checkpoint_data = checkpoint.to_dict()
-        return DummyPredictor(**checkpoint_data)
+        return cls(**checkpoint_data)
 
 
 def test_batch_prediction():

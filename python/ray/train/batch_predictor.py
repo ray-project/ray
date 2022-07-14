@@ -39,9 +39,7 @@ class BatchPredictor:
     def from_checkpoint(
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs
     ) -> "BatchPredictor":
-        return BatchPredictor(
-            checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs
-        )
+        return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
     def predict(
         self,
@@ -69,7 +67,7 @@ class BatchPredictor:
             >>> class DummyPredictor(Predictor):
             ...     @classmethod
             ...     def from_checkpoint(cls, checkpoint, **kwargs):
-            ...         return DummyPredictor()
+            ...         return cls()
             ...     def _predict_pandas(self, data_df, **kwargs):
             ...         return data_df
             >>> # Create a batch predictor for this dummy predictor.
@@ -197,7 +195,7 @@ class BatchPredictor:
             >>> class DummyPredictor(Predictor):
             ...     @classmethod
             ...     def from_checkpoint(cls, checkpoint, **kwargs):
-            ...         return DummyPredictor()
+            ...         return cls()
             ...     def predict(self, data, **kwargs):
             ...         return pd.DataFrame({"a": [42] * len(data)})
             >>> # Create a batch predictor for this dummy predictor.
