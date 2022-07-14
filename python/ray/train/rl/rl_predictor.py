@@ -53,7 +53,7 @@ class RLPredictor(Predictor):
 
         """
         policy, preprocessor = load_checkpoint(checkpoint, env)
-        return RLPredictor(policy=policy, preprocessor=preprocessor)
+        return cls(policy=policy, preprocessor=preprocessor)
 
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         if TENSOR_COLUMN_NAME in data:

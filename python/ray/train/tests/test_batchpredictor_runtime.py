@@ -29,7 +29,7 @@ class DummyPredictor(Predictor):
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
         with checkpoint.as_directory() as checkpoint_path:
             read_test_data(checkpoint_path)
-        return DummyPredictor()
+        return cls()
 
     def predict(self, data, **kwargs):
         return data
