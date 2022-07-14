@@ -99,6 +99,15 @@ def reset_lib_usage():
     ray_usage_lib._recorded_library_usages.clear()
 
 
+@pytest.fixture
+def reset_ray_version_commit():
+    saved_ray_version = ray.__version__
+    saved_ray_commit = ray.__commit__
+    yield
+    ray.__version__ = saved_ray_version
+    ray.__commit__ = saved_ray_commit
+
+
 def test_parse_extra_usage_tags(monkeypatch):
     with monkeypatch.context() as m:
         # Test a normal case.
@@ -243,7 +252,13 @@ def clear_loggers():
 # test is terminated. It seems like loggers are shared across drivers
 # although we call ray.shutdown().
 def test_usage_stats_prompt(
-    monkeypatch, capsys, tmp_path, reset_lib_usage, shutdown_only, clear_loggers
+    monkeypatch,
+    capsys,
+    tmp_path,
+    reset_lib_usage,
+    shutdown_only,
+    clear_loggers,
+    reset_ray_version_commit,
 ):
     """
     Test usage stats prompt is shown in the proper cases.
@@ -251,27 +266,40 @@ def test_usage_stats_prompt(
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_PROMPT_ENABLED", "0")
-        ray_usage_lib.show_usage_stats_prompt()
+        ray_usage_lib.show_usage_stats_prompt(cli=True)
         captured = capsys.readouterr()
-        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in captured.out
-        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in captured.err
+        assert usage_constants.USAGE_STATS_ENABLED_FOR_CLI_MESSAGE not in captured.out
+        assert usage_constants.USAGE_STATS_ENABLED_FOR_CLI_MESSAGE not in captured.err
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_PROMPT_ENABLED", "0")
+        ray_usage_lib.show_usage_stats_prompt(cli=False)
+        captured = capsys.readouterr()
+        assert (
+            usage_constants.USAGE_STATS_ENABLED_FOR_RAY_INIT_MESSAGE not in captured.out
+        )
+        assert (
+            usage_constants.USAGE_STATS_ENABLED_FOR_RAY_INIT_MESSAGE not in captured.err
+        )
 
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
-        ray_usage_lib.show_usage_stats_prompt()
+        ray_usage_lib.show_usage_stats_prompt(cli=True)
         captured = capsys.readouterr()
         assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
 
     with monkeypatch.context() as m:
         m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
         tmp_usage_stats_config_path = tmp_path / "config1.json"
-        monkeypatch.setenv(
-            "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
-        )
+        m.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
         # Usage stats collection is enabled by default.
-        ray_usage_lib.show_usage_stats_prompt()
+        ray_usage_lib.show_usage_stats_prompt(cli=True)
         captured = capsys.readouterr()
-        assert usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE in captured.out
+        assert (
+            usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_FOR_CLI_MESSAGE
+            in captured.out
+        )
 
     with monkeypatch.context() as m:
         # Win impl relies on kbhit() instead of select()
@@ -281,17 +309,15 @@ def test_usage_stats_prompt(
             saved_interactive = cli_logger.interactive
             saved_stdin = sys.stdin
             tmp_usage_stats_config_path = tmp_path / "config2.json"
-            monkeypatch.setenv(
-                "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
-            )
+            m.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
             cli_logger.interactive = True
             (r_pipe, w_pipe) = os.pipe()
             sys.stdin = open(r_pipe)
             os.write(w_pipe, b"y\n")
-            ray_usage_lib.show_usage_stats_prompt()
+            ray_usage_lib.show_usage_stats_prompt(cli=True)
             captured = capsys.readouterr()
             assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
-            assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in captured.out
+            assert usage_constants.USAGE_STATS_ENABLED_FOR_CLI_MESSAGE in captured.out
             cli_logger.interactive = saved_interactive
             sys.stdin = saved_stdin
 
@@ -301,14 +327,12 @@ def test_usage_stats_prompt(
             saved_interactive = cli_logger.interactive
             saved_stdin = sys.stdin
             tmp_usage_stats_config_path = tmp_path / "config3.json"
-            monkeypatch.setenv(
-                "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
-            )
+            m.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
             cli_logger.interactive = True
             (r_pipe, w_pipe) = os.pipe()
             sys.stdin = open(r_pipe)
             os.write(w_pipe, b"n\n")
-            ray_usage_lib.show_usage_stats_prompt()
+            ray_usage_lib.show_usage_stats_prompt(cli=True)
             captured = capsys.readouterr()
             assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
             assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
@@ -320,30 +344,81 @@ def test_usage_stats_prompt(
         saved_interactive = cli_logger.interactive
         saved_stdin = sys.stdin
         tmp_usage_stats_config_path = tmp_path / "config4.json"
-        monkeypatch.setenv(
-            "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
-        )
+        m.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
         cli_logger.interactive = True
         (r_pipe, w_pipe) = os.pipe()
         sys.stdin = open(r_pipe)
-        ray_usage_lib.show_usage_stats_prompt()
+        ray_usage_lib.show_usage_stats_prompt(cli=True)
         captured = capsys.readouterr()
         assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
-        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in captured.out
+        assert usage_constants.USAGE_STATS_ENABLED_FOR_CLI_MESSAGE in captured.out
         cli_logger.interactive = saved_interactive
         sys.stdin = saved_stdin
 
     with monkeypatch.context() as m:
-        # Usage stats is not enabled for ray.init()
+        # Usage stats is not enabled for ray.init() unless it's nightly wheel.
+        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+        tmp_usage_stats_config_path = tmp_path / "config5.json"
+        m.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
+        ray.__version__ = "2.0.0"
+        ray.__commit__ = "xyzf"
         ray.init()
         ray.shutdown()
         captured = capsys.readouterr()
         assert (
-            usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE not in captured.out
+            usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_FOR_RAY_INIT_MESSAGE
+            not in captured.out
         )
         assert (
-            usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE not in captured.err
+            usage_constants.USAGE_STATS_ENABLED_FOR_RAY_INIT_MESSAGE not in captured.out
         )
+
+    with monkeypatch.context() as m:
+        # Usage stats is enabled for ray.init() for nightly wheel.
+        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+        tmp_usage_stats_config_path = tmp_path / "config6.json"
+        m.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
+        ray.__version__ = "2.0.0.dev0"
+        ray.__commit__ = "xyzf"
+        ray.init()
+        ray.shutdown()
+        captured = capsys.readouterr()
+        assert (
+            usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_FOR_RAY_INIT_MESSAGE
+            in captured.out
+        )
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        ray.__version__ = "2.0.0.dev0"
+        ray.__commit__ = "xyzf"
+        ray.init()
+        ray.shutdown()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        ray.__version__ = "2.0.0.dev0"
+        ray.__commit__ = "xyzf"
+        ray.init()
+        ray.shutdown()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_ENABLED_FOR_RAY_INIT_MESSAGE in captured.out
+
+
+def test_is_nightly_wheel(reset_ray_version_commit):
+    ray.__version__ = "2.0.0"
+    ray.__commit__ = "xyz"
+    assert not ray_usage_lib.is_nightly_wheel()
+
+    ray.__version__ = "2.0.0dev0"
+    ray.__commit__ = "{{RAY_COMMIT_SHA}}"
+    assert not ray_usage_lib.is_nightly_wheel()
+
+    ray.__version__ = "2.0.0dev0"
+    ray.__commit__ = "xyz"
+    assert ray_usage_lib.is_nightly_wheel()
 
 
 def test_usage_lib_cluster_metadata_generation(
