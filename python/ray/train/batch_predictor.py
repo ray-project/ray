@@ -73,21 +73,22 @@ class BatchPredictor:
             ...     def _predict_pandas(self, data_df, **kwargs):
             ...         return data_df
             >>> # Create a batch predictor for this dummy predictor.
-            >>> batch_pred = BatchPredictor(
+            >>> batch_pred = BatchPredictor( # doctest: +SKIP
             ...     Checkpoint.from_dict({"x": 0}), DummyPredictor)
             >>> # Create a dummy dataset.
-            >>> ds = ray.data.from_pandas(pd.DataFrame({
+            >>> ds = ray.data.from_pandas(pd.DataFrame({ # doctest: +SKIP
             ...     "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
             >>> # Execute batch prediction using this predictor.
-            >>> predictions = batch_pred.predict(ds,
+            >>> predictions = batch_pred.predict(ds, # doctest: +SKIP
             ...     feature_columns=["feature_1"], keep_columns=["label"])
-            >>> print(predictions)
+            >>> print(predictions) # doctest: +SKIP
             Dataset(num_blocks=1, num_rows=3, schema={a: int64, label: int64})
             >>> # Calculate final accuracy.
             >>> def calculate_accuracy(df):
             ...    return pd.DataFrame({"correct": df["predictions"] == df["label"]})
-            >>> correct = predictions.map_batches(calculate_accuracy)
-            >>> print("Final accuracy:", correct.sum(on="correct") / correct.count())
+            >>> correct = predictions.map_batches(calculate_accuracy) # doctest: +SKIP
+            >>> print("Final accuracy: ", # doctest: +SKIP
+            ...    correct.sum(on="correct") / correct.count())
             Final accuracy: 1.0000
 
         Args:
