@@ -826,7 +826,7 @@ py_test(
     name = "test_cql",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    data = ["tests/data/cartpole/small.json"],
+    data = ["tests/data/pendulum/small.json"],
     srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
