@@ -103,7 +103,7 @@ define_java_module(
 
 define_java_module(
     name = "test",
-    # For cpp x-lang tests. See //cpp:cluster_mode_test.
+    # (WangTaoTheTonic)For cpp x-lang tests. See //cpp:cluster_mode_xlang_test.
     visibility = ["//cpp:__subpackages__"],
     deps = [
         ":io_ray_ray_api",
@@ -189,6 +189,7 @@ java_library(
 
 java_test(
     name = "all_tests",
+    testonly = True,
     args = ["java/testng.xml"],
     data = [
         "testng.xml",
@@ -196,6 +197,10 @@ java_test(
         "//:ray_pkg",
     ],
     main_class = "org.testng.TestNG",
+    resources = [
+        "//cpp:counter.so",
+        "//cpp:plus.so",
+    ],
     tags = ["local"],
     runtime_deps = [
         ":all_tests_lib",

@@ -229,3 +229,12 @@ def assert_base_partitioned_ds():
         ), f"{actual_sorted_values} != {sorted_values}"
 
     yield _assert_base_partitioned_ds
+
+
+@pytest.fixture(params=[True, False])
+def use_push_based_shuffle(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.use_push_based_shuffle
+    ctx.use_push_based_shuffle = request.param
+    yield request.param
+    ctx.use_push_based_shuffle = original
