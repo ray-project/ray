@@ -33,7 +33,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=-gpu python/ray/serve/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=gpu python/ray/serve/...
 
 # Todo: enable once tests pass
 #- label: ":tv: :brain: RLlib: GPU Examples {C/D}"
