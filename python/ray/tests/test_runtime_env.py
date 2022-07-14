@@ -652,19 +652,20 @@ def test_serialize_deserialize(option):
     else:
         raise ValueError("unexpected option " + str(option))
 
-    serialized_runtime_env = runtime_env.serialize()
+    typed_runtime_env = RuntimeEnv(**runtime_env)
+    serialized_runtime_env = typed_runtime_env.serialize()
     cls_runtime_env = RuntimeEnv.deserialize(serialized_runtime_env)
     cls_runtime_env_dict = cls_runtime_env.to_dict()
 
-    if "pip" in runtime_env and isinstance(runtime_env["pip"], list):
+    if "pip" in typed_runtime_env and isinstance(typed_runtime_env["pip"], list):
         pip_config_in_cls_runtime_env = cls_runtime_env_dict.pop("pip")
-        pip_config_in_runtime_env = runtime_env.pop("pip")
+        pip_config_in_runtime_env = typed_runtime_env.pop("pip")
         assert {
             "packages": pip_config_in_runtime_env,
             "pip_check": False,
         } == pip_config_in_cls_runtime_env
 
-    assert cls_runtime_env_dict == runtime_env
+    assert cls_runtime_env_dict == typed_runtime_env
 
 
 def test_runtime_env_interface():
