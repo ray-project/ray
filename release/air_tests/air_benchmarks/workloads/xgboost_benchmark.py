@@ -83,6 +83,18 @@ def main():
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
+    if training_time > 900:
+        raise RuntimeError(
+            f"Training on XGBoost is taking {training_time} seconds, "
+            f"which is longer than expected (900 seconds)."
+        )
+
+    if prediction_time > 450:
+        raise RuntimeError(
+            f"Batch prediction on XGBoost is taking {prediction_time} seconds, "
+            f"which is longer than expected (450 seconds)."
+        )
+
 
 if __name__ == "__main__":
     main()
