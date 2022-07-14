@@ -136,21 +136,7 @@ class FQETorchModel:
                 q_values, _ = self.q_model({"obs": obs}, [], None)
                 q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
 
-                # Compute pi(a | s) for each action a in policy.action_space
-                next_action_probs = []
-                tmp_minibatch = minibatch.copy()
-                for i in range(self.policy.action_space.n):
-                    tmp_minibatch[SampleBatch.ACTIONS] = (
-                        np.zeros_like(batch[SampleBatch.ACTIONS]) + i
-                    )
-                    tmp_probs = torch.exp(
-                        compute_log_likelihoods_from_input_dict(
-                            self.policy, tmp_minibatch
-                        )
-                    )
-                    next_action_probs.append(tmp_probs)
-                # Reshape action_probs to match q_values: batch_size * action_dim * _
-                next_action_probs = torch.stack(next_action_probs).transpose(1, 0)
+                next_action_probs = self._compute_action_probs(next_obs)
 
                 # Compute Q-values for next obs
                 with torch.no_grad():
@@ -190,18 +176,7 @@ class FQETorchModel:
         with torch.no_grad():
             q_values, _ = self.q_model({"obs": obs}, [], None)
         # Compute pi(a | s) for each action a in policy.action_space
-        action_probs = []
-        tmp_batch = batch.copy()
-        for i in range(self.policy.action_space.n):
-            tmp_batch[SampleBatch.ACTIONS] = (
-                np.zeros_like(batch[SampleBatch.ACTIONS]) + i
-            )
-            tmp_probs = torch.exp(
-                compute_log_likelihoods_from_input_dict(self.policy, tmp_batch)
-            )
-            action_probs.append(tmp_probs)
-        # Reshape action_probs to match q_values: batch_size * action_dim * _
-        action_probs = torch.stack(action_probs).transpose(1, 0)
+        action_probs = self._compute_action_probs(obs)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values
 
@@ -219,3 +194,26 @@ class FQETorchModel:
         }
 
         self.target_q_model.load_state_dict(model_state_dict)
+
+    def _compute_action_probs(self, obs: TensorType) -> TensorType:
+        """Compute action distribution over the action space.
+
+        Args:
+        obs: A tensor of observations of shape (batch_size * obs_dim)
+
+        Returns:
+        action_probs: A tensor of action probabilities
+        of shape (batch_size * action_dim)
+        """
+        action_probs = []
+        tmp_batch = SampleBatch()
+        tmp_batch[SampleBatch.OBS] = obs
+        for i in range(self.policy.action_space.n):
+            tmp_batch[SampleBatch.ACTIONS] = np.zeros((obs.shape[0])) + i
+            tmp_probs = torch.exp(
+                compute_log_likelihoods_from_input_dict(self.policy, tmp_batch)
+            )
+            action_probs.append(tmp_probs)
+        # Reshape action_probs to match q_values: batch_size * action_dim * _
+        action_probs = torch.stack(action_probs).transpose(1, 0)
+        return action_probs
