@@ -202,7 +202,7 @@ def test_basic_pipeline(ray_start_regular_shared):
 def test_window(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
-    ds = ray.data.range(10)
+    ds = ray.data.range(10, parallelism=10)
     pipe = ds.window(blocks_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
     pipe = pipe.rewindow(blocks_per_window=3)
@@ -214,7 +214,7 @@ def test_window(ray_start_regular_shared):
     assert datasets[2].take() == [6, 7, 8]
     assert datasets[3].take() == [9]
 
-    ds = ray.data.range(10)
+    ds = ray.data.range(10, parallelism=10)
     pipe = ds.window(blocks_per_window=5)
     assert str(pipe) == "DatasetPipeline(num_windows=2, num_stages=2)"
     pipe = pipe.rewindow(blocks_per_window=3)
