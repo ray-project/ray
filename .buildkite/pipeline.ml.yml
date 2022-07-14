@@ -377,7 +377,7 @@
     - DOC_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
     - pip install awscli
     - aws sts get-caller-identity
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-ray_air,-gpu,-py37,-post_wheel_build doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-ray_air,-gpu,-py37,-post_wheel_build doc/source/data/examples/...
 
 - label: ":book: :airplane: Ray AIR examples"
   conditions:
