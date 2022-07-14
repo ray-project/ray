@@ -3212,6 +3212,7 @@ class Dataset(Generic[T]):
                     self._splits = blocks.split(split_size=blocks_per_window)
                 try:
                     sizes = [s.size_bytes() for s in self._splits]
+                    num_blocks = [s.initial_num_blocks() for s in self._splits]
                     assert [s > 0 for s in sizes], sizes
 
                     def fmt(size_bytes):
@@ -3229,6 +3230,16 @@ class Dataset(Generic[T]):
                             fmt(int(np.mean(sizes))),
                         )
                     )
+                    logger.info(
+                        "Blocks per window: "
+                        "{} min, {} max, {} mean".format(
+                            min(num_blocks),
+                            max(num_blocks),
+                            int(np.mean(num_blocks)),
+                        )
+                    )
+                    # TODO(ekl): log a warning if the blocks per window are much less
+                    # than the available parallelism.
                 except Exception as e:
                     logger.info(
                         "Created DatasetPipeline with {} windows; "
