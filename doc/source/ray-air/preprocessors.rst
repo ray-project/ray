@@ -135,6 +135,7 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
 .. tabbed:: Tabular
 
     #. :class:`Categorizer <ray.data.preprocessors.Categorizer>`
+    #. :class:`Concatenator <ray.data.preprocessors.Concatenator>`
     #. :class:`FeatureHasher <ray.data.preprocessors.FeatureHasher>`
     #. :class:`LabelEncoder <ray.data.preprocessors.LabelEncoder>`
     #. :class:`MaxAbsScaler <ray.data.preprocessors.MaxAbsScaler>`
@@ -146,7 +147,6 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
     #. :class:`RobustScaler <ray.data.preprocessors.RobustScaler>`
     #. :class:`SimpleImputer <ray.data.preprocessors.SimpleImputer>`
     #. :class:`StandardScaler <ray.data.preprocessors.StandardScaler>`
-    #. :class:`SimpleImputer <ray.data.preprocessors.SimpleImputer>`
 
 .. tabbed:: Text
 
