@@ -91,7 +91,7 @@ def _ensure_workflow_initialized() -> None:
 
 @PublicAPI(stability="beta")
 def run(
-    dag_node: DAGNode,
+    dag: DAGNode,
     *args,
     workflow_id: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
@@ -131,7 +131,7 @@ def run(
         The running result.
     """
     return ray.get(
-        run_async(dag_node, *args, workflow_id=workflow_id, metadata=metadata, **kwargs)
+        run_async(dag, *args, workflow_id=workflow_id, metadata=metadata, **kwargs)
     )
 
 
@@ -192,7 +192,7 @@ def run_async(
                 f"Workflow '{workflow_id}' is already running or pending."
             )
         if wf_exists:
-            return resume(workflow_id)
+            return resume_async(workflow_id)
         ignore_existing = ws.load_workflow_status() == WorkflowStatus.NONE
         ray.get(
             workflow_manager.submit_workflow.remote(
