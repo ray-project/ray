@@ -93,4 +93,6 @@ async def pandas_read_json(raw_request: Request):
     import pandas as pd
 
     raw_json = await raw_request.body()
-    return pd.read_json(raw_json.decode("utf-8"), **raw_request.query_params)
+    if isinstance(raw_json, bytes):
+        raw_json = raw_json.decode("utf-8")
+    return pd.read_json(raw_json, **raw_request.query_params)
