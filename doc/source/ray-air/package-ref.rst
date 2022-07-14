@@ -34,8 +34,8 @@ Trainer
 .. autoclass:: ray.train.trainer.BaseTrainer
     :members:
 
-Trainer Templates
-#################
+Abstract Classes
+################
 
 .. autoclass:: ray.train.data_parallel_trainer.DataParallelTrainer
     :members:
