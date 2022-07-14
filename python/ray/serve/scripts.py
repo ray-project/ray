@@ -7,6 +7,7 @@ from typing import Optional, Union
 
 import click
 import yaml
+import re
 
 import ray
 from ray import serve
@@ -42,11 +43,41 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
     "RAY_AGENT_ADDRESS environment variable."
 )
 
+
 def str_presenter(dumper: yaml.Dumper, data):
     # check for multiline string
-    if len(data.splitlines()) > 1: 
-        return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
-    return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+    if len(data.splitlines()) > 1:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+def process_dict_for_dump(data):
+    def remove_ansi_escape_sequences(input: str):
+        ansi_escape = re.compile(
+            r"""
+            \x1B  # ESC
+            (?:   # 7-bit C1 Fe (except CSI)
+                [@-Z\\-_]
+            |     # or [ for CSI, followed by a control sequence
+                \[
+                [0-?]*  # Parameter bytes
+                [ -/]*  # Intermediate bytes
+                [@-~]   # Final byte
+            )
+        """,
+            re.VERBOSE,
+        )
+
+        return ansi_escape.sub("", input)
+
+    for k, v in data.items():
+        if isinstance(v, dict):
+            data[k] = process_dict_for_dump(v)
+        elif isinstance(v, str):
+            data[k] = remove_ansi_escape_sequences(v)
+
+    return data
+
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
 def cli():
@@ -321,7 +352,13 @@ def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
         yaml.SafeDumper.add_representer(str, str_presenter)
-        print(yaml.safe_dump(app_status, default_flow_style=False, sort_keys=False))
+        print(
+            yaml.safe_dump(
+                process_dict_for_dump(app_status),
+                default_flow_style=False,
+                sort_keys=False,
+            )
+        )
 
 
 @cli.command(
