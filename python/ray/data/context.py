@@ -15,7 +15,7 @@ _context_lock = threading.Lock()
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
 # Datasets will avoid creating blocks smaller than this size in bytes on read.
-# This takes precedence over MIN_SAFE_PARALLELISM.
+# This takes precedence over DEFAULT_MIN_PARALLELISM.
 # We choose 100KiB to be consistent with the Ray object inline threshold (100KiB).
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 100 * 1024
 
