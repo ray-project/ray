@@ -24,8 +24,9 @@ class DirectMethod(OffPolicyEstimator):
     Fitted-Q Evaluation (FQE). You can also implement your own model
     and pass it in as `q_model_config = {"type": your_model_class, **your_kwargs}`.
 
-    This estimator computes the expected return for \pi_e as:
-    V(\pi_e) = \sum_{a \in A} \pi_e(a_0 | s_0) Q(s_0, a_0)
+    This estimator computes the expected return for \pi_e for an episode as:
+    V(\pi_e) = \sum_{a \in A} \pi_e(a | s_0) Q(s_0, a)
+    and returns the mean and standard deviation over episodes.
 
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 

@@ -32,11 +32,12 @@ class DoublyRobust(OffPolicyEstimator):
 
     Consider an episode with length T. Let V_T = 0.
     For all t in {0, T - 1}, use the following recursive update:
-    V_t^DR = (\sum_{a \in A} \pi_e(a_t | s_t) Q(s_t, a_t))
+    V_t^DR = (\sum_{a \in A} \pi_e(a | s_t) Q(s_t, a))
         + p_t * (r_t + \gamma * V_{t+1}^DR - Q(s_t, a_t))
 
-    This estimator computes the expected return for \pi_e as:
+    This estimator computes the expected return for \pi_e for an episode as:
     V(\pi_e) = V_0^DR
+    and returns the mean and standard deviation over episodes.
 
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 

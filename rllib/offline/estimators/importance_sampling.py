@@ -17,8 +17,9 @@ class ImportanceSampling(OffPolicyEstimator):
     cumulative importance ratio at timestep t as:
     p_t = \sum_{t'=0}^t (\pi_e(a_{t'} | s_{t'}) / \pi_b(a_{t'} | s_{t'})).
 
-    This estimator computes the expected return for \pi_e as:
-    V(\pi_e) = \E[\sum_t \gamma ^ {t} * p_t * r_t]
+    This estimator computes the expected return for \pi_e for an episode as:
+    V(\pi_e) = \sum_t \gamma ^ {t} * p_t * r_t
+    and returns the mean and standard deviation over episodes.
 
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 
