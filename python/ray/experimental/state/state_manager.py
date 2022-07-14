@@ -39,11 +39,19 @@ from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoRequest,
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
+from ray.dashboard.consts import RAY_API_SERVER_GRPC_MAX_MESSAGE_SIZE
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.common import MAX_LIMIT
 
+
 logger = logging.getLogger(__name__)
+
+_STATE_MANAGER_GRPC_OPTIONS = [
+    *ray_constants.GLOBAL_GRPC_OPTIONS,
+    ("grpc.max_send_message_length", RAY_API_SERVER_GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", RAY_API_SERVER_GRPC_MAX_MESSAGE_SIZE),
+]
 
 
 def handle_grpc_network_errors(func):
@@ -157,7 +165,7 @@ class StateDataSourceClient:
 
     def register_raylet_client(self, node_id: str, address: str, port: int):
         full_addr = f"{address}:{port}"
-        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        options = _STATE_MANAGER_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             full_addr, options, asynchronous=True
         )
@@ -169,7 +177,7 @@ class StateDataSourceClient:
         self._id_id_map.pop(node_id)
 
     def register_agent_client(self, node_id, address: str, port: int):
-        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        options = _STATE_MANAGER_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             f"{address}:{port}", options=options, asynchronous=True
         )

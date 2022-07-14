@@ -15,7 +15,7 @@ from ray.experimental.state.api import (
 DEFAULT_RAY_TEST_MAX_ACTORS = int(1e3)
 DEFAULT_RAY_TEST_MAX_TASKS = int(1e5)
 DEFAULT_RAY_TEST_MAX_OBJECTS = int(1e6)
-DEFAULT_RAY_STATE_LIST_LIMIT = int(1e9)
+DEFAULT_RAY_STATE_LIST_LIMIT = int(1e6)
 
 # We set num_cpus to zero because this actor will mostly just block on I/O.
 @ray.remote(num_cpus=0)
@@ -170,7 +170,7 @@ def test_many_objects(num_objects, num_actors):
     waiting_actors = [
         actor.create_objs.remote(num_objects // num_actors, 100000) for actor in actors
     ]
-    for _ in tqdm.trange(len(actors), desc="Waiting actors to be create objects..."):
+    for _ in tqdm.trange(len(actors), desc="Waiting actors to create objects..."):
         objs, waiting_actors = ray.wait(waiting_actors)
         assert len(ray.get(*objs)) == num_objects // num_actors
 

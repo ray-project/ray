@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
 # FIXME(rickyyx)
-DEFAULT_LIMIT = int(5e6)
+DEFAULT_LIMIT = int(1e3)
 DEFAULT_LOG_LIMIT = 1000
 # FIXME(rickyyx)
-MAX_LIMIT = int(5e6)
+MAX_LIMIT = int(5e9)
 
 
 @unique
