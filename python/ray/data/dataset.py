@@ -38,6 +38,8 @@ from ray.data._internal.plan import (
     AllToAllStage,
     ExecutionPlan,
     OneToOneStage,
+)
+from ray.data._internal.stage_impl import (
     RandomizeBlocksStage,
     RepartitionStage,
 )
