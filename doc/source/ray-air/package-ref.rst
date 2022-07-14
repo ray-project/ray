@@ -23,8 +23,8 @@ Preprocessors
 
 .. autofunction:: ray.air.train_test_split
 
-Trainers
-~~~~~~~~
+Trainer
+~~~~~~~
 
 .. _air-trainer-ref:
 
@@ -40,10 +40,25 @@ Trainers
     :show-inheritance:
 
 Training Result
-~~~~~~~~~~~~~~~
+###############
 
 .. automodule:: ray.air.result
     :members:
+
+Training Session
+################
+
+.. automodule:: ray.air.session
+    :members:
+
+
+Trainer Configs
+###############
+
+.. automodule:: ray.air.config
+    :members:
+
+.. autoclass:: ray.air.config.CheckpointConfig
 
 Checkpoint
 ~~~~~~~~~~
@@ -53,8 +68,8 @@ Checkpoint
 .. automodule:: ray.air.checkpoint
     :members:
 
-Predictors
-~~~~~~~~~~
+Predictor
+~~~~~~~~~
 
 .. autoclass:: ray.train.predictor.Predictor
     :members:
@@ -85,22 +100,6 @@ Serving
 .. autoclass:: ray.serve.air_integrations.PredictorWrapper
 
 .. _air-results-ref:
-
-
-Configs
-~~~~~~~
-
-.. automodule:: ray.air.config
-    :members:
-
-.. autoclass:: ray.air.config.CheckpointConfig
-
-
-Session
-~~~~~~~
-
-.. automodule:: ray.air.session
-    :members:
 
 Trainer and Predictor Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
