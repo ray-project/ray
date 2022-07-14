@@ -39,7 +39,7 @@ See the documentation on :ref:`Trainers <air-trainer-ref>`.
 
 
 
-Trainer objects will produce a :ref:`Results <air-results-ref>` object after calling ``.fit()``.  These objects will contain training metrics as long as checkpoints to retrieve the best model.
+Trainer objects will produce a :ref:`Result <air-results-ref>` object after calling ``.fit()``.  These objects will contain training metrics as long as checkpoints to retrieve the best model.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python
