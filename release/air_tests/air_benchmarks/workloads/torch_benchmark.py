@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Dict
+from typing import Dict, Tuple
 
 import click
 import numpy as np
@@ -181,7 +181,7 @@ def train_torch_ray_air(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-) -> float:
+) -> Tuple[float, float]:
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.torch import TorchTrainer
@@ -189,6 +189,7 @@ def train_torch_ray_air(
     def train_loop(config):
         train_func(use_ray=True, config=config)
 
+    start_time = time.monotonic()
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
@@ -200,8 +201,10 @@ def train_torch_ray_air(
         },
     )
     result = trainer.fit()
+    time_taken = time.monotonic() - start_time
+
     print(f"Last result: {result.metrics}")
-    return result.metrics["loss"]
+    return time_taken, result.metrics["loss"]
 
 
 def train_torch_vanilla_worker(
@@ -233,7 +236,7 @@ def train_torch_vanilla(
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
     master_port: int = 12355,
-) -> float:
+) -> Tuple[float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
     import ray
@@ -266,6 +269,7 @@ def train_torch_vanilla(
         for rank in range(num_workers)
     ]
 
+    start_time = time.monotonic()
     run_commands_with_resources(
         cmds,
         resources={
@@ -273,13 +277,15 @@ def train_torch_vanilla(
             "GPU": int(use_gpu),
         },
     )
+    time_taken = time.monotonic() - start_time
 
+    loss = 0.0
     if os.path.exists(VANILLA_RESULT_JSON):
         with open(VANILLA_RESULT_JSON, "r") as f:
             result = json.load(f)
-        return result["loss"]
+        loss = result["loss"]
 
-    return 0.0
+    return time_taken, loss
 
 
 @click.group(help="Run Torch benchmarks")
@@ -322,41 +328,33 @@ def run(
     for run in range(1, num_runs + 1):
         print(f"[Run {run}/{num_runs}] Running Torch Ray benchmark")
 
-        start_time = time.monotonic()
-        loss_ray = train_torch_ray_air(
+        time_ray, loss_ray = train_torch_ray_air(
             num_workers=num_workers,
             cpus_per_worker=cpus_per_worker,
             use_gpu=use_gpu,
             config=config,
         )
-        time_taken = time.monotonic() - start_time
-
-        time_ray = time_taken
 
         print(
             f"[Run {run}/{num_runs}] Finished Ray training ({num_epochs} epochs) in "
-            f"{time_taken:.2f} seconds. Observed loss = {loss_ray:.4f}"
+            f"{time_ray:.2f} seconds. Observed loss = {loss_ray:.4f}"
         )
 
         time.sleep(5)
 
         print(f"[Run {run}/{num_runs}] Running Torch vanilla benchmark")
 
-        start_time = time.monotonic()
-        loss_vanilla = train_torch_vanilla(
+        time_vanilla, loss_vanilla = train_torch_vanilla(
             num_workers=num_workers,
             cpus_per_worker=cpus_per_worker,
             use_gpu=use_gpu,
             config=config,
             master_port=master_port + run,
         )
-        time_taken = time.monotonic() - start_time
-
-        time_vanilla = time_taken
 
         print(
             f"[Run {run}/{num_runs}] Finished vanilla training ({num_epochs} epochs) "
-            f"in {time_taken:.2f} seconds. Observed loss = {loss_vanilla:.4f}"
+            f"in {time_vanilla:.2f} seconds. Observed loss = {loss_vanilla:.4f}"
         )
 
         print(
