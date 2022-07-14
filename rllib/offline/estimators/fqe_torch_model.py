@@ -7,8 +7,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
-from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
-import numpy as np
 from gym.spaces import Discrete
 
 torch, nn = try_import_torch()
