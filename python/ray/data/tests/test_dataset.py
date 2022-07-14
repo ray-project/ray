@@ -3977,6 +3977,7 @@ def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
 
     # TODO(swang): fix this
     if not use_push_based_shuffle:
+        assert range(100).random_shuffle(num_blocks=1).num_blocks() == 1
         r1 = range(100).random_shuffle(num_blocks=1).take(999)
         r2 = range(100).random_shuffle(num_blocks=1).take(999)
         assert r1 != r2, (r1, r2)
