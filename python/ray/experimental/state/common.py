@@ -71,6 +71,7 @@ class ListApiOptions:
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
         self.timeout = int(self.timeout * self._server_timeout_multiplier)
+        assert self.timeout != 0, "0 second timeout is not supported."
         if self.filters is None:
             self.filters = []
 
