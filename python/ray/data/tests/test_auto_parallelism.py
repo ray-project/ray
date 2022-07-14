@@ -1,5 +1,5 @@
 import pytest
-from dataclasses import dataclass
+from dataclasses import dataclass, astuple
 
 import ray
 from ray.data.context import DatasetContext
@@ -76,29 +76,23 @@ TEST_CASES = [
 ]
 
 
-def run_test(test: TestCase):
-    print("TESTING", test)
-
+@pytest.mark.parametrize(
+    "avail_cpus,data_size,expected",
+    [astuple(test) for test in TEST_CASES],
+)
+def test_autodetect_parallelism(avail_cpus, data_size, expected):
     class MockReader:
-        def __init__(self, size):
-            self.size = size
-
         def estimate_inmemory_data_size(self):
-            return self.size
+            return data_size
 
     result, _ = _autodetect_parallelism(
         parallelism=-1,
         cur_pg=None,
         ctx=DatasetContext.get_current(),
-        reader=MockReader(test.data_size),
-        avail_cpus=test.avail_cpus,
+        reader=MockReader(),
+        avail_cpus=avail_cpus,
     )
-    assert result == test.expected_parallelism, (result, test)
-
-
-def test_autodetect_parallelism():
-    for test in TEST_CASES:
-        run_test(test)
+    assert result == expected, (result, expected)
 
 
 def test_auto_parallelism_basic(shutdown_only):
