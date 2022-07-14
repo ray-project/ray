@@ -3238,6 +3238,8 @@ class Dataset(Generic[T]):
                             int(np.mean(num_blocks)),
                         )
                     )
+                    # TODO(ekl): log a warning if the blocks per window are much less
+                    # than the available parallelism.
                 except Exception as e:
                     logger.info(
                         "Created DatasetPipeline with {} windows; "
