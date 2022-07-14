@@ -22,7 +22,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     w_t = \sum_{i \in D} p^(i)_t / |D|
 
     This estimator computes the expected return for \pi_e for an episode as:
-    V(\pi_e) = \E[\sum_t \gamma ^ {t} * (p_t / w_t) * r_t]
+    V^{\pi_e}(s_0) = \E[\sum_t \gamma ^ {t} * (p_t / w_t) * r_t]
     and returns the mean and standard deviation over episodes.
 
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""

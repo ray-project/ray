@@ -36,7 +36,7 @@ class DoublyRobust(OffPolicyEstimator):
         + p_t * (r_t + \gamma * V_{t+1}^DR - Q(s_t, a_t))
 
     This estimator computes the expected return for \pi_e for an episode as:
-    V(\pi_e) = V_0^DR
+    V^{\pi_e}(s_0) = V_0^DR
     and returns the mean and standard deviation over episodes.
 
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""

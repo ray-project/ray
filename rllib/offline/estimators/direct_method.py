@@ -25,7 +25,7 @@ class DirectMethod(OffPolicyEstimator):
     and pass it in as `q_model_config = {"type": your_model_class, **your_kwargs}`.
 
     This estimator computes the expected return for \pi_e for an episode as:
-    V(\pi_e) = \sum_{a \in A} \pi_e(a | s_0) Q(s_0, a)
+    V^{\pi_e}(s_0) = \sum_{a \in A} \pi_e(a | s_0) Q(s_0, a)
     and returns the mean and standard deviation over episodes.
 
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
