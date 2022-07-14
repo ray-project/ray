@@ -68,14 +68,9 @@ def test_many_tasks(num_tasks: int):
         limit=DEFAULT_RAY_STATE_LIST_LIMIT,
     )
 
+    print("Waiting for tasks to finish...")
     ray.get(signal.send.remote())
-    # Wait until all tasks finish
-    outputs = []
-    for _ in tqdm.trange(num_tasks, desc="Ensuring all tasks have finished"):
-        done, results = ray.wait(results)
-        v = ray.get(done[0])
-        assert v >= 0
-        outputs.append(v)
+    outputs = ray.get(results)
 
     pi = sum(outputs) * 4.0 / num_tasks / SAMPLES
     assert pi > 3 and pi < 4, f"Have a Pi={pi} from another universe."
@@ -204,6 +199,8 @@ def test_large_log_file(log_file_size_byte: int):
             while log_file_size_byte > 0:
                 n = min(log_file_size_byte, 4096)
                 chunk = "".join(random.choices(string.ascii_letters, k=n))
+                # This currently prints LOTS of things to the console from the worker process.
+                # Not sure if we could disable that.
                 sys.stdout.writelines([chunk])
                 ctx.update(chunk.encode())
                 log_file_size_byte -= n
