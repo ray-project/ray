@@ -36,7 +36,7 @@ steps:
     # - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/ci.sh test_core; fi
     # - echo $?
     # The next command will be sharded into $parallelism shards.
-    - . ./ci/ci.sh test_python
+    - . ./ci/ci.sh test_core
 
 - label: ":windows: Wheels"
   commands:
