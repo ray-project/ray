@@ -33,7 +33,8 @@ steps:
     - conda init
     - . ./ci/ci.sh init
     - . ./ci/ci.sh build
-    - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/ci.sh test_core; fi
+    #- if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/ci.sh test_core; fi
+    - ls sadf
     - echo "hello"
     # The next command will be sharded into $parallelism shards.
     # - . ./ci/ci.sh test_python
