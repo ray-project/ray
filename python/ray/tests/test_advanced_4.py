@@ -2,7 +2,6 @@ import mock
 import subprocess
 import sys
 
-
 import pytest
 
 import ray
