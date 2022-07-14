@@ -35,7 +35,6 @@ py_test_run_all_notebooks(
         "feast_example.ipynb",  # REGRESSION
         "rl_offline_example.ipynb",  # REGRESSION
         "rl_online_example.ipynb",  # REGRESSION
-        "convert_existing_pytorch_code_to_ray_air.ipynb", # REGRESSION
         "tfx_tabular_train_to_serve.ipynb", # REGRESSION
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],

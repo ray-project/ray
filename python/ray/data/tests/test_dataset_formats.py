@@ -268,7 +268,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):
-    blocks = ray.data.range(10).get_internal_block_refs()
+    blocks = ray.data.range(10, parallelism=10).get_internal_block_refs()
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
@@ -2517,6 +2517,7 @@ def test_csv_read_partitioned_with_filter_multikey(
             data_path,
             partition_filter=partition_path_filter,
             filesystem=fs,
+            parallelism=100,
         )
         assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
         assert ray.get(kept_file_counter.get.remote()) == 6

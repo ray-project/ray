@@ -1,10 +1,10 @@
+import logging
+import threading
 import urllib
 import warnings
-import threading
-import logging
-from dataclasses import fields
-from typing import Dict, Generator, List, Optional, Tuple, Union, Any
 from contextlib import contextmanager
+from dataclasses import fields
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
 

@@ -42,7 +42,7 @@ class HuggingFacePredictor(Predictor):
         cls,
         checkpoint: Checkpoint,
         *,
-        pipeline: Optional[Type[Pipeline]] = None,
+        pipeline_cls: Optional[Type[Pipeline]] = None,
         **pipeline_kwargs,
     ) -> "HuggingFacePredictor":
         """Instantiate the predictor from a Checkpoint.
@@ -50,24 +50,27 @@ class HuggingFacePredictor(Predictor):
         The checkpoint is expected to be a result of ``HuggingFaceTrainer``.
 
         Args:
-            checkpoint: The checkpoint to load the model and
+            checkpoint: The checkpoint to load the model, tokenizer and
                 preprocessor from. It is expected to be from the result of a
                 ``HuggingFaceTrainer`` run.
-            pipeline: A ``transformers.pipelines.Pipeline`` class to use.
+            pipeline_cls: A ``transformers.pipelines.Pipeline`` class to use.
                 If not specified, will use the ``pipeline`` abstraction
                 wrapper.
             **pipeline_kwargs: Any kwargs to pass to the pipeline
                 initialization. If ``pipeline`` is None, this must contain
-                the 'task' argument. Cannot contain 'model'.
+                the 'task' argument. Cannot contain 'model'. Can be used
+                to override the tokenizer with 'tokenizer'.
         """
-        if not pipeline and "task" not in pipeline_kwargs:
+        if not pipeline_cls and "task" not in pipeline_kwargs:
             raise ValueError(
-                "If `pipeline` is not specified, 'task' must be passed as a kwarg."
+                "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
-        pipeline = pipeline or pipeline_factory
+        pipeline_cls = pipeline_cls or pipeline_factory
         with checkpoint.as_directory() as checkpoint_path:
             preprocessor = load_preprocessor_from_dir(checkpoint_path)
-            pipeline = pipeline(model=checkpoint_path, **pipeline_kwargs)
+            # Tokenizer will be loaded automatically (no need to specify
+            # `tokenizer=checkpoint_path`)
+            pipeline = pipeline_cls(model=checkpoint_path, **pipeline_kwargs)
         return cls(
             pipeline=pipeline,
             preprocessor=preprocessor,
@@ -87,19 +90,22 @@ class HuggingFacePredictor(Predictor):
         df.columns = [str(col) for col in df.columns]
         return df
 
+    @staticmethod
     def _convert_data_for_pipeline(
-        self, data: pd.DataFrame
+        data: pd.DataFrame, pipeline: Pipeline
     ) -> Union[list, pd.DataFrame]:
         """Convert the data into a format accepted by the pipeline.
 
         In most cases, this format is a list of strings."""
-        # Special case
-        if isinstance(self.pipeline, TableQuestionAnsweringPipeline):
+        # Special case where pd.DataFrame is allowed.
+        if isinstance(pipeline, TableQuestionAnsweringPipeline):
+            # TODO(team-ml): This may be a performance bottleneck.
             return data
-        # Otherwise, a list of columns as lists
+
+        # Otherwise, a list of columns as lists.
         columns = [data[col].to_list() for col in data.columns]
-        # Flatten if it's only one column
-        if len(columns) == 1:
+        # Flatten if it's only one column.
+        while isinstance(columns, list) and len(columns) == 1:
             columns = columns[0]
         return columns
 
@@ -163,5 +169,5 @@ class HuggingFacePredictor(Predictor):
 
         data = data[feature_columns] if feature_columns else data
 
-        data = self._convert_data_for_pipeline(data)
+        data = self._convert_data_for_pipeline(data, self.pipeline)
         return self._predict(data, **pipeline_call_kwargs)
