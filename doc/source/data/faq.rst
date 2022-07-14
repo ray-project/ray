@@ -300,7 +300,7 @@ particular model under different shuffling policies:
 * no shuffling,
 * local (per-shard) limited-memory shuffle buffer,
 * local (per-shard) shuffling,
-* windowed (psuedo-global) shuffling, and
+* windowed (pseudo-global) shuffling, and
 * fully global shuffling.
 
 From the perspective of keeping preprocessing time in check, as long as your data
