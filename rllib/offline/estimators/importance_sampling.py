@@ -11,8 +11,16 @@ import numpy as np
 class ImportanceSampling(OffPolicyEstimator):
     """The step-wise IS estimator.
 
-    Step-wise IS estimator described in https://arxiv.org/pdf/1511.03722.pdf,
-    https://arxiv.org/pdf/1911.06854.pdf"""
+    Let s_t, a_t, and r_t be the state, action, and reward at timestep t.
+
+    For behavior policy \pi_b and evaluation policy \pi_e, define the
+    cumulative importance ratio at timestep t as:
+    p_t = \sum_{t'=0}^t (\pi_e(a_{t'} | s_{t'}) / \pi_b(a_{t'} | s_{t'})).
+
+    This estimator computes the expected return for \pi_e as:
+    V(\pi_e) = \E[\sum_t \gamma ^ {t} * p_t * r_t]
+
+    For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
