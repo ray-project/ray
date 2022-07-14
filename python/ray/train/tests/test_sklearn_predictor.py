@@ -146,7 +146,7 @@ def test_batch_prediction_with_set_cpus(ray_start_4_cpus):
 
 def test_sklearn_predictor_no_training():
     with tempfile.TemporaryDirectory() as tmpdir:
-        checkpoint = to_air_checkpoint(path=tmpdir, estimator=model)
+        checkpoint = to_air_checkpoint(estimator=model, path=tmpdir)
         batch_predictor = BatchPredictor.from_checkpoint(checkpoint, SklearnPredictor)
         test_dataset = ray.data.from_pandas(
             pd.DataFrame(dummy_data, columns=["A", "B"])

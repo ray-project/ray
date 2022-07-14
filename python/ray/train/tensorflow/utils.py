@@ -14,14 +14,14 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 def to_air_checkpoint(
-    model: keras.Model, preprocessor: Optional["Preprocessor"] = None
+    model: keras.Model, *, preprocessor: Optional["Preprocessor"] = None
 ) -> Checkpoint:
     """Convert a pretrained model to AIR checkpoint for serve or inference.
 
     Args:
         model: A pretrained model.
         preprocessor: A fitted preprocessor. The preprocessing logic will
-            be applied to serve/inference.
+            be applied to the inputs for serving/inference.
     Returns:
         A Ray Air checkpoint.
     """
