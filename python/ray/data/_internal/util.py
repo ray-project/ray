@@ -1,6 +1,7 @@
 import logging
 from typing import Union, Optional, TYPE_CHECKING
 from types import ModuleType
+import sys
 
 import ray
 from ray.data.context import DatasetContext
@@ -91,7 +92,7 @@ def _autodetect_parallelism(
         parallelism (which can be used to generate warnings about large blocks).
     """
     min_safe_parallelism = 1
-    max_reasonable_parallelism = 9999999
+    max_reasonable_parallelism = sys.maxsize
     if reader:
         mem_size = reader.estimate_inmemory_data_size()
         if mem_size is not None:
