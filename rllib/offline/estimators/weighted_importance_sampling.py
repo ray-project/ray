@@ -38,7 +38,8 @@ class WeightedImportanceSampling(OffPolicyEstimator):
             - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
             - v_gain_std: The standard deviation corresponding to v_gain
         """
-        self.check_can_estimate_for(batch)
+        self.convert_ma_batch_to_sample_batch(batch)
+        self.check_action_prob_in_batch(batch)
         estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
         for episode in batch.split_by_episode():
             rewards, old_prob = episode["rewards"], episode["action_prob"]

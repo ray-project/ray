@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, Any
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import SampleBatchType
@@ -75,7 +74,8 @@ class DoublyRobust(OffPolicyEstimator):
             - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
             - v_gain_std: The standard deviation corresponding to v_gain
         """
-        self.check_can_estimate_for(batch)
+        self.convert_ma_batch_to_sample_batch(batch)
+        self.check_action_prob_in_batch(batch)
         estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
         # Calculate doubly robust OPE estimates
         for episode in batch.split_by_episode():
@@ -121,15 +121,6 @@ class DoublyRobust(OffPolicyEstimator):
         Returns:
         A dict with key "loss" and value as the mean training loss.
         """
-        if isinstance(batch, MultiAgentBatch):
-            policy_keys = batch.policy_batches.keys()
-            if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
-                batch = batch.policy_batches[DEFAULT_POLICY_ID]
-            else:
-                raise ValueError(
-                    "Off-Policy Estimation is not implemented for "
-                    "multi-agent batches. You can set "
-                    "`off_policy_estimation_methods: {}` to resolve this."
-                )
+        self.convert_ma_batch_to_sample_batch(batch)
         losses = self.model.train(batch)
         return {"loss": np.mean(losses)}

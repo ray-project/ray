@@ -41,17 +41,17 @@ class OffPolicyEstimator:
         raise NotImplementedError
 
     @DeveloperAPI
-    def check_can_estimate_for(self, batch: SampleBatchType) -> None:
-        """Checks if we support off policy estimation (OPE) on given batch.
+    def convert_ma_batch_to_sample_batch(self, batch: SampleBatchType) -> None:
+        """Converts a MultiAgentBatch to a SampleBatch if neccessary.
 
         Args:
-            batch: The batch to check.
+            batch: The batch to convert in-place.
 
         Raises:
-            ValueError: In case `action_prob` key is not in batch OR batch
-            is a MultiAgentBatch.
+            ValueError if the MultiAgentBatch has more than one policy_id
+            or if the policy_id is not `DEFAULT_POLICY_ID`
         """
-
+        # TODO: Make his a util to sample_batch.py
         if isinstance(batch, MultiAgentBatch):
             policy_keys = batch.policy_batches.keys()
             if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
@@ -62,6 +62,17 @@ class OffPolicyEstimator:
                     "multi-agent batches. You can set "
                     "`off_policy_estimation_methods: {}` to resolve this."
                 )
+
+    @DeveloperAPI
+    def check_action_prob_in_batch(self, batch: SampleBatchType) -> None:
+        """Checks if we support off policy estimation (OPE) on given batch.
+
+        Args:
+            batch: The batch to check.
+
+        Raises:
+            ValueError: In case `action_prob` key is not in batch
+        """
 
         if "action_prob" not in batch:
             raise ValueError(
