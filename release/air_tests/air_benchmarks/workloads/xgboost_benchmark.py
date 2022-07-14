@@ -16,7 +16,8 @@ from ray.train.xgboost import (
 from ray.train.batch_predictor import BatchPredictor
 
 _XGB_MODEL_PATH = "model.json"
-
+_TRAINING_TIME_THRESHOLD = 1000
+_PREDICTION_TIME_THRESHOLD = 450
 
 def run_and_time_it(f):
     """Runs f in a separate process and time it."""
@@ -83,16 +84,16 @@ def main():
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
-    if training_time > 900:
+    if training_time > _TRAINING_TIME_THRESHOLD:
         raise RuntimeError(
             f"Training on XGBoost is taking {training_time} seconds, "
-            f"which is longer than expected (900 seconds)."
+            f"which is longer than expected ({_TRAINING_TIME_THRESHOLD} seconds)."
         )
 
-    if prediction_time > 450:
+    if prediction_time > _PREDICTION_TIME_THRESHOLD:
         raise RuntimeError(
             f"Batch prediction on XGBoost is taking {prediction_time} seconds, "
-            f"which is longer than expected (450 seconds)."
+            f"which is longer than expected ({_PREDICTION_TIME_THRESHOLD} seconds)."
         )
 
 
