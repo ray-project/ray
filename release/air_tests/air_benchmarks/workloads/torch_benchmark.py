@@ -143,9 +143,24 @@ def train_func(use_ray: bool, config: Dict):
     if use_ray:
         model = train.torch.prepare_model(model)
     else:
-        model = nn.parallel.DistributedDataParallel(model)
-        device = torch.device("cpu")
+        use_gpu = config.get("use_gpu", False)
+
+        if use_gpu:
+            assert torch.cuda.is_available(), "No GPUs available"
+            gpu_id = config.get("gpu_id", 0)
+            device = torch.device(f"cuda:{gpu_id}")
+            torch.cuda.set_device(device)
+        else:
+            device = torch.device("cpu")
+
         model = model.to(device)
+
+        if use_gpu:
+            model = nn.parallel.DistributedDataParallel(
+                model, device_ids=[gpu_id], output_device=gpu_id
+            )
+        else:
+            model = nn.parallel.DistributedDataParallel(model)
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
@@ -221,6 +236,7 @@ def train_torch_vanilla_worker(
     os.environ["MASTER_PORT"] = str(master_port)
     distributed.init_process_group(backend=backend, rank=rank, world_size=world_size)
 
+    config["use_pgu"] = use_gpu
     train_func(use_ray=False, config=config)
 
     distributed.destroy_process_group()
