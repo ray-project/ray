@@ -784,6 +784,7 @@ class Impala(Algorithm):
 
         for batch in batches:
             self.batch_being_built.append(batch)
+
             aggregate_into_larger_batch()
 
     def get_samples_from_workers(
@@ -820,33 +821,10 @@ class Impala(Algorithm):
 
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
-        learner_infos = []
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
 
-        # Loop through output queue and update our counts.
-        for _ in range(self._learner_thread.outqueue.qsize()):
-            if self._learner_thread.is_alive():
-                (
-                    env_steps,
-                    agent_steps,
-                    learner_results,
-                ) = self._learner_thread.outqueue.get(timeout=0.001)
-                num_env_steps_trained += env_steps
-                num_agent_steps_trained += agent_steps
-                if learner_results:
-                    learner_infos.append(learner_results)
-            else:
-                raise RuntimeError("The learner thread died while training")
-        # Nothing new happened since last time, use the same learner stats.
-        if not learner_infos:
-            final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
-        # Accumulate learner stats using the `LearnerInfoBuilder` utility.
-        else:
-            builder = LearnerInfoBuilder()
-            for info in learner_infos:
-                builder.add_learn_on_batch_results_multi_agent(info)
-            final_learner_info = builder.finalize()
+        final_learner_info = self._learner_thread.add_learner_metrics({"info": {}})
 
         # Update the steps trained counters.
         self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
