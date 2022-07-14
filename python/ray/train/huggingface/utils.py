@@ -1,5 +1,4 @@
 import os
-import tempfile
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type, Union
 
 import torch
@@ -25,25 +24,45 @@ if TYPE_CHECKING:
 def to_air_checkpoint(
     model: Union[transformers.modeling_utils.PreTrainedModel, torch.nn.Module],
     tokenizer: Optional[transformers.PreTrainedTokenizer] = None,
+    *,
+    path: os.PathLike,
     preprocessor: Optional["Preprocessor"] = None,
-    path: Optional[str] = None,
 ) -> Checkpoint:
     """Convert a pretrained Transformers model to AIR checkpoint for serve or inference.
 
+    Example:
+
+    .. code-block:: python
+
+        import tempfile
+        from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+        from ray.train.huggingface import to_air_checkpoint, HuggingFacePredictor
+
+        model_checkpoint = "sshleifer/tiny-gpt2"
+        tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
+
+        model_config = AutoConfig.from_pretrained(model_checkpoint)
+        model = AutoModelForCausalLM.from_config(model_config)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = to_air_checkpoint(
+                model=model, tokenizer=tokenizer, path=tmpdir
+            )
+            predictor = HuggingFacePredictor.from_checkpoint(checkpoint)
+
     Args:
         model: Either a ``transformers.PreTrainedModel``, or a trained PyTorch model.
+        path: The directory where the checkpoint will be stored to.
         tokenizer: Tokenizer to be used in the Transformers pipeline
             during serving/inference.
         preprocessor: A fitted preprocessor. The preprocessing logic will
             be applied to the inputs for serving/inference.
-        path: The directory where the checkpoint will be stored to.
-            If None, a temporary directory will be created.
+
     Returns:
         A Ray AIR checkpoint.
 
     """
-    if not path:
-        path = tempfile.mkdtemp()
     if not isinstance(model, transformers.modeling_utils.PreTrainedModel):
         state_dict = model.state_dict()
         torch.save(state_dict, os.path.join(path, WEIGHTS_NAME))
