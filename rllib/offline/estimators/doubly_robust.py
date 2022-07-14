@@ -29,8 +29,7 @@ class DoublyRobust(OffPolicyEstimator):
         gamma: float,
         q_model_config: Dict = None,
     ):
-        """
-        Initializes a Doubly Robust OPE Estimator.
+        """Initializes a Doubly Robust OPE Estimator.
 
         Args:
             policy: Policy to evaluate.

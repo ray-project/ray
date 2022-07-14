@@ -27,8 +27,7 @@ class DirectMethod(OffPolicyEstimator):
         gamma: float,
         q_model_config: Dict = None,
     ):
-        """
-        Initializes a Direct Method OPE Estimator.
+        """Initializes a Direct Method OPE Estimator.
 
         Args:
             policy: Policy to evaluate.
