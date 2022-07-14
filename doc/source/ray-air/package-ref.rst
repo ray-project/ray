@@ -11,11 +11,14 @@ Components
 
 .. _air-preprocessor-ref:
 
-Preprocessors
-~~~~~~~~~~~~~
+Preprocessor
+~~~~~~~~~~~~
 
 .. autoclass:: ray.data.preprocessor.Preprocessor
     :members:
+
+Built-in Preprocessors
+######################
 
 .. automodule:: ray.data.preprocessors
     :members:
@@ -23,50 +26,16 @@ Preprocessors
 
 .. autofunction:: ray.air.train_test_split
 
+Trainer
+~~~~~~~
 
 .. _air-trainer-ref:
-
-Trainers and Predictors
-~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.trainer.BaseTrainer
     :members:
 
-.. autoclass:: ray.train.predictor.Predictor
-    :members:
-
-.. autoclass:: ray.train.predictor.DataBatchType
-
-.. autoclass:: ray.train.batch_predictor.BatchPredictor
-    :members:
-
-.. automodule:: ray.train.xgboost
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.lightgbm
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.tensorflow
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.torch
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.horovod
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.huggingface
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.sklearn
-    :members:
-    :show-inheritance:
+Abstract Classes
+################
 
 .. autoclass:: ray.train.data_parallel_trainer.DataParallelTrainer
     :members:
@@ -76,7 +45,50 @@ Trainers and Predictors
     :members:
     :show-inheritance:
 
+Training Result
+###############
 
+.. automodule:: ray.air.result
+    :members:
+
+Training Session
+################
+
+.. automodule:: ray.air.session
+    :members:
+
+Trainer Configs
+###############
+
+.. automodule:: ray.air.config
+    :members:
+
+.. autoclass:: ray.air.config.CheckpointConfig
+
+Checkpoint
+~~~~~~~~~~
+
+.. _air-checkpoint-ref:
+
+.. automodule:: ray.air.checkpoint
+    :members:
+
+Predictor
+~~~~~~~~~
+
+.. autoclass:: ray.train.predictor.Predictor
+    :members:
+
+Data Types
+##########
+
+.. autoclass:: ray.train.predictor.DataBatchType
+
+Batch Predictor
+###############
+
+.. autoclass:: ray.train.batch_predictor.BatchPredictor
+    :members:
 
 .. _air-tuner-ref:
 
@@ -85,6 +97,9 @@ Tuner
 
 .. autoclass:: ray.tune.tuner.Tuner
     :members:
+
+Tuner Results
+#############
 
 .. automodule:: ray.tune.result_grid
     :members:
@@ -100,37 +115,62 @@ Serving
 
 .. _air-results-ref:
 
-Outputs
-~~~~~~~
+Trainer and Predictor Integrations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. _air-checkpoint-ref:
+XGBoost
+#######
 
-Checkpoint
+.. automodule:: ray.train.xgboost
+    :members:
+    :show-inheritance:
+
+LightGBM
+########
+
+.. automodule:: ray.train.lightgbm
+    :members:
+    :show-inheritance:
+
+TensorFlow
 ##########
 
-.. automodule:: ray.air.checkpoint
+.. automodule:: ray.train.tensorflow
     :members:
+    :show-inheritance:
 
-Result
-######
+PyTorch
+#######
 
-.. automodule:: ray.air.result
+.. automodule:: ray.train.torch
     :members:
+    :show-inheritance:
 
+Horovod
+#######
 
-Configs
-~~~~~~~
-
-.. automodule:: ray.air.config
+.. automodule:: ray.train.horovod
     :members:
+    :show-inheritance:
 
-.. autoclass:: ray.air.config.CheckpointConfig
+HuggingFace
+###########
 
+.. automodule:: ray.train.huggingface
+    :members:
+    :show-inheritance:
+
+Scikit-Learn
+############
+
+.. automodule:: ray.train.sklearn
+    :members:
+    :show-inheritance:
 
 .. _air-builtin-callbacks:
 
-Callbacks
-~~~~~~~~~
+Monitoring Integrations
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Comet
 #####
@@ -154,9 +194,3 @@ Weights and Biases
 .. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
 
 .. _air-session-ref:
-
-Session
-~~~~~~~
-
-.. automodule:: ray.air.session
-    :members:
