@@ -593,7 +593,7 @@ class ApexDQN(DQN):
                 # the minimum threshold yet.
                 if item:
                     self.learner_thread.inqueue.put(
-                        self.replay_sample_batches[0], timeout=0.001
+                        self.replay_sample_batches[0], block=True
                     )
                     self.replay_sample_batches.pop(0)
             except queue.Full:
