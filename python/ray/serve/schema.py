@@ -126,13 +126,12 @@ class DeploymentSchema(
     autoscaling_config: Dict = Field(
         default=None,
         description=(
-            "[EXPERIMENTAL] Config specifying autoscaling "
+            "Config specifying autoscaling "
             "parameters for the deployment's number of replicas. "
             "If null, the deployment won't autoscale its number of "
             "replicas; the number of replicas will be fixed at "
             "num_replicas."
         ),
-        alias="_autoscaling_config",
     )
     graceful_shutdown_wait_loop_s: float = Field(
         default=None,
