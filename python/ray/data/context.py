@@ -11,7 +11,12 @@ _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
 
 # The max target block size in bytes for reads and transformations.
+# We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
+
+# Datasets will avoid creating blocks smaller than this size in bytes on read.
+# This takes precedence over DEFAULT_MIN_PARALLELISM.
+DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
 # Whether block splitting is on by default
 DEFAULT_BLOCK_SPLITTING_ENABLED = False
@@ -33,8 +38,9 @@ DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
 # Whether to furthermore fuse prior map tasks with shuffle stages.
 DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
 
-# Minimum amount of parallelism to auto-detect for a dataset.
-DEFAULT_MIN_PARALLELISM = 8
+# Minimum amount of parallelism to auto-detect for a dataset. Note that the min
+# block size config takes precedence over this.
+DEFAULT_MIN_PARALLELISM = 200
 
 # Wether to use actor based block prefetcher.
 DEFAULT_ACTOR_PREFETCHER_ENABLED = True
@@ -64,6 +70,7 @@ class DatasetContext:
         block_owner: ray.actor.ActorHandle,
         block_splitting_enabled: bool,
         target_max_block_size: int,
+        target_min_block_size: int,
         enable_pandas_block: bool,
         optimize_fuse_stages: bool,
         optimize_fuse_read_stages: bool,
@@ -80,6 +87,7 @@ class DatasetContext:
         self.block_owner = block_owner
         self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
+        self.target_min_block_size = target_min_block_size
         self.enable_pandas_block = enable_pandas_block
         self.optimize_fuse_stages = optimize_fuse_stages
         self.optimize_fuse_read_stages = optimize_fuse_read_stages
@@ -110,6 +118,7 @@ class DatasetContext:
                     block_owner=None,
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
+                    target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
                     optimize_fuse_stages=DEFAULT_OPTIMIZE_FUSE_STAGES,
                     optimize_fuse_read_stages=DEFAULT_OPTIMIZE_FUSE_READ_STAGES,
