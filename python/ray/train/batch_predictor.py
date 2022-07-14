@@ -167,7 +167,16 @@ class BatchPredictor:
         *,
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
-        **kwargs,
+        # The remaining args are from predict().
+        feature_columns: Optional[List[str]] = None,
+        keep_columns: Optional[List[str]] = None,
+        batch_size: int = 4096,
+        min_scoring_workers: int = 1,
+        max_scoring_workers: Optional[int] = None,
+        num_cpus_per_worker: int = 1,
+        num_gpus_per_worker: int = 0,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        **predict_kwargs,
     ) -> ray.data.DatasetPipeline:
         """Setup a prediction pipeline for batch scoring.
 
@@ -211,7 +220,22 @@ class BatchPredictor:
                 This will be treated as an upper bound for the window size, but each
                 window will still include at least one block. This is mutually
                 exclusive with ``blocks_per_window``.
-            kwargs: Keyword arguments passed to BatchPredictor.predict().
+            feature_columns: List of columns in data to use for prediction. Columns not
+                specified will be dropped from `data` before being passed to the
+                predictor. If None, use all columns.
+            keep_columns: List of columns in `data` to include in the prediction result.
+                This is useful for calculating final accuracies/metrics on the result
+                dataset. If None, the columns in the output dataset will contain just
+                the prediction results.
+            batch_size: Split dataset into batches of this size for prediction.
+            min_scoring_workers: Minimum number of scoring actors.
+            max_scoring_workers: If set, specify the maximum number of scoring actors.
+            num_cpus_per_worker: Number of CPUs to allocate per scoring worker.
+            num_gpus_per_worker: Number of GPUs to allocate per scoring worker.
+            ray_remote_args: Additional resource requirements to request from
+                ray.
+            predict_kwargs: Keyword arguments passed to the predictor's
+                ``predict()`` method.
 
         Returns:
             DatasetPipeline that generates scoring results.
@@ -227,4 +251,15 @@ class BatchPredictor:
             blocks_per_window=blocks_per_window, bytes_per_window=bytes_per_window
         )
 
-        return self.predict(pipe)
+        return self.predict(
+            pipe,
+            batch_size=batch_size,
+            feature_columns=feature_columns,
+            keep_columns=keep_columns,
+            min_scoring_workers=min_scoring_workers,
+            max_scoring_workers=max_scoring_workers,
+            num_cpus_per_worker=num_cpus_per_worker,
+            num_gpus_per_worker=num_gpus_per_worker,
+            ray_remote_args=ray_remote_args,
+            **predict_kwargs,
+        )

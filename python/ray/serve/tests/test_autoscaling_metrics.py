@@ -72,7 +72,7 @@ class TestInMemoryMetricsStore:
 
 def test_e2e(serve_instance):
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 1,
@@ -87,8 +87,7 @@ def test_e2e(serve_instance):
         def __call__(self):
             time.sleep(0.5)
 
-    A.deploy()
-    handle = A.get_handle()
+    handle = serve.run(A.bind())
     [handle.remote() for _ in range(100)]
 
     # Wait for metrics to propagate

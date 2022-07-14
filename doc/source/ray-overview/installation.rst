@@ -43,30 +43,38 @@ You can install the nightly Ray wheels via the following links. These daily rele
   # `pip install -U 'ray[default] @ LINK_TO_WHEEL.whl'`
 
 
-===================  ===================  ======================
-       Linux                MacOS         Windows (beta)
-===================  ===================  ======================
-`Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
-`Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
-`Linux Python 3.7`_  `MacOS Python 3.7`_  `Windows Python 3.7`_
-`Linux Python 3.6`_  `MacOS Python 3.6`_
-===================  ===================  ======================
+====================  ====================  =======================
+       Linux                 MacOS          Windows (beta)
+====================  ====================  =======================
+`Linux Python 3.10`_  `MacOS Python 3.10`_  `Windows Python 3.10`_
+`Linux Python 3.9`_   `MacOS Python 3.9`_   `Windows Python 3.9`_
+`Linux Python 3.8`_   `MacOS Python 3.8`_   `Windows Python 3.8`_
+`Linux Python 3.7`_   `MacOS Python 3.7`_   `Windows Python 3.7`_
+`Linux Python 3.6`_   `MacOS Python 3.6`_
+====================  ====================  =======================
+
+.. note::
+
+  Python 3.10 support is currently experimental.
 
 .. note::
 
   On Windows, support for multi-node Ray clusters is currently experimental and untested.
   If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
+.. _`Linux Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
 .. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
 
+.. _`MacOS Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_10_15_universal2.whl
 .. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
 .. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-macosx_10_15_intel.whl
 
+.. _`Windows Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-win_amd64.whl
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-win_amd64.whl
 .. _`Windows Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-win_amd64.whl
@@ -227,18 +235,22 @@ If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a d
 
 .. code-block:: bash
 
-  conda create --name ray
+  conda config --env --add channels conda-forge
+  conda env create -n ray  # works with mamba too
   conda activate ray
-  conda install --name ray pip
-  pip install ray
+  pip install ray  # or `conda install ray-core`
 
-Use ``pip list`` to confirm that ``ray`` is installed.
+For a complete list of available ``ray`` libraries on Conda-forge, have a look
+at: https://github.com/conda-forge/ray-packages-feedstock
+
+.. note::
+
+  Ray conda packages are maintained by the community, not the Ray team. While
+  using a conda environment, it is recommended to install Ray from PyPi using
+  `pip install ray` in the newly created environment.
 
 .. _`Anaconda`: https://www.anaconda.com/
 .. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
-
-
-
 
 Building Ray from Source
 ------------------------

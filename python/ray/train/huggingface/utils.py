@@ -13,11 +13,13 @@ from ray.air._internal.checkpointing import (
 )
 from ray.air._internal.torch_utils import load_torch_model
 from ray.air.checkpoint import Checkpoint
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 def load_checkpoint(
     checkpoint: Checkpoint,
     model: Union[Type[transformers.modeling_utils.PreTrainedModel], torch.nn.Module],
