@@ -100,6 +100,13 @@ class HyperBandForBOHB(HyperBandScheduler):
             # BOHB Specific. This hack existed in old Ray versions
             # and was removed, but it needs to be brought back
             # as otherwise the BOHB doesn't behave as intended.
+            # The default concurrency limiter works by discarding
+            # new suggestions if there are more running trials
+            # than the limit. That doesn't take into account paused
+            # trials. With BOHB, this leads to N trials finishing
+            # completely and then another N trials starting,
+            # instead of trials being paused and resumed in brackets
+            # as intended.
             # There should be a better API for this.
             # TODO(team-ml): Refactor alongside HyperBandForBOHB
             trial_runner._search_alg.searcher.on_pause(trial.trial_id)

@@ -258,10 +258,8 @@ class TuneBOHB(Searcher):
         self, trial_id: str, result: Optional[Dict] = None, error: bool = False
     ):
         del self.trial_to_params[trial_id]
-        if trial_id in self.paused:
-            self.paused.remove(trial_id)
-        if trial_id in self.running:
-            self.running.remove(trial_id)
+        self.paused.discard(trial_id)
+        self.running.discard(trial_id)
 
     def to_wrapper(self, trial_id: str, result: Dict) -> _BOHBJobWrapper:
         return _BOHBJobWrapper(
