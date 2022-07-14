@@ -22,7 +22,7 @@ class DummyPredictor(Predictor):
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "DummyPredictor":
         checkpoint_data = checkpoint.to_dict()
-        return DummyPredictor(**checkpoint_data)
+        return cls(**checkpoint_data)
 
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         return data * self.factor
