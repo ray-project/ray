@@ -501,7 +501,7 @@ class RayServeReplica:
                 )
 
         # Explicitly call the del method to trigger clean up.
-        # We set the del method to noop after succssifully calling it so the
+        # We set the del method to noop after successfully calling it so the
         # destructor is called only once.
         try:
             if hasattr(self.callable, "__del__"):
