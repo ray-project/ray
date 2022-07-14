@@ -91,6 +91,7 @@ def _autodetect_parallelism(
         parallelism (which can be used to generate warnings about large blocks).
     """
     min_safe_parallelism = 1
+    max_reasonable_parallelism = 9999999
     if reader:
         mem_size = reader.estimate_inmemory_data_size()
         if mem_size is not None:
@@ -100,7 +101,6 @@ def _autodetect_parallelism(
             )
     else:
         mem_size = None
-        max_reasonable_parallelism = 9999999
     if parallelism < 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
