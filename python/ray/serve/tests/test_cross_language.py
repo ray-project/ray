@@ -1,3 +1,5 @@
+import pytest
+
 import ray
 from ray.job_config import JobConfig
 from ray import serve
