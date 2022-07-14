@@ -184,8 +184,8 @@ class PredictorWrapper(SimpleSchemaIngress):
         predict_kwargs: Optional[Dict[str, Any]] = None,
         **predictor_from_checkpoint_kwargs,
     ):
-        predictor_cls = _load_predictor_cls(predictor_cls)
-        checkpoint = _load_checkpoint(checkpoint)
+        self.predictor_cls = _load_predictor_cls(predictor_cls)
+        self.checkpoint = _load_checkpoint(checkpoint)
 
         self.model = predictor_cls.from_checkpoint(
             checkpoint, **predictor_from_checkpoint_kwargs
@@ -251,12 +251,16 @@ class PredictorWrapper(SimpleSchemaIngress):
 
     def reconfigure(self, config):
         """Reconfigure model from config checkpoint"""
-        from ray.air.checkpoint import Checkpoint
+        if "predictor_cls" in config:
+            predictor_cls = _load_predictor_cls(config["predictor_cls"])
+        else:
+            predictor_cls = self.predictor_cls
 
-        predictor_cls = _load_predictor_cls(config["predictor_cls"])
-        self.model = predictor_cls.from_checkpoint(
-            Checkpoint.from_dict(config["checkpoint"])
-        )
+        if "checkpoint" in config:
+            checkpoint = _load_checkpoint(config["checkpoint"])
+        else:
+            checkpoint = self.checkpoint
+        self.model = predictor_cls.from_checkpoint(checkpoint)
 
 
 @serve.deployment
