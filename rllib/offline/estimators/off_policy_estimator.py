@@ -51,7 +51,7 @@ class OffPolicyEstimator:
             ValueError if the MultiAgentBatch has more than one policy_id
             or if the policy_id is not `DEFAULT_POLICY_ID`
         """
-        # TODO: Make his a util to sample_batch.py
+        # TODO: Make this a util to sample_batch.py
         if isinstance(batch, MultiAgentBatch):
             policy_keys = batch.policy_batches.keys()
             if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
