@@ -11,6 +11,8 @@ not stable across versions.
 State CLI
 ---------
 
+State CLI allows users to access the state of various resources (e.g., actor, task, object).
+
 .. click:: ray.experimental.state.state_cli:task_summary
    :prog: ray summary tasks
 
@@ -30,6 +32,9 @@ State CLI
 
 Log CLI
 -------
+
+Log CLI allows users to access the log from the cluster. 
+Note that only the logs from alive nodes are available through this API.
 
 .. click:: ray.scripts.scripts:ray_logs
     :prog: ray logs
