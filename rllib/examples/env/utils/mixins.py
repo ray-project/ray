@@ -28,10 +28,10 @@ class TwoPlayersTwoActionsInfoMixin(InfoAccumulationInterface, ABC):
 
     def _get_episode_info(self):
         return {
-            "CC": np.mean(self.cc_count),
-            "DD": np.mean(self.dd_count),
-            "CD": np.mean(self.cd_count),
-            "DC": np.mean(self.dc_count),
+            "CC": np.mean(self.cc_count).item(),
+            "DD": np.mean(self.dd_count).item(),
+            "CD": np.mean(self.cd_count).item(),
+            "DC": np.mean(self.dc_count).item(),
         }
 
     def _accumulate_info(self, ac0, ac1):
