@@ -518,7 +518,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
-    args = ["--yaml-dir=tuned_examples/pg"]
+    args = ["--yaml-dir=tuned_examples/pg", "--num-cpus=14"]
 )
 
 py_test(
