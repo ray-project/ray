@@ -26,10 +26,10 @@ Built-in Preprocessors
 
 .. autofunction:: ray.air.train_test_split
 
+.. _air-trainer-ref:
+
 Trainer
 ~~~~~~~
-
-.. _air-trainer-ref:
 
 .. autoclass:: ray.train.trainer.BaseTrainer
     :members:
