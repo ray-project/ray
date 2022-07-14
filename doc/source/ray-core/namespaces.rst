@@ -151,6 +151,64 @@ Named actors are only accessible within their namespaces.
         ray::GetActor<Counter>("orange");
         ray::Shutdown();
 
+Specifying namespace for named actors
+--------------------
+
+You can specify a namespace for a named actor while creating it. The created actor belongs to
+the specified namespace, no matter what namespaace of the current job is.
+
+.. tabbed:: Python
+
+    .. code-block:: python
+
+        # `ray start --head` has been run to launch a local cluster
+
+        import ray
+
+        @ray.remote
+        class Actor:
+            pass
+
+        ctx = ray.init("ray://localhost:10001")
+        # Create an actor with specified namespace.
+        Actor.options(name="my_actor", namespace="actor_namespace", lifetime="detached").remote()
+        # It is accessible in its namespace.
+        ray.get_actor("my_actor", namespace="actor_namespace")
+        ctx.disconnect()
+
+.. tabbed:: Java
+
+    .. code-block:: java
+
+        // `ray start --head` has been run to launch a local cluster.
+
+        System.setProperty("ray.address", "localhost:10001");
+        try {
+            Ray.init();
+            // Create an actor with specified namespace.
+            Ray.actor(Actor::new).setName("my_actor", "actor_namespace").remote();
+            // It is accessible in its namespace.
+            Ray.getActor("my_actor", "actor_namespace").isPresent(); // return true
+
+        } finally {
+            Ray.shutdown();
+        }
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // `ray start --head` has been run to launch a local cluster.
+
+        ray::RayConfig config;
+        config.address = "ray://localhost:10001";
+        ray::Init(config);
+        // Create an actor with specified namespace.
+        ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor", "actor_namespace").Remote();
+        // It is accessible in its namespace.
+        ray::GetActor<Counter>("orange");
+        ray::Shutdown();
+
 Anonymous namespaces
 --------------------
 
