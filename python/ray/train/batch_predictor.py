@@ -73,13 +73,13 @@ class BatchPredictor:
             ...     def _predict_pandas(self, data_df, **kwargs):
             ...         return data_df
             >>> # Create a batch predictor for this dummy predictor.
-            >>> batch_pred = BatchPredictor( # doctest: +SKIP
+            >>> batch_pred = BatchPredictor(
             ...     Checkpoint.from_dict({"x": 0}), DummyPredictor)
             >>> # Create a dummy dataset.
-            >>> ds = ray.data.from_pandas(pd.DataFrame({ # doctest: +SKIP
+            >>> ds = ray.data.from_pandas(pd.DataFrame({
             ...     "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
             >>> # Execute batch prediction using this predictor.
-            >>> predictions = batch_pred.predict(ds, # doctest: +SKIP
+            >>> predictions = batch_pred.predict(ds,
             ...     feature_columns=["feature_1"], keep_columns=["label"])
             >>> print(predictions)
             Dataset(num_blocks=1, num_rows=3, schema={a: int64, label: int64})
