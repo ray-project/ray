@@ -1296,7 +1296,7 @@ def test_concatenator():
     ds = ray.data.from_pandas(df)
     prep = Concatenator(output_column_name="huh")
     new_ds = prep.transform(ds)
-    assert "huh" in df
+    assert "huh" in set(new_ds.schema().names)
 
 
 def test_tokenizer():

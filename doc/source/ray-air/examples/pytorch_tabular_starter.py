@@ -108,19 +108,13 @@ num_features = len(train_dataset.schema().names) - 1
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
     train_loop_config={
-        # Training batch size
         "batch_size": 128,
-        # Number of epochs to train each task for.
         "num_epochs": 20,
-        # Number of columns of datset
         "num_features": num_features,
-        # Optimizer args.
         "lr": 0.001,
     },
     scaling_config={
-        # Number of workers to use for data parallelism.
-        "num_workers": 3,
-        # Whether to use GPU acceleration.
+        "num_workers": 3,  # Number of data parallel training workers.
         "use_gpu": False,
         # trainer_resources=0 so that the example works on Colab.
         "trainer_resources": {"CPU": 0},

@@ -16,14 +16,15 @@ class Concatenator(Preprocessor):
     will be dropped, while columns that are not included in concatenation
     will be preserved.
 
-
     Example:
+        >>> import ray
         >>> import pandas as pd
         >>> from ray.data.preprocessors import Concatenator
         >>> df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 3, 4],})
         >>> ds = ray.data.from_pandas(df)
-        >>> prep = Concatenator(["a", "b"], "c")
+        >>> prep = Concatenator(output_column_name="c")
         >>> new_ds = prep.transform(ds)
+        >>> assert set(new_ds.take(1)[0]) == {"c"}
 
     Args:
         output_column_name: output_column_name is a string that represents the
@@ -35,9 +36,13 @@ class Concatenator(Preprocessor):
         exclude: List of column names to be excluded
             from concatenation. Exclude takes precedence over include.
         dtype: Optional. The dtype to convert the output column array to.
+        raise_if_missing: Optional. If True, an error will be raised if any
+            of the columns to in 'include' or 'exclude' are
+            not present in the dataset schema.
 
     Raises:
-        ValueError if any element in `columns` does not exist in the dataset.
+        ValueError if `raise_if_missing=True` and any column name in
+            `include` or `exclude` does not exist in the dataset columns.
     """
 
     _is_fittable = False
@@ -48,15 +53,17 @@ class Concatenator(Preprocessor):
         include: Optional[List[str]] = None,
         exclude: Optional[List[str]] = None,
         dtype: Optional[np.dtype] = None,
+        raise_if_missing: bool = False,
     ):
         self.output_column_name = output_column_name
         self.included_columns = include
         self.excluded_columns = exclude or []
         self.dtype = dtype
+        self.raise_if_missing = raise_if_missing
 
     def _validate(self, df: pd.DataFrame):
         total_columns = set(df)
-        if self.excluded_columns:
+        if self.excluded_columns and self.raise_if_missing:
             missing_columns = set(self.excluded_columns) - total_columns.intersection(
                 set(self.excluded_columns)
             )
@@ -64,7 +71,7 @@ class Concatenator(Preprocessor):
                 raise ValueError(
                     f"Missing columns specified in 'exclude': {missing_columns}"
                 )
-        if self.included_columns:
+        if self.included_columns and self.raise_if_missing:
             missing_columns = set(self.included_columns) - total_columns.intersection(
                 set(self.included_columns)
             )
