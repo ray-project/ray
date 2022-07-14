@@ -1254,7 +1254,7 @@ def test_concatenator():
         }
     )
     ds = ray.data.from_pandas(df)
-    prep = Concatenator(output_column="c")
+    prep = Concatenator(output_column_name="c")
     new_ds = prep.transform(ds)
     for i, row in enumerate(new_ds.take()):
         assert np.array_equal(row["c"].to_numpy(), np.array([i + 1, i + 1]))
@@ -1266,7 +1266,7 @@ def test_concatenator():
 
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)
-    prep = Concatenator(output_column="c", exclude=["b"])
+    prep = Concatenator(output_column_name="c", exclude=["b"])
 
     with pytest.raises(ValueError, match="'b'"):
         prep.transform(ds)
@@ -1294,7 +1294,7 @@ def test_concatenator():
     # check it works with string types
     df = pd.DataFrame({"a": ["string", "string2", "string3"]})
     ds = ray.data.from_pandas(df)
-    prep = Concatenator(output_column="huh")
+    prep = Concatenator(output_column_name="huh")
     new_ds = prep.transform(ds)
     assert "huh" in df
 

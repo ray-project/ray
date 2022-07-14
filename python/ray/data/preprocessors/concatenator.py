@@ -26,8 +26,8 @@ class Concatenator(Preprocessor):
         >>> new_ds = prep.transform(ds)
 
     Args:
-        output_column: output_column is a string that represents the
-            name of the outputted, concatenated tensor. Defaults to
+        output_column_name: output_column_name is a string that represents the
+            name of the outputted, concatenated tensor column. Defaults to
             "concat_out".
         include: A list of column names to be included for
             concatenation. If None, then all columns will be included.
@@ -44,12 +44,12 @@ class Concatenator(Preprocessor):
 
     def __init__(
         self,
-        output_column: str = "concat_out",
+        output_column_name: str = "concat_out",
         include: Optional[List[str]] = None,
         exclude: Optional[List[str]] = None,
         dtype: Optional[np.dtype] = None,
     ):
-        self.output_column = output_column
+        self.output_column_name = output_column_name
         self.included_columns = include
         self.excluded_columns = exclude or []
         self.dtype = dtype
@@ -83,12 +83,12 @@ class Concatenator(Preprocessor):
         columns_to_concat = list(included_columns - set(self.excluded_columns))
         concatenated = df[columns_to_concat].to_numpy(dtype=self.dtype)
         df = df.drop(columns=columns_to_concat)
-        df[self.output_column] = TensorArray(concatenated)
+        df[self.output_column_name] = TensorArray(concatenated)
         return df
 
     def __repr__(self):
         return (
-            f"Concatenator(output_column={self.output_column}, "
+            f"Concatenator(output_column_name={self.output_column_name}, "
             f"include={self.included_columns}, "
             f"exclude={self.excluded_columns}, "
             f"dtype={self.dtype})"
