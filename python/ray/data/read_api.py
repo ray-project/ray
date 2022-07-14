@@ -12,7 +12,10 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import _lazy_import_pyarrow_dataset
+from ray.data._internal.util import (
+    _lazy_import_pyarrow_dataset,
+    _autodetect_parallelism,
+)
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
 from ray.data.dataset import Dataset
@@ -31,7 +34,6 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
-    Reader,
     ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -79,7 +81,9 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     """
 
     detected_parallelism, _ = _autodetect_parallelism(
-        parallelism, ray.util.get_current_placement_group()
+        parallelism,
+        ray.util.get_current_placement_group(),
+        DatasetContext.get_current(),
     )
     block_size = max(
         1,
@@ -1122,68 +1126,13 @@ def _get_read_tasks(
     DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
-        parallelism, cur_pg, reader
+        parallelism, cur_pg, DatasetContext.get_current(), reader
     )
     return (
         requested_parallelism,
         min_safe_parallelism,
         reader.get_read_tasks(requested_parallelism),
     )
-
-
-def _autodetect_parallelism(
-    parallelism: int, cur_pg: Optional[PlacementGroup], reader: Optional[Reader] = None
-) -> (int, int):
-    """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
-    # Autodetect parallelism requested. The heuristic here are that we should try
-    # to create as many blocks needed to saturate available resources, and also keep
-    # block sizes below the target memory size, but no more. Creating too many
-    # blocks is inefficient.
-    min_safe_parallelism = 1
-    ctx = DatasetContext.get_current()
-    if reader:
-        mem_size = reader.estimate_inmemory_data_size()
-        if mem_size is not None:
-            min_safe_parallelism = max(1, int(mem_size / ctx.target_max_block_size))
-    else:
-        mem_size = None
-    if parallelism < 0:
-        if parallelism != -1:
-            raise ValueError("`parallelism` must either be -1 or a positive integer.")
-        # Start with 2x the number of cores as a baseline, with a min floor.
-        avail_cpus = _estimate_avail_cpus(cur_pg)
-        parallelism = max(ctx.min_parallelism, min_safe_parallelism, avail_cpus * 2)
-        logger.debug(
-            f"Autodetected parallelism={parallelism} based on "
-            f"estimated_available_cpus={avail_cpus} and "
-            f"estimated_data_size={mem_size}."
-        )
-    return parallelism, min_safe_parallelism
-
-
-def _estimate_avail_cpus(cur_pg: Optional[PlacementGroup]) -> int:
-    cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
-    cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
-
-    # If we're in a placement group, we shouldn't assume the entire cluster's
-    # resources are available for us to use. Estimate an upper bound on what's
-    # reasonable to assume is available for datasets to use.
-    if cur_pg:
-        pg_cpus = 0
-        for bundle in cur_pg.bundle_specs:
-            # Calculate the proportion of the cluster this placement group "takes up".
-            # Then scale our cluster_cpus proportionally to avoid over-parallelizing
-            # if there are many parallel Tune trials using the cluster.
-            cpu_fraction = bundle.get("CPU", 0) / max(1, cluster_cpus)
-            gpu_fraction = bundle.get("GPU", 0) / max(1, cluster_gpus)
-            max_fraction = max(cpu_fraction, gpu_fraction)
-            # Over-parallelize by up to a factor of 2, but no more than that. It's
-            # preferrable to over-estimate than under-estimate.
-            pg_cpus += 2 * int(max_fraction * cluster_cpus)
-
-        return min(cluster_cpus, pg_cpus)
-
-    return cluster_cpus
 
 
 def _resolve_parquet_args(
