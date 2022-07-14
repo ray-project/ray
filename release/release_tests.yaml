@@ -282,6 +282,8 @@
   team: ml
   env: staging
 
+  stable: false
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4.yaml

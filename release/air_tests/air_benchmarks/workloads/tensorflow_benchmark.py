@@ -7,7 +7,7 @@ from contextlib import closing
 import click
 import numpy as np
 import tensorflow as tf
-from typing import List
+from typing import List, Tuple
 
 CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
@@ -95,7 +95,7 @@ def train_tf_ray_air(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-) -> float:
+) -> Tuple[float, float]:
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.tensorflow import TensorflowTrainer
@@ -103,6 +103,7 @@ def train_tf_ray_air(
     def train_loop(config):
         train_func(use_ray=True, config=config)
 
+    start_time = time.monotonic()
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
@@ -114,8 +115,10 @@ def train_tf_ray_air(
         },
     )
     result = trainer.fit()
+    time_taken = time.monotonic() - start_time
+
     print(f"Last result: {result.metrics}")
-    return result.metrics["loss"]
+    return time_taken, result.metrics["loss"]
 
 
 def train_tf_vanilla_worker(
@@ -145,7 +148,7 @@ def train_tf_vanilla(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-) -> float:
+) -> Tuple[float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_tf_vanilla_worker() on the worker nodes.
     import ray
@@ -199,14 +202,17 @@ def train_tf_vanilla(
         for rank in range(num_workers)
     ]
 
+    start_time = time.monotonic()
     run_commands_on_actors(actors=actors, cmds=cmds)
+    time_taken = time.monotonic() - start_time
 
+    loss = 0.0
     if os.path.exists(VANILLA_RESULT_JSON):
         with open(VANILLA_RESULT_JSON, "r") as f:
             result = json.load(f)
-        return result["loss"]
+        loss = result["loss"]
 
-    return 0.0
+    return time_taken, loss
 
 
 @click.group(help="Run Tensorflow benchmarks")
@@ -247,40 +253,32 @@ def run(
     for run in range(1, num_runs + 1):
         print(f"[Run {run}/{num_runs}] Running Tensorflow Ray benchmark")
 
-        start_time = time.monotonic()
-        loss_ray = train_tf_ray_air(
+        time_ray, loss_ray = train_tf_ray_air(
             num_workers=num_workers,
             cpus_per_worker=cpus_per_worker,
             use_gpu=use_gpu,
             config=config,
         )
-        time_taken = time.monotonic() - start_time
-
-        time_ray = time_taken
 
         print(
             f"[Run {run}/{num_runs}] Finished Ray training ({num_epochs} epochs) in "
-            f"{time_taken:.2f} seconds. Observed loss = {loss_ray:.4f}"
+            f"{time_ray:.2f} seconds. Observed loss = {loss_ray:.4f}"
         )
 
         time.sleep(5)
 
         print(f"[Run {run}/{num_runs}] Running Tensorflow vanilla benchmark")
 
-        start_time = time.monotonic()
-        loss_vanilla = train_tf_vanilla(
+        time_vanilla, loss_vanilla = train_tf_vanilla(
             num_workers=num_workers,
             cpus_per_worker=cpus_per_worker,
             use_gpu=use_gpu,
             config=config,
         )
-        time_taken = time.monotonic() - start_time
-
-        time_vanilla = time_taken
 
         print(
             f"[Run {run}/{num_runs}] Finished vanilla training ({num_epochs} epochs) "
-            f"in {time_taken:.2f} seconds. Observed loss = {loss_vanilla:.4f}"
+            f"in {time_vanilla:.2f} seconds. Observed loss = {loss_vanilla:.4f}"
         )
 
         print(
