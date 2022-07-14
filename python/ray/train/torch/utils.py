@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 def to_air_checkpoint(
-    model: torch.nn.Module, preprocessor: Optional["Preprocessor"] = None
+    model: torch.nn.Module, *, preprocessor: Optional["Preprocessor"] = None
 ) -> Checkpoint:
     """Convert a pretrained model to AIR checkpoint for serve or inference.
 

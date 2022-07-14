@@ -1,5 +1,4 @@
 import os
-import tempfile
 from typing import TYPE_CHECKING, Optional, Tuple
 
 from sklearn.base import BaseEstimator
@@ -20,23 +19,33 @@ if TYPE_CHECKING:
 @PublicAPI(stability="alpha")
 def to_air_checkpoint(
     estimator: BaseEstimator,
+    *,
+    path: os.PathLike,
     preprocessor: Optional["Preprocessor"] = None,
-    path: Optional[str] = None,
 ) -> Checkpoint:
     """Convert a pretrained model to AIR checkpoint for serve or inference.
 
+    Example:
+
+    .. code-block:: python
+
+        import tempfile
+        from sklearn.ensemble import RandomForestClassifier
+        from ray.train.sklearn import to_air_checkpoint, SklearnPredictor
+
+        est = RandomForestClassifier()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = to_air_checkpoint(estimator=est, path=tmpdir)
+            predictor = SklearnPredictor.from_checkpoint(checkpoint)
+
     Args:
         estimator: A pretrained model.
+        path: The directory where the checkpoint will be stored to.
         preprocessor: A fitted preprocessor. The preprocessing logic will
             be applied to the inputs for serving/inference.
-        path: The directory where the checkpoint will be stored to.
-            If None, a temporary directory will be created.
     Returns:
         A Ray Air checkpoint.
     """
-    if not path:
-        path = tempfile.mkdtemp()
-
     with open(os.path.join(path, MODEL_KEY), "wb") as f:
         cpickle.dump(estimator, f)
 

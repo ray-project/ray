@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 def to_air_checkpoint(
-    model: keras.Model, preprocessor: Optional["Preprocessor"] = None
+    model: keras.Model, *, preprocessor: Optional["Preprocessor"] = None
 ) -> Checkpoint:
     """Convert a pretrained model to AIR checkpoint for serve or inference.
 
