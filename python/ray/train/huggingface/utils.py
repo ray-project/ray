@@ -10,6 +10,7 @@ from transformers.trainer import TRAINING_ARGS_NAME, WEIGHTS_NAME
 
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
 )
 from ray.air._internal.torch_utils import load_torch_model
 from ray.air.checkpoint import Checkpoint
@@ -17,6 +18,63 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+
+@PublicAPI(stability="alpha")
+def to_air_checkpoint(
+    model: Union[transformers.modeling_utils.PreTrainedModel, torch.nn.Module],
+    tokenizer: Optional[transformers.PreTrainedTokenizer] = None,
+    *,
+    path: os.PathLike,
+    preprocessor: Optional["Preprocessor"] = None,
+) -> Checkpoint:
+    """Convert a pretrained Transformers model to AIR checkpoint for serve or inference.
+
+    Example:
+
+    .. code-block:: python
+
+        import tempfile
+        from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+        from ray.train.huggingface import to_air_checkpoint, HuggingFacePredictor
+
+        model_checkpoint = "sshleifer/tiny-gpt2"
+        tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
+
+        model_config = AutoConfig.from_pretrained(model_checkpoint)
+        model = AutoModelForCausalLM.from_config(model_config)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = to_air_checkpoint(
+                model=model, tokenizer=tokenizer, path=tmpdir
+            )
+            predictor = HuggingFacePredictor.from_checkpoint(checkpoint)
+
+    Args:
+        model: Either a ``transformers.PreTrainedModel``, or a trained PyTorch model.
+        path: The directory where the checkpoint will be stored to.
+        tokenizer: Tokenizer to be used in the Transformers pipeline
+            during serving/inference.
+        preprocessor: A fitted preprocessor. The preprocessing logic will
+            be applied to the inputs for serving/inference.
+
+    Returns:
+        A Ray AIR checkpoint.
+
+    """
+    if not isinstance(model, transformers.modeling_utils.PreTrainedModel):
+        state_dict = model.state_dict()
+        torch.save(state_dict, os.path.join(path, WEIGHTS_NAME))
+    else:
+        model.save_pretrained(path)
+    if tokenizer:
+        tokenizer.save_pretrained(path)
+    if preprocessor:
+        save_preprocessor_to_dir(preprocessor, path)
+    checkpoint = Checkpoint.from_directory(path)
+
+    return checkpoint
 
 
 @PublicAPI(stability="alpha")
