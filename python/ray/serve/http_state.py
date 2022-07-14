@@ -5,6 +5,8 @@ from typing import Dict, List, Tuple
 
 import ray
 from ray.actor import ActorHandle
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
 from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve.constants import (
     ASYNC_CONCURRENCY,
@@ -16,7 +18,6 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.utils import (
     format_actor_name,
     get_all_node_ids,
-    get_current_node_resource_key,
 )
 from ray.serve.common import EndpointTag, NodeId
 
@@ -35,6 +36,7 @@ class HTTPState:
         controller_name: str,
         detached: bool,
         config: HTTPOptions,
+        head_node_id: str,
         # Used by unit testing
         _start_proxies_on_init: bool = True,
     ):
@@ -46,6 +48,8 @@ class HTTPState:
             self._config = HTTPOptions()
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
         self._proxy_actor_names: Dict[NodeId, str] = dict()
+        self._head_node_id: str = head_node_id
+        assert isinstance(head_node_id, str)
 
         # Will populate self.proxy_actors with existing actors.
         if _start_proxies_on_init:
@@ -69,7 +73,7 @@ class HTTPState:
         self._stop_proxies_if_needed()
 
     def _get_target_nodes(self) -> List[Tuple[str, str]]:
-        """Return the list of (id, resource_key) to deploy HTTP servers on."""
+        """Return the list of (node_id, ip_address) to deploy HTTP servers on."""
         location = self._config.location
         target_nodes = get_all_node_ids()
 
@@ -77,12 +81,16 @@ class HTTPState:
             return []
 
         if location == DeploymentMode.HeadOnly:
-            head_node_resource_key = get_current_node_resource_key()
-            return [
-                (node_id, node_resource)
-                for node_id, node_resource in target_nodes
-                if node_resource == head_node_resource_key
-            ][:1]
+            nodes = [
+                (node_id, ip_address)
+                for node_id, ip_address in target_nodes
+                if node_id == self._head_node_id
+            ]
+            assert len(nodes) == 1, (
+                f"Head node not found! Head node id: {self._head_node_id}, "
+                f"all nodes: {target_nodes}."
+            )
+            return nodes
 
         if location == DeploymentMode.FixedNumber:
             num_replicas = self._config.fixed_number_replicas
@@ -104,7 +112,7 @@ class HTTPState:
 
     def _start_proxies_if_needed(self) -> None:
         """Start a proxy on every node if it doesn't already exist."""
-        for node_id, node_resource in self._get_target_nodes():
+        for node_id, node_ip_address in self._get_target_nodes():
             if node_id in self._proxy_actors:
                 continue
 
@@ -126,13 +134,15 @@ class HTTPState:
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
                     max_task_retries=-1,
-                    resources={node_resource: 0.01},
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(
+                        node_id, soft=False
+                    ),
                 ).remote(
                     self._config.host,
                     self._config.port,
                     self._config.root_path,
                     controller_name=self._controller_name,
-                    node_id=node_id,
+                    node_ip_address=node_ip_address,
                     http_middlewares=self._config.middlewares,
                 )
 
