@@ -92,6 +92,40 @@ def test_add_remove_cluster_resources(ray_start_cluster_head):
     assert ray.cluster_resources()["CPU"] == 6
 
 
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test that may hang.",
+)
+@pytest.mark.timeout(120)
+def test_nodes(ray_start_cluster_head):
+    """Tests that ray.nodes() only returns alive nodes, and the all_nodes flag includes dead nodes."""
+    cluster = ray_start_cluster_head
+
+    assert len(list(ray.nodes())) == 1
+    node_to_remove = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    assert len(list(ray.nodes())) == 2
+
+    cluster.remove_node(node_to_remove)
+    cluster.wait_for_nodes()
+
+    assert len(list(ray.nodes())) == 1
+    assert len(list(ray.nodes(all_nodes=True))) == 2
+
+    all_nodes = list(ray.nodes(all_nodes=True))
+
+    alive_node_count = 0
+    dead_node_count = 0
+    for node in all_nodes:
+        assert node["alive"] == node["Alive"]
+        if node["Alive"]:
+            alive_node_count += 1
+        else:
+            dead_node_count += 1
+    assert alive_node_count == 1
+    assert dead_node_count == 1
+
+
 def test_global_state_actor_table(ray_start_regular):
     @ray.remote
     class Actor:

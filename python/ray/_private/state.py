@@ -1,6 +1,7 @@
 import json
 import logging
 from collections import defaultdict
+from typing import Optional
 
 from google.protobuf.json_format import MessageToDict
 
@@ -161,12 +162,15 @@ class GlobalState:
                 for key, value in node_resource_info.items.items()
             }
 
-    def node_table(self):
+    def node_table(self, all_nodes : Optional[bool] = None):
         """Fetch and parse the Gcs node info table.
 
         Returns:
             Information about the node in the cluster.
         """
+        if all_nodes is None:
+            all_nodes = False
+
         self._check_connected()
 
         node_table = self.global_state_accessor.get_node_table()
@@ -174,26 +178,27 @@ class GlobalState:
         results = []
         for node_info_item in node_table:
             item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
-            node_info = {
-                "NodeID": ray._private.utils.binary_to_hex(item.node_id),
-                "Alive": item.state
-                == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
-                "NodeManagerAddress": item.node_manager_address,
-                "NodeManagerHostname": item.node_manager_hostname,
-                "NodeManagerPort": item.node_manager_port,
-                "ObjectManagerPort": item.object_manager_port,
-                "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name,
-                "MetricsExportPort": item.metrics_export_port,
-                "NodeName": item.node_name,
-            }
-            node_info["alive"] = node_info["Alive"]
-            node_info["Resources"] = (
-                self.node_resource_table(node_info["NodeID"])
-                if node_info["Alive"]
-                else {}
-            )
-            results.append(node_info)
+            is_alive = item.state == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE")
+            if is_alive or all_nodes:
+                node_info = {
+                    "NodeID": ray._private.utils.binary_to_hex(item.node_id),
+                    "Alive": is_alive,
+                    "NodeManagerAddress": item.node_manager_address,
+                    "NodeManagerHostname": item.node_manager_hostname,
+                    "NodeManagerPort": item.node_manager_port,
+                    "ObjectManagerPort": item.object_manager_port,
+                    "ObjectStoreSocketName": item.object_store_socket_name,
+                    "RayletSocketName": item.raylet_socket_name,
+                    "MetricsExportPort": item.metrics_export_port,
+                    "NodeName": item.node_name,
+                }
+                node_info["alive"] = node_info["Alive"]
+                node_info["Resources"] = (
+                    self.node_resource_table(node_info["NodeID"])
+                    if node_info["Alive"]
+                    else {}
+                )
+                results.append(node_info)
         return results
 
     def job_table(self):
@@ -783,13 +788,16 @@ def next_job_id():
 
 @DeveloperAPI
 @client_mode_hook(auto_init=False)
-def nodes():
+def nodes(all_nodes : Optional[bool] = None):
     """Get a list of the nodes in the cluster (for debugging only).
+
+    Args:
+        all_nodes (bool): Optionally include nodes which are no longer alive.
 
     Returns:
         Information about the Ray clients in the cluster.
     """
-    return state.node_table()
+    return state.node_table(all_nodes=all_nodes)
 
 
 def workers():
