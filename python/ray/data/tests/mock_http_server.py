@@ -7,15 +7,15 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 port = 9898
-data_count = 1000
-data = b"\n".join([b"some test data"] * data_count)
-http_file = "http://localhost:%i/index/httpfile" % port
-index = b'<a href="%s">Link</a>' % http_file.encode()
+count = 1000
+data = b"\n".join([b"some test data"] * count)
+data_file = "http://localhost:%i/index/data_file" % port
+index = b'<a href="%s">Link</a>' % data_file.encode()
 
 
 class HTTPTestHandler(BaseHTTPRequestHandler):
     files = {
-        "/index/httpfile": data,
+        "/index/data_file": data,
         "/index": index,
     }
 
@@ -78,3 +78,13 @@ def serve():
 def http_server():
     with serve() as s:
         yield s
+
+
+@pytest.fixture(scope="module")
+def http_file():
+    return data_file
+
+
+@pytest.fixture(scope="module")
+def http_file_data_count():
+    return count

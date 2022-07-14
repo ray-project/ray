@@ -324,12 +324,14 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert ds_df.equals(df)
 
 
-def test_fsspec_http_file_system(ray_start_regular_shared, http_server):
+def test_fsspec_http_file_system(
+    ray_start_regular_shared, http_server, http_file, http_file_data_count
+):
     ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
-    assert ds.count() == data_count
+    assert ds.count() == http_file_data_count
     # Test auto-resolve of HTTP file system when it is not provided.
     ds = ray.data.read_text(http_file)
-    assert ds.count() == data_count
+    assert ds.count() == http_file_data_count
 
 
 def test_read_example_data(ray_start_regular_shared, tmp_path):
