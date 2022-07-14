@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 import ray
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Callable
 
 
 def _schedule_remote_fn_on_node(node_ip: str, remote_fn, *args, **kwargs):
@@ -64,7 +64,7 @@ def run_command_on_all_nodes(cmd: List[str]):
 
 
 def run_commands_with_resources(
-    cmds: List[str], resources: Dict[str, Union[float, int]]
+    cmds: List[List[str]], resources: Dict[str, Union[float, int]]
 ):
     num_cpus = resources.pop("CPU", 1)
     num_gpus = resources.pop("GPU", 0)
@@ -74,4 +74,44 @@ def run_commands_with_resources(
             num_cpus=num_cpus, num_gpus=num_gpus, resources=resources
         ).remote(cmd=cmd)
         futures.append(future)
+    return ray.get(futures)
+
+
+@ray.remote
+class CommandRunner:
+    def run_command(self, cmd: str):
+        return subprocess.check_call(cmd)
+
+    def run_fn(self, fn: Callable, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+
+def create_actors_with_resources(
+    num_actors: int, resources: Dict[str, Union[float, int]]
+) -> List[ray.actor.ActorHandle]:
+    num_cpus = resources.pop("CPU", 1)
+    num_gpus = resources.pop("GPU", 0)
+
+    return [
+        CommandRunner.options(
+            num_cpus=num_cpus, num_gpus=num_gpus, resources=resources
+        ).remote()
+        for _ in range(num_actors)
+    ]
+
+
+def run_commands_on_actors(actors: List[ray.actor.ActorHandle], cmds: List[List[str]]):
+    assert len(actors) == len(cmds)
+    futures = []
+    for actor, cmd in zip(actors, cmds):
+        futures.append(actor.run_command.remote(cmd))
+    return ray.get(futures)
+
+
+def run_fn_on_actors(
+    actors: List[ray.actor.ActorHandle], fn: Callable, *args, **kwargs
+):
+    futures = []
+    for actor in actors:
+        futures.append(actor.run_fn.remote(fn, *args, **kwargs))
     return ray.get(futures)
