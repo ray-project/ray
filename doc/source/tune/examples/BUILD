@@ -16,7 +16,13 @@ filegroup(
 py_test_run_all_notebooks(
     size = "medium",
     include = ["*.ipynb"],
-    exclude = ["pbt_ppo_example.ipynb", "tune-xgboost.ipynb"],
+    exclude = [
+        "pbt_ppo_example.ipynb",
+        "tune-xgboost.ipynb",
+        "nyc_taxi_basic_processing.ipynb", # REGRESSION
+        "ocr_example.ipynb", # REGRESSION
+        "sigopt_example.ipynb", # REGRESSION
+    ],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
 )

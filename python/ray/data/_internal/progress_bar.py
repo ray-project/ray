@@ -87,7 +87,7 @@ class ProgressBar:
             self._bar.set_description(name)
 
     def update(self, i: int) -> None:
-        if self._bar:
+        if self._bar and i != 0:
             self._bar.update(i)
 
     def close(self):

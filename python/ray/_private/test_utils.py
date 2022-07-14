@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import fnmatch
 import functools
 import io
@@ -58,7 +59,7 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
-def test_external_redis():
+def enable_external_redis():
     import os
 
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
@@ -225,10 +226,7 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
         if proc.returncode:
             print(ray._private.utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
-                proc.returncode,
-                proc.args,
-                ray._private.utils.decode(output, encode_type=encode),
-                proc.stderr,
+                proc.returncode, proc.args, output, proc.stderr
             )
         out = ray._private.utils.decode(output, encode_type=encode)
     return out
@@ -1369,3 +1367,75 @@ def job_hook(**kwargs):
     cmd = " ".join(kwargs["entrypoint"])
     print(f"hook intercepted: {cmd}")
     sys.exit(0)
+
+
+def find_free_port():
+    sock = socket.socket()
+    sock.bind(("", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+@dataclasses.dataclass
+class TestRayActivityResponse:
+    """
+    Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+    used in test_component_activities_hook to mimic typical
+    usage of redefining or extending response type.
+    """
+
+    is_active: str
+    reason: Optional[str] = None
+    timestamp: Optional[float] = None
+
+
+# Global counter to test different return values
+# for external_ray_cluster_activity_hook1.
+ray_cluster_activity_hook_counter = 0
+
+
+def external_ray_cluster_activity_hook1():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_counter
+    ray_cluster_activity_hook_counter += 1
+    return {
+        "test_component1": TestRayActivityResponse(
+            is_active="ACTIVE",
+            reason=f"Counter: {ray_cluster_activity_hook_counter}",
+        )
+    }
+
+
+def external_ray_cluster_activity_hook2():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because the value of `test_component2`
+    should be of type RayActivityResponse.
+    """
+    return {"test_component2": "bad_output"}
+
+
+def external_ray_cluster_activity_hook3():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because return type is not
+    Dict[str, RayActivityResponse]
+    """
+    return "bad_output"
+
+
+def external_ray_cluster_activity_hook4():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Errors during execution.
+    """
+    raise Exception("Error in external cluster activity hook")

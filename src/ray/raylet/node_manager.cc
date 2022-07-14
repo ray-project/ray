@@ -1108,10 +1108,12 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
     return;
   }
 
+  std::vector<scheduling::ResourceID> resource_ids;
   for (const auto &resource_label : resource_names) {
-    cluster_resource_scheduler_->GetClusterResourceManager().DeleteResource(
-        scheduling::NodeID(node_id.Binary()), scheduling::ResourceID(resource_label));
+    resource_ids.emplace_back(scheduling::ResourceID(resource_label));
   }
+  cluster_resource_scheduler_->GetClusterResourceManager().DeleteResources(
+      scheduling::NodeID(node_id.Binary()), resource_ids);
   return;
 }
 
@@ -1679,6 +1681,9 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
                       TaskID::Nil(),
                       /*ray_get=*/false,
                       /*mark_worker_blocked*/ false);
+  // De-duplicate the object IDs.
+  absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
+  object_ids.assign(object_id_set.begin(), object_id_set.end());
   wait_manager_.Wait(
       object_ids,
       -1,

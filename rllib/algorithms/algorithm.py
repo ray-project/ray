@@ -353,6 +353,21 @@ class Algorithm(Trainable):
         self.workers: Optional[WorkerSet] = None
         self.train_exec_impl = None
 
+        # Offline RL settings.
+        input_evaluation = config.get("input_evaluation")
+        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
+            ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
+            deprecation_warning(
+                old="config.input_evaluation={}".format(input_evaluation),
+                new='config["evaluation_config"]'
+                '["off_policy_estimation_methods"]={}'.format(
+                    ope_dict,
+                ),
+                error=False,
+                help="Running OPE during training is not recommended.",
+            )
+            config["off_policy_estimation_methods"] = ope_dict
+
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the `build_trainer` utility function).
         # Instead, sub-classes should override the Trainable's `setup()`
@@ -1835,9 +1850,10 @@ class Algorithm(Trainable):
 
                 default_policy_cls = self.get_default_policy_class(config)
                 if any(
-                    (p[0] or default_policy_cls) is None
+                    (p.policy_class or default_policy_cls) is None
                     or not issubclass(
-                        p[0] or default_policy_cls, (DynamicTFPolicy, TorchPolicy)
+                        p.policy_class or default_policy_cls,
+                        (DynamicTFPolicy, TorchPolicy),
                     )
                     for p in config["multiagent"]["policies"].values()
                 ):
@@ -1854,32 +1870,6 @@ class Algorithm(Trainable):
                     "`simple_optimizer=False` not supported for "
                     "framework={}!".format(framework)
                 )
-
-        # Offline RL settings.
-        input_evaluation = config.get("input_evaluation")
-        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.input_evaluation: {}".format(input_evaluation),
-                new="config.off_policy_estimation_methods={}".format(input_evaluation),
-                error=False,
-            )
-            config["off_policy_estimation_methods"] = input_evaluation
-        if isinstance(config["off_policy_estimation_methods"], list) or isinstance(
-            config["off_policy_estimation_methods"], tuple
-        ):
-            ope_dict = {
-                str(ope): {"type": ope} for ope in self.off_policy_estimation_methods
-            }
-            deprecation_warning(
-                old="config.off_policy_estimation_methods={}".format(
-                    self.off_policy_estimation_methods
-                ),
-                new="config.off_policy_estimation_methods={}".format(
-                    ope_dict,
-                ),
-                error=False,
-            )
-            config["off_policy_estimation_methods"] = ope_dict
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well
@@ -2104,7 +2094,9 @@ class Algorithm(Trainable):
         removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
         if recreate:
-            removed_workers, new_workers = worker_set.recreate_failed_workers()
+            removed_workers, new_workers = worker_set.recreate_failed_workers(
+                local_worker_for_synching=self.workers.local_worker()
+            )
         elif ignore:
             removed_workers = worker_set.remove_failed_workers()
 
@@ -2395,6 +2387,9 @@ class Algorithm(Trainable):
         # Evaluation results.
         if "evaluation" in iteration_results:
             results["evaluation"] = iteration_results.pop("evaluation")
+            results["evaluation"]["num_healthy_workers"] = len(
+                self.evaluation_workers.remote_workers()
+            )
 
         # Custom metrics and episode media.
         results["custom_metrics"] = iteration_results.pop("custom_metrics", {})

@@ -24,7 +24,7 @@ These are the environment variables Ray Tune currently considers:
   directories when the name is not specified explicitly or the trainable isn't passed
   as a string. Setting this environment variable to ``1`` disables adding these date strings.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
-  ``tune.report()`` and passed a ``metric`` parameter to ``tune.run()``, a scheduler,
+  ``session.report()`` and passed a ``metric`` parameter to ``tune.run()``, a scheduler,
   or a search algorithm, Tune will error
   if the metric was not reported in the result. Setting this environment variable
   to ``1`` will disable this check.
