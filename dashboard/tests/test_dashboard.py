@@ -842,8 +842,9 @@ def test_dashboard_does_not_depend_on_serve():
     try:
         response = requests.get(f"http://{agent_url}/api/serve/deployments/")
         assert response.status_code == 500
-    except Exception:
+    except Exception as e:
         # Fail to connect to service is fine.
+        print(e)
         assert True
 
 
@@ -879,8 +880,9 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     try:
         response = requests.get(f"http://{agent_url}/api/serve/deployments/")
         assert response.status_code == 500
-    except Exception:
+    except Exception as e:
         # Fail to connect to service is fine.
+        print(e)
         assert True
 
     # The agent should be dead if raylet exits.
