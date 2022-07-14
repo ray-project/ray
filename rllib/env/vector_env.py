@@ -279,8 +279,11 @@ class _VectorizedGymEnv(VectorEnv):
                     "Trying to close old and replaced sub-environment (at vector "
                     f"index={index}), but closing resulted in error:\n{e}"
                 )
+
         # Re-create the sub-env at the new index.
+        logger.warning(f"Trying to restart sub-environment at index {index}.")
         self.envs[index] = self.make_env(index)
+        logger.warning(f"Sub-environment at index {index} restarted successfully.")
 
     @override(VectorEnv)
     def vector_step(self, actions):

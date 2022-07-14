@@ -614,7 +614,9 @@ class MultiAgentEnvWrapper(BaseEnv):
             env_id = list(range(len(self.envs)))
         for idx in env_id:
             # Recreate the sub-env.
+            logger.warning(f"Trying to restart sub-environment at index {idx}.")
             self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
+            logger.warning(f"Sub-environment at index {idx} restarted successfully.")
 
     @override(BaseEnv)
     def get_sub_environments(
