@@ -167,7 +167,7 @@ class DAGNode:
             ]
         ):
             if node not in replace_table:
-                replace_table[node] = fn(node)
+                replace_table[node] = fn(node)[0]
         new_args, new_kwargs, new_other_args_to_resolve = scanner.replace_nodes(
             replace_table
         )
@@ -205,7 +205,8 @@ class DAGNode:
                         raise AssertionError(
                             "Each DAG should only have one unique InputNode."
                         )
-                return self.cache[node._stable_uuid]
+                result = self.cache[node._stable_uuid]
+                return (result, self.cache)
 
         if not type(fn).__name__ == "_CachingFn":
             fn = _CachingFn(fn)
