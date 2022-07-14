@@ -220,20 +220,26 @@ def get(
     address: Optional[str],
     timeout: float,
 ):
-    """
-    Get RESOURCE by ID.
-
-    RESOURCE is the name of the possible resources from `StateResource`,
-    i.e. 'workers', 'actors', 'nodes', ...
+    """Get a state of a given resource by ID.
 
     NOTE: We currently DO NOT support get by id for jobs and runtime-envs
 
-    Example:
+    The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
-    ```
-    ray get nodes <node-id>
-    ray get workers <worker-id>
-    ```
+    For example, the output schema of `ray get tasks <task-id>` is
+    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+
+    The API queries one or more components from the cluster to obtain the data.
+    The returned state snanpshot could be stale, and it is not guaranteed to return
+    the live data.
+
+    Args:
+        resource: The type of the resource to query.
+        id: The id of the resource.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
     """
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
@@ -308,12 +314,33 @@ def list(
     timeout: float,
     address: str,
 ):
-    """
-    List RESOURCE used by Ray.
+    """List all states of a given resource.
 
-    RESOURCE is the name of the possible resources from `StateResource`,
-    i.e. 'jobs', 'actors', 'nodes', ...
+    Normally, summary APIs are recommended before listing all resources.
 
+    The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
+
+    For example, the output schema of `ray list tasks` is
+    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+
+    The API queries one or more components from the cluster to obtain the data.
+    The returned state snanpshot could be stale, and it is not guaranteed to return
+    the live data.
+
+    The API can return partial or missing output upon the following scenarios.
+
+    - When the API queries more than 1 component, if some of them fail,
+      the API will return the partial result (with a suppressable warning).
+    - When the API returns too many entries (10K), the API
+      will truncate the output. Currently, truncated data cannot be
+      selected by users.
+
+    Args:
+        resource: The type of the resource to query.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
     """
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
@@ -352,6 +379,7 @@ def list(
 @click.group("summary")
 @click.pass_context
 def summary_state_cli_group(ctx):
+    """Return the summarized information of a given resource."""
     ctx.ensure_object(dict)
     ctx.obj["api_server_url"] = get_api_server_url()
 
@@ -361,6 +389,18 @@ def summary_state_cli_group(ctx):
 @address_option
 @click.pass_context
 def task_summary(ctx, timeout: float, address: str):
+    """Summarize the task state of the cluster.
+
+    By default, the output contains the information grouped by
+    task function names.
+
+    The output schema is
+    :ref:`ray.experimental.state.common.TaskSummaries <state-api-schema-task-summary>`.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
     address = address or ctx.obj["api_server_url"]
     print(
         output_with_format(
@@ -379,6 +419,19 @@ def task_summary(ctx, timeout: float, address: str):
 @address_option
 @click.pass_context
 def actor_summary(ctx, timeout: float, address: str):
+    """Summarize the actor state of the cluster.
+
+    By default, the output contains the information grouped by
+    actor class names.
+
+    The output schema is
+    :ref:`ray.experimental.state.common.ActorSummaries
+    <state-api-schema-actor-summary>`.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
     address = address or ctx.obj["api_server_url"]
     print(
         output_with_format(
@@ -397,6 +450,38 @@ def actor_summary(ctx, timeout: float, address: str):
 @address_option
 @click.pass_context
 def object_summary(ctx, timeout: float, address: str):
+    """Summarize the object state of the cluster.
+
+    The API is recommended when debugging memory leaks.
+    See :ref:`Debugging with Ray Memory <debug-with-ray-memory>` for more details.
+    (Note that this command is almost equivalent to `ray memory`, but it returns
+    easier-to-understand output).
+
+    By default, the output contains the information grouped by
+    object callsite. Note that the callsite is not collected and
+    all data will be aggregated as "disable" callsite if the env var
+    `RAY_record_ref_creation_sites` is not configured. To enable the
+    callsite collection, set the following environment variable when
+    starting Ray.
+
+    Example:
+
+        ```
+        RAY_record_ref_creation_sites=1 ray start --head
+        ```
+
+        ```
+        RAY_record_ref_creation_sites=1 ray_script.py
+        ```
+
+    The output schema is
+    :ref:`ray.experimental.state.common.ObjectSummaries
+    <state-api-schema-object-summary>`.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
     address = address or ctx.obj["api_server_url"]
     print(
         output_with_format(

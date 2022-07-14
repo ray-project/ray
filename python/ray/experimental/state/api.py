@@ -323,7 +323,9 @@ class StateApiClient(SubmissionClient):
             resource_name: Resource names,
                 see `SummaryResource` for details.
             options: summary options. See `SummaryApiOptions` for details.
-            A dictionary of queried result from `SummaryApiResponse`,
+
+        Returns:
+            A dictionary of queried result from `SummaryApiResponse`.
 
         Raises:
             This doesn't catch any exceptions raised when the underlying request
