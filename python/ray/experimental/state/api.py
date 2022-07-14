@@ -1,7 +1,10 @@
 import urllib
 import warnings
+import threading
+import logging
 from dataclasses import fields
-from typing import Dict, Generator, List, Optional, Tuple, Union
+from typing import Dict, Generator, List, Optional, Tuple, Union, Any
+from contextlib import contextmanager
 
 import requests
 
@@ -29,6 +32,52 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def warnings_on_slow_request(
+    *, address: str, endpoint: str, timeout: float, explain: bool
+):
+    """A context manager to print warnings if the request is replied slowly.
+
+    Warnings are printed 3 times
+
+    Args:
+        address: The address of the endpoint.
+        endpoint: The name of the endpoint.
+        timeout: Request timeout in seconds.
+        explain: Whether ot not it will print the warning.
+    """
+    # Do nothing if explain is not specified.
+    if not explain:
+        yield
+        return
+
+    # Prepare timers to print warning.
+    # Print 3 times with exponential backoff. timeout / 2, timeout / 4, timeout / 8
+    def print_warning(elapsed: float):
+        logger.info(
+            f"({round(elapsed, 2)} / {timeout} seconds) "
+            "Waiting for the response from the API server "
+            f"address {address}{endpoint}.",
+        )
+
+    warning_timers = [
+        threading.Timer(timeout / i, print_warning, args=[timeout / i])
+        for i in [2, 4, 8]
+    ]
+
+    try:
+        for timer in warning_timers:
+            timer.start()
+        yield
+    finally:
+        # Make sure all timers are cancelled once request is terminated.
+        for timer in warning_timers:
+            timer.cancel()
+
+
 """
 This file contains API client and methods for querying ray state.
 
@@ -37,7 +86,7 @@ NOTE(rickyyx): This is still a work-in-progress API, and subject to changes.
 Usage:
     1. [Recommended] With StateApiClient:
     ```
-        client = StateApiClient(api_server_address="localhost:8265")
+        client = StateApiClient(address="localhost:8265")
         data = client.list(StateResource.NODES)
         ...
     ```
@@ -53,34 +102,35 @@ Usage:
 
 
 class StateApiClient(SubmissionClient):
-    """State API Client issues REST GET requests to the server for resource states.
-
-    Args:
-        api_server_address: The address of API server. If it is not give, it assumes
-        the ray is already connected and obtains the API server address using Ray API.
-    """
+    """State API Client issues REST GET requests to the server for resource states."""
 
     def __init__(
         self,
-        api_server_address: str = None,
+        address: Optional[str] = None,
+        cookies: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__(
-            self._get_default_api_server_address()
-            if api_server_address is None
-            else api_server_address,
-            create_cluster_if_needed=False,
-            headers={"Content-Type": "application/json"},
-        )
+        """Initialize a StateApiClient and check the connection to the cluster.
 
-    @classmethod
-    def _get_default_api_server_address(cls) -> str:
-        assert (
-            ray.is_initialized()
-            and ray._private.worker.global_worker.node.address_info["webui_url"]
-            is not None
-        )
-        return (
-            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
+        Args:
+            address: The address of Ray API server. If not provided,
+                it will be configured automatically from querying the GCS server.
+            cookies: Cookies to use when sending requests to the HTTP job server.
+            headers: Headers to use when sending requests to the HTTP job server, used
+                for cases like authentication to a remote cluster.
+        """
+        if requests is None:
+            raise RuntimeError(
+                "The Ray state CLI & SDK require the ray[default] "
+                "installation: `pip install 'ray[default']``"
+            )
+        if not headers:
+            headers = {"Content-Type": "application/json"}
+        super().__init__(
+            address,
+            create_cluster_if_needed=False,
+            headers=headers,
+            cookies=cookies,
         )
 
     @classmethod
@@ -119,36 +169,42 @@ class StateApiClient(SubmissionClient):
         endpoint: str,
         params: Dict,
         timeout: float,
-        resource: StateResource,
         _explain: bool = False,
     ):
-        response = None
-        try:
-            response = self._do_request(
-                "GET",
-                endpoint,
-                timeout=timeout,
-                params=params,
-            )
-
-            response.raise_for_status()
-        except Exception as e:
-            err_str = f"Failed to make request to {endpoint}. "
-
-            # Best-effort to give hints to users on potential reasons of connection
-            # failure.
-            if isinstance(e, requests.exceptions.ConnectionError):
-                err_str += (
-                    "Failed to connect to API server. Please check the API server "
-                    "log for details. Make sure dependencies are installed with "
-                    "`pip install ray[default]`."
+        with warnings_on_slow_request(
+            address=self._address, endpoint=endpoint, timeout=timeout, explain=_explain
+        ):
+            # Send a request.
+            response = None
+            try:
+                response = self._do_request(
+                    "GET",
+                    endpoint,
+                    timeout=timeout,
+                    params=params,
                 )
-                raise ServerUnavailable(err_str)
 
-            if response is not None:
-                err_str += f"Response(url={response.url},status={response.status_code})"
-            raise RayStateApiException(err_str) from e
+                response.raise_for_status()
+            except Exception as e:
+                err_str = f"Failed to make request to {self._address}{endpoint}. "
 
+                # Best-effort to give hints to users on potential reasons of connection
+                # failure.
+                if isinstance(e, requests.exceptions.ConnectionError):
+                    err_str += (
+                        "Failed to connect to API server. Please check the API server "
+                        "log for details. Make sure dependencies are installed with "
+                        "`pip install ray[default]`."
+                    )
+                    raise ServerUnavailable(err_str)
+
+                if response is not None:
+                    err_str += (
+                        f"Response(url={response.url},status={response.status_code})"
+                    )
+                raise RayStateApiException(err_str) from e
+
+        # Process the response.
         response = response.json()
         if response["result"] is False:
             raise RayStateApiException(
@@ -229,7 +285,6 @@ class StateApiClient(SubmissionClient):
             endpoint=endpoint,
             params=params,
             timeout=options.timeout,
-            resource=resource,
             _explain=_explain,
         )
         result = list_api_response["result"]
@@ -303,7 +358,6 @@ class StateApiClient(SubmissionClient):
             endpoint=endpoint,
             params=params,
             timeout=options.timeout,
-            resource=resource,
             _explain=_explain,
         )
         if _explain:
@@ -336,7 +390,6 @@ class StateApiClient(SubmissionClient):
             endpoint=endpoint,
             params=params,
             timeout=options.timeout,
-            resource=resource,
             _explain=_explain,
         )
         result = list_api_response["result"]
@@ -354,7 +407,7 @@ def get_actor(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[ActorState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.ACTORS, id, GetApiOptions(timeout=timeout), _explain=_explain
     )
 
@@ -375,7 +428,7 @@ def get_placement_group(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[PlacementGroupState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.PLACEMENT_GROUPS,
         id,
         GetApiOptions(timeout=timeout),
@@ -389,7 +442,7 @@ def get_node(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[NodeState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.NODES,
         id,
         GetApiOptions(timeout=timeout),
@@ -403,7 +456,7 @@ def get_worker(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[WorkerState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.WORKERS,
         id,
         GetApiOptions(timeout=timeout),
@@ -417,7 +470,7 @@ def get_task(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[TaskState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.TASKS,
         id,
         GetApiOptions(timeout=timeout),
@@ -431,7 +484,7 @@ def get_objects(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> List[ObjectState]:
-    return StateApiClient(api_server_address=address).get(
+    return StateApiClient(address=address).get(
         StateResource.OBJECTS,
         id,
         GetApiOptions(timeout=timeout),
@@ -443,8 +496,8 @@ def get_objects(
 Convenient methods for list_<RESOURCE>
 
 Supported arguments to the below methods, see `ListApiOptions`:
-    address: The address of the Ray state server. If None, it assumes a running Ray
-        deployment exists and will query the GCS for auto-configuration.
+    address: The IP address and port of the head node. Defaults to
+        http://localhost:8265.
     filters: Optional list of filter key-value pair.
     timeout: Time for the request.
     limit: Limit of entries in the result
@@ -461,7 +514,7 @@ def list_actors(
     detail: bool = False,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).list(
+    return StateApiClient(address=address).list(
         StateResource.ACTORS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -478,7 +531,7 @@ def list_placement_groups(
     detail: bool = False,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).list(
+    return StateApiClient(address=address).list(
         StateResource.PLACEMENT_GROUPS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -495,7 +548,7 @@ def list_nodes(
     detail: bool = False,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).list(
+    return StateApiClient(address=address).list(
         StateResource.NODES,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -512,7 +565,7 @@ def list_jobs(
     detail: bool = False,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).list(
+    return StateApiClient(address=address).list(
         StateResource.JOBS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -529,7 +582,7 @@ def list_workers(
     detail: bool = False,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).list(
+    return StateApiClient(address=address).list(
         StateResource.WORKERS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -546,7 +599,7 @@ def list_tasks(
     detail: bool = False,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).list(
+    return StateApiClient(address=address).list(
         StateResource.TASKS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -563,7 +616,7 @@ def list_objects(
     detail: bool = False,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).list(
+    return StateApiClient(address=address).list(
         StateResource.OBJECTS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -580,7 +633,7 @@ def list_runtime_envs(
     detail: bool = False,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).list(
+    return StateApiClient(address=address).list(
         StateResource.RUNTIME_ENVS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -702,7 +755,7 @@ def summarize_tasks(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).summary(
+    return StateApiClient(address=address).summary(
         SummaryResource.TASKS,
         options=SummaryApiOptions(timeout=timeout),
         _explain=_explain,
@@ -714,7 +767,7 @@ def summarize_actors(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).summary(
+    return StateApiClient(address=address).summary(
         SummaryResource.ACTORS,
         options=SummaryApiOptions(timeout=timeout),
         _explain=_explain,
@@ -726,7 +779,7 @@ def summarize_objects(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return StateApiClient(api_server_address=address).summary(
+    return StateApiClient(address=address).summary(
         SummaryResource.OBJECTS,
         options=SummaryApiOptions(timeout=timeout),
         _explain=_explain,

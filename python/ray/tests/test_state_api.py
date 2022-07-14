@@ -65,6 +65,7 @@ from ray.experimental.state.api import (
     list_runtime_envs,
     list_tasks,
     list_workers,
+    StateApiClient,
 )
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
@@ -385,6 +386,45 @@ def test_id_to_ip_map():
     m.pop(node_id_1)
     assert m.get_ip(node_id_1) is None
     assert m.get_node_id(node_id_1) is None
+
+
+# Without this, capsys will have a race condition
+# that causes
+# ValueError: I/O operation on closed file.
+@pytest.fixture
+def clear_loggers():
+    """Remove handlers from all loggers"""
+    yield
+    import logging
+
+    loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
+    for logger in loggers:
+        handlers = getattr(logger, "handlers", [])
+        for handler in handlers:
+            logger.removeHandler(handler)
+
+
+def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers):
+    ray.init()
+    timeout = 10
+    StateApiClient()._make_http_get_request("/api/v0/delay/5", {}, timeout, True)
+    captured = capsys.readouterr()
+    lines = captured.err.strip().split("\n")
+    # Lines are printed 1.25, 2.5, and 5 seconds.
+    # First line is the dashboard start log.
+    # INFO services.py:1477 -- View the Ray dashboard at http://127.0.0.1:8265
+    print(lines)
+
+    expected_elapsed = [1.25, 2.5, 5.0]
+    expected_lines = []
+    for elapsed in expected_elapsed:
+        expected_lines.append(
+            f"({elapsed} / 10 seconds) Waiting for the "
+            "response from the API "
+            "server address http://127.0.0.1:8265/api/v0/delay/5."
+        )
+    for expected_line in expected_lines:
+        expected_line in lines
 
 
 @pytest.mark.asyncio
@@ -1386,6 +1426,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
 
     def verify_output(cmd, args: List[str], necessary_substrings: List[str]):
         result = runner.invoke(cmd, args)
+        print(result)
         exit_code_correct = result.exit_code == 0
         substring_matched = all(
             substr in result.output for substr in necessary_substrings
