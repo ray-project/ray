@@ -13,7 +13,12 @@ py_library(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["**/test*.py"],
-    exclude = ["modules/test/**", "modules/node/tests/test_node.py", "tests/test_dashboard.py"],
+    exclude = [
+        "modules/test/**", 
+        "modules/node/tests/test_node.py", 
+        "tests/test_dashboard.py", 
+        "tests/test_state_head.py"
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
 )
@@ -30,4 +35,11 @@ py_test(
     size = "medium",
     srcs = ["tests/test_dashboard.py"],
     tags = ["exclusive", "team:serve"],
+)
+
+py_test(
+    name = "test_state_head",
+    size = "small",
+    srcs = ["tests/test_state_head.py"],
+    tags = ["team:core"],
 )
