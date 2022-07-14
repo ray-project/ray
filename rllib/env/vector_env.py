@@ -390,9 +390,7 @@ class VectorEnvWrapper(BaseEnv):
         assert env_id is None or isinstance(env_id, int)
         env_id = env_id if env_id is not None else 0
         obs = self.vector_env.reset_at(env_id)
-        return {
-            env_id: obs if isinstance(obs, Exception) else {_DUMMY_AGENT_ID: obs} 
-        }
+        return {env_id: obs if isinstance(obs, Exception) else {_DUMMY_AGENT_ID: obs}}
 
     @override(BaseEnv)
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
