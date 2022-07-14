@@ -11,11 +11,14 @@ Components
 
 .. _air-preprocessor-ref:
 
-Preprocessors
-~~~~~~~~~~~~~
+Preprocessor
+~~~~~~~~~~~~
 
 .. autoclass:: ray.data.preprocessor.Preprocessor
     :members:
+
+Built-in Preprocessors
+######################
 
 .. automodule:: ray.data.preprocessors
     :members:
@@ -30,6 +33,9 @@ Trainer
 
 .. autoclass:: ray.train.trainer.BaseTrainer
     :members:
+
+Trainer Templates
+#################
 
 .. autoclass:: ray.train.data_parallel_trainer.DataParallelTrainer
     :members:
@@ -50,7 +56,6 @@ Training Session
 
 .. automodule:: ray.air.session
     :members:
-
 
 Trainer Configs
 ###############
@@ -74,7 +79,13 @@ Predictor
 .. autoclass:: ray.train.predictor.Predictor
     :members:
 
+Data Types
+##########
+
 .. autoclass:: ray.train.predictor.DataBatchType
+
+Batch Predictor
+###############
 
 .. autoclass:: ray.train.batch_predictor.BatchPredictor
     :members:
@@ -86,6 +97,9 @@ Tuner
 
 .. autoclass:: ray.tune.tuner.Tuner
     :members:
+
+Tuner Results
+#############
 
 .. automodule:: ray.tune.result_grid
     :members:
