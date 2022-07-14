@@ -272,10 +272,15 @@ class HyperBandScheduler(FIFOScheduler):
                     )
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
+                        self._unpause_trial(trial_runner, t)
                         t.status = Trial.PENDING
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
+
+    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+        """No-op by default."""
+        return
 
     def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         """Notification when trial terminates.
