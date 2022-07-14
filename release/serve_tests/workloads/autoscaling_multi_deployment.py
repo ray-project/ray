@@ -75,7 +75,7 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
     all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": max_replicas_per_deployment,
