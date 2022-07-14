@@ -36,6 +36,9 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 PARQUET_READER_ROW_BATCH_SIZE = 100000
 FILE_READING_RETRY = 8
 
+# The estimated bytes size multiplier for reading Parquet data source in Arrow.
+PARQUET_TO_ARROW_SIZE_MULTIPLIER = 5
+
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
 # raw pyarrow file fragment causes S3 network calls.
@@ -197,7 +200,7 @@ class _ParquetDatasourceReader(Reader):
             for row_group_idx in range(file_metadata.num_row_groups):
                 row_group_metadata = file_metadata.row_group(row_group_idx)
                 total_size += row_group_metadata.total_byte_size
-        return total_size
+        return total_size * PARQUET_TO_ARROW_SIZE_MULTIPLIER
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
