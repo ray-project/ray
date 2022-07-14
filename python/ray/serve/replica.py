@@ -211,8 +211,13 @@ def create_replica_wrapper(name: str):
         async def check_health(self):
             await self.replica.check_health()
 
-    RayServeWrappedReplica.__name__ = name
-    return RayServeWrappedReplica
+    # Dynamically create a new class with custom name here so Ray pick it up
+    # correctly in actor metadata table.
+    return type(
+        f"ServeReplica:{name}",
+        (RayServeWrappedReplica,),
+        dict(RayServeWrappedReplica.__dict__),
+    )
 
 
 class RayServeReplica:
