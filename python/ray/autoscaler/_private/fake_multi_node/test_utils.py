@@ -6,8 +6,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 import yaml
 
 import ray
@@ -16,6 +18,7 @@ from ray.autoscaler._private.fake_multi_node.node_provider import (
     FAKE_DOCKER_DEFAULT_GCS_PORT,
 )
 from ray.util.ml_utils.dict import deep_update
+from ray.util.queue import Empty, Queue
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,10 @@ class DockerCluster:
             os.path.dirname(__file__), "docker_monitor.py"
         )
         self._monitor_process = None
+
+        self._execution_thread = None
+        self._execution_event = threading.Event()
+        self._execution_queue = None
 
     @property
     def config_file(self):
@@ -115,6 +122,26 @@ class DockerCluster:
             ray.cluster_resources()
         except Exception as e:
             raise RuntimeError(f"Timed out connecting to Ray: {e}")
+
+    def remote_execution_api(self) -> "RemoteAPI":
+        """Create an object to control cluster state from within the cluster."""
+        self._execution_queue = Queue(actor_options={"num_cpus": 0})
+        stop_event = self._execution_event
+
+        def entrypoint():
+            while not stop_event.is_set():
+                try:
+                    cmd, kwargs = self._execution_queue.get(timeout=1)
+                except Empty:
+                    continue
+
+                if cmd == "kill_node":
+                    self.kill_node(**kwargs)
+
+        self._execution_thread = threading.Thread(target=entrypoint)
+        self._execution_thread.start()
+
+        return RemoteAPI(self._execution_queue)
 
     @staticmethod
     def wait_for_resources(resources: Dict[str, float], timeout: int = 60):
@@ -268,6 +295,7 @@ class DockerCluster:
         )
 
         self._stop_monitor()
+        self._execution_event.set()
 
     def _update_nodes(self):
         with open(self._nodes_file, "rt") as f:
@@ -340,3 +368,31 @@ class DockerCluster:
         node_id = self._get_node(node_id=node_id, num=num, rand=rand)
         container = self._get_docker_container(node_id=node_id)
         subprocess.check_output(f"docker kill {container}", shell=True)
+
+
+class RemoteAPI:
+    """Remote API to control cluster state from within cluster tasks.
+
+    This API uses a Ray queue to interact with an execution thread on the
+    host machine that will execute commands passed to the queue.
+
+    Instances of this class can be serialized and passed to Ray remote actors
+    to interact with cluster state (but they can also be used outside actors).
+
+    The API subset is limited to specific commands.
+
+    Args:
+        queue: Ray queue to push command instructions to.
+
+    """
+
+    def __init__(self, queue: Queue):
+        self._queue = queue
+
+    def kill_node(
+        self,
+        node_id: Optional[str] = None,
+        num: Optional[int] = None,
+        rand: Optional[str] = None,
+    ):
+        self._queue.put(("kill_node", dict(node_id=node_id, num=num, rand=rand)))

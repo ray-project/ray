@@ -4,10 +4,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import logging
 
-from ray.tune import trial_runner
+from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.error import TuneError
 from ray.util import PublicAPI
 
@@ -272,10 +272,15 @@ class HyperBandScheduler(FIFOScheduler):
                     )
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
+                        self._unpause_trial(trial_runner, t)
                         t.status = Trial.PENDING
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
+
+    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+        """No-op by default."""
+        return
 
     def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         """Notification when trial terminates.

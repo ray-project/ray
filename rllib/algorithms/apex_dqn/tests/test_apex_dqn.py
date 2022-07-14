@@ -15,7 +15,7 @@ from ray.rllib.utils.test_utils import (
 
 class TestApexDQN(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=6)
 
     def tearDown(self):
         ray.shutdown()
@@ -34,8 +34,8 @@ class TestApexDQN(unittest.TestCase):
                 },
             )
             .reporting(
-                min_sample_timesteps_per_reporting=100,
-                min_time_s_per_reporting=1,
+                min_sample_timesteps_per_iteration=100,
+                min_time_s_per_iteration=1,
             )
         )
 
@@ -61,8 +61,8 @@ class TestApexDQN(unittest.TestCase):
                 },
             )
             .reporting(
-                min_sample_timesteps_per_reporting=100,
-                min_time_s_per_reporting=1,
+                min_sample_timesteps_per_iteration=100,
+                min_time_s_per_iteration=1,
             )
         )
 
@@ -123,37 +123,37 @@ class TestApexDQN(unittest.TestCase):
                 lr_schedule=[[0, 0.2], [100, 0.001]],
             )
             .reporting(
-                min_sample_timesteps_per_reporting=10,
+                min_sample_timesteps_per_iteration=10,
                 # 0 metrics reporting delay, this makes sure timestep,
                 # which lr depends on, is updated after each worker rollout.
-                min_time_s_per_reporting=0,
+                min_time_s_per_iteration=0,
             )
         )
 
-        def _step_n_times(trainer, n: int):
+        def _step_n_times(algo, n: int):
             """Step trainer n times.
 
             Returns:
                 learning rate at the end of the execution.
             """
             for _ in range(n):
-                results = trainer.train()
+                results = algo.train()
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
                 "cur_lr"
             ]
 
-        for _ in framework_iterator(config):
-            trainer = config.build(env="CartPole-v0")
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            algo = config.build(env="CartPole-v0")
 
-            lr = _step_n_times(trainer, 3)  # 50 timesteps
+            lr = _step_n_times(algo, 3)  # 50 timesteps
             # Close to 0.2
             self.assertGreaterEqual(lr, 0.1)
 
-            lr = _step_n_times(trainer, 20)  # 200 timesteps
+            lr = _step_n_times(algo, 20)  # 200 timesteps
             # LR Annealed to 0.001
             self.assertLessEqual(lr, 0.0011)
 
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

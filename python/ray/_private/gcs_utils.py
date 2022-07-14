@@ -1,37 +1,36 @@
 import enum
 import logging
-from typing import List, Optional
-from functools import wraps
 import time
+from functools import wraps
+from typing import List, Optional
 
 import grpc
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated.common_pb2 import ErrorType
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated import gcs_service_pb2
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
-    GcsNodeInfo,
     AvailableResources,
-    JobTableData,
-    JobConfig,
     ErrorTableData,
     GcsEntry,
-    ResourceUsageBatchData,
-    ResourcesData,
+    GcsNodeInfo,
+    JobConfig,
+    JobTableData,
     ObjectTableData,
+    PlacementGroupTableData,
     ProfileTableData,
-    TablePrefix,
-    TablePubsub,
+    PubSubMessage,
     ResourceDemand,
     ResourceLoad,
     ResourceMap,
+    ResourcesData,
     ResourceTableData,
-    PubSubMessage,
+    ResourceUsageBatchData,
+    TablePrefix,
+    TablePubsub,
     WorkerTableData,
-    PlacementGroupTableData,
 )
 
 logger = logging.getLogger(__name__)
@@ -159,6 +158,10 @@ class GcsChannel:
     def __init__(self, gcs_address: Optional[str] = None, aio: bool = False):
         self._gcs_address = gcs_address
         self._aio = aio
+
+    @property
+    def address(self):
+        return self._gcs_address
 
     def connect(self):
         # GCS server uses a cached port, so it should use the same port after
@@ -333,11 +336,30 @@ class GcsAioClient:
         self._channel = channel
         self._connect()
 
+    @property
+    def channel(self):
+        return self._channel
+
     def _connect(self):
         self._channel.connect()
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel()
         )
+        self._heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+            self._channel.channel()
+        )
+
+    async def check_alive(
+        self, node_ips: List[bytes], timeout: Optional[float] = None
+    ) -> List[bool]:
+        req = gcs_service_pb2.CheckAliveRequest(raylet_address=node_ips)
+        reply = await self._heartbeat_info_stub.CheckAlive(req, timeout=timeout)
+
+        if reply.status.code != GcsCode.OK:
+            raise RuntimeError(
+                f"GCS running at {self._channel.address} is unhealthy: {reply.status}"
+            )
+        return list(reply.raylet_alive)
 
     async def internal_kv_get(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None

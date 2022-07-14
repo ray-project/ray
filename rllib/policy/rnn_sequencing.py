@@ -233,7 +233,9 @@ def chop_into_sequences(
     Args:
         feature_columns: List of arrays containing features.
         state_columns: List of arrays containing LSTM state values.
-        max_seq_len: Max length of sequences before truncation.
+        max_seq_len: Max length of sequences. Sequences longer than max_seq_len
+            will be split into subsequences that span the batch dimension
+            and sum to max_seq_len.
         episode_ids (List[EpisodeID]): List of episode ids for each step.
         unroll_ids (List[UnrollID]): List of identifiers for the sample batch.
             This is used to make sure sequences are cut between sample batches.
@@ -405,6 +407,16 @@ def timeslice_along_seq_lens_with_overlap(
     """
     if seq_lens is None:
         seq_lens = sample_batch.get(SampleBatch.SEQ_LENS)
+    else:
+        if sample_batch.get(SampleBatch.SEQ_LENS) is not None and log_once(
+            "overriding_sequencing_information"
+        ):
+            logger.warning(
+                "Found sequencing information in a batch that will be "
+                "ignored when slicing. Ignore this warning if you know "
+                "what you are doing."
+            )
+
     if seq_lens is None:
         max_seq_len = zero_pad_max_seq_len - pre_overlap
         if log_once("no_sequence_lengths_available_for_time_slicing"):
@@ -420,6 +432,7 @@ def timeslice_along_seq_lens_with_overlap(
         seq_lens = [zero_pad_max_seq_len] * num_seq_lens + (
             [last_seq_len] if last_seq_len else []
         )
+
     assert (
         seq_lens is not None and len(seq_lens) > 0
     ), "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"

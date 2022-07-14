@@ -41,7 +41,6 @@ class MockReplicaActorWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
-        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
@@ -67,6 +66,11 @@ class MockReplicaActorWrapper:
         self.health_check_called = False
         # Returned by the health check.
         self.healthy = True
+        self._is_cross_language = False
+
+    @property
+    def is_cross_language(self) -> bool:
+        return self._is_cross_language
 
     @property
     def replica_tag(self) -> str:

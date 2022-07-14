@@ -70,9 +70,8 @@ class LogsManager:
             Async generator of streamed logs in bytes.
         """
         node_id = options.node_id or self.ip_to_node_id(options.node_ip)
-        self._verify_node_registered(node_id)
 
-        log_file_name = await self.resolve_filename(
+        log_file_name, node_id = await self.resolve_filename(
             node_id=node_id,
             log_filename=options.filename,
             actor_id=options.actor_id,
@@ -89,7 +88,10 @@ class LogsManager:
             keep_alive=keep_alive,
             lines=options.lines,
             interval=options.interval,
-            timeout=options.timeout,
+            # If we keepalive logs connection, we shouldn't have timeout
+            # otherwise the stream will be terminated forcefully
+            # after the deadline is expired.
+            timeout=options.timeout if not keep_alive else None,
         )
 
         async for streamed_log in stream:
@@ -133,6 +135,13 @@ class LogsManager:
                     f"Worker ID for Actor ID {actor_id} not found. "
                     "Actor is not scheduled yet."
                 )
+            node_id = actor_data["address"].get("rayletId")
+            if not node_id:
+                raise ValueError(
+                    f"Node ID for Actor ID {actor_id} not found. "
+                    "Actor is not scheduled yet."
+                )
+            self._verify_node_registered(node_id)
 
             # List all worker logs that match actor's worker id.
             log_files = await self.list_logs(
@@ -149,6 +158,7 @@ class LogsManager:
         elif task_id:
             raise NotImplementedError("task_id is not supported yet.")
         elif pid:
+            self._verify_node_registered(node_id)
             log_files = await self.list_logs(node_id, timeout, glob_filter=f"*{pid}*")
             for filename in log_files["worker_out"]:
                 # worker-[worker_id]-[job_id]-[pid].log
@@ -170,7 +180,7 @@ class LogsManager:
                 f"\tpid: {pid}\n"
             )
 
-        return log_filename
+        return log_filename, node_id
 
     def _categorize_log_files(self, log_files: List[str]) -> Dict[str, List[str]]:
         """Categorize the given log files after filterieng them out using a given glob.

@@ -1,8 +1,8 @@
-from typing import List, Any
 import threading
+from typing import Any, List
 
 import ray
-from ray.ray_constants import env_integer
+from ray._private.ray_constants import env_integer
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
@@ -87,7 +87,7 @@ class ProgressBar:
             self._bar.set_description(name)
 
     def update(self, i: int) -> None:
-        if self._bar:
+        if self._bar and i != 0:
             self._bar.update(i)
 
     def close(self):

@@ -1,11 +1,10 @@
 import math
-from typing import List, Iterator, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 import numpy as np
 
-import ray
-from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata
+from ray.types import ObjectRef
 
 
 class BlockList:
@@ -131,21 +130,7 @@ class BlockList:
         The length of this iterator is not known until execution.
         """
         self._check_if_cleared()
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._base_iter = outer.iter_blocks_with_metadata()
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                ref, meta = next(self._base_iter)
-                assert isinstance(ref, ray.ObjectRef), (ref, meta)
-                return ref
-
-        return Iter()
+        return iter(self._blocks)
 
     def get_blocks_with_metadata(self) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Bulk version of iter_blocks_with_metadata().
@@ -178,3 +163,21 @@ class BlockList:
         doesn't know how many blocks will be produced until tasks finish.
         """
         return len(self.get_blocks())
+
+    def randomize_block_order(self, seed: Optional[int] = None) -> "BlockList":
+        """Randomizes the order of the blocks.
+
+        Args:
+            seed: Fix the random seed to use, otherwise one will be chosen
+                based on system randomness.
+        """
+        import random
+
+        if seed is not None:
+            random.seed(seed)
+
+        blocks_with_metadata = self.get_blocks_with_metadata()
+        random.shuffle(blocks_with_metadata)
+        blocks, metadata = map(list, zip(*blocks_with_metadata))
+
+        return BlockList(blocks, metadata)

@@ -1,3 +1,4 @@
+(serve-user-guides)=
 # User Guides
 
 If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick Start](getting_started).
@@ -14,3 +15,4 @@ you will learn
 - [Deploying Ray Serve](deploying-serve)
 - [Debugging/Monitoring](monitoring)
 - [Performance Tuning](performance)
+- [Autoscaling](autoscaling)

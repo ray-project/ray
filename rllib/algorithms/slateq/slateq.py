@@ -2,7 +2,7 @@
 SlateQ (Reinforcement Learning for Recommendation)
 ==================================================
 
-This file defines the trainer class for the SlateQ algorithm from the
+This file defines the algorithm class for the SlateQ algorithm from the
 `"Reinforcement Learning for Slate-based Recommender Systems: A Tractable
 Decomposition and Practical Methodology" <https://arxiv.org/abs/1905.12767>`_
 paper.
@@ -15,26 +15,26 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
-from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 logger = logging.getLogger(__name__)
 
 
-class SlateQConfig(TrainerConfig):
-    """Defines a configuration class from which a SlateQ Trainer can be built.
+class SlateQConfig(AlgorithmConfig):
+    """Defines a configuration class from which a SlateQ Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.slateq import SlateQConfig
         >>> config = SlateQConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -60,7 +60,7 @@ class SlateQConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=SlateQ)
+        super().__init__(algo_class=SlateQ)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -94,7 +94,7 @@ class SlateQConfig(TrainerConfig):
             "learning_starts": 20000,
         }
 
-        # Override some of TrainerConfig's default values with SlateQ-specific values.
+        # Override some of AlgorithmConfig's default values with SlateQ-specific values.
         self.exploration_config = {
             # The Exploration class to use.
             # Must be SlateEpsilonGreedy or SlateSoftQ to handle the problem that
@@ -113,8 +113,8 @@ class SlateQConfig(TrainerConfig):
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
         self.lr = 0.00025
-        self.min_sample_timesteps_per_reporting = 1000
-        self.min_time_s_per_reporting = 1
+        self.min_sample_timesteps_per_iteration = 1000
+        self.min_time_s_per_iteration = 1
         self.compress_observations = False
         self._disable_preprocessor_api = True
         # __sphinx_doc_end__
@@ -123,7 +123,7 @@ class SlateQConfig(TrainerConfig):
         # Deprecated config keys.
         self.learning_starts = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -173,7 +173,7 @@ class SlateQConfig(TrainerConfig):
             n_step: N-step parameter for Q-learning.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -206,7 +206,7 @@ class SlateQConfig(TrainerConfig):
         return self
 
 
-def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
+def calculate_round_robin_weights(config: AlgorithmConfigDict) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
@@ -221,11 +221,11 @@ def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
 class SlateQ(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return SlateQConfig().to_dict()
 
     @override(DQN)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy
         else:

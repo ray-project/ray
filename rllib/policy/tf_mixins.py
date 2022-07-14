@@ -1,24 +1,24 @@
-import gym
 import logging
 from typing import Dict, List, Union
+
+import gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
 )
 
 logger = logging.getLogger(__name__)
-
 tf1, tf, tfv = try_import_tf()
 
 
@@ -125,12 +125,12 @@ class EntropyCoeffSchedule:
 class KLCoeffMixin:
     """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
-    This is used in Trainers to update the KL coefficient after each
+    This is used in Algorithms to update the KL coefficient after each
     learning step based on `config.kl_target` and the measured KL value
     (from the train_batch).
     """
 
-    def __init__(self, config):
+    def __init__(self, config: AlgorithmConfigDict):
         # The current KL value (as python float).
         self.kl_coeff_val = config["kl_coeff"]
         # The current KL value (as tf Variable for in-graph operations).
@@ -194,6 +194,52 @@ class KLCoeffMixin:
         self._set_kl_coeff(state.pop("current_kl_coeff", self.config["kl_coeff"]))
         # Call super's set_state with rest of the state dict.
         super().set_state(state)
+
+
+class TargetNetworkMixin:
+    """Assign the `update_target` method to the Policy.
+
+    The function is called every `target_network_update_freq` steps by the
+    master learner.
+    """
+
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: AlgorithmConfigDict,
+    ):
+        @make_tf_callable(self.get_session())
+        def do_update():
+            # update_target_fn will be called periodically to copy Q network to
+            # target Q network
+            update_target_expr = []
+            assert len(self.q_func_vars) == len(self.target_q_func_vars), (
+                self.q_func_vars,
+                self.target_q_func_vars,
+            )
+            for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
+                update_target_expr.append(var_target.assign(var))
+                logger.debug("Update target op {}".format(var_target))
+            return tf.group(*update_target_expr)
+
+        self.update_target = do_update
+
+    @property
+    def q_func_vars(self):
+        if not hasattr(self, "_q_func_vars"):
+            self._q_func_vars = self.model.variables()
+        return self._q_func_vars
+
+    @property
+    def target_q_func_vars(self):
+        if not hasattr(self, "_target_q_func_vars"):
+            self._target_q_func_vars = self.target_model.variables()
+        return self._target_q_func_vars
+
+    @override(TFPolicy)
+    def variables(self):
+        return self.q_func_vars + self.target_q_func_vars
 
 
 class ValueNetworkMixin:
@@ -275,52 +321,6 @@ class ValueNetworkMixin:
 
         self._cached_extra_action_fetches = self._extra_action_out_impl()
         return self._cached_extra_action_fetches
-
-
-class TargetNetworkMixin:
-    """Assign the `update_target` method to the SimpleQTFPolicy
-
-    The function is called every `target_network_update_freq` steps by the
-    master learner.
-    """
-
-    def __init__(
-        self,
-        obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
-    ):
-        @make_tf_callable(self.get_session())
-        def do_update():
-            # update_target_fn will be called periodically to copy Q network to
-            # target Q network
-            update_target_expr = []
-            assert len(self.q_func_vars) == len(self.target_q_func_vars), (
-                self.q_func_vars,
-                self.target_q_func_vars,
-            )
-            for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
-                update_target_expr.append(var_target.assign(var))
-                logger.debug("Update target op {}".format(var_target))
-            return tf.group(*update_target_expr)
-
-        self.update_target = do_update
-
-    @property
-    def q_func_vars(self):
-        if not hasattr(self, "_q_func_vars"):
-            self._q_func_vars = self.model.variables()
-        return self._q_func_vars
-
-    @property
-    def target_q_func_vars(self):
-        if not hasattr(self, "_target_q_func_vars"):
-            self._target_q_func_vars = self.target_model.variables()
-        return self._target_q_func_vars
-
-    @override(TFPolicy)
-    def variables(self):
-        return self.q_func_vars + self.target_q_func_vars
 
 
 # TODO: find a better place for this util, since it's not technically MixIns.

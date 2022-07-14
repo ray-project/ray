@@ -3,23 +3,22 @@
 
 import argparse
 import tempfile
+
+import pandas as pd
+import torch
 from datasets import load_dataset
 from transformers import (
-    AutoTokenizer,
     AutoConfig,
     AutoModelForCausalLM,
+    AutoTokenizer,
     Trainer,
     TrainingArguments,
 )
 
-import pandas as pd
-import torch
-
 import ray
 import ray.data
-from ray.air.train.integrations.huggingface import HuggingFaceTrainer
-from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
 
 
 def main(
@@ -128,9 +127,8 @@ def main(
     )
     data = ray.data.from_pandas(pd.DataFrame(prompt, columns=["prompt"]))
     prediction = predictor.predict(data, num_gpus_per_worker=int(use_gpu))
-    prediction = prediction.to_pandas().iloc[0]["generated_text"]
 
-    print(f"Generated text for prompt '{prompt}': '{prediction}'")
+    print(f"Generated text for prompt '{prompt}': '{prediction.take(1)}'")
 
 
 if __name__ == "__main__":

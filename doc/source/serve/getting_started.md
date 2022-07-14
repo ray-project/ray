@@ -62,6 +62,7 @@ PyTorch, and Tensorflow for more info and examples:
 - {ref}`serve-pytorch-tutorial`
 - {ref}`serve-tensorflow-tutorial`
 
+(converting-to-ray-serve-deployment)=
 ## Converting to a Ray Serve Deployment
 
 This tutorial's goal is to deploy this model using Ray Serve, so it can be
@@ -199,7 +200,7 @@ $ ray start --head
 ```
 
 The Ray cluster that this command launches is the same Ray cluster that the
-Python code connects to using `ray.init(address="auto", namespace="serve")`.
+Python code connects to using `ray.init(address="auto")`.
 It is also the same Ray cluster that keeps Ray Serve (and any deployments on
 it, such as `router`) alive even after the Python script exits as long as
 `detached=True` inside `serve.start()`.

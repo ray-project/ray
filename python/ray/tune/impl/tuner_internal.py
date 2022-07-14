@@ -4,9 +4,8 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
 from ray.air.config import RunConfig
-from ray.air.trainer import Trainer
+from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
@@ -55,7 +54,7 @@ class TunerInternal:
                 str,
                 Callable,
                 Type[Trainable],
-                Trainer,
+                BaseTrainer,
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
@@ -85,7 +84,7 @@ class TunerInternal:
 
         # If no run config was passed to Tuner directly, use the one from the Trainer,
         # if available
-        if not run_config and isinstance(trainable, Trainer):
+        if not run_config and isinstance(trainable, BaseTrainer):
             run_config = trainable.run_config
 
         self._is_restored = False
@@ -99,7 +98,6 @@ class TunerInternal:
 
         # Not used for restored Tuner.
         self._param_space = param_space or {}
-        self._process_dataset_param()
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if
@@ -114,16 +112,6 @@ class TunerInternal:
         trainable_ckpt = os.path.join(self._experiment_checkpoint_dir, _TRAINABLE_PKL)
         with open(trainable_ckpt, "wb") as fp:
             pickle.dump(self._trainable, fp)
-
-    def _process_dataset_param(self) -> None:
-        """Dataset needs to be fully executed before sent over to trainables.
-
-        A valid dataset configuration in param space looks like:
-        "datasets": {
-            "train_dataset": tune.grid_search([ds1, ds2]),
-        },
-        """
-        execute_dataset(self._param_space)
 
     def _setup_create_experiment_checkpoint_dir(
         self, run_config: Optional[RunConfig]
@@ -144,7 +132,7 @@ class TunerInternal:
 
     @staticmethod
     def _convert_trainable(trainable: Any) -> Type[Trainable]:
-        if isinstance(trainable, Trainer):
+        if isinstance(trainable, BaseTrainer):
             trainable = trainable.as_trainable()
         else:
             trainable = trainable
@@ -161,47 +149,69 @@ class TunerInternal:
 
         return ResultGrid(analysis)
 
-    def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
-        """Fitting for a fresh Tuner."""
-        analysis = run(
-            trainable,
-            config={**param_space},
+    def _get_tune_run_arguments(self) -> Dict[str, Any]:
+        """Get tune.run arguments common for both new and resumed runs."""
+        return dict(
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
-            num_samples=self._tune_config.num_samples,
-            search_alg=self._tune_config.search_alg,
-            scheduler=self._tune_config.scheduler,
-            name=self._run_config.name,
             callbacks=self._run_config.callbacks,
             sync_config=self._run_config.sync_config,
             stop=self._run_config.stop,
             max_failures=(
-                self._run_config.failure.max_failures if self._run_config.failure else 0
+                self._run_config.failure_config.max_failures
+                if self._run_config.failure_config
+                else 0
+            ),
+            keep_checkpoints_num=(
+                self._run_config.checkpoint_config.num_to_keep
+                if self._run_config.checkpoint_config
+                else None
+            ),
+            checkpoint_score_attr=(
+                self._run_config.checkpoint_config._tune_legacy_checkpoint_score_attr
+                if self._run_config.checkpoint_config
+                else None
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
+            fail_fast=(
+                self._run_config.failure_config.fail_fast
+                if self._run_config.failure_config
+                else False
+            ),
             verbose=self._run_config.verbose,
+        )
+
+    def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
+        """Fitting for a fresh Tuner."""
+        args = {
+            **self._get_tune_run_arguments(),
+            **dict(
+                run_or_experiment=trainable,
+                config={**param_space},
+                num_samples=self._tune_config.num_samples,
+                search_alg=self._tune_config.search_alg,
+                scheduler=self._tune_config.scheduler,
+                name=self._run_config.name,
+            ),
             **self._tuner_kwargs,
+        }
+        analysis = run(
+            **args,
         )
         return analysis
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
-        analysis = run(
-            trainable,
-            resume=True,
-            mode=self._tune_config.mode,
-            metric=self._tune_config.metric,
-            callbacks=self._run_config.callbacks,
-            sync_config=self._run_config.sync_config,
-            stop=self._run_config.stop,
-            max_failures=(
-                self._run_config.failure.max_failures if self._run_config.failure else 0
+        args = {
+            **self._get_tune_run_arguments(),
+            **dict(
+                run_or_experiment=trainable,
+                resume=True,
             ),
-            _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
-            raise_on_failed_trial=False,
             **self._tuner_kwargs,
-        )
+        }
+        analysis = run(**args)
         return analysis
 
     def __getstate__(self):

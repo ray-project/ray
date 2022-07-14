@@ -20,7 +20,7 @@ Use the generated file(s) as "input" in the CQL config below
 import numpy as np
 import os
 
-from ray.rllib.agents import cql as cql
+from ray.rllib.algorithms import cql as cql
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     }
     config["train_batch_size"] = 256
     config["target_network_update_freq"] = 1
-    config["min_train_timesteps_per_reporting"] = 1000
+    config["min_train_timesteps_per_iteration"] = 1000
     data_file = "/path/to/my/json_file.json"
     print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
     config["input"] = [data_file]
@@ -83,11 +83,11 @@ if __name__ == "__main__":
     min_reward = -300
 
     # Test for torch framework (tf not implemented yet).
-    trainer = cql.CQL(config=config)
+    algo = cql.CQL(config=config)
     learnt = False
     for i in range(num_iterations):
         print(f"Iter {i}")
-        eval_results = trainer.train().get("evaluation")
+        eval_results = algo.train().get("evaluation")
         if eval_results:
             print("... R={}".format(eval_results["episode_reward_mean"]))
             # Learn until some reward is reached on an actual live env.
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         )
 
     # Get policy, model, and replay-buffer.
-    pol = trainer.get_policy()
+    pol = algo.get_policy()
     cql_model = pol.model
     from ray.rllib.algorithms.cql.cql import replay_buffer
 
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     final_q_values = torch.min(q_values, twin_q_values)
     print(final_q_values)
 
-    # Example on how to do evaluation on the trained Trainer
+    # Example on how to do evaluation on the trained Algorithm.
     # using the data from our buffer.
     # Get a sample (MultiAgentBatch).
     multi_agent_batch = replay_buffer.sample(num_items=config["train_batch_size"])
@@ -128,11 +128,10 @@ if __name__ == "__main__":
     model_out, _ = cql_model({"obs": obs})
     # The estimated Q-values from the (historic) actions in the batch.
     q_values_old = cql_model.get_q_values(model_out, torch.from_numpy(batch["actions"]))
-    # The estimated Q-values for the new actions computed
-    # by our trainer policy.
+    # The estimated Q-values for the new actions computed by our policy.
     actions_new = pol.compute_actions_from_input_dict({"obs": obs})[0]
     q_values_new = cql_model.get_q_values(model_out, torch.from_numpy(actions_new))
     print(f"Q-val batch={q_values_old}")
     print(f"Q-val policy={q_values_new}")
 
-    trainer.stop()
+    algo.stop()
