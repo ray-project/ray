@@ -10,6 +10,7 @@ from ray import serve
 from ray._private.utils import import_attr
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve.utils import require_packages
+from ray.serve.constants import SERVE_LOGGER_NAME
 
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor
@@ -21,7 +22,7 @@ try:
 except ImportError:
     pd = None
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _load_checkpoint(
