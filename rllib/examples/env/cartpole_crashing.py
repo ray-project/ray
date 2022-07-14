@@ -35,6 +35,7 @@ class CartPoleCrashing(CartPoleEnv):
         faulty_indices = config.get("crash_on_worker_indices", None)
         if faulty_indices and config.worker_index not in faulty_indices:
             self.p_crash = 0.0
+            self.p_crash_reset = 0.0
             self.crash_after_n_steps = None
         # Timestep counter for the ongoing episode.
         self.timesteps = 0
