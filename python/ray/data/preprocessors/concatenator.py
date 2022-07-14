@@ -7,9 +7,15 @@ from ray.data.preprocessor import Preprocessor
 
 
 class Concatenator(Preprocessor):
-    """Create tensor columns via concatenation.
+    """Creates a tensor column via concatenation.
 
-    A tensor column is a a column consisting of ndarrays as elements.
+    A tensor column is a column consisting of ndarrays as elements.
+    The tensor column will be generated from the provided list
+    of columns and will take on the provided "output" label.
+    Columns that are included in the concatenation
+    will be dropped, while columns that are not included in concatenation
+    will be preserved.
+
 
     Example:
         >>> import pandas as pd
@@ -18,19 +24,16 @@ class Concatenator(Preprocessor):
         >>> ds = ray.data.from_pandas(df)
         >>> prep = Concatenator(["a", "b"], "c")
         >>> new_ds = prep.transform(ds)
-        >>> df = new_ds.to_pandas()
-        #         c
-        # 0  [1, 1]
-        # 1  [2, 2]
-        #       ...
-        >>> x = df["c"].iloc[0]
-        >>> assert x.to_numpy().tolist() == [1, 1]
 
     Args:
         output_column: output_column is a string that represents the
-            name of the outputted, concatenated tensor.
-        exclude: A list of column names that should be excluded
-            from concatenation. All other columns will be dropped.
+            name of the outputted, concatenated tensor. Defaults to
+            "concat_out".
+        include: A list of column names to be included for
+            concatenation. If None, then all columns will be included.
+            Included columns will be dropped after concatenation.
+        exclude: List of column names to be excluded
+            from concatenation. Exclude takes precedence over include.
         dtype: Optional. The dtype to convert the output column array to.
 
     Raises:
@@ -41,26 +44,43 @@ class Concatenator(Preprocessor):
 
     def __init__(
         self,
-        output_column: str,
+        output_column: str = "concat_out",
+        include: Optional[List[str]] = None,
         exclude: Optional[List[str]] = None,
         dtype: Optional[np.dtype] = None,
     ):
         self.output_column = output_column
-        self.exclude_columns = exclude or []
+        self.included_columns = include
+        self.excluded_columns = exclude or []
         self.dtype = dtype
 
     def _validate(self, df: pd.DataFrame):
-        ds_columns = set(df)
-        specified_set = set(self.exclude_columns)
-        missing_columns = specified_set - ds_columns.intersection(specified_set)
-        if missing_columns:
-            raise ValueError(
-                f"Missing columns specified in 'exclude': {missing_columns}"
+        total_columns = set(df)
+        if self.excluded_columns:
+            missing_columns = set(self.excluded_columns) - total_columns.intersection(
+                set(self.excluded_columns)
             )
+            if missing_columns:
+                raise ValueError(
+                    f"Missing columns specified in 'exclude': {missing_columns}"
+                )
+        if self.included_columns:
+            missing_columns = set(self.included_columns) - total_columns.intersection(
+                set(self.included_columns)
+            )
+            if missing_columns:
+                raise ValueError(
+                    f"Missing columns specified in 'include': {missing_columns}"
+                )
 
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
-        columns_to_concat = list(set(df) - set(self.exclude_columns))
+
+        included_columns = set(df)
+        if self.included_columns:  # subset of included columns
+            included_columns = set(self.included_columns)
+
+        columns_to_concat = list(included_columns - set(self.excluded_columns))
         concatenated = df[columns_to_concat].to_numpy(dtype=self.dtype)
         df = df.drop(columns=columns_to_concat)
         df[self.output_column] = TensorArray(concatenated)
@@ -69,12 +89,7 @@ class Concatenator(Preprocessor):
     def __repr__(self):
         return (
             f"Concatenator(output_column={self.output_column}, "
-            f"exclude={self.exclude_columns}, dtype={self.dtype})"
+            f"include={self.included_columns}, "
+            f"exclude={self.excluded_columns}, "
+            f"dtype={self.dtype})"
         )
-
-    df = pd.DataFrame(
-        {
-            "a": [1, 2, 3, 4],
-            "b": [1, 2, 3, 4],
-        }
-    )
