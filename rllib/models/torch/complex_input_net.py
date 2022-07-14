@@ -32,7 +32,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
     `obs` (e.g. Tuple[img0, img1, discrete0]) -> `CNN0 + CNN1 + ONE-HOT`
     `CNN0 + CNN1 + ONE-HOT` -> concat all flat outputs -> `out`
     `out` -> (optional) FC-stack -> `out2`
-    `out2` -> action (logits) and vaulue heads.
+    `out2` -> action (logits) and value heads.
     """
 
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
