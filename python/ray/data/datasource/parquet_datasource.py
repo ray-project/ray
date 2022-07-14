@@ -36,6 +36,12 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 PARQUET_READER_ROW_BATCH_SIZE = 100000
 FILE_READING_RETRY = 8
 
+# The estimated bytes size multiplier for reading Parquet data source in Arrow,
+# as Arrow in-memory representation uses much more memory compared to Parquet
+# uncompressed representation. See https://github.com/ray-project/ray/pull/26516
+# for more context.
+PARQUET_TO_ARROW_SIZE_MULTIPLIER = 5
+
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
 # raw pyarrow file fragment causes S3 network calls.
@@ -190,12 +196,14 @@ class _ParquetDatasourceReader(Reader):
         self._schema = schema
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        # TODO(ekl) better estimate the in-memory size here.
-        PARQUET_DECOMPRESSION_MULTIPLIER = 5
+        # TODO(ekl/chengsu) better estimate the in-memory size here,
+        # when columns pruning is used.
         total_size = 0
-        for meta in self._metadata:
-            total_size += meta.serialized_size
-        return total_size * PARQUET_DECOMPRESSION_MULTIPLIER
+        for file_metadata in self._metadata:
+            for row_group_idx in range(file_metadata.num_row_groups):
+                row_group_metadata = file_metadata.row_group(row_group_idx)
+                total_size += row_group_metadata.total_byte_size
+        return total_size * PARQUET_TO_ARROW_SIZE_MULTIPLIER
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()

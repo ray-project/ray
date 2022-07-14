@@ -36,6 +36,7 @@ from ray.data.datasource import (
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
+    _ParquetDatasourceReader,
     _SerializedPiece,
     _deserialize_pieces_with_retry,
 )
@@ -915,6 +916,19 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
     assert ds._plan.execute()._num_computed() == parallelism
     assert sorted(values) == list(range(3 * num_dfs))
+
+
+def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
+    ds = ray.data.range(1000)
+    path = os.path.join(tmp_path, "test_parquet_dir")
+    os.mkdir(path)
+    ds.repartition(30).write_parquet(path)
+
+    reader = _ParquetDatasourceReader(path)
+    data_size = reader.estimate_inmemory_data_size()
+    assert (
+        data_size >= 50000 and data_size <= 100000
+    ), "estimated data size is out of expected bound"
 
 
 @pytest.mark.parametrize(
