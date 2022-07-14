@@ -31,6 +31,10 @@ spec:
         metadata:
           generateName: {{ kebabcase $key }}-
         spec:
+          {{- if $.Values.imagePullSecrets }}
+          imagePullSecrets:
+            - name: {{ $.Values.imagePullSecrets }}
+          {{- end }}
           restartPolicy: Never
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to

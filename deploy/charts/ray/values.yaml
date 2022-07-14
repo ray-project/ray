@@ -6,6 +6,9 @@
 # It's recommended to build custom dependencies for your workload into this image,
 # taking one of the offical `rayproject/ray` images as base.
 image: rayproject/ray:latest
+# name of k8s image pull secrets to pull (custom) Ray image from private regristry
+# the secret need to be created by user before applying this helm chart.
+imagePullSecrets: ""
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
 # If the task requires adding more nodes then autoscaler will gradually
 # scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
