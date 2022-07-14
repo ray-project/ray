@@ -200,6 +200,31 @@
 
   alert: default
 
+
+- name: air_benchmark_tune_mnist
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_8.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tune_benchmark.py
+
+    wait_for_nodes:
+      num_nodes: 8
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 #######################
 # XGBoost release tests
 #######################
