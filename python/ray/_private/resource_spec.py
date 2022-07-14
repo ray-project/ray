@@ -273,8 +273,7 @@ class ResourceSpec(
 def _autodetect_num_gpus():
     """Attempt to detect the number of GPUs on this machine.
 
-    TODO(rkn): This currently assumes NVIDIA GPUs on Linux.
-    TODO(mehrdadn): Use a better mechanism for Windows.
+    TODO(rkn): Only detects NVidia GPUs (except when using WMIC on windows)
 
     Returns:
         The number of GPUs if any were detected, otherwise 0.
@@ -341,8 +340,7 @@ def _constraints_from_gpu_info(info_str: str):
 def _get_gpu_info_string():
     """Get the gpu type for this machine.
 
-    TODO(Alex): All the caveats of _autodetect_num_gpus and we assume only one
-    gpu type.
+    TODO: Detects maximum one NVidia gpu type on linux
 
     Returns:
         (str) The gpu's model name.
