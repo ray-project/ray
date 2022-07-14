@@ -38,7 +38,7 @@ from ray.data.preprocessors import Concatenator, Chain
 # Chain the preprocessors together.
 preprocessor = Chain(
     preprocessor,
-    Concatenator(output_column="input", exclude=["target"], dtype=np.float32),
+    Concatenator(exclude=["target"], dtype=np.float32),
 )
 # __air_pytorch_preprocess_end__
 
@@ -79,7 +79,11 @@ def train_loop_per_worker(config):
             batch_format="numpy", batch_size=batch_size
         )
         for d in data_iterator:
-            yield torch.Tensor(d["input"]).float(), torch.Tensor(d["target"]).float()
+            # "concat_out" is the output column of the Concatenator.
+            yield (
+                torch.Tensor(d["concat_out"]).float(),
+                torch.Tensor(d["target"]).float(),
+            )
 
     # Create model.
     model = create_model(num_features)

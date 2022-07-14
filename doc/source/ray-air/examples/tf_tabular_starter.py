@@ -38,7 +38,7 @@ from ray.data.preprocessors import Concatenator, Chain
 # Chain the preprocessors together.
 preprocessor = Chain(
     preprocessor,
-    Concatenator(output_column="input", exclude=["target"], dtype=np.float32),
+    Concatenator(exclude=["target"], dtype=np.float32),
 )
 # __air_tf_preprocess_end__
 
@@ -77,7 +77,8 @@ def to_tf_dataset(dataset, batch_size):
         )
         for d in data_iterator:
             yield (
-                tf.convert_to_tensor(d["input"], dtype=tf.float32),
+                # "concat_out" is the output column of the Concatenator.
+                tf.convert_to_tensor(d["concat_out"], dtype=tf.float32),
                 tf.convert_to_tensor(d["target"], dtype=tf.float32),
             )
 
