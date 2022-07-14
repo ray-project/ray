@@ -205,15 +205,25 @@ class FQETorchModel:
         action_probs: A tensor of action probabilities
         of shape (batch_size * action_dim)
         """
-        action_probs = []
-        tmp_batch = SampleBatch()
-        tmp_batch[SampleBatch.OBS] = obs
-        for i in range(self.policy.action_space.n):
-            tmp_batch[SampleBatch.ACTIONS] = np.zeros((obs.shape[0])) + i
-            tmp_probs = torch.exp(
-                compute_log_likelihoods_from_input_dict(self.policy, tmp_batch)
+        input_dict = {SampleBatch.OBS: obs}
+        seq_lens = torch.ones(len(obs), device=self.device, dtype=int)
+        state_batches = []
+        if self.policy.action_distribution_fn:
+            dist_inputs, dist_class, _ = self.policy.action_distribution_fn(
+                self.policy,
+                self.policy.model,
+                input_dict=input_dict,
+                state_batches=state_batches,
+                seq_lens=seq_lens,
+                explore=False,
+                is_training=False,
             )
-            action_probs.append(tmp_probs)
-        # Reshape action_probs to match q_values: batch_size * action_dim * _
-        action_probs = torch.stack(action_probs).transpose(1, 0)
+        else:
+            dist_class = self.policy.dist_class
+            dist_inputs, _ = self.policy.model(input_dict, state_batches, seq_lens)
+        action_dist = dist_class(dist_inputs, self.policy.model)
+        assert isinstance(
+            action_dist.dist, torch.distributions.categorical.Categorical
+        ), "FQE only supports Categorical or MultiCategorical distributions!"
+        action_probs = action_dist.dist.probs
         return action_probs
