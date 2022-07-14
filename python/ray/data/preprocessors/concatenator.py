@@ -21,10 +21,10 @@ class Concatenator(Preprocessor):
         >>> import pandas as pd
         >>> from ray.data.preprocessors import Concatenator
         >>> df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 3, 4],})
-        >>> ds = ray.data.from_pandas(df)
-        >>> prep = Concatenator(output_column_name="c")
-        >>> new_ds = prep.transform(ds)
-        >>> assert set(new_ds.take(1)[0]) == {"c"}
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> prep = Concatenator(output_column_name="c") # doctest: +SKIP
+        >>> new_ds = prep.transform(ds) # doctest: +SKIP
+        >>> assert set(new_ds.take(1)[0]) == {"c"} # doctest: +SKIP
 
     Args:
         output_column_name: output_column_name is a string that represents the

@@ -1266,7 +1266,7 @@ def test_concatenator():
 
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)
-    prep = Concatenator(output_column_name="c", exclude=["b"])
+    prep = Concatenator(output_column_name="c", exclude=["b"], raise_if_missing=True)
 
     with pytest.raises(ValueError, match="'b'"):
         prep.transform(ds)
