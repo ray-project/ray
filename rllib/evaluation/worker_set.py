@@ -1,6 +1,3 @@
-from pathlib import Path
-import re
-
 import gym
 import logging
 import importlib.util
@@ -108,53 +105,6 @@ class WorkerSet:
             self._local_worker = None
             if num_workers == 0:
                 local_worker = True
-            if (
-                (
-                    isinstance(trainer_config["input"], str)
-                    or isinstance(trainer_config["input"], list)
-                )
-                and ("d4rl" not in trainer_config["input"])
-                and (not "sampler" == trainer_config["input"])
-                and (not "dataset" == trainer_config["input"])
-                and (
-                    not (
-                        isinstance(trainer_config["input"], str)
-                        and registry_contains_input(trainer_config["input"])
-                    )
-                )
-                and (
-                    not (
-                        isinstance(trainer_config["input"], str)
-                        and self._valid_module(trainer_config["input"])
-                    )
-                )
-            ):
-                paths = trainer_config["input"]
-                if isinstance(paths, str):
-                    inputs = Path(paths).absolute()
-                    if inputs.is_dir():
-                        paths = list(inputs.glob("*.json")) + list(inputs.glob("*.zip"))
-                        paths = [str(path) for path in paths]
-                    else:
-                        paths = [paths]
-                ends_with_zip_or_json = all(
-                    re.search("\\.zip$", path) or re.search("\\.json$", path)
-                    for path in paths
-                )
-                ends_with_parquet = all(
-                    re.search("\\.parquet$", path) for path in paths
-                )
-                trainer_config["input"] = "dataset"
-                input_config = {"paths": paths}
-                if ends_with_zip_or_json:
-                    input_config["format"] = "json"
-                elif ends_with_parquet:
-                    input_config["format"] = "parquet"
-                else:
-                    raise ValueError(
-                        "Input path must end with .zip, .parquet, or .json"
-                    )
-                trainer_config["input_config"] = input_config
             self._local_config = merge_dicts(
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]},

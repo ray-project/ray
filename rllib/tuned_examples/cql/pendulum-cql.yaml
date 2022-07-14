@@ -13,7 +13,10 @@ pendulum-cql:
         framework: tf
 
         # Use one or more offline files or "input: sampler" for online learning.
-        input: ["tests/data/pendulum/enormous.zip"]
+        input: 'dataset'
+        input_config:         
+            paths: ["tests/data/pendulum/enormous.zip"]
+            format: 'json'
         # Our input file above comes from an SAC run. Actions in there
         # are already normalized (produced by SquashedGaussian).
         actions_in_input_normalized: true
