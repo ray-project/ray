@@ -8,7 +8,6 @@ from ray.rllib.offline.estimators import (
     DoublyRobust,
 )
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
-from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.sample_batch import concat_samples
 from pathlib import Path
@@ -20,17 +19,15 @@ import gym
 class TestOPE(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=6)
+        ray.init()
         rllib_dir = Path(__file__).parent.parent.parent.parent
         train_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         eval_data = train_data
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        n_episodes = 20
-        n_iters = 10
-        # Ensure standalone and Algorithm OPE run same number of overall iterations
-        cls.q_model_config = {"n_iters": n_iters * n_episodes}
+        n_episodes = 40
+        cls.q_model_config = {"n_iters": 600}
 
         config = (
             DQNConfig()
@@ -38,6 +35,7 @@ class TestOPE(unittest.TestCase):
             .training(gamma=cls.gamma)
             .rollouts(num_rollout_workers=3, batch_mode="complete_episodes")
             .framework("torch")
+            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0)))
             .offline_data(input_=train_data)
             .evaluation(
                 evaluation_interval=None,
@@ -50,19 +48,11 @@ class TestOPE(unittest.TestCase):
                     "wis": {"type": WeightedImportanceSampling},
                     "dm_fqe": {
                         "type": DirectMethod,
-                        "q_model_config": {"type": FQETorchModel, "n_iters": n_iters},
+                        "q_model_config": {"type": FQETorchModel},
                     },
                     "dr_fqe": {
                         "type": DoublyRobust,
-                        "q_model_config": {"type": FQETorchModel, "n_iters": n_iters},
-                    },
-                    "dm_qreg": {
-                        "type": DirectMethod,
-                        "q_model_config": {"type": QRegTorchModel, "n_iters": n_iters},
-                    },
-                    "dr_qreg": {
-                        "type": DoublyRobust,
-                        "q_model_config": {"type": QRegTorchModel, "n_iters": n_iters},
+                        "q_model_config": {"type": FQETorchModel},
                     },
                 },
             )
@@ -157,32 +147,6 @@ class TestOPE(unittest.TestCase):
             policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_config={"type": FQETorchModel, **self.q_model_config},
-        )
-        self.losses[name] = estimator.train(self.batch)
-        estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_target"]
-        self.std_ret[name] = estimates["v_target_std"]
-
-    def test_dm_qreg(self):
-        name = "dm_qreg"
-        estimator = DirectMethod(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_config={"type": QRegTorchModel, **self.q_model_config},
-        )
-        self.losses[name] = estimator.train(self.batch)
-        estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_target"]
-        self.std_ret[name] = estimates["v_target_std"]
-
-    def test_dr_qreg(self):
-        name = "dr_qreg"
-        estimator = DoublyRobust(
-            name=name,
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_config={"type": QRegTorchModel, **self.q_model_config},
         )
         self.losses[name] = estimator.train(self.batch)
         estimates = estimator.estimate(self.batch)

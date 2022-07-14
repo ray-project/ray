@@ -8,7 +8,7 @@ from ray.rllib.offline.estimators.feature_importance import FeatureImportance
 
 class TestFeatureImportance(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init()
 
     def tearDown(self):
         ray.shutdown()

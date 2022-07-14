@@ -564,12 +564,6 @@ class Algorithm(Trainable):
             if isinstance(method_type, type) and issubclass(
                 method_type, OffPolicyEstimator
             ):
-                # Grab a reference to the current model
-                keys = list(self.workers.local_worker().policy_map.keys())
-                if len(keys) > 1:
-                    raise NotImplementedError(
-                        "Off-policy estimation is not implemented for multi-agent. "
-                    )
                 policy = self.get_policy()
                 gamma = self.config["gamma"]
                 self.reward_estimators.append(

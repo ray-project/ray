@@ -30,23 +30,14 @@ class OffPolicyEstimator:
 
     @DeveloperAPI
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
-        """Returns off policy estimates for the given batch of episodes.
+        """Returns off-policy estimates for the given batch of episodes.
 
         Args:
-            batch: The batch to calculate the off policy estimates (OPE) on.
+            batch: The batch to calculate the off-policy estimates (OPE) on.
 
         Returns:
             The off-policy estimates (OPE) calculated on the given batch. The returned
-            dict can be any arbitrary mapping of strings to OPE metrics.
-
-            By default, the returned dict consists of the following metrics:
-              - v_behavior: The discounted return averaged over episodes in the batch
-              - v_behavior_std: The standard deviation corresponding to v_behavior
-              - v_target: The estimated discounted return for `self.policy`,
-                averaged over episodes in the batch
-              - v_target_std: The standard deviation corresponding to v_target
-              - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
-              - v_gain_std: The standard deviation corresponding to v_gain
+            dict can be any arbitrary mapping of strings to metrics.
         """
         raise NotImplementedError
 

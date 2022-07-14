@@ -23,6 +23,15 @@ class WeightedImportanceSampling(OffPolicyEstimator):
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
+        """The returned dict consists of the following metrics:
+        - v_behavior: The discounted return averaged over episodes in the batch
+        - v_behavior_std: The standard deviation corresponding to v_behavior
+        - v_target: The estimated discounted return for `self.policy`,
+          averaged over episodes in the batch
+        - v_target_std: The standard deviation corresponding to v_target
+        - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
+        - v_gain_std: The standard deviation corresponding to v_gain
+        """
         self.check_can_estimate_for(batch)
         estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
         for episode in batch.split_by_episode():

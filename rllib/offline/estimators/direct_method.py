@@ -16,7 +16,7 @@ logger = logging.getLogger()
 
 @DeveloperAPI
 class DirectMethod(OffPolicyEstimator):
-    """The Direct Method estimator with a trainable Q-model.
+    """The Direct Method estimator.
 
     DM estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
@@ -35,7 +35,12 @@ class DirectMethod(OffPolicyEstimator):
             name: string to save OPE results under
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
-            q_model_config: Arguments to specify the Q-model.
+            q_model_config: Arguments to specify the Q-model. Must specify
+            a `type` key pointing to the Q-model class.
+            This Q-model is trained in the train() method and is used
+            to compute the state-value estimates for the DirectMethod estimator.
+            It must implement `train` and `estimate_v`.
+            TODO (Rohan138): Unify this with RLModule API.
         """
 
         assert (
@@ -55,6 +60,15 @@ class DirectMethod(OffPolicyEstimator):
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
+        """The returned dict consists of the following metrics:
+        - v_behavior: The discounted return averaged over episodes in the batch
+        - v_behavior_std: The standard deviation corresponding to v_behavior
+        - v_target: The estimated discounted return for `self.policy`,
+          averaged over episodes in the batch
+        - v_target_std: The standard deviation corresponding to v_target
+        - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
+        - v_gain_std: The standard deviation corresponding to v_gain
+        """
         self.check_can_estimate_for(batch)
         estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
         # Split data into train and test batches
@@ -82,6 +96,12 @@ class DirectMethod(OffPolicyEstimator):
 
     @override(OffPolicyEstimator)
     def train(self, batch: SampleBatchType) -> Dict[str, Any]:
+        """Trains self.model on the given batch.
+
+        Args: batch: A SampleBatchType to train on
+
+        Returns: A dict with key "loss" and value as the mean training loss.
+        """
         if isinstance(batch, MultiAgentBatch):
             policy_keys = batch.policy_batches.keys()
             if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:

@@ -30,31 +30,25 @@ class FQETorchModel:
         delta: float = 1e-4,
         clip_grad_norm: float = 100.0,
         minibatch_size: int = None,
-        tau: float = 0.05,
+        tau: float = 1.0,
     ) -> None:
         """
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
-            # The ModelConfigDict for self.q_model
-            model = {
-                        "fcnet_hiddens": [8, 8],
-                        "fcnet_activation": "relu",
-                        "vf_share_layers": True,
-                    },
-            # Number of training iterations to run on the batch
-            n_iters = 1,
-            # Learning rate for Q-function optimizer
-            lr = 1e-3,
-            # Early stopping if the mean loss < delta
-            delta = 1e-4,
-            # Clip gradients to this maximum value
-            clip_grad_norm = 100.0,
-            # Minibatch size for training Q-function;
-            # if None, train on the whole batch
-            minibatch_size = None,
-            # Polyak averaging factor for target Q-function
-            tau = 0.05
+            model: The ModelConfigDict for self.q_model, defaults to:
+                {
+                    "fcnet_hiddens": [8, 8],
+                    "fcnet_activation": "relu",
+                    "vf_share_layers": True,
+                },
+            n_iters: Number of gradient steps to run on batch, defaults to 1
+            lr: Learning rate for Q-model optimizer
+            delta: Early stopping threshold if the mean loss < delta
+            clip_grad_norm: Clip gradients to this maximum value
+            minibatch_size: Minibatch size for training Q-function;
+                if None, train on the whole batch
+            tau: Polyak averaging factor for target Q-function
         """
         self.policy = policy
         assert isinstance(
@@ -136,35 +130,32 @@ class FQETorchModel:
                 )
                 dones = torch.tensor(minibatch[SampleBatch.DONES], device=self.device)
 
-                # Neccessary if policy uses recurrent/attention model
-                num_state_inputs = 0
-                for k in batch.keys():
-                    if k.startswith("state_in_"):
-                        num_state_inputs += 1
-                state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
-
-                # Compute action_probs for next_obs as in FQE
-                all_actions = torch.zeros(
-                    [minibatch.count, self.policy.action_space.n], dtype=int
-                )
-                all_actions[:] = torch.arange(self.policy.action_space.n, dtype=int)
-                next_action_prob = self.policy.compute_log_likelihoods(
-                    actions=all_actions.T,
-                    obs_batch=next_obs,
-                    state_batches=[minibatch[k] for k in state_keys],
-                    prev_action_batch=minibatch[SampleBatch.ACTIONS],
-                    prev_reward_batch=minibatch[SampleBatch.REWARDS],
-                    actions_normalized=False,
-                )
-                next_action_prob = (
-                    torch.exp(next_action_prob.T).to(self.device).detach()
-                )
-
+                # Compute Q-values for current obs
                 q_values, _ = self.q_model({"obs": obs}, [], None)
                 q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
+
+                # Compute pi(a | s) for each action a in policy.action_space
+                next_action_probs = []
+                tmp_minibatch = minibatch.copy()
+                for i in range(self.policy.action_space.n):
+                    tmp_minibatch[SampleBatch.ACTIONS] = (
+                        np.zeros_like(batch[SampleBatch.ACTIONS]) + i
+                    )
+                    tmp_probs = torch.exp(
+                        compute_log_likelihoods_from_input_dict(
+                            self.policy, tmp_minibatch
+                        )
+                    )
+                    next_action_probs.append(tmp_probs)
+                # Reshape action_probs to match q_values: batch_size * action_dim * _
+                next_action_probs = torch.stack(next_action_probs).transpose(1, 0)
+
+                # Compute Q-values for next obs
                 with torch.no_grad():
                     next_q_values, _ = self.target_q_model({"obs": next_obs}, [], None)
-                next_v = torch.sum(next_q_values * next_action_prob, axis=-1)
+
+                # Compute estimated state value next_v = E_{a ~ pi(s)} [Q(next_obs,a)]
+                next_v = torch.sum(next_q_values * next_action_probs, axis=-1)
                 targets = rewards + ~dones * self.gamma * next_v
                 loss = (targets - q_acts) ** 2
                 loss = torch.mean(loss)
@@ -196,6 +187,7 @@ class FQETorchModel:
         obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
         with torch.no_grad():
             q_values, _ = self.q_model({"obs": obs}, [], None)
+        # Compute pi(a | s) for each action a in policy.action_space
         action_probs = []
         tmp_batch = batch.copy()
         for i in range(self.policy.action_space.n):
@@ -206,6 +198,7 @@ class FQETorchModel:
                 compute_log_likelihoods_from_input_dict(self.policy, tmp_batch)
             )
             action_probs.append(tmp_probs)
+        # Reshape action_probs to match q_values: batch_size * action_dim * _
         action_probs = torch.stack(action_probs).transpose(1, 0)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values
