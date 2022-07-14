@@ -76,7 +76,7 @@ def _autodetect_parallelism(
      2) Min block size. If the parallelism would make blocks smaller than this
         threshold, the parallelism is reduced to avoid the overhead of tiny blocks.
      3) Max block size. If the parallelism would make blocks larger than this
-        threshold, the parallelism is increased to avoid OOMS during processing.
+        threshold, the parallelism is increased to avoid OOMs during processing.
      4) Available CPUs. If the parallelism cannot make use of all the available
         CPUs in the cluster, the parallelism is increased until it can.
 
