@@ -25,6 +25,10 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
     ray.shutdown()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failing on Windows, 'ForkedFunc' object has no attribute 'pid'",
+)
 def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
     # Firstly make sure it's working
     kv1 = RayInternalKVStore()
@@ -42,6 +46,10 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failing on Windows, 'ForkedFunc' object has no attribute 'pid'",
+)
 @pytest.mark.parametrize("use_handle", [False, True])
 def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
     @serve.deployment
