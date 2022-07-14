@@ -4,8 +4,6 @@ import os
 import ray
 from ray.train.torch import TorchTrainer
 
-from benchmark_util import time_it
-
 CONFIG = {"lr": 1e-3, "batch_size": 64, "epochs": 20}
 
 
@@ -42,13 +40,11 @@ def get_trainer():
     return trainer
 
 
-@time_it
 def train_torch():
     trainer = get_trainer()
     trainer.fit()
 
 
-@time_it
 def tune_torch():
     """Making sure that tuning multiple trials in parallel is not
     taking significantly longer than training each one individually.
@@ -76,8 +72,9 @@ def tune_torch():
 
 
 def main():
-    train_time = train_torch()
-    tune_time = tune_torch()
+    from benchmark_util import time_it
+    train_time = time_it(train_torch())
+    tune_time = time_it(tune_torch())
     result = {"train_time": train_time, "tune_time": tune_time}
     print("Results:", result)
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
