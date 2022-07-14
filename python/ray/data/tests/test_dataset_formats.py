@@ -42,6 +42,7 @@ from ray.data.datasource.parquet_datasource import (
     _deserialize_pieces_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa
+from ray.data.extensions import TensorDtype
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
@@ -2858,12 +2859,16 @@ def test_image_folder_datasource(ray_start_regular_shared):
     root = os.path.join(os.path.dirname(__file__), "image-folder")
     ds = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
 
-    assert ds.count() == 2
+    assert ds.count() == 3
 
     df = ds.to_pandas()
-    assert set(df["label"]) == {"cat", "dog"}
-    assert all(isinstance(array, np.ndarray) for array in df["image"])
-    assert all(array.shape == (32, 32, 3) for array in df["image"])
+    assert type(df["image"].dtype) is TensorDtype
+    assert all(tensor.to_numpy().shape == (32, 32, 3) for tensor in df["image"])
+
+    df = df.sort_values("label")
+    # Targets should be assigned alphabetically to labels.
+    assert df["label"].tolist() == ["cat", "cat", "dog"]
+    assert df["target"].tolist() == [0, 0, 1]
 
 
 def test_image_folder_datasource_raises_value_error(ray_start_regular_shared):

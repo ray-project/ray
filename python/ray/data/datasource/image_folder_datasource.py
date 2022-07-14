@@ -1,27 +1,24 @@
 import pathlib
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
-import imageio as iio
 import numpy as np
-from ray.data.block import Block
 from ray.data.datasource.binary_datasource import BinaryDatasource
-from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
-from ray.data.datasource.file_meta_provider import (
-    BaseFileMetadataProvider,
-    DefaultFileMetadataProvider,
-    FastFileMetadataProvider,
+from ray.data.datasource.datasource import Reader
+from ray.data.datasource.file_based_datasource import (
+    _resolve_paths_and_filesystem,
+    FileExtensionFilter,
 )
 from ray.data.datasource.partitioning import PathPartitionFilter
 
 if TYPE_CHECKING:
     import pyarrow
+    from ray.data.block import T
 
-IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif"]
+IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
 
 class ImageFolderDatasource(BinaryDatasource):
-    """A datasource that lets you read datasets like `ImageNet <https://www.image-net.org/>`_.
+    """A datasource that lets you read datasets like `ImageNet <https://www.image-net.org/>`_.  # noqa: E501
 
     This datasource works with any dataset where images are arranged in this way:
 
@@ -36,7 +33,7 @@ class ImageFolderDatasource(BinaryDatasource):
         root/cat/[...]/asd932_.png
 
     Datasets read with ``ImageFolderDatasource`` contain two columns: ``'image'`` and
-    ``'label'``. The ``'image'`` column contains ``ndarray`` objects of shape 
+    ``'label'``. The ``'image'`` column contains ``ndarray`` objects of shape
     :math:`(H, W, C)`, and the ``label`` column contains strings corresponding to
     labels.
 
@@ -59,25 +56,19 @@ class ImageFolderDatasource(BinaryDatasource):
             to the dataset root.
     """
 
-    def prepare_read(
+    def create_reader(
         self,
-        parallelism: int,
         paths: Union[str, List[str]],
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
-        # TODO(ekl) deprecate this once read fusion is available.
-        _block_udf: Optional[Callable[[Block], Block]] = None,
-        **reader_args,
-    ) -> List[ReadTask]:
+        **kwargs,
+    ) -> "Reader[T]":
         if len(paths) != 1:
             raise ValueError(
                 "`ImageFolderDatasource` expects 1 path representing the dataset "
-                f"root, but it got {len(paths)} paths instead. To fix this error, "
-                "pass in a single-element list containing the dataset root (for "
-                'example, `paths=["s3://imagenet/train"]`)'
+                f"root, but it got {len(paths)} paths instead. To fix this "
+                "error, pass in a single-element list containing the dataset root "
+                '(for example, `paths=["s3://imagenet/train"]`)'
             )
 
         try:
@@ -89,27 +80,35 @@ class ImageFolderDatasource(BinaryDatasource):
                 "`pip install imageio`."
             )
 
+        if partition_filter is None:
+            partition_filter = FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS)
+
         # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
         # in the same way as the paths passed to `_get_class_from_path`.
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self.root = paths[0]
 
-        paths, _ = meta_provider.expand_paths(paths, filesystem)
-        paths = [path for path in paths if _is_image_file(path)]
+        from pyarrow.fs import FileType, FileSelector
 
-        return super().prepare_read(
-            parallelism=parallelism,
+        labels = [
+            file_info.base_name
+            for file_info in filesystem.get_file_info(FileSelector(self.root))
+            if file_info.type is FileType.Directory
+        ]
+        labels.sort()  # Sort labels so that targets are consistent.
+        self.label_to_target = {label: labels.index(label) for label in labels}
+
+        return super().create_reader(
             paths=paths,
             filesystem=filesystem,
-            schema=schema,
-            open_stream_args=open_stream_args,
-            meta_provider=FastFileMetadataProvider(),
             partition_filter=partition_filter,
-            _block_udf=_block_udf,
+            **kwargs,
         )
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+        import imageio as iio
         import pandas as pd
+        from ray.data.extensions import TensorArray
 
         records = super()._read_file(f, path, include_paths=True)
         assert len(records) == 1
@@ -117,12 +116,15 @@ class ImageFolderDatasource(BinaryDatasource):
 
         image = iio.imread(data)
         label = _get_class_from_path(path, self.root)
+        target = self.label_to_target[label]
 
-        return pd.DataFrame({"image": [np.array(image)], "label": [label]})
-
-
-def _is_image_file(path: str) -> bool:
-    return any(path.lower().endswith(extension) for extension in IMAGE_EXTENSIONS)
+        return pd.DataFrame(
+            {
+                "image": TensorArray([np.array(image)]),
+                "label": [label],
+                "target": [target],
+            }
+        )
 
 
 def _get_class_from_path(path: str, root: str) -> str:
