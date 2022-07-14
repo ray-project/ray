@@ -73,6 +73,7 @@ def tune_torch():
 
 def main():
     from benchmark_util import time_it
+
     train_time = time_it(train_torch())
     tune_time = time_it(tune_torch())
     result = {"train_time": train_time, "tune_time": tune_time}
