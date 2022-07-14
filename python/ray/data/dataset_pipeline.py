@@ -89,6 +89,7 @@ class DatasetPipeline(Generic[T]):
         base_iterable: Iterable[Callable[[], Dataset[T]]],
         base_datasets_can_be_cleared: bool,
         stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
+        first_non_in_place_stage_index: int = -1,
         length: int = None,
         progress_bars: bool = progress_bar._enabled,
         _executed: List[bool] = None,
@@ -106,6 +107,10 @@ class DatasetPipeline(Generic[T]):
         # by the DatasetPipeline API semantics that it can only be read once.
         self._base_datasets_can_be_cleared = base_datasets_can_be_cleared
         self._stages = stages or []
+        # The index of the first non-in place stage; if no such stage, -1.
+        self._first_non_in_place_stage_index = (
+            first_non_in_place_stage_index if self._stages else -1
+        )
         self._optimized_stages = None
         self._length = length
         self._progress_bars = progress_bars
@@ -517,6 +522,7 @@ class DatasetPipeline(Generic[T]):
             RepeatIterable(iter(self._base_iterable)),
             self._base_datasets_can_be_cleared,
             stages=self._stages.copy(),
+            first_non_in_place_stage_index=self._first_non_in_place_stage_index,
             length=length,
         )
 
@@ -719,7 +725,7 @@ class DatasetPipeline(Generic[T]):
 
     @DeveloperAPI
     def foreach_window(
-        self, fn: Callable[[Dataset[T]], Dataset[U]]
+        self, fn: Callable[[Dataset[T]], Dataset[U]], in_place: bool = False
     ) -> "DatasetPipeline[U]":
         """Apply a transform to each dataset/window in this pipeline.
 
@@ -731,10 +737,15 @@ class DatasetPipeline(Generic[T]):
         """
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
+        first_non_in_place_stage_index = self._first_non_in_place_stage_index
+        current_idx = len(self._stages) if not in_place else -1
+        if first_non_in_place_stage_index == -1:
+            first_non_in_place_stage_index = current_idx
         return DatasetPipeline(
             self._base_iterable,
             self._base_datasets_can_be_cleared,
             self._stages + [fn],
+            first_non_in_place_stage_index,
             self._length,
             self._progress_bars,
             _executed=self._executed,
@@ -794,7 +805,7 @@ class DatasetPipeline(Generic[T]):
             ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
             0,
             True,
-            used_from_dataset_pipeline=True,
+            created_by_pipeline=True,
         )
         # Apply all pipeline operations to the dummy dataset.
         for stage in self._stages:
@@ -804,13 +815,18 @@ class DatasetPipeline(Generic[T]):
         # Apply these optimized stages to the datasets underlying the pipeline.
         # These optimized stages will be executed by the PipelineExecutor.
         optimized_stages = []
-        for stage in stages:
+        for idx, stage in enumerate(stages):
+            has_non_in_place_stage = (
+                self._first_non_in_place_stage_index != -1
+                and idx >= self._first_non_in_place_stage_index
+            )
             optimized_stages.append(
                 lambda ds, stage=stage: Dataset(
                     ds._plan.with_stage(stage),
                     ds._epoch,
                     True,
-                    used_from_dataset_pipeline=True,
+                    created_by_pipeline=has_non_in_place_stage
+                    or self._base_datasets_can_be_cleared,
                 )
             )
         self._optimized_stages = optimized_stages
@@ -823,15 +839,19 @@ class DatasetPipeline(Generic[T]):
         return self._first_dataset
 
     def _can_clear_output_blocks_after_read(self) -> bool:
-        # 1) If this pipeline actually performed transformations (i.e. the self._stages
-        # isn't empty), the output blocks are created by this pipeline and are safe
-        # to clear right after read, because we know they will never be accessed again,
+        # 1) If this pipeline actually performed non-in place transformations,
+        # the output blocks are created by this pipeline and are safe to clear
+        # right after read, because we know they will never be accessed again,
         # given that DatasetPipeline can be read at most once.
-        # 2) If there is no transformation performed (i.e. self._stages is empty), this
-        # pipeline will simply access the base datasets (from self._base_iterable),
-        # so whether we can clear the output blocks depends on the
+        # 2) If there is no non-in place transformation performed or simply no
+        # transformations at all(i.e. self._stages is empty), this pipeline will
+        # simply access the base datasets (from self._base_iterable), so whether
+        # we can clear the output blocks depends on the
         # self._base_datasets_can_be_cleared.
-        return len(self._stages) > 0 or self._base_datasets_can_be_cleared
+        return (
+            self._first_non_in_place_stage_index != -1
+            or self._base_datasets_can_be_cleared
+        )
 
 
 for method in _PER_DATASET_OPS:
@@ -863,7 +883,10 @@ for method in _HOLISTIC_PER_DATASET_OPS:
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
-            return self.foreach_window(lambda ds: getattr(ds, method)(*args, **kwargs))
+            return self.foreach_window(
+                lambda ds: getattr(ds, method)(*args, **kwargs),
+                (method == "randomize_block_order"),
+            )
 
         impl.__name__ = delegate.__name__
         impl.__doc__ = """

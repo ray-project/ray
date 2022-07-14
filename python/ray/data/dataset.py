@@ -176,7 +176,7 @@ class Dataset(Generic[T]):
         lazy: bool,
         *,
         defer_execution: bool = False,
-        used_from_dataset_pipeline: bool = False,
+        created_by_pipeline: bool = False,
     ):
         """Construct a Dataset (internal API).
 
@@ -190,7 +190,7 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
-        self._used_from_dataset_pipeline = used_from_dataset_pipeline
+        self._created_by_pipeline = created_by_pipeline
 
         if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
@@ -1127,7 +1127,7 @@ class Dataset(Generic[T]):
                         ),
                         self._epoch,
                         self._lazy,
-                        used_from_dataset_pipeline=self._used_from_dataset_pipeline,
+                        created_by_pipeline=self._created_by_pipeline,
                     )
                     for blocks in np.array_split(block_refs, n)
                 ],
@@ -1240,7 +1240,7 @@ class Dataset(Generic[T]):
                     ),
                     self._epoch,
                     self._lazy,
-                    used_from_dataset_pipeline=self._used_from_dataset_pipeline,
+                    created_by_pipeline=self._created_by_pipeline,
                 )
                 for actor in locality_hints
             ],
@@ -1430,7 +1430,7 @@ class Dataset(Generic[T]):
             ExecutionPlan(blocklist, dataset_stats),
             max_epoch,
             self._lazy,
-            used_from_dataset_pipeline=self._used_from_dataset_pipeline,
+            created_by_pipeline=self._created_by_pipeline,
         )
 
     def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
@@ -3076,10 +3076,10 @@ class Dataset(Generic[T]):
             raise ValueError("`times` must be >= 1, got {}".format(times))
 
         class Iterator:
-            def __init__(self, blocks, used_from_dataset_pipeline):
+            def __init__(self, blocks, created_by_pipeline):
                 self._blocks = blocks
                 self._i = 0
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
+                self._created_by_pipeline = created_by_pipeline
 
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
@@ -3093,7 +3093,7 @@ class Dataset(Generic[T]):
                         ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
                         epoch,
                         lazy=False,
-                        used_from_dataset_pipeline=True,
+                        created_by_pipeline=True,
                     )
                     ds._set_uuid(uuid)
                     return ds
@@ -3101,15 +3101,15 @@ class Dataset(Generic[T]):
                 return gen
 
         class Iterable:
-            def __init__(self, blocks, used_from_dataset_pipeline):
+            def __init__(self, blocks, created_by_pipeline):
                 self._blocks = blocks
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
+                self._created_by_pipeline = created_by_pipeline
 
             def __iter__(self):
-                return Iterator(self._blocks, self._used_from_dataset_pipeline)
+                return Iterator(self._blocks, self._created_by_pipeline)
 
         pipe = DatasetPipeline(
-            Iterable(blocks, self._used_from_dataset_pipeline),
+            Iterable(blocks, self._created_by_pipeline),
             False,
             length=times or float("inf"),
         )
@@ -3119,7 +3119,7 @@ class Dataset(Generic[T]):
                     ds._plan.with_stage(read_stage),
                     ds._epoch,
                     True,
-                    used_from_dataset_pipeline=True,
+                    created_by_pipeline=True,
                 )
             )
         return pipe
@@ -3201,10 +3201,10 @@ class Dataset(Generic[T]):
             read_stage = None
 
         class Iterator:
-            def __init__(self, splits, epoch, used_from_dataset_pipeline):
+            def __init__(self, splits, epoch, created_by_pipeline):
                 self._splits = splits.copy()
                 self._epoch = epoch
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
+                self._created_by_pipeline = created_by_pipeline
 
             def __next__(self) -> "Dataset[T]":
                 if not self._splits:
@@ -3217,14 +3217,14 @@ class Dataset(Generic[T]):
                         ExecutionPlan(blocks, outer_stats),
                         self._epoch,
                         lazy=True,
-                        used_from_dataset_pipeline=True,
+                        created_by_pipeline=True,
                     )
                     return ds
 
                 return gen
 
         class Iterable:
-            def __init__(self, blocks, epoch, used_from_dataset_pipeline):
+            def __init__(self, blocks, epoch, created_by_pipeline):
                 if bytes_per_window:
                     self._splits = blocks.split_by_bytes(bytes_per_window)
                 else:
@@ -3257,14 +3257,14 @@ class Dataset(Generic[T]):
                         )
                     )
                 self._epoch = epoch
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
+                self._created_by_pipeline = created_by_pipeline
 
             def __iter__(self):
                 return Iterator(
-                    self._splits, self._epoch, self._used_from_dataset_pipeline
+                    self._splits, self._epoch, self._created_by_pipeline
                 )
 
-        it = Iterable(blocks, self._epoch, self._used_from_dataset_pipeline)
+        it = Iterable(blocks, self._epoch, self._created_by_pipeline)
         pipe = DatasetPipeline(it, False, length=len(it._splits))
         if read_stage:
             pipe = pipe.foreach_window(
@@ -3272,7 +3272,7 @@ class Dataset(Generic[T]):
                     ds._plan.with_stage(read_stage),
                     ds._epoch,
                     True,
-                    used_from_dataset_pipeline=True,
+                    created_by_pipeline=True,
                 )
             )
         return pipe
@@ -3455,7 +3455,7 @@ class Dataset(Generic[T]):
                 left_metadata.append(ray.get(m0))
                 right_blocks.append(b1)
                 right_metadata.append(ray.get(m1))
-                if self._lazy and self._used_from_dataset_pipeline:
+                if self._lazy and self._created_by_pipeline:
                     ray._private.internal_api.free(b, local_only=False)
             count += num_rows
 
@@ -3482,7 +3482,7 @@ class Dataset(Generic[T]):
             ),
             self._epoch,
             self._lazy,
-            used_from_dataset_pipeline=self._used_from_dataset_pipeline,
+            created_by_pipeline=self._created_by_pipeline,
         )
         if return_right_half:
             right_meta_for_stats = [
@@ -3507,7 +3507,7 @@ class Dataset(Generic[T]):
                 ),
                 self._epoch,
                 self._lazy,
-                used_from_dataset_pipeline=self._used_from_dataset_pipeline,
+                created_by_pipeline=self._created_by_pipeline,
             )
         else:
             right = None
