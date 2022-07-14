@@ -340,6 +340,14 @@ py_test(
 )
 
 py_test(
+    name = "test_air_integrations",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "gpu"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_http_adapters",
     size = "small",
     srcs = serve_tests_srcs,
