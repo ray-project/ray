@@ -1,5 +1,5 @@
 import pytest
-from dataclasses import dataclass
+from dataclasses import dataclass, astuple
 
 import ray
 from ray.data.context import DatasetContext
@@ -14,8 +14,8 @@ class TestCase:
     expected_parallelism: int
 
 
-MB = 1024 * 1024
-GB = 1024 * MB
+MiB = 1024 * 1024
+GiB = 1024 * MiB
 
 TEST_CASES = [
     TestCase(
@@ -25,79 +25,74 @@ TEST_CASES = [
     ),
     TestCase(
         avail_cpus=4,
-        data_size=1 * MB,
+        data_size=10 * MiB,
         expected_parallelism=10,  # MIN_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
-        data_size=2 * MB,
+        data_size=20 * MiB,
         expected_parallelism=20,  # MIN_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
-        data_size=10 * MB,
-        expected_parallelism=102,  # MIN_BLOCK_SIZE has precedence
+        data_size=100 * MiB,
+        expected_parallelism=100,  # MIN_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
-        data_size=1 * GB,
+        data_size=1 * GiB,
         expected_parallelism=200,  # MIN_PARALLELISM has precedence
     ),
     TestCase(
         avail_cpus=4,
-        data_size=10 * GB,
+        data_size=10 * GiB,
         expected_parallelism=200,  # MIN_PARALLELISM has precedence
     ),
     TestCase(
         avail_cpus=150,
-        data_size=10 * GB,
+        data_size=10 * GiB,
         expected_parallelism=300,  # avail_cpus has precedence
     ),
     TestCase(
         avail_cpus=400,
-        data_size=10 * GB,
+        data_size=10 * GiB,
         expected_parallelism=800,  # avail_cpus has precedence
     ),
     TestCase(
         avail_cpus=400,
-        data_size=1 * MB,
+        data_size=1 * MiB,
         expected_parallelism=800,  # avail_cpus has precedence
     ),
     TestCase(
         avail_cpus=4,
-        data_size=1000 * GB,
+        data_size=1000 * GiB,
         expected_parallelism=2000,  # MAX_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
-        data_size=10000 * GB,
+        data_size=10000 * GiB,
         expected_parallelism=20000,  # MAX_BLOCK_SIZE has precedence
     ),
 ]
 
 
-def run_test(test: TestCase):
-    print("TESTING", test)
-
+@pytest.mark.parametrize(
+    "avail_cpus,data_size,expected",
+    [astuple(test) for test in TEST_CASES],
+)
+def test_autodetect_parallelism(avail_cpus, data_size, expected):
     class MockReader:
-        def __init__(self, size):
-            self.size = size
-
         def estimate_inmemory_data_size(self):
-            return self.size
+            return data_size
 
     result, _ = _autodetect_parallelism(
         parallelism=-1,
         cur_pg=None,
-        reader=MockReader(test.data_size),
-        avail_cpus=test.avail_cpus,
+        ctx=DatasetContext.get_current(),
+        reader=MockReader(),
+        avail_cpus=avail_cpus,
     )
-    assert result == test.expected_parallelism, (result, test)
-
-
-def test_autodetect_parallelism():
-    for test in TEST_CASES:
-        run_test(test)
+    assert result == expected, (result, expected)
 
 
 def test_auto_parallelism_basic(shutdown_only):

@@ -37,7 +37,6 @@ py_test_run_all_notebooks(
         "rl_online_example.ipynb",  # REGRESSION
         "convert_existing_pytorch_code_to_ray_air.ipynb", # REGRESSION
         "tfx_tabular_train_to_serve.ipynb", # REGRESSION
-        "torch_image_example.ipynb", # REGRESSION
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],

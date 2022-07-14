@@ -1,6 +1,7 @@
 import logging
 from typing import Union, Optional, TYPE_CHECKING
 from types import ModuleType
+import sys
 
 import ray
 from ray.util.placement_group import PlacementGroup
@@ -63,25 +64,26 @@ def _check_pyarrow_version():
 def _autodetect_parallelism(
     parallelism: int,
     cur_pg: Optional["PlacementGroup"],
+    ctx: DatasetContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, int):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
-    This detects parallelism based on the following heuristics (highest to lowest
-    precedence):
+    This detects parallelism using the following heuristics, applied in order:
 
-     1) Available CPUs. We detect how many CPUs are available for use in the cluster,
-        and ensure the parallelism is high enough to make use of the CPUs.
-     2) Min block size. We try to avoid creating blocks smaller than this threshold,
-        to avoid the overhead of tiny blocks.
-     3) Max block size. We try to avoid creating blocks larger than this threshold,
-        since it can lead to OOM errors during processing.
-     4) If none of the above apply, the default parallelism of 200 is used.
+     1) We start with the default parallelism of 200.
+     2) Min block size. If the parallelism would make blocks smaller than this
+        threshold, the parallelism is reduced to avoid the overhead of tiny blocks.
+     3) Max block size. If the parallelism would make blocks larger than this
+        threshold, the parallelism is increased to avoid OOMs during processing.
+     4) Available CPUs. If the parallelism cannot make use of all the available
+        CPUs in the cluster, the parallelism is increased until it can.
 
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
         cur_pg: The current placement group, to be used for avail cpu calculation.
+        ctx: The current Dataset context to use for configs.
         reader: The datasource reader, to be used for data size estimation.
         avail_cpus: Override avail cpus detection (for testing only).
 
@@ -90,7 +92,7 @@ def _autodetect_parallelism(
         parallelism (which can be used to generate warnings about large blocks).
     """
     min_safe_parallelism = 1
-    ctx = DatasetContext.get_current()
+    max_reasonable_parallelism = sys.maxsize
     if reader:
         mem_size = reader.estimate_inmemory_data_size()
         if mem_size is not None:
@@ -100,7 +102,6 @@ def _autodetect_parallelism(
             )
     else:
         mem_size = None
-        max_reasonable_parallelism = 9999999
     if parallelism < 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
