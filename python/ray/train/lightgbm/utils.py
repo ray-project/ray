@@ -17,19 +17,33 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 def to_air_checkpoint(
-    path: str,
     booster: lightgbm.Booster,
+    *,
+    path: os.PathLike,
     preprocessor: Optional["Preprocessor"] = None,
 ) -> Checkpoint:
     """Convert a pretrained model to AIR checkpoint for serve or inference.
 
+    Example:
+
+    .. code-block:: python
+
+        import lightgbm
+        import tempfile
+        from ray.train.lightgbm import to_air_checkpoint, LightGBMPredictor
+
+        bst = lightgbm.Booster()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = to_air_checkpoint(booster=bst, path=tmpdir)
+            predictor = LightGBMPredictor.from_checkpoint(checkpoint)
+
     Args:
-        path: The directory path where model and preprocessor steps are stored to.
         booster: A pretrained lightgbm model.
+        path: The directory where the checkpoint will be stored to.
         preprocessor: A fitted preprocessor. The preprocessing logic will
-            be applied to serve/inference.
+            be applied to the inputs for serving/inference.
     Returns:
-        A Ray Air checkpoint.
+        A Ray AIR checkpoint.
     """
     booster.save_model(os.path.join(path, MODEL_KEY))
 
