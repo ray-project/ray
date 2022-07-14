@@ -21,30 +21,6 @@ def test_auto_parallelism_basic(shutdown_only):
     assert ds.num_blocks() == 150, ds
 
 
-def test_auto_parallelism_parquet(shutdown_only, tmp_path):
-    ray.init(num_cpus=8)
-    context = DatasetContext.get_current()
-    context.min_parallelism = 1
-    ds = ray.data.range(1000)
-    path = os.path.join(tmp_path, "test_parquet_dir")
-    os.mkdir(path)
-    ds.repartition(30).write_parquet(path)
-
-    # CPU bound.
-    ds = ray.data.read_parquet(path, parallelism=-1)
-    assert ds.num_blocks() == 16, ds
-
-    # Datasource bound.
-    context.target_max_block_size = 128
-    ds = ray.data.read_parquet(path, parallelism=-1)
-    assert ds.num_blocks() == 30, ds
-
-    # Block size bound.
-    context.target_max_block_size = 1024 * 2
-    ds = ray.data.read_parquet(path, parallelism=-1)
-    assert ds.num_blocks() == 27, ds
-
-
 def test_auto_parallelism_placement_group(shutdown_only):
     ray.init(num_cpus=16, num_gpus=8)
 

@@ -36,7 +36,10 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 PARQUET_READER_ROW_BATCH_SIZE = 100000
 FILE_READING_RETRY = 8
 
-# The estimated bytes size multiplier for reading Parquet data source in Arrow.
+# The estimated bytes size multiplier for reading Parquet data source in Arrow,
+# as Arrow in-memory representation uses much more memory compared to Parquet
+# uncompressed representation. See https://github.com/ray-project/ray/pull/26516
+# for more context.
 PARQUET_TO_ARROW_SIZE_MULTIPLIER = 5
 
 
