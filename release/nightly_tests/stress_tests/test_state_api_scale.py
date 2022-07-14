@@ -13,8 +13,9 @@ from ray.experimental.state.api import (
 )
 
 DEFAULT_RAY_TEST_MAX_ACTORS = int(1e3)
-DEFAULT_RAY_TEST_MAX_TASKS = int(1e3)
-DEFAULT_RAY_TEST_MAX_OBJECTS = int(1e3)
+DEFAULT_RAY_TEST_MAX_TASKS = int(1e5)
+DEFAULT_RAY_TEST_MAX_OBJECTS = int(1e6)
+DEFAULT_RAY_STATE_LIST_LIMIT = int(1e9)
 
 # We set num_cpus to zero because this actor will mostly just block on I/O.
 @ray.remote(num_cpus=0)
@@ -34,7 +35,9 @@ class SignalActor:
 
 def test_many_tasks(num_tasks: int):
     # No tasks
-    invoke_state_api(lambda res: len(res) == 0, list_tasks)
+    invoke_state_api(
+        lambda res: len(res) == 0, list_tasks, limit=DEFAULT_RAY_STATE_LIST_LIMIT
+    )
 
     # Task definition adopted from:
     # https://docs.ray.io/en/master/ray-core/examples/highly_parallel.html
@@ -62,6 +65,7 @@ def test_many_tasks(num_tasks: int):
         lambda res: len(res) == num_tasks,
         list_tasks,
         filters=[("name", "=", "pi4_sample()")],
+        limit=DEFAULT_RAY_STATE_LIST_LIMIT,
     )
 
     ray.get(signal.send.remote())
@@ -79,7 +83,10 @@ def test_many_tasks(num_tasks: int):
     # Clean up
     # All compute tasks done other than the signal actor
     invoke_state_api(
-        lambda res: len(res) == 0, list_tasks, filters=[("name", "=", "pi4_sample()")]
+        lambda res: len(res) == 0,
+        list_tasks,
+        filters=[("name", "=", "pi4_sample()")],
+        limit=DEFAULT_RAY_STATE_LIST_LIMIT,
     )
 
     del signal
@@ -99,6 +106,7 @@ def test_many_actors(num_actors: int):
         lambda res: len(res) == 0,
         list_actors,
         filters=[("class_name", "=", actor_class_name)],
+        limit=DEFAULT_RAY_STATE_LIST_LIMIT,
     )
 
     actors = [
@@ -115,6 +123,7 @@ def test_many_actors(num_actors: int):
         lambda res: len(res) == num_actors,
         list_actors,
         filters=[("class_name", "=", actor_class_name)],
+        limit=DEFAULT_RAY_STATE_LIST_LIMIT,
     )
 
     exiting_actors = [actor.exit.remote() for actor in actors]
@@ -122,12 +131,16 @@ def test_many_actors(num_actors: int):
         _exitted, exiting_actors = ray.wait(exiting_actors)
 
     invoke_state_api(
-        lambda res: len(res) == 0, list_actors, filters=[("state", "=", "ALIVE")]
+        lambda res: len(res) == 0,
+        list_actors,
+        filters=[("state", "=", "ALIVE")],
+        limit=DEFAULT_RAY_STATE_LIST_LIMIT,
     )
     invoke_state_api(
         lambda res: len(res) == num_actors,
         list_actors,
         filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
+        limit=DEFAULT_RAY_STATE_LIST_LIMIT,
     )
 
 
@@ -168,6 +181,7 @@ def test_many_objects(num_objects, num_actors):
             ("reference_type", "=", "LOCAL_REFERENCE"),
             ("type", "=", "Worker"),
         ],
+        limit=DEFAULT_RAY_STATE_LIST_LIMIT,
     )
 
     exiting_actors = [actor.exit.remote() for actor in actors]
