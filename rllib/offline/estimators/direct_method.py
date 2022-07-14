@@ -23,7 +23,6 @@ class DirectMethod(OffPolicyEstimator):
     @override(OffPolicyEstimator)
     def __init__(
         self,
-        name: str,
         policy: Policy,
         gamma: float,
         q_model_config: Dict = None,
@@ -32,7 +31,6 @@ class DirectMethod(OffPolicyEstimator):
         Initializes a Direct Method OPE Estimator.
 
         Args:
-            name: string to save OPE results under
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
             q_model_config: Arguments to specify the Q-model. Must specify
@@ -46,7 +44,7 @@ class DirectMethod(OffPolicyEstimator):
         assert (
             policy.config["framework"] == "torch"
         ), "DirectMethod estimator only works with torch!"
-        super().__init__(name, policy, gamma)
+        super().__init__(policy, gamma)
 
         model_cls = q_model_config.pop("type")
         self.model = model_cls(
@@ -60,14 +58,20 @@ class DirectMethod(OffPolicyEstimator):
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
-        """The returned dict consists of the following metrics:
-        - v_behavior: The discounted return averaged over episodes in the batch
-        - v_behavior_std: The standard deviation corresponding to v_behavior
-        - v_target: The estimated discounted return for `self.policy`,
-          averaged over episodes in the batch
-        - v_target_std: The standard deviation corresponding to v_target
-        - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
-        - v_gain_std: The standard deviation corresponding to v_gain
+        """Compute off-policy estimates.
+
+        Args:
+            batch: The SampleBatch to run off-policy estimation on
+
+        Returns:
+            A dict consists of the following metrics:
+            - v_behavior: The discounted return averaged over episodes in the batch
+            - v_behavior_std: The standard deviation corresponding to v_behavior
+            - v_target: The estimated discounted return for `self.policy`,
+            averaged over episodes in the batch
+            - v_target_std: The standard deviation corresponding to v_target
+            - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
+            - v_gain_std: The standard deviation corresponding to v_gain
         """
         self.check_can_estimate_for(batch)
         estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
@@ -99,10 +103,10 @@ class DirectMethod(OffPolicyEstimator):
         """Trains self.model on the given batch.
 
         Args:
-        batch: A SampleBatchType to train on
+            batch: A SampleBatchType to train on
 
         Returns:
-        A dict with key "loss" and value as the mean training loss.
+            A dict with key "loss" and value as the mean training loss.
         """
         if isinstance(batch, MultiAgentBatch):
             policy_keys = batch.policy_batches.keys()

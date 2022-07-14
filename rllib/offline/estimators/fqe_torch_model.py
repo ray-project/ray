@@ -12,6 +12,8 @@ from gym.spaces import Discrete
 
 torch, nn = try_import_torch()
 
+# TODO: Create a config object for FQE and unify it with the RLModule API
+
 
 @DeveloperAPI
 class FQETorchModel:
@@ -198,11 +200,11 @@ class FQETorchModel:
         """Compute action distribution over the action space.
 
         Args:
-        obs: A tensor of observations of shape (batch_size * obs_dim)
+            obs: A tensor of observations of shape (batch_size * obs_dim)
 
         Returns:
-        action_probs: A tensor of action probabilities
-        of shape (batch_size * action_dim)
+            action_probs: A tensor of action probabilities
+            of shape (batch_size * action_dim)
         """
         input_dict = {SampleBatch.OBS: obs}
         seq_lens = torch.ones(len(obs), device=self.device, dtype=int)

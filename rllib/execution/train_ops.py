@@ -87,10 +87,10 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
 
     if algorithm.reward_estimators:
         info[DEFAULT_POLICY_ID]["off_policy_estimation"] = {}
-        for estimator in algorithm.reward_estimators:
-            info[DEFAULT_POLICY_ID]["off_policy_estimation"][
-                estimator.name
-            ] = estimator.train(train_batch)
+        for name, estimator in algorithm.reward_estimators.items():
+            info[DEFAULT_POLICY_ID]["off_policy_estimation"][name] = estimator.train(
+                train_batch
+            )
     return info
 
 
@@ -192,9 +192,9 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
 
     if algorithm.reward_estimators:
         learner_info[DEFAULT_POLICY_ID]["off_policy_estimation"] = {}
-        for estimator in algorithm.reward_estimators:
+        for name, estimator in algorithm.reward_estimators.items():
             learner_info[DEFAULT_POLICY_ID]["off_policy_estimation"][
-                estimator.name
+                name
             ] = estimator.train(train_batch)
 
     return learner_info

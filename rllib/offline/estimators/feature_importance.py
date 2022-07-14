@@ -19,7 +19,6 @@ def perturb_fn(batch: np.ndarray, index: int):
 class FeatureImportance(OffPolicyEstimator):
     def __init__(
         self,
-        name: str,
         policy: Policy,
         gamma: float,
         repeat: int = 1,
@@ -58,14 +57,13 @@ class FeatureImportance(OffPolicyEstimator):
         ```
 
         Args:
-            name: string to save the feature importance results under.
             policy: the policy to use for feature importance.
             repeat: number of times to repeat the perturbation.
             gamma: dummy discount factor to be passed to the super class.
             perturb_fn: function to perturb the features. By default reshuffle the
             features within the batch.
         """
-        super().__init__(name, policy, gamma=gamma)
+        super().__init__(policy, gamma)
         self.repeat = repeat
         self.perturb_fn = perturb_fn
 

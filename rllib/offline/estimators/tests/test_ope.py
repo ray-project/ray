@@ -108,7 +108,6 @@ class TestOPE(unittest.TestCase):
     def test_is(self):
         name = "is"
         estimator = ImportanceSampling(
-            name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
@@ -119,7 +118,6 @@ class TestOPE(unittest.TestCase):
     def test_wis(self):
         name = "wis"
         estimator = WeightedImportanceSampling(
-            name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
@@ -130,7 +128,6 @@ class TestOPE(unittest.TestCase):
     def test_dm_fqe(self):
         name = "dm_fqe"
         estimator = DirectMethod(
-            name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_config={"type": FQETorchModel, **self.q_model_config},
@@ -143,7 +140,6 @@ class TestOPE(unittest.TestCase):
     def test_dr_fqe(self):
         name = "dr_fqe"
         estimator = DoublyRobust(
-            name=name,
             policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_config={"type": FQETorchModel, **self.q_model_config},

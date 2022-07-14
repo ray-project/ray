@@ -16,21 +16,27 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def __init__(self, name: str, policy: Policy, gamma: float):
-        super().__init__(name, policy, gamma)
+    def __init__(self, policy: Policy, gamma: float):
+        super().__init__(policy, gamma)
         self.filter_values = []
         self.filter_counts = []
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
-        """The returned dict consists of the following metrics:
-        - v_behavior: The discounted return averaged over episodes in the batch
-        - v_behavior_std: The standard deviation corresponding to v_behavior
-        - v_target: The estimated discounted return for `self.policy`,
-          averaged over episodes in the batch
-        - v_target_std: The standard deviation corresponding to v_target
-        - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
-        - v_gain_std: The standard deviation corresponding to v_gain
+        """Compute off-policy estimates.
+
+        Args:
+            batch: The SampleBatch to run off-policy estimation on
+
+        Returns:
+            A dict consists of the following metrics:
+            - v_behavior: The discounted return averaged over episodes in the batch
+            - v_behavior_std: The standard deviation corresponding to v_behavior
+            - v_target: The estimated discounted return for `self.policy`,
+            averaged over episodes in the batch
+            - v_target_std: The standard deviation corresponding to v_target
+            - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
+            - v_gain_std: The standard deviation corresponding to v_gain
         """
         self.check_can_estimate_for(batch)
         estimates = {"v_behavior": [], "v_target": [], "v_gain": []}

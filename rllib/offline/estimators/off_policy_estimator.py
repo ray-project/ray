@@ -16,15 +16,13 @@ class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
     @DeveloperAPI
-    def __init__(self, name: str, policy: Policy, gamma: float):
+    def __init__(self, policy: Policy, gamma: float):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
-            name: string to save OPE results under
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
         """
-        self.name = name
         self.policy = policy
         self.gamma = gamma
 
@@ -33,7 +31,8 @@ class OffPolicyEstimator:
         """Returns off-policy estimates for the given batch of episodes.
 
         Args:
-            batch: The batch to calculate the off-policy estimates (OPE) on.
+            batch: The batch to calculate the off-policy estimates (OPE) on. The
+            batch must contain the fields "obs", "actions", and "action_prob".
 
         Returns:
             The off-policy estimates (OPE) calculated on the given batch. The returned
@@ -93,19 +92,3 @@ class OffPolicyEstimator:
     def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
         log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
         return convert_to_numpy(log_likelihoods)
-
-    @Deprecated(
-        old="OffPolicyEstimator.process(batch) -> OffPolicyEstimator.get_metrics()",
-        new="OffPolicyEstimator.estimate(batch)",
-        error=True,
-    )
-    def process(self, batch: SampleBatchType) -> None:
-        pass
-
-    @Deprecated(
-        old="OffPolicyEstimator.process(batch) -> OffPolicyEstimator.get_metrics()",
-        new="OffPolicyEstimator.estimate(batch)",
-        error=True,
-    )
-    def get_metrics(self) -> Dict[str, Any]:
-        pass

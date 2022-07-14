@@ -540,7 +540,7 @@ class Algorithm(Trainable):
                 logdir=self.logdir,
             )
 
-        self.reward_estimators: List[OffPolicyEstimator] = []
+        self.reward_estimators: Dict[str, OffPolicyEstimator] = {}
         ope_types = {
             "is": ImportanceSampling,
             "wis": WeightedImportanceSampling,
@@ -566,8 +566,8 @@ class Algorithm(Trainable):
             ):
                 policy = self.get_policy()
                 gamma = self.config["gamma"]
-                self.reward_estimators.append(
-                    method_type(name, policy, gamma, **method_config)
+                self.reward_estimators[name] = method_type(
+                    policy, gamma, **method_config
                 )
             else:
                 raise ValueError(
@@ -895,9 +895,9 @@ class Algorithm(Trainable):
                 # Compute off-policy estimates
                 metrics["off_policy_estimator"] = {}
                 total_batch = concat_samples(all_batches)
-                for estimator in self.reward_estimators:
+                for name, estimator in self.reward_estimators.items():
                     estimates = estimator.estimate(total_batch)
-                    metrics["off_policy_estimator"][estimator.name] = estimates
+                    metrics["off_policy_estimator"][name] = estimates
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
