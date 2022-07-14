@@ -100,7 +100,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 if isinstance(component, Discrete):
                     size = component.n
                 else:
-                    size = sum(component.nvec)
+                    size = np.sum(component.nvec)
                 config = {
                     "fcnet_hiddens": model_config["fcnet_hiddens"],
                     "fcnet_activation": model_config.get("fcnet_activation"),
