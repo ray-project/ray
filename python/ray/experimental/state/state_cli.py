@@ -19,6 +19,7 @@ from ray.experimental.state.api import (
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
+    STATE_OBS_ALPHA_FEEDBACK_MSG,
     GetApiOptions,
     ListApiOptions,
     PredicateType,
@@ -27,6 +28,16 @@ from ray.experimental.state.common import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _alpha_doc():
+    def decorator(func):
+        func.__doc__ = "{doc}\n{alpha_feedback}".format(
+            doc=func.__doc__, alpha_feedback="\n\n".join(STATE_OBS_ALPHA_FEEDBACK_MSG)
+        )
+        return func
+
+    return decorator
 
 
 @unique
@@ -213,6 +224,7 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
+@_alpha_doc()
 def get(
     resource: str,
     id: str,
@@ -229,10 +241,14 @@ def get(
 
     Example:
 
-    ```
-    ray get nodes <node-id>
-    ray get workers <worker-id>
-    ```
+    '''
+
+        ray get nodes <node-id>
+
+        ray get workers <worker-id>
+
+    '''
+
     """
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
@@ -305,6 +321,7 @@ def get(
 )
 @timeout_option
 @address_option
+@_alpha_doc()
 def list(
     resource: str,
     format: str,
@@ -353,6 +370,7 @@ def list(
 
 @click.group("summary")
 @click.pass_context
+@_alpha_doc()
 def summary_state_cli_group(ctx):
     pass
 

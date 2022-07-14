@@ -2220,7 +2220,8 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         # Running another 1 should return error
         with pytest.raises(RayStateApiException) as e:
             print(list_objects())
-        assert "RAY_STATE_SERVER_MAX_HTTP_REQUEST" in str(
+        # TODO(rickyyx): We will use fine-grained exceptions/error code soon
+        assert "Max" in str(
             e
         ), f"Expect an exception raised due to rate limit, but have {str(e)}"
 
