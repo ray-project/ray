@@ -31,7 +31,7 @@ def test_automatic_enable_gpu(serve_instance):
         name="GPU", ray_actor_options={"num_gpus": 1}
     ).deploy(predictor_cls=DummyGPUPredictor, checkpoint=Checkpoint.from_dict({"x": 1}))
 
-    with pytest.raises(ValueError, "GPU enabled"):
+    with pytest.raises(ValueError, match="GPU enabled"):
         ray.get(send_request.remote(json={"array": [40]}))
 
 
