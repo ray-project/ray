@@ -1,8 +1,8 @@
 import json
 import logging
-from enum import Enum, unique
-from typing import List, Tuple, Union, Dict, Optional
 from datetime import datetime
+from enum import Enum, unique
+from typing import Dict, List, Optional, Tuple, Union
 
 import click
 import yaml
@@ -11,6 +11,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.gcs_utils import GcsClient
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.state.api import (
     StateApiClient,
     summarize_actors,
@@ -27,7 +28,6 @@ from ray.experimental.state.common import (
     StateResource,
     SupportedFilterType,
 )
-from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 logger = logging.getLogger(__name__)
 
@@ -145,15 +145,27 @@ def get_api_server_url() -> str:
     return api_server_url
 
 
-def get_table_output(state_data: Union[dict, list]):
+def get_table_output(state_data: List):
+    time = datetime.now()
+    header = "=" * 8 + f" List: {time} " + "=" * 8
     headers = []
     table = []
     for data in state_data:
-        headers = data.keys()
-        table.append(data.values())
-    return tabulate(
-        table, headers=headers, showindex=True, tablefmt="plain", floatfmt=".3f"
-    )
+        for key, val in data.items():
+            if isinstance(val, dict):
+                data[key] = yaml.dump(val, indent=2)
+        headers = sorted([key.upper() for key in data.keys()])
+        table.append([data[header.lower()] for header in headers])
+    return f"""
+{header}
+Stats:
+------------------------------
+Total: {len(state_data)}
+
+Table:
+------------------------------
+{tabulate(table, headers=headers, showindex=True, tablefmt="plain", floatfmt=".3f")}
+"""
 
 
 def output_with_format(
@@ -161,7 +173,7 @@ def output_with_format(
 ):
     # Default is yaml.
     if format == AvailableFormat.DEFAULT:
-        return yaml.dump(state_data, indent=4, explicit_start=True)
+        return get_table_output(state_data)
     if format == AvailableFormat.YAML:
         return yaml.dump(state_data, indent=4, explicit_start=True)
     elif format == AvailableFormat.JSON:
@@ -175,32 +187,44 @@ def output_with_format(
         )
 
 
-def format_summary_output(state_data: Dict):
+def format_summary_output(state_data: Dict, *, resource: StateResource):
     if len(state_data) == 0:
         return "No resource in the cluster"
 
+    # Parse the data.
     cluster_data = state_data["cluster"]
     summaries = cluster_data["summary"]
+    summary_by = cluster_data["summary_by"]
+    del cluster_data["summary_by"]
     del cluster_data["summary"]
 
     cluster_info_table = yaml.dump(cluster_data, indent=2)
+
+    # Create a table.
     table = []
     headers = []
     for summary in summaries.values():
-        summary["state_counts"] = yaml.dump(summary["state_counts"])
-        table.append(summary.values())
-        headers = summary.keys()
-    summary_table = tabulate(table, headers=headers, tablefmt="plain", numalign="left")
-    time = datetime.now()
-    header = "=" * 8 + f" Actor Summary: {time} " + "=" * 8
+        # Convert dict to yaml for better formatting.
+        for key, val in summary.items():
+            if isinstance(val, dict):
+                summary[key] = yaml.dump(val, indent=2)
 
+        headers = sorted([key.upper() for key in summary.keys()])
+        table.append([summary[header.lower()] for header in headers])
+
+    summary_table = tabulate(
+        table, headers=headers, showindex=True, tablefmt="plain", numalign="left"
+    )
+
+    time = datetime.now()
+    header = "=" * 8 + f" {resource.value.capitalize()} Summary: {time} " + "=" * 8
     return f"""
 {header}
-Cluster
+Stats:
 ------------------------------------
 {cluster_info_table}
 
-Summary
+Table (group by {summary_by}):
 ------------------------------------
 {summary_table}
 """
@@ -210,31 +234,44 @@ def format_object_summary_output(state_data: Dict):
     if len(state_data) == 0:
         return "No resource in the cluster"
 
+    # Parse the data.
     cluster_data = state_data["cluster"]
     summaries = cluster_data["summary"]
+    summary_by = cluster_data["summary_by"]
+    del cluster_data["summary_by"]
     del cluster_data["summary"]
 
     cluster_info_table = yaml.dump(cluster_data, indent=2)
+
+    # Create a table per callsite.
     tables = []
     for callsite, summary in summaries.items():
+        # Convert dict to yaml for better formatting.
+        for key, val in summary.items():
+            if isinstance(val, dict):
+                summary[key] = yaml.dump(val, indent=2)
+
         table = []
-        summary["task_state_counts"] = yaml.dump(summary["task_state_counts"])
-        summary["ref_type_counts"] = yaml.dump(summary["ref_type_counts"])
-        table.append(summary.values())
-        headers = summary.keys()
-        t = tabulate(table, headers=headers, tablefmt="fancy_grid", numalign="left")
-        tables.append(f"Callsite:\n  {callsite}\n\nTable:\n{t}")
+        headers = sorted([key.upper() for key in summary.keys()])
+        table.append([summary[header.lower()] for header in headers])
+        table_for_callsite = tabulate(
+            table, headers=headers, showindex=True, numalign="left"
+        )
+
+        # Format callsite.
+        formatted_callsite = callsite.replace("|", "\n|")
+        tables.append(f"{formatted_callsite}\n{table_for_callsite}")
+
     time = datetime.now()
     header = "=" * 8 + f" Object Summary: {time} " + "=" * 8
     table_string = "\n\n\n".join(tables)
-
     return f"""
 {header}
-Cluster
+Stats:
 ------------------------------------
 {cluster_info_table}
 
-Summary
+Table (group by {summary_by})
 ------------------------------------
 {table_string}
 """
@@ -465,6 +502,7 @@ def task_summary(ctx, timeout: float, address: str):
                 timeout=timeout,
                 _explain=True,
             ),
+            resource=StateResource.TASKS,
         )
     )
 
@@ -481,6 +519,7 @@ def actor_summary(ctx, timeout: float, address: str):
                 timeout=timeout,
                 _explain=True,
             ),
+            resource=StateResource.ACTORS,
         )
     )
 
