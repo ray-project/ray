@@ -24,6 +24,3 @@ cartpole-crashing-with-remote-envs-pg:
 
         # Switch on resiliency for failed sub environments (within a vectorized stack).
         restart_failed_sub_environments: true
-        # Also ignore worker failures, however, this should not matter as we don't
-        # expect any due to catching individual sub-env failures.
-        ignore_worker_failures: true
