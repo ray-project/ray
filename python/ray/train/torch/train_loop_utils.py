@@ -551,8 +551,10 @@ class _WrappedDataLoader(DataLoader):
         with torch.cuda.stream(self._memcpy_stream):
             if isinstance(item, collections.abc.Mapping):
                 item_on_device = {k: self._move_to_device(v) for k, v in item.items()}
-            elif isinstance(item, (tuple, list)):
-                item_on_device = type(item)(self._move_to_device(i) for i in item)
+            elif isinstance(item, tuple):
+                item_on_device = tuple(self._move_to_device(i) for i in item)
+            elif isinstance(item, list):
+                item_on_device = [self._move_to_device(i) for i in item]
             elif isinstance(item, torch.Tensor):
                 item_on_device = try_move_device(item)
             else:
