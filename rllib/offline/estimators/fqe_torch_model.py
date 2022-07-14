@@ -6,6 +6,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.annotations import is_overridden
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 from gym.spaces import Discrete
 
@@ -206,7 +207,9 @@ class FQETorchModel:
         input_dict = {SampleBatch.OBS: obs}
         seq_lens = torch.ones(len(obs), device=self.device, dtype=int)
         state_batches = []
-        if self.policy.action_distribution_fn:
+        if self.policy.action_distribution_fn and is_overridden(
+            self.policy.action_distribution_fn
+        ):
             dist_inputs, dist_class, _ = self.policy.action_distribution_fn(
                 self.policy,
                 self.policy.model,
