@@ -46,6 +46,7 @@ Trainer objects will produce a :ref:`Result <air-results-ref>` object after call
     :start-after: __air_trainer_output_start__
     :end-before: __air_trainer_output_end__
 
+.. _air-session-key-concepts:
 
 Session
 -------
