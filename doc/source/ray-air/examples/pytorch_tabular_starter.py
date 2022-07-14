@@ -33,27 +33,13 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 import numpy as np
 import pandas as pd
 
-from ray.data.preprocessors import BatchMapper, Chain
-
-# Get the training data schema
-schema_order = [k for k in train_dataset.schema().names if k != "target"]
-
-
-def concat_for_tensor(dataframe):
-    # Concatenate the dataframe into a single tensor.
-    from ray.data.extensions import TensorArray
-
-    result = {}
-    input_data = dataframe[schema_order].to_numpy(dtype=np.float32)
-    result["input"] = TensorArray(input_data)
-    if "target" in dataframe:
-        target_data = dataframe["target"].to_numpy(dtype=np.float32)
-        result["target"] = TensorArray(target_data)
-    return pd.DataFrame(result)
-
+from ray.data.preprocessors import Concatenator, Chain
 
 # Chain the preprocessors together.
-preprocessor = Chain(preprocessor, BatchMapper(concat_for_tensor))
+preprocessor = Chain(
+    preprocessor,
+    Concatenator(exclude=["target"], dtype=np.float32),
+)
 # __air_pytorch_preprocess_end__
 
 
@@ -92,9 +78,12 @@ def train_loop_per_worker(config):
         data_iterator = dataset.iter_batches(
             batch_format="numpy", batch_size=batch_size
         )
-
         for d in data_iterator:
-            yield torch.Tensor(d["input"]).float(), torch.Tensor(d["target"]).float()
+            # "concat_out" is the output column of the Concatenator.
+            yield (
+                torch.Tensor(d["concat_out"]).float(),
+                torch.Tensor(d["target"]).float(),
+            )
 
     # Create model.
     model = create_model(num_features)
@@ -114,24 +103,18 @@ def train_loop_per_worker(config):
         session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
 
 
-num_features = len(schema_order)
+num_features = len(train_dataset.schema().names) - 1
 
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
     train_loop_config={
-        # Training batch size
         "batch_size": 128,
-        # Number of epochs to train each task for.
         "num_epochs": 20,
-        # Number of columns of datset
         "num_features": num_features,
-        # Optimizer args.
         "lr": 0.001,
     },
     scaling_config={
-        # Number of workers to use for data parallelism.
-        "num_workers": 3,
-        # Whether to use GPU acceleration.
+        "num_workers": 3,  # Number of data parallel training workers.
         "use_gpu": False,
         # trainer_resources=0 so that the example works on Colab.
         "trainer_resources": {"CPU": 0},
