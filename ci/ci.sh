@@ -207,15 +207,16 @@ test_python() {
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046,SC2086
-    bazel test --config=ci \
-      --build_tests_only $(./ci/run/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
-      --test_env=CI="1" \
-      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
-      --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_output=streamed \
-      -- \
-      ${test_shard_selection};
+    #bazel test --config=ci \
+    #  --build_tests_only $(./ci/run/bazel_export_options) \
+    #  --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+    #  --test_env=CI="1" \
+    #  --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
+    #  --test_env=USERPROFILE="${USERPROFILE}" \
+    #  --test_output=streamed \
+    #  -- \
+    #  ${test_shard_selection};
+    ls tyuii
   fi
 }
 
