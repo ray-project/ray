@@ -276,9 +276,12 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
 
       for (auto &task_id : task_ids) {
-        task_finisher_.MarkTaskCanceled(task_id);
         // No need to increment the number of completed tasks since the actor is
         // dead.
+        task_finisher_.MarkTaskCanceled(task_id);
+        // This task may have been waiting for dependency resolution, so cancel
+        // this first.
+        resolver_.CancelDependencyResolution(task_id);
         RAY_UNUSED(!task_finisher_.FailOrRetryPendingTask(
             task_id, error_type, &status, &error_info));
       }
@@ -484,12 +487,15 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
 
+    // If the actor is already dead, immediately mark the task object as failed.
+    // Otherwise, start the grace period before marking the object as dead.
     bool is_actor_dead = (queue.state == rpc::ActorTableData::DEAD);
     const auto &death_cause = queue.death_cause;
     const auto &error_info = GetErrorInfoFromActorDeathCause(death_cause);
     const auto &error_type = GenErrorTypeFromDeathCause(death_cause);
-    // If the actor is already dead, immediately mark the task object is failed.
-    // Otherwise, it will have grace period until it makrs the object is dead.
+    // This task may have been waiting for dependency resolution, so cancel
+    // this first.
+    resolver_.CancelDependencyResolution(task_id);
     will_retry =
         task_finisher_.FailOrRetryPendingTask(task_id,
                                               error_type,
