@@ -95,7 +95,7 @@ class TensorflowPredictor(DLPredictor):
         # Cannot use TensorFlow load_checkpoint here
         # due to instantiated models not being pickleable
         model_weights, preprocessor = _load_checkpoint(checkpoint, "TensorflowTrainer")
-        return TensorflowPredictor(
+        return cls(
             model_definition=model_definition,
             model_weights=model_weights,
             preprocessor=preprocessor,
