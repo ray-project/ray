@@ -69,7 +69,7 @@ def _autodetect_parallelism(
 ) -> (int, int):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
-    This detects parallelism using on the following heuristics, applied in order:
+    This detects parallelism using the following heuristics, applied in order:
 
      1) We start with the default parallelism of 200.
      2) Min block size. If the parallelism would make blocks smaller than this
