@@ -77,12 +77,9 @@ def get_span_list():
 
 def get_span_dict(span_list):
     """Given a list of span names, return dictionary of span names."""
-    strip_prefix = "python.ray.tests."
     span_names = {}
     for span in span_list:
         span_name = span["name"]
-        if span_name.startswith(strip_prefix):
-            span_name = span_name[len(strip_prefix) :]
         if span_name in span_names:
             span_names[span_name] += 1
         else:
@@ -106,7 +103,7 @@ def task_helper():
     # The spans could show up in a different order, so just check that
     # all spans are as expected
     span_names = get_span_dict(span_list)
-    assert span_names == {
+    return span_names == {
         "test_tracing.f ray.remote": 1,
         "test_tracing.f ray.remote_worker": 1,
     }
@@ -174,11 +171,11 @@ def async_actor_helper():
 
 
 def test_tracing_task_init_workflow(cleanup_dirs, ray_start_init_tracing):
-    task_helper()
+    assert task_helper()
 
 
 def test_tracing_task_start_workflow(cleanup_dirs, ray_start_cli_tracing):
-    task_helper()
+    assert task_helper()
 
 
 def test_tracing_sync_actor_init_workflow(cleanup_dirs, ray_start_init_tracing):

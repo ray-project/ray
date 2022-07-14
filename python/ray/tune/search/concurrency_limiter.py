@@ -161,3 +161,11 @@ class ConcurrencyLimiter(Searcher):
 
     def restore(self, checkpoint_path: str):
         self.searcher.restore(checkpoint_path)
+
+    # BOHB Specific.
+    # TODO(team-ml): Refactor alongside HyperBandForBOHB
+    def on_pause(self, trial_id: str):
+        self.searcher.on_pause(trial_id)
+
+    def on_unpause(self, trial_id: str):
+        self.searcher.on_unpause(trial_id)

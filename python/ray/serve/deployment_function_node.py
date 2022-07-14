@@ -29,7 +29,6 @@ class DeploymentFunctionNode(DAGNode):
             func_options,
             other_args_to_resolve=other_args_to_resolve,
         )
-
         if "deployment_schema" in self._bound_other_args_to_resolve:
             deployment_schema: DeploymentSchema = self._bound_other_args_to_resolve[
                 "deployment_schema"

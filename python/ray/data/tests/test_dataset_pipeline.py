@@ -178,7 +178,7 @@ def test_cannot_read_twice(ray_start_regular_shared):
 def test_basic_pipeline(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
-    ds = ray.data.range(10)
+    ds = ray.data.range(10, parallelism=10)
 
     pipe = ds.window(blocks_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
@@ -202,7 +202,7 @@ def test_basic_pipeline(ray_start_regular_shared):
 def test_window(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
-    ds = ray.data.range(10)
+    ds = ray.data.range(10, parallelism=10)
     pipe = ds.window(blocks_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
     pipe = pipe.rewindow(blocks_per_window=3)
@@ -214,7 +214,7 @@ def test_window(ray_start_regular_shared):
     assert datasets[2].take() == [6, 7, 8]
     assert datasets[3].take() == [9]
 
-    ds = ray.data.range(10)
+    ds = ray.data.range(10, parallelism=10)
     pipe = ds.window(blocks_per_window=5)
     assert str(pipe) == "DatasetPipeline(num_windows=2, num_stages=2)"
     pipe = pipe.rewindow(blocks_per_window=3)
@@ -230,7 +230,7 @@ def test_window(ray_start_regular_shared):
 def test_repeat(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
-    ds = ray.data.range(5)
+    ds = ray.data.range(5, parallelism=5)
     pipe = ds.window(blocks_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=5, num_stages=2)"
     pipe = pipe.repeat(2)
@@ -277,7 +277,7 @@ def test_repartition(ray_start_regular_shared):
 
 
 def test_iter_batches_basic(ray_start_regular_shared):
-    pipe = ray.data.range(10).window(blocks_per_window=2)
+    pipe = ray.data.range(10, parallelism=10).window(blocks_per_window=2)
     batches = list(pipe.iter_batches())
     assert len(batches) == 10
     assert all(len(e) == 1 for e in batches)
@@ -294,11 +294,11 @@ def test_iter_batches_batch_across_windows(ray_start_regular_shared):
 
 
 def test_iter_datasets(ray_start_regular_shared):
-    pipe = ray.data.range(10).window(blocks_per_window=2)
+    pipe = ray.data.range(10, parallelism=10).window(blocks_per_window=2)
     ds = list(pipe.iter_datasets())
     assert len(ds) == 5
 
-    pipe = ray.data.range(10).window(blocks_per_window=5)
+    pipe = ray.data.range(10, parallelism=10).window(blocks_per_window=5)
     ds = list(pipe.iter_datasets())
     assert len(ds) == 2
 
@@ -316,7 +316,7 @@ def test_schema(ray_start_regular_shared):
 
 def test_schema_peek(ray_start_regular_shared):
     # Multiple datasets
-    pipe = ray.data.range(6).window(blocks_per_window=2)
+    pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2)
     assert pipe.schema() == int
     assert pipe._first_dataset is not None
     dss = list(pipe.iter_datasets())
@@ -334,7 +334,11 @@ def test_schema_peek(ray_start_regular_shared):
     assert pipe.schema() == int
 
     # Empty datasets
-    pipe = ray.data.range(6).filter(lambda x: x < 0).window(blocks_per_window=2)
+    pipe = (
+        ray.data.range(6, parallelism=6)
+        .filter(lambda x: x < 0)
+        .window(blocks_per_window=2)
+    )
     assert pipe.schema() is None
     assert pipe._first_dataset is not None
     dss = list(pipe.iter_datasets())
