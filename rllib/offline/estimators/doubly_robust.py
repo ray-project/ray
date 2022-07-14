@@ -112,9 +112,11 @@ class DoublyRobust(OffPolicyEstimator):
     def train(self, batch: SampleBatchType) -> Dict[str, Any]:
         """Trains self.model on the given batch.
 
-        Args: batch: A SampleBatch or MultiAgentbatch to train on
+        Args:
+        batch: A SampleBatch or MultiAgentbatch to train on
 
-        Returns: A dict with key "loss" and value as the mean training loss.
+        Returns:
+        A dict with key "loss" and value as the mean training loss.
         """
         if isinstance(batch, MultiAgentBatch):
             policy_keys = batch.policy_batches.keys()

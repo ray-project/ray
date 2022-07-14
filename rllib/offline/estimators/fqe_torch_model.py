@@ -128,7 +128,9 @@ class FQETorchModel:
                 next_obs = torch.tensor(
                     minibatch[SampleBatch.NEXT_OBS], device=self.device
                 )
-                dones = torch.tensor(minibatch[SampleBatch.DONES], device=self.device)
+                dones = torch.tensor(
+                    minibatch[SampleBatch.DONES], device=self.device, dtype=float
+                )
 
                 # Compute Q-values for current obs
                 q_values, _ = self.q_model({"obs": obs}, [], None)
@@ -156,7 +158,7 @@ class FQETorchModel:
 
                 # Compute estimated state value next_v = E_{a ~ pi(s)} [Q(next_obs,a)]
                 next_v = torch.sum(next_q_values * next_action_probs, axis=-1)
-                targets = rewards + ~dones * self.gamma * next_v
+                targets = rewards + (1 - dones) * self.gamma * next_v
                 loss = (targets - q_acts) ** 2
                 loss = torch.mean(loss)
                 self.optimizer.zero_grad()
