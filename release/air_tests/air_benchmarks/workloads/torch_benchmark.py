@@ -324,7 +324,7 @@ def run(
     config = CONFIG.copy()
     config["epochs"] = num_epochs
 
-    ray.init("auto")
+    ray.init("auto", runtime_env={"env_vars": {"NCCL_SOCKET_IFNAME": "ens3"}})
     print("Preparing Torch benchmark: Downloading MNIST")
 
     path = os.path.abspath("workloads/_torch_prepare.py")
