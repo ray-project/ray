@@ -10,7 +10,7 @@ from ray.core.generated.common_pb2 import TaskType
 logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
-DEFAULT_LIMIT = int(1e3)
+DEFAULT_LIMIT = 100
 DEFAULT_LOG_LIMIT = 1000
 MAX_LIMIT = int(1e9)  # 1B
 
