@@ -4,25 +4,18 @@ import time
 import pandas as pd
 
 import ray
-from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig
 from ray.air.util.check_ingest import DummyTrainer
 from ray.data.preprocessors import BatchMapper
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.predictor import Predictor
 
 GiB = 1024 * 1024 * 1024
 
 
-class DummyPredictor(Predictor):
-    @classmethod
-    def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
-        return DummyPredictor(None)
-
-    def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
-        # For 20k records (200GiB), this amounts to 2000 seconds of work.
-        time.sleep(len(data) * 0.0001)
-        return pd.DataFrame({"label": [42] * len(data)})
+def dummy_predict(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
+    # For 20k records (200GiB), this amounts to 2000 seconds of work.
+    time.sleep(len(data) * 0.0001)
+    return pd.DataFrame({"label": [42] * len(data)})
 
 
 def make_ds(size_gb: int):
@@ -76,14 +69,13 @@ def run_ingest_streaming(dataset, num_workers):
 
 def run_infer_bulk(dataset, num_workers, post=None, stream=False, window_size_gb=10):
     start = time.time()
-    checkpoint = Checkpoint.from_dict({"dummy": 1})
 
     def fn(batch):
         print("Running dummy preprocessor")
         return batch * 2
 
     dummy_prep = BatchMapper(fn)
-    predictor = BatchPredictor(checkpoint, DummyPredictor)
+    predictor = BatchPredictor.from_pandas_udf(dummy_predict)
     predictor.set_preprocessor(dummy_prep)
 
     if stream:
