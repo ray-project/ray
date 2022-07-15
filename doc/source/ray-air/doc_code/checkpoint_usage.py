@@ -23,18 +23,12 @@ checkpoint = to_air_checkpoint(model)
 
 
 # __use_trainer_checkpoint_start__
-import pandas as pd
 import ray
 from ray.air import train_test_split
 from ray.train.xgboost import XGBoostTrainer
 
 
-bc_df = pd.read_csv(
-    "https://air-example-data.s3.us-east-2.amazonaws.com/breast_cancer.csv"
-)
-dataset = ray.data.from_pandas(bc_df)
-# Optionally, read directly from s3
-# dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
+dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
 train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
