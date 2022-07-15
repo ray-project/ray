@@ -61,17 +61,25 @@ steps:
     - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
 
-- label: ":mac: :apple: Ray C++, Java and Libraries"
+- label: ":mac: :apple: Ray Core, Dashboard and Serve"
   <<: *common
-  conditions: ["RAY_CI_SERVE_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_CPP_AFFECTED", "RAY_CI_JAVA_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
+  conditions: ["RAY_CI_SERVE_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
-    - export RAY_INSTALL_JAVA=1
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
     # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
     # with dynamic linking.
     - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
       //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
+    - *epilogue_commands
+
+
+- label: ":mac: :apple: Ray C++ and Java"
+  <<: *common
+  conditions: ["RAY_CI_CPP_AFFECTED", "RAY_CI_JAVA_AFFECTED"]
+  commands:
+    - export RAY_INSTALL_JAVA=1
+    - *prelude_commands
     # clang-format is needed by java/test.sh
     - pip install clang-format==12.0.1
     - ./java/test.sh
