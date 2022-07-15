@@ -69,7 +69,7 @@ Tabular
 
     .. literalinclude:: examples/tf_tabular_batch_prediction.py
         :language: python
-    See the :ref:`full script here <tf_tabular_starter>`.
+
 
 Image
 ~~~~~

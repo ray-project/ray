@@ -76,12 +76,3 @@ AIR Feature Guides
         :type: ref
         :text: How to deploy Ray AIR?
         :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: use-pretrained-model-ref
-        :type: ref
-        :text: How to use a pretrained model for inference?
-        :classes: btn-link btn-block stretched-link
