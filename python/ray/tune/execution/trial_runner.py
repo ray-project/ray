@@ -671,6 +671,7 @@ class TrialRunner:
                 f"experiment checkpoint data was found."
             )
 
+        logger.info(f"Using following checkpoint to resume: {newest_ckpt_path}")
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
