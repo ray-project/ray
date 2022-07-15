@@ -292,7 +292,8 @@ class LocalStorage(Sized, Iterable):
             self._num_timesteps > self.capacity_ts
             or self._size_bytes > self.capacity_bytes
             or self._num_items
-            >= self.capacity_items  # >= for num_items, because we add 1 to num_items below
+            # >= for num_items, because we add 1 to num_items below
+            >= self.capacity_items
         ):
             assert self._num_items > 0
             self._eviction_started = True
@@ -770,23 +771,40 @@ class OnDiskStorage(LocalStorage):
 
     def _warn_replay_capacity(self, item: SampleBatchType, num_items: int) -> None:
         """Warn if the configured replay buffer capacity is too large."""
-        if log_once("replay_capacity_disk"):
-            item_size = item.size_bytes()
-            shutil_du = shutil.disk_usage(os.path.dirname(self._buffer_file_dir))
-            free_gb = shutil_du.free / 1e9
-            mem_size = num_items * item_size / 1e9
-            remainder = mem_size - self.size_bytes / 1e9
-            msg = (
-                "Estimated disk usage for replay buffer is {} GB "
-                "({} batches of size {}, {} bytes each), "
-                "of which {} GB are pending for allocation. "
-                "Available disk space is {} GB.".format(
-                    mem_size, num_items, item.count, item_size, remainder, free_gb
-                )
+        item_size = item.size_bytes()
+        ts_size = item_size / item.count
+        shutil_du = shutil.disk_usage(os.path.dirname(self._buffer_file_dir))
+        free_gb = shutil_du.free / 1e9
+        if self._capacity_ts == math.inf:
+            max_size_for_ts_capacity = -1
+        else:
+            max_size_for_ts_capacity = self.capacity_ts * ts_size
+
+        self.est_final_size = (
+            max(self.capacity_items * item_size, max_size_for_ts_capacity) / 1e9
+        )
+        remainder = self.est_final_size - self.size_bytes / 1e9
+        msg = (
+            "Estimated disk usage for replay buffer is {} GB "
+            "({} batches of size {}, {} bytes each), "
+            "of which {} GB are pending for allocation. "
+            "Available disk space is {} GB.".format(
+                self.est_final_size,
+                self.capacity_items,
+                item.count,
+                item_size,
+                remainder,
+                free_gb,
             )
-            if remainder > free_gb:
-                raise ValueError(msg)
-            elif remainder > 0.2 * free_gb:
+        )
+
+        remainder = self.est_final_size - self.size_bytes / 1e9
+
+        if remainder > free_gb:
+            raise ValueError(msg)
+        elif remainder > 0.2 * free_gb:
+            if log_once("warning_replay_buffer_storage_capacity_disk"):
                 logger.warning(msg)
-            else:
+        else:
+            if log_once("warning_replay_buffer_storage_capacity_disk"):
                 logger.info(msg)
