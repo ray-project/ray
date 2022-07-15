@@ -1675,6 +1675,14 @@ py_test(
     srcs = ["offline/estimators/tests/test_ope.py"]
 )
 
+py_test(
+    name = "test_ope_gpu",
+    main = "offline/estimators/tests/test_ope.py",
+    tags = ["team:rllib", "offline", "torch_only", "gpu"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_ope.py"]
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
