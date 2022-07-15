@@ -62,21 +62,13 @@ Tabular
 
 .. tabbed:: Pytorch
 
-    .. literalinclude:: examples/pytorch_tabular_starter.py
+    .. literalinclude:: examples/pytorch_tabular_batch_prediction.py
         :language: python
-        :start-after: __air_pytorch_batchpred_start__
-        :end-before: __air_pytorch_batchpred_end__
-
-    See the :ref:`full script here <pytorch_tabular_starter>`.
-
 
 .. tabbed:: Tensorflow
 
-    .. literalinclude:: examples/tf_tabular_starter.py
+    .. literalinclude:: examples/tf_tabular_batch_prediction.py
         :language: python
-        :start-after: __air_tf_batchpred_start__
-        :end-before: __air_tf_batchpred_end__
-
     See the :ref:`full script here <tf_tabular_starter>`.
 
 Image

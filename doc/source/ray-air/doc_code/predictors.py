@@ -1,3 +1,4 @@
+# flake8: noqa
 # isort: skip_file
 
 # __use_predictor_start__
@@ -11,6 +12,7 @@ from ray.train.tensorflow import (
     TensorflowPredictor,
 )
 
+
 def build_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
@@ -19,6 +21,7 @@ def build_model() -> tf.keras.Model:
         ]
     )
     return model
+
 
 model = build_model()
 checkpoint = to_air_checkpoint(model)
@@ -78,4 +81,3 @@ for batch in pipeline.iter_batches():
     # 1    42
     # ...
 # __pipelined_prediction_end__
-
