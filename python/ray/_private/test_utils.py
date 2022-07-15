@@ -1,5 +1,5 @@
 import asyncio
-import dataclasses
+from datetime import datetime
 import fnmatch
 import functools
 import io
@@ -19,7 +19,10 @@ from typing import Any, Dict, List, Optional
 
 import grpc
 import numpy as np
-import psutil  # We must import psutil after ray because we bundle it with ray.
+import psutil
+from pydantic import (
+    BaseModel,
+)  # We must import psutil after ray because we bundle it with ray.
 import yaml
 from grpc._channel import _InactiveRpcError
 
@@ -1377,8 +1380,7 @@ def find_free_port():
     return port
 
 
-@dataclasses.dataclass
-class TestRayActivityResponse:
+class TestRayActivityResponse(BaseModel):
     """
     Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
     used in test_component_activities_hook to mimic typical
@@ -1387,7 +1389,7 @@ class TestRayActivityResponse:
 
     is_active: str
     reason: Optional[str] = None
-    timestamp: Optional[float] = None
+    timestamp: float
 
 
 # Global counter to test different return values
@@ -1408,6 +1410,7 @@ def external_ray_cluster_activity_hook1():
         "test_component1": TestRayActivityResponse(
             is_active="ACTIVE",
             reason=f"Counter: {ray_cluster_activity_hook_counter}",
+            timestamp=datetime.now(),
         )
     }
 
@@ -1439,3 +1442,21 @@ def external_ray_cluster_activity_hook4():
     Errors during execution.
     """
     raise Exception("Error in external cluster activity hook")
+
+
+def external_ray_cluster_activity_hook5():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_counter
+    ray_cluster_activity_hook_counter += 1
+    return {
+        "test_component1": {
+            "is_active": "ACTIVE",
+            "reason": f"Counter: {ray_cluster_activity_hook_counter}",
+            "timestamp": datetime.now(),
+        }
+    }

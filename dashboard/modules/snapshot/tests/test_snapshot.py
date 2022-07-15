@@ -51,6 +51,7 @@ def set_ray_cluster_activity_hook(request):
         "ray._private.test_utils.external_ray_cluster_activity_hook2",
         "ray._private.test_utils.external_ray_cluster_activity_hook3",
         "ray._private.test_utils.external_ray_cluster_activity_hook4",
+        "ray._private.test_utils.external_ray_cluster_activity_hook5",
     ],
     indirect=True,
 )
@@ -82,7 +83,11 @@ async def test_component_activities_hook(set_ray_cluster_activity_hook, call_ray
     assert driver_ray_activity_response.reason is None
 
     # Validate external component response can be cast to RayActivityResponse object
-    if external_hook[-1] == "4":
+    if external_hook[-1] == "5":
+        external_activity_response = RayActivityResponse(**data["test_component1"])
+        assert external_activity_response.is_active == "ACTIVE"
+        assert external_activity_response.reason == "Counter: 1"
+    elif external_hook[-1] == "4":
         external_activity_response = RayActivityResponse(**data["external_component"])
         assert external_activity_response.is_active == "ERROR"
         assert (

@@ -10,6 +10,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp.web
+from pydantic import BaseModel, Field
 
 import ray
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
@@ -39,20 +40,29 @@ class RayActivityStatus(str, enum.Enum):
     ERROR = "ERROR"
 
 
-@dataclasses.dataclass
-class RayActivityResponse:
+class RayActivityResponse(BaseModel):
     """
     Dataclass used to inform if a particular Ray component can be considered
     active, and metadata about observation.
     """
 
-    # Whether the corresponding Ray component is considered active or inactive,
-    # or if there was an error while collecting this observation.
-    is_active: RayActivityStatus
-    # Reason if Ray component is considered active or errored.
-    reason: Optional[str] = None
-    # Timestamp of when this observation about the Ray component was made.
-    timestamp: Optional[float] = None
+    is_active: RayActivityStatus = Field(
+        ...,
+        description=(
+            "Whether the corresponding Ray component is considered active or inactive, "
+            "or if there was an error while collecting this observation."
+        ),
+    )
+    reason: Optional[str] = Field(
+        None, description="Reason if Ray component is considered active or errored."
+    )
+    timestamp: float = Field(
+        ...,
+        description=(
+            "Timestamp of when this observation about the Ray component was made. "
+            "This is in the format of seconds since unix epoch."
+        ),
+    )
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
@@ -149,17 +159,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                         component_activity_output = external_activity_output[
                             component_type
                         ]
-                        # Cast output to type RayActivityResponse
+                        # Parse and validate output to type RayActivityResponse
                         component_activity_output = RayActivityResponse(
-                            **dataclasses.asdict(component_activity_output)
+                            **dict(component_activity_output)
                         )
-                        # Validate is_active field is of type RayActivityStatus
-                        component_activity_output.is_active = RayActivityStatus[
-                            component_activity_output.is_active
-                        ]
-                        resp[component_type] = dataclasses.asdict(
-                            component_activity_output
-                        )
+                        resp[component_type] = dict(component_activity_output)
                     except Exception as e:
                         logger.exception(
                             f"Failed to get activity status of {component_type} "
