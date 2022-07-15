@@ -23,6 +23,7 @@ parts:
         - file: ray-air/examples/serving_guide
         - file: ray-air/deployment
         - file: ray-air/use-pretrained-model
+        - file: ray-air/benchmarks
     - file: ray-air/examples/index
       sections:
         - file: ray-air/examples/torch_image_example
