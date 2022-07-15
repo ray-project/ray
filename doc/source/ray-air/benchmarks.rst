@@ -12,16 +12,17 @@ using an XGBoost model.
 We test out the performance across different cluster sizes and data sizes.
 
 `XGBoost Prediction Script`_
-`XGBoost Cluster configuration` (description)
+
+`XGBoost Cluster configuration`_
 
 .. TODO: Add script for generating data and running the benchmark.
 
 .. list-table::
 
-    * - **Cluster Configuration**
-      - **Parallel workers**
+    * - **Cluster Setup**
+      - **# workers**
       - **Data Size**
-      - **Number of rows**
+      - **# of rows**
       - **Time taken**
       - **Throughput**
     * - 1 m5.4xlarge
@@ -48,15 +49,16 @@ XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
 
 
 `XGBoost Training Script`_
-`XGBoost Cluster configuration` (description)
+
+`XGBoost Cluster configuration`_
 
 .. list-table::
 
-    * - Cluster Configuration
-      - Parallel workers
-      - Data Size
-      - Number of rows
-      - Time taken
+    * - **Cluster Setup**
+      - **# workers**
+      - **Data Size**
+      - **# of rows**
+      - **Time taken**
     * - 1 m5.4xlarge
       - 1 actor
       - 10 GB
