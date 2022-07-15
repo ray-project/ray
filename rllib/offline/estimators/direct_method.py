@@ -85,7 +85,7 @@ class DirectMethod(OffPolicyEstimator):
         self.convert_ma_batch_to_sample_batch(batch)
         self.check_action_prob_in_batch(batch)
         estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
-        # Split data into train and test batches
+        # Calculate Direct Method OPE estimates
         for episode in batch.split_by_episode():
             rewards = episode["rewards"]
             v_behavior = 0.0
