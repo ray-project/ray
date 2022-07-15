@@ -15,11 +15,11 @@ from ray.experimental.state.api import (
     list_tasks,
 )
 
-TEST_MAX_ACTORS = int(1e5)  # 100k
-TEST_MAX_TASKS = int(1e5)  # 100k
-TEST_MAX_OBJECTS = int(1e6)  # 1m
+TEST_MAX_ACTORS = int(1e4)  # 10k
+TEST_MAX_TASKS = int(1e4)  # 10k
+TEST_MAX_OBJECTS = int(1e5)  # 100k
 TEST_LOG_FILE_SIZE = 4 * 1024 * 1024  # 4GB
-STATE_LIST_LIMIT = int(1e7)  # 10m
+STATE_LIST_LIMIT = int(1e6)  # 1m
 STATE_LIST_TIMEOUT = 600  # 10min
 
 StateAPIMetric = namedtuple("StateAPIMetric", ["latency_sec", "result_size"])
