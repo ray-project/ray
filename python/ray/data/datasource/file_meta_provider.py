@@ -167,7 +167,10 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         expanded_paths = []
         file_infos = []
         for path in paths:
-            file_info = filesystem.get_file_info(path)
+            try:
+                file_info = filesystem.get_file_info(path)
+            except OSError as e:
+                _handle_read_s3_files_error(e, path)
             if file_info.type == FileType.Directory:
                 paths, file_infos_ = _expand_directory(path, filesystem)
                 expanded_paths.extend(paths)
@@ -324,3 +327,25 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             return _fetch_metadata_remotely(pieces)
         else:
             return _fetch_metadata(pieces)
+
+
+def _handle_read_s3_files_error(error: OSError, paths: Union[str, List[str]]) -> str:
+    # Specially handle AWS error when reading files, to give a clearer error message
+    # to avoid confusing users. The real issus is most likely to be AWS S3 file
+    # credential not haven been properly configured yet.
+    if "AWS Error [code 15]: No response body" in str(error):
+        if isinstance(paths, str):
+            # Quote to highlight single file path in error message for better
+            # readability. List of file paths will be shown up as ['foo', 'boo'],
+            # so only quote single file path here.
+            paths = f'"{paths}"'
+        raise PermissionError(
+            (
+                f"Failing to read AWS S3 file(s): {paths}. "
+                "Please check file exists and has proper AWS credential. "
+                "See https://docs.ray.io/en/latest/data/creating-datasets.html#reading-from-remote-storage "  # noqa
+                "for more information."
+            )
+        )
+    else:
+        raise error
