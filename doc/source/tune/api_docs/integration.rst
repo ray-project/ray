@@ -8,6 +8,14 @@ External library integrations (tune.integration)
     :depth: 1
 
 
+Comet (tune.integration.comet)
+-------------------------------------------
+
+:ref:`See also here <tune-comet-ref>`.
+
+.. autoclass:: ray.air.callbacks.comet.CometLoggerCallback
+    :noindex:
+
 .. _tune-integration-keras:
 
 Keras (tune.integration.keras)
@@ -26,6 +34,7 @@ MLflow (tune.integration.mlflow)
 :ref:`See also here <tune-mlflow-ref>`.
 
 .. autoclass:: ray.air.callbacks.mlflow.MLflowLoggerCallback
+    :noindex:
 
 .. autofunction:: ray.tune.integration.mlflow.mlflow_mixin
 
@@ -57,6 +66,7 @@ Weights and Biases (tune.integration.wandb)
 :ref:`See also here <tune-wandb-ref>`.
 
 .. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
+    :noindex:
 
 .. autofunction:: ray.tune.integration.wandb.wandb_mixin
 

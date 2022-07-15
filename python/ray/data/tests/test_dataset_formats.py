@@ -13,6 +13,7 @@ import pytest
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
+from fsspec.implementations.http import HTTPFileSystem
 from pytest_lazyfixture import lazy_fixture
 
 import ray
@@ -36,9 +37,12 @@ from ray.data.datasource import (
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
+    _ParquetDatasourceReader,
+    _SerializedPiece,
     _deserialize_pieces_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
@@ -266,7 +270,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):
-    blocks = ray.data.range(10).get_internal_block_refs()
+    blocks = ray.data.range(10, parallelism=10).get_internal_block_refs()
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
@@ -320,6 +324,14 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert ds_df.equals(df)
 
 
+def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
+    ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
+    assert ds.count() > 0
+    # Test auto-resolve of HTTP file system when it is not provided.
+    ds = ray.data.read_text(http_file)
+    assert ds.count() > 0
+
+
 def test_read_example_data(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_csv("example://iris.csv")
     assert ds.count() == 150
@@ -360,7 +372,6 @@ def test_read_pandas_data_array_column(ray_start_regular_shared):
 def test_parquet_deserialize_pieces_with_retry(
     ray_start_regular_shared, fs, data_path, monkeypatch
 ):
-    from ray import cloudpickle
 
     setup_data_path = _unwrap_protocol(data_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -376,7 +387,7 @@ def test_parquet_deserialize_pieces_with_retry(
     pq_ds = pq.ParquetDataset(
         data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
     )
-    serialized_pieces = cloudpickle.dumps(pq_ds.pieces)
+    serialized_pieces = [_SerializedPiece(p) for p in pq_ds.pieces]
 
     # test 1st attempt succeed
     pieces = _deserialize_pieces_with_retry(serialized_pieces)
@@ -915,6 +926,19 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
     assert ds._plan.execute()._num_computed() == parallelism
     assert sorted(values) == list(range(3 * num_dfs))
+
+
+def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
+    ds = ray.data.range(1000)
+    path = os.path.join(tmp_path, "test_parquet_dir")
+    os.mkdir(path)
+    ds.repartition(30).write_parquet(path)
+
+    reader = _ParquetDatasourceReader(path)
+    data_size = reader.estimate_inmemory_data_size()
+    assert (
+        data_size >= 50000 and data_size <= 100000
+    ), "estimated data size is out of expected bound"
 
 
 @pytest.mark.parametrize(
@@ -2503,6 +2527,7 @@ def test_csv_read_partitioned_with_filter_multikey(
             data_path,
             partition_filter=partition_path_filter,
             filesystem=fs,
+            parallelism=100,
         )
         assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
         assert ray.get(kept_file_counter.get.remote()) == 6

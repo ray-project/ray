@@ -29,7 +29,7 @@ from packaging import version
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError
+from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -352,6 +352,21 @@ class Algorithm(Trainable):
 
         self.workers: Optional[WorkerSet] = None
         self.train_exec_impl = None
+
+        # Offline RL settings.
+        input_evaluation = config.get("input_evaluation")
+        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
+            ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
+            deprecation_warning(
+                old="config.input_evaluation={}".format(input_evaluation),
+                new='config["evaluation_config"]'
+                '["off_policy_estimation_methods"]={}'.format(
+                    ope_dict,
+                ),
+                error=False,
+                help="Running OPE during training is not recommended.",
+            )
+            config["off_policy_estimation_methods"] = ope_dict
 
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the `build_trainer` utility function).
@@ -753,7 +768,8 @@ class Algorithm(Trainable):
                     env_steps_this_iter += batch.env_steps()
                 metrics = collect_metrics(
                     self.workers.local_worker(),
-                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
+                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
                 )
 
             # Evaluation worker set only has local worker.
@@ -779,16 +795,35 @@ class Algorithm(Trainable):
                         break
 
                     round_ += 1
-                    batches = ray.get(
-                        [
-                            w.sample.remote()
-                            for i, w in enumerate(
-                                self.evaluation_workers.remote_workers()
+                    try:
+                        batches = ray.get(
+                            [
+                                w.sample.remote()
+                                for i, w in enumerate(
+                                    self.evaluation_workers.remote_workers()
+                                )
+                                if i * (1 if unit == "episodes" else rollout * num_envs)
+                                < units_left_to_do
+                            ],
+                            timeout=self.config["evaluation_sample_timeout_s"],
+                        )
+                    except GetTimeoutError:
+                        logger.warning(
+                            "Calling `sample()` on your remote evaluation worker(s) "
+                            "resulted in a timeout (after the configured "
+                            f"{self.config['evaluation_sample_timeout_s']} seconds)! "
+                            "Try to set `evaluation_sample_timeout_s` in your config"
+                            " to a larger value."
+                            + (
+                                " If your episodes don't terminate easily, you may "
+                                "also want to set `evaluation_duration_unit` to "
+                                "'timesteps' (instead of 'episodes')."
+                                if unit == "episodes"
+                                else ""
                             )
-                            if i * (1 if unit == "episodes" else rollout * num_envs)
-                            < units_left_to_do
-                        ]
-                    )
+                        )
+                        break
+
                     _agent_steps = sum(b.agent_steps() for b in batches)
                     _env_steps = sum(b.env_steps() for b in batches)
                     # 1 episode per returned batch.
@@ -819,6 +854,7 @@ class Algorithm(Trainable):
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
                 )
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
@@ -1856,32 +1892,6 @@ class Algorithm(Trainable):
                     "framework={}!".format(framework)
                 )
 
-        # Offline RL settings.
-        input_evaluation = config.get("input_evaluation")
-        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.input_evaluation: {}".format(input_evaluation),
-                new="config.off_policy_estimation_methods={}".format(input_evaluation),
-                error=False,
-            )
-            config["off_policy_estimation_methods"] = input_evaluation
-        if isinstance(config["off_policy_estimation_methods"], list) or isinstance(
-            config["off_policy_estimation_methods"], tuple
-        ):
-            ope_dict = {
-                str(ope): {"type": ope} for ope in self.off_policy_estimation_methods
-            }
-            deprecation_warning(
-                old="config.off_policy_estimation_methods={}".format(
-                    self.off_policy_estimation_methods
-                ),
-                new="config.off_policy_estimation_methods={}".format(
-                    ope_dict,
-                ),
-                error=False,
-            )
-            config["off_policy_estimation_methods"] = ope_dict
-
         # Check model config.
         # If no preprocessing, propagate into model's config as well
         # (so model will know, whether inputs are preprocessed or not).
@@ -2339,6 +2349,14 @@ class Algorithm(Trainable):
                     "recreate_failed_workers"
                 ),
             )
+
+        # Add number of healthy evaluation workers after this iteration.
+        eval_results["evaluation"]["num_healthy_workers"] = (
+            len(self.evaluation_workers.remote_workers())
+            if self.evaluation_workers is not None
+            else 0
+        )
+
         return eval_results
 
     def _run_one_training_iteration_and_evaluation_in_parallel(
@@ -2398,9 +2416,6 @@ class Algorithm(Trainable):
         # Evaluation results.
         if "evaluation" in iteration_results:
             results["evaluation"] = iteration_results.pop("evaluation")
-            results["evaluation"]["num_healthy_workers"] = len(
-                self.evaluation_workers.remote_workers()
-            )
 
         # Custom metrics and episode media.
         results["custom_metrics"] = iteration_results.pop("custom_metrics", {})
