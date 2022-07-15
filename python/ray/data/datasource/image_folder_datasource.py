@@ -38,7 +38,7 @@ class ImageFolderDatasource(BinaryDatasource):
         try:
             import imageio  # noqa: F401
         except ImportError:
-            raise ValueError(
+            raise ImportError(
                 "`ImageFolderDatasource` depends on 'imageio', but 'imageio' couldn't "
                 "be imported. You can install 'imageio' by running "
                 "`pip install imageio`."
