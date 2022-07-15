@@ -4,9 +4,10 @@ import pandas as pd
 
 import ray
 from ray.air import Checkpoint
+from ray.air.constants import PREPROCESSOR_KEY
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.data import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -59,9 +60,8 @@ class BatchPredictor:
         if self._override_preprocessor:
             return self._override_preprocessor
 
-        with self._checkpoint.as_directory() as checkpoint_path:
-            preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
+        checkpoint_data = self._checkpoint.to_dict()
+        preprocessor = checkpoint_data.get(PREPROCESSOR_KEY)
         return preprocessor
 
     def set_preprocessor(self, preprocessor: Preprocessor) -> None:
@@ -156,7 +156,6 @@ class BatchPredictor:
                 self._predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )
-                print("override prep", override_prep)
                 if override_prep:
                     self._predictor.set_preprocessor(override_prep)
 
@@ -179,6 +178,13 @@ class BatchPredictor:
         ray_remote_args = ray_remote_args or {}
         ray_remote_args["num_cpus"] = num_cpus_per_worker
         ray_remote_args["num_gpus"] = num_gpus_per_worker
+
+        if num_gpus_per_worker > 0:
+            preprocessor = self.get_preprocessor()
+            if preprocessor:
+                override_prep = BatchMapper(lambda x: x)
+                prep_fn = preprocessor.transform_batch
+                data = data.map_batches(prep_fn, batch_format="pandas")
 
         prediction_results = data.map_batches(
             ScoringWrapper,
