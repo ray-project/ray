@@ -54,7 +54,7 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   agent_info.set_grpc_port(agent_grpc_port_);
   agent_info.set_http_port(agent_http_port_);
   agent_info.set_pid(agent_pid_);
-  agent_info_promise_.set_value(agent_info);
+  agent_info_promise_.set_value(std::move(agent_info));
 }
 
 void AgentManager::StartAgent() {

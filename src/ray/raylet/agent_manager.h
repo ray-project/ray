@@ -92,7 +92,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// Get the information of the agent process when the agent finished register.
   ///
   /// \return The information of the agent process.
-  inline rpc::AgentInfo SyncGetAgentInfo() {
+  const rpc::AgentInfo SyncGetAgentInfo() {
     return agent_info_promise_.get_future().get();
   }
 
