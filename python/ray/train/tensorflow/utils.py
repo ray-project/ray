@@ -6,11 +6,13 @@ from tensorflow import keras
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import _load_checkpoint
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 def to_air_checkpoint(
     model: keras.Model, preprocessor: Optional["Preprocessor"] = None
 ) -> Checkpoint:
@@ -29,6 +31,7 @@ def to_air_checkpoint(
     return checkpoint
 
 
+@PublicAPI(stability="alpha")
 def load_checkpoint(
     checkpoint: Checkpoint,
     model: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model], tf.keras.Model],

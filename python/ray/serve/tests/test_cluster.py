@@ -97,7 +97,7 @@ def test_node_failure(ray_cluster):
     serve.start(detached=True)
 
     print("Initial deploy.")
-    D.deploy()
+    serve.run(D.bind())
     pids1 = get_pids(5)
 
     # Remove the node. There should still be three replicas running.

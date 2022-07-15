@@ -9,11 +9,13 @@ from ray.air._internal.checkpointing import (
 )
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 def to_air_checkpoint(
     path: str,
     booster: xgboost.Booster,
@@ -39,6 +41,7 @@ def to_air_checkpoint(
     return checkpoint
 
 
+@PublicAPI(stability="alpha")
 def load_checkpoint(
     checkpoint: Checkpoint,
 ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:

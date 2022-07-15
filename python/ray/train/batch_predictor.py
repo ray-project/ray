@@ -39,9 +39,7 @@ class BatchPredictor:
     def from_checkpoint(
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs
     ) -> "BatchPredictor":
-        return BatchPredictor(
-            checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs
-        )
+        return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
     def predict(
         self,
@@ -67,7 +65,7 @@ class BatchPredictor:
             >>> class DummyPredictor(Predictor):
             ...     @classmethod
             ...     def from_checkpoint(cls, checkpoint, **kwargs):
-            ...         return DummyPredictor()
+            ...         return cls()
             ...     def predict(self, data, **kwargs):
             ...         return pd.DataFrame({"a": [42] * len(data)})
             >>> # Create a batch predictor for this dummy predictor.
@@ -139,7 +137,14 @@ class BatchPredictor:
         *,
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
-        **kwargs,
+        # The remaining args are from predict().
+        batch_size: int = 4096,
+        min_scoring_workers: int = 1,
+        max_scoring_workers: Optional[int] = None,
+        num_cpus_per_worker: int = 1,
+        num_gpus_per_worker: int = 0,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        **predict_kwargs,
     ) -> ray.data.DatasetPipeline:
         """Setup a prediction pipeline for batch scoring.
 
@@ -159,7 +164,7 @@ class BatchPredictor:
             >>> class DummyPredictor(Predictor):
             ...     @classmethod
             ...     def from_checkpoint(cls, checkpoint, **kwargs):
-            ...         return DummyPredictor()
+            ...         return cls()
             ...     def predict(self, data, **kwargs):
             ...         return pd.DataFrame({"a": [42] * len(data)})
             >>> # Create a batch predictor for this dummy predictor.
@@ -183,7 +188,15 @@ class BatchPredictor:
                 This will be treated as an upper bound for the window size, but each
                 window will still include at least one block. This is mutually
                 exclusive with ``blocks_per_window``.
-            kwargs: Keyword arguments passed to BatchPredictor.predict().
+            batch_size: Split dataset into batches of this size for prediction.
+            min_scoring_workers: Minimum number of scoring actors.
+            max_scoring_workers: If set, specify the maximum number of scoring actors.
+            num_cpus_per_worker: Number of CPUs to allocate per scoring worker.
+            num_gpus_per_worker: Number of GPUs to allocate per scoring worker.
+            ray_remote_args: Additional resource requirements to request from
+                ray.
+            predict_kwargs: Keyword arguments passed to the predictor's
+                ``predict()`` method.
 
         Returns:
             DatasetPipeline that generates scoring results.
@@ -199,4 +212,13 @@ class BatchPredictor:
             blocks_per_window=blocks_per_window, bytes_per_window=bytes_per_window
         )
 
-        return self.predict(pipe)
+        return self.predict(
+            pipe,
+            batch_size=batch_size,
+            min_scoring_workers=min_scoring_workers,
+            max_scoring_workers=max_scoring_workers,
+            num_cpus_per_worker=num_cpus_per_worker,
+            num_gpus_per_worker=num_gpus_per_worker,
+            ray_remote_args=ray_remote_args,
+            **predict_kwargs,
+        )
