@@ -497,8 +497,28 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/cartpole-crashing-with_remote-envs-pg.yaml"],
+    data = ["tuned_examples/pg/cartpole-crashing-with-remote-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_cartpole_crashing_pg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-pg.yaml"],
+    args = ["--yaml-dir=tuned_examples/pg"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_cartpole_crashing_with_remote_envs_pg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
+    args = ["--yaml-dir=tuned_examples/pg", "--num-cpus=14"]
 )
 
 py_test(
@@ -1665,14 +1685,16 @@ py_test(
     name = "test_json_reader",
     tags = ["team:rllib", "offline"],
     size = "small",
-    srcs = ["offline/tests/test_json_reader.py"]
+    srcs = ["offline/tests/test_json_reader.py"],
+    data = ["tests/data/pendulum/large.json"],
 )
 
 py_test(
     name = "test_ope",
     tags = ["team:rllib", "offline", "torch_only"],
     size = "medium",
-    srcs = ["offline/estimators/tests/test_ope.py"]
+    srcs = ["offline/estimators/tests/test_ope.py"],
+    data = ["tests/data/cartpole/large.json"],
 )
 
 
@@ -2483,6 +2505,15 @@ py_test(
     size = "medium",
     srcs = ["examples/custom_eval.py"],
     args = ["--num-cpus=4", "--as-test", "--framework=torch"]
+)
+
+py_test(
+    name = "examples/custom_eval_parallel_to_training_torch",
+    main = "examples/custom_eval.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_UtoZ"],
+    size = "medium",
+    srcs = ["examples/custom_eval.py"],
+    args = ["--num-cpus=4", "--as-test", "--framework=torch", "--evaluation-parallel-to-training"]
 )
 
 py_test(
