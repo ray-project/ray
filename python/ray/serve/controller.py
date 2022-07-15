@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray._private.utils import import_attr
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
@@ -41,7 +42,6 @@ from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.utils import (
     override_runtime_envs_except_env_vars,
-    get_current_node_resource_key,
 )
 from ray.types import ObjectRef
 
@@ -84,8 +84,10 @@ class ServeController:
     async def __init__(
         self,
         controller_name: str,
+        *,
         http_config: HTTPOptions,
         checkpoint_path: str,
+        head_node_id: str,
         detached: bool = False,
     ):
         configure_component_logger(
@@ -113,6 +115,7 @@ class ServeController:
             controller_name,
             detached,
             http_config,
+            head_node_id,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
@@ -633,6 +636,8 @@ class ServeControllerAvatar:
         except ValueError:
             self._controller = None
         if self._controller is None:
+            # Used for scheduling things to the head node explicitly.
+            head_node_id = ray.get_runtime_context().node_id.hex()
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
@@ -641,14 +646,19 @@ class ServeControllerAvatar:
                 lifetime="detached" if detached else None,
                 max_restarts=-1,
                 max_task_retries=-1,
-                # Pin Serve controller on the head node.
-                resources={get_current_node_resource_key(): 0.01},
+                # Schedule the controller on the head node with a soft constraint. This
+                # prefers it to run on the head node in most cases, but allows it to be
+                # restarted on other nodes in an HA cluster.
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    head_node_id, soft=True
+                ),
                 namespace="serve",
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(
                 controller_name,
-                http_config,
-                checkpoint_path,
+                http_config=http_config,
+                checkpoint_path=checkpoint_path,
+                head_node_id=head_node_id,
                 detached=detached,
             )
 
