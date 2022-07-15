@@ -155,7 +155,7 @@ Specifying namespace for named actors
 -------------------------------------
 
 You can specify a namespace for a named actor while creating it. The created actor belongs to
-the specified namespace, no matter what namespaace of the current job is.
+the specified namespace, no matter what namespace of the current job is.
 
 .. tabbed:: Python
 
