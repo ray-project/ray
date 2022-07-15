@@ -1,13 +1,12 @@
 import logging
 from typing import Dict, Set, List, Tuple, Union, Optional, Any
 import time
+import uuid
 
 import ray
 from ray.dag import DAGNode
 from ray.dag.input_node import DAGInputData
 from ray.remote_function import RemoteFunction
-
-from ray.workflow import execution
 
 # avoid collision with arguments & APIs
 
@@ -18,10 +17,11 @@ from ray.workflow.common import (
     validate_user_metadata,
 )
 from ray.workflow.exceptions import WorkflowRunningError, WorkflowNotFoundError
-from ray.workflow import serialization
+from ray.workflow import serialization, workflow_access, workflow_context
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
-from ray.workflow import workflow_access
-from ray.workflow.workflow_storage import get_workflow_storage
+from ray.workflow.workflow_storage import WorkflowStorage
+from ray.workflow.workflow_state_from_dag import workflow_state_from_dag
+
 from ray.util.annotations import PublicAPI
 from ray._private.usage import usage_lib
 
@@ -91,7 +91,7 @@ def _ensure_workflow_initialized() -> None:
 
 @PublicAPI(stability="beta")
 def run(
-    dag_node: DAGNode,
+    dag: DAGNode,
     *args,
     workflow_id: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
@@ -131,13 +131,13 @@ def run(
         The running result.
     """
     return ray.get(
-        run_async(dag_node, *args, workflow_id=workflow_id, metadata=metadata, **kwargs)
+        run_async(dag, *args, workflow_id=workflow_id, metadata=metadata, **kwargs)
     )
 
 
 @PublicAPI(stability="beta")
 def run_async(
-    dag_node: DAGNode,
+    dag: DAGNode,
     *args,
     workflow_id: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
@@ -158,10 +158,48 @@ def run_async(
 
     """
     _ensure_workflow_initialized()
-    if not isinstance(dag_node, DAGNode):
+    if not isinstance(dag, DAGNode):
         raise TypeError("Input should be a DAG.")
     input_data = DAGInputData(*args, **kwargs)
-    return execution.run(dag_node, input_data, workflow_id, metadata)
+    validate_user_metadata(metadata)
+    metadata = metadata or {}
+
+    if workflow_id is None:
+        # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
+        workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
+
+    state = workflow_state_from_dag(dag, input_data, workflow_id)
+    logger.info(f'Workflow job created. [id="{workflow_id}"].')
+
+    context = workflow_context.WorkflowStepContext(workflow_id=workflow_id)
+    with workflow_context.workflow_step_context(context):
+        # checkpoint the workflow
+        ws = WorkflowStorage(workflow_id)
+        ws.save_workflow_user_metadata(metadata)
+
+        job_id = ray.get_runtime_context().job_id.hex()
+
+        try:
+            ws.get_entrypoint_step_id()
+            wf_exists = True
+        except Exception:
+            # The workflow does not exist. We must checkpoint entry workflow.
+            ws.save_workflow_execution_state("", state)
+            wf_exists = False
+        workflow_manager = workflow_access.get_management_actor()
+        if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
+            raise RuntimeError(
+                f"Workflow '{workflow_id}' is already running or pending."
+            )
+        if wf_exists:
+            return resume_async(workflow_id)
+        ignore_existing = ws.load_workflow_status() == WorkflowStatus.NONE
+        ray.get(
+            workflow_manager.submit_workflow.remote(
+                workflow_id, state, ignore_existing=ignore_existing
+            )
+        )
+        return workflow_manager.execute_workflow.remote(job_id, context)
 
 
 @PublicAPI(stability="beta")
@@ -212,7 +250,21 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
         An object reference that can be used to retrieve the workflow result.
     """
     _ensure_workflow_initialized()
-    return execution.resume(workflow_id)
+    logger.info(f'Resuming workflow [id="{workflow_id}"].')
+    workflow_manager = workflow_access.get_management_actor()
+    if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
+        raise RuntimeError(f"Workflow '{workflow_id}' is already running or pending.")
+    # NOTE: It is important to 'ray.get' the returned output. This
+    # ensures caller of 'run()' holds the reference to the workflow
+    # result. Otherwise if the actor removes the reference of the
+    # workflow output, the caller may fail to resolve the result.
+    job_id = ray.get_runtime_context().job_id.hex()
+
+    context = workflow_context.WorkflowStepContext(workflow_id=workflow_id)
+    ray.get(workflow_manager.reconstruct_workflow.remote(job_id, context))
+    result = workflow_manager.execute_workflow.remote(job_id, context)
+    logger.info(f"Workflow job {workflow_id} resumed.")
+    return result
 
 
 @PublicAPI(stability="beta")
@@ -254,7 +306,27 @@ def get_output_async(workflow_id: str, *, name: Optional[str] = None) -> ray.Obj
         An object reference that can be used to retrieve the workflow task result.
     """
     _ensure_workflow_initialized()
-    return execution.get_output(workflow_id, name)
+    try:
+        workflow_manager = workflow_access.get_management_actor()
+    except ValueError as e:
+        raise ValueError(
+            "Failed to connect to the workflow management "
+            "actor. The workflow could have already failed. You can use "
+            "workflow.resume() to resume the workflow."
+        ) from e
+
+    try:
+        # check storage first
+        wf_store = WorkflowStorage(workflow_id)
+        tid = wf_store.inspect_output(name)
+        if tid is not None:
+            return workflow_access.load_step_output_from_storage.remote(
+                workflow_id, name
+            )
+    except ValueError:
+        pass
+
+    return workflow_manager.get_output.remote(workflow_id, name)
 
 
 @PublicAPI(stability="beta")
@@ -311,7 +383,65 @@ def list_all(
         raise TypeError(
             "status_filter must be WorkflowStatus or a set of WorkflowStatus."
         )
-    return execution.list_all(status_filter)
+
+    try:
+        workflow_manager = workflow_access.get_management_actor()
+    except ValueError:
+        workflow_manager = None
+
+    if workflow_manager is None:
+        non_terminating_workflows = {}
+    else:
+        non_terminating_workflows = ray.get(
+            workflow_manager.list_non_terminating_workflows.remote()
+        )
+
+    ret = []
+    if set(non_terminating_workflows.keys()).issuperset(status_filter):
+        for status, workflows in non_terminating_workflows.items():
+            if status in status_filter:
+                for w in workflows:
+                    ret.append((w, status))
+        return ret
+
+    ret = []
+    # Here we don't have workflow id, so use empty one instead
+    store = WorkflowStorage("")
+    modified_status_filter = status_filter.copy()
+    # Here we have to add non-terminating status to the status filter, because some
+    # "RESUMABLE" workflows are converted from non-terminating workflows below.
+    # This is the tricky part: the status "RESUMABLE" neither come from
+    # the workflow management actor nor the storage. It is the status where
+    # the storage says it is non-terminating but the workflow management actor
+    # is not running it. This usually happened when there was a sudden crash
+    # of the whole Ray runtime or the workflow management actor
+    # (due to cluster etc.). So we includes non terminating status in the storage
+    # filter to get "RESUMABLE" candidates.
+    modified_status_filter.update(WorkflowStatus.non_terminating_status())
+    status_from_storage = store.list_workflow(modified_status_filter)
+    non_terminating_workflows = {
+        k: set(v) for k, v in non_terminating_workflows.items()
+    }
+    resume_running = []
+    resume_pending = []
+    for (k, s) in status_from_storage:
+        if s in non_terminating_workflows and k not in non_terminating_workflows[s]:
+            if s == WorkflowStatus.RUNNING:
+                resume_running.append(k)
+            elif s == WorkflowStatus.PENDING:
+                resume_pending.append(k)
+            else:
+                assert False, "This line of code should not be reachable."
+            continue
+        if s in status_filter:
+            ret.append((k, s))
+    if WorkflowStatus.RESUMABLE in status_filter:
+        # The running workflows ranks before the pending workflows.
+        for w in resume_running:
+            ret.append((w, WorkflowStatus.RESUMABLE))
+        for w in resume_pending:
+            ret.append((w, WorkflowStatus.RESUMABLE))
+    return ret
 
 
 @PublicAPI(stability="beta")
@@ -341,7 +471,41 @@ def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
         A list of (workflow_id, returned_obj_ref) resumed.
     """
     _ensure_workflow_initialized()
-    return execution.resume_all(include_failed)
+    filter_set = {WorkflowStatus.RESUMABLE}
+    if include_failed:
+        filter_set.add(WorkflowStatus.FAILED)
+    all_failed = list_all(filter_set)
+
+    try:
+        workflow_manager = workflow_access.get_management_actor()
+    except Exception as e:
+        raise RuntimeError("Failed to get management actor") from e
+
+    job_id = ray.get_runtime_context().job_id.hex()
+    reconstructed_workflows = []
+    for wid, _ in all_failed:
+        context = workflow_context.WorkflowStepContext(workflow_id=wid)
+        # TODO(suquark): This is not very efficient, but it makes sure
+        #  running workflows has higher priority when getting reconstructed.
+        try:
+            ray.get(workflow_manager.reconstruct_workflow.remote(job_id, context))
+        except Exception as e:
+            # TODO(suquark): Here some workflows got resumed successfully but some
+            #  failed and the user has no idea about this, which is very wired.
+            # Maybe we should raise an exception here instead?
+            logger.error(f"Failed to resume workflow {context.workflow_id}", exc_info=e)
+            raise
+        reconstructed_workflows.append(context)
+
+    results = []
+    for context in reconstructed_workflows:
+        results.append(
+            (
+                context.workflow_id,
+                workflow_manager.execute_workflow.remote(job_id, context),
+            )
+        )
+    return results
 
 
 @PublicAPI(stability="beta")
@@ -364,7 +528,8 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     _ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
-    return execution.get_status(workflow_id)
+    workflow_manager = workflow_access.get_management_actor()
+    return ray.get(workflow_manager.get_workflow_status.remote(workflow_id))
 
 
 @PublicAPI(stability="beta")
@@ -458,7 +623,7 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
         ValueError: if given workflow or workflow step does not exist.
     """
     _ensure_workflow_initialized()
-    store = get_workflow_storage(workflow_id)
+    store = WorkflowStorage(workflow_id)
     if name is None:
         return store.load_workflow_metadata()
     else:
@@ -489,7 +654,8 @@ def cancel(workflow_id: str) -> None:
     _ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
-    return execution.cancel(workflow_id)
+    workflow_manager = workflow_access.get_management_actor()
+    ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
 
 
 @PublicAPI(stability="beta")
@@ -525,7 +691,7 @@ def delete(workflow_id: str) -> None:
     except ValueError:
         raise WorkflowNotFoundError(workflow_id)
 
-    wf_storage = get_workflow_storage(workflow_id)
+    wf_storage = WorkflowStorage(workflow_id)
     wf_storage.delete_workflow()
 
 
