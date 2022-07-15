@@ -19,6 +19,17 @@ _XGB_MODEL_PATH = "model.json"
 _TRAINING_TIME_THRESHOLD = 1000
 _PREDICTION_TIME_THRESHOLD = 450
 
+_EXPERIMENT_PARAMS = {
+    "10G": {
+        "data": "s3://air-example-data-2/10G-xgboost-data.parquet/",
+        "num_workers": 1,
+    },
+    "100G": {
+        "data": "s3://air-example-data-2/100G-xgboost-data.parquet/",
+        "num_workers": 10,
+    },
+}
+
 
 def run_and_time_it(f):
     """Runs f in a separate process and time it."""
@@ -37,17 +48,18 @@ def run_and_time_it(f):
 
 
 @run_and_time_it
-def run_xgboost_training():
-    ds = data.read_parquet(
-        "s3://air-example-data-2/100G-xgboost-data.parquet/"
-    )  # silver tier
+def run_xgboost_training(data_path: str, num_workers: int):
+    ds = data.read_parquet(data_path)
     params = {
         "objective": "binary:logistic",
         "eval_metric": ["logloss", "error"],
     }
 
     trainer = XGBoostTrainer(
-        scaling_config={"num_workers": 10, "resources_per_worker": {"CPU": 12}},
+        scaling_config={
+            "num_workers": num_workers,
+            "resources_per_worker": {"CPU": 12},
+        },
         label_column="labels",
         params=params,
         datasets={"train": ds},
@@ -59,23 +71,23 @@ def run_xgboost_training():
 
 
 @run_and_time_it
-def run_xgboost_prediction(model_path: str):
+def run_xgboost_prediction(model_path: str, data_path: str):
     model = xgb.Booster()
     model.load_model(model_path)
-    ds = data.read_parquet(
-        "s3://air-example-data-2/100G-xgboost-data.parquet/"
-    )  # silver tier
+    ds = data.read_parquet(data_path)
     ckpt = to_air_checkpoint(".", model)
     batch_predictor = BatchPredictor.from_checkpoint(ckpt, XGBoostPredictor)
     result = batch_predictor.predict(ds.drop_columns(["labels"]))
     return result
 
 
-def main():
+def main(args):
+    experiment_params = _EXPERIMENT_PARAMS[args.size]
+    data_path, num_workers = experiment_params["data"], experiment_params["num_workers"]
     print("Running xgboost training benchmark...")
-    training_time = run_xgboost_training()
+    training_time = run_xgboost_training(data_path, num_workers)
     print("Running xgboost prediction benchmark...")
-    prediction_time = run_xgboost_prediction(_XGB_MODEL_PATH)
+    prediction_time = run_xgboost_prediction(_XGB_MODEL_PATH, data_path)
     result = {
         "training_time": training_time,
         "prediction_time": prediction_time,
@@ -99,4 +111,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--size", type=str, choices=["10G", "100G"], default="100G")
+    args = parser.parse_args()
+    main(args)
