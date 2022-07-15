@@ -49,7 +49,7 @@ def run_and_time_it(f):
 
 @run_and_time_it
 def run_xgboost_training(data_path: str, num_workers: int):
-    ds = data.read_parquet(data_path)  # silver tier
+    ds = data.read_parquet(data_path)
     params = {
         "objective": "binary:logistic",
         "eval_metric": ["logloss", "error"],
