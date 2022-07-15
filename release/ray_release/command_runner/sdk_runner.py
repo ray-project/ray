@@ -17,7 +17,12 @@ from ray_release.exception import (
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
-from ray_release.util import exponential_backoff_retry, format_link, get_anyscale_sdk
+from ray_release.util import (
+    exponential_backoff_retry,
+    format_link,
+    get_anyscale_sdk,
+    ANYSCALE_HOST,
+)
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -153,7 +158,7 @@ class SDKRunner(CommandRunner):
             query_params={"start_line": -LAST_LOGS_LENGTH, "end_line": 0},
             header_params={},
             response_type=object,
-            _host="https://console.anyscale.com",
+            _host=str(ANYSCALE_HOST),
             _preload_content=True,
             _return_http_data_only=False,
         )

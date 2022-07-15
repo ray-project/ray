@@ -498,7 +498,7 @@ class TestServeApplicationSchema:
                 {
                     "name": "d2",
                     "max_concurrent_queries": 6,
-                    "_autoscaling_config": {},
+                    "autoscaling_config": {},
                     "graceful_shutdown_wait_loop_s": 50,
                     "_graceful_shutdown_timeout_s": 15,
                     "health_check_period_s": 53,
@@ -513,7 +513,6 @@ class TestServeApplicationSchema:
         # underscore (using the aliases)
 
         private_options = {
-            "_autoscaling_config",
             "_graceful_shutdown_wait_loop_s",
             "_graceful_shutdown_timeout_s",
             "_health_check_period_s",
