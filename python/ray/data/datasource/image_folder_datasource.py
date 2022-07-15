@@ -9,6 +9,7 @@ from ray.data.datasource.file_based_datasource import (
     FileExtensionFilter,
 )
 from ray.data.datasource.partitioning import PathPartitionFilter
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
