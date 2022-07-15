@@ -313,8 +313,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
-    @OverrideToImplementCustomLogic
     @Deprecated(error=True)
+    @OverrideToImplementCustomLogic
     def on_trainer_init(self, *args, **kwargs):
         raise DeprecationWarning
 
@@ -408,8 +408,8 @@ class MultiCallbacks(DefaultCallbacks):
 
         return self
 
-    @OverrideToImplementCustomLogic
     @Deprecated(error=True)
+    @OverrideToImplementCustomLogic
     def on_trainer_init(self, *args, **kwargs):
         raise DeprecationWarning
 
