@@ -54,7 +54,7 @@ class InvalidValuesTest(unittest.TestCase):
         ray.shutdown()
 
     def testAx(self):
-        from ray.tune.suggest.ax import AxSearch
+        from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
 
         converted_config = AxSearch.convert_search_space(self.config)
@@ -78,7 +78,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testBayesOpt(self):
-        from ray.tune.suggest.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt import BayesOptSearch
 
         out = tune.run(
             _invalid_objective,
@@ -95,7 +95,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testBlendSearch(self):
-        from ray.tune.suggest.flaml import BlendSearch
+        from ray.tune.search.flaml import BlendSearch
 
         out = tune.run(
             _invalid_objective,
@@ -118,7 +118,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         out = tune.run(
             _invalid_objective,
@@ -138,7 +138,7 @@ class InvalidValuesTest(unittest.TestCase):
             "Broken in FLAML, reenable once "
             "https://github.com/microsoft/FLAML/pull/263 is merged"
         )
-        from ray.tune.suggest.flaml import CFO
+        from ray.tune.search.flaml import CFO
 
         out = tune.run(
             _invalid_objective,
@@ -161,7 +161,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testDragonfly(self):
-        from ray.tune.suggest.dragonfly import DragonflySearch
+        from ray.tune.search.dragonfly import DragonflySearch
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
 
@@ -179,7 +179,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["point"], 2.0)
 
     def testHEBO(self):
-        from ray.tune.suggest.hebo import HEBOSearch
+        from ray.tune.search.hebo import HEBOSearch
 
         out = tune.run(
             _invalid_objective,
@@ -196,7 +196,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testHyperopt(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.hyperopt import HyperOptSearch
 
         out = tune.run(
             _invalid_objective,
@@ -213,7 +213,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
+        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
 
         np.random.seed(2020)  # At least one nan, inf, -inf and float
@@ -231,7 +231,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
@@ -250,7 +250,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testOptunaReportTooOften(self):
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
 
         searcher = OptunaSearch(
@@ -269,7 +269,7 @@ class InvalidValuesTest(unittest.TestCase):
         searcher.on_trial_complete("trial_1", {"training_iteration": 4, "metric": 1})
 
     def testSkopt(self):
-        from ray.tune.suggest.skopt import SkOptSearch
+        from ray.tune.search.skopt import SkOptSearch
 
         np.random.seed(1234)  # At least one nan, inf, -inf and float
 
@@ -291,7 +291,7 @@ class InvalidValuesTest(unittest.TestCase):
             "Recent ZOOpt versions fail handling invalid values gracefully. "
             "Skipping until we or they found a workaround. "
         )
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.zoopt import ZOOptSearch
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
 
@@ -374,7 +374,7 @@ class AddEvaluatedPointTest(unittest.TestCase):
         searcher_copy.suggest("1")
 
     def testDragonfly(self):
-        from ray.tune.suggest.dragonfly import DragonflySearch
+        from ray.tune.search.dragonfly import DragonflySearch
 
         searcher = DragonflySearch(
             space=self.space,
@@ -395,7 +395,7 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
 
     def testOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.optuna import OptunaSearch
         from optuna.trial import TrialState
 
         searcher = OptunaSearch(
@@ -460,7 +460,7 @@ class AddEvaluatedPointTest(unittest.TestCase):
             dbr_searcher.add_evaluated_point(point, 1.0)
 
     def testHEBO(self):
-        from ray.tune.suggest.hebo import HEBOSearch
+        from ray.tune.search.hebo import HEBOSearch
 
         searcher = HEBOSearch(
             space=self.space,
@@ -479,7 +479,7 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
 
     def testSkOpt(self):
-        from ray.tune.suggest.skopt import SkOptSearch
+        from ray.tune.search.skopt import SkOptSearch
 
         searcher = SkOptSearch(
             space=self.space,
@@ -548,7 +548,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         )
 
     def testAx(self):
-        from ray.tune.suggest.ax import AxSearch
+        from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
 
         converted_config = AxSearch.convert_search_space(self.config)
@@ -568,7 +568,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testBayesOpt(self):
-        from ray.tune.suggest.bayesopt import BayesOptSearch
+        from ray.tune.search.bayesopt import BayesOptSearch
 
         searcher = BayesOptSearch(
             space=self.config, metric=self.metric_name, mode="max"
@@ -581,7 +581,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testBlendSearch(self):
-        from ray.tune.suggest.flaml import BlendSearch
+        from ray.tune.search.flaml import BlendSearch
 
         searcher = BlendSearch(space=self.config, metric=self.metric_name, mode="max")
 
@@ -591,7 +591,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         searcher = TuneBOHB(space=self.config, metric=self.metric_name, mode="max")
 
@@ -601,7 +601,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testCFO(self):
-        from ray.tune.suggest.flaml import CFO
+        from ray.tune.search.flaml import CFO
 
         searcher = CFO(space=self.config, metric=self.metric_name, mode="max")
 
@@ -611,7 +611,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testDragonfly(self):
-        from ray.tune.suggest.dragonfly import DragonflySearch
+        from ray.tune.search.dragonfly import DragonflySearch
 
         searcher = DragonflySearch(
             space=self.config,
@@ -633,7 +633,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testHEBO(self):
-        from ray.tune.suggest.hebo import HEBOSearch
+        from ray.tune.search.hebo import HEBOSearch
 
         searcher = HEBOSearch(space=self.config, metric=self.metric_name, mode="max")
 
@@ -643,7 +643,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testHyperopt(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.hyperopt import HyperOptSearch
 
         searcher = HyperOptSearch(
             space=self.config, metric=self.metric_name, mode="max"
@@ -658,7 +658,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
+        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
 
         searcher = NevergradSearch(
@@ -679,7 +679,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.optuna import OptunaSearch
 
         searcher = OptunaSearch(space=self.config, metric=self.metric_name, mode="max")
 
@@ -689,7 +689,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testSkopt(self):
-        from ray.tune.suggest.skopt import SkOptSearch
+        from ray.tune.search.skopt import SkOptSearch
 
         searcher = SkOptSearch(space=self.config, metric=self.metric_name, mode="max")
 
@@ -699,7 +699,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testZOOpt(self):
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.zoopt import ZOOptSearch
 
         searcher = ZOOptSearch(
             space=self.config,
@@ -745,7 +745,7 @@ class MultiObjectiveTest(unittest.TestCase):
         ray.shutdown()
 
     def testOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
 
         np.random.seed(1000)

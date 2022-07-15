@@ -184,6 +184,8 @@ You can do this in the trainable, as shown below:
 
     .. code-block:: python
 
+        from ray.air import session
+
         def trainable(config):
             library.init(
                 name=trial_id,
@@ -191,12 +193,12 @@ You can do this in the trainable, as shown below:
                 resume=trial_id,
                 reinit=True,
                 allow_val_change=True)
-            library.set_log_path(tune.get_trial_dir())
+            library.set_log_path(os.getcwd())
 
             for step in range(100):
                 library.log_model(...)
                 library.log(results, step=step)
-                tune.report(results)
+                session.report(results)
 
 
 .. tabbed:: Class API
@@ -212,7 +214,7 @@ You can do this in the trainable, as shown below:
                     resume=trial_id,
                     reinit=True,
                     allow_val_change=True)
-                library.set_log_path(self.logdir)
+                library.set_log_path(os.getcwd())
 
             def step(self):
                 library.log_model(...)
@@ -227,7 +229,8 @@ You can do this in the trainable, as shown below:
                 library.log(res_dict, step=step)
 
 
-    Use ``self.logdir`` (only for Class API) or ``tune.get_trial_dir()`` (only for Function API) for the trial log directory.
+Note: For both functional and class trainables, the current working directory is changed to something
+specific to that trainable once it's launched on a remote actor.
 
 In the distributed case, these logs will be sync'ed back to the driver under your logger path.
 This will allow you to visualize and analyze logs of all distributed training workers on a single machine.

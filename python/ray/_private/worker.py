@@ -33,7 +33,11 @@ from typing import (
 
 import colorama
 import setproctitle
-from typing_extensions import Literal, Protocol
+
+if sys.version_info >= (3, 8):
+    from typing import Literal, Protocol
+else:
+    from typing_extensions import Literal, Protocol
 
 import ray
 import ray._private.gcs_utils as gcs_utils
@@ -80,6 +84,7 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
+from ray.widgets import Template
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -967,6 +972,20 @@ class RayContext(BaseContext, Mapping):
         # Include disconnect() to stay consistent with ClientContext
         ray.shutdown()
 
+    def _repr_html_(self):
+        if self.dashboard_url:
+            dashboard_row = Template("context_dashrow.html.j2").render(
+                dashboard_url="http://" + self.dashboard_url
+            )
+        else:
+            dashboard_row = None
+
+        return Template("context.html.j2").render(
+            python_version=self.python_version,
+            ray_version=self.ray_version,
+            dashboard_row=dashboard_row,
+        )
+
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
@@ -1088,7 +1107,7 @@ def init(
             is true.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace: Namespace to use
+        namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         storage: [Experimental] Specify a URI for persistent cluster-wide storage.
@@ -1308,10 +1327,13 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
-        # Don't collect usage stats in ray.init().
+        # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
 
-        usage_lib.set_usage_stats_enabled_via_env_var(False)
+        if usage_lib.is_nightly_wheel():
+            usage_lib.show_usage_stats_prompt(cli=False)
+        else:
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
@@ -2736,7 +2758,7 @@ def remote(*args, **kwargs):
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
         memory: The heap memory request for this task/actor.
-        object_store_memory: The object store memory request for this task/actor.
+        object_store_memory: The object store memory request for actors only.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit

@@ -625,7 +625,7 @@ class ApexDQN(DQN):
                     {"timestep": self._counters[NUM_ENV_STEPS_TRAINED]}
                 )
             else:
-                raise RuntimeError("The learner thread died in while training")
+                raise RuntimeError("The learner thread died while training")
 
         self._timers["learner_dequeue"] = self.learner_thread.queue_timer
         self._timers["learner_grad"] = self.learner_thread.grad_timer

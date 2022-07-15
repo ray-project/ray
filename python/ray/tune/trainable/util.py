@@ -1,13 +1,11 @@
 import glob
 import inspect
-import io
 import logging
 import os
 import shutil
 from typing import Any, Dict, Optional, Union
 
 import pandas as pd
-from six import string_types
 
 import ray
 import ray.cloudpickle as pickle
@@ -19,65 +17,19 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
+_TUNE_METADATA_FILENAME = ".tune_metadata"
+
+
 @DeveloperAPI
 class TrainableUtil:
     @staticmethod
-    def process_checkpoint(
-        checkpoint: Union[Dict, str], parent_dir: str, trainable_state: Dict
-    ) -> str:
-        """Creates checkpoint file structure and writes metadata
-        under `parent_dir`.
-
-        The file structure could either look like:
-        - checkpoint_00000 (returned path)
-        -- .is_checkpoint
-        -- .tune_metadata
-        -- xxx.pkl (or whatever user specifies in their Trainable)
-        Or,
-        - checkpoint_00000
-        -- .is_checkpoint
-        -- checkpoint (returned path)
-        -- checkpoint.tune_metadata
-        """
-        saved_as_dict = False
-        if isinstance(checkpoint, string_types):
-            if not checkpoint.startswith(parent_dir):
-                raise ValueError(
-                    "The returned checkpoint path must be within the "
-                    "given checkpoint dir {}: {}".format(parent_dir, checkpoint)
-                )
-            checkpoint_path = checkpoint
-            if os.path.isdir(checkpoint_path):
-                # Add trailing slash to prevent tune metadata from
-                # being written outside the directory.
-                checkpoint_path = os.path.join(checkpoint_path, "")
-        elif isinstance(checkpoint, dict):
-            saved_as_dict = True
-            checkpoint_path = os.path.join(parent_dir, "checkpoint")
-            with open(checkpoint_path, "wb") as f:
-                pickle.dump(checkpoint, f)
-        else:
-            raise ValueError(
-                "Returned unexpected type {}. "
-                "Expected str or dict.".format(type(checkpoint))
-            )
-
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
-            trainable_state["saved_as_dict"] = saved_as_dict
-            pickle.dump(trainable_state, f)
-        return checkpoint_path
+    def write_metadata(checkpoint_dir: str, metadata: Dict) -> None:
+        with open(os.path.join(checkpoint_dir, _TUNE_METADATA_FILENAME), "wb") as f:
+            pickle.dump(metadata, f)
 
     @staticmethod
-    def load_checkpoint_metadata(checkpoint_path: str) -> Optional[Dict]:
-        metadata_path = os.path.join(checkpoint_path, ".tune_metadata")
-        if not os.path.exists(metadata_path):
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-            metadatas = glob.glob(f"{checkpoint_dir}/**/.tune_metadata", recursive=True)
-            if not metadatas:
-                return None
-            metadata_path = metadatas[0]
-
-        with open(metadata_path, "rb") as f:
+    def load_metadata(checkpoint_dir: str) -> Dict:
+        with open(os.path.join(checkpoint_dir, _TUNE_METADATA_FILENAME), "rb") as f:
             return pickle.load(f)
 
     @staticmethod
@@ -100,15 +52,6 @@ class TrainableUtil:
             }
         )
         return data_dict
-
-    @staticmethod
-    def checkpoint_to_object(checkpoint_path):
-        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
-        out = io.BytesIO()
-        if len(data_dict) > 10e6:  # getting pretty large
-            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
-        out.write(data_dict)
-        return out.getvalue()
 
     @staticmethod
     def find_checkpoint_dir(checkpoint_path):
@@ -169,24 +112,15 @@ class TrainableUtil:
         if override and os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
         os.makedirs(checkpoint_dir, exist_ok=True)
-        # Drop marker in directory to identify it as a checkpoint dir.
-        open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+
+        TrainableUtil.mark_as_checkpoint_dir(checkpoint_dir)
+
         return checkpoint_dir
 
     @staticmethod
-    def create_from_pickle(obj, tmpdir):
-        info = pickle.loads(obj)
-        data = info["data"]
-        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
-
-        for relpath_name, file_contents in data.items():
-            path = os.path.join(tmpdir, relpath_name)
-
-            # This may be a subdirectory, hence not just using tmpdir
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "wb") as f:
-                f.write(file_contents)
-        return checkpoint_path
+    def mark_as_checkpoint_dir(checkpoint_dir: str):
+        """Drop marker in directory to identify it as a checkpoint dir."""
+        open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
 
     @staticmethod
     def get_checkpoints_paths(logdir):
@@ -210,12 +144,12 @@ class TrainableUtil:
                 continue
 
             metadata_file = glob.glob(
-                os.path.join(glob.escape(chkpt_dir), "*.tune_metadata")
+                os.path.join(glob.escape(chkpt_dir), f"*{_TUNE_METADATA_FILENAME}")
             )
             # glob.glob: filenames starting with a dot are special cases
             # that are not matched by '*' and '?' patterns.
             metadata_file += glob.glob(
-                os.path.join(glob.escape(chkpt_dir), ".tune_metadata")
+                os.path.join(glob.escape(chkpt_dir), _TUNE_METADATA_FILENAME)
             )
             metadata_file = list(set(metadata_file))  # avoid duplication
             if len(metadata_file) != 1:
@@ -232,7 +166,7 @@ class TrainableUtil:
                 logger.warning(f"Could not read metadata from checkpoint: {e}")
                 metadata = {}
 
-            chkpt_path = metadata_file[: -len(".tune_metadata")]
+            chkpt_path = metadata_file[: -len(_TUNE_METADATA_FILENAME)]
             chkpt_iter = metadata.get("iteration", -1)
             iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
 
@@ -320,11 +254,12 @@ def with_parameters(trainable, **kwargs):
     .. code-block:: python
 
         from ray import tune
+        from ray.air import session
 
         def train(config, data=None):
             for sample in data:
                 loss = update_model(sample)
-                tune.report(loss=loss)
+                session.report(loss=loss)
 
         data = HugeDataset(download=True)
 

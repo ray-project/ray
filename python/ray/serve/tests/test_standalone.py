@@ -7,6 +7,7 @@ import os
 import socket
 import subprocess
 import sys
+import time
 from tempfile import mkstemp
 
 import pydantic
@@ -34,6 +35,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
 from ray.serve.http_util import set_socket_reuse_port
 from ray.serve.utils import block_until_http_ready, format_actor_name, get_all_node_ids
+from ray.serve.schema import ServeApplicationSchema
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -50,6 +52,34 @@ def ray_cluster():
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
+
+
+@pytest.fixture()
+def lower_slow_startup_threshold_and_reset():
+    original_slow_startup_warning_s = os.environ.get("SERVE_SLOW_STARTUP_WARNING_S")
+    original_slow_startup_warning_period_s = os.environ.get(
+        "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
+    )
+    # Lower slow startup warning threshold to 1 second to reduce test duration
+    os.environ["SERVE_SLOW_STARTUP_WARNING_S"] = "1"
+    os.environ["SERVE_SLOW_STARTUP_WARNING_PERIOD_S"] = "1"
+
+    ray.init(num_cpus=2)
+    client = serve.start(detached=True)
+
+    yield client
+
+    serve.shutdown()
+    ray.shutdown()
+
+    # Reset slow startup warning threshold to prevent state sharing across unit
+    # tests
+    if original_slow_startup_warning_s is not None:
+        os.environ["SERVE_SLOW_STARTUP_WARNING_S"] = original_slow_startup_warning_s
+    if original_slow_startup_warning_period_s is not None:
+        os.environ[
+            "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
+        ] = original_slow_startup_warning_period_s
 
 
 def test_shutdown(ray_shutdown):
@@ -696,6 +726,96 @@ def test_recovering_controller_no_redeploy():
             lambda: len(ray.util.list_named_actors(all_namespaces=True)) > num_actors,
             timeout=5,
         )
+
+    serve.shutdown()
+    ray.shutdown()
+
+
+def test_updating_status_message(lower_slow_startup_threshold_and_reset):
+    """Check if status message says if a serve deployment has taken a long time"""
+
+    client = lower_slow_startup_threshold_and_reset
+
+    @serve.deployment(
+        num_replicas=5,
+        ray_actor_options={"num_cpus": 1},
+    )
+    def f(*args):
+        pass
+
+    f.deploy(_blocking=False)
+
+    def updating_message():
+        deployment_status = client.get_serve_status().deployment_statuses[0]
+        message_substring = "more than 1s to be scheduled."
+        return (deployment_status.status == "UPDATING") and (
+            message_substring in deployment_status.message
+        )
+
+    wait_for_condition(updating_message, timeout=20)
+
+
+def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_reset):
+    """
+    Check that if status is UNHEALTHY and there is a resource availability
+    issue, the status should not change. The issue that caused the deployment to
+    be unhealthy should be prioritized over this resource availability issue.
+    """
+
+    client = lower_slow_startup_threshold_and_reset
+
+    @serve.deployment
+    class f:
+        def __init__(self):
+            self.num = 1 / 0
+
+        def __call__(self, request):
+            pass
+
+    f.deploy(_blocking=False)
+
+    wait_for_condition(
+        lambda: client.get_serve_status().deployment_statuses[0].status == "UNHEALTHY",
+        timeout=20,
+    )
+
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: client.get_serve_status().deployment_statuses[0].status
+            == "UPDATING",
+            timeout=10,
+        )
+
+
+@serve.deployment(ray_actor_options={"num_cpus": 0.1})
+class Waiter:
+    def __init__(self):
+        time.sleep(5)
+
+    def __call__(self, *args):
+        return "May I take your order?"
+
+
+WaiterNode = Waiter.bind()
+
+
+def test_run_graph_task_uses_zero_cpus():
+    """Check that the run_graph() task uses zero CPUs."""
+
+    ray.init(num_cpus=2)
+    client = serve.start(detached=True)
+
+    config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
+    config = ServeApplicationSchema.parse_obj(config)
+    client.deploy_app(config)
+
+    with pytest.raises(RuntimeError):
+        wait_for_condition(lambda: ray.available_resources()["CPU"] < 1.9, timeout=5)
+
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/Waiter").text
+        == "May I take your order?"
+    )
 
     serve.shutdown()
     ray.shutdown()

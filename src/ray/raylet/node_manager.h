@@ -225,12 +225,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// from all workers.
   /// \param include_task_info If true, it requires every task metadata information
   /// from all workers.
+  /// \param limit A maximum number of task/object entries to return from each core
+  /// worker.
+  /// \param on_all_replied A callback that's called when every worker replies.
   void QueryAllWorkerStates(
       const std::function<void(const ray::Status &status,
                                const rpc::GetCoreWorkerStatsReply &r)> &on_replied,
       rpc::SendReplyCallback &send_reply_callback,
       bool include_memory_info,
-      bool include_task_info);
+      bool include_task_info,
+      int64_t limit,
+      const std::function<void()> &on_all_replied);
 
  private:
   /// Methods for handling nodes.

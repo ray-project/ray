@@ -146,7 +146,7 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
 
 def test_callable_classes(shutdown_only):
     ray.init(num_cpus=1)
-    ds = ray.data.range(10)
+    ds = ray.data.range(10, parallelism=10)
 
     class StatefulFn:
         def __init__(self):
@@ -329,8 +329,8 @@ def test_basic(ray_start_regular_shared, pipelined):
 
 
 def test_zip(ray_start_regular_shared):
-    ds1 = ray.data.range(5)
-    ds2 = ray.data.range(5).map(lambda x: x + 1)
+    ds1 = ray.data.range(5, parallelism=5)
+    ds2 = ray.data.range(5, parallelism=5).map(lambda x: x + 1)
     ds = ds1.zip(ds2)
     assert ds.schema() == tuple
     assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
@@ -377,7 +377,7 @@ def test_zip_arrow(ray_start_regular_shared):
 def test_batch_tensors(ray_start_regular_shared):
     import torch
 
-    ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
+    ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
     res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
@@ -447,7 +447,7 @@ def test_arrow_block_slice_copy_empty():
 
 
 def test_range_table(ray_start_regular_shared):
-    ds = ray.data.range_table(10)
+    ds = ray.data.range_table(10, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.count() == 10
     assert ds.take() == [{"value": i} for i in range(10)]
@@ -601,7 +601,7 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
 def test_tensors_basic(ray_start_regular_shared):
     # Create directly.
     tensor_shape = (3, 5)
-    ds = ray.data.range_tensor(6, shape=tensor_shape)
+    ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
     assert str(ds) == (
         "Dataset(num_blocks=6, num_rows=6, "
         "schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
@@ -792,7 +792,7 @@ def test_tensors_sort(ray_start_regular_shared):
 
 def test_tensors_inferred_from_map(ray_start_regular_shared):
     # Test map.
-    ds = ray.data.range(10).map(lambda _: np.ones((4, 4)))
+    ds = ray.data.range(10, parallelism=10).map(lambda _: np.ones((4, 4)))
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=10, "
         "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
@@ -808,7 +808,9 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
 
     # Test flat_map.
-    ds = ray.data.range(10).flat_map(lambda _: [np.ones((4, 4)), np.ones((4, 4))])
+    ds = ray.data.range(10, parallelism=10).flat_map(
+        lambda _: [np.ones((4, 4)), np.ones((4, 4))]
+    )
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=20, "
         "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
@@ -1288,8 +1290,8 @@ def test_empty_dataset(ray_start_regular_shared):
 
 
 def test_schema(ray_start_regular_shared):
-    ds = ray.data.range(10)
-    ds2 = ray.data.range_table(10)
+    ds = ray.data.range(10, parallelism=10)
+    ds2 = ray.data.range_table(10, parallelism=10)
     ds3 = ds2.repartition(5)
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
@@ -1737,6 +1739,25 @@ def test_add_column(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         ds = ray.data.range(5).add_column("value", 0)
+
+
+def test_drop_columns(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds1 = ray.data.from_pandas(df)
+    ds1.write_parquet(str(tmp_path))
+    ds2 = ray.data.read_parquet(str(tmp_path))
+
+    for ds in [ds1, ds2]:
+        assert ds.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
+        assert ds.drop_columns(["col1", "col3"]).take(1) == [{"col2": 2}]
+        assert ds.drop_columns([]).take(1) == [{"col1": 1, "col2": 2, "col3": 3}]
+        assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == [{}]
+        assert ds.drop_columns(["col1", "col1", "col2", "col1"]).take(1) == [
+            {"col3": 3}
+        ]
+        # Test dropping non-existent column
+        with pytest.raises(KeyError):
+            ds.drop_columns(["dummy_col", "col1", "col2"])
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path):
@@ -2450,7 +2471,7 @@ def test_block_builder_for_block(ray_start_regular_shared):
         BlockBuilder.for_block(str())
 
 
-def test_groupby_arrow(ray_start_regular_shared):
+def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
     # Test empty dataset.
     agg_ds = (
         ray.data.range_table(10)
@@ -2529,7 +2550,9 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_count(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_count(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
     # Test built-in count aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
@@ -2556,7 +2579,9 @@ def test_groupby_tabular_count(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_sum(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
     # Test built-in sum aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_sum with: {seed}")
@@ -3932,67 +3957,58 @@ def test_random_block_order(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
-    ctx = ray.data.context.DatasetContext.get_current()
-
-    try:
-        original = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
-
-        def range(n, parallelism=200):
-            ds = ray.data.range(n, parallelism=parallelism)
-            if pipelined:
-                pipe = ds.repeat(2)
-                pipe.random_shuffle = pipe.random_shuffle_each_window
-                return pipe
-            else:
-                return ds
-
-        r1 = range(100).random_shuffle().take(999)
-        r2 = range(100).random_shuffle().take(999)
-        assert r1 != r2, (r1, r2)
-
-        r1 = range(100, parallelism=1).random_shuffle().take(999)
-        r2 = range(100, parallelism=1).random_shuffle().take(999)
-        assert r1 != r2, (r1, r2)
-
-        r1 = range(100).random_shuffle(num_blocks=1).take(999)
-        r2 = range(100).random_shuffle(num_blocks=1).take(999)
-        assert r1 != r2, (r1, r2)
-
-        r0 = range(100, parallelism=5).take(999)
-        r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
-        assert r1 == r2, (r1, r2)
-        assert r1 != r0, (r1, r0)
-        assert r1 != r3, (r1, r3)
-
-        r0 = ray.data.range_table(100, parallelism=5).take(999)
-        r1 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r2 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
-        assert r1 == r2, (r1, r2)
-        assert r1 != r0, (r1, r0)
-
-        # Test move.
-        ds = range(100, parallelism=2)
-        r1 = ds.random_shuffle().take(999)
+    def range(n, parallelism=200):
+        ds = ray.data.range(n, parallelism=parallelism)
         if pipelined:
-            with pytest.raises(RuntimeError):
-                ds = ds.map(lambda x: x).take(999)
+            pipe = ds.repeat(2)
+            pipe.random_shuffle = pipe.random_shuffle_each_window
+            return pipe
         else:
-            ds = ds.map(lambda x: x).take(999)
-        r2 = range(100).random_shuffle().take(999)
-        assert r1 != r2, (r1, r2)
+            return ds
 
-        # Test empty dataset.
-        ds = ray.data.from_items([])
-        r1 = ds.random_shuffle()
-        assert r1.count() == 0
-        assert r1.take() == ds.take()
-    finally:
-        ctx.use_push_based_shuffle = original
+    r1 = range(100).random_shuffle().take(999)
+    r2 = range(100).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    r1 = range(100, parallelism=1).random_shuffle().take(999)
+    r2 = range(100, parallelism=1).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    r1 = range(100).random_shuffle(num_blocks=1).take(999)
+    r2 = range(100).random_shuffle(num_blocks=1).take(999)
+    assert r1 != r2, (r1, r2)
+
+    r0 = range(100, parallelism=5).take(999)
+    r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+    assert r1 != r3, (r1, r3)
+
+    r0 = ray.data.range_table(100, parallelism=5).take(999)
+    r1 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r2 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+
+    # Test move.
+    ds = range(100, parallelism=2)
+    r1 = ds.random_shuffle().take(999)
+    if pipelined:
+        with pytest.raises(RuntimeError):
+            ds = ds.map(lambda x: x).take(999)
+    else:
+        ds = ds.map(lambda x: x).take(999)
+    r2 = range(100).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    r1 = ds.random_shuffle()
+    assert r1.count() == 0
+    assert r1.take() == ds.take()
 
 
 def test_random_shuffle_check_random(shutdown_only):
@@ -4043,47 +4059,38 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
-    ctx = ray.data.context.DatasetContext.get_current()
-    try:
-        original = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
-        cluster = ray_start_cluster
-        cluster.add_node(
-            resources={"bar:1": 100},
-            num_cpus=10,
-            _system_config={"max_direct_call_object_size": 0},
-        )
-        cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
-        cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+    ray.init(cluster.address)
 
-        ray.init(cluster.address)
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
 
-        @ray.remote
-        def get_node_id():
-            return ray.get_runtime_context().node_id.hex()
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
-        node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
-        node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+    ds = ray.data.range(100, parallelism=2).random_shuffle()
+    blocks = ds.get_internal_block_refs()
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert "2 nodes used" in ds.stats()
 
-        ds = ray.data.range(100, parallelism=2).random_shuffle()
-        blocks = ds.get_internal_block_refs()
-        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-        location_data = ray.experimental.get_object_locations(blocks)
-        locations = []
-        for block in blocks:
-            locations.extend(location_data[block]["node_ids"])
-        assert "2 nodes used" in ds.stats()
-
-        if not use_push_based_shuffle:
-            # We don't check this for push-based shuffle since it will try to
-            # colocate reduce tasks to improve locality.
-            assert set(locations) == {node1_id, node2_id}
-
-    finally:
-        ctx.use_push_based_shuffle = original
+    if not use_push_based_shuffle:
+        # We don't check this for push-based shuffle since it will try to
+        # colocate reduce tasks to improve locality.
+        assert set(locations) == {node1_id, node2_id}
 
 
 def test_parquet_read_spread(ray_start_cluster, tmp_path):
@@ -4233,12 +4240,12 @@ def test_polars_lazy_import(shutdown_only):
         ctx.use_polars = original_use_polars
 
 
-def test_actorpoolstrategy_apply_interrupt():
+def test_actor_pool_strategy_apply_interrupt(shutdown_only):
     """Test that _apply kills the actor pool if an interrupt is raised."""
     ray.init(include_dashboard=False, num_cpus=1)
 
     cpus = ray.available_resources()["CPU"]
-    ds = ray.data.range(5)
+    ds = ray.data.range(5, parallelism=5)
     aps = ray.data.ActorPoolStrategy(max_size=5)
     blocks = ds._plan.execute()
 
@@ -4256,6 +4263,26 @@ def test_actorpoolstrategy_apply_interrupt():
 
     # Check that all actors have been killed by counting the available CPUs
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
+
+
+def test_actor_pool_strategy_default_num_actors(shutdown_only):
+    def f(x):
+        import time
+
+        time.sleep(1)
+        return x
+
+    num_cpus = 5
+    ray.init(num_cpus=num_cpus)
+    compute_strategy = ray.data.ActorPoolStrategy()
+    ray.data.range(10, parallelism=10).map_batches(f, compute=compute_strategy)
+    expected_max_num_workers = math.ceil(
+        num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
+    )
+    assert (
+        compute_strategy.num_workers >= num_cpus
+        and compute_strategy.num_workers <= expected_max_num_workers
+    ), "Number of actors is out of the expected bound"
 
 
 if __name__ == "__main__":
