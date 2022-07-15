@@ -50,7 +50,6 @@ XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
       - Data Size
       - Number of rows
       - Time taken
-      - Throughput
     * - 1 m5.4xlarge
       - 1 actor
       - 10 GB
