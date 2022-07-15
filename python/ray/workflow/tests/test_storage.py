@@ -10,9 +10,9 @@ from ray.tests.conftest import *  # noqa
 from ray.workflow import workflow_storage
 from ray.workflow.common import (
     StepType,
-    WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
 )
+from ray.workflow.exceptions import WorkflowNotFoundError
 from ray.workflow import serialization_context
 from ray.workflow.tests import utils
 
@@ -52,15 +52,14 @@ def test_delete(workflow_start_regular):
     workflow.init()
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        result = workflow.get_output("never_finishes")
-        ray.get(result)
+        workflow.get_output("never_finishes")
 
     workflow.delete("never_finishes")
 
     with pytest.raises(ray.exceptions.RaySystemError):
         # TODO(suquark): we should raise "ValueError" without
-        #  ray.get() over the result.
-        ray.get(workflow.get_output("never_finishes"))
+        #  been blocking over the result.
+        workflow.get_output("never_finishes")
 
     # TODO(Alex): Uncomment after
     # https://github.com/ray-project/ray/issues/19481.
@@ -77,15 +76,14 @@ def test_delete(workflow_start_regular):
 
     result = workflow.run(basic_step.bind("hello world"), workflow_id="finishes")
     assert result == "hello world"
-    ouput = workflow.get_output("finishes")
-    assert ray.get(ouput) == "hello world"
+    assert workflow.get_output("finishes") == "hello world"
 
     workflow.delete(workflow_id="finishes")
 
     with pytest.raises(ray.exceptions.RaySystemError):
         # TODO(suquark): we should raise "ValueError" without
-        #  ray.get() over the result.
-        ray.get(workflow.get_output("finishes"))
+        #  blocking over the result.
+        workflow.get_output("finishes")
 
     # TODO(Alex): Uncomment after
     # https://github.com/ray-project/ray/issues/19481.

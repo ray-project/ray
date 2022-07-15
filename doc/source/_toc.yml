@@ -16,6 +16,7 @@ parts:
       sections:
         - file: ray-air/preprocessors
         - file: ray-air/check-ingest
+        - file: ray-air/checkpoints
         - file: ray-air/examples/analyze_tuning_results
         - file: ray-air/examples/upload_to_comet_ml
         - file: ray-air/examples/upload_to_wandb
@@ -38,7 +39,7 @@ parts:
         - file: ray-air/examples/feast_example
     - file: ray-air/package-ref
 
-  - caption: AIR Libraries
+  - caption: Ray Libraries
     chapters:
       - file: data/dataset
         title: Ray Data
@@ -52,6 +53,8 @@ parts:
                 title: Processing the NYC taxi dataset
               - file: data/examples/big_data_ingestion
                 title: Large-scale ML Ingest
+              - file: data/examples/ocr_example
+                title: Scaling OCR with Ray Datasets
           - file: data/faq
           - file: data/package-ref
           - file: data/integrations

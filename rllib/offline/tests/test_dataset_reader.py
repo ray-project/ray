@@ -22,7 +22,7 @@ class TestDatasetReader(unittest.TestCase):
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "rllib/tests/data/pendulum/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
-        input_config = {"format": "json", "path": data_file}
+        input_config = {"format": "json", "paths": data_file}
         dataset, _ = get_dataset_and_shards(
             {"input": "dataset", "input_config": input_config}, 0, True
         )

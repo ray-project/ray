@@ -108,9 +108,15 @@ class GlueTest(unittest.TestCase):
         this_file_manager_return = self.file_manager_return
 
         class MockClusterManager(MockReturn, FullClusterManager):
-            def __init__(self, test_name: str, project_id: str, sdk=None):
+            def __init__(
+                self,
+                test_name: str,
+                project_id: str,
+                sdk=None,
+                smoke_test: bool = False,
+            ):
                 super(MockClusterManager, self).__init__(
-                    test_name, project_id, this_sdk
+                    test_name, project_id, this_sdk, smoke_test=smoke_test
                 )
                 self.return_dict = this_cluster_manager_return
 

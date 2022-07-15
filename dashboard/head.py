@@ -12,7 +12,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
 from ray._private.gcs_pubsub import GcsAioErrorSubscriber, GcsAioLogSubscriber
-from ray._private.gcs_utils import GcsClient, check_health
+from ray._private.gcs_utils import GcsClient, GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
 
@@ -169,9 +169,8 @@ class DashboardHead:
         # Dashboard will handle connection failure automatically
         self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
         internal_kv._initialize_internal_kv(self.gcs_client)
-        self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
-            gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
-        )
+        self.gcs_aio_client = GcsAioClient(address=gcs_address)
+        self.aiogrpc_gcs_channel = self.gcs_aio_client.channel.channel()
 
         self.gcs_error_subscriber = GcsAioErrorSubscriber(address=gcs_address)
         self.gcs_log_subscriber = GcsAioLogSubscriber(address=gcs_address)
