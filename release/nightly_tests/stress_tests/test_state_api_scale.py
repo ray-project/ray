@@ -132,8 +132,8 @@ def test_many_actors(num_actors: int):
     )
 
     exiting_actors = [actor.exit.remote() for actor in actors]
-    print("waiting for actors to exit...")
-    ray.get(exiting_actors)
+    for _ in tqdm.trange(len(actors), desc="Destroying actors..."):
+        _exitted, exiting_actors = ray.wait(exiting_actors)
 
     invoke_state_api(
         lambda res: len(res) == 0,
