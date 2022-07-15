@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
 
+@DeveloperAPI
 class ImageFolderDatasource(BinaryDatasource):
     """A datasource that lets you read datasets like `ImageNet <https://www.image-net.org/>`_.
 
