@@ -263,6 +263,22 @@ class TestSampleBatch(unittest.TestCase):
             },
         )
 
+    def test_split_by_episode(self):
+        s = SampleBatch(
+            {
+                "a": np.array([0, 1, 2, 3, 4, 5]),
+                "eps_id": np.array([0, 0, 0, 0, 1, 1]),
+                "dones": np.array([0, 0, 0, 1, 0, 1]),
+            }
+        )
+        eps_split = [b["a"] for b in s.split_by_episode()]
+        del s["eps_id"]
+        dones_split = [b["a"] for b in s.split_by_episode()]
+        check(eps_split, dones_split)
+        del s["dones"]
+        with self.assertRaises(KeyError):
+            s.split_by_episode()
+
     def test_copy(self):
         s = SampleBatch(
             {

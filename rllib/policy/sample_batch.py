@@ -337,6 +337,7 @@ class SampleBatch(dict):
     @PublicAPI
     def split_by_episode(self) -> List["SampleBatch"]:
         """Splits by `eps_id` column and returns list of new batches.
+        If `eps_id` is not present, splits by `dones` instead.
 
         Returns:
             List of batches, one per distinct episode.
@@ -346,10 +347,17 @@ class SampleBatch(dict):
 
         Examples:
             >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> # "eps_id" is present
             >>> batch = SampleBatch( # doctest: +SKIP
             ...     {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
             >>> print(batch.split_by_episode()) # doctest: +SKIP
             [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
+            >>>
+            >>> # "eps_id" not present, split by "dones" instead
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 1]})
+            >>> print(batch.split_by_episode()) # doctest: +SKIP
+            [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "eps_id": [0, 1]}]
         """
 
         slices = []
@@ -366,8 +374,8 @@ class SampleBatch(dict):
             # Add final slice.
             slices.append(self[offset : self.count])
 
+        # No eps_id in data -> split by dones instead
         elif SampleBatch.DONES in self:
-            # No eps_id in data -> split by dones instead
             offset = 0
             for i in range(self.count):
                 if self[SampleBatch.DONES][i]:
@@ -377,7 +385,7 @@ class SampleBatch(dict):
             if offset != self.count:
                 slices.append(self[offset : self.count])
         else:
-            return [self]
+            raise KeyError(f"{self} does not have `eps_id` or `dones`!")
 
         assert sum(s.count for s in slices) == self.count, (slices, self.count)
         return slices
