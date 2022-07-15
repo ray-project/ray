@@ -18,6 +18,11 @@ DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
+# Default buffer size when doing streaming reads from local or remote storage.
+# This default appears to work well with most file sizes on remote storage systems,
+# which is very sensitive to the buffer size.
+DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
+
 # Whether block splitting is on by default
 DEFAULT_BLOCK_SPLITTING_ENABLED = False
 
@@ -71,6 +76,7 @@ class DatasetContext:
         block_splitting_enabled: bool,
         target_max_block_size: int,
         target_min_block_size: int,
+        streaming_read_buffer_size: int,
         enable_pandas_block: bool,
         optimize_fuse_stages: bool,
         optimize_fuse_read_stages: bool,
@@ -88,6 +94,7 @@ class DatasetContext:
         self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
         self.target_min_block_size = target_min_block_size
+        self.streaming_read_buffer_size = streaming_read_buffer_size
         self.enable_pandas_block = enable_pandas_block
         self.optimize_fuse_stages = optimize_fuse_stages
         self.optimize_fuse_read_stages = optimize_fuse_read_stages
@@ -119,6 +126,7 @@ class DatasetContext:
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
+                    streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
                     optimize_fuse_stages=DEFAULT_OPTIMIZE_FUSE_STAGES,
                     optimize_fuse_read_stages=DEFAULT_OPTIMIZE_FUSE_READ_STAGES,
