@@ -156,23 +156,6 @@ class LocalObjectManager {
 
   std::string DebugString() const;
 
-  void InsertObjectAndCheckpointURL(const ObjectID &object_id,
-                                    const std::string &spilled_url,
-                                    const bool is_sealed,
-                                    const ActorID &actor_id)
-      LOCKS_EXCLUDED(object_map_mutex_);
-
-  void MarkObjectSealed(const ObjectID &object_id) LOCKS_EXCLUDED(object_map_mutex_);
-
-  void EraseObjectAndCheckpointURL(const ObjectID &object_id)
-      LOCKS_EXCLUDED(object_map_mutex_);
-
-  std::string GetObjectCheckpointURL(const ObjectID &object_id)
-      LOCKS_EXCLUDED(object_map_mutex_);
-
-  ActorID GetObjectGlobalOwnerID(const ObjectID &object_id)
-      LOCKS_EXCLUDED(object_map_mutex_);
-
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
@@ -329,10 +312,6 @@ class LocalObjectManager {
 
   /// The object directory interface to access object information.
   IObjectDirectory *object_directory_;
-
-  mutable absl::Mutex object_map_mutex_;
-  absl::flat_hash_map<ObjectID, std::tuple<std::string, bool, ActorID>>
-      get_object_to_url_map_ GUARDED_BY(object_map_mutex_);
 
   ///
   /// Stats

@@ -306,11 +306,7 @@ MACH_PAGE_SIZE_BYTES = 4096
 MAX_INT64_VALUE = 9223372036854775807
 
 # Object Spilling related constants
-DEFAULT_OBJECT_PREFIX = (
-    "ray_checkpoint_objects"
-    if os.environ.get("IS_CHECKPOINT_WORKER", "false") == "true"
-    else "ray_spilled_objects"
-)
+DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
 
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
 

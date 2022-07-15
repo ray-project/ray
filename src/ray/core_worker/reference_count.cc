@@ -499,11 +499,14 @@ bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
     return false;
   }
 
-  RAY_CHECK(owner_address != nullptr && spilled_url != nullptr &&
-            spilled_node_id != nullptr);
+  RAY_CHECK(owner_address != nullptr);
 
-  *spilled_url = it->second.spilled_url;
-  *spilled_node_id = it->second.spilled_node_id;
+  if (spilled_url) {
+    *spilled_url = it->second.spilled_url;
+  }
+  if (spilled_node_id) {
+    *spilled_node_id = it->second.spilled_node_id;
+  }
   if (global_owner_id) {
     *global_owner_id = it->second.global_owner_id;
   }

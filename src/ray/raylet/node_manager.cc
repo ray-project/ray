@@ -78,7 +78,7 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
   return refs;
 }
 
-std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithCheckpointURLs(
+std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithSpilledURLs(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
     const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
         &owner_addresses,
@@ -249,15 +249,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           /*max_object_report_batch_size=*/
           RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
-            std::string spilled_url =
-                GetLocalObjectManager().GetObjectCheckpointURL(obj_id);
-            if (spilled_url.size() > 0) {
-              RAY_LOG(DEBUG) << "the owner of object(" << obj_id
-                             << ") is dead, but this object has checkpoint"
-                             << "object directory will ignore it.";
-              return;
-            }
-
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
@@ -696,14 +687,15 @@ void NodeManager::HandleRequestObjectSpillage(
   const auto &object_id = ObjectID::FromBinary(request.object_id());
   RAY_LOG(DEBUG) << "Received RequestObjectSpillage for object " << object_id;
   local_object_manager_.SpillObjects(
-      {object_id}, [object_id, reply, send_reply_callback](const ray::Status &status) {
+      {object_id}, [object_id, reply, send_reply_callback](const ray::Status &status, const std::unordered_map<ObjectID, std::string> &object_to_spilled_url) {
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Object " << object_id
                          << " has been spilled, replying to owner";
           reply->set_success(true);
-          // TODO(Clark): Add spilled URLs and spilled node ID to owner RPC reply here
-          // if OBOD is enabled, instead of relying on automatic raylet spilling path to
-          // send an extra RPC to the owner.
+          auto it = object_to_spilled_url.find(object_id);
+          RAY_CHECK(it != object_to_spilled_url.end());
+          reply->set_object_url(it->second);
+          reply->set_spilled_node_id(NodeID::Nil().Binary());
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
@@ -1526,19 +1518,10 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
   const auto refs =
-      FlatbufferToObjectReferenceWithCheckpointURLs(*message->object_ids(),
+      FlatbufferToObjectReferenceWithSpilledURLs(*message->object_ids(),
                                                     *message->owner_addresses(),
                                                     *message->spilled_urls(),
                                                     *message->global_owner_ids());
-  for (const auto &ref : refs) {
-    std::string spilled_url = ref.spilled_url();
-    ActorID global_owner_id = ActorID::FromBinary(ref.global_owner_id());
-    ObjectID object_id = ObjectID::FromBinary(ref.object_id());
-    RAY_LOG(DEBUG) << "Try to get object: " << object_id
-                   << ", its global owner: " << global_owner_id;
-    GetLocalObjectManager().InsertObjectAndCheckpointURL(
-        object_id, spilled_url, false, global_owner_id);
-  }
   // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
   // non-direct call support.
   if (message->fetch_only()) {
@@ -2188,7 +2171,6 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
 
-  GetLocalObjectManager().MarkObjectSealed(object_id);
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = dependency_manager_.HandleObjectLocal(object_id);
   RAY_LOG(DEBUG) << "Object local " << object_id << ", "
@@ -2219,59 +2201,6 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
           }
         });
   }
-  auto global_owner_id = GetLocalObjectManager().GetObjectGlobalOwnerID(object_id);
-  if (global_owner_id.IsNil()) {
-    RAY_LOG(DEBUG) << "object(" << object_id << ") global owner is nil.";
-    return;
-  }
-
-  bool new_object = false;
-  {
-    absl::MutexLock guard(&objects_need_to_report_mutex_);
-    auto it = objects_need_to_report_.find(global_owner_id);
-    if (it == objects_need_to_report_.end()) {
-      it = objects_need_to_report_
-               .emplace(global_owner_id, absl::flat_hash_set<ObjectID>())
-               .first;
-    }
-    new_object = it->second.count(object_id) == 0;
-  }
-  if (!new_object) return;
-
-  {
-    absl::MutexLock guard(&global_owner_mutex_);
-    ObjectInfo new_object_info;
-    auto it = global_owner_address_.find(global_owner_id);
-    if (it != global_owner_address_.end()) {
-      auto global_owner_address = it->second;
-
-      new_object_info.object_id = object_id;
-      new_object_info.owner_raylet_id =
-          NodeID::FromBinary(global_owner_address.raylet_id());
-      new_object_info.owner_ip_address = global_owner_address.ip_address();
-      new_object_info.owner_port = global_owner_address.port();
-      new_object_info.owner_worker_id =
-          WorkerID::FromBinary(global_owner_address.worker_id());
-    } else {
-      new_object_info = object_info;
-      rpc::Address global_owner_address;
-      global_owner_address.set_raylet_id(new_object_info.owner_raylet_id.Binary());
-      global_owner_address.set_ip_address(new_object_info.owner_ip_address);
-      global_owner_address.set_port(new_object_info.owner_port);
-      global_owner_address.set_worker_id(new_object_info.owner_worker_id.Binary());
-      global_owner_address_.emplace(global_owner_id, global_owner_address);
-      SubscribeGlobalOwnerAddress(global_owner_id);
-    }
-  }
-  // report location to global owner, Ignore duplicate report
-  RAY_LOG(DEBUG) << "try to report location, object: " << object_id;
-  object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
-  {
-    absl::MutexLock guard(&objects_need_to_report_mutex_);
-    auto it = objects_need_to_report_.find(global_owner_id);
-    RAY_CHECK(it != objects_need_to_report_.end());
-    RAY_CHECK(it->second.insert(object_id).second);
-  }
 }
 
 bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
@@ -2286,20 +2215,6 @@ bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
 
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
-  auto global_owner_id = GetLocalObjectManager().GetObjectGlobalOwnerID(object_id);
-  {
-    absl::MutexLock guard(&objects_need_to_report_mutex_);
-    auto it = objects_need_to_report_.find(global_owner_id);
-    if (it != objects_need_to_report_.end()) {
-      if (it->second.count(object_id)) {
-        it->second.erase(object_id);
-      }
-      if (it->second.size() == 0) {
-        objects_need_to_report_.erase(it);
-      }
-    }
-  }
-  GetLocalObjectManager().EraseObjectAndCheckpointURL(object_id);
   const auto waiting_task_ids = dependency_manager_.HandleObjectMissing(object_id);
   std::stringstream result;
   result << "Object missing " << object_id << ", "
@@ -2476,42 +2391,6 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   local_object_manager_.PinObjectsAndWaitForFree(
       object_ids, std::move(results), owner_address);
   send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &request,
-                                        rpc::DumpCheckpointsReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "received DumpCheckpointsRequest";
-  std::vector<ObjectID> objects_to_dump;
-  // TODO: remove
-  std::vector<rpc::Address> owner_addresses;
-  // TODO: remove
-  std::vector<ActorID> global_owner_ids;
-  for (size_t i = 0; i < request.object_ids_size(); i++) {
-    auto object_id = ObjectID::FromBinary(request.object_ids()[i]);
-    objects_to_dump.push_back(std::move(object_id));
-    owner_addresses.push_back(std::move(request.owner_addresses()[i]));
-    auto global_owner_id = ActorID::FromBinary(request.global_owner_ids()[i]);
-    global_owner_ids.push_back(std::move(global_owner_id));
-  }
-  local_object_manager_.SpillObjects(
-      objects_to_dump,
-      /* Send result to caller CoreWorker*/
-      [this,
-       objects_to_dump,
-       global_owner_ids,
-       send_reply_callback = std::move(send_reply_callback),
-       reply](const std::vector<std::string> &spilled_urls) {
-        RAY_CHECK(objects_to_dump.size() == spilled_urls.size())
-            << "objects number: " << objects_to_dump.size()
-            << ", spilled_urls size: " << spilled_urls.size();
-        for (size_t i = 0; i < spilled_urls.size(); i++) {
-          GetLocalObjectManager().InsertObjectAndCheckpointURL(
-              objects_to_dump[i], spilled_urls[i], true, global_owner_ids[i]);
-          reply->add_spilled_urls(std::move(spilled_urls[i]));
-        }
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      });
 }
 
 void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,

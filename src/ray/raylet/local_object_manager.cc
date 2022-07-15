@@ -208,7 +208,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   auto start_time = absl::GetCurrentTimeNanos();
   SpillObjectsInternal(
       objects_to_spill,
-      [this, bytes_to_spill, objects_to_spill, start_time](const Status &status) {
+      [this, bytes_to_spill, objects_to_spill, start_time](const Status &status, const std::unordered_map<ObjectID, std::string> &) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Failed to spill objects: " << status.ToString();
         } else {
@@ -268,7 +268,7 @@ void LocalObjectManager::SpillObjectsInternal(
       if (callback) {
         callback(
             Status::Invalid("Requested spill for object that is not marked as "
-                            "the primary copy."));
+                            "the primary copy."), {});
       }
       return;
     }
@@ -292,7 +292,7 @@ void LocalObjectManager::SpillObjectsInternal(
 
   if (objects_to_spill.empty()) {
     if (callback) {
-      callback(Status::Invalid("All objects are already being spilled."));
+      callback(Status::Invalid("All objects are already being spilled."), {});
     }
     return;
   }
@@ -346,7 +346,13 @@ void LocalObjectManager::SpillObjectsInternal(
                 OnObjectSpilled(requested_objects_to_spill, r);
               }
               if (callback) {
-                callback(status);
+                std::unordered_map<ObjectID, std::string> object_to_spilled_url;
+                for (size_t i = 0; i < static_cast<size_t>(r.spilled_objects_url_size()); ++i) {
+                  const ObjectID &object_id = requested_objects_to_spill[i];
+                  const std::string &spilled_url = r.spilled_objects_url(i);
+                  object_to_spilled_url.emplace(object_id, spilled_url);
+                }
+                callback(status, object_to_spilled_url);
               }
             });
       });
@@ -605,44 +611,6 @@ std::string LocalObjectManager::DebugString() const {
   result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
   result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
   return result.str();
-}
-
-void LocalObjectManager::InsertObjectAndCheckpointURL(const ObjectID &object_id,
-                                                      const std::string &spilled_url,
-                                                      const bool is_sealed,
-                                                      const ActorID &actor_id) {
-  absl::MutexLock guard(&object_map_mutex_);
-  auto it = get_object_to_url_map_.find(object_id);
-  if (it != get_object_to_url_map_.end()) return;
-  get_object_to_url_map_.emplace(object_id,
-                                 std::make_tuple(spilled_url, is_sealed, actor_id));
-}
-
-void LocalObjectManager::MarkObjectSealed(const ObjectID &object_id) {
-  absl::MutexLock guard(&object_map_mutex_);
-  auto it = get_object_to_url_map_.find(object_id);
-  // TO_BE_SOLVED(buniu): we do not insert it when ray.wait
-  if (it == get_object_to_url_map_.end()) return;
-  it->second = std::make_tuple(std::get<0>(it->second), true, std::get<2>(it->second));
-}
-
-void LocalObjectManager::EraseObjectAndCheckpointURL(const ObjectID &object_id) {
-  absl::MutexLock guard(&object_map_mutex_);
-  get_object_to_url_map_.erase(object_id);
-}
-
-std::string LocalObjectManager::GetObjectCheckpointURL(const ObjectID &object_id) {
-  absl::MutexLock guard(&object_map_mutex_);
-  auto it = get_object_to_url_map_.find(object_id);
-  if (it == get_object_to_url_map_.end()) return std::string("");
-  return std::get<0>(it->second);
-}
-
-ActorID LocalObjectManager::GetObjectGlobalOwnerID(const ObjectID &object_id) {
-  absl::MutexLock guard(&object_map_mutex_);
-  auto it = get_object_to_url_map_.find(object_id);
-  if (it == get_object_to_url_map_.end()) return ActorID::Nil();
-  return std::get<2>(it->second);
 }
 
 };  // namespace raylet

@@ -5,8 +5,6 @@ import time
 import sys
 import os
 
-from numpy import require
-
 import ray
 import ray.actor
 import ray.node
@@ -111,20 +109,6 @@ parser.add_argument(
     type=str,
     default="",
     help="The configuration of object spilling. Only used by I/O workers.",
-)
-parser.add_argument(
-    "--object-checkpoint-config",
-    required=False,
-    type=str,
-    default="",
-    help="The configuration of object checkpoint. Only used by I/O workers.",
-)
-parser.add_argument(
-    "--object-checkpoint-donfig",
-    required=False,
-    type=str,
-    default="",
-    help="The configuration of object checkpoint. Only used by I/O workers.",
 )
 parser.add_argument(
     "--logging-rotate-bytes",
@@ -252,10 +236,7 @@ if __name__ == "__main__":
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    elif mode in [
-        ray.RESTORE_WORKER_MODE,
-        ray.SPILL_WORKER_MODE,
-    ]:
+    elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.
         while True:

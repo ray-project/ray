@@ -292,12 +292,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
 
     rpc::Address owner_address;
-    // TOBE_SOLVED: @qingwu: the pointer of spilled_node_id and spilled_node_id will be
-    // nullptr
-    std::string spilled_url;
-    NodeID spilled_node_id;
-    if (reference_counter_->GetOwner(
-            object_id, &owner_address, &spilled_url, &spilled_node_id) &&
+    if (reference_counter_->GetOwner(object_id, &owner_address) &&
         !nested_refs.empty()) {
       std::vector<ObjectID> nested_ids;
       for (const auto &nested_ref : nested_refs) {

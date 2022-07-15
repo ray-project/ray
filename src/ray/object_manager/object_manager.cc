@@ -254,7 +254,7 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
     // no ordering guarantee between notifications.
     auto object_id = ObjectRefToId(ref);
     RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id, ref.owner_address(), callback));
+        object_directory_pull_callback_id_, object_id, ref.owner_address(), ref.spilled_url(), NodeID::FromBinary(ref.spilled_node_id()), callback));
   }
 
   return request_id;

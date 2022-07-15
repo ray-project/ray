@@ -556,10 +556,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                           rpc::PinObjectIDsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &request,
-                             rpc::DumpCheckpointsReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                           rpc::GetNodeStatsReply *reply,

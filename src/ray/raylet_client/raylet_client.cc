@@ -495,27 +495,6 @@ void raylet::RayletClient::PinObjectIDs(
   grpc_client_->PinObjectIDs(request, rpc_callback);
 }
 
-void raylet::RayletClient::DumpCheckpoints(
-    const std::vector<ObjectID> &object_ids,
-    const std::vector<rpc::Address> &owner_addresses,
-    const std::vector<ActorID> &global_owner_ids,
-    const rpc::Address &worker_address,
-    const ray::rpc::ClientCallback<ray::rpc::DumpCheckpointsReply> &callback) {
-  RAY_CHECK(object_ids.size() == owner_addresses.size());
-  RAY_CHECK(object_ids.size() == global_owner_ids.size());
-  rpc::DumpCheckpointsRequest request;
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    request.add_object_ids(object_ids[i].Binary());
-    request.add_owner_addresses()->CopyFrom(owner_addresses[i]);
-    request.add_global_owner_ids(global_owner_ids[i].Binary());
-  }
-  auto rpc_callback = [callback = std::move(callback)](
-                          Status status, const rpc::DumpCheckpointsReply &reply) {
-    callback(status, reply);
-  };
-  grpc_client_->DumpCheckpoints(request, rpc_callback);
-}
-
 void raylet::RayletClient::ShutdownRaylet(
     const NodeID &node_id,
     bool graceful,

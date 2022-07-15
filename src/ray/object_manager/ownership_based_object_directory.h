@@ -61,6 +61,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
                                        const rpc::Address &owner_address,
+                                       const std::string &spilled_url,
+                                       const NodeID & spilled_node_id,
                                        const OnLocationsFound &callback) override;
   ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;

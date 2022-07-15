@@ -793,12 +793,7 @@ const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
 rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
   rpc::Address owner_address;
-  // TOBE_SOLVED: @qingwu: the pointer of spilled_node_id and spilled_node_id will be
-  // nullptr
-  std::string spilled_url;
-  NodeID spilled_node_id;
-  auto has_owner = reference_counter_->GetOwner(
-      object_id, &owner_address, &spilled_url, &spilled_node_id);
+  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
          "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray "
@@ -1087,21 +1082,19 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
   if (spilled_url) {
-    std::promise<void> sync_promise;
+    std::promise<std::string> sync_promise;
     auto future = sync_promise.get_future();
-    local_raylet_client_->DumpCheckpoints(
-        {object_id},
-        {real_owner_address},
-        {global_owner_id},
-        rpc_address_,
-        [&sync_promise, spilled_url](const Status &status,
-                                        const rpc::DumpCheckpointsReply &reply) {
-          RAY_CHECK(status.ok()) << "failed to dump checkpoint!";
-          RAY_CHECK(reply.spilled_urls_size() == 1);
-          *spilled_url = reply.spilled_urls()[0];
-          sync_promise.set_value();
-        });
-    future.wait();
+    local_raylet_client_->RequestObjectSpillage(
+      object_id,
+      [object_id, &sync_promise](const Status &status,
+                            const rpc::RequestObjectSpillageReply &reply) {
+        if (!status.ok() || !reply.success()) {
+          RAY_LOG(FATAL) << "Failed to spill object " << object_id
+                         << ", raylet unreachable or object could not be spilled.";
+        }
+        sync_promise.set_value(reply.object_url());
+      });
+    *spilled_url = future.get();
     RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
   }
 
@@ -2078,12 +2071,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
     return Status::Invalid("Actor task cancellation is not supported.");
   }
   rpc::Address obj_addr;
-  // TOBE_SOLVED: @qingwu: the pointer of spilled_node_id and spilled_node_id will be
-  // nullptr
-  std::string spilled_url;
-  NodeID spilled_node_id;
-  if (!reference_counter_->GetOwner(
-          object_id, &obj_addr, &spilled_url, &spilled_node_id)) {
+  if (!reference_counter_->GetOwner(object_id, &obj_addr)) {
     return Status::Invalid("No owner found for object.");
   }
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
@@ -2789,12 +2777,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   AddLocalReference(object_id, "<temporary (get object status)>");
 
   rpc::Address owner_address;
-  // TOBE_SOLVED: @qingwu: the pointer of spilled_node_id and spilled_node_id will be
-  // nullptr
-  std::string spilled_url;
-  NodeID spilled_node_id;
-  auto has_owner = reference_counter_->GetOwner(
-      object_id, &owner_address, &spilled_url, &spilled_node_id);
+  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
   if (!has_owner) {
     // We owned this object, but the object has gone out of scope.
     reply->set_status(rpc::GetObjectStatusReply::OUT_OF_SCOPE);
