@@ -10,23 +10,39 @@ from ray.air._internal.checkpointing import (
 )
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 def to_air_checkpoint(
-    path: str,
     estimator: BaseEstimator,
+    *,
+    path: os.PathLike,
     preprocessor: Optional["Preprocessor"] = None,
 ) -> Checkpoint:
     """Convert a pretrained model to AIR checkpoint for serve or inference.
 
+    Example:
+
+    .. code-block:: python
+
+        import tempfile
+        from sklearn.ensemble import RandomForestClassifier
+        from ray.train.sklearn import to_air_checkpoint, SklearnPredictor
+
+        est = RandomForestClassifier()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = to_air_checkpoint(estimator=est, path=tmpdir)
+            predictor = SklearnPredictor.from_checkpoint(checkpoint)
+
     Args:
-        path: The directory path where model and preprocessor steps are stored to.
         estimator: A pretrained model.
+        path: The directory where the checkpoint will be stored to.
         preprocessor: A fitted preprocessor. The preprocessing logic will
-            be applied to serve/inference.
+            be applied to the inputs for serving/inference.
     Returns:
         A Ray Air checkpoint.
     """
@@ -41,6 +57,7 @@ def to_air_checkpoint(
     return checkpoint
 
 
+@PublicAPI(stability="alpha")
 def load_checkpoint(
     checkpoint: Checkpoint,
 ) -> Tuple[BaseEstimator, Optional["Preprocessor"]]:
