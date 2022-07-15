@@ -44,32 +44,38 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
 )
 
 
+# See https://stackoverflow.com/a/33300001/11162437
 def str_presenter(dumper: yaml.Dumper, data):
-    # check for multiline string
+    """A custom representer to write multi-line strings as literal scalars."""
+
     if len(data.splitlines()) > 1:
         return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
     return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
 
-def process_dict_for_dump(data):
-    def remove_ansi_escape_sequences(input: str):
-        ansi_escape = re.compile(
-            r"""
-            \x1B  # ESC
-            (?:   # 7-bit C1 Fe (except CSI)
-                [@-Z\\-_]
-            |     # or [ for CSI, followed by a control sequence
-                \[
-                [0-?]*  # Parameter bytes
-                [ -/]*  # Intermediate bytes
-                [@-~]   # Final byte
-            )
-        """,
-            re.VERBOSE,
+# See https://stackoverflow.com/a/14693789/11162437
+def remove_ansi_escape_sequences(input: str):
+    """Removes ANSI escape sequences in a string"""
+    ansi_escape = re.compile(
+        r"""
+        \x1B  # ESC
+        (?:   # 7-bit C1 Fe (except CSI)
+            [@-Z\\-_]
+        |     # or [ for CSI, followed by a control sequence
+            \[
+            [0-?]*  # Parameter bytes
+            [ -/]*  # Intermediate bytes
+            [@-~]   # Final byte
         )
+    """,
+        re.VERBOSE,
+    )
 
-        return ansi_escape.sub("", input)
+    return ansi_escape.sub("", input)
 
+
+def process_dict_for_dump(data):
+    """Removes ANSI escape sequences recursively for all strings in dict"""
     for k, v in data.items():
         if isinstance(v, dict):
             data[k] = process_dict_for_dump(v)
@@ -351,6 +357,7 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
+        # Ensure multi-line strings in app_status is dumped/printed correctly
         yaml.SafeDumper.add_representer(str, str_presenter)
         print(
             yaml.safe_dump(
