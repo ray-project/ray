@@ -97,7 +97,7 @@ steps:
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - . ./ci/ci.sh test_large
+    - ./ci/ci.sh test_large
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"
