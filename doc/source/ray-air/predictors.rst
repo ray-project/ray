@@ -6,12 +6,15 @@ Inference with trained models
 .. image:: images/air-predictors.png
 
 After you train a model, you will often want to use the model to do inference and prediction.
+To do so, you can use a Ray AIR Predictor. In this guide, we'll cover how to use the Predictor
+on different types of data.
+
+
+What are predictors?
+--------------------
 
 Ray AIR Predictors are a class that loads models from :class:`Checkpoints` to perform inference. 
-Predictors are used by `BatchPredictors` and `PredictorDeployments` to do large-scale scoring or online inference.
-
-Predictors Basics
------------------
+Predictors are used by `BatchPredictor`s and `PredictorDeployment`s to do large-scale scoring or online inference.
 
 Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition. 
 Checkpoints can be generated from a variety of different ways -- see the :ref:`Checkpoints <air-checkpoints-doc>` user guide for more details.
