@@ -40,6 +40,7 @@ from ray.data.datasource.parquet_datasource import (
     _SerializedPiece,
     _deserialize_pieces_with_retry,
 )
+from ray.data.preprocessors import BatchMapper
 from ray.data.tests.conftest import *  # noqa
 from ray.data.extensions import TensorDtype
 from ray.tests.conftest import *  # noqa
@@ -2869,6 +2870,39 @@ def test_read_image_folder(ray_start_regular_shared):
     # Targets should be assigned alphabetically to labels.
     assert df["label"].tolist() == ["cat", "cat", "dog"]
     assert df["target"].tolist() == [0, 0, 1]
+
+
+def test_read_image_folder_e2e(ray_start_regular_shared):
+    from ray.air.util.tensor_extensions.pandas import TensorArray
+    from ray.train.torch import to_air_checkpoint, TorchPredictor
+    from ray.train.batch_predictor import BatchPredictor
+
+    from torchvision import transforms
+    from torchvision.models import resnet18
+
+    dataset = ray.data.read_image_folder("image-folder")
+
+    def preprocess(df):
+        # We convert the `TensorArrayElement` to a NumPy array because `ToTensor`
+        # expects a NumPy array or PIL image. `ToTensor` is necessary because Torch
+        # expects images to have shape (C, H, W), and `ToTensor` changes the shape of
+        # the data from (H, W, C) to (C, H, W).
+        preprocess = transforms.Compose(
+            [
+                lambda ray_tensor: ray_tensor.to_numpy(),
+                transforms.ToTensor(),
+            ]
+        )
+        df["image"] = TensorArray([preprocess(image) for image in df["image"]])
+        return df
+
+    preprocessor = BatchMapper(preprocess)
+
+    model = resnet18(pretrained=True)
+    checkpoint = to_air_checkpoint(model=model, preprocessor=preprocessor)
+
+    predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
+    predictor.predict(dataset, feature_columns=["image"])
 
 
 def test_read_text_remote_args(ray_start_cluster, tmp_path):

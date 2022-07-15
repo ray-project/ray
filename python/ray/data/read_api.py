@@ -1090,12 +1090,12 @@ def read_image_folder(root: str, *, parallelism: int = -1):
         root/cat/nsdf3.png
         root/cat/[...]/asd932_.png
 
-    Datasets read with this function contain three columns: ``'image'``, ``'label'`` and
-    ``'target'``.
+    Datasets read with this function contain two columns: ``'image'`` and ``'label'``.
 
-    * The ``'image'`` column is of type ``TensorDtype`` and contains tensors of shape :math:`(H, W, C)`.
-    * The ``'label'`` column contains strings representing class names.
-    * The ``'target'`` column contain integer targets corresponding to class.
+    * The ``'image'`` column is of type
+      :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype` and contains
+      tensors of shape :math:`(H, W, C)`.
+    * The ``'label'`` column contains strings representing class names (e.g., 'cat').
 
     Arguments:
         path: Path to the directory root.
@@ -1105,12 +1105,26 @@ def read_image_folder(root: str, *, parallelism: int = -1):
         >>> import ray
         >>>
         >>> ds = ray.data.read_image_folder("/data/imagenet/train")
+        >>>
         >>> sample = ds.take(1)[0]  # doctest: +SKIP
-        >>> sample["image"].shape  # doctest: +SKIP
+        >>> sample["image"].to_numpy().shape  # doctest: +SKIP
         (469, 387, 3)
         >>> sample["label"]  # doctest: +SKIP
         'n01443537'
-        >>> sample["target]  # doctest: +SKIP
+
+        To convert class labels to integer-valued targets, use
+        :py:class:`~ray.data.preprocessors.OrdinalEncoder`.
+
+        >>> import ray
+        >>> from ray.data.preprocessors import OrdinalEncoder
+        >>>
+        >>> ds = ray.data.read_image_folder("/data/imagenet/train")
+        >>> oe = OrdinalEncoder(columns=["label"])
+        >>>
+        >>> ds = oe.fit_transform(ds)
+        >>>
+        >>> sample = ds.take(1)[0]
+        >>> sample["label"]
         71
     """
     return read_datasource(
