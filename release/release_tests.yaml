@@ -2807,11 +2807,11 @@
       wait_for_nodes:
         num_nodes: 5
 
-- name: stress_test_state_api_synthetic
+- name: stress_test_state_api_scale
   group: core-daily-test
   working_dir: nightly_tests
   legacy:
-    test_name: stress_test_state_api_synthetic
+    test_name: stress_test_state_api_scale
     test_suite: nightly_tests
 
   frequency: nightly
