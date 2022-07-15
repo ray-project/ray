@@ -1,6 +1,7 @@
 import random
 from typing import Any, Dict, List, Optional
 import numpy as np
+import math
 
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -22,7 +23,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def __init__(
         self,
-        capacity: int = 10000,
+        capacity_items=10000,
+        capacity_ts: int = math.inf,
+        capacity_bytes: int = math.inf,
         storage_unit: str = "timesteps",
         storage_location: str = "in_memory",
         alpha: float = 1.0,
@@ -31,9 +34,16 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Initializes a PrioritizedReplayBuffer instance.
 
         Args:
-            capacity: Max number of timesteps to store in the FIFO
-                buffer. After reaching this number, older samples will be
-                dropped to make space for new ones.
+            capacity_items: Maximum number of items to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones. The number has to be finite in order to keep track of the
+                item hit count.
+            capacity_ts: Maximum number of timesteps to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
+            capacity_bytes: Maximum number of bytes to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
             storage_location: Either 'in_memory' or 'on_disk'.
@@ -42,14 +52,22 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 (0.0=no prioritization, 1.0=full prioritization).
             ``**kwargs``: Forward compatibility kwargs.
         """
-        ReplayBuffer.__init__(self, capacity, storage_unit, storage_location, **kwargs)
+        ReplayBuffer.__init__(
+            self,
+            capacity_items=capacity_items,
+            capacity_ts=capacity_ts,
+            capacity_bytes=capacity_bytes,
+            storage_unit=storage_unit,
+            storage_location=storage_location,
+            **kwargs
+        )
 
         assert alpha > 0
         self._alpha = alpha
 
         # Segment tree must have capacity that is a power of 2
         it_capacity = 1
-        while it_capacity < self.capacity:
+        while it_capacity < self.capacity_items:
             it_capacity *= 2
 
         self._it_sum = SumSegmentTree(it_capacity)
@@ -83,7 +101,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         if len(self._storage) <= len_before_add:
             num_del = len_before_add - len(self._storage) + 1
             for i in range(1, num_del + 1):
-                del_idx = (self._storage._get_internal_index(0) - i) % self.capacity
+                del_idx = (
+                    self._storage._get_internal_index(0) - i
+                ) % self.capacity_items
                 if del_idx != add_idx:
                     assert self._it_sum[del_idx] != self._it_sum.neutral_element
                     assert self._it_min[del_idx] != self._it_min.neutral_element

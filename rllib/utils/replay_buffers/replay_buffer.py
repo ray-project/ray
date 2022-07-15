@@ -1,6 +1,7 @@
 import logging
 import platform
 from typing import Any, Dict, List, Optional, Callable, Union
+import math
 
 import random
 from enum import Enum, unique
@@ -105,7 +106,9 @@ class ReplayBuffer(ParallelIteratorWorker):
 
     def __init__(
         self,
-        capacity: int = 10000,
+        capacity_items: int = 10000,
+        capacity_ts: int = math.inf,
+        capacity_bytes: int = math.inf,
         storage_unit: Union[str, StorageUnit] = "timesteps",
         storage_location: Union[str, StorageLocation] = "in_memory",
         **kwargs,
@@ -113,9 +116,16 @@ class ReplayBuffer(ParallelIteratorWorker):
         """Initializes a (FIFO) ReplayBuffer instance.
 
         Args:
-            capacity: Max number of timesteps to store in this FIFO
-                buffer. After reaching this number, older samples will be
-                dropped to make space for new ones.
+            capacity_items: Maximum number of items to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones. The number has to be finite in order to keep track of the
+                item hit count.
+            capacity_ts: Maximum number of timesteps to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
+            capacity_bytes: Maximum number of bytes to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
             storage_unit: If not a StorageUnit, either 'timesteps',
             'sequences' or 'episodes'. Specifies how experiences are stored.
             ``**kwargs``: Forward compatibility kwargs.
@@ -132,10 +142,10 @@ class ReplayBuffer(ParallelIteratorWorker):
         self.storage_unit = storage_unit
 
         # Caps the number of timesteps stored in this buffer
-        if capacity <= 0:
+        if capacity_ts <= 0:
             raise ValueError(
                 "Capacity of replay buffer has to be greater than zero "
-                "but was set to {}.".format(capacity)
+                "but was set to {}.".format(capacity_ts)
             )
 
         # The actual storage (stores SampleBatches or MultiAgentBatches).
@@ -146,7 +156,7 @@ class ReplayBuffer(ParallelIteratorWorker):
                 )
             )
         self._storage_location = storage_location
-        self._storage = self._create_storage(capacity)
+        self._storage = self._create_storage(capacity_ts=capacity_ts)
 
         # Number of (single) timesteps that have been sampled from the buffer
         # over its lifetime.
@@ -158,11 +168,20 @@ class ReplayBuffer(ParallelIteratorWorker):
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
 
-    @DeveloperAPI
     @property
-    def capacity(self) -> int:
-        """Capacity of the replay buffer (`int`, read-only)."""
-        return self._storage.capacity
+    def capacity_ts(self) -> int:
+        """Maximum number of timesteps the storage may contain"""
+        return self._storage._capacity_ts
+
+    @property
+    def capacity_items(self) -> int:
+        """Maximum number of items the storage may contain"""
+        return self._storage._capacity_items
+
+    @property
+    def capacity_bytes(self) -> int:
+        """Maximum number of bytes the storage may contain"""
+        return self._storage._capacity_bytes
 
     @DeveloperAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
@@ -317,11 +336,11 @@ class ReplayBuffer(ParallelIteratorWorker):
         # Stats and counts.
         self._num_timesteps_sampled = state["sampled_count"]
 
-    def _create_storage(self, capacity: int) -> LocalStorage:
+    def _create_storage(self, capacity_ts: int) -> LocalStorage:
         if self._storage_location == StorageLocation.IN_MEMORY:
-            return InMemoryStorage(capacity)
+            return InMemoryStorage(capacity_ts=capacity_ts)
         elif self._storage_location == StorageLocation.ON_DISK:
-            return OnDiskStorage(capacity)
+            return OnDiskStorage(capacity_ts=capacity_ts)
         raise ValueError("Unknown storage location: {}".format(self._storage_location))
 
     @DeveloperAPI

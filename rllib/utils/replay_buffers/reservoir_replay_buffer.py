@@ -1,5 +1,6 @@
 from typing import Any, Dict
 import random
+import math
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
@@ -18,7 +19,9 @@ class ReservoirReplayBuffer(ReplayBuffer):
 
     def __init__(
         self,
-        capacity: int = 10000,
+        capacity_items=10000,
+        capacity_ts: int = math.inf,
+        capacity_bytes: int = math.inf,
         storage_unit: str = "timesteps",
         storage_location: str = "in_memory",
         **kwargs
@@ -26,15 +29,29 @@ class ReservoirReplayBuffer(ReplayBuffer):
         """Initializes a ReservoirBuffer instance.
 
         Args:
-            capacity: Max number of timesteps to store in the FIFO
-                    buffer. After reaching this number, older samples will be
-                    dropped to make space for new ones.
+            capacity_items: Maximum number of items to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones. The number has to be finite in order to keep track of the
+                item hit count.
+            capacity_ts: Maximum number of timesteps to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
+            capacity_bytes: Maximum number of bytes to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
             storage_location: Either 'in_memory' or 'on_disk'.
                 Specifies where experiences are stored.
         """
-        ReplayBuffer.__init__(self, capacity, storage_unit, storage_location)
+        ReplayBuffer.__init__(
+            self,
+            capacity_items=capacity_items,
+            capacity_ts=capacity_ts,
+            capacity_bytes=capacity_bytes,
+            storage_unit=storage_unit,
+            storage_location=storage_location,
+        )
         self._num_add_calls = 0
         self._num_evicted = 0
 

@@ -78,7 +78,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Test lockstep mode with different policy ids using MultiAgentBatches
         buffer = MultiAgentPrioritizedReplayBuffer(
-            capacity=10, replay_mode="independent", learning_starts=0, num_shards=1
+            capacity_ts=10, replay_mode="independent", learning_starts=0, num_shards=1
         )
 
         self._add_multi_agent_batch_to_buffer(buffer, num_policies=1, num_batches=1)
@@ -96,7 +96,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Test lockstep mode with different policy ids using MultiAgentBatches
         buffer = MultiAgentPrioritizedReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             replay_mode="lockstep",
             learning_starts=0,
             num_shards=1,
@@ -128,7 +128,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Test lockstep mode with different policy ids using MultiAgentBatches
         buffer = MultiAgentPrioritizedReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             replay_mode="independent",
             learning_starts=0,
             num_shards=1,
@@ -167,7 +167,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Buffer needs to be in independent mode, lockstep is not supported
         buffer = MultiAgentPrioritizedReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             prioritized_replay_alpha=self.alpha,
             prioritized_replay_beta=self.beta,
             replay_mode="independent",
@@ -193,7 +193,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         assert 6 == len(indices)
         assert len(buffer) == num_batches
         policy_buffer = buffer.replay_buffers[DEFAULT_POLICY_ID]
-        assert policy_buffer._storage._offset_idx == 0
+        assert policy_buffer._storage._oldest_item_idx == 0
         # Update weight of indices 0, 2, 3, 4, like in our
         # PrioritizedReplayBuffer tests
         priority_dict = {
@@ -217,7 +217,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         # Test get_state/set_state.
         state = buffer.get_state()
         new_buffer = MultiAgentPrioritizedReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             prioritized_replay_alpha=self.alpha,
             prioritized_replay_beta=self.beta,
             replay_mode="independent",

@@ -2,6 +2,7 @@ import collections
 import logging
 from typing import Any, Dict, Optional
 from enum import Enum, unique
+import math
 
 from ray.util.timer import _Timer
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
@@ -64,7 +65,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
     def __init__(
         self,
-        capacity: int = 10000,
+        capacity_items: int = 10000,
+        capacity_ts: int = math.inf,
+        capacity_bytes: int = math.inf,
         storage_unit: str = "timesteps",
         storage_location: str = "in_memory",
         num_shards: int = 1,
@@ -80,7 +83,16 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """Initializes a MultiAgentReplayBuffer instance.
 
         Args:
-            capacity: The capacity of the buffer, measured in `storage_unit`.
+            capacity_items: Maximum number of items to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones. The number has to be finite in order to keep track of the
+                item hit count.
+            capacity_ts: Maximum number of timesteps to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
+            capacity_bytes: Maximum number of bytes to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
@@ -114,8 +126,14 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 the underlying buffers.
             ``**kwargs``: Forward compatibility kwargs.
         """
-        shard_capacity = capacity // num_shards
-        ReplayBuffer.__init__(self, capacity, storage_unit, storage_location)
+        ReplayBuffer.__init__(
+            self,
+            capacity_items=capacity_items // num_shards,
+            capacity_ts=capacity_ts // num_shards,
+            capacity_bytes=capacity_bytes // num_shards,
+            storage_unit=storage_unit,
+            storage_location=storage_location,
+        )
 
         # If the user provides an underlying buffer config, we use to
         # instantiate and interact with underlying buffers
@@ -165,7 +183,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         if self.underlying_buffer_config:
             ctor_args = {
                 **{
-                    "capacity": shard_capacity,
+                    "capacity_items": capacity_items // num_shards,
+                    "capacity_ts": capacity_ts // num_shards,
+                    "capacity_bytes": capacity_bytes // num_shards,
                     "storage_unit": StorageUnit.FRAGMENTS,
                     "storage_location": storage_location,
                 },
@@ -180,7 +200,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             def new_buffer():
                 self.underlying_buffer_call_args = {}
                 return ReplayBuffer(
-                    self.capacity,
+                    capacity_items=capacity_items // num_shards,
+                    capacity_ts=capacity_ts // num_shards,
+                    capacity_bytes=capacity_bytes // num_shards,
                     storage_unit=StorageUnit.FRAGMENTS,
                     storage_location=storage_location,
                 )

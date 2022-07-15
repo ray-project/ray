@@ -1,5 +1,6 @@
 from typing import Dict
 import logging
+import math
 import numpy as np
 
 from ray.util.timer import _Timer
@@ -37,7 +38,9 @@ class MultiAgentPrioritizedReplayBuffer(
 
     def __init__(
         self,
-        capacity: int = 10000,
+        capacity_items=10000,
+        capacity_ts: int = math.inf,
+        capacity_bytes: int = math.inf,
         storage_unit: str = "timesteps",
         storage_location: str = "in_memory",
         num_shards: int = 1,
@@ -56,7 +59,16 @@ class MultiAgentPrioritizedReplayBuffer(
         """Initializes a MultiAgentReplayBuffer instance.
 
         Args:
-            capacity: The capacity of the buffer, measured in `storage_unit`.
+            capacity_items: Maximum number of items to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones. The number has to be finite in order to keep track of the
+                item hit count.
+            capacity_ts: Maximum number of timesteps to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
+            capacity_bytes: Maximum number of bytes to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
@@ -130,10 +142,11 @@ class MultiAgentPrioritizedReplayBuffer(
                 "beta": prioritized_replay_beta,
             }
 
-        shard_capacity = capacity // num_shards
         MultiAgentReplayBuffer.__init__(
             self,
-            capacity=shard_capacity,
+            capacity_items=capacity_items,
+            capacity_ts=capacity_ts,
+            capacity_bytes=capacity_bytes,
             storage_unit=storage_unit,
             storage_location=storage_location,
             replay_sequence_override=replay_sequence_override,

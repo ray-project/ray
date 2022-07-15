@@ -39,7 +39,7 @@ class TestStorage(unittest.TestCase):
         batch_size = 5
         buffer_size = 15
 
-        storage = InMemoryStorage(capacity=buffer_size)
+        storage = InMemoryStorage(capacity_ts=buffer_size)
 
         # Test add/sample
         self._add_data_to_storage(storage, batch_size=batch_size, num_batches=1)
@@ -48,7 +48,7 @@ class TestStorage(unittest.TestCase):
         assert len(storage) == 1
         assert storage.num_timesteps_added == 5
         assert storage.num_timesteps == 5
-        assert storage._offset_idx == 0
+        assert storage._oldest_item_idx == 0
         assert storage.eviction_started is False
 
         # Retrieving the item should yield the first batch
@@ -61,7 +61,7 @@ class TestStorage(unittest.TestCase):
         assert len(storage) == 3
         assert storage.num_timesteps_added == 15
         assert storage.num_timesteps == 15
-        assert storage._offset_idx == 0
+        assert storage._oldest_item_idx == 0
         assert storage.eviction_started is False
 
         self._add_data_to_storage(storage, batch_size=batch_size, num_batches=1)
@@ -70,7 +70,7 @@ class TestStorage(unittest.TestCase):
         assert len(storage) == 3
         assert storage.num_timesteps_added == 20
         assert storage.num_timesteps == 15
-        assert storage._offset_idx == 1
+        assert storage._oldest_item_idx == 1
         assert storage.eviction_started is True
 
     def test_add_and_set(self):
@@ -82,28 +82,28 @@ class TestStorage(unittest.TestCase):
         batch_size = 5
         buffer_size = 15
 
-        storage = InMemoryStorage(capacity=buffer_size)
+        storage = InMemoryStorage(capacity_ts=buffer_size)
 
         # Test add
         self._add_data_to_storage(storage, batch_size=batch_size, num_batches=2)
         assert len(storage) == 2
         assert storage.num_timesteps_added == 2 * 5
         assert storage.num_timesteps == 2 * 5
-        assert storage._offset_idx == 0
+        assert storage._oldest_item_idx == 0
         assert storage.eviction_started is False
 
         self._add_data_to_storage(storage, batch_size=batch_size, num_batches=1)
         assert len(storage) == 3
         assert storage.num_timesteps_added == 3 * 5
         assert storage.num_timesteps == 3 * 5
-        assert storage._offset_idx == 0
+        assert storage._oldest_item_idx == 0
         assert storage.eviction_started is False
 
         self._add_data_to_storage(storage, batch_size=batch_size, num_batches=1)
         assert len(storage) == 3
         assert storage.num_timesteps_added == 4 * 5
         assert storage.num_timesteps == 3 * 5
-        assert storage._offset_idx == 1
+        assert storage._oldest_item_idx == 1
         assert storage.eviction_started is True
 
         # Test set/get item
@@ -117,12 +117,12 @@ class TestStorage(unittest.TestCase):
 
         # Test set/get state
         state = storage.get_state()
-        other_storage = InMemoryStorage(capacity=buffer_size)
+        other_storage = InMemoryStorage(capacity_ts=buffer_size)
         self._add_data_to_storage(other_storage, 1)
         other_storage.set_state(state)
 
         assert other_storage._samples == storage._samples
-        assert other_storage._offset_idx == storage._offset_idx
+        assert other_storage._oldest_item_idx == storage._oldest_item_idx
         assert other_storage._num_timesteps_added == storage._num_timesteps_added
         assert other_storage._num_timesteps == storage._num_timesteps
         assert other_storage.eviction_started == storage.eviction_started
@@ -131,23 +131,23 @@ class TestStorage(unittest.TestCase):
 
     def test_index_conversion(self):
         """Test conversion between external and internal storage indices."""
-        storage = InMemoryStorage(43)
+        storage = InMemoryStorage(capacity_ts=43)
 
         for i in range(len(storage)):
             i_idx = storage._get_internal_index(i)
             e_idx = storage._get_external_index(i_idx)
             assert (i % len(storage)) == e_idx
 
-        for i in range(storage.capacity):
+        for i in range(storage.capacity_items):
             e_idx = storage._get_external_index(i)
             i_idx = storage._get_internal_index(e_idx)
-            assert (i % storage.capacity) == i_idx
+            assert (i % storage.capacity_items) == i_idx
 
         self._add_data_to_storage(storage, batch_size=5, num_batches=3)
         assert len(storage) == 3
         assert storage.num_timesteps_added == 3 * 5
         assert storage.num_timesteps == 3 * 5
-        assert storage._offset_idx == 0
+        assert storage._oldest_item_idx == 0
         assert storage.eviction_started is False
 
         for i in range(len(storage)):
@@ -155,16 +155,16 @@ class TestStorage(unittest.TestCase):
             e_idx = storage._get_external_index(i_idx)
             assert (i % len(storage)) == e_idx
 
-        for i in range(storage.capacity):
+        for i in range(storage.capacity_items):
             e_idx = storage._get_external_index(i)
             i_idx = storage._get_internal_index(e_idx)
-            assert (i % storage.capacity) == i_idx
+            assert (i % storage.capacity_items) == i_idx
 
         self._add_data_to_storage(storage, batch_size=10, num_batches=3)
         assert len(storage) == 5
         assert storage.num_timesteps_added == 3 * 5 + 3 * 10
         assert storage.num_timesteps == 2 * 5 + 3 * 10
-        assert storage._offset_idx == 1
+        assert storage._oldest_item_idx == 1
         assert storage.eviction_started is True
 
         for i in range(len(storage)):
@@ -172,17 +172,17 @@ class TestStorage(unittest.TestCase):
             e_idx = storage._get_external_index(i_idx)
             assert (i % len(storage)) == e_idx
 
-        for i in range(storage.capacity):
+        for i in range(storage.capacity_items):
             e_idx = storage._get_external_index(i)
             i_idx = storage._get_internal_index(e_idx)
-            assert (i % storage.capacity) == i_idx
+            assert (i % storage.capacity_items) == i_idx
 
     def test_memory_and_disk_behavior(self):
         """Apply same operations to `InMemoryStorage` and `OnDiskStorage`
         and check if both storages behave the same.
         """
-        m_storage = InMemoryStorage(100)
-        d_storage = OnDiskStorage(100)
+        m_storage = InMemoryStorage(capacity_ts=100)
+        d_storage = OnDiskStorage(capacity_ts=100)
 
         self._add_data_to_storage(m_storage, batch_size=10, num_batches=3)
         for b in m_storage:
@@ -199,7 +199,7 @@ class TestStorage(unittest.TestCase):
         assert m_storage.eviction_started is True
         d_storage.add(m_storage[len(m_storage) - 1])
 
-        assert m_storage._offset_idx == d_storage._offset_idx
+        assert m_storage._oldest_item_idx == d_storage._oldest_item_idx
         assert m_storage._num_timesteps_added == d_storage._num_timesteps_added
         assert m_storage._num_timesteps == d_storage._num_timesteps
         assert m_storage.eviction_started == d_storage.eviction_started
@@ -211,8 +211,8 @@ class TestStorage(unittest.TestCase):
         and `dynamic` allocation plan and check if both storages behave
         the same.
         """
-        m_storage = InMemoryStorage(100, "one-time")
-        d_storage = InMemoryStorage(100, "dynamic")
+        m_storage = InMemoryStorage(capacity_ts=100, allocation_plan="one-time")
+        d_storage = InMemoryStorage(capacity_ts=100, allocation_plan="dynamic")
 
         self._add_data_to_storage(m_storage, batch_size=10, num_batches=3)
         for b in m_storage:
@@ -229,7 +229,7 @@ class TestStorage(unittest.TestCase):
         assert m_storage.eviction_started is True
         d_storage.add(m_storage[len(m_storage) - 1])
 
-        assert m_storage._offset_idx == d_storage._offset_idx
+        assert m_storage._oldest_item_idx == d_storage._oldest_item_idx
         assert m_storage._num_timesteps_added == d_storage._num_timesteps_added
         assert m_storage._num_timesteps == d_storage._num_timesteps
         assert m_storage.eviction_started == d_storage.eviction_started
@@ -238,7 +238,7 @@ class TestStorage(unittest.TestCase):
 
     def test_slicing(self):
         """Create slices of a storage."""
-        storage = InMemoryStorage(100)
+        storage = InMemoryStorage(capacity_ts=100)
         self._add_data_to_storage(storage, batch_size=10, num_batches=7)
 
         # Create double view which contains storage / ring buffer twice

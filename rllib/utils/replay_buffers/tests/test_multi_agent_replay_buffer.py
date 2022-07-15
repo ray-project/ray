@@ -85,7 +85,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
 
         # Test lockstep mode with different policy ids using MultiAgentBatches
         buffer = MultiAgentReplayBuffer(
-            capacity=10, replay_mode="independent", learning_starts=0, num_shards=1
+            capacity_ts=10, replay_mode="independent", learning_starts=0, num_shards=1
         )
 
         self._add_multi_agent_batch_to_buffer(buffer, num_policies=1, num_batches=1)
@@ -103,7 +103,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         buffer_size = 30
 
         buffer = MultiAgentReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             replay_mode="lockstep",
             learning_starts=0,
             num_shards=1,
@@ -138,7 +138,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         self.batch_id = 0
 
         buffer = MultiAgentReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             replay_mode="independent",
             storage_unit="sequences",
             replay_sequence_length=2,
@@ -186,7 +186,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         self.batch_id = 0
 
         buffer = MultiAgentReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             replay_mode="independent",
             learning_starts=0,
             num_shards=1,
@@ -232,7 +232,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         num_batches = 20
 
         buffer = MultiAgentReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             replay_mode="lockstep",
             learning_starts=0,
             num_shards=1,
@@ -278,7 +278,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         num_batches = 1
 
         buffer = MultiAgentReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             replay_mode="independent",
             learning_starts=0,
             num_shards=1,
@@ -300,7 +300,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         num_batches = 1
 
         buffer = MultiAgentReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             replay_mode="independent",
             learning_starts=0,
             num_shards=1,
@@ -313,7 +313,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         state = buffer.get_state()
 
         another_buffer = MultiAgentReplayBuffer(
-            capacity=buffer_size,
+            capacity_ts=buffer_size,
             replay_mode="independent",
             learning_starts=0,
             num_shards=1,

@@ -1,6 +1,7 @@
 import collections
 import logging
 import random
+import math
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -43,7 +44,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
     Examples:
         # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
-        >>> buffer = MultiAgentMixInReplayBuffer(capacity=100,
+        >>> buffer = MultiAgentMixInReplayBuffer(capacity_ts=100,
         ...                                      replay_ratio=0.66)
         >>> buffer.add(<A>)
         >>> buffer.add(<B>)
@@ -73,7 +74,9 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
     def __init__(
         self,
-        capacity: int = 10000,
+        capacity_items: int = 10000,
+        capacity_ts: int = math.inf,
+        capacity_bytes: int = math.inf,
         storage_unit: str = "timesteps",
         storage_location: str = "in_memory",
         num_shards: int = 1,
@@ -93,7 +96,16 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         """Initializes MultiAgentMixInReplayBuffer instance.
 
         Args:
-            capacity: The capacity of the buffer, measured in `storage_unit`.
+            capacity_items: Maximum number of items to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones. The number has to be finite in order to keep track of the
+                item hit count.
+            capacity_ts: Maximum number of timesteps to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
+            capacity_bytes: Maximum number of bytes to store in this FIFO buffer.
+                After reaching this number, older samples will be dropped to make space
+                for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
@@ -151,7 +163,9 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
         MultiAgentPrioritizedReplayBuffer.__init__(
             self,
-            capacity=capacity,
+            capacity_items=capacity_items,
+            capacity_ts=capacity_ts,
+            capacity_bytes=capacity_bytes,
             storage_unit=storage_unit,
             storage_location=storage_location,
             num_shards=num_shards,

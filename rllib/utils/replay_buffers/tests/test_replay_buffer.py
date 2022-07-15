@@ -39,7 +39,7 @@ class TestReplayBuffer(unittest.TestCase):
         batch_size = 5
         buffer_size = 15
 
-        buffer = ReplayBuffer(capacity=buffer_size, storage_unit="fragments")
+        buffer = ReplayBuffer(capacity_ts=buffer_size, storage_unit="fragments")
 
         # Test add/sample
         self._add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
@@ -48,7 +48,7 @@ class TestReplayBuffer(unittest.TestCase):
         assert len(buffer) == 1
         assert buffer._storage.num_timesteps_added == 5
         assert buffer._storage.num_timesteps == 5
-        assert buffer._storage._offset_idx == 0
+        assert buffer._storage._oldest_item_idx == 0
         assert buffer._storage.eviction_started is False
 
         # Sampling from it now should yield the first batch
@@ -64,7 +64,7 @@ class TestReplayBuffer(unittest.TestCase):
         assert len(buffer) == 3
         assert buffer._storage.num_timesteps_added == 15
         assert buffer._storage.num_timesteps == 15
-        assert buffer._storage._offset_idx == 0
+        assert buffer._storage._oldest_item_idx == 0
         assert buffer._storage.eviction_started is False
 
         self._add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
@@ -73,7 +73,7 @@ class TestReplayBuffer(unittest.TestCase):
         assert len(buffer) == 3
         assert buffer._storage.num_timesteps_added == 20
         assert buffer._storage.num_timesteps == 15
-        assert buffer._storage._offset_idx == 1
+        assert buffer._storage._oldest_item_idx == 1
         assert buffer._storage.eviction_started is True
 
     def test_multi_agent_batches(self):
@@ -113,7 +113,7 @@ class TestReplayBuffer(unittest.TestCase):
                 batch = MultiAgentBatch(policy_batches, num_batches * 2)
                 buffer.add(batch, **kwargs)
 
-        buffer = ReplayBuffer(capacity=100, storage_unit="fragments")
+        buffer = ReplayBuffer(capacity_ts=100, storage_unit="fragments")
 
         # Test add/sample
         _add_multi_agent_batch_to_buffer(buffer, num_policies=2, num_batches=2)
@@ -122,7 +122,7 @@ class TestReplayBuffer(unittest.TestCase):
         assert len(buffer) == 2
         assert buffer._storage.num_timesteps_added == 8
         assert buffer._storage.num_timesteps == 8
-        assert buffer._storage._offset_idx == 0
+        assert buffer._storage._oldest_item_idx == 0
         assert buffer._storage.eviction_started is False
 
         # Sampling three times should yield 3 batches of 5 timesteps each
@@ -137,7 +137,7 @@ class TestReplayBuffer(unittest.TestCase):
         assert len(buffer) == 5
         assert buffer._storage.num_timesteps_added == 26
         assert buffer._storage.num_timesteps == 26
-        assert buffer._storage._offset_idx == 0
+        assert buffer._storage._oldest_item_idx == 0
 
     def test_timesteps_unit(self):
         """Tests adding, sampling, get-/set state, and eviction with
@@ -148,7 +148,7 @@ class TestReplayBuffer(unittest.TestCase):
         batch_size = 5
         buffer_size = 15
 
-        buffer = ReplayBuffer(capacity=buffer_size)
+        buffer = ReplayBuffer(capacity_ts=buffer_size)
 
         # Test add/sample
         self._add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
@@ -169,12 +169,14 @@ class TestReplayBuffer(unittest.TestCase):
 
         # Test set/get state
         state = buffer.get_state()
-        other_buffer = ReplayBuffer(capacity=buffer_size)
+        other_buffer = ReplayBuffer(capacity_ts=buffer_size)
         self._add_data_to_buffer(other_buffer, 1)
         other_buffer.set_state(state)
 
         assert other_buffer._storage._samples == buffer._storage._samples
-        assert other_buffer._storage._offset_idx == buffer._storage._offset_idx
+        assert (
+            other_buffer._storage._oldest_item_idx == buffer._storage._oldest_item_idx
+        )
         assert (
             other_buffer._storage._num_timesteps_added
             == buffer._storage._num_timesteps_added
@@ -189,7 +191,7 @@ class TestReplayBuffer(unittest.TestCase):
 
     def test_sequences_unit(self):
         """Tests adding, sampling and eviction of sequences."""
-        buffer = ReplayBuffer(capacity=10, storage_unit="sequences")
+        buffer = ReplayBuffer(capacity_ts=10, storage_unit="sequences")
 
         batches = [
             SampleBatch(
@@ -256,7 +258,7 @@ class TestReplayBuffer(unittest.TestCase):
         assert len(buffer) == 3  # now contains batches 4 and 5, batches 1, 2, 3 removed
         assert buffer._storage.num_timesteps_added == sum(range(1, 6))
         assert buffer._storage.num_timesteps == 9  # one timestepp less than allowed
-        assert buffer._storage._offset_idx == 3  # oldest batch is batch 4
+        assert buffer._storage._oldest_item_idx == 3  # oldest batch is batch 4
         assert buffer._storage.eviction_started is True
 
         # The first two batches should now not be sampled anymore,
@@ -277,7 +279,7 @@ class TestReplayBuffer(unittest.TestCase):
 
     def test_episodes_unit(self):
         """Tests adding, sampling, and eviction of episodes."""
-        buffer = ReplayBuffer(capacity=18, storage_unit="episodes")
+        buffer = ReplayBuffer(capacity_ts=18, storage_unit="episodes")
 
         batches = [
             SampleBatch(
@@ -373,8 +375,8 @@ class TestReplayBuffer(unittest.TestCase):
         # timesteps added in total, 2 of which were discarded
         assert len(buffer) == 6
         assert buffer._storage.num_timesteps_added == 4 * 6 - 2
-        assert buffer._storage.num_timesteps == buffer._storage.capacity
-        assert buffer._storage._offset_idx == 1
+        assert buffer._storage.num_timesteps == buffer._storage.capacity_ts
+        assert buffer._storage._oldest_item_idx == 1
         assert buffer._storage.eviction_started is True
 
         num_sampled_dict = {_id: 0 for _id in range(8)}
