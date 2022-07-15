@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import asdict
 from typing import Callable, Optional
@@ -411,6 +412,18 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_summary_api(self._state_api.summarize_objects, req)
+
+    @routes.get("/api/v0/delay/{delay_s}")
+    async def delayed_response(self, req: aiohttp.web.Request):
+        """Testing only. Response after a specified delay."""
+        delay = int(req.match_info.get("delay_s", 10))
+        await asyncio.sleep(delay)
+        return self._reply(
+            success=True,
+            error_message="",
+            result={},
+            partial_failure_warning=None,
+        )
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
