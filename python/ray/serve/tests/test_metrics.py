@@ -151,7 +151,9 @@ def test_actor_summary(serve_instance):
     serve.run(f.bind())
     actors = state_api.list_actors()
     class_names = {actor["class_name"] for actor in actors}
-    assert class_names == {"ServeController", "HTTPProxyActor", "ServeReplica:f"}
+    assert class_names.issuperset(
+        {"ServeController", "HTTPProxyActor", "ServeReplica:f"}
+    )
 
 
 if __name__ == "__main__":
