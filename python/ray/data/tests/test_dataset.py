@@ -1655,16 +1655,12 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     # Input validation.
     # Batch size must be given for local shuffle.
     with pytest.raises(ValueError):
-        list(ray.data.range(100).iter_batches(shuffle=True))
+        list(ray.data.range(100).iter_batches(local_shuffle_buffer_size=10))
 
     # Shuffle buffer min size must be at least as large as batch size.
     with pytest.raises(ValueError):
         list(
-            ray.data.range(100).iter_batches(
-                batch_size=10,
-                shuffle=True,
-                shuffle_buffer_min_size=5,
-            )
+            ray.data.range(100).iter_batches(batch_size=10, local_shuffle_buffer_size=5)
         )
 
     def range(n, parallelism=200):
@@ -1697,30 +1693,17 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
 
     base = range(100).take_all()
 
-    # Implicit shuffle buffer minimum size.
-    r1 = unbatch(range(100, parallelism=10).iter_batches(batch_size=3, shuffle=True))
-    r2 = unbatch(range(100, parallelism=10).iter_batches(batch_size=3, shuffle=True))
-    # Check randomness of shuffle.
-    assert r1 != r2, (r1, r2)
-    assert r1 != base
-    assert r2 != base
-    # Check content.
-    assert sort(r1) == sort(base)
-    assert sort(r2) == sort(base)
-
     # Explicit shuffle buffer minimum size.
     r1 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=3,
-            shuffle=True,
-            shuffle_buffer_min_size=25,
+            local_shuffle_buffer_size=25,
         )
     )
     r2 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=3,
-            shuffle=True,
-            shuffle_buffer_min_size=25,
+            local_shuffle_buffer_size=25,
         )
     )
     # Check randomness of shuffle.
@@ -1735,15 +1718,15 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     r1 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=3,
-            shuffle=True,
-            shuffle_seed=0,
+            local_shuffle_buffer_size=25,
+            local_shuffle_seed=0,
         )
     )
     r2 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=3,
-            shuffle=True,
-            shuffle_seed=0,
+            local_shuffle_buffer_size=25,
+            local_shuffle_seed=0,
         )
     )
     # Check randomness of shuffle.
@@ -1753,8 +1736,18 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     assert sort(r1) == sort(base)
 
     # Single block.
-    r1 = unbatch(range(100, parallelism=1).iter_batches(batch_size=3, shuffle=True))
-    r2 = unbatch(range(100, parallelism=1).iter_batches(batch_size=3, shuffle=True))
+    r1 = unbatch(
+        range(100, parallelism=1).iter_batches(
+            batch_size=3,
+            local_shuffle_buffer_size=25,
+        )
+    )
+    r2 = unbatch(
+        range(100, parallelism=1).iter_batches(
+            batch_size=3,
+            local_shuffle_buffer_size=25,
+        )
+    )
     # Check randomness of shuffle.
     assert r1 != r2, (r1, r2)
     assert r1 != base
@@ -1764,8 +1757,18 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     assert sort(r2) == sort(base)
 
     # Single-row blocks.
-    r1 = unbatch(range(100, parallelism=100).iter_batches(batch_size=3, shuffle=True))
-    r2 = unbatch(range(100, parallelism=100).iter_batches(batch_size=3, shuffle=True))
+    r1 = unbatch(
+        range(100, parallelism=100).iter_batches(
+            batch_size=3,
+            local_shuffle_buffer_size=25,
+        )
+    )
+    r2 = unbatch(
+        range(100, parallelism=100).iter_batches(
+            batch_size=3,
+            local_shuffle_buffer_size=25,
+        )
+    )
     # Check randomness of shuffle.
     assert r1 != r2, (r1, r2)
     assert r1 != base
@@ -1778,15 +1781,13 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     r1 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=3,
-            shuffle=True,
-            shuffle_buffer_min_size=200,
+            local_shuffle_buffer_size=200,
         )
     )
     r2 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=3,
-            shuffle=True,
-            shuffle_buffer_min_size=200,
+            local_shuffle_buffer_size=200,
         )
     )
     # Check randomness of shuffle.
@@ -1798,8 +1799,18 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     assert sort(r2) == sort(base)
 
     # Batch size larger than block.
-    r1 = unbatch(range(100, parallelism=20).iter_batches(batch_size=12, shuffle=True))
-    r2 = unbatch(range(100, parallelism=20).iter_batches(batch_size=12, shuffle=True))
+    r1 = unbatch(
+        range(100, parallelism=20).iter_batches(
+            batch_size=12,
+            local_shuffle_buffer_size=25,
+        )
+    )
+    r2 = unbatch(
+        range(100, parallelism=20).iter_batches(
+            batch_size=12,
+            local_shuffle_buffer_size=25,
+        )
+    )
     # Check randomness of shuffle.
     assert r1 != r2, (r1, r2)
     assert r1 != base
@@ -1809,8 +1820,18 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     assert sort(r2) == sort(base)
 
     # Batch size larger than dataset.
-    r1 = unbatch(range(100, parallelism=10).iter_batches(batch_size=200, shuffle=True))
-    r2 = unbatch(range(100, parallelism=10).iter_batches(batch_size=200, shuffle=True))
+    r1 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=200,
+            local_shuffle_buffer_size=400,
+        )
+    )
+    r2 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=200,
+            local_shuffle_buffer_size=400,
+        )
+    )
     # Check randomness of shuffle.
     assert r1 != r2, (r1, r2)
     assert r1 != base
@@ -1823,14 +1844,14 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     r1 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=7,
-            shuffle=True,
+            local_shuffle_buffer_size=21,
             drop_last=True,
         )
     )
     r2 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=7,
-            shuffle=True,
+            local_shuffle_buffer_size=21,
             drop_last=True,
         )
     )
@@ -1852,7 +1873,7 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
 
     # Test empty dataset.
     ds = ray.data.from_items([])
-    r1 = unbatch(ds.iter_batches(batch_size=2, shuffle=True))
+    r1 = unbatch(ds.iter_batches(batch_size=2, local_shuffle_buffer_size=10))
     assert len(r1) == 0
     assert r1 == ds.take()
 

@@ -38,7 +38,6 @@ def batch_blocks(
     batch_size: Optional[int] = None,
     batch_format: str = "native",
     drop_last: bool = False,
-    shuffle: bool = False,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
 ) -> Iterator[BatchType]:
@@ -64,22 +63,16 @@ def batch_blocks(
             select ``pandas.DataFrame`` or "pyarrow" to select
             ``pyarrow.Table``. Default is "native".
         drop_last: Whether to drop the last batch if it's incomplete.
-        shuffle: Whether to randomly shuffle the data using a local in-memory
-            shuffle buffer. This can only be used if a ``batch_size`` is specified.
-            This is a light-weight alternative to the global `.random_shuffle()`
-            operation; this shuffle will be less random but will be faster and less
-            resource-intensive.
-        shuffle_buffer_min_size: Minimum number of rows that must be in the local
-            in-memory shuffle buffer in order to yield a batch. This must be greater
-            than or equal to ``batch_size``. Increasing this will improve the randomness
-            of the shuffle but may increase the latency to the first batch.
-            Default is 4 * batch_size.
+        shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
+            local in-memory shuffle buffer, and this value will serve as the minimum
+            number of rows that must be in the local in-memory shuffle buffer in order
+            to yield a batch.
         shuffle_seed: The seed to use for the local random shuffle.
 
     Returns:
         An iterator over record batches.
     """
-    if shuffle:
+    if shuffle_buffer_min_size is not None:
         batcher = ShufflingBatcher(
             batch_size=batch_size,
             shuffle_buffer_min_size=shuffle_buffer_min_size,

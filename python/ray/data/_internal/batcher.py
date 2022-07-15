@@ -89,7 +89,7 @@ class Batcher(BatcherInterface):
         Returns:
             A batch represented as a Block.
         """
-        assert self.has_batch()
+        assert self.has_batch() or (self._done_adding and self.has_any())
         # If no batch size, short-circuit.
         if self._batch_size is None:
             assert len(self._buffer) == 1
@@ -159,7 +159,7 @@ class ShufflingBatcher(BatcherInterface):
     def __init__(
         self,
         batch_size: Optional[int],
-        shuffle_buffer_min_size: Optional[int] = None,
+        shuffle_buffer_min_size: int,
         shuffle_buffer_capacity: Optional[int] = None,
         shuffle_seed: Optional[int] = None,
     ):
@@ -172,10 +172,6 @@ class ShufflingBatcher(BatcherInterface):
                 than or equal to ``batch_size``. Increasing this will improve the
                 randomness of the shuffle but may increase the latency to the first
                 batch.
-                Default is
-                ``max(min(shuffle_buffer_capacity // 2, shuffle_buffer_capacity -
-                batch_size), batch_size)`` if ``shuffle_buffer_capacity`` is given,
-                otherwise the default is ``4 * batch_size``.
             shuffle_buffer_capacity: Soft maximum number of rows allowed in the local
                 in-memory shuffle buffer. This must be greater than or equal to
                 ``batch_size``. Note that this is a soft max: if the buffer is currently
@@ -189,18 +185,7 @@ class ShufflingBatcher(BatcherInterface):
         if batch_size is None:
             raise ValueError("Must specify a batch_size if using a local shuffle.")
         self._batch_size = batch_size
-        if shuffle_buffer_min_size is None:
-            if shuffle_buffer_capacity is not None:
-                shuffle_buffer_min_size = max(
-                    min(
-                        shuffle_buffer_capacity // 2,
-                        shuffle_buffer_capacity - batch_size,
-                    ),
-                    batch_size,
-                )
-            else:
-                shuffle_buffer_min_size = 4 * batch_size
-        elif shuffle_buffer_min_size < batch_size:
+        if shuffle_buffer_min_size < batch_size:
             raise ValueError(
                 "Shuffle buffer min size must be at least as large as the batch size, "
                 f"but got: shuffle_buffer_min_size={shuffle_buffer_min_size}, "
@@ -287,7 +272,7 @@ class ShufflingBatcher(BatcherInterface):
         Returns:
             A batch represented as a Block.
         """
-        assert self.has_batch()
+        assert self.has_batch() or (self._done_adding and self.has_any())
         # Add rows in the builder to the shuffle buffer.
         if self._builder.num_rows() > 0:
             if self._shuffle_buffer is not None:

@@ -2435,9 +2435,8 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = None,
         batch_format: str = "native",
         drop_last: bool = False,
-        shuffle: bool = False,
-        shuffle_buffer_min_size: Optional[int] = None,
-        shuffle_seed: Optional[int] = None,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
@@ -2459,17 +2458,19 @@ class Dataset(Generic[T]):
                 to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
-            shuffle: Whether to randomly shuffle the data using a local in-memory
-                shuffle buffer. This can only be used if a ``batch_size`` is specified.
-                This is a light-weight alternative to the global `.random_shuffle()`
-                operation; this shuffle will be less random but will be faster and less
-                resource-intensive.
-            shuffle_buffer_min_size: Minimum number of rows that must be in the local
-                in-memory shuffle buffer in order to yield a batch. This must be greater
-                than or equal to ``batch_size``. Increasing this will improve the
-                randomness of the shuffle but may increase the latency to the first
-                batch. Default is 4 * batch_size.
-            shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. This is a light-weight alternative to
+                the global `.random_shuffle()` operation; this shuffle will be less
+                random but will be faster and less resource-intensive. This buffer size
+                must be greater than or equal to ``batch_size``, and therefore
+                ``batch_size`` must also be specified when using local shuffling.
+                Increasing this will improve the randomness of the shuffle but will
+                increase CPU memory utilization and the latency to the first batch. The
+                CPU memory utilization ceiling is the max of the prefetch buffer size
+                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+            local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
             An iterator over record batches.
@@ -2486,9 +2487,8 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
-            shuffle=shuffle,
-            shuffle_buffer_min_size=shuffle_buffer_min_size,
-            shuffle_seed=shuffle_seed,
+            shuffle_buffer_min_size=local_shuffle_buffer_size,
+            shuffle_seed=local_shuffle_seed,
         )
 
         stats.iter_total_s.add(time.perf_counter() - time_start)
@@ -2507,9 +2507,8 @@ class Dataset(Generic[T]):
         batch_size: int = 1,
         prefetch_blocks: int = 0,
         drop_last: bool = False,
-        shuffle: bool = False,
-        shuffle_buffer_min_size: Optional[int] = None,
-        shuffle_seed: Optional[int] = None,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
     ) -> "torch.utils.data.IterableDataset":
@@ -2578,17 +2577,19 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
-            shuffle: Whether to randomly shuffle the data using a local in-memory
-                shuffle buffer. This can only be used if a ``batch_size`` is specified.
-                This is a light-weight alternative to the global `.random_shuffle()`
-                operation; this shuffle will be less random but will be faster and less
-                resource-intensive.
-            shuffle_buffer_min_size: Minimum number of rows that must be in the local
-                in-memory shuffle buffer in order to yield a batch. This must be greater
-                than or equal to ``batch_size``. Increasing this will improve the
-                randomness of the shuffle but may increase the latency to the first
-                batch. Default is 4 * batch_size.
-            shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. This is a light-weight alternative to
+                the global `.random_shuffle()` operation; this shuffle will be less
+                random but will be faster and less resource-intensive. This buffer size
+                must be greater than or equal to ``batch_size``, and therefore
+                ``batch_size`` must also be specified when using local shuffling.
+                Increasing this will improve the randomness of the shuffle but will
+                increase CPU memory utilization and the latency to the first batch. The
+                CPU memory utilization ceiling is the max of the prefetch buffer size
+                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+            local_shuffle_seed: The seed to use for the local random shuffle.
             unsqueeze_label_tensor: If set to True, the label tensor
                 will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
                 be left as is, that is (N, ). In general, regression loss
@@ -2647,9 +2648,8 @@ class Dataset(Generic[T]):
                 batch_format="pandas",
                 prefetch_blocks=prefetch_blocks,
                 drop_last=drop_last,
-                shuffle=shuffle,
-                shuffle_buffer_min_size=shuffle_buffer_min_size,
-                shuffle_seed=shuffle_seed,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
+                local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
                     label_tensor = convert_pandas_to_torch_tensor(
@@ -2699,9 +2699,8 @@ class Dataset(Generic[T]):
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
-        shuffle: bool = False,
-        shuffle_buffer_min_size: Optional[int] = None,
-        shuffle_seed: Optional[int] = None,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -2759,17 +2758,19 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
-            shuffle: Whether to randomly shuffle the data using a local in-memory
-                shuffle buffer. This can only be used if a ``batch_size`` is specified.
-                This is a light-weight alternative to the global `.random_shuffle()`
-                operation; this shuffle will be less random but will be faster and less
-                resource-intensive.
-            shuffle_buffer_min_size: Minimum number of rows that must be in the local
-                in-memory shuffle buffer in order to yield a batch. This must be greater
-                than or equal to ``batch_size``. Increasing this will improve the
-                randomness of the shuffle but may increase the latency to the first
-                batch. Default is 4 * batch_size.
-            shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. This is a light-weight alternative to
+                the global `.random_shuffle()` operation; this shuffle will be less
+                random but will be faster and less resource-intensive. This buffer size
+                must be greater than or equal to ``batch_size``, and therefore
+                ``batch_size`` must also be specified when using local shuffling.
+                Increasing this will improve the randomness of the shuffle but will
+                increase CPU memory utilization and the latency to the first batch. The
+                CPU memory utilization ceiling is the max of the prefetch buffer size
+                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+            local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
             A tf.data.Dataset.
@@ -2795,9 +2796,8 @@ class Dataset(Generic[T]):
                 batch_size=batch_size,
                 batch_format="pandas",
                 drop_last=drop_last,
-                shuffle=shuffle,
-                shuffle_buffer_min_size=shuffle_buffer_min_size,
-                shuffle_seed=shuffle_seed,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
+                local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
                     targets = convert_pandas_to_tf_tensor(batch[[label_column]])
