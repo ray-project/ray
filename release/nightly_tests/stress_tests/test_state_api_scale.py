@@ -100,7 +100,7 @@ def test_many_tasks(num_tasks: int):
 
 
 def test_many_actors(num_actors: int):
-    @ray.remote(num_cpus=0.00001)
+    @ray.remote(num_cpus=0.1)
     class TestActor:
         def running(self):
             return True
