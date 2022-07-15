@@ -45,7 +45,7 @@ class ImageFolderDatasource(BinaryDatasource):
         >>> import ray
         >>> from ray.data.datasource import ImageFolderDatasource
         >>>
-        >>> ds = ray.data.read_datasource(
+        >>> ds = ray.data.read_datasource(  # doctest: +SKIP
         ...     ImageFolderDatasource(),
         ...     paths=["/data/imagenet/train"]
         ... )
@@ -62,16 +62,16 @@ class ImageFolderDatasource(BinaryDatasource):
         >>> import ray
         >>> from ray.data.preprocessors import OrdinalEncoder
         >>>
-        >>> ds = ray.data.read_datasource(
+        >>> ds = ray.data.read_datasource(  # doctest: +SKIP
         ...     ImageFolderDatasource(),
         ...     paths=["/data/imagenet/train"]
         ... )
-        >>> oe = OrdinalEncoder(columns=["label"])
+        >>> oe = OrdinalEncoder(columns=["label"])  # doctest: +SKIP
         >>>
-        >>> ds = oe.fit_transform(ds)
+        >>> ds = oe.fit_transform(ds)  # doctest: +SKIP
         >>>
-        >>> sample = ds.take(1)[0]
-        >>> sample["label"]
+        >>> sample = ds.take(1)[0]  # doctest: +SKIP
+        >>> sample["label"]  # doctest: +SKIP
         71
     """  # noqa: E501
 
