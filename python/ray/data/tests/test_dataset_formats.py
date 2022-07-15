@@ -2863,13 +2863,9 @@ def test_read_image_folder(ray_start_regular_shared):
     assert ds.count() == 3
 
     df = ds.to_pandas()
+    assert sorted(df["label"]) == ["cat", "cat", "dog"]
     assert type(df["image"].dtype) is TensorDtype
     assert all(tensor.to_numpy().shape == (32, 32, 3) for tensor in df["image"])
-
-    df = df.sort_values("label")
-    # Targets should be assigned alphabetically to labels.
-    assert df["label"].tolist() == ["cat", "cat", "dog"]
-    assert df["target"].tolist() == [0, 0, 1]
 
 
 def test_read_image_folder_e2e(ray_start_regular_shared):

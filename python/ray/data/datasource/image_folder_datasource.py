@@ -52,16 +52,6 @@ class ImageFolderDatasource(BinaryDatasource):
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self.root = paths[0]
 
-        from pyarrow.fs import FileType, FileSelector
-
-        labels = [
-            file_info.base_name
-            for file_info in filesystem.get_file_info(FileSelector(self.root))
-            if file_info.type is FileType.Directory
-        ]
-        labels.sort()  # Sort labels so that targets are consistent.
-        self.label_to_target = {label: labels.index(label) for label in labels}
-
         return super().create_reader(
             paths=paths,
             filesystem=filesystem,
@@ -80,13 +70,11 @@ class ImageFolderDatasource(BinaryDatasource):
 
         image = iio.imread(data)
         label = _get_class_from_path(path, self.root)
-        target = self.label_to_target[label]
 
         return pd.DataFrame(
             {
                 "image": TensorArray([np.array(image)]),
                 "label": [label],
-                "target": [target],
             }
         )
 
