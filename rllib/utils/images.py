@@ -20,8 +20,8 @@ if cv2 is None:
         from skimage import color, io, transform
 
         logger.debug("CV2 not found for image processing, using Skimage.")
-    except ImportError:
-        raise ModuleNotFoundError("Either scikit-image or opencv is required")
+    except ImportError as e:
+        raise ModuleNotFoundError("Either scikit-image or opencv is required") from e
 
 
 @DeveloperAPI

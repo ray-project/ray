@@ -450,11 +450,11 @@ def rollout(
         multiagent = False
         try:
             policy_map = {DEFAULT_POLICY_ID: agent.policy}
-        except AttributeError:
+        except AttributeError as e:
             raise AttributeError(
                 "Agent ({}) does not have a `policy` property! This is needed "
                 "for performing (trained) agent rollouts.".format(agent)
-            )
+            ) from e
         use_lstm = {DEFAULT_POLICY_ID: False}
 
     action_init = {

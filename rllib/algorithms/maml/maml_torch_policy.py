@@ -23,14 +23,12 @@ logger = logging.getLogger(__name__)
 
 try:
     import higher
-except (ImportError, ModuleNotFoundError):
+except (ImportError, ModuleNotFoundError) as e:
     raise ImportError(
-        (
-            "The MAML and MB-MPO algorithms require the `higher` module to be "
-            "installed! However, there was no installation found. You can install it "
-            "via `pip install higher`."
-        )
-    )
+        "The MAML and MB-MPO algorithms require the `higher` module to be "
+        "installed! However, there was no installation found. You can install it "
+        "via `pip install higher`."
+    ) from e
 
 
 def PPOLoss(

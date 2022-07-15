@@ -28,7 +28,7 @@ def with_lock(func: Callable) -> Callable:
                     "Object {} must have a `self._lock` property (assigned "
                     "to a threading.RLock() object in its "
                     "constructor)!".format(self)
-                )
+                ) from e
             raise e
 
     return wrapper

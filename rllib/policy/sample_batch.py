@@ -1337,12 +1337,12 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                 concatd_data[k] = tree.map_structure(
                     _concat_key, *[c[k] for c in concated_samples]
                 )
-        except Exception:
+        except Exception as e:
             raise ValueError(
                 f"Cannot concat data under key '{k}', b/c "
                 "sub-structures under that key don't match. "
                 f"`samples`={samples}"
-            )
+            ) from e
 
     # Return a new (concat'd) SampleBatch.
     return SampleBatch(

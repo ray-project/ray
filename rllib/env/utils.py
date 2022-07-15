@@ -48,5 +48,5 @@ def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
     # decent error message.
     try:
         return gym.make(env_descriptor, **env_context)
-    except gym.error.Error:
-        raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))
+    except gym.error.Error as e:
+        raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor)) from e

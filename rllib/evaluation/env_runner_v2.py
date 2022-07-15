@@ -258,7 +258,7 @@ class EnvRunnerV2:
                     self._base_env.get_sub_environments()[
                         0
                     ]._max_episode_steps = horizon
-                except Exception:
+                except Exception as e:
                     raise ValueError(
                         "Your `horizon` setting ({}) is larger than the Env's own "
                         "timestep limit ({}), which seems to be unsettable! Try "
@@ -266,7 +266,7 @@ class EnvRunnerV2:
                         "large as your wanted `horizon`.".format(
                             horizon, max_episode_steps
                         )
-                    )
+                    ) from e
         # Otherwise, set Trainer's horizon to env's max-steps.
         elif max_episode_steps:
             horizon = max_episode_steps

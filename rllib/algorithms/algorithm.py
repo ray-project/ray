@@ -295,12 +295,12 @@ class Algorithm(Trainable):
         # algos logic (this should be done now inside `training_step`).
         try:
             assert isinstance(self.training_iteration, int)
-        except AssertionError:
+        except AssertionError as e:
             raise AssertionError(
                 "Your Algorithm's `training_iteration` seems to be overridden by your "
                 "custom training logic! To solve this problem, simply rename your "
                 "`self.training_iteration()` method into `self.training_step`."
-            )
+            ) from e
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -1589,10 +1589,10 @@ class Algorithm(Trainable):
                 def env_creator_from_classpath(env_context):
                     try:
                         env_obj = from_config(env_specifier, env_context)
-                    except ValueError:
+                    except ValueError as e:
                         raise EnvError(
                             ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_specifier)
-                        )
+                        ) from e
                     return env_obj
 
                 return env_specifier, env_creator_from_classpath

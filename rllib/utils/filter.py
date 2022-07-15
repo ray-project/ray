@@ -58,8 +58,8 @@ class NoFilter(Filter):
 
         try:
             return np.asarray(x)
-        except Exception:
-            raise ValueError("Failed to convert to array", x)
+        except Exception as e:
+            raise ValueError("Failed to convert to array", x) from e
 
     def apply_changes(self, other: "NoFilter", *args, **kwargs) -> None:
         pass

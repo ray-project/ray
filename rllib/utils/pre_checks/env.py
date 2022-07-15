@@ -77,7 +77,7 @@ def check_env(env: EnvType) -> None:
                 "ExternalMultiAgentEnv, ExternalEnvs or environments that are "
                 "Ray actors."
             )
-    except Exception:
+    except Exception as e:
         actual_error = traceback.format_exc()
         raise ValueError(
             f"{actual_error}\n"
@@ -88,7 +88,7 @@ def check_env(env: EnvType) -> None:
             "`disable_env_checking=True` in your environment config "
             "dictionary. You can run the environment checking module "
             "standalone by calling ray.rllib.utils.check_env([env])."
-        )
+        ) from e
 
 
 @DeveloperAPI

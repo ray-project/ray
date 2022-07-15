@@ -66,10 +66,10 @@ def _convert_to_numpy(x):
 
     try:
         return tf.nest.map_structure(_map, x)
-    except AttributeError:
+    except AttributeError as e:
         raise TypeError(
             ("Object of type {} has no method to convert to numpy.").format(type(x))
-        )
+        ) from e
 
 
 def _convert_eager_inputs(func):
