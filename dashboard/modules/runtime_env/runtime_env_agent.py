@@ -303,10 +303,10 @@ class RuntimeEnvAgent(
                         raise RuntimeError(f"runtime env plugin {name} not found.")
                     # TODO(architkulkarni): implement uri support
                     plugin.validate(runtime_env)
-                    plugin.create("uri not implemented", json.loads(config), context)
+                    plugin.create("uri not implemented", config, context)
                     plugin.modify_context(
                         "uri not implemented",
-                        json.loads(config),
+                        config,
                         context,
                         per_job_logger,
                     )
