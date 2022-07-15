@@ -1,11 +1,13 @@
 import argparse
 import time
 
+import numpy as np
 import pandas as pd
 
 import ray
 from ray.air.config import DatasetConfig
 from ray.air.util.check_ingest import DummyTrainer
+from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.data.preprocessors import BatchMapper
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor, to_air_checkpoint
@@ -74,6 +76,7 @@ def run_infer_bulk(
     start = time.time()
 
     if infer_gpu:
+        from PIL import Image
         from torchvision import transforms
         from torchvision.models import resnet18
 
@@ -88,7 +91,14 @@ def run_infer_bulk(
                     ),
                 ]
             )
-            df["image"] = df["image"].map(preprocess)
+            images = df["__value__"].map(
+                lambda i: preprocess(
+                    Image.fromarray(np.random.rand(1024, 768, 3).astype(np.uint8))
+                )
+            )
+            images = [np.array(i) for i in images]
+            df["image"] = TensorArray(images)
+            del df["__value__"]
             return df
 
         preprocessor = BatchMapper(preprocess)
@@ -111,7 +121,7 @@ def run_infer_bulk(
     if stream:
         result = predictor.predict_pipelined(
             dataset,
-            bytes_per_window=window_size_gb * 1024 * 1024 * 1024,
+            bytes_per_window=int(window_size_gb * 1024 * 1024 * 1024),
             batch_size=1024 // 8,
             min_scoring_workers=num_workers,
             max_scoring_workers=num_workers,
@@ -154,9 +164,9 @@ if __name__ == "__main__":
         "--benchmark", type=str, default="ingest", help="ingest/infer/infer_gpu"
     )
     parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--dataset-size-gb", type=int, default=200)
+    parser.add_argument("--dataset-size-gb", type=float, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
-    parser.add_argument("--window-size-gb", type=int, default=10)
+    parser.add_argument("--window-size-gb", type=float, default=10)
     args = parser.parse_args()
     ds = make_ds(args.dataset_size_gb)
     if args.benchmark == "ingest":
