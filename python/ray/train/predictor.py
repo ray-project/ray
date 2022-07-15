@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Type
+from typing import Dict, Type, Optional
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,7 @@ from ray.air.util.data_batch_conversion import (
     convert_batch_type_to_pandas,
     convert_pandas_to_batch_type,
 )
+from ray.data import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
@@ -70,10 +71,16 @@ class Predictor(abc.ABC):
            :ref:`AIR Checkpoint <air-checkpoint-ref>`.
         3. Optionally ``_predict_arrow`` for better performance when working with
            tensor data to avoid extra copies from Pandas conversions.
+
+    Attributes:
+        preprocessor: The preprocessor to use prior to execution predictions.
     """
 
+    def __init__(self, preprocessor: Optional[Preprocessor]):
+        """Subclasseses must call Predictor.__init__() to set a preprocessor."""
+        self.preprocessor: Optional[Preprocessor] = preprocessor
+
     @classmethod
-    @PublicAPI(stability="alpha")
     @abc.abstractmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
         """Create a specific predictor from a checkpoint.
@@ -87,7 +94,6 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
-    @PublicAPI(stability="alpha")
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
 
@@ -102,13 +108,24 @@ class Predictor(abc.ABC):
         """
         data_df = convert_batch_type_to_pandas(data)
 
-        if getattr(self, "preprocessor", None):
+        if not hasattr(self, "preprocessor"):
+            raise NotImplementedError(
+                "Subclasses of Predictor must call Predictor.__init__(preprocessor)."
+            )
+
+        if self.preprocessor:
             data_df = self.preprocessor.transform_batch(data_df)
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
         return convert_pandas_to_batch_type(
             predictions_df, type=TYPE_TO_ENUM[type(data)]
         )
+
+    def get_preprocessor(self) -> Optional[Preprocessor]:
+        return self.preprocessor
+
+    def set_preprocessor(self, preprocessor: Optional[Preprocessor]) -> None:
+        self.preprocessor = preprocessor
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

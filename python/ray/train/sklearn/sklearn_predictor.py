@@ -33,7 +33,7 @@ class SklearnPredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
     ):
         self.estimator = estimator
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "SklearnPredictor":

@@ -35,7 +35,7 @@ class HuggingFacePredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
     ):
         self.pipeline = pipeline
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
