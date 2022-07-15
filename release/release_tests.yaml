@@ -195,8 +195,7 @@
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 4 --use-gpu
 
     wait_for_nodes:
-      # CPU head node + 4 GPU worker nodes
-      num_nodes: 5
+      num_nodes: 4
 
     type: sdk_command
     file_manager: job
