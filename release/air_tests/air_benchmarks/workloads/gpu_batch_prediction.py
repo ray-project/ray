@@ -18,6 +18,7 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
 
 
+# TODO(jiaodong): Remove this once ImageFolder #24641 merges
 def convert_to_pandas(byte_item_list: List[bytes]) -> pd.DataFrame:
     """
     Convert input bytes into pandas DataFrame with image column and value of
@@ -57,6 +58,7 @@ def main(data_size_gb: int):
     print(f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}")
     start = time.time()
     dataset = ray.data.read_binary_files(paths=data_url)
+    # TODO(jiaodong): Remove this once ImageFolder #24641 merges
     dataset = dataset.map_batches(convert_to_pandas)
 
     model = resnet18(pretrained=True)
