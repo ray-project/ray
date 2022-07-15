@@ -153,6 +153,37 @@
 
   alert: default
 
+# AIR benchmarks for XGBoost CUJ
+- name: air_benchmark_xgboost_cpu_10
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: xgboost_app_config.yaml
+    cluster_compute: xgboost_compute_tpl.yaml
+
+  run:
+    timeout: 36000
+    script: python workloads/xgboost_benchmark.py
+
+    wait_for_nodes:
+      num_nodes: 10
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 1800
+
+  alert: default
+
 # Ray AIR distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_cpu_4x1
   group: AIR tests
