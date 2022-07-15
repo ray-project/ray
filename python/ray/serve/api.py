@@ -11,7 +11,10 @@ from uvicorn.lifespan.on import LifespanOn
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
+from ray.util.annotations import PublicAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.usage import usage_lib
+from ray._private.utils import deprecated
 
 from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient
@@ -44,13 +47,10 @@ from ray.serve.utils import (
     DEFAULT,
     ensure_serialization_context,
     format_actor_name,
-    get_current_node_resource_key,
     get_random_letters,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
 )
-from ray.util.annotations import PublicAPI
-from ray._private.utils import deprecated
 
 logger = logging.getLogger(__file__)
 
@@ -136,20 +136,26 @@ def start(
     if http_options is None:
         http_options = HTTPOptions()
 
+    # Used for scheduling things to the head node explicitly.
+    # Assumes that `serve.start` runs on the head node.
+    head_node_id = ray.get_runtime_context().node_id.hex()
     controller = ServeController.options(
         num_cpus=1 if dedicated_cpu else 0,
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,
         max_task_retries=-1,
-        # Pin Serve controller on the head node.
-        resources={get_current_node_resource_key(): 0.01},
+        # Schedule the controller on the head node with a soft constraint. This
+        # prefers it to run on the head node in most cases, but allows it to be
+        # restarted on other nodes in an HA cluster.
+        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
         namespace=SERVE_NAMESPACE,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
         controller_name,
-        http_options,
-        _checkpoint_path,
+        http_config=http_options,
+        checkpoint_path=_checkpoint_path,
+        head_node_id=head_node_id,
         detached=detached,
     )
 
