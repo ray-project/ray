@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 import urllib
 import urllib.parse
 from datetime import datetime
@@ -648,7 +649,7 @@ def start(
 
         if disable_usage_stats:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
-        usage_lib.show_usage_stats_prompt()
+        usage_lib.show_usage_stats_prompt(cli=True)
         cli_logger.newline()
 
         if port is None:
@@ -2323,7 +2324,13 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     help="Health check for a specific component. Currently supports: "
     "[ray_client_server]",
 )
-def healthcheck(address, redis_password, component):
+@click.option(
+    "--skip-version-check",
+    is_flag=True,
+    default=False,
+    help="Skip comparison of GCS version with local Ray version.",
+)
+def healthcheck(address, redis_password, component, skip_version_check):
     """
     This is NOT a public api.
 
@@ -2334,9 +2341,12 @@ def healthcheck(address, redis_password, component):
 
     if not component:
         try:
-            if ray._private.gcs_utils.check_health(address):
+            if ray._private.gcs_utils.check_health(
+                address, skip_version_check=skip_version_check
+            ):
                 sys.exit(0)
         except Exception:
+            traceback.print_exc()
             pass
         sys.exit(1)
 

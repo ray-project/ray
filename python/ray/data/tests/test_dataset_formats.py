@@ -13,6 +13,7 @@ import pytest
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
+from fsspec.implementations.http import HTTPFileSystem
 from pytest_lazyfixture import lazy_fixture
 
 import ray
@@ -41,6 +42,7 @@ from ray.data.datasource.parquet_datasource import (
     _deserialize_pieces_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
@@ -268,7 +270,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):
-    blocks = ray.data.range(10).get_internal_block_refs()
+    blocks = ray.data.range(10, parallelism=10).get_internal_block_refs()
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
@@ -320,6 +322,14 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds_df = pd.concat([ds_df1, ds_df2])
     df = pd.concat([df1, df2])
     assert ds_df.equals(df)
+
+
+def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
+    ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
+    assert ds.count() > 0
+    # Test auto-resolve of HTTP file system when it is not provided.
+    ds = ray.data.read_text(http_file)
+    assert ds.count() > 0
 
 
 def test_read_example_data(ray_start_regular_shared, tmp_path):
@@ -2517,6 +2527,7 @@ def test_csv_read_partitioned_with_filter_multikey(
             data_path,
             partition_filter=partition_path_filter,
             filesystem=fs,
+            parallelism=100,
         )
         assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
         assert ray.get(kept_file_counter.get.remote()) == 6
