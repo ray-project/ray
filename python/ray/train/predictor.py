@@ -1,9 +1,5 @@
 import abc
-<<<<<<< HEAD
 from typing import Dict, Type, Optional, Callable
-=======
-from typing import Dict, Type, Optional
->>>>>>> e460b6bf9361b23e4cb8b86fcab356b881dc9f48
 
 import numpy as np
 import pandas as pd
@@ -98,7 +94,6 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
-<<<<<<< HEAD
     @staticmethod
     def from_pandas_udf(
         pandas_udf: Callable[[pd.DataFrame], pd.DataFrame]
@@ -113,8 +108,6 @@ class Predictor(abc.ABC):
 
         return PandasUDFPredictor.from_checkpoint(Checkpoint.from_dict({"dummy": 1}))
 
-=======
->>>>>>> e460b6bf9361b23e4cb8b86fcab356b881dc9f48
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
 

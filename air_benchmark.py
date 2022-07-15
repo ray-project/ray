@@ -111,7 +111,6 @@ def run_infer_bulk(
     else:
 
         def fn(batch):
-            print("Running dummy preprocessor")
             return batch * 2
 
         dummy_prep = BatchMapper(fn)

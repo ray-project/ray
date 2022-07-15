@@ -6,7 +6,8 @@ import ray
 from ray.air import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
-from ray.data import Preprocessor, BatchMapper
+from ray.data import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
