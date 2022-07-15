@@ -1,7 +1,7 @@
 import argparse
 import time
 
-import numpy as np
+import pandas as pd
 
 import ray
 from ray.air.checkpoint import Checkpoint
@@ -17,12 +17,12 @@ GiB = 1024 * 1024 * 1024
 class DummyPredictor(Predictor):
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
-        return DummyPredictor()
+        return DummyPredictor(None)
 
-    def predict(self, data, **kwargs):
+    def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         # For 20k records (200GiB), this amounts to 2000 seconds of work.
         time.sleep(len(data) * 0.0001)
-        return np.array([42] * len(data))
+        return pd.DataFrame({"label": [42] * len(data)})
 
 
 def make_ds(size_gb: int):
@@ -77,8 +77,15 @@ def run_ingest_streaming(dataset, num_workers):
 def run_infer_bulk(dataset, num_workers, post=None, stream=False, window_size_gb=10):
     start = time.time()
     checkpoint = Checkpoint.from_dict({"dummy": 1})
-    # TODO: add preprocessor here
+
+    def fn(batch):
+        print("Running dummy preprocessor")
+        return batch * 2
+
+    dummy_prep = BatchMapper(fn)
     predictor = BatchPredictor(checkpoint, DummyPredictor)
+    predictor.set_preprocessor(dummy_prep)
+
     if stream:
         result = predictor.predict_pipelined(
             dataset,
