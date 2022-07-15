@@ -83,7 +83,7 @@ def check_env(env: EnvType) -> None:
             f"{actual_error}\n"
             "The above error has been found in your environment! "
             "We've added a module for checking your custom environments. It "
-            "may cause your experiment to fail if your environment is not set up"
+            "may cause your experiment to fail if your environment is not set up "
             "correctly. You can disable this behavior by setting "
             "`disable_env_checking=True` in your environment config "
             "dictionary. You can run the environment checking module "
