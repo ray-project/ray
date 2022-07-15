@@ -13,25 +13,25 @@ We test out the performance across different cluster sizes and data sizes.
 
 .. TODO: Link to script and cluster configuration when merged
 
-.. list-table:: XGBoost Batch Prediction Performance
+.. list-table::
 
-    * - Cluster Configuration
-      - 1 m5.4xlarge
-      - 10 m5.4xlarge nodes (with fastest possible EBS disks)
-    * - Parallel workers
+    * - **Cluster Configuration**
+      - **Parallel workers**
+      - **Data Size**
+      - **Number of rows**
+      - **Time taken**
+      - **Throughput**
+    * - 1 m5.4xlarge
       - 1 actor
-      - 10 actors (12 CPUs each)
-    * - Data Size
       - 10 GB
-      - 100 GB
-    * - Number of rows
       - 26M rows
-      - 260M rows
-    * - Time taken
       - 275 s
-      - 331 s
-    * - Throughput
       - 94.5k rows/sec
+    * - 10 m5.4xlarge nodes
+      - 10 actors (12 CPUs each)
+      - 100 GB
+      - 260M rows
+      - 331 s
       - 786k rows/sec
 
 
@@ -43,20 +43,21 @@ with different amounts of parallelism.
 
 XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
 
-.. list-table:: XGBoost Training Performance
+.. list-table::
 
     * - Cluster Configuration
-      - 1 m5.4xlarge
-      - 10 m5.4xlarge nodes (with fastest possible EBS disks)
-    * - Parallel workers
+      - Parallel workers
+      - Data Size
+      - Number of rows
+      - Time taken
+      - Throughput
+    * - 1 m5.4xlarge
       - 1 actor
-      - 10 actors (12 CPUs each)
-    * - Data Size
       - 10 GB
-      - 100 GB
-    * - Number of rows
       - 26M rows
-      - 260M rows
-    * - Time taken
       - 692 s
+    * - 10 m5.4xlarge nodes
+      - 10 actors (12 CPUs each)
+      - 100 GB
+      - 260M rows
       - 693 s
