@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import grpc
 
 import ray._raylet as raylet
+from ray._raylet_py import ObjectRef
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray._private.inspect_util import (
@@ -86,7 +87,7 @@ OBJECT_TRANSFER_CHUNK_SIZE = 64 * 2 ** 20
 OBJECT_TRANSFER_WARNING_SIZE = 2 * 2 ** 30
 
 
-class ClientObjectRef(raylet.ObjectRef):
+class ClientObjectRef(ObjectRef):
     def __init__(self, id: Union[bytes, Future]):
         self._mutex = threading.Lock()
         self._worker = ray.get_context().client_worker

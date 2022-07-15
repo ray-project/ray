@@ -123,13 +123,14 @@ from ray._raylet import (  # noqa: E402
     JobID,
     WorkerID,
     FunctionID,
-    ObjectID,
-    ObjectRef,
     TaskID,
     UniqueID,
     Language,
     PlacementGroupID,
 )
+
+from ray._raylet_py import ObjectID as ObjectID
+from ray._raylet_py import ObjectRef as ObjectRef
 
 _config = _Config()
 

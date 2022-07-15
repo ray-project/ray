@@ -4,7 +4,8 @@ import pytest
 
 import ray as real_ray
 from ray._private.test_utils import object_memory_usage, wait_for_condition
-from ray._raylet import ActorID, ObjectRef
+from ray._raylet import ActorID
+from ray._raylet_py import ObjectRef
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.util.client import _ClientContext
 from ray.util.client.common import ClientActorRef, ClientObjectRef

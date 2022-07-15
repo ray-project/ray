@@ -11,7 +11,7 @@ from typing import IO, List, Optional, Tuple
 
 import ray
 from ray._private.ray_constants import DEFAULT_OBJECT_PREFIX
-from ray._raylet import ObjectRef
+from ray._raylet_py import ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
 logger = logging.getLogger(__name__)
