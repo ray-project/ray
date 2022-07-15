@@ -3260,9 +3260,7 @@ class Dataset(Generic[T]):
                 self._created_by_pipeline = created_by_pipeline
 
             def __iter__(self):
-                return Iterator(
-                    self._splits, self._epoch, self._created_by_pipeline
-                )
+                return Iterator(self._splits, self._epoch, self._created_by_pipeline)
 
         it = Iterable(blocks, self._epoch, self._created_by_pipeline)
         pipe = DatasetPipeline(it, False, length=len(it._splits))

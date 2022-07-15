@@ -507,6 +507,77 @@ def test_preserve_whether_base_datasets_can_be_cleared(ray_start_regular_shared)
     assert not p2._base_datasets_can_be_cleared
 
 
+def test_in_place_transformation_doesnt_clear_objects(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3, 4, 5, 6])
+
+    def verify_integrity(p):
+        # The pipeline's output blocks are from original dataset (i.e. not created
+        # by the pipeline itself), so those blocks must not be cleared -- verified
+        # below by re-reading the dataset.
+        for b in p.iter_batches():
+            pass
+        # Verify the integrity of the blocks of original dataset.
+        assert ds.take_all() == [1, 2, 3, 4, 5, 6]
+
+    verify_integrity(ds.repeat(10).randomize_block_order_each_window())
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+    )
+    # Mix in-place and non-in place transforms.
+    verify_integrity(
+        ds.repeat(10)
+        .map_batches(lambda x: x)
+        .randomize_block_order_each_window()
+    )
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .map_batches(lambda x: x)
+    )
+
+
+def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3, 4, 5, 6], parallelism=3)
+
+    @ray.remote
+    def consume(p):
+        for batch in p.iter_batches():
+            pass
+
+    def verify_integrity(p):
+        # Divide 3 blocks ([1, 2], [3, 4] and [5, 6]) into 2 splits equally must
+        # have one block got splitted. Since the blocks are not created by the
+        # pipeline (randomize_block_order_each_window() didn't create new
+        # blocks since it's in-place), so the block splitting will not clear
+        # the input block -- verified below by re-reading the dataset.
+        splits = p.split(2, equal=True)
+        ray.get([consume.remote(p) for p in splits])
+        # Verify the integrity of the blocks of original dataset
+        assert ds.take_all() == [1, 2, 3, 4, 5, 6]
+
+    verify_integrity(ds.repeat(10).randomize_block_order_each_window())
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+    )
+    # Mix in-place and non-in place transforms.
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+        .map_batches(lambda x: x)
+    )
+    verify_integrity(
+        ds.repeat(10)
+        .map_batches(lambda x: x)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+    )
+
+
 def test_drop_columns(ray_start_regular_shared):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds = ray.data.from_pandas(df)
