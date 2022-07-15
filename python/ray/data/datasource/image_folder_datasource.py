@@ -18,43 +18,7 @@ IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
 
 class ImageFolderDatasource(BinaryDatasource):
-    """A datasource that lets you read datasets like `ImageNet <https://www.image-net.org/>`_.  # noqa: E501
-
-    This datasource works with any dataset where images are arranged in this way:
-
-    .. code-block::
-
-        root/dog/xxx.png
-        root/dog/xxy.png
-        root/dog/[...]/xxz.png
-
-        root/cat/123.png
-        root/cat/nsdf3.png
-        root/cat/[...]/asd932_.png
-
-    Datasets read with ``ImageFolderDatasource`` contain two columns: ``'image'`` and
-    ``'label'``. The ``'image'`` column contains ``ndarray`` objects of shape
-    :math:`(H, W, C)`, and the ``label`` column contains strings corresponding to
-    labels.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import ImageFolderDatasource
-        >>>
-        >>> ds = ray.data.read_datasource(  # doctest: +SKIP
-        ...     ImageFolderDatasource(),
-        ...     paths=["/data/imagenet/train"]
-        ... )
-        >>> sample = ds.take(1)[0]  # doctest: +SKIP
-        >>> sample["image"].shape  # doctest: +SKIP
-        (469, 387, 3)
-        >>> sample["label"]  # doctest: +SKIP
-        'n01443537'
-
-    Raises:
-        ValueError: if more than one path is provided. You should only provide the path
-            to the dataset root.
-    """
+    """A datasource that lets you read datasets like `ImageNet <https://www.image-net.org/>`_."""  # noqa: E501
 
     def create_reader(
         self,

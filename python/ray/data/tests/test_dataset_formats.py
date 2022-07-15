@@ -26,7 +26,6 @@ from ray.data.datasource import (
     DefaultParquetMetadataProvider,
     DummyOutputDatasource,
     FastFileMetadataProvider,
-    ImageFolderDatasource,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
@@ -2855,9 +2854,9 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
     assert node_ids == {bar_node_id}
 
 
-def test_image_folder_datasource(ray_start_regular_shared):
+def test_read_image_folder(ray_start_regular_shared):
     root = os.path.join(os.path.dirname(__file__), "image-folder")
-    ds = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
+    ds = ray.data.read_image_folder(root)
 
     assert ds.count() == 3
 
@@ -2869,14 +2868,6 @@ def test_image_folder_datasource(ray_start_regular_shared):
     # Targets should be assigned alphabetically to labels.
     assert df["label"].tolist() == ["cat", "cat", "dog"]
     assert df["target"].tolist() == [0, 0, 1]
-
-
-def test_image_folder_datasource_raises_value_error(ray_start_regular_shared):
-    # `ImageFolderDatasource` should raise an error if more than one path is passed.
-    with pytest.raises(ValueError):
-        ray.data.read_datasource(
-            ImageFolderDatasource(), paths=["imagenet/train", "imagenet/test"]
-        )
 
 
 def test_read_text_remote_args(ray_start_cluster, tmp_path):

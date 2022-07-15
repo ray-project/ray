@@ -33,6 +33,7 @@ from ray.data.read_api import (  # noqa: F401
     read_parquet,
     read_parquet_bulk,
     read_text,
+    read_image_folder,
 )
 
 # Register custom Arrow JSON ReadOptions serializer after worker has initialized.
