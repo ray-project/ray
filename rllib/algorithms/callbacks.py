@@ -11,10 +11,7 @@ from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic,
-    PublicAPI
-)
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
