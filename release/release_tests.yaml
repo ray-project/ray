@@ -2813,6 +2813,7 @@
   legacy:
     test_name: stress_test_state_api_scale
     test_suite: nightly_tests
+  stable: false
 
   frequency: nightly
   team: core
@@ -2834,7 +2835,7 @@
 
     run:
       timeout: 3600
-      script: python stress_tests/test_many_tasks.py --smoke-test
+      script: python stress_tests/test_state_api_scale.py --smoke-test
 
 - name: stress_test_many_tasks
   group: core-daily-test
