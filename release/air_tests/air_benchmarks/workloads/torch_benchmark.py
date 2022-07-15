@@ -330,9 +330,19 @@ def run(
     config = CONFIG.copy()
     config["epochs"] = num_epochs
 
+    # Find interface
+    for iface in os.listdir("/sys/class/net"):
+        if iface.startswith("ens"):
+            network_interface = iface
+            break
+    else:
+        network_interface = "docker0"
+
     ray.init(
         "auto",
-        runtime_env={"env_vars": {"NCCL_SOCKET_IFNAME": "ens3", "NCCL_DEBUG": "INFO"}},
+        runtime_env={
+            "env_vars": {"NCCL_SOCKET_IFNAME": network_interface, "NCCL_DEBUG": "INFO"}
+        },
     )
     print("Preparing Torch benchmark: Downloading MNIST")
 
