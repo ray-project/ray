@@ -18,15 +18,13 @@ from ray import serve
 
 ray.init(address="auto")
 
-serve.start()
 
 @serve.deployment
 class Test:
     def __call__(self, *args):
         return open("hello").read()
 
-Test.deploy()
-handle = Test.get_handle()
+handle = serve.run(Test.bind())
 try:
     ray.get(handle.remote())
     assert False, "Should not get here"
@@ -45,18 +43,15 @@ def test_working_dir_basic(ray_start, tmp_dir, ray_shutdown):
 
     ray.init(address="auto", namespace="serve", runtime_env={"working_dir": "."})
     print("Initialized Ray")
-    serve.start()
-    print("Started Serve")
 
     @serve.deployment
     class Test:
         def __call__(self, *args):
             return open("hello").read()
 
-    Test.deploy()
+    handle = serve.run(Test.bind())
     print("Deployed")
-    handle = Test.get_handle()
-    print("Got handle")
+
     assert ray.get(handle.remote()) == "world"
 
 
@@ -72,15 +67,13 @@ from ray import serve
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
-serve.start(detached=True)
 
 @serve.deployment
 class Test:
     def __call__(self, *args):
         return open("hello").read()
 
-Test.deploy()
-handle = Test.get_handle()
+handle = serve.run(Test.bind())
 assert ray.get(handle.remote()) == "world"
 """
 
@@ -94,10 +87,8 @@ job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
-serve.start(detached=True)
-
 Test = serve.get_deployment("Test")
-handle = Test.get_handle()
+handle = serve.run(Test.bind())
 assert ray.get(handle.remote()) == "world"
 Test.delete()
 """
@@ -119,15 +110,12 @@ from ray import serve
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
-serve.start(detached=True)
-
 @serve.deployment(version="1")
 class Test:
     def __call__(self, *args):
         return os.getpid(), open("hello").read()
 
-Test.deploy()
-handle = Test.get_handle()
+handle = serve.run(Test.bind())
 assert ray.get(handle.remote())[1] == "world"
 """
 
@@ -143,11 +131,8 @@ from ray import serve
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
-serve.start(detached=True)
-
 Test = serve.get_deployment("Test")
-Test.options(num_replicas=2).deploy()
-handle = Test.get_handle()
+handle = serve.run(Test.options(num_replicas=2).bind())
 results = ray.get([handle.remote() for _ in range(1000)])
 print(set(results))
 assert all(r[1] == "world" for r in results), (

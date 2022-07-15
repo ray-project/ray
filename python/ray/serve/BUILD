@@ -182,6 +182,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_gcs_failure",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 
 py_test(
     name = "test_handle",

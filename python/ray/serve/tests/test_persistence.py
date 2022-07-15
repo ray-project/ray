@@ -14,7 +14,7 @@ from ray import serve
 def driver():
     return "OK!"
 
-driver.deploy()
+serve.run(driver.bind())
 """.format(
         ray._private.worker._global_node.address
     )

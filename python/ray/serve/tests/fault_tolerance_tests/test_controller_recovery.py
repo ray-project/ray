@@ -27,7 +27,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
         def __call__(self, *args):
             return "hii"
 
-    TransientConstructorFailureDeployment.deploy()
+    serve.run(TransientConstructorFailureDeployment.bind())
     for _ in range(10):
         response = request_with_retries(
             "/recover_start_from_replica_actor_names/", timeout=30
@@ -163,7 +163,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
         return responses, blocking
 
-    V1.deploy()
+    serve.run(V1.bind())
     responses1, _ = make_nonblocking_calls({"1": 2}, num_returns=2)
     pids1 = responses1["1"]
 
@@ -178,7 +178,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
     V2 = V1.options(func_or_class=V2, version="2")
-    V2.deploy(_blocking=False)
+    serve.run(V2.bind(), _blocking=False)
     with pytest.raises(TimeoutError):
         client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
