@@ -819,8 +819,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
-  static rpc::RuntimeEnv OverrideRuntimeEnv(
-      const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent);
+  static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -1253,7 +1252,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::unique_ptr<rpc::JobConfig> job_config_;
 
-  std::shared_ptr<rpc::RuntimeEnv> job_runtime_env_;
+  std::shared_ptr<json> job_runtime_env_;
+
+  std::shared_ptr<rpc::RuntimeEnvInfo> job_runtime_env_info_;
 
   /// Simple container for per function task counters. The counters will be
   /// keyed by the function name in task spec.
