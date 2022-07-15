@@ -27,7 +27,6 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
-    ImageFolderDatasource,
     JSONDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
@@ -1072,64 +1071,6 @@ def from_huggingface(
             "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
             f"got {type(dataset)}"
         )
-
-
-@PublicAPI
-def read_image_folder(root: str, *, parallelism: int = -1):
-    """Read a dataset structured like `ImageNet <https://www.image-net.org/>`_.
-
-    This function works with any dataset where images are arranged in this way:
-
-    .. code-block::
-
-        root/dog/xxx.png
-        root/dog/xxy.png
-        root/dog/[...]/xxz.png
-
-        root/cat/123.png
-        root/cat/nsdf3.png
-        root/cat/[...]/asd932_.png
-
-    Datasets read with this function contain two columns: ``'image'`` and ``'label'``.
-
-    * The ``'image'`` column is of type
-      :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype` and contains
-      tensors of shape :math:`(H, W, C)`.
-    * The ``'label'`` column contains strings representing class names (e.g., 'cat').
-
-    Arguments:
-        path: Path to the directory root.
-        parallelism: The user-requested parallelism, or -1 for autodetection.
-
-    Examples:
-        >>> import ray
-        >>>
-        >>> ds = ray.data.read_image_folder("/data/imagenet/train")
-        >>>
-        >>> sample = ds.take(1)[0]  # doctest: +SKIP
-        >>> sample["image"].to_numpy().shape  # doctest: +SKIP
-        (469, 387, 3)
-        >>> sample["label"]  # doctest: +SKIP
-        'n01443537'
-
-        To convert class labels to integer-valued targets, use
-        :py:class:`~ray.data.preprocessors.OrdinalEncoder`.
-
-        >>> import ray
-        >>> from ray.data.preprocessors import OrdinalEncoder
-        >>>
-        >>> ds = ray.data.read_image_folder("/data/imagenet/train")
-        >>> oe = OrdinalEncoder(columns=["label"])
-        >>>
-        >>> ds = oe.fit_transform(ds)
-        >>>
-        >>> sample = ds.take(1)[0]
-        >>> sample["label"]
-        71
-    """
-    return read_datasource(
-        ImageFolderDatasource(), paths=[root], parallelism=parallelism
-    )
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:

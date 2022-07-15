@@ -26,6 +26,7 @@ from ray.data.datasource import (
     DefaultParquetMetadataProvider,
     DummyOutputDatasource,
     FastFileMetadataProvider,
+    ImageFolderDatasource,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
@@ -2856,9 +2857,9 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
     assert node_ids == {bar_node_id}
 
 
-def test_read_image_folder(ray_start_regular_shared):
+def test_image_folder_datasource(ray_start_regular_shared):
     root = os.path.join(os.path.dirname(__file__), "image-folder")
-    ds = ray.data.read_image_folder(root)
+    ds = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
 
     assert ds.count() == 3
 
@@ -2868,7 +2869,15 @@ def test_read_image_folder(ray_start_regular_shared):
     assert all(tensor.to_numpy().shape == (32, 32, 3) for tensor in df["image"])
 
 
-def test_read_image_folder_e2e(ray_start_regular_shared):
+def test_image_folder_datasource_raises_value_error(ray_start_regular_shared):
+    # `ImageFolderDatasource` should raise an error if more than one path is passed.
+    with pytest.raises(ValueError):
+        ray.data.read_datasource(
+            ImageFolderDatasource(), paths=["imagenet/train", "imagenet/test"]
+        )
+
+
+def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from ray.air.util.tensor_extensions.pandas import TensorArray
     from ray.train.torch import to_air_checkpoint, TorchPredictor
     from ray.train.batch_predictor import BatchPredictor
@@ -2876,7 +2885,8 @@ def test_read_image_folder_e2e(ray_start_regular_shared):
     from torchvision import transforms
     from torchvision.models import resnet18
 
-    dataset = ray.data.read_image_folder("image-folder")
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
 
     def preprocess(df):
         # We convert the `TensorArrayElement` to a NumPy array because `ToTensor`

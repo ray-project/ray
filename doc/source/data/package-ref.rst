@@ -16,7 +16,6 @@ Creating Datasets
 .. autofunction:: ray.data.read_numpy
 .. autofunction:: ray.data.read_text
 .. autofunction:: ray.data.read_binary_files
-.. autofunction:: ray.data.read_image_folder
 .. autofunction:: ray.data.read_datasource
 .. autofunction:: ray.data.from_items
 .. autofunction:: ray.data.from_arrow
