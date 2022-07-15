@@ -501,9 +501,9 @@ def _resolve_paths_and_filesystem(
             # If filesystem is not a pyarrow filesystem and fsspec isn't
             # installed, then filesystem is neither a pyarrow filesystem nor
             # an fsspec filesystem, so we raise a TypeError.
-            raise TypeError(err_msg)
+            raise TypeError(err_msg) from None
         if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
-            raise TypeError(err_msg)
+            raise TypeError(err_msg) from None
         if isinstance(filesystem, HTTPFileSystem):
             # If filesystem is fsspec HTTPFileSystem, the protocol/scheme of paths
             # should not be unwrapped/removed, because HTTPFileSystem expects full file
@@ -537,7 +537,7 @@ def _resolve_paths_and_filesystem(
                     except ModuleNotFoundError:
                         raise ImportError(
                             "Please install fsspec to read files from HTTP."
-                        )
+                        ) from None
 
                     resolved_filesystem = PyFileSystem(FSSpecHandler(HTTPFileSystem()))
                     resolved_path = path
