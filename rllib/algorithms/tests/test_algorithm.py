@@ -1,4 +1,5 @@
 import copy
+
 import gym
 import numpy as np
 import os
@@ -230,24 +231,24 @@ class TestAlgorithm(unittest.TestCase):
         for _ in framework_iterator(frameworks=("tf", "torch")):
             # Setup algorithm w/o evaluation worker set and still call
             # evaluate() -> Expect error.
-            algo_wo_env_on_driver = config.build()
+            algo_wo_env_on_local_worker = config.build()
             self.assertRaisesRegex(
                 ValueError,
                 "Cannot evaluate w/o an evaluation worker set",
-                algo_wo_env_on_driver.evaluate,
+                algo_wo_env_on_local_worker.evaluate,
             )
-            algo_wo_env_on_driver.stop()
+            algo_wo_env_on_local_worker.stop()
 
             # Try again using `create_env_on_driver=True`.
             # This force-adds the env on the local-worker, so this Algorithm
             # can `evaluate` even though it doesn't have an evaluation-worker
             # set.
             config.create_env_on_local_worker = True
-            algo_w_env_on_driver = config.build()
-            results = algo_w_env_on_driver.evaluate()
+            algo_w_env_on_local_worker = config.build()
+            results = algo_w_env_on_local_worker.evaluate()
             assert "evaluation" in results
             assert "episode_reward_mean" in results["evaluation"]
-            algo_w_env_on_driver.stop()
+            algo_w_env_on_local_worker.stop()
             config.create_env_on_local_worker = False
 
     def test_space_inference_from_remote_workers(self):

@@ -100,7 +100,14 @@ def collect_episodes(
     to_be_collected: Optional[List[ObjectRef]] = None,
     timeout_seconds: int = 180,
 ) -> Tuple[List[Union[RolloutMetrics, OffPolicyEstimate]], List[ObjectRef]]:
-    """Gathers new episodes metrics tuples from the given evaluators."""
+    """Gathers new episodes metrics tuples from the given RolloutWorkers.
+
+    Args:
+        local_worker: The local RolloutWorker (if any). By default, evaluation
+            WorkerSets don't have a local worker anymore (not needed).
+        remote_workers: List of ActorHandle pointing to remote RolloutWorkers.
+
+    """
     if remote_workers is None:
         remote_workers = []
 

@@ -315,6 +315,7 @@ class MultiAgentEnv(gym.Env):
         num_envs: int = 1,
         remote_envs: bool = False,
         remote_env_batch_wait_ms: int = 0,
+        restart_failed_sub_environments: bool = False,
     ) -> "BaseEnv":
         """Converts an RLlib MultiAgentEnv into a BaseEnv object.
 
@@ -337,6 +338,10 @@ class MultiAgentEnv(gym.Env):
             remote_env_batch_wait_ms: The wait time (in ms) to poll remote
                 sub-environments for, if applicable. Only used if
                 `remote_envs` is True.
+            restart_failed_sub_environments: If True and any sub-environment (within
+                a vectorized env) throws any error during env stepping, we will try to
+                restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environments.
 
         Returns:
             The resulting BaseEnv object.
@@ -349,11 +354,15 @@ class MultiAgentEnv(gym.Env):
                 num_envs,
                 multiagent=True,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                restart_failed_sub_environments=restart_failed_sub_environments,
             )
         # Sub-environments are not ray.remote actors.
         else:
             env = MultiAgentEnvWrapper(
-                make_env=make_env, existing_envs=[self], num_envs=num_envs
+                make_env=make_env,
+                existing_envs=[self],
+                num_envs=num_envs,
+                restart_failed_sub_environments=restart_failed_sub_environments,
             )
 
         return env
@@ -498,6 +507,7 @@ class MultiAgentEnvWrapper(BaseEnv):
         make_env: Callable[[int], EnvType],
         existing_envs: List["MultiAgentEnv"],
         num_envs: int,
+        restart_failed_sub_environments: bool = False,
     ):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
@@ -509,10 +519,16 @@ class MultiAgentEnvWrapper(BaseEnv):
             num_envs: Desired num multiagent envs to have at the end in
                 total. This will include the given (already created)
                 `existing_envs`.
+            restart_failed_sub_environments: If True and any sub-environment (within
+                this vectorized env) throws any error during env stepping, we will try
+                to restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environments.
         """
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
+        self.restart_failed_sub_environments = restart_failed_sub_environments
+
         self.dones = set()
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
@@ -534,14 +550,27 @@ class MultiAgentEnvWrapper(BaseEnv):
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         for env_id, agent_dict in action_dict.items():
             if env_id in self.dones:
-                raise ValueError("Env {} is already done".format(env_id))
+                raise ValueError(
+                    f"Env {env_id} is already done and cannot accept new actions"
+                )
             env = self.envs[env_id]
-            obs, rewards, dones, infos = env.step(agent_dict)
-            assert isinstance(obs, dict), "Not a multi-agent obs"
-            assert isinstance(rewards, dict), "Not a multi-agent reward"
-            assert isinstance(dones, dict), "Not a multi-agent return"
-            assert isinstance(infos, dict), "Not a multi-agent info"
-            if set(infos).difference(set(obs)):
+            try:
+                obs, rewards, dones, infos = env.step(agent_dict)
+            except Exception as e:
+                if self.restart_failed_sub_environments:
+                    logger.exception(e.args[0])
+                    self.try_restart(env_id=env_id)
+                    obs, rewards, dones, infos = e, {}, {"__all__": True}, {}
+                else:
+                    raise e
+
+            assert isinstance(
+                obs, (dict, Exception)
+            ), "Not a multi-agent obs dict or an Exception!"
+            assert isinstance(rewards, dict), "Not a multi-agent reward dict!"
+            assert isinstance(dones, dict), "Not a multi-agent done dict!"
+            assert isinstance(infos, dict), "Not a multi-agent info dict!"
+            if isinstance(obs, dict) and set(infos).difference(set(obs)):
                 raise ValueError(
                     "Key set for infos must be a subset of obs: "
                     "{} vs {}".format(infos.keys(), obs.keys())
@@ -551,6 +580,7 @@ class MultiAgentEnvWrapper(BaseEnv):
                     "In multi-agent environments, '__all__': True|False must "
                     "be included in the 'done' dict: got {}.".format(dones)
                 )
+
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
@@ -564,7 +594,13 @@ class MultiAgentEnvWrapper(BaseEnv):
             env_id = list(range(len(self.envs)))
         for idx in env_id:
             obs = self.env_states[idx].reset()
-            assert isinstance(obs, dict), "Not a multi-agent obs"
+            if isinstance(obs, Exception):
+                if self.restart_failed_sub_environments:
+                    self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
+                else:
+                    raise obs
+            else:
+                assert isinstance(obs, dict), "Not a multi-agent obs dict!"
             if obs is not None and idx in self.dones:
                 self.dones.remove(idx)
             ret[idx] = obs
@@ -578,12 +614,9 @@ class MultiAgentEnvWrapper(BaseEnv):
             env_id = list(range(len(self.envs)))
         for idx in env_id:
             # Recreate the sub-env.
-            self.envs[idx] = self.make_env(idx)
-            # Replace the multi-agent env state at the index.
-            self._init_env_state(idx)
-            # Remove done flag at index.
-            if idx in self.dones:
-                self.dones.remove(idx)
+            logger.warning(f"Trying to restart sub-environment at index {idx}.")
+            self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
+            logger.warning(f"Sub-environment at index {idx} restarted successfully.")
 
     @override(BaseEnv)
     def get_sub_environments(
@@ -640,17 +673,24 @@ class MultiAgentEnvWrapper(BaseEnv):
         """
         # If index is None, reset all sub-envs' states:
         if idx is None:
-            self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
+            self.env_states = [
+                _MultiAgentEnvState(env, self.restart_failed_sub_environments)
+                for env in self.envs
+            ]
         # Index provided, reset only the sub-env's state at the given index.
         else:
             assert isinstance(idx, int)
-            self.env_states[idx] = _MultiAgentEnvState(self.envs[idx])
+            self.env_states[idx] = _MultiAgentEnvState(
+                self.envs[idx], self.restart_failed_sub_environments
+            )
 
 
 class _MultiAgentEnvState:
-    def __init__(self, env: MultiAgentEnv):
+    def __init__(self, env: MultiAgentEnv, return_error_as_obs: bool = False):
         assert isinstance(env, MultiAgentEnv)
         self.env = env
+        self.return_error_as_obs = return_error_as_obs
+
         self.initialized = False
         self.last_obs = {}
         self.last_rewards = {}
@@ -669,11 +709,13 @@ class _MultiAgentEnvState:
         dones = {"__all__": self.last_dones["__all__"]}
         infos = {}
 
-        # If episode is done, release everything we have.
-        if dones["__all__"]:
+        # If episode is done or we have an error, release everything we have.
+        if dones["__all__"] or isinstance(observations, Exception):
             rewards = self.last_rewards
             self.last_rewards = {}
             dones = self.last_dones
+            if isinstance(observations, Exception):
+                dones["__all__"] = True
             self.last_dones = {}
             self.last_obs = {}
             infos = self.last_infos
@@ -716,7 +758,14 @@ class _MultiAgentEnvState:
         self.last_infos = infos
 
     def reset(self) -> MultiAgentDict:
-        self.last_obs = self.env.reset()
+        try:
+            self.last_obs = self.env.reset()
+        except Exception as e:
+            if self.return_error_as_obs:
+                logger.exception(e.args[0])
+                self.last_obs = e
+            else:
+                raise e
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
         self.last_infos = {}

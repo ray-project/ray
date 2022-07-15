@@ -76,6 +76,7 @@ from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--evaluation-parallel-to-training", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
@@ -99,17 +100,22 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=0.7, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 
-def custom_eval_function(trainer, eval_workers):
+def custom_eval_function(algorithm, eval_workers):
     """Example of a custom evaluation function.
 
     Args:
-        trainer: trainer class to evaluate.
-        eval_workers: evaluation workers.
+        algorithm: Algorithm class to evaluate.
+        eval_workers: Evaluation WorkerSet.
 
     Returns:
-        metrics: evaluation metrics dict.
+        metrics: Evaluation metrics dict.
     """
 
     # We configured 2 eval workers in the training config.
@@ -152,7 +158,7 @@ if __name__ == "__main__":
     else:
         eval_fn = custom_eval_function
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     config = {
         "env": SimpleCorridor,
@@ -172,8 +178,10 @@ if __name__ == "__main__":
         "custom_eval_function": eval_fn,
         # Enable evaluation, once per training iteration.
         "evaluation_interval": 1,
-        # Run 10 episodes each time evaluation runs.
-        "evaluation_duration": 10,
+        # Run 10 episodes each time evaluation runs (OR "auto" if parallel to training).
+        "evaluation_duration": "auto" if args.evaluation_parallel_to_training else 10,
+        # Evaluate parallelly to training.
+        "evaluation_parallel_to_training": args.evaluation_parallel_to_training,
         # Override the env config for evaluation.
         "evaluation_config": {
             "env_config": {
