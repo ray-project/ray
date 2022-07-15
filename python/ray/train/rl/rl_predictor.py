@@ -31,7 +31,7 @@ class RLPredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
     ):
         self.policy = policy
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
