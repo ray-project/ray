@@ -38,6 +38,10 @@ from ray.serve.version import DeploymentVersion
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+def _format_replica_actor_name(deployment_name: str):
+    return f"ServeReplica:{deployment_name}"
+
+
 def create_replica_wrapper(name: str):
     """Creates a replica class wrapping the provided function or class.
 
@@ -211,8 +215,13 @@ def create_replica_wrapper(name: str):
         async def check_health(self):
             await self.replica.check_health()
 
-    RayServeWrappedReplica.__name__ = name
-    return RayServeWrappedReplica
+    # Dynamically create a new class with custom name here so Ray picks it up
+    # correctly in actor metadata table and observability stack.
+    return type(
+        _format_replica_actor_name(name),
+        (RayServeWrappedReplica,),
+        dict(RayServeWrappedReplica.__dict__),
+    )
 
 
 class RayServeReplica:
@@ -333,7 +342,9 @@ class RayServeReplica:
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
-        method_stat = actor_stats.get("RayServeWrappedReplica.handle_request")
+        method_stat = actor_stats.get(
+            f"{_format_replica_actor_name(self.deployment_name)}.handle_request"
+        )
         return method_stat
 
     def _collect_autoscaling_metrics(self):
