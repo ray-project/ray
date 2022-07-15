@@ -338,7 +338,7 @@ metrics and other relevant data.
 
 For example, you can:
 
-* print the metrics for the last iteration:
+* Print the metrics for the last training iteration:
 
 .. code-block:: python
 
