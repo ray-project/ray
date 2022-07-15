@@ -143,10 +143,10 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> # Create a rollout worker and using it to collect experiences.
         >>> import gym
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
         >>> worker = RolloutWorker( # doctest: +SKIP
         ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-        ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+        ...   policy_spec=PGTF1Policy) # doctest: +SKIP
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
@@ -855,10 +855,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
             >>> print(worker.sample()) # doctest: +SKIP
             SampleBatch({"obs": [...], "action": [...], ...})
         """
@@ -935,7 +935,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
             ...   policy_spec=PGTFPolicy) # doctest: +SKIP
@@ -961,10 +961,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
         """
@@ -1078,10 +1078,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
         """
@@ -1147,10 +1147,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
             >>> samples = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
             >>> worker.apply_gradients(grads) # doctest: +SKIP
