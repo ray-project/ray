@@ -1,8 +1,11 @@
 import gym
+import numpy as np
 import unittest
 
 import ray
+import ray.rllib.algorithms.pg as pg
 from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 
@@ -263,6 +266,29 @@ class TestWorkerFailure(unittest.TestCase):
             fn=self._do_test_fault_fatal,
             eval_only=True,
         )
+
+    def test_eval_workers_on_infinite_episodes(self):
+        """Tests whether eval workers warn appropriately after some episode timeout."""
+        # Create infinitely running episodes, but with horizon setting (RLlib will
+        # auto-terminate the episode). However, in the eval workers, don't set a
+        # horizon -> Expect warning and no proper evaluation results.
+        config = (
+            pg.PGConfig()
+            .rollouts(num_rollout_workers=2, horizon=100)
+            .reporting(metrics_episode_collection_timeout_s=5.0)
+            .environment(env=RandomEnv, env_config={"p_done": 0.0})
+            .evaluation(
+                evaluation_num_workers=2,
+                evaluation_interval=1,
+                evaluation_sample_timeout_s=5.0,
+                evaluation_config={
+                    "horizon": None,
+                },
+            )
+        )
+        algo = config.build()
+        results = algo.train()
+        self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
 
 
 if __name__ == "__main__":
