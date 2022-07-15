@@ -122,9 +122,8 @@ def test_many_actors(num_actors: int):
 
     waiting_actors = [actor.running.remote() for actor in actors]
 
-    for _ in tqdm.trange(len(actors), desc="Waiting actors to be ready..."):
-        ready, waiting_actors = ray.wait(waiting_actors)
-        assert ray.get(*ready)
+    print("Waiting for actors to finish...")
+    ray.get(waiting_actors)
 
     invoke_state_api(
         lambda res: len(res) == num_actors,
