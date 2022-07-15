@@ -6,8 +6,7 @@ import ray
 from ray.air import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
-from ray.data import Preprocessor
-from ray.data.preprocessors import BatchMapper
+from ray.data import Preprocessor, BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -78,6 +77,7 @@ class BatchPredictor:
         max_scoring_workers: Optional[int] = None,
         num_cpus_per_worker: int = 1,
         num_gpus_per_worker: int = 0,
+        separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
     ) -> ray.data.Dataset:
@@ -129,6 +129,9 @@ class BatchPredictor:
             max_scoring_workers: If set, specify the maximum number of scoring actors.
             num_cpus_per_worker: Number of CPUs to allocate per scoring worker.
             num_gpus_per_worker: Number of GPUs to allocate per scoring worker.
+            separate_gpu_stage: If using GPUs, specifies whether to execute GPU
+                processing in a separate stage (enabled by default). This avoids
+                running expensive preprocessing steps on GPU workers.
             ray_remote_args: Additional resource requirements to request from
                 ray.
             predict_kwargs: Keyword arguments passed to the predictor's
@@ -179,7 +182,7 @@ class BatchPredictor:
         ray_remote_args["num_cpus"] = num_cpus_per_worker
         ray_remote_args["num_gpus"] = num_gpus_per_worker
 
-        if num_gpus_per_worker > 0:
+        if separate_gpu_stage and num_gpus_per_worker > 0:
             preprocessor = self.get_preprocessor()
             if preprocessor:
                 override_prep = BatchMapper(lambda x: x)
@@ -210,6 +213,7 @@ class BatchPredictor:
         max_scoring_workers: Optional[int] = None,
         num_cpus_per_worker: int = 1,
         num_gpus_per_worker: int = 0,
+        separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
     ) -> ray.data.DatasetPipeline:
@@ -267,6 +271,9 @@ class BatchPredictor:
             max_scoring_workers: If set, specify the maximum number of scoring actors.
             num_cpus_per_worker: Number of CPUs to allocate per scoring worker.
             num_gpus_per_worker: Number of GPUs to allocate per scoring worker.
+            separate_gpu_stage: If using GPUs, specifies whether to execute GPU
+                processing in a separate stage (enabled by default). This avoids
+                running expensive preprocessing steps on GPU workers.
             ray_remote_args: Additional resource requirements to request from
                 ray.
             predict_kwargs: Keyword arguments passed to the predictor's
@@ -295,6 +302,7 @@ class BatchPredictor:
             max_scoring_workers=max_scoring_workers,
             num_cpus_per_worker=num_cpus_per_worker,
             num_gpus_per_worker=num_gpus_per_worker,
+            separate_gpu_stage=separate_gpu_stage,
             ray_remote_args=ray_remote_args,
             **predict_kwargs,
         )
