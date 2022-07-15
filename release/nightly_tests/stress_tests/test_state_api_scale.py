@@ -100,7 +100,7 @@ def test_many_tasks(num_tasks: int):
 
 
 def test_many_actors(num_actors: int):
-    @ray.remote(num_cpus=0.1)
+    @ray.remote(num_cpus=0.00001)
     class TestActor:
         def running(self):
             return True
@@ -120,7 +120,9 @@ def test_many_actors(num_actors: int):
         TestActor.remote() for _ in tqdm.trange(num_actors, desc="Launching actors...")
     ]
 
-    # We are not waiting for actors to be ready, that takes too long.
+    waiting_actors = [actor.running.remote() for actor in actors]
+    print("Waiting for actors to finish...")
+    ray.get(waiting_actors)
 
     invoke_state_api(
         lambda res: len(res) == num_actors,
@@ -129,9 +131,9 @@ def test_many_actors(num_actors: int):
         limit=STATE_LIST_LIMIT,
     )
 
-    # exiting_actors = [actor.exit.remote() for actor in actors]
-    for actor in tqdm.tqdm(actors, desc="Killing actors..."):
-        ray.kill(actor)
+    exiting_actors = [actor.exit.remote() for actor in actors]
+    print("waiting for actors to exit...")
+    ray.get(exiting_actors)
 
     invoke_state_api(
         lambda res: len(res) == 0,
