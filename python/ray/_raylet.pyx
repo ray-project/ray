@@ -82,8 +82,6 @@ from ray.includes.common cimport (
     WORKER_TYPE_DRIVER,
     WORKER_TYPE_SPILL_WORKER,
     WORKER_TYPE_RESTORE_WORKER,
-    WORKER_TYPE_DUMP_CHECKPOINT_WORKER,
-    WORKER_TYPE_LOAD_CHECKPOINT_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -1093,12 +1091,6 @@ cdef class CoreWorker:
         elif worker_type == ray.RESTORE_WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_RESTORE_WORKER
-        elif worker_type == ray.DUMP_CHECKPOINT_WORKER_MODE:
-            self.is_driver = False
-            options.worker_type = WORKER_TYPE_DUMP_CHECKPOINT_WORKER
-        elif worker_type == ray.LOAD_CHECKPOINT_WORKER_MODE:
-            self.is_driver = False
-            options.worker_type = WORKER_TYPE_LOAD_CHECKPOINT_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
@@ -1122,8 +1114,6 @@ cdef class CoreWorker:
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
-        options.dump_checkpoint_objects = spill_objects_handler
-        options.load_checkpoint_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack

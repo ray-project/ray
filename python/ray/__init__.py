@@ -144,8 +144,6 @@ from ray.worker import (  # noqa: E402,F401
     WORKER_MODE,
     RESTORE_WORKER_MODE,
     SPILL_WORKER_MODE,
-    DUMP_CHECKPOINT_WORKER_MODE,
-    LOAD_CHECKPOINT_WORKER_MODE,
     cancel,
     get,
     get_actor,

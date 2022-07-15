@@ -771,14 +771,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                           rpc::SpillObjectsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleDumpObjectsCheckpoint(const rpc::DumpObjectsCheckpointRequest &request,
-                                   rpc::DumpObjectsCheckpointReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleLoadCheckpoint(const rpc::LoadCheckpointRequest &request,
-                            rpc::LoadCheckpointReply *reply,
-                            rpc::SendReplyCallback send_reply_callback) override;
-
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,

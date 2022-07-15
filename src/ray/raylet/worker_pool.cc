@@ -356,16 +356,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
         absl::Base64Escape(RayConfig::instance().object_spilling_config()));
   }
 
-  // add checkppoint config
-  if (IsIOWorkerType(worker_type)) {
-    RAY_CHECK(!RayConfig::instance().object_checkpoint_config().empty());
-    RAY_LOG(DEBUG) << "Adding object checkpoint config "
-                   << RayConfig::instance().object_checkpoint_config();
-    worker_command_args.push_back(
-        "--object-checkpoint-config=" +
-        absl::Base64Escape(RayConfig::instance().object_checkpoint_config()));
-  }
-
   if (language == Language::PYTHON) {
     worker_command_args.push_back("--startup-token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -379,9 +369,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     // We pass the job ID to worker processes via an environment variable, so we don't
     // need to add a new CLI parameter for both Python and Java workers.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
-  } else if (worker_type == rpc::WorkerType::DUMP_CHECKPOINT_WORKER ||
-             worker_type == rpc::WorkerType::LOAD_CHECKPOINT_WORKER) {
-    env.emplace("IS_CHECKPOINT_WORKER", "true");
   }
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
@@ -856,26 +843,6 @@ void WorkerPool::PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worke
 void WorkerPool::PopRestoreWorker(
     std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
   PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
-}
-
-void WorkerPool::PushDumpCheckpointWorker(
-    const std::shared_ptr<WorkerInterface> &worker) {
-  PushIOWorkerInternal(worker, rpc::WorkerType::DUMP_CHECKPOINT_WORKER);
-}
-
-void WorkerPool::PopDumpCheckpointWorker(
-    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
-  PopIOWorkerInternal(rpc::WorkerType::DUMP_CHECKPOINT_WORKER, callback);
-}
-
-void WorkerPool::PushLoadCheckpointWorker(
-    const std::shared_ptr<WorkerInterface> &worker) {
-  PushIOWorkerInternal(worker, rpc::WorkerType::LOAD_CHECKPOINT_WORKER);
-}
-
-void WorkerPool::PopLoadCheckpointWorker(
-    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
-  PopIOWorkerInternal(rpc::WorkerType::LOAD_CHECKPOINT_WORKER, callback);
 }
 
 void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
@@ -1457,9 +1424,7 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 
 inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
-         worker_type == rpc::WorkerType::RESTORE_WORKER ||
-         worker_type == rpc::WorkerType::DUMP_CHECKPOINT_WORKER ||
-         worker_type == rpc::WorkerType::LOAD_CHECKPOINT_WORKER;
+         worker_type == rpc::WorkerType::RESTORE_WORKER;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
@@ -1556,8 +1521,6 @@ void WorkerPool::WarnAboutSize() {
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
-  TryStartIOWorkers(language, rpc::WorkerType::DUMP_CHECKPOINT_WORKER);
-  TryStartIOWorkers(language, rpc::WorkerType::LOAD_CHECKPOINT_WORKER);
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language,
@@ -1641,10 +1604,6 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
     return state.spill_io_worker_state;
   case rpc::WorkerType::RESTORE_WORKER:
     return state.restore_io_worker_state;
-  case rpc::WorkerType::DUMP_CHECKPOINT_WORKER:
-    return state.dump_checkpoint_worker_state;
-  case rpc::WorkerType::LOAD_CHECKPOINT_WORKER:
-    return state.load_checkpoint_worker_state;
   default:
     RAY_LOG(FATAL) << "Unknown worker type: " << worker_type;
   }

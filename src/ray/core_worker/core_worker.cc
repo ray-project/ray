@@ -256,9 +256,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.check_signals,
       /*warmup=*/
       (options_.worker_type != WorkerType::SPILL_WORKER &&
-       options_.worker_type != WorkerType::RESTORE_WORKER &&
-       options_.worker_type != WorkerType::DUMP_CHECKPOINT_WORKER &&
-       options_.worker_type != WorkerType::LOAD_CHECKPOINT_WORKER),
+       options_.worker_type != WorkerType::RESTORE_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       reference_counter_,
@@ -3286,54 +3284,6 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
   } else {
     send_reply_callback(
         Status::NotImplemented("Spill objects callback not defined"), nullptr, nullptr);
-  }
-}
-
-void CoreWorker::HandleDumpObjectsCheckpoint(
-    const rpc::DumpObjectsCheckpointRequest &request,
-    rpc::DumpObjectsCheckpointReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  if (options_.dump_checkpoint_objects != nullptr) {
-    auto object_refs =
-        VectorFromProtobuf<rpc::ObjectReference>(request.object_refs_to_dump());
-    std::vector<std::string> object_urls = options_.dump_checkpoint_objects(object_refs);
-    for (size_t i = 0; i < object_urls.size(); i++) {
-      reply->add_dumped_objects_url(std::move(object_urls[i]));
-    }
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  } else {
-    send_reply_callback(
-        Status::NotImplemented("dump objects callback not defined"), nullptr, nullptr);
-  }
-}
-
-void CoreWorker::HandleLoadCheckpoint(const rpc::LoadCheckpointRequest &request,
-                                      rpc::LoadCheckpointReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "begin to HandleLoadCheckpoint!";
-  if (options_.load_checkpoint_objects != nullptr) {
-    // Get a list of object ids.
-    std::vector<rpc::ObjectReference> object_refs_to_load;
-    object_refs_to_load.reserve(request.object_ids_to_load_size());
-    for (const auto &id_binary : request.object_ids_to_load()) {
-      rpc::ObjectReference ref;
-      ref.set_object_id(id_binary);
-      object_refs_to_load.push_back(std::move(ref));
-    }
-    // Get a list of spilled_object_urls.
-    std::vector<std::string> checkpoint_urls;
-    checkpoint_urls.reserve(request.checkpoint_urls_size());
-    for (const auto &url : request.checkpoint_urls()) {
-      checkpoint_urls.push_back(url);
-    }
-    auto total = options_.load_checkpoint_objects(object_refs_to_load, checkpoint_urls);
-    reply->set_bytes_load_total(total);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  } else {
-    send_reply_callback(
-        Status::NotImplemented("Restore spilled objects callback not defined"),
-        nullptr,
-        nullptr);
   }
 }
 

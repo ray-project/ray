@@ -1459,14 +1459,6 @@ class Node:
                 {"type": "filesystem", "params": {"directory_path": self._session_dir}}
             )
 
-        # prototype object_checkpoint_config same with object_spilling_config
-        # we split it in final PR.
-        object_checkpoint_config = self._config.get("object_checkpoint_config", {})
-        if not object_checkpoint_config:
-            object_checkpoint_config = json.dumps(
-                {"type": "filesystem", "params": {"directory_path": self._session_dir}}
-            )
-
         # Try setting up the storage.
         # Configure the proper system config.
         # We need to set both ray param's system config and self._config
@@ -1476,11 +1468,6 @@ class Node:
             "object_spilling_config"
         ] = object_spilling_config
         self._config["object_spilling_config"] = object_spilling_config
-
-        self._ray_params._system_config[
-            "object_checkpoint_config"
-        ] = object_checkpoint_config
-        self._config["object_checkpoint_config"] = object_checkpoint_config
 
         is_external_storage_type_fs = deserialized_config["type"] == "filesystem"
         self._ray_params._system_config[

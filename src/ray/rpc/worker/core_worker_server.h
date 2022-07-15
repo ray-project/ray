@@ -43,8 +43,6 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, -1)             \
   RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC, -1)                        \
   RPC_SERVICE_HANDLER(CoreWorkerService, SpillObjects, -1)                   \
-  RPC_SERVICE_HANDLER(CoreWorkerService, DumpObjectsCheckpoint, -1)          \
-  RPC_SERVICE_HANDLER(CoreWorkerService, LoadCheckpoint, -1)                 \
   RPC_SERVICE_HANDLER(CoreWorkerService, RestoreSpilledObjects, -1)          \
   RPC_SERVICE_HANDLER(CoreWorkerService, DeleteSpilledObjects, -1)           \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady, -1)              \
@@ -67,8 +65,6 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                   \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DumpObjectsCheckpoint)          \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LoadCheckpoint)                 \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \

@@ -439,8 +439,6 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 /// external storage.
 RAY_CONFIG(std::string, object_spilling_config, "")
 
-RAY_CONFIG(std::string, object_checkpoint_config, "")
-
 /// Log an ERROR-level message about spilling every time this amount of bytes has been
 /// spilled, with exponential increase in interval. This can be set to zero to disable.
 RAY_CONFIG(int64_t, verbose_spill_logs, 2L * 1024 * 1024 * 1024)

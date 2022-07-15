@@ -174,13 +174,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void SpillObjects(const SpillObjectsRequest &request,
                             const ClientCallback<SpillObjectsReply> &callback) {}
 
-  virtual void DumpObjectsCheckpoint(
-      const DumpObjectsCheckpointRequest &request,
-      const ClientCallback<DumpObjectsCheckpointReply> &callback) {}
-
-  virtual void LoadCheckpoint(const LoadCheckpointRequest &request,
-                              const ClientCallback<LoadCheckpointReply> &callback) {}
-
   virtual void RestoreSpilledObjects(
       const RestoreSpilledObjectsRequest &request,
       const ClientCallback<RestoreSpilledObjectsReply> &callback) {}
@@ -301,18 +294,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          SpillObjects,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
-
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         DumpObjectsCheckpoint,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
-
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         LoadCheckpoint,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
