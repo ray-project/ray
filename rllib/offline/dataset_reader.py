@@ -135,7 +135,8 @@ def get_dataset_and_shards(
     if not (format and paths) and not loader_fn:
         raise ValueError(
             f"If using a loader_fn: {loader_fn} that constructs a dataset, "
-            "neither format: {format} and paths: {paths} must not be specified. If format and paths are specified, a loader_fn must not be specified."
+            "neither format: {format} and paths: {paths} must not be specified. If "
+            "format and paths are specified, a loader_fn must not be specified."
         )
 
     # check paths to be a str or list[str] if not None
