@@ -123,19 +123,9 @@ class EpsilonGreedy(Exploration):
         )
 
         # Get the exploit action as the one with the highest logit value.
-        exploit_action = tf.argmax(q_values, axis=1)
-
+        exploit_action = action_distribution.deterministic_sample()
         batch_size = tf.shape(q_values)[0]
-        # Mask out actions with q-value=-inf so that we don't even consider
-        # them for exploration.
-        random_valid_action_logits = tf.where(
-            tf.equal(q_values, tf.float32.min),
-            tf.ones_like(q_values) * tf.float32.min,
-            tf.ones_like(q_values),
-        )
-        random_actions = tf.squeeze(
-            tf.random.categorical(random_valid_action_logits, 1), axis=1
-        )
+        random_actions = action_distribution.sample()
 
         chose_random = (
             tf.random.uniform(
