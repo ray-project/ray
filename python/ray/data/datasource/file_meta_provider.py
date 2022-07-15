@@ -331,8 +331,8 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
 
 def _handle_read_s3_files_error(error: OSError, paths: Union[str, List[str]]) -> str:
     # Specially handle AWS error when reading files, to give a clearer error message
-    # to avoid confusing users. The real issus is most likely to be AWS S3 file
-    # credential not haven been properly configured yet.
+    # to avoid confusing users. The real issue is most likely that the AWS S3 file
+    # credentials have not been properly configured yet.
     if "AWS Error [code 15]: No response body" in str(error):
         if isinstance(paths, str):
             # Quote to highlight single file path in error message for better
@@ -342,7 +342,7 @@ def _handle_read_s3_files_error(error: OSError, paths: Union[str, List[str]]) ->
         raise PermissionError(
             (
                 f"Failing to read AWS S3 file(s): {paths}. "
-                "Please check file exists and has proper AWS credential. "
+                "Please check that file exists and has properly configured access. "
                 "See https://docs.ray.io/en/latest/data/creating-datasets.html#reading-from-remote-storage "  # noqa
                 "for more information."
             )

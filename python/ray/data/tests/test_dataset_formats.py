@@ -2905,7 +2905,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
 
 def test_read_s3_file_error(ray_start_regular_shared, s3_path):
     dummy_path = s3_path + "_dummy"
-    error_message = "Please check file exists and has proper AWS credential"
+    error_message = "Please check that file exists and has properly configured access."
     with pytest.raises(PermissionError) as e:
         ray.data.read_parquet(dummy_path)
         assert error_message in str(e)
