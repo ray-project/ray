@@ -181,7 +181,7 @@ def test_intelligent_scale_down(ray_cluster):
         actors = ray._private.state.actors()
         node_to_actors = defaultdict(list)
         for actor in actors.values():
-            if "RayServeWrappedReplica" not in actor["ActorClassName"]:
+            if "ServeReplica" not in actor["ActorClassName"]:
                 continue
             if actor["State"] != "ALIVE":
                 continue
