@@ -19,6 +19,7 @@ _XGB_MODEL_PATH = "model.json"
 _TRAINING_TIME_THRESHOLD = 1000
 _PREDICTION_TIME_THRESHOLD = 450
 
+
 def run_and_time_it(f):
     """Runs f in a separate process and time it."""
 
