@@ -68,7 +68,7 @@ def test_warnings(shutdown_only):
             f"{WARN_PREFIX} This pipeline's windows are ~0.08MiB in size each and "
             "may not fit in "
             "object store memory without spilling. To improve performance, "
-            "consider reducing the size of each window to no more than 250b."
+            "consider reducing the size of each window to 250b or less."
         ]
         assert dataset.logger.infos == [
             "Created DatasetPipeline with 10 windows: 0.08MiB min, 0.08MiB max, "
@@ -93,7 +93,7 @@ def test_warnings(shutdown_only):
             f"{WARN_PREFIX} This pipeline's windows are ~0.76MiB in size each and may "
             "not fit "
             "in object store memory without spilling. To improve performance, "
-            "consider reducing the size of each window to no more than 250b.",
+            "consider reducing the size of each window to 250b or less.",
         ]
         assert dataset.logger.infos == [
             "Created DatasetPipeline with 1 windows: 0.76MiB min, 0.76MiB max, "

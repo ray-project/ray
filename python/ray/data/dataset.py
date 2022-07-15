@@ -3272,7 +3272,7 @@ class Dataset(Generic[T]):
                             f"~{fmt(mean_bytes)} in size each and may not fit in "
                             "object store memory without spilling. To improve "
                             "performance, consider reducing the size of each window "
-                            f"to no more than {fmt(int(obj_store_mem * 0.25))}."
+                            f"to {fmt(int(obj_store_mem * 0.25))} or less."
                         )
                     else:
                         logger.info(
