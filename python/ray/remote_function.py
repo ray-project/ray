@@ -261,7 +261,7 @@ class RemoteFunction:
                 warnings.warn(
                     "placement_group parameter is deprecated. Use scheduling_strategy "
                     "parameter instead, see the usage at "
-                    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",
+                    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",  # noqa: E501
                     DeprecationWarning,
                     stacklevel=4,
                 )
@@ -269,7 +269,7 @@ class RemoteFunction:
                 warnings.warn(
                     "placement_group_bundle_index parameter is deprecated. Use "
                     "scheduling_strategy parameter instead, see the usage at "
-                    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",
+                    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",  # noqa: E501
                     DeprecationWarning,
                     stacklevel=4,
                 )
@@ -277,7 +277,7 @@ class RemoteFunction:
                 warnings.warn(
                     "placement_group_capture_child_tasks parameter is deprecated. Use "
                     "scheduling_strategy parameter instead, see the usage at "
-                    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",
+                    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",  # noqa: E501
                     DeprecationWarning,
                     stacklevel=4,
                 )
