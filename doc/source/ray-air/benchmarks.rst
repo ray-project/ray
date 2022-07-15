@@ -11,9 +11,8 @@ using an XGBoost model.
 
 We test out the performance across different cluster sizes and data sizes.
 
-`XGBoost Prediction Script`_
-
-`XGBoost Cluster configuration`_
+- `XGBoost Prediction Script`_
+- `XGBoost Cluster configuration`_
 
 .. TODO: Add script for generating data and running the benchmark.
 
@@ -48,9 +47,8 @@ with different amounts of parallelism.
 XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
 
 
-`XGBoost Training Script`_
-
-`XGBoost Cluster configuration`_
+- `XGBoost Training Script`_
+- `XGBoost Cluster configuration`_
 
 .. list-table::
 
