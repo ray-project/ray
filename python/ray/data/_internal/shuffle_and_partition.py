@@ -71,7 +71,10 @@ class _ShufflePartitionOp(ShuffleOp):
 
     @staticmethod
     def reduce(
-        random_shuffle: bool, random_seed: Optional[int], *mapper_outputs: List[Block]
+        random_shuffle: bool,
+        random_seed: Optional[int],
+        *mapper_outputs: List[Block],
+        partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()

@@ -6,6 +6,7 @@ from ray.data.datasource.datasource import (
     RandomIntRowDatasource,
     RangeDatasource,
     ReadTask,
+    Reader,
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -64,6 +65,7 @@ __all__ = [
     "RandomIntRowDatasource",
     "RangeDatasource",
     "ReadTask",
+    "Reader",
     "SimpleTensorFlowDatasource",
     "SimpleTorchDatasource",
     "WriteResult",

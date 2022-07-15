@@ -20,10 +20,10 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.runtime_env.plugin import PluginCacheManager
+from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
-from ray._private.utils import import_attr
 from ray.core.generated import (
     agent_manager_pb2,
     runtime_env_agent_pb2,
@@ -224,6 +224,7 @@ class RuntimeEnvAgent(
             self.unused_uris_processor,
             self.unused_runtime_env_processor,
         )
+        self._runtime_env_plugin_manager = RuntimeEnvPluginManager()
 
         self._logger = default_logger
 
@@ -295,17 +296,17 @@ class RuntimeEnvAgent(
 
             def setup_plugins():
                 # Run setup function from all the plugins
-                for plugin_class_path, config in runtime_env.plugins():
-                    per_job_logger.debug(
-                        f"Setting up runtime env plugin {plugin_class_path}"
-                    )
-                    plugin_class = import_attr(plugin_class_path)
-                    plugin = plugin_class()
+                for name, config in runtime_env.plugins():
+                    per_job_logger.debug(f"Setting up runtime env plugin {name}")
+                    plugin = self._runtime_env_plugin_manager.get_plugin(name)
+                    if plugin is None:
+                        raise RuntimeError(f"runtime env plugin {name} not found.")
                     # TODO(architkulkarni): implement uri support
-                    plugin.create("uri not implemented", json.loads(config), context)
+                    plugin.validate(runtime_env)
+                    plugin.create("uri not implemented", config, context)
                     plugin.modify_context(
                         "uri not implemented",
-                        json.loads(config),
+                        config,
                         context,
                         per_job_logger,
                     )
@@ -524,6 +525,7 @@ class RuntimeEnvAgent(
         # Cache information
         # Metrics (creation time & success)
         # Deleted URIs
+        limit = request.limit if request.HasField("limit") else -1
         runtime_env_states = defaultdict(ProtoRuntimeEnvState)
         runtime_env_refs = self._reference_table.runtime_env_refs
         for runtime_env, ref_cnt in runtime_env_refs.items():
@@ -537,9 +539,13 @@ class RuntimeEnvAgent(
             runtime_env_states[runtime_env].creation_time_ms = result.creation_time_ms
 
         reply = runtime_env_agent_pb2.GetRuntimeEnvsInfoReply()
+        count = 0
         for runtime_env_state in runtime_env_states.values():
+            if limit != -1 and count >= limit:
+                break
+            count += 1
             reply.runtime_env_states.append(runtime_env_state)
-
+        reply.total = len(runtime_env_states)
         return reply
 
     async def run(self, server):

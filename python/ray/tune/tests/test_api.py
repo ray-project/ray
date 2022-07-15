@@ -56,11 +56,10 @@ from ray.tune.stopper import (
     TrialPlateauStopper,
     ExperimentPlateauStopper,
 )
-from ray.tune.suggest import BasicVariantGenerator, grid_search
-from ray.tune.suggest._mock import _MockSuggestionAlgorithm
-from ray.tune.suggest.ax import AxSearch
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.suggest.suggestion import ConcurrencyLimiter
+from ray.tune.search import BasicVariantGenerator, grid_search, ConcurrencyLimiter
+from ray.tune.search._mock import _MockSuggestionAlgorithm
+from ray.tune.search.ax import AxSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.syncer import Syncer
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner

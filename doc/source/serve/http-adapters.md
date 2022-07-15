@@ -30,13 +30,13 @@ For more detail, you can take a look at [FastAPI documentation](https://fastapi.
 
 You can use adapters in different scenarios within Serve:
 
-- Ray AIR `ModelWrapper`
+- Ray AIR `Predictor`
 - Serve Deployment Graph `DAGDriver`
 - Embedded in Bring Your Own `FastAPI` Application
 
 Let's go over them one by one.
 
-## Ray AIR `ModelWrapper`
+## Ray AIR `Predictor`
 
 Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
 You can use it with [Ray AI Runtime (AIR) model wrapper](air-serving-guide) feature
@@ -49,9 +49,9 @@ With [model wrappers](air-serving-guide), you can specify it via the `http_adapt
 ```python
 from ray import serve
 from ray.serve.http_adapters import json_to_ndarray
-from ray.serve.model_wrappers import ModelWrapperDeployment
+from ray.serve import PredictorDeployment
 
-ModelWrapperDeployment.options(name="my_model").deploy(
+PredictorDeployment.options(name="my_model").deploy(
     my_ray_air_predictor,
     my_ray_air_checkpoint,
     http_adapter=json_to_ndarray
@@ -71,7 +71,7 @@ class User(BaseModel):
     user_name: str
 
 ...
-ModelWrapperDeployment.deploy(..., http_adapter=User)
+PredictorDeployment.deploy(..., http_adapter=User)
 ```
 :::
 

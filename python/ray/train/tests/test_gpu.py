@@ -1,26 +1,30 @@
 import os
-import pytest
 from timeit import default_timer as timer
 
+import pytest
 import torch
+import torchvision
+from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
-import torchvision
 
 import ray
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
+from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
 from ray.train.examples.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.train_fashion_mnist_example import (
+from ray.train.examples.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.examples.train_linear_example import LinearDataset
-from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
+from ray.train.examples.torch_linear_example import LinearDataset
+from ray.train.horovod.horovod_trainer import HorovodTrainer
+from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+from ray.train.torch.torch_trainer import TorchTrainer
 
 
 @pytest.fixture
@@ -38,6 +42,7 @@ def ray_start_1_cpu_1_gpu():
     ray.shutdown()
 
 
+# TODO: Refactor as a backend test.
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     def train_fn():
@@ -64,6 +69,7 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         )
 
 
+# TODO: Refactor as a backend test.
 def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     """Tests if ``prepare_model`` correctly wraps in DDP."""
 
@@ -85,6 +91,7 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     trainer.shutdown()
 
 
+# TODO: Refactor as a backend test.
 def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     data_loader = DataLoader(LinearDataset(a=1, b=2, size=10))
 
@@ -108,6 +115,7 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     trainer.shutdown()
 
 
+# TODO: Refactor as a backend test.
 @pytest.mark.parametrize("use_gpu", (False, True))
 def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
     # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
@@ -154,6 +162,7 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
     assert result1 == result2
 
 
+# TODO: Refactor as a backend test.
 def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
     def train_func(config):
         train.torch.accelerate(amp=config["amp"])
@@ -196,6 +205,7 @@ def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
     assert 1.05 * latency(amp=True) < latency(amp=False)
 
 
+# TODO: Refactor as a backend test.
 def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
     """Test that model with AMP is serializable."""
 
@@ -213,6 +223,7 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
     trainer.shutdown()
 
 
+# TODO: Refactor as a backend test.
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     """Tests if GPU tensors are auto converted to CPU on driver."""
 
@@ -287,55 +298,47 @@ def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     num_workers = 2
     epochs = 3
 
-    trainer = Trainer("tensorflow", num_workers=num_workers, use_gpu=True)
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(tensorflow_mnist_train_func, config)
-    trainer.shutdown()
+    trainer = TensorflowTrainer(
+        tensorflow_mnist_train_func,
+        train_loop_config=config,
+        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+    )
+    results = trainer.fit()
 
-    assert len(results) == num_workers
-    result = results[0]
+    result = results.metrics
 
-    loss = result["loss"]
-    assert len(loss) == epochs
-    assert loss[-1] < loss[0]
-
-    accuracy = result["accuracy"]
-    assert len(accuracy) == epochs
-    assert accuracy[-1] > accuracy[0]
+    assert result[TRAINING_ITERATION] == epochs
 
 
 def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     num_workers = 2
     epochs = 3
 
-    trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(fashion_mnist_train_func, config)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        fashion_mnist_train_func,
+        train_loop_config=config,
+        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+    )
+    results = trainer.fit()
 
-    assert len(results) == num_workers
+    result = results.metrics
 
-    for result in results:
-        assert len(result) == epochs
-        assert result[-1] < result[0]
+    assert result[TRAINING_ITERATION] == epochs
 
 
 def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
     num_workers = 2
     num_epochs = 2
-    trainer = Trainer("horovod", num_workers, use_gpu=True)
-    trainer.start()
-    results = trainer.run(
-        horovod_torch_train_func, config={"num_epochs": num_epochs, "lr": 1e-3}
+    trainer = HorovodTrainer(
+        horovod_torch_train_func,
+        train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
+        scaling_config=dict(num_workers=num_workers, use_gpu=True),
     )
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-    for worker_result in results:
-        assert len(worker_result) == num_epochs
-        assert worker_result[num_epochs - 1] < worker_result[0]
+    results = trainer.fit()
+    result = results.metrics
+    assert result[TRAINING_ITERATION] == num_workers
 
 
 def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
@@ -347,11 +350,9 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.train_linear_dataset_example import train_linear
+    from ray.train.examples.torch_linear_dataset_example import train_linear
 
-    results = train_linear(num_workers=2, use_gpu=True)
-    for result in results:
-        assert result[-1]["loss"] < result[0]["loss"]
+    assert train_linear(num_workers=2, use_gpu=True)
 
 
 def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
@@ -359,11 +360,10 @@ def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
         train_tensorflow_linear,
     )
 
-    results = train_tensorflow_linear(num_workers=2, use_gpu=True)
-    for result in results:
-        assert result[-1]["loss"] < result[0]["loss"]
+    assert train_tensorflow_linear(num_workers=2, use_gpu=True)
 
 
+# TODO: Refactor as a backend test.
 @pytest.mark.parametrize(
     ("device_choice", "auto_transfer"),
     [
@@ -376,8 +376,8 @@ def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
 def test_auto_transfer_data_from_host_to_device(
     ray_start_1_cpu_1_gpu, device_choice, auto_transfer
 ):
-    import torch
     import numpy as np
+    import torch
 
     def compute_average_runtime(func):
         device = torch.device(device_choice)
@@ -417,7 +417,8 @@ def test_auto_transfer_data_from_host_to_device(
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", "-s", __file__]))

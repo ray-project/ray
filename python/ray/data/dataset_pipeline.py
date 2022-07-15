@@ -37,7 +37,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Operations that can be naively applied per dataset row in the pipeline.
-_PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
+_PER_DATASET_OPS = [
+    "map",
+    "map_batches",
+    "add_column",
+    "drop_columns",
+    "flat_map",
+    "filter",
+]
 
 # Operations that apply to each dataset holistically in the pipeline.
 _HOLISTIC_PER_DATASET_OPS = [

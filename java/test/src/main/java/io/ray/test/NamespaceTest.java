@@ -112,9 +112,22 @@ public class NamespaceTest {
       ProcessBuilder builder = TestUtils.buildDriver(driverClass, null);
       builder.redirectError(ProcessBuilder.Redirect.INHERIT);
       driver = builder.start();
+      TestUtils.waitForCondition(() -> Ray.getActor("a", "test1").isPresent(), 10000);
       // Wait for driver to start.
       driver.waitFor(10, TimeUnit.SECONDS);
       runnable.run();
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  public void testSpecifyNamespaceForActor() {
+    System.setProperty("ray.job.namespace", "namespace1");
+    try {
+      Ray.init();
+      ActorHandle<GetNamespaceActor> actor =
+          Ray.actor(GetNamespaceActor::new).setName("a", "namespace2").remote();
+      Assert.assertFalse(Ray.getActor("a").isPresent());
     } finally {
       Ray.shutdown();
     }

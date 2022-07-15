@@ -4,6 +4,7 @@ from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     Block,
@@ -15,6 +16,7 @@ from ray.data.block import (
     T,
     U,
 )
+from ray.data.context import DatasetContext
 from ray.data.dataset import BatchType, Dataset
 from ray.util.annotations import PublicAPI
 
@@ -47,15 +49,22 @@ class _GroupbyOp(ShuffleOp):
 
     @staticmethod
     def reduce(
-        key: KeyFn, aggs: Tuple[AggregateFn], *mapper_outputs: List[Block]
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+        *mapper_outputs: List[Block],
+        partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
         """Aggregate sorted and partially combined blocks."""
         return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs
+            list(mapper_outputs), key, aggs, finalize=not partial_reduce
         )
 
 
 class SimpleShuffleGroupbyOp(_GroupbyOp, SimpleShufflePlan):
+    pass
+
+
+class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
     pass
 
 
@@ -130,7 +139,12 @@ class GroupedDataset(Generic[T]):
                     else self._key,
                     num_reducers,
                 )
-            shuffle_op = SimpleShuffleGroupbyOp(
+            ctx = DatasetContext.get_current()
+            if ctx.use_push_based_shuffle:
+                shuffle_op_cls = PushBasedGroupbyOp
+            else:
+                shuffle_op_cls = SimpleShuffleGroupbyOp
+            shuffle_op = shuffle_op_cls(
                 map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
             )
             return shuffle_op.execute(

@@ -48,7 +48,7 @@ class TestRE3(unittest.TestCase):
             },
         }
 
-        num_iterations = 30
+        num_iterations = 60
         for _ in framework_iterator(config, frameworks=("tf", "tf2"), session=True):
             algo = algo_cls(config=config)
             learnt = False

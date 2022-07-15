@@ -13,7 +13,6 @@ import transformers.trainer
 import transformers.training_args
 from torch.utils.data import Dataset as TorchDataset
 
-from ray import train
 from ray.air import session
 from ray.air._internal.checkpointing import (
     save_preprocessor_to_dir,
@@ -408,12 +407,12 @@ def _huggingface_train_loop_per_worker(config):
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
 
     # Env vars necessary for HF to setup DDP
-    os.environ["RANK"] = str(train.world_rank())
-    os.environ["WORLD_SIZE"] = str(train.world_size())
-    os.environ["LOCAL_RANK"] = str(train.local_rank())
+    os.environ["RANK"] = str(session.get_world_rank())
+    os.environ["WORLD_SIZE"] = str(session.get_world_size())
+    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
-    train_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY)
-    eval_dataset = train.get_dataset_shard(EVALUATION_DATASET_KEY)
+    train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
+    eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
 
     train_torch_dataset, eval_torch_dataset = process_datasets(
         train_dataset,

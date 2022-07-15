@@ -19,7 +19,8 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.common import CURRENT_VERSION, JobInfo
+from ray.dashboard.modules.job.common import JobInfo
+from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start

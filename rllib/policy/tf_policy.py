@@ -151,29 +151,15 @@ class TFPolicy(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Get devices to build the graph on.
-        worker_idx = config.get("worker_index", 0)
-        if (
-            not config["_fake_gpus"]
-            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-        ):
-            num_gpus = 0
-        elif worker_idx == 0:
-            num_gpus = config["num_gpus"]
-        else:
-            num_gpus = config["num_gpus_per_worker"]
+        num_gpus = self._get_num_gpus_for_policy()
         gpu_ids = get_gpu_devices()
+        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
         # - no GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-            logger.info(
-                "TFPolicy (worker={}) running on {}.".format(
-                    worker_idx if worker_idx > 0 else "local",
-                    f"{num_gpus} fake-GPUs" if config["_fake_gpus"] else "CPU",
-                )
-            )
             self.devices = ["/cpu:0" for _ in range(int(math.ceil(num_gpus)) or 1)]
         # Place on one or more actual GPU(s), when:
         # - num_gpus > 0 (set by user) AND
@@ -181,12 +167,6 @@ class TFPolicy(Policy):
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
-            logger.info(
-                "TFPolicy (worker={}) running on {} GPU(s).".format(
-                    worker_idx if worker_idx > 0 else "local", num_gpus
-                )
-            )
-
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
             if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:

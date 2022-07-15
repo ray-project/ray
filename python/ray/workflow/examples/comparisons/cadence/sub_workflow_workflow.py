@@ -13,5 +13,4 @@ def main_workflow(name: str) -> str:
 
 
 if __name__ == "__main__":
-    wf = workflow.create(main_workflow.bind("Alice"))
-    print(wf.run())
+    print(workflow.run(main_workflow.bind("Alice")))

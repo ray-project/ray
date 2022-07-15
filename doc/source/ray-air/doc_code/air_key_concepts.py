@@ -75,11 +75,7 @@ from ray.train.xgboost import XGBoostPredictor
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 
 # Bulk batch prediction.
-predicted_labels = (
-    batch_predictor.predict(test_dataset)
-    .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
-    .to_pandas(limit=float("inf"))
-)
+predicted_probabilities = batch_predictor.predict(test_dataset)
 
 # Pipelined batch prediction: instead of processing the data in bulk, process it
 # incrementally in windows of the given size.
@@ -92,7 +88,7 @@ for batch in pipeline.iter_batches():
 # __air_deploy_start__
 from ray import serve
 from fastapi import Request
-from ray.serve.model_wrappers import ModelWrapperDeployment
+from ray.serve import PredictorDeployment
 from ray.serve.http_adapters import json_request
 
 
@@ -103,7 +99,7 @@ async def adapter(request: Request):
 
 
 serve.start(detached=True)
-deployment = ModelWrapperDeployment.options(name="XGBoostService")
+deployment = PredictorDeployment.options(name="XGBoostService")
 
 deployment.deploy(
     XGBoostPredictor, result.checkpoint, batching_params=False, http_adapter=adapter
