@@ -8,11 +8,12 @@ from ray.air.config import DatasetConfig
 from ray.air.util.check_ingest import DummyTrainer
 from ray.data.preprocessors import BatchMapper
 from ray.train.batch_predictor import BatchPredictor
+from ray.train.torch import TorchPredictor, to_air_checkpoint
 
 GiB = 1024 * 1024 * 1024
 
 
-def dummy_predict(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
+def dummy_predict(data: "pd.DataFrame") -> "pd.DataFrame":
     # For 20k records (200GiB), this amounts to 2000 seconds of work.
     time.sleep(len(data) * 0.0001)
     return pd.DataFrame({"label": [42] * len(data)})
@@ -67,16 +68,45 @@ def run_ingest_streaming(dataset, num_workers):
     trainer.fit()
 
 
-def run_infer_bulk(dataset, num_workers, post=None, stream=False, window_size_gb=10):
+def run_infer_bulk(
+    dataset, num_workers, post=None, stream=False, window_size_gb=10, infer_gpu=False
+):
     start = time.time()
 
-    def fn(batch):
-        print("Running dummy preprocessor")
-        return batch * 2
+    if infer_gpu:
+        from torchvision import transforms
+        from torchvision.models import resnet18
 
-    dummy_prep = BatchMapper(fn)
-    predictor = BatchPredictor.from_pandas_udf(dummy_predict)
-    predictor.set_preprocessor(dummy_prep)
+        def preprocess(df):
+            preprocess = transforms.Compose(
+                [
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                    ),
+                ]
+            )
+            df["image"] = df["image"].map(preprocess)
+            return df
+
+        preprocessor = BatchMapper(preprocess)
+
+        model = resnet18(pretrained=True)
+
+        ckpt = to_air_checkpoint(model=model, preprocessor=preprocessor)
+
+        predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
+    else:
+
+        def fn(batch):
+            print("Running dummy preprocessor")
+            return batch * 2
+
+        dummy_prep = BatchMapper(fn)
+        predictor = BatchPredictor.from_pandas_udf(dummy_predict)
+        predictor.set_preprocessor(dummy_prep)
 
     if stream:
         result = predictor.predict_pipelined(
@@ -86,6 +116,7 @@ def run_infer_bulk(dataset, num_workers, post=None, stream=False, window_size_gb
             min_scoring_workers=num_workers,
             max_scoring_workers=num_workers,
             num_cpus_per_worker=1,
+            num_gpus_per_worker=1 if infer_gpu else 0,
         )
     else:
         result = predictor.predict(
@@ -94,6 +125,7 @@ def run_infer_bulk(dataset, num_workers, post=None, stream=False, window_size_gb
             min_scoring_workers=num_workers,
             max_scoring_workers=num_workers,
             num_cpus_per_worker=1,
+            num_gpus_per_worker=1 if infer_gpu else 0,
         )
     if post:
         post(result)
@@ -101,20 +133,25 @@ def run_infer_bulk(dataset, num_workers, post=None, stream=False, window_size_gb
     print("Total runtime", time.time() - start)
 
 
-def run_infer_streaming(dataset, num_workers, window_size_gb):
+def run_infer_streaming(dataset, num_workers, window_size_gb, infer_gpu):
     def post(result):
         for b in result.iter_batches():
             pass
 
     return run_infer_bulk(
-        dataset, num_workers, post, stream=True, window_size_gb=window_size_gb
+        dataset,
+        num_workers,
+        post,
+        stream=True,
+        window_size_gb=window_size_gb,
+        infer_gpu=infer_gpu,
     )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--benchmark", type=str, default="ingest", help="ingest or infer"
+        "--benchmark", type=str, default="ingest", help="ingest/infer/infer_gpu"
     )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--dataset-size-gb", type=int, default=200)
@@ -127,10 +164,17 @@ if __name__ == "__main__":
             run_ingest_streaming(ds, args.num_workers)
         else:
             run_ingest_bulk(ds, args.num_workers)
-    elif args.benchmark == "infer":
+    elif args.benchmark in ["infer", "infer_gpu"]:
         if args.streaming:
-            run_infer_streaming(ds, args.num_workers, args.window_size_gb)
+            run_infer_streaming(
+                ds,
+                args.num_workers,
+                args.window_size_gb,
+                infer_gpu=args.benchmark == "infer_gpu",
+            )
         else:
-            run_infer_bulk(ds, args.num_workers)
+            run_infer_bulk(
+                ds, args.num_workers, infer_gpu=args.benchmark == "infer_gpu"
+            )
     else:
         assert False
