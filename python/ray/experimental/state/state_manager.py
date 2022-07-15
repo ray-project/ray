@@ -39,7 +39,6 @@ from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoRequest,
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
-from ray.dashboard.consts import RAY_API_SERVER_GRPC_MAX_MESSAGE_SIZE
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.common import MAX_LIMIT
@@ -49,8 +48,8 @@ logger = logging.getLogger(__name__)
 
 _STATE_MANAGER_GRPC_OPTIONS = [
     *ray_constants.GLOBAL_GRPC_OPTIONS,
-    ("grpc.max_send_message_length", RAY_API_SERVER_GRPC_MAX_MESSAGE_SIZE),
-    ("grpc.max_receive_message_length", RAY_API_SERVER_GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
 ]
 
 

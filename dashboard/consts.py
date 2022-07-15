@@ -1,5 +1,4 @@
 from ray._private.ray_constants import env_integer
-from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_PORT_PREFIX = "DASHBOARD_AGENT_PORT_PREFIX:"
@@ -44,8 +43,3 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
-
-# State API server gRPC related configs
-RAY_API_SERVER_GRPC_MAX_MESSAGE_SIZE = env_integer(
-    "RAY_API_SERVER_GRPC_MAX_MESSAGE_SIZE", GRPC_MAX_MESSAGE_SIZE
-)
