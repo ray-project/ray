@@ -82,7 +82,7 @@ def run_infer_bulk(dataset, num_workers, post=None, stream=False, window_size_gb
     if stream:
         result = predictor.predict_pipelined(
             dataset,
-            bytes_per_window=window_size_gb,
+            bytes_per_window=window_size_gb * 1024 * 1024 * 1024,
             batch_size=1024 // 8,
             min_scoring_workers=num_workers,
             max_scoring_workers=num_workers,
@@ -125,12 +125,12 @@ if __name__ == "__main__":
     ds = make_ds(args.dataset_size_gb)
     if args.benchmark == "ingest":
         if args.streaming:
-            run_ingest_streaming(ds, args.num_workers, args.window_size_gb)
+            run_ingest_streaming(ds, args.num_workers)
         else:
             run_ingest_bulk(ds, args.num_workers)
     elif args.benchmark == "infer":
         if args.streaming:
-            run_infer_streaming(ds, args.num_workers)
+            run_infer_streaming(ds, args.num_workers, args.window_size_gb)
         else:
             run_infer_bulk(ds, args.num_workers)
     else:
