@@ -330,7 +330,7 @@ message DumpCheckpointsRequest {
 }
 
 message DumpCheckpointsReply {
-  repeated string checkpoint_urls = 1;
+  repeated string spilled_urls = 1;
 }
 
 // Service for inter-node-manager communication.

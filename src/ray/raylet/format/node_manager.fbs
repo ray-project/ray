@@ -165,7 +165,7 @@ table Address {
 table FetchOrReconstruct {
   // List of object IDs of the objects that we want to reconstruct or fetch.
   object_ids: [string];
-  checkpoint_urls: [string];
+  spilled_urls: [string];
   global_owner_ids: [string];
   // The RPC addresses of the workers that own the objects in object_ids.
   owner_addresses: [Address];

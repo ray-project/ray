@@ -46,7 +46,7 @@ cdef class ObjectRef(BaseID):
             spilled_url="", spilled_node_id="",
             skip_adding_local_ref=False,
             global_owner_id=b"",
-            checkpoint_url=""):
+            spilled_url=""):
         self._set_id(id)
         self.owner_addr = owner_addr
         self.in_core_worker = False
@@ -60,7 +60,7 @@ cdef class ObjectRef(BaseID):
             self._global_owner_id = global_owner_id
         else:
             self._global_owner_id = ActorID.nil().binary()
-        self._checkpoint_url = checkpoint_url
+        self._spilled_url = spilled_url
 
         worker = ray.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
@@ -116,8 +116,8 @@ cdef class ObjectRef(BaseID):
     def size(self):
         return CObjectID.Size()
 
-    def checkpoint_url(self):
-        return self._checkpoint_url.decode("utf-8")
+    def spilled_url(self):
+        return self._spilled_url.decode("utf-8")
 
     def global_owner_id(self):
         return self._global_owner_id

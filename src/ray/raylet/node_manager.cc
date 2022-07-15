@@ -82,11 +82,11 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithCheckpoint
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
     const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
         &owner_addresses,
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &checkpoint_urls,
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &spilled_urls,
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
         &global_owner_ids) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
-  RAY_CHECK(checkpoint_urls.size() == object_ids.size());
+  RAY_CHECK(spilled_urls.size() == object_ids.size());
   RAY_CHECK(global_owner_ids.size() == object_ids.size());
   std::vector<ray::rpc::ObjectReference> refs;
   for (int64_t i = 0; i < object_ids.size(); i++) {
@@ -97,7 +97,7 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithCheckpoint
     ref.mutable_owner_address()->set_ip_address(addr->ip_address()->str());
     ref.mutable_owner_address()->set_port(addr->port());
     ref.mutable_owner_address()->set_worker_id(addr->worker_id()->str());
-    ref.set_checkpoint_url(checkpoint_urls.Get(i)->str());
+    ref.set_spilled_url(spilled_urls.Get(i)->str());
     ref.set_global_owner_id(global_owner_ids.Get(i)->str());
     refs.emplace_back(std::move(ref));
   }
@@ -249,9 +249,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           /*max_object_report_batch_size=*/
           RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
-            std::string checkpoint_url =
+            std::string spilled_url =
                 GetLocalObjectManager().GetObjectCheckpointURL(obj_id);
-            if (checkpoint_url.size() > 0) {
+            if (spilled_url.size() > 0) {
               RAY_LOG(DEBUG) << "the owner of object(" << obj_id
                              << ") is dead, but this object has checkpoint"
                              << "object directory will ignore it.";
@@ -1528,16 +1528,16 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   const auto refs =
       FlatbufferToObjectReferenceWithCheckpointURLs(*message->object_ids(),
                                                     *message->owner_addresses(),
-                                                    *message->checkpoint_urls(),
+                                                    *message->spilled_urls(),
                                                     *message->global_owner_ids());
   for (const auto &ref : refs) {
-    std::string checkpoint_url = ref.checkpoint_url();
+    std::string spilled_url = ref.spilled_url();
     ActorID global_owner_id = ActorID::FromBinary(ref.global_owner_id());
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
     RAY_LOG(DEBUG) << "Try to get object: " << object_id
                    << ", its global owner: " << global_owner_id;
     GetLocalObjectManager().InsertObjectAndCheckpointURL(
-        object_id, checkpoint_url, false, global_owner_id);
+        object_id, spilled_url, false, global_owner_id);
   }
   // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
   // non-direct call support.
@@ -2501,14 +2501,14 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
        objects_to_dump,
        global_owner_ids,
        send_reply_callback = std::move(send_reply_callback),
-       reply](const std::vector<std::string> &checkpoint_urls) {
-        RAY_CHECK(objects_to_dump.size() == checkpoint_urls.size())
+       reply](const std::vector<std::string> &spilled_urls) {
+        RAY_CHECK(objects_to_dump.size() == spilled_urls.size())
             << "objects number: " << objects_to_dump.size()
-            << ", checkpoint_urls size: " << checkpoint_urls.size();
-        for (size_t i = 0; i < checkpoint_urls.size(); i++) {
+            << ", spilled_urls size: " << spilled_urls.size();
+        for (size_t i = 0; i < spilled_urls.size(); i++) {
           GetLocalObjectManager().InsertObjectAndCheckpointURL(
-              objects_to_dump[i], checkpoint_urls[i], true, global_owner_ids[i]);
-          reply->add_checkpoint_urls(std::move(checkpoint_urls[i]));
+              objects_to_dump[i], spilled_urls[i], true, global_owner_ids[i]);
+          reply->add_spilled_urls(std::move(spilled_urls[i]));
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });

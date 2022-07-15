@@ -336,7 +336,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                    bool pin_object,
                    const std::unique_ptr<rpc::Address> &owner_address = nullptr,
                    const ActorID &global_owner_id = ActorID::Nil(),
-                   std::string *checkpoint_url = nullptr);
+                   std::string *spilled_url = nullptr);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -350,7 +350,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       bool pin_object,
                       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
                       const ActorID &global_owner_id = ActorID::Nil(),
-                      std::string *checkpoint_url = nullptr);
+                      std::string *spilled_url = nullptr);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -360,7 +360,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids,
-             const std::vector<std::string> &checkpoint_urls,
+             const std::vector<std::string> &spilled_urls,
              const std::vector<std::string> &global_owner_ids,
              const int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);

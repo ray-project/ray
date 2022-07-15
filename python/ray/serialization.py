@@ -54,7 +54,6 @@ def _object_ref_deserializer(
     spilled_url,
     spilled_node_id,
     object_status,
-    checkpoint_url,
     global_owner_id,
 ):
     # NOTE(suquark): This function should be a global function so
@@ -71,7 +70,6 @@ def _object_ref_deserializer(
         call_site,
         spilled_url,
         spilled_node_id,
-        checkpoint_url=checkpoint_url,
         global_owner_id=global_owner_id,
     )
 
@@ -146,7 +144,6 @@ class SerializationContext:
                 spilled_url,
                 spilled_node_id,
                 object_status,
-                obj.checkpoint_url(),
                 global_owner_id,
             )
 

@@ -210,22 +210,22 @@ Status raylet::RayletClient::FetchOrReconstruct(
     bool mark_worker_blocked,
     const TaskID &current_task_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
-  std::vector<std::string> checkpoint_urls;
+  std::vector<std::string> spilled_urls;
   std::vector<std::string> global_owner_ids;
   for (const auto &object_id : object_ids) {
     auto it = object_to_url_map.find(object_id);
     RAY_CHECK(it != object_to_url_map.end());
-    checkpoint_urls.push_back(it->second.first);
+    spilled_urls.push_back(it->second.first);
     global_owner_ids.push_back(it->second.second);
   }
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
-  auto checkpoint_urls_message = string_vec_to_flatbuf(fbb, checkpoint_urls);
+  auto spilled_urls_message = string_vec_to_flatbuf(fbb, spilled_urls);
   auto global_owner_ids_message = string_vec_to_flatbuf(fbb, global_owner_ids);
   auto message =
       protocol::CreateFetchOrReconstruct(fbb,
                                          object_ids_message,
-                                         checkpoint_urls_message,
+                                         spilled_urls_message,
                                          global_owner_ids_message,
                                          AddressesToFlatbuffer(fbb, owner_addresses),
                                          fetch_only,

@@ -223,13 +223,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address,
                              const CActorID &global_owner_id,
-                             c_string *checkpoint_url)
+                             c_string *spilled_url)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const unique_ptr[CAddress] &owner_address,
                                 const CActorID &global_owner_id,
-                                c_string *checkpoint_url)
+                                c_string *spilled_url)
         CRayStatus Get(const c_vector[CObjectID] &ids,
-                       const c_vector[c_string] &checkpoint_urls,
+                       const c_vector[c_string] &spilled_urls,
                        const c_vector[c_string] &c_global_owner_ids,
                        int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)

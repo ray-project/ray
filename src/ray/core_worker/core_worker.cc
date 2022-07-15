@@ -1064,9 +1064,9 @@ Status CoreWorker::SealOwned(const ObjectID &object_id,
                              bool pin_object,
                              const std::unique_ptr<rpc::Address> &owner_address,
                              const ActorID &global_owner_id,
-                             std::string *checkpoint_url) {
+                             std::string *spilled_url) {
   auto status = SealExisting(
-      object_id, pin_object, std::move(owner_address), global_owner_id, checkpoint_url);
+      object_id, pin_object, std::move(owner_address), global_owner_id, spilled_url);
   if (status.ok()) return status;
   RemoveLocalReference(object_id);
   if (reference_counter_->HasReference(object_id)) {
@@ -1081,12 +1081,12 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 bool pin_object,
                                 const std::unique_ptr<rpc::Address> &owner_address,
                                 const ActorID &global_owner_id,
-                                std::string *checkpoint_url) {
+                                std::string *spilled_url) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
 
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
-  if (checkpoint_url) {
+  if (spilled_url) {
     std::promise<void> sync_promise;
     auto future = sync_promise.get_future();
     local_raylet_client_->DumpCheckpoints(
@@ -1094,18 +1094,18 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
         {real_owner_address},
         {global_owner_id},
         rpc_address_,
-        [&sync_promise, checkpoint_url](const Status &status,
+        [&sync_promise, spilled_url](const Status &status,
                                         const rpc::DumpCheckpointsReply &reply) {
           RAY_CHECK(status.ok()) << "failed to dump checkpoint!";
-          RAY_CHECK(reply.checkpoint_urls_size() == 1);
-          *checkpoint_url = reply.checkpoint_urls()[0];
+          RAY_CHECK(reply.spilled_urls_size() == 1);
+          *spilled_url = reply.spilled_urls()[0];
           sync_promise.set_value();
         });
     future.wait();
     RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
   }
 
-  if (pin_object && checkpoint_url == nullptr) {
+  if (pin_object && spilled_url == nullptr) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
     local_raylet_client_->PinObjectIDs(
@@ -1129,11 +1129,11 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
-                       const std::vector<std::string> &checkpoint_urls,
+                       const std::vector<std::string> &spilled_urls,
                        const std::vector<std::string> &global_owner_ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
-  RAY_CHECK(ids.size() == checkpoint_urls.size());
+  RAY_CHECK(ids.size() == spilled_urls.size());
   RAY_CHECK(ids.size() == global_owner_ids.size());
   results->resize(ids.size(), nullptr);
 
@@ -1146,7 +1146,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       plasma_objects_id_to_url;
   for (size_t i = 0; i < ids.size(); i++) {
     plasma_objects_id_to_url.emplace(
-        ids[i], std::make_pair(checkpoint_urls[i], global_owner_ids[i]));
+        ids[i], std::make_pair(spilled_urls[i], global_owner_ids[i]));
   }
   auto start_time = current_time_ms();
 

@@ -157,7 +157,7 @@ class LocalObjectManager {
   std::string DebugString() const;
 
   void InsertObjectAndCheckpointURL(const ObjectID &object_id,
-                                    const std::string &checkpoint_url,
+                                    const std::string &spilled_url,
                                     const bool is_sealed,
                                     const ActorID &actor_id)
       LOCKS_EXCLUDED(object_map_mutex_);

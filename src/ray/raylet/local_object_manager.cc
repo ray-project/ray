@@ -608,14 +608,14 @@ std::string LocalObjectManager::DebugString() const {
 }
 
 void LocalObjectManager::InsertObjectAndCheckpointURL(const ObjectID &object_id,
-                                                      const std::string &checkpoint_url,
+                                                      const std::string &spilled_url,
                                                       const bool is_sealed,
                                                       const ActorID &actor_id) {
   absl::MutexLock guard(&object_map_mutex_);
   auto it = get_object_to_url_map_.find(object_id);
   if (it != get_object_to_url_map_.end()) return;
   get_object_to_url_map_.emplace(object_id,
-                                 std::make_tuple(checkpoint_url, is_sealed, actor_id));
+                                 std::make_tuple(spilled_url, is_sealed, actor_id));
 }
 
 void LocalObjectManager::MarkObjectSealed(const ObjectID &object_id) {

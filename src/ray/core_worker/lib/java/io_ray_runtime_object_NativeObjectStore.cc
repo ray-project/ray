@@ -123,15 +123,15 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet
   JavaListToNativeVector<ObjectID>(env, ids, &object_ids, [](JNIEnv *env, jobject id) {
     return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
   });
-  std::vector<std::string> checkpoint_urls;
+  std::vector<std::string> spilled_urls;
   std::vector<std::string> global_owner_ids;
   for (size_t i = 0; i < object_ids.size(); i++) {
-    checkpoint_urls.push_back("");
+    spilled_urls.push_back("");
     global_owner_ids.push_back(ActorID::Nil().Binary());
   }
   std::vector<std::shared_ptr<RayObject>> results;
   auto status =
-      CoreWorkerProcess::GetCoreWorker().Get(object_ids, checkpoint_urls, global_owner_ids, (int64_t)timeoutMs, &results);
+      CoreWorkerProcess::GetCoreWorker().Get(object_ids, spilled_urls, global_owner_ids, (int64_t)timeoutMs, &results);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeVectorToJavaList<std::shared_ptr<RayObject>>(
       env, results, NativeRayObjectToJavaNativeRayObject);

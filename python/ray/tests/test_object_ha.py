@@ -109,8 +109,8 @@ def test_checkpoint(ray_start_cluster, actor_resources):
     ray.get(owner.warmup.remote())
 
     ref = ray.put("test_data", _owner=owner)
-    checkpoint_url = ref.checkpoint_url()
-    print("checkpoint_url:", checkpoint_url, "len:", len(checkpoint_url))
+    spilled_url = ref.spilled_url()
+    print("spilled_url:", spilled_url, "len:", len(spilled_url))
     print("ref:", ref)
     print("data:", ray.get(ref))
     try:

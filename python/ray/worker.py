@@ -315,7 +315,7 @@ class Worker:
         # reference counter.
         (
             object_id,
-            checkpoint_url,
+            spilled_url,
         ) = self.core_worker.put_serialized_object_and_increment_local_ref(
             serialized_value,
             object_ref=object_ref,
@@ -328,7 +328,7 @@ class Worker:
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
             global_owner_id=owner_actor_id,
-            checkpoint_url=checkpoint_url,
+            spilled_url=spilled_url,
         )
 
     def raise_errors(self, data_metadata_pairs, object_refs):
@@ -371,12 +371,12 @@ class Worker:
                     f"Attempting to call `get` on the value {object_ref}, "
                     "which is not an ray.ObjectRef."
                 )
-        checkpoint_urls = list(map(lambda ref: ref.checkpoint_url(), object_refs))
+        spilled_urls = list(map(lambda ref: ref.spilled_url(), object_refs))
         global_owner_ids = list(map(lambda ref: ref.global_owner_id(), object_refs))
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
             object_refs,
-            checkpoint_urls,
+            spilled_urls,
             global_owner_ids,
             self.current_task_id,
             timeout_ms,

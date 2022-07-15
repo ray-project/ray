@@ -1191,21 +1191,21 @@ cdef class CoreWorker:
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
-    def get_objects(self, object_refs, checkpoint_urls, global_owner_ids, TaskID current_task_id,
+    def get_objects(self, object_refs, spilled_urls, global_owner_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
-            c_vector[c_string] c_checkpoint_urls
+            c_vector[c_string] c_spilled_urls
             c_vector[c_string] c_global_owner_ids
-        for checkpoint_url in checkpoint_urls:
-            c_checkpoint_urls.push_back(<c_string>checkpoint_url)
+        for spilled_url in spilled_urls:
+            c_spilled_urls.push_back(<c_string>spilled_url)
         for global_owner_id in global_owner_ids:
             c_global_owner_ids.push_back(<c_string>global_owner_id)
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, c_checkpoint_urls, c_global_owner_ids, timeout_ms, &results))
+                c_object_ids, c_spilled_urls, c_global_owner_ids, timeout_ms, &results))
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1350,7 +1350,7 @@ cdef class CoreWorker:
                             c_object_id, pin_object=False,
                             owner_address=c_owner_address,
                             global_owner_id=CActorID.Nil(),
-                            checkpoint_url=NULL))
+                            spilled_url=NULL))
 
     def put_serialized_object_and_increment_local_ref(self, serialized_object,
                                                       ObjectRef object_ref=None,
@@ -1367,8 +1367,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
             CActorID c_owner_actor_id
-            c_string checkpoint_url
-            c_string* checkpoint_url_point
+            c_string spilled_url
+            c_string* spilled_url_ptr
 
 
         metadata = string_to_buffer(serialized_object.metadata)
@@ -1379,9 +1379,9 @@ cdef class CoreWorker:
         c_owner_actor_id = self._convert_binary_actor_id(owner_actor_id)
 
         if owner_actor_id is None:
-            checkpoint_url_point = NULL
+            spilled_url_ptr = NULL
         else:
-            checkpoint_url_point = &checkpoint_url
+            spilled_url_ptr = &spilled_url
 
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
@@ -1415,7 +1415,7 @@ cdef class CoreWorker:
                                         pin_object,
                                         move(c_owner_address),
                                         c_owner_actor_id,
-                                        checkpoint_url_point))
+                                        spilled_url_ptr))
                     else:
                         # Using custom object refs is not supported because we
                         # can't track their lifecycle, so we don't pin the
@@ -1425,9 +1425,9 @@ cdef class CoreWorker:
                                         c_object_id, pin_object=False,
                                         owner_address=move(c_owner_address),
                                         global_owner_id=c_owner_actor_id,
-                                        checkpoint_url=checkpoint_url_point))
+                                        spilled_url=spilled_url_ptr))
 
-        return c_object_id.Binary(), checkpoint_url
+        return c_object_id.Binary(), spilled_url
 
     def wait(self, object_refs, int num_returns, int64_t timeout_ms,
              TaskID current_task_id, c_bool fetch_local):

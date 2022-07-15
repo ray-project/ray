@@ -90,7 +90,6 @@ cdef class ObjectRef(BaseID):
         c_string spilled_url
         c_string spilled_node_id
         c_string _global_owner_id
-        c_string _checkpoint_url
 
     cdef CObjectID native(self)
 
