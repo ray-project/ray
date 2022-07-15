@@ -1093,7 +1093,7 @@ def read_image_folder(root: str, *, parallelism: int = -1):
     Datasets read with this function contain three columns: ``'image'``, ``'label'`` and
     ``'target'``.
 
-    * The ``'image'`` column contains ``ndarray`` objects of shape :math:`(H, W, C)`
+    * The ``'image'`` column is of type ``TensorDtype`` and contains tensors of shape :math:`(H, W, C)`.
     * The ``'label'`` column contains strings representing class names.
     * The ``'target'`` column contain integer targets corresponding to class.
 
