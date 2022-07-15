@@ -91,7 +91,7 @@ def main(data_size_gb: int):
     with open(test_output_json, "wt") as f:
         json.dump(results, f)
 
-    print(test_output_json)
+    print(results)
 
 
 if __name__ == "__main__":
