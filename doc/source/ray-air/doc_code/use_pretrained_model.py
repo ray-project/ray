@@ -1,9 +1,10 @@
-# flake8: noqa
 # isort: skip_file
 
 # __use_predictor_start__
-import ray
+import numpy as np
 import tensorflow as tf
+
+import ray
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import (
     to_air_checkpoint,
@@ -24,7 +25,8 @@ def build_model() -> tf.keras.Model:
 model = build_model()
 checkpoint = to_air_checkpoint(model)
 predictor = TensorflowPredictor.from_checkpoint(
-    checkpoint, model_definition=build_model)
+    checkpoint, model_definition=build_model
+)
 
 data = np.array([[1, 2], [3, 4]])
 predictions = predictor.predict(data)
@@ -52,21 +54,19 @@ class DummyPredictor(Predictor):
     @classmethod
     def from_checkpoint(cls, checkpoint, **kwargs):
         return DummyPredictor()
+
     def predict(self, data, **kwargs):
         return pd.DataFrame({"a": [42] * len(data)})
 
+
 # Create a batch predictor for this dummy predictor.
-batch_pred = BatchPredictor(
-    Checkpoint.from_dict({"x": 0}), DummyPredictor)
+batch_pred = BatchPredictor(Checkpoint.from_dict({"x": 0}), DummyPredictor)
 # Create a dummy dataset.
 ds = ray.data.range_tensor(1000, parallelism=4)
 # Setup a prediction pipeline.
-print(batch_pred.predict_pipelined(
-    ds, blocks_per_window=1))
+print(batch_pred.predict_pipelined(ds, blocks_per_window=1))
 # > DatasetPipeline(num_windows=4, num_stages=3)
 # __pipelined_prediction_end__
-
-
 
 
 # __use_pretrained_model_start__
@@ -99,5 +99,3 @@ predict_dataset = ray.data.range(3)
 predictions = batch_predictor.predict(predict_dataset)
 
 # __use_pretrained_model_end__
-
-

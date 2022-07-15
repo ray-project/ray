@@ -14,10 +14,7 @@ Predictors Basics
 -----------------
 
 Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition. 
-Checkpoints can be generated from a variety of different ways -- 
-see the Checkpoints user guide for more details.
-
-.. TODO - link to Checkpoint user guide
+Checkpoints can be generated from a variety of different ways -- see the :ref:`Checkpoints <air-checkpoints-doc>` user guide for more details.
 
 The checkpoint then is used to create a framework specific Predictor (in our example, a `TensorflowPredictor`), which then can be used for inference:
 
@@ -55,51 +52,40 @@ size is larger than your available cluster memory. See the :ref:`pipelined-predi
 
 Below, we provide examples of using common frameworks to do batch inference for different data types:
 
-**Tabular**
+Tabular
+~~~~~~~
 
 .. tabbed:: XGBoost
 
-    .. literalinclude:: doc_code/xgboost_starter.py
+    .. literalinclude:: examples/xgboost_batch_prediction.py
         :language: python
-        :start-after: __air_xgb_batchpred_start__
-        :end-before: __air_xgb_batchpred_end__
-
-
-    .. todo - include py files as orphans so that we can do a versioned link?
-    .. See the full script here: `Code <doc_code/xgboost_starter.py>`_.
 
 .. tabbed:: Pytorch
 
-    .. literalinclude:: doc_code/pytorch_tabular_starter.py
+    .. literalinclude:: examples/pytorch_tabular_starter.py
         :language: python
         :start-after: __air_pytorch_batchpred_start__
         :end-before: __air_pytorch_batchpred_end__
 
-    .. TODO: include py files as orphans so that we can do a versioned link?
+    See the :ref:`full script here <pytorch_tabular_starter>`.
 
 
 .. tabbed:: Tensorflow
 
-    Coming soon!
-    .. TODO: include py files as orphans so that we can do a versioned link?
-
-**Image**
-
-.. tabbed:: Torch
-
-    .. literalinclude:: doc_code/torch_image_batch_pretrained.py
+    .. literalinclude:: examples/tf_tabular_starter.py
         :language: python
-        :start-after: __batch_prediction_start__
-        :end-before: __batch_prediction_end__
+        :start-after: __air_tf_batchpred_start__
+        :end-before: __air_tf_batchpred_end__
 
-.. tabbed:: TensorFlow
+    See the :ref:`full script here <tf_tabular_starter>`.
 
-    .. literalinclude:: doc_code/tf_image_batch_pretrained.py
-        :language: python
-        :start-after: __batch_prediction_start__
-        :end-before: __batch_prediction_end__
+Image
+~~~~~
 
-**Text**
+Coming soon!
+
+Text
+~~~~
 
 Coming soon!
 
@@ -107,6 +93,7 @@ Coming soon!
 
 Lazy/Pipelined Prediction
 ~~~~~~~~~~~~~~~~~~~~~~~~~
+
 If you have a large dataset but not a lot of available memory, you can use the 
 :meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
 
