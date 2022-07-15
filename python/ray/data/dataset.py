@@ -35,7 +35,12 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage
+from ray.data._internal.plan import (
+    AllToAllStage,
+    ExecutionPlan,
+    OneToOneStage,
+    RandomizeBlocksStage,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import (
@@ -169,6 +174,8 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool,
+        *,
+        defer_execution: bool = False,
     ):
         """Construct a Dataset (internal API).
 
@@ -183,7 +190,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
         self._lazy = lazy
 
-        if not lazy:
+        if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
@@ -525,6 +532,42 @@ class Dataset(Generic[T]):
             process_batch, batch_format="pandas", compute=compute, **ray_remote_args
         )
 
+    def drop_columns(
+        self,
+        cols: List[str],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[U]":
+        """Drop one or more columns from the dataset.
+
+        This is a blocking operation.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range_table(100) # doctest: +SKIP
+            >>> # Add a new column equal to value * 2.
+            >>> ds = ds.add_column( # doctest: +SKIP
+            ...     "new_col", lambda df: df["value"] * 2)
+            >>> # Drop the existing "value" column.
+            >>> ds = ds.drop_columns(["value"]) # doctest: +SKIP
+
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            cols: Names of the columns to drop. If any name does not exist,
+                an exception will be raised.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+
+        return self.map_batches(
+            lambda batch: batch.drop(columns=cols), compute=compute, **ray_remote_args
+        )
+
     def flat_map(
         self,
         fn: RowUDF,
@@ -808,26 +851,11 @@ class Dataset(Generic[T]):
                 based on system randomness.
 
         Returns:
-            The shuffled dataset.
+            The block-shuffled dataset.
         """
 
-        def do_randomize_block_order(block_list, *_):
-            num_blocks = block_list.executed_num_blocks()  # Blocking.
-            if num_blocks == 0:
-                return block_list, {}
-
-            randomized_block_list = block_list.randomize_block_order(seed)
-
-            return randomized_block_list, {}
-
-        plan = self._plan.with_stage(
-            AllToAllStage(
-                "randomize_block_order",
-                None,
-                do_randomize_block_order,
-            )
-        )
-        return Dataset(plan, self._epoch, self._lazy)
+        plan = self._plan.with_stage(RandomizeBlocksStage(seed))
+        return Dataset(plan, self._epoch, self._lazy, defer_execution=True)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -3027,10 +3055,11 @@ class Dataset(Generic[T]):
         from ray.data.dataset_pipeline import DatasetPipeline
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
@@ -3146,10 +3175,11 @@ class Dataset(Generic[T]):
             blocks_per_window = 10
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
@@ -3182,6 +3212,7 @@ class Dataset(Generic[T]):
                     self._splits = blocks.split(split_size=blocks_per_window)
                 try:
                     sizes = [s.size_bytes() for s in self._splits]
+                    num_blocks = [s.initial_num_blocks() for s in self._splits]
                     assert [s > 0 for s in sizes], sizes
 
                     def fmt(size_bytes):
@@ -3199,6 +3230,16 @@ class Dataset(Generic[T]):
                             fmt(int(np.mean(sizes))),
                         )
                     )
+                    logger.info(
+                        "Blocks per window: "
+                        "{} min, {} max, {} mean".format(
+                            min(num_blocks),
+                            max(num_blocks),
+                            int(np.mean(num_blocks)),
+                        )
+                    )
+                    # TODO(ekl): log a warning if the blocks per window are much less
+                    # than the available parallelism.
                 except Exception as e:
                     logger.info(
                         "Created DatasetPipeline with {} windows; "

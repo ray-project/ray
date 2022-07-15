@@ -44,6 +44,7 @@ py_test_module_list(
     "test_basic_5.py",
     "test_cancel.py",
     "test_gcs_fault_tolerance.py",
+    "test_gcs_utils.py",
     "test_generators.py",
     "test_metrics_agent.py",
     "test_component_failures_2.py",
@@ -121,6 +122,7 @@ py_test_module_list(
     "test_runtime_env_env_vars.py",
     "test_runtime_env_packaging.py",
     "test_runtime_env_plugin.py",
+    "test_runtime_env_strong_type.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",
@@ -175,7 +177,6 @@ py_test_module_list(
     "test_raylet_output.py",
     "test_scheduling_performance.py",
     "test_get_or_create_actor.py",
-    "test_gcs_utils.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -387,7 +388,7 @@ py_test(
 
 py_test(
     name = "kuberay/test_autoscaling_e2e",
-    size = "medium",
+    size = "large",
     srcs = SRCS + ["kuberay/test_autoscaling_e2e.py"],
     tags = ["exclusive", "kuberay_operator", "team:serverless"],
     deps = ["//:ray_lib"],

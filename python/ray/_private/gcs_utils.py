@@ -1,6 +1,7 @@
 import enum
 import logging
 import time
+import traceback
 from functools import wraps
 from typing import List, Optional
 
@@ -96,13 +97,15 @@ def create_gcs_channel(address: str, aio=False):
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
-def check_health(address: str, timeout=2) -> bool:
+def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     """Checks Ray cluster health, before / without actually connecting to the
     cluster via ray.init().
 
     Args:
         address: Ray cluster / GCS address string, e.g. ip:port.
         timeout: request timeout.
+        skip_version_check: If True, will skip comparision of GCS Ray version with local
+            Ray version. If False (default), will raise exception on mismatch.
     Returns:
         Returns True if the cluster is running and has matching Ray version.
         Returns False if no service is running.
@@ -114,9 +117,14 @@ def check_health(address: str, timeout=2) -> bool:
         stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
         resp = stub.CheckAlive(req, timeout=timeout)
     except grpc.RpcError:
+        traceback.print_exc()
         return False
     if resp.status.code != GcsCode.OK:
         raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
+
+    if skip_version_check:
+        return True
+    # Otherwise, continue to check for Ray version match.
     if resp.ray_version is None:
         resp.ray_version = "<= 1.12"
     if resp.ray_version != ray.__version__:
@@ -158,6 +166,10 @@ class GcsChannel:
     def __init__(self, gcs_address: Optional[str] = None, aio: bool = False):
         self._gcs_address = gcs_address
         self._aio = aio
+
+    @property
+    def address(self):
+        return self._gcs_address
 
     def connect(self):
         # GCS server uses a cached port, so it should use the same port after
@@ -332,11 +344,30 @@ class GcsAioClient:
         self._channel = channel
         self._connect()
 
+    @property
+    def channel(self):
+        return self._channel
+
     def _connect(self):
         self._channel.connect()
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel()
         )
+        self._heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+            self._channel.channel()
+        )
+
+    async def check_alive(
+        self, node_ips: List[bytes], timeout: Optional[float] = None
+    ) -> List[bool]:
+        req = gcs_service_pb2.CheckAliveRequest(raylet_address=node_ips)
+        reply = await self._heartbeat_info_stub.CheckAlive(req, timeout=timeout)
+
+        if reply.status.code != GcsCode.OK:
+            raise RuntimeError(
+                f"GCS running at {self._channel.address} is unhealthy: {reply.status}"
+            )
+        return list(reply.raylet_alive)
 
     async def internal_kv_get(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None

@@ -12,13 +12,7 @@ from ray.serve.utils import require_packages
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor
     from ray.air.checkpoint import Checkpoint
-else:
-    try:
-        from ray.train.predictor import Predictor
-        from ray.air.checkpoint import Checkpoint
-    except ImportError:
-        Predictor = None
-        Checkpoint = None
+
 
 try:
     import pandas as pd
@@ -27,8 +21,10 @@ except ImportError:
 
 
 def _load_checkpoint(
-    checkpoint: Union[Checkpoint, str],
-) -> Checkpoint:
+    checkpoint: Union["Checkpoint", str],
+) -> "Checkpoint":
+    from ray.air.checkpoint import Checkpoint
+
     if isinstance(checkpoint, str):
         checkpoint = Checkpoint.from_uri(checkpoint)
     assert isinstance(checkpoint, Checkpoint)
@@ -38,6 +34,8 @@ def _load_checkpoint(
 def _load_predictor_cls(
     predictor_cls: Union[str, Type["Predictor"]],
 ) -> Type["Predictor"]:
+    from ray.train.predictor import Predictor
+
     if isinstance(predictor_cls, str):
         predictor_cls = import_attr(predictor_cls)
     if Predictor is not None and not issubclass(predictor_cls, Predictor):
@@ -178,7 +176,7 @@ class PredictorWrapper(SimpleSchemaIngress):
     def __init__(
         self,
         predictor_cls: Union[str, Type["Predictor"]],
-        checkpoint: Union[Checkpoint, str],
+        checkpoint: Union["Checkpoint", str],
         http_adapter: Union[
             str, HTTPAdapterFn
         ] = "ray.serve.http_adapters.json_to_ndarray",
@@ -250,6 +248,15 @@ class PredictorWrapper(SimpleSchemaIngress):
     async def predict(self, inp):
         """Perform inference directly without HTTP."""
         return await self.predict_impl(inp)
+
+    def reconfigure(self, config):
+        """Reconfigure model from config checkpoint"""
+        from ray.air.checkpoint import Checkpoint
+
+        predictor_cls = _load_predictor_cls(config["predictor_cls"])
+        self.model = predictor_cls.from_checkpoint(
+            Checkpoint.from_dict(config["checkpoint"])
+        )
 
 
 @serve.deployment

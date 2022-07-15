@@ -6,7 +6,7 @@ import pickle
 import time
 import traceback
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray._private.utils import import_attr
@@ -27,6 +27,7 @@ from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
+    CONTROLLER_MAX_CONCURRENCY,
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
 )
@@ -38,7 +39,10 @@ from ray.serve.long_poll import LongPollHost
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import override_runtime_envs_except_env_vars
+from ray.serve.utils import (
+    override_runtime_envs_except_env_vars,
+    get_current_node_resource_key,
+)
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -175,12 +179,37 @@ class ServeController:
         """
         return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
+    async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
+        """Proxy long pull client's listen request.
+
+        Args:
+            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
+              keys_to_snapshot_ids (Dict[str, int]).
+        """
+        return await (
+            self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
+        )
+
     def get_checkpoint_path(self) -> str:
         return self.checkpoint_path
 
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
+
+    def get_all_endpoints_java(self) -> bytes:
+        """Returns a dictionary of deployment name to config."""
+        from ray.serve.generated.serve_pb2 import (
+            EndpointSet,
+            EndpointInfo as EndpointInfoProto,
+        )
+
+        endpoints = self.get_all_endpoints()
+        data = {
+            endpoint_tag: EndpointInfoProto(route=endppint_dict["route"])
+            for endpoint_tag, endppint_dict in endpoints.items()
+        }
+        return EndpointSet(endpoints=data).SerializeToString()
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
@@ -302,7 +331,7 @@ class ServeController:
         deployment_config_proto_bytes: bytes,
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
-        deployer_job_id: "ray._raylet.JobID",
+        deployer_job_id: Union["ray._raylet.JobID", bytes],
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
@@ -311,26 +340,9 @@ class ServeController:
             deployment_config_proto_bytes
         )
         version = deployment_config.version
-        prev_version = deployment_config.prev_version
         replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.deployment_language
+            replica_config_proto_bytes, deployment_config.needs_pickle()
         )
-
-        if prev_version is not None:
-            existing_deployment_info = self.deployment_state_manager.get_deployment(
-                name
-            )
-            if existing_deployment_info is None or not existing_deployment_info.version:
-                raise ValueError(
-                    f"prev_version '{prev_version}' is specified but "
-                    "there is no existing deployment."
-                )
-            if existing_deployment_info.version != prev_version:
-                raise ValueError(
-                    f"prev_version '{prev_version}' "
-                    "does not match with the existing "
-                    f"version '{existing_deployment_info.version}'."
-                )
 
         autoscaling_config = deployment_config.autoscaling_config
         if autoscaling_config is not None:
@@ -340,7 +352,10 @@ class ServeController:
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:
             autoscaling_policy = None
-
+        if isinstance(deployer_job_id, bytes):
+            deployer_job_id = ray.JobID.from_int(
+                int.from_bytes(deployer_job_id, "little")
+            )
         deployment_info = DeploymentInfo(
             actor_name=name,
             version=version,
@@ -547,7 +562,7 @@ class ServeController:
             return config
 
 
-@ray.remote(max_calls=1)
+@ray.remote(num_cpus=0, max_calls=1)
 def run_graph(
     import_path: str, graph_env: dict, deployment_override_options: List[Dict]
 ):
@@ -590,3 +605,53 @@ def run_graph(
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_app() is called.
         logger.debug("Existing config deployment request terminated.")
+
+
+@ray.remote(num_cpus=0)
+class ServeControllerAvatar:
+    """A hack that proxy the creation of async actors from Java.
+
+    To be removed after https://github.com/ray-project/ray/pull/26037
+
+    Java api can not support python async actor. If we use java api create
+    python async actor. The async init method won't be executed. The async
+    method will fail with pickle error. And the run_control_loop of controller
+    actor can't be executed too. We use this proxy actor create python async
+    actor to avoid the above problem.
+    """
+
+    def __init__(
+        self,
+        controller_name: str,
+        checkpoint_path: str,
+        detached: bool = False,
+        dedicated_cpu: bool = False,
+        http_proxy_port: int = 8000,
+    ):
+        try:
+            self._controller = ray.get_actor(controller_name, namespace="serve")
+        except ValueError:
+            self._controller = None
+        if self._controller is None:
+            http_config = HTTPOptions()
+            http_config.port = http_proxy_port
+            self._controller = ServeController.options(
+                num_cpus=1 if dedicated_cpu else 0,
+                name=controller_name,
+                lifetime="detached" if detached else None,
+                max_restarts=-1,
+                max_task_retries=-1,
+                # Pin Serve controller on the head node.
+                resources={get_current_node_resource_key(): 0.01},
+                namespace="serve",
+                max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+            ).remote(
+                controller_name,
+                http_config,
+                checkpoint_path,
+                detached=detached,
+            )
+
+    def check_alive(self) -> None:
+        """No-op to check if this actor is alive."""
+        return

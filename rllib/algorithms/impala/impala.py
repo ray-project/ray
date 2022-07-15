@@ -141,6 +141,10 @@ class ImpalaConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        # TODO: IMPALA/APPO had to be rolled-back to old execution-plan API due
+        #  to issues with the MixIn Buffer (in process of being fixed atm).
+        self._disable_execution_plan_api = False
+
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
 
@@ -675,12 +679,12 @@ class Impala(Algorithm):
             )
 
         def record_steps_trained(item):
-            count, fetches, _ = item
+            env_steps, agent_steps, fetches = item
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
             # thread is executing outside the pipeline.
-            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
-            metrics.counters[STEPS_TRAINED_COUNTER] += count
+            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = env_steps
+            metrics.counters[STEPS_TRAINED_COUNTER] += env_steps
             return item
 
         # This sub-flow updates the steps trained counter based on learner
@@ -696,7 +700,7 @@ class Impala(Algorithm):
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
         if config["after_train_step"]:
-            merged_op = merged_op.for_each(lambda t: t[1]).for_each(
+            merged_op = merged_op.for_each(lambda t: t[2]).for_each(
                 config["after_train_step"](workers, config)
             )
 

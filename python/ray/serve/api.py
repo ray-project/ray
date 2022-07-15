@@ -50,6 +50,7 @@ from ray.serve.utils import (
     install_serve_encoders_to_fastapi,
 )
 from ray.util.annotations import PublicAPI
+from ray._private.utils import deprecated
 
 logger = logging.getLogger(__file__)
 
@@ -328,7 +329,6 @@ def deployment(func_or_class: Callable) -> Deployment:
 def deployment(
     name: Optional[str] = None,
     version: Optional[str] = None,
-    prev_version: Optional[str] = None,
     num_replicas: Optional[int] = None,
     init_args: Optional[Tuple[Any]] = None,
     init_kwargs: Optional[Dict[Any, Any]] = None,
@@ -336,7 +336,7 @@ def deployment(
     ray_actor_options: Optional[Dict] = None,
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
-    _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
     _graceful_shutdown_wait_loop_s: Optional[float] = None,
     _graceful_shutdown_timeout_s: Optional[float] = None,
     _health_check_period_s: Optional[float] = None,
@@ -350,7 +350,6 @@ def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Optional[str] = None,
     version: Optional[str] = None,
-    prev_version: Optional[str] = None,
     num_replicas: Optional[int] = None,
     init_args: Optional[Tuple[Any]] = None,
     init_kwargs: Optional[Dict[Any, Any]] = None,
@@ -358,7 +357,7 @@ def deployment(
     ray_actor_options: Optional[Dict] = None,
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
-    _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
     _graceful_shutdown_wait_loop_s: Optional[float] = None,
     _graceful_shutdown_timeout_s: Optional[float] = None,
     _health_check_period_s: Optional[float] = None,
@@ -374,11 +373,6 @@ def deployment(
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
             new version.
-        prev_version (Optional[str]): Version of the existing deployment which
-            is used as a precondition for the next deployment. If prev_version
-            does not match with the existing deployment's version, the
-            deployment will fail. If not provided, deployment procedure will
-            not check the existing deployment's version.
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
         init_args (Optional[Tuple]): Positional args to be passed to the class
@@ -427,10 +421,10 @@ def deployment(
     if num_replicas == 0:
         raise ValueError("num_replicas is expected to larger than 0")
 
-    if num_replicas is not None and _autoscaling_config is not None:
+    if num_replicas is not None and autoscaling_config is not None:
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
-            "_autoscaling_config is provided."
+            "autoscaling_config is provided."
         )
 
     config = DeploymentConfig.from_default(
@@ -438,7 +432,7 @@ def deployment(
         num_replicas=num_replicas,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
-        autoscaling_config=_autoscaling_config,
+        autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
         health_check_period_s=_health_check_period_s,
@@ -451,7 +445,6 @@ def deployment(
             name if name is not None else _func_or_class.__name__,
             config,
             version=version,
-            prev_version=prev_version,
             init_args=init_args,
             init_kwargs=init_kwargs,
             route_prefix=route_prefix,
@@ -464,6 +457,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
@@ -505,6 +499,7 @@ def get_deployment(name: str) -> Deployment:
     )
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
@@ -601,7 +596,6 @@ def run(
             "ray_actor_options": deployment._ray_actor_options,
             "config": deployment._config,
             "version": deployment._version,
-            "prev_version": deployment._prev_version,
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
         }

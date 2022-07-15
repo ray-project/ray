@@ -12,6 +12,7 @@ from typing import Dict, Optional, Any
 
 import ray
 from ray import tune
+from ray.air import session
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.optuna import OptunaSearch
@@ -30,7 +31,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height, mult)
         # Feed the score back back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        session.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 

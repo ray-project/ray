@@ -13,68 +13,46 @@ from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):
-    ctx = ray.data.context.DatasetContext.get_current()
-    try:
-        original = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
+    num_items = 100
+    parallelism = 4
+    xs = list(range(num_items))
+    random.shuffle(xs)
+    ds = ray.data.from_items(xs, parallelism=parallelism)
+    assert ds.sort().take(num_items) == list(range(num_items))
+    # Make sure we have rows in each block.
+    assert len([n for n in ds.sort()._block_num_rows() if n > 0]) == parallelism
+    assert ds.sort(descending=True).take(num_items) == list(reversed(range(num_items)))
+    assert ds.sort(key=lambda x: -x).take(num_items) == list(reversed(range(num_items)))
 
-        num_items = 100
-        parallelism = 4
-        xs = list(range(num_items))
-        random.shuffle(xs)
-        ds = ray.data.from_items(xs, parallelism=parallelism)
-        assert ds.sort().take(num_items) == list(range(num_items))
-        # Make sure we have rows in each block.
-        assert len([n for n in ds.sort()._block_num_rows() if n > 0]) == parallelism
-        assert ds.sort(descending=True).take(num_items) == list(
-            reversed(range(num_items))
-        )
-        assert ds.sort(key=lambda x: -x).take(num_items) == list(
-            reversed(range(num_items))
-        )
-
-        # Test empty dataset.
-        ds = ray.data.from_items([])
-        s1 = ds.sort()
-        assert s1.count() == 0
-        assert s1.take() == ds.take()
-        ds = ray.data.range(10).filter(lambda r: r > 10).sort()
-        assert ds.count() == 0
-    finally:
-        ctx.use_push_based_shuffle = original
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    s1 = ds.sort()
+    assert s1.count() == 0
+    assert s1.take() == ds.take()
+    ds = ray.data.range(10).filter(lambda r: r > 10).sort()
+    assert ds.count() == 0
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_sort_partition_same_key_to_same_block(
     ray_start_regular, use_push_based_shuffle
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    num_items = 100
+    xs = [1] * num_items
+    ds = ray.data.from_items(xs)
+    sorted_ds = ds.repartition(num_items).sort()
 
-    try:
-        original = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
-
-        num_items = 100
-        xs = [1] * num_items
-        ds = ray.data.from_items(xs)
-        sorted_ds = ds.repartition(num_items).sort()
-
-        # We still have 100 blocks
-        assert len(sorted_ds._block_num_rows()) == num_items
-        # Only one of them is non-empty
-        count = sum(1 for x in sorted_ds._block_num_rows() if x > 0)
-        assert count == 1
-        # That non-empty block contains all rows
-        total = sum(x for x in sorted_ds._block_num_rows() if x > 0)
-        assert total == num_items
-    finally:
-        ctx.use_push_based_shuffle = original
+    # We still have 100 blocks
+    assert len(sorted_ds._block_num_rows()) == num_items
+    # Only one of them is non-empty
+    count = sum(1 for x in sorted_ds._block_num_rows() if x > 0)
+    assert count == 1
+    # That non-empty block contains all rows
+    total = sum(x for x in sorted_ds._block_num_rows() if x > 0)
+    assert total == num_items
 
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 @pytest.mark.parametrize("use_polars", [False, True])
 def test_sort_arrow(
     ray_start_regular, num_items, parallelism, use_push_based_shuffle, use_polars
@@ -82,8 +60,6 @@ def test_sort_arrow(
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
-        original_push_based_shuffle = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
         original_use_polars = ctx.use_polars
         ctx.use_polars = use_polars
 
@@ -116,11 +92,9 @@ def test_sort_arrow(
         assert_sorted(ds.sort(key="b"), zip(a, b))
         assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     finally:
-        ctx.use_push_based_shuffle = original_push_based_shuffle
         ctx.use_polars = original_use_polars
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 @pytest.mark.parametrize("use_polars", [False, True])
 def test_sort_arrow_with_empty_blocks(
     ray_start_regular, use_push_based_shuffle, use_polars
@@ -128,8 +102,6 @@ def test_sort_arrow_with_empty_blocks(
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
-        original_push_based_shuffle = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
         original_use_polars = ctx.use_polars
         ctx.use_polars = use_polars
 
@@ -172,7 +144,6 @@ def test_sort_arrow_with_empty_blocks(
         )
         assert ds.sort("value").count() == 0
     finally:
-        ctx.use_push_based_shuffle = original_push_based_shuffle
         ctx.use_polars = original_use_polars
 
 
@@ -288,31 +259,22 @@ def test_push_based_shuffle_stats(ray_start_cluster):
         ctx.use_push_based_shuffle = original
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_sort_multinode(ray_start_cluster, use_push_based_shuffle):
-    ctx = ray.data.context.DatasetContext.get_current()
-    try:
-        original = ctx.use_push_based_shuffle
-        ctx.use_push_based_shuffle = use_push_based_shuffle
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
-        cluster = ray_start_cluster
-        cluster.add_node(
-            resources={"bar:1": 100},
-            num_cpus=10,
-            _system_config={"max_direct_call_object_size": 0},
-        )
-        cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
-        cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+    ray.init(cluster.address)
 
-        ray.init(cluster.address)
-
-        parallelism = 100
-        ds = ray.data.range(1000, parallelism=parallelism).random_shuffle().sort()
-        for i, row in enumerate(ds.iter_rows()):
-            assert row == i
-
-    finally:
-        ctx.use_push_based_shuffle = original
+    parallelism = 100
+    ds = ray.data.range(1000, parallelism=parallelism).random_shuffle().sort()
+    for i, row in enumerate(ds.iter_rows()):
+        assert row == i
 
 
 def patch_ray_remote(condition, callback):

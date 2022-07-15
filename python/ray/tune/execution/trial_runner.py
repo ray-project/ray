@@ -671,6 +671,7 @@ class TrialRunner:
                 f"experiment checkpoint data was found."
             )
 
+        logger.info(f"Using following checkpoint to resume: {newest_ckpt_path}")
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
@@ -914,10 +915,10 @@ class TrialRunner:
     def _on_executor_error(self, trial, e: Union[RayTaskError, TuneError]):
         error_msg = f"Trial {trial}: Error processing event."
         if self._fail_fast == TrialRunner.RAISE:
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=e)
             raise e
         else:
-            logger.exception(error_msg)
+            logger.exception(error_msg, exc_info=e)
             self._process_trial_failure(trial, exc=e)
 
     def get_trial(self, tid):

@@ -1,16 +1,28 @@
 import logging
 from abc import ABC
-from dataclasses import dataclass, fields, field
+from dataclasses import dataclass, field, fields
 from enum import Enum, unique
-from typing import List, Optional, Set, Tuple, Union, Dict
+from typing import Dict, List, Optional, Set, Tuple, Union
 
-from ray.dashboard.modules.job.common import JobInfo
 from ray.core.generated.common_pb2 import TaskType
+from ray.dashboard.modules.job.common import JobInfo
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
-DEFAULT_LIMIT = 10000
+DEFAULT_LIMIT = 100
+DEFAULT_LOG_LIMIT = 1000
+MAX_LIMIT = 10000
+
+STATE_OBS_ALPHA_FEEDBACK_MSG = [
+    "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
+    "State Observability APIs is currently in Alpha-Preview. ",
+    "If you have any feedback, you could do so at either way as below:",
+    "  1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
+    "  2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
+    "https://tinyurl.com/2pm26m4a",
+    "==========================================================",
+]
 
 
 @unique
@@ -69,8 +81,16 @@ class ListApiOptions:
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
         self.timeout = int(self.timeout * self._server_timeout_multiplier)
+        assert self.timeout != 0, "0 second timeout is not supported."
         if self.filters is None:
             self.filters = []
+
+        if self.limit > MAX_LIMIT:
+            raise ValueError(
+                f"Given limit {self.limit} exceeds the supported "
+                f"limit {MAX_LIMIT}. Use a lower limit."
+            )
+
         for filter in self.filters:
             _, filter_predicate, _ = filter
             if filter_predicate != "=" and filter_predicate != "!=":
@@ -336,6 +356,10 @@ class RuntimeEnvState(StateSchema):
 
 @dataclass(init=True)
 class ListApiResponse:
+    # Total number of the resource from the cluster.
+    # Note that this value can be larger than `result`
+    # because `result` can be truncated.
+    total: int
     # Returned data. None if no data is returned.
     result: List[
         Union[

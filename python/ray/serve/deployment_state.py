@@ -188,6 +188,10 @@ class ActorReplicaWrapper:
         return self._deployment_name
 
     @property
+    def is_cross_language(self) -> bool:
+        return self._is_cross_language
+
+    @property
     def actor_handle(self) -> Optional[ActorHandle]:
         if not self._actor_handle:
             try:
@@ -300,7 +304,7 @@ class ActorReplicaWrapper:
         ):
             self._is_cross_language = True
             actor_def = ray.cross_language.java_actor_class(
-                "io.ray.serve.RayServeWrappedReplica"
+                "io.ray.serve.replica.RayServeWrappedReplica"
             )
             init_args = (
                 # String deploymentName,
@@ -310,7 +314,13 @@ class ActorReplicaWrapper:
                 # String deploymentDef
                 deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
-                msgpack_serialize(deployment_info.replica_config.init_args),
+                msgpack_serialize(
+                    cloudpickle.loads(
+                        deployment_info.replica_config.serialized_init_args
+                    )
+                )
+                if deployment_info.deployment_config.is_cross_language
+                else deployment_info.replica_config.serialized_init_args,
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
                 # byte[] deploymentVersionBytes,
@@ -332,16 +342,20 @@ class ActorReplicaWrapper:
         # See https://github.com/ray-project/ray/issues/21474
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
-
-        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-        self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            deployment_info.deployment_config.user_config,
-            # Ensure that `is_allocated` will execute before `reconfigure`,
-            # because `reconfigure` runs user code that could block the replica
-            # asyncio loop. If that happens before `is_allocated` is executed,
-            # the `is_allocated` call won't be able to run.
-            self._allocated_obj_ref,
-        )
+            self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+                deployment_info.deployment_config.user_config
+            )
+        else:
+            self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+                deployment_info.deployment_config.user_config,
+                # Ensure that `is_allocated` will execute before `reconfigure`,
+                # because `reconfigure` runs user code that could block the replica
+                # asyncio loop. If that happens before `is_allocated` is executed,
+                # the `is_allocated` call won't be able to run.
+                self._allocated_obj_ref,
+            )
 
     def update_user_config(self, user_config: Any):
         """
@@ -368,7 +382,10 @@ class ActorReplicaWrapper:
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
-        self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+        if self._is_cross_language:
+            self._ready_obj_ref = self._actor_handle.check_health.remote()
+        else:
+            self._ready_obj_ref = self._actor_handle.get_metadata.remote()
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[DeploymentVersion]]:
         """
@@ -632,6 +649,7 @@ class DeploymentReplica(VersionedReplica):
             replica_tag=self._replica_tag,
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
+            is_cross_language=self._actor.is_cross_language,
         )
 
     @property

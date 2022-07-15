@@ -97,7 +97,7 @@ def test_node_failure(ray_cluster):
     serve.start(detached=True)
 
     print("Initial deploy.")
-    D.deploy()
+    serve.run(D.bind())
     pids1 = get_pids(5)
 
     # Remove the node. There should still be three replicas running.
@@ -181,7 +181,7 @@ def test_intelligent_scale_down(ray_cluster):
         actors = ray._private.state.actors()
         node_to_actors = defaultdict(list)
         for actor in actors.values():
-            if "RayServeWrappedReplica" not in actor["ActorClassName"]:
+            if "ServeReplica" not in actor["ActorClassName"]:
                 continue
             if actor["State"] != "ALIVE":
                 continue

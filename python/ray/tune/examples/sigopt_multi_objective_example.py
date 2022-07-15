@@ -8,6 +8,7 @@ import time
 
 import numpy as np
 from ray import tune
+from ray.air import session
 from ray.tune.search.sigopt import SigOptSearch
 
 np.random.seed(0)
@@ -26,7 +27,7 @@ def easy_objective(config):
     w2 = config["total_weight"] - w1
 
     average, std = evaluate(w1, w2)
-    tune.report(average=average, std=std, sharpe=average / std)
+    session.report({"average": average, "std": std, "sharpe": average / std})
     time.sleep(0.1)
 
 

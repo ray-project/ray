@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 import urllib
 import urllib.parse
 from datetime import datetime
@@ -41,13 +42,13 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.api import get_log, list_logs
-from ray.experimental.state.common import DEFAULT_LIMIT
+from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
+    _alpha_doc,
     get as state_cli_get,
     list as state_cli_list,
     get_api_server_url,
@@ -424,7 +425,7 @@ def debug(address):
 @click.option(
     "--dashboard-agent-listen-port",
     type=int,
-    default=0,
+    default=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     help="the port for dashboard agents to listen for http on.",
 )
 @click.option(
@@ -648,7 +649,7 @@ def start(
 
         if disable_usage_stats:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
-        usage_lib.show_usage_stats_prompt()
+        usage_lib.show_usage_stats_prompt(cli=True)
         cli_logger.newline()
 
         if port is None:
@@ -2040,6 +2041,16 @@ def local_dump(
     help="The interval to print new logs when `--follow` is specified.",
     hidden=True,
 )
+@click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=(
+        "Timeout in seconds for the API requests. "
+        f"Default is {DEFAULT_RPC_TIMEOUT}. If --follow is specified, "
+        "this option will be ignored."
+    ),
+)
+@_alpha_doc()
 def logs(
     glob_filter,
     node_ip: str,
@@ -2050,7 +2061,13 @@ def logs(
     follow: bool,
     tail: int,
     interval: float,
+    timeout: int,
 ):
+    # TODO: We will need to finalize on some example usage of the command.
+    """
+    Get logs from the ray cluster
+
+    """
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
 
@@ -2071,6 +2088,7 @@ def logs(
             node_id=node_id,
             node_ip=node_ip,
             glob_filter=glob_filter,
+            timeout=timeout,
         )
         log_files_found = []
         for _, log_files in logs.items():
@@ -2092,7 +2110,7 @@ def logs(
     # If there's an unique match, print the log file.
     if match_unique:
         if not tail:
-            tail = 0 if follow else DEFAULT_LIMIT
+            tail = 0 if follow else DEFAULT_LOG_LIMIT
 
             if tail > 0:
                 print(
@@ -2111,6 +2129,7 @@ def logs(
             tail=tail,
             follow=follow,
             _interval=interval,
+            timeout=timeout,
         ):
             print(chunk, end="", flush=True)
 
@@ -2280,6 +2299,10 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
         KubeRay cluster configs.
     `ray kuberay-autoscaler` is NOT a public CLI.
     """
+    # Delay import to avoid introducing Ray core dependency on the Python Kubernetes
+    # client.
+    from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
+
     run_kuberay_autoscaler(cluster_name, cluster_namespace)
 
 
@@ -2301,7 +2324,13 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     help="Health check for a specific component. Currently supports: "
     "[ray_client_server]",
 )
-def healthcheck(address, redis_password, component):
+@click.option(
+    "--skip-version-check",
+    is_flag=True,
+    default=False,
+    help="Skip comparison of GCS version with local Ray version.",
+)
+def healthcheck(address, redis_password, component, skip_version_check):
     """
     This is NOT a public api.
 
@@ -2312,9 +2341,12 @@ def healthcheck(address, redis_password, component):
 
     if not component:
         try:
-            if ray._private.gcs_utils.check_health(address):
+            if ray._private.gcs_utils.check_health(
+                address, skip_version_check=skip_version_check
+            ):
                 sys.exit(0)
         except Exception:
+            traceback.print_exc()
             pass
         sys.exit(1)
 

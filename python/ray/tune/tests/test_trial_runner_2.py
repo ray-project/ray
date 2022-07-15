@@ -224,7 +224,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
-        self.addCleanup(os.remove, trials[0].checkpoint.dir_or_data)
+        self.addCleanup(shutil.rmtree, trials[0].checkpoint.dir_or_data)
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -263,7 +263,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
-        self.addCleanup(os.remove, trials[0].checkpoint.dir_or_data)
+        self.addCleanup(shutil.rmtree, trials[0].checkpoint.dir_or_data)
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)

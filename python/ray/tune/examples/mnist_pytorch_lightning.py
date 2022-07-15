@@ -147,7 +147,7 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0, data_dir="~/data"):
         # If fractional GPUs passed in, convert to int.
         gpus=math.ceil(num_gpus),
         logger=TensorBoardLogger(
-            save_dir=tune.get_trial_dir(), name="", version="."),
+            save_dir=os.getcwd(), name="", version="."),
         enable_progress_bar=False,
         callbacks=[
             TuneReportCallback(
@@ -173,7 +173,7 @@ def train_mnist_tune_checkpoint(config,
         # If fractional GPUs passed in, convert to int.
         "gpus": math.ceil(num_gpus),
         "logger": TensorBoardLogger(
-            save_dir=tune.get_trial_dir(), name="", version="."),
+            save_dir=os.getcwd(), name="", version="."),
         "enable_progress_bar": False,
         "callbacks": [
             TuneReportCheckpointCallback(
