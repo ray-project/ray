@@ -1,5 +1,6 @@
 import inspect
-from typing import Any, Dict, Optional, List, Type, Union
+from typing import Any, Dict, Optional, List, Type, Union, Callable
+import pandas as pd
 
 import ray
 from ray.air import Checkpoint
@@ -40,6 +41,23 @@ class BatchPredictor:
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs
     ) -> "BatchPredictor":
         return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
+
+    @classmethod
+    def from_pandas_udf(
+        cls, pandas_udf: Callable[[pd.DataFrame], pd.DataFrame]
+    ) -> "BatchPredictor":
+        class PandasUDFPredictor(Predictor):
+            @classmethod
+            def from_checkpoint(cls, checkpoint, **kwargs):
+                return PandasUDFPredictor(None)
+
+            def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
+                return pandas_udf(df)
+
+        return cls(
+            checkpoint=Checkpoint.from_dict({"dummy": 1}),
+            predictor_cls=PandasUDFPredictor,
+        )
 
     def predict(
         self,
