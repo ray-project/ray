@@ -2,8 +2,24 @@
 
 .. _ray-k8s-deploy:
 
-Deploying on Kubernetes
-=======================
+Deploying with the legacy Ray Kubernetes Operator
+=================================================
+
+.. note::
+
+   This documentation describes deploying Ray on Kubernetes using the legacy Ray Operator hosted in
+   the Ray repo.
+   Going forward, the `KubeRay operator`_ (LINK ME!!!!!!) will be the preferred means of deploying Ray on Kubernetes.
+   The legacy operator described on this page can still be used to deploy on Kubernetes. However, the legacy operator
+   will enter maintenance mode in a future Ray release.
+
+   To learn more about KubeRay, see the links below:
+
+   - Ray's guides for deploying using KubeRay. (LINK ME!!!!!!)
+   - The `KubeRay documentation`_.
+   - The `KubeRay GitHub`_.
+   - A comparison of KubeRay and the legacy Ray Operator. (LINK ME!!!!)
+
 
 Overview
 --------
