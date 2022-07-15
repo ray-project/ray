@@ -1670,16 +1670,8 @@ py_test(
 
 py_test(
     name = "test_ope",
-    tags = ["team:rllib", "offline", "torch_only"],
-    size = "large",
-    srcs = ["offline/estimators/tests/test_ope.py"]
-)
-
-py_test(
-    name = "test_ope_gpu",
-    main = "offline/estimators/tests/test_ope.py",
     tags = ["team:rllib", "offline", "torch_only", "gpu"],
-    size = "large",
+    size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"]
 )
 
