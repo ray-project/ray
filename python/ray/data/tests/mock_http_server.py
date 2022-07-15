@@ -7,8 +7,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 port = 9898
-count = 1000
-data = b"\n".join([b"some test data"] * count)
+data = b"\n".join([b"some test data"] * 1000)
 data_file = "http://localhost:%i/index/data_file" % port
 index = b'<a href="%s">Link</a>' % data_file.encode()
 
@@ -83,8 +82,3 @@ def http_server():
 @pytest.fixture(scope="module")
 def http_file():
     return data_file
-
-
-@pytest.fixture(scope="module")
-def http_file_data_count():
-    return count
