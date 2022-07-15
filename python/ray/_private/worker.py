@@ -1107,7 +1107,7 @@ def init(
             is true.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace: Namespace to use
+        namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         storage: [Experimental] Specify a URI for persistent cluster-wide storage.
@@ -1327,10 +1327,13 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
-        # Don't collect usage stats in ray.init().
+        # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
 
-        usage_lib.set_usage_stats_enabled_via_env_var(False)
+        if usage_lib.is_nightly_wheel():
+            usage_lib.show_usage_stats_prompt(cli=False)
+        else:
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(

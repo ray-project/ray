@@ -48,7 +48,6 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-            "off_policy_estimation_methods": {},
             "explore": false}'
 
 .. _is:
@@ -64,10 +63,10 @@ Then, we can tell DQN to train using these previously generated experiences with
             "input": "/tmp/cartpole-out",
             "off_policy_estimation_methods": {
                 "is": {
-                    "type": "ImportanceSampling",
+                    "type": "ray.rllib.offline.estimators.ImportanceSampling",
                 },
                 "wis": {
-                    "type": "WeightedImportanceSampling",
+                    "type": "ray.rllib.offline.estimators.WeightedImportanceSampling",
                 }
             },
             "exploration_config": {
@@ -95,9 +94,6 @@ This example plot shows the Q-value metric in addition to importance sampling (I
         batch = reader.next()
         for episode in batch.split_by_episode():
             print(estimator.estimate(episode))
-
-
-**Simulation-based estimation:** If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"off_policy_estimation_methods": ["simulation"]`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning. Note that in all cases you still need to specify an environment object to define the action and observation spaces. However, you don't need to implement functions like reset() and step().
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -283,8 +279,12 @@ You can configure experience input for an agent using the following options:
     #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
     #    subclass.
     "off_policy_estimation_methods": {
-        ImportanceSampling: None,
-        WeightedImportanceSampling: None,
+        "is": {
+            "type": ImportanceSampling,
+        },
+        "wis": {
+            "type": WeightedImportanceSampling,
+        }
     },
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*

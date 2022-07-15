@@ -262,8 +262,6 @@ extern jmethodID java_task_executor_execute;
 
 /// NativeTaskExecutor class
 extern jclass java_native_task_executor_class;
-/// onWorkerShutdown method of NativeTaskExecutor class
-extern jmethodID java_native_task_executor_on_worker_shutdown;
 
 /// PlacementGroup class
 extern jclass java_placement_group_class;

@@ -95,6 +95,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       // Also, call the previous crash handler, e.g. the one installed by the Python
       // worker.
       RayLog::InstallFailureSignalHandler(nullptr, /*call_previous_handler=*/true);
+      RayLog::InstallTerminateHandler();
     }
   } else {
     RAY_CHECK(options_.log_dir.empty())
