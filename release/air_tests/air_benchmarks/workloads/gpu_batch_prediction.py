@@ -94,7 +94,3 @@ def main(data_size_gb: int):
 
 if __name__ == "__main__":
     main()
-    import sys
-    import pytest
-
-    sys.exit(pytest.main(["-v", "-s", __file__]))
