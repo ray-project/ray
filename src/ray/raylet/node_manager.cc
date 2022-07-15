@@ -314,15 +314,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             ref.set_object_id(object_id.Binary());
             MarkObjectsAsFailed(
                 rpc::ErrorType::OBJECT_FETCH_TIMED_OUT, {ref}, JobID::Nil());
-          },
-          /*load_checkpoint_callback*/
-          [this](const ObjectID &obj_id) {
-            std::string checkpoint_url =
-                GetLocalObjectManager().GetObjectCheckpointURL(obj_id);
-            return GetLocalObjectManager().AsyncLoadCheckpoint(
-                obj_id, checkpoint_url, [](ray::Status status) {
-                  RAY_CHECK(status.ok());
-                });
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -2492,7 +2483,9 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "received DumpCheckpointsRequest";
   std::vector<ObjectID> objects_to_dump;
+  // TODO: remove
   std::vector<rpc::Address> owner_addresses;
+  // TODO: remove
   std::vector<ActorID> global_owner_ids;
   for (size_t i = 0; i < request.object_ids_size(); i++) {
     auto object_id = ObjectID::FromBinary(request.object_ids()[i]);
@@ -2501,13 +2494,8 @@ void NodeManager::HandleDumpCheckpoints(const rpc::DumpCheckpointsRequest &reque
     auto global_owner_id = ActorID::FromBinary(request.global_owner_ids()[i]);
     global_owner_ids.push_back(std::move(global_owner_id));
   }
-  local_object_manager_.DumpCheckpoints(
+  local_object_manager_.SpillObjects(
       objects_to_dump,
-      owner_addresses,
-      [](ray::Status status) {
-        // TO_BE_SOLVED: handle dump failed.
-        RAY_CHECK(status.ok());
-      },
       /* Send result to caller CoreWorker*/
       [this,
        objects_to_dump,

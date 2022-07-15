@@ -252,13 +252,13 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
 }
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
-                                      std::function<void(const ray::Status &)> callback) {
+                                      std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback) {
   SpillObjectsInternal(object_ids, callback);
 }
 
 void LocalObjectManager::SpillObjectsInternal(
     const std::vector<ObjectID> &object_ids,
-    std::function<void(const ray::Status &)> callback) {
+    std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback) {
   std::vector<ObjectID> objects_to_spill;
   // Filter for the objects that can be spilled.
   for (const auto &id : object_ids) {
@@ -345,74 +345,6 @@ void LocalObjectManager::SpillObjectsInternal(
               } else {
                 OnObjectSpilled(requested_objects_to_spill, r);
               }
-              if (callback) {
-                callback(status);
-              }
-            });
-      });
-}
-
-void LocalObjectManager::DumpCheckpoints(
-    const std::vector<ObjectID> &object_ids,
-    const std::vector<rpc::Address> &owner_addresses,
-    std::function<void(const ray::Status &)> callback,
-    std::function<void(const std::vector<std::string> &)> get_result_callback) {
-  DumpCheckpointsInternal(object_ids, owner_addresses, callback, get_result_callback);
-}
-
-void LocalObjectManager::DumpCheckpointsInternal(
-    const std::vector<ObjectID> &object_ids,
-    const std::vector<rpc::Address> &owner_addresses,
-    std::function<void(const ray::Status &)> callback,
-    std::function<void(const std::vector<std::string> &)> get_result_callback) {
-  RAY_CHECK(object_ids.size() == owner_addresses.size());
-  std::vector<std::pair<ObjectID, rpc::Address>> objects_to_dump;
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    RAY_LOG(DEBUG) << "Dump object: " << object_ids[i];
-    objects_to_dump.push_back(std::make_pair(object_ids[i], owner_addresses[i]));
-  }
-  if (objects_to_dump.empty()) {
-    if (callback) {
-      callback(Status::Invalid("All objects are already being spilled."));
-    }
-    return;
-  }
-  io_worker_pool_.PopDumpCheckpointWorker(
-      [this, objects_to_dump = std::move(objects_to_dump), callback, get_result_callback](
-          std::shared_ptr<WorkerInterface> io_worker) {
-        RAY_LOG(DEBUG) << "Start running PopDumpCheckpointWorker callback";
-        rpc::DumpObjectsCheckpointRequest request;
-        for (const auto &object_entry : objects_to_dump) {
-          auto ref = request.add_object_refs_to_dump();
-          ref->set_object_id(object_entry.first.Binary());
-          ref->mutable_owner_address()->CopyFrom(object_entry.second);
-          RAY_LOG(DEBUG) << "Sending dump request for object " << object_entry.first;
-        }
-
-        io_worker->rpc_client()->DumpObjectsCheckpoint(
-            request,
-            [this,
-             objects_to_dump = std::move(objects_to_dump),
-             callback,
-             get_result_callback,
-             io_worker](const ray::Status &status,
-                        const rpc::DumpObjectsCheckpointReply &reply) {
-              {
-                absl::MutexLock lock(&mutex_);
-                num_active_workers_ -= 1;
-              }
-              io_worker_pool_.PushDumpCheckpointWorker(io_worker);
-              size_t num_objects_dumped = reply.dumped_objects_url_size();
-
-              RAY_CHECK(status.ok());
-              RAY_CHECK(num_objects_dumped == objects_to_dump.size())
-                  << "num_objects_dumped: " << num_objects_dumped
-                  << ", objects_to_dump size: " << objects_to_dump.size();
-              std::vector<std::string> checkpoint_urls;
-              for (size_t i = 0; i < num_objects_dumped; i++) {
-                checkpoint_urls.push_back(std::move(reply.dumped_objects_url()[i]));
-              }
-              get_result_callback(checkpoint_urls);
               if (callback) {
                 callback(status);
               }
@@ -536,55 +468,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
           }
         });
   });
-}
-
-bool LocalObjectManager::AsyncLoadCheckpoint(
-    const ObjectID &object_id,
-    const std::string &checkpoint_url,
-    std::function<void(const ray::Status &)> callback) {
-  if (checkpoint_url.size() == 0) return false;
-  if (objects_pending_load_.count(object_id) > 0) return true;
-  RAY_CHECK(objects_pending_load_.emplace(object_id).second);
-  bool is_sealed;
-  {
-    absl::MutexLock guard(&object_map_mutex_);
-    auto it = get_object_to_url_map_.find(object_id);
-    RAY_CHECK(it != get_object_to_url_map_.end());
-    is_sealed = std::get<1>(it->second);
-  }
-  if (is_sealed) return true;
-  io_worker_pool_.PopLoadCheckpointWorker(
-      [this, object_id, checkpoint_url, callback](
-          std::shared_ptr<WorkerInterface> io_worker) {
-        auto start_time = absl::GetCurrentTimeNanos();
-        RAY_LOG(DEBUG) << "Sending restore spilled object request"
-                       << ", checkpoint_url: " << checkpoint_url
-                       << ", object_id: " << object_id;
-        rpc::LoadCheckpointRequest request;
-        request.add_checkpoint_urls(std::move(checkpoint_url));
-        request.add_object_ids_to_load(object_id.Binary());
-        io_worker->rpc_client()->LoadCheckpoint(
-            request,
-            [this, start_time, object_id, callback, io_worker](
-                const ray::Status &status, const rpc::LoadCheckpointReply &r) {
-              io_worker_pool_.PushLoadCheckpointWorker(io_worker);
-              objects_pending_load_.erase(object_id);
-              if (!status.ok()) {
-                RAY_LOG(ERROR) << "Failed to send load checkpoint object request: "
-                               << status.ToString();
-              } else {
-                auto now = absl::GetCurrentTimeNanos();
-                auto restored_bytes = r.bytes_load_total();
-                RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
-                               << (now - start_time) / 1e6
-                               << "ms. Object id:" << object_id;
-              }
-              if (callback) {
-                callback(status);
-              }
-            });
-      });
-  return true;
 }
 
 void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) {

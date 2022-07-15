@@ -97,13 +97,7 @@ class LocalObjectManager {
   /// \param callback A callback to call once the objects have been spilled, or
   /// there is an error.
   void SpillObjects(const std::vector<ObjectID> &objects_ids,
-                    std::function<void(const ray::Status &)> callback);
-
-  void DumpCheckpoints(
-      const std::vector<ObjectID> &objects_ids,
-      const std::vector<rpc::Address> &owner_addresses,
-      std::function<void(const ray::Status &)> callback,
-      std::function<void(const std::vector<std::string> &)> get_result_callback);
+                    std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback);
 
   /// Restore a spilled object from external storage back into local memory.
   /// Note: This is no-op if the same restoration request is in flight or the requested
@@ -118,10 +112,6 @@ class LocalObjectManager {
                                  int64_t object_size,
                                  const std::string &object_url,
                                  std::function<void(const ray::Status &)> callback);
-
-  bool AsyncLoadCheckpoint(const ObjectID &object_id,
-                           const std::string &checkpoint_url,
-                           std::function<void(const ray::Status &)> callback);
 
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.
@@ -204,13 +194,7 @@ class LocalObjectManager {
 
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
-                            std::function<void(const ray::Status &)> callback);
-
-  void DumpCheckpointsInternal(
-      const std::vector<ObjectID> &objects_ids,
-      const std::vector<rpc::Address> &owner_addresses,
-      std::function<void(const ray::Status &)> callback,
-      std::function<void(const std::vector<std::string> &)> get_result_callback);
+                            std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback);
 
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
