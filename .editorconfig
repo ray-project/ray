@@ -1,0 +1,28 @@
+root = true
+
+[*]
+indent_style = space
+end_of_line = lf
+
+[*.{bzl,bazel}]
+indent_size = 4
+
+[*.{h,hpp,hxx,cpp,cxx,cc,c}]
+indent_size = 2
+wrap_width = 90
+
+[*.html]
+indent_size = 2
+
+[*.java]
+indent_size = 2
+
+[*.proto]
+indent_size = 2
+
+[*.{py,pyx,pxd,pxi}]
+indent_size = 4
+wrap_width = 79
+
+[*.sh]
+indent_size = 2

@@ -1,0 +1,33 @@
+#!/bin/bash
+# Run a command, suppressing output unless it hangs or crashes.
+
+TMPFILE="$(mktemp)"
+PID=$$
+
+# Print output to avoid travis killing us
+watchdog() {
+    for i in $(seq 5 5 150); do
+        sleep 300
+        echo "This command has been running for more than $i minutes..."
+    done
+    echo "Command timed out after 2.5h, dumping logs:"
+    cat "$TMPFILE"
+    echo "TIMED OUT"
+    kill -SIGKILL $PID
+}
+
+watchdog 2>/dev/null &
+WATCHDOG_PID=$!
+
+time "$@" >"$TMPFILE" 2>&1
+
+CODE=$?
+if [ $CODE != 0 ]; then
+    tail -n 2000 "$TMPFILE"
+    echo "FAILED $CODE"
+    kill $WATCHDOG_PID
+    exit $CODE
+fi
+
+kill $WATCHDOG_PID
+exit 0

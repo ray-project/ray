@@ -1,0 +1,9 @@
+0 forwarders and 1 worker replicas: 1282 requests/s
+0 forwarders and 5 worker replicas: 1375 requests/s
+0 forwarders and 10 worker replicas: 1362 requests/s
+1 forwarders and 1 worker replicas: 608 requests/s
+1 forwarders and 5 worker replicas: 626 requests/s
+1 forwarders and 10 worker replicas: 627 requests/s
+2 forwarders and 1 worker replicas: 609 requests/s
+2 forwarders and 5 worker replicas: 620 requests/s
+2 forwarders and 10 worker replicas: 609 requests/s

@@ -1,0 +1,81 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: example-cluster
+
+# The maximum number of workers nodes to launch in addition to the head
+# node.
+max_workers: 2
+
+# Kubernetes resources that need to be configured for the autoscaler to be
+# able to manage the Ray cluster. If any of the provided resources don't
+# exist, the autoscaler will attempt to create them. If this fails, you may
+# not have the required permissions and will have to request them to be
+# created by your cluster administrator.
+provider:
+    type: kubernetes
+
+    # Exposing external IP addresses for ray pods isn't currently supported.
+    use_internal_ips: true
+
+    # Namespace to use for all resources created.
+    namespace: ray
+
+    # ServiceAccount created by the autoscaler for the head node pod that it
+    # runs in. If this field isn't provided, the head pod config below must
+    # contain a user-created service account with the proper permissions.
+    autoscaler_service_account:
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+            name: autoscaler
+
+    # Role created by the autoscaler for the head node pod that it runs in.
+    # If this field isn't provided, the role referenced in
+    # autoscaler_role_binding must exist and have at least these permissions.
+    autoscaler_role:
+        kind: Role
+        apiVersion: rbac.authorization.k8s.io/v1
+        metadata:
+            name: autoscaler
+        rules:
+        - apiGroups: [""]
+          resources: ["pods", "pods/status", "pods/exec"]
+          verbs: ["get", "watch", "list", "create", "delete", "patch"]
+
+    # RoleBinding created by the autoscaler for the head node pod that it runs
+    # in. If this field isn't provided, the head pod config below must contain
+    # a user-created service account with the proper permissions.
+    autoscaler_role_binding:
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+            name: autoscaler
+        subjects:
+        - kind: ServiceAccount
+          name: autoscaler
+        roleRef:
+            kind: Role
+            name: autoscaler
+            apiGroup: rbac.authorization.k8s.io
+
+    services:
+      # Service that maps to the head node of the Ray cluster.
+      - apiVersion: v1
+        kind: Service
+        metadata:
+            # NOTE: If you're running multiple Ray clusters with services
+            # on one Kubernetes cluster, they must have unique service
+            # names.
+            name: example-cluster-ray-head
+        spec:
+            # This selector must match the head node pod's selector below.
+            selector:
+                component: example-cluster-ray-head
+            ports:
+                - name: client
+                  protocol: TCP
+                  port: 10001
+                  targetPort: 10001
+                - name: dashboard
+                  protocol: TCP
+                  port: 8265
+                  targetPort: 8265

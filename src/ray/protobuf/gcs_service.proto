@@ -1,0 +1,626 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/pubsub.proto";
+
+message AddJobRequest {
+  JobTableData data = 1;
+}
+
+message AddJobReply {
+  GcsStatus status = 1;
+}
+
+message MarkJobFinishedRequest {
+  bytes job_id = 1;
+}
+
+message MarkJobFinishedReply {
+  GcsStatus status = 1;
+}
+
+message GetAllJobInfoRequest {
+}
+
+message GetAllJobInfoReply {
+  GcsStatus status = 1;
+  repeated JobTableData job_info_list = 2;
+}
+
+message ReportJobErrorRequest {
+  ErrorTableData job_error = 1;
+}
+message ReportJobErrorReply {
+  GcsStatus status = 1;
+}
+
+message GetNextJobIDRequest {
+}
+message GetNextJobIDReply {
+  GcsStatus status = 1;
+  int32 job_id = 2;
+}
+
+// Service for job info access.
+service JobInfoGcsService {
+  // Add job to GCS Service.
+  rpc AddJob(AddJobRequest) returns (AddJobReply);
+  // Mark job as finished to GCS Service.
+  rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
+  // Get information of all jobs from GCS Service.
+  rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
+  // Report job error.
+  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
+  // Get next job id.
+  rpc GetNextJobID(GetNextJobIDRequest) returns (GetNextJobIDReply);
+}
+
+message GetActorInfoRequest {
+  // ID of this actor. If actor_id is set, name will not be set.
+  bytes actor_id = 1;
+  // Name of the actor. This is only used for detached actors. If name is set,
+  // actor_id will not be set.
+  string name = 2;
+}
+
+message GetActorInfoReply {
+  GcsStatus status = 1;
+  // Data of actor.
+  ActorTableData actor_table_data = 2;
+}
+
+message GetNamedActorInfoRequest {
+  // Name of the actor.
+  string name = 1;
+  // Namespace of the actor.
+  string ray_namespace = 2;
+}
+
+message GetNamedActorInfoReply {
+  GcsStatus status = 1;
+  // Data of actor.
+  ActorTableData actor_table_data = 2;
+  // The task specification of this actor's creation task.
+  TaskSpec task_spec = 3;
+}
+
+message ListNamedActorsRequest {
+  // Whether or not to include actors from all namespaces.
+  bool all_namespaces = 1;
+  // Namespace to filter to if all_namespaces is false.
+  string ray_namespace = 2;
+}
+
+message ListNamedActorsReply {
+  GcsStatus status = 1;
+  repeated NamedActorInfo named_actors_list = 2;
+}
+
+message GetAllActorInfoRequest {
+  // Whether or not to filter out actors which belong to dead jobs.
+  bool show_dead_jobs = 1;
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 2;
+}
+
+message GetAllActorInfoReply {
+  GcsStatus status = 1;
+  // Data of actor.2
+  repeated ActorTableData actor_table_data = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
+}
+
+// `KillActorViaGcsRequest` is sent to GCS Service to ask to kill an actor.
+// `KillActorViaGcsRequest` is different from `KillActorRequest`.
+// `KillActorRequest` is send to core worker to ask to kill an actor.
+message KillActorViaGcsRequest {
+  // ID of this actor.
+  bytes actor_id = 1;
+  // Whether to force kill the actor.
+  bool force_kill = 2;
+  // If set to true, the killed actor will not be restarted anymore.
+  bool no_restart = 3;
+}
+
+message KillActorViaGcsReply {
+  GcsStatus status = 1;
+}
+
+// Service for actor info access.
+service ActorInfoGcsService {
+  // Register actor to gcs service.
+  rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
+  // Create actor which local dependencies are resolved.
+  rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
+  // Get actor data from GCS Service by actor id.
+  rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
+  // Get actor data from GCS Service by name.
+  rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);
+  // Get all named actor names from GCS Service.
+  rpc ListNamedActors(ListNamedActorsRequest) returns (ListNamedActorsReply);
+  // Get information of all actor from GCS Service.
+  rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
+  // Kill actor via GCS Service.
+  rpc KillActorViaGcs(KillActorViaGcsRequest) returns (KillActorViaGcsReply);
+}
+
+message RegisterNodeRequest {
+  // Info of node.
+  GcsNodeInfo node_info = 1;
+}
+
+message RegisterNodeReply {
+  GcsStatus status = 1;
+}
+
+message GetAllNodeInfoRequest {
+}
+
+message GetAllNodeInfoReply {
+  GcsStatus status = 1;
+  repeated GcsNodeInfo node_info_list = 2;
+}
+
+message ReportHeartbeatRequest {
+  HeartbeatTableData heartbeat = 1;
+}
+
+message ReportHeartbeatReply {
+  GcsStatus status = 1;
+}
+
+message CheckAliveRequest {
+  repeated string raylet_address = 1;
+}
+
+message CheckAliveReply {
+  GcsStatus status = 1;
+  string ray_version = 2;
+  repeated bool raylet_alive = 3;
+}
+
+message GetInternalConfigRequest {
+}
+
+message GetInternalConfigReply {
+  GcsStatus status = 1;
+  string config = 2;
+}
+
+message GetResourcesRequest {
+  bytes node_id = 1;
+}
+
+message GetResourcesReply {
+  GcsStatus status = 1;
+  map<string, ResourceTableData> resources = 2;
+}
+
+message DeleteResourcesReply {
+  GcsStatus status = 1;
+}
+
+message GetAllAvailableResourcesRequest {
+}
+
+message GetAllAvailableResourcesReply {
+  GcsStatus status = 1;
+  repeated AvailableResources resources_list = 2;
+}
+
+message ReportResourceUsageRequest {
+  ResourcesData resources = 1;
+}
+
+message ReportResourceUsageReply {
+  GcsStatus status = 1;
+}
+
+// Service for heartbeat info access.
+service HeartbeatInfoGcsService {
+  // Report heartbeat of a node to GCS Service.
+  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
+  // Check alive.
+  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
+}
+
+message AddProfileDataRequest {
+  ProfileTableData profile_data = 1;
+}
+
+message AddProfileDataReply {
+  GcsStatus status = 1;
+}
+
+message GetAllProfileInfoRequest {
+}
+
+message GetAllProfileInfoReply {
+  GcsStatus status = 1;
+  repeated ProfileTableData profile_info_list = 2;
+}
+
+// Service for stats access.
+service StatsGcsService {
+  // Add profile data to GCS Service.
+  rpc AddProfileData(AddProfileDataRequest) returns (AddProfileDataReply);
+  // Get information of all profiles from GCS Service.
+  rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
+}
+
+message ReportWorkerFailureRequest {
+  WorkerTableData worker_failure = 1;
+}
+
+message ReportWorkerFailureReply {
+  GcsStatus status = 1;
+}
+
+message GetWorkerInfoRequest {
+  // ID of this worker.
+  bytes worker_id = 1;
+}
+
+message GetWorkerInfoReply {
+  GcsStatus status = 1;
+  // Data of worker.
+  WorkerTableData worker_table_data = 2;
+}
+
+message GetAllWorkerInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
+
+message GetAllWorkerInfoReply {
+  GcsStatus status = 1;
+  // Data of worker
+  repeated WorkerTableData worker_table_data = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
+}
+
+message AddWorkerInfoRequest {
+  WorkerTableData worker_data = 1;
+}
+
+message AddWorkerInfoReply {
+  GcsStatus status = 1;
+}
+
+// Service for worker info access.
+service WorkerInfoGcsService {
+  // Report a worker failure to GCS Service.
+  rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
+  // Get worker information from GCS Service by worker id.
+  rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoReply);
+  // Get information of all workers from GCS Service.
+  rpc GetAllWorkerInfo(GetAllWorkerInfoRequest) returns (GetAllWorkerInfoReply);
+  // Add worker information to GCS Service.
+  rpc AddWorkerInfo(AddWorkerInfoRequest) returns (AddWorkerInfoReply);
+}
+
+message CreateActorRequest {
+  TaskSpec task_spec = 1;
+}
+
+message CreateActorReply {
+  GcsStatus status = 1;
+  // Address where the actor was created.
+  Address actor_address = 2;
+  // Info about any refs that the created actor is borrowing.
+  repeated ObjectReferenceCount borrowed_refs = 3;
+}
+
+message RegisterActorRequest {
+  TaskSpec task_spec = 1;
+}
+
+message RegisterActorReply {
+  GcsStatus status = 1;
+}
+
+message CreatePlacementGroupRequest {
+  PlacementGroupSpec placement_group_spec = 1;
+}
+
+message CreatePlacementGroupReply {
+  GcsStatus status = 1;
+}
+
+message RemovePlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message RemovePlacementGroupReply {
+  GcsStatus status = 1;
+}
+
+message GetPlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message GetPlacementGroupReply {
+  GcsStatus status = 1;
+  PlacementGroupTableData placement_group_table_data = 2;
+}
+
+enum GcsServiceFailureType {
+  RPC_DISCONNECT = 0;
+  GCS_SERVER_RESTART = 1;
+}
+
+message GetAllPlacementGroupRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
+
+message GetAllPlacementGroupReply {
+  GcsStatus status = 1;
+  // Data of placement group
+  repeated PlacementGroupTableData placement_group_table_data = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
+}
+
+message WaitPlacementGroupUntilReadyRequest {
+  bytes placement_group_id = 1;
+}
+
+message WaitPlacementGroupUntilReadyReply {
+  GcsStatus status = 1;
+}
+
+message GetNamedPlacementGroupRequest {
+  // Name of the placement group.
+  string name = 1;
+  // Namespace to search.
+  string ray_namespace = 2;
+}
+
+message GetNamedPlacementGroupReply {
+  GcsStatus status = 1;
+  // Data of placement group.
+  PlacementGroupTableData placement_group_table_data = 2;
+}
+
+// Service for placement group info access.
+service PlacementGroupInfoGcsService {
+  // Create placement group via gcs service.
+  rpc CreatePlacementGroup(CreatePlacementGroupRequest)
+      returns (CreatePlacementGroupReply);
+  // Remove placement group via gcs service.
+  rpc RemovePlacementGroup(RemovePlacementGroupRequest)
+      returns (RemovePlacementGroupReply);
+  // Get placement group information via gcs service.
+  rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
+  // Get named placement group information via gcs service.
+  rpc GetNamedPlacementGroup(GetNamedPlacementGroupRequest)
+      returns (GetNamedPlacementGroupReply);
+  // Get information of all placement group from GCS Service.
+  rpc GetAllPlacementGroup(GetAllPlacementGroupRequest)
+      returns (GetAllPlacementGroupReply);
+  // Wait for placement group until ready.
+  rpc WaitPlacementGroupUntilReady(WaitPlacementGroupUntilReadyRequest)
+      returns (WaitPlacementGroupUntilReadyReply);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/* Please do not modify/remove/change the following messages to maintain
+backwards compatibility in autoscaler. This is necessary to make sure we can
+run autoscaler with any version of ray. For example, the K8s operator runs
+autoscaler in a separate pod, if the user upgrades the ray version on the head
+pod autoscaler can crash (if the newer version of ray modified the messages
+below). */
+
+message DrainNodeData {
+  // The id of the node to drain.
+  bytes node_id = 1;
+}
+
+message DrainNodeRequest {
+  // Batched information of nodes to drain.
+  repeated DrainNodeData drain_node_data = 1;
+}
+
+message DrainNodeStatus {
+  // The node id that is successfully drained from GCS.
+  bytes node_id = 1;
+}
+
+message DrainNodeReply {
+  // Whether or not the RPC succeeds.
+  GcsStatus status = 1;
+  // Batched status of nodes that are drained.
+  repeated DrainNodeStatus drain_node_status = 2;
+}
+
+message InternalKVGetRequest {
+  bytes key = 1;
+  bytes namespace = 2;
+}
+
+message InternalKVGetReply {
+  GcsStatus status = 1;
+  bytes value = 2;
+}
+
+message InternalKVPutRequest {
+  bytes key = 1;
+  bytes value = 2;
+  bool overwrite = 3;
+  bytes namespace = 4;
+}
+
+message InternalKVPutReply {
+  GcsStatus status = 1;
+  int32 added_num = 2;
+}
+
+message InternalKVDelRequest {
+  bytes key = 1;
+  bytes namespace = 2;
+  bool del_by_prefix = 3;
+}
+
+message InternalKVDelReply {
+  GcsStatus status = 1;
+  int32 deleted_num = 2;
+}
+
+message InternalKVExistsRequest {
+  bytes key = 1;
+  bytes namespace = 2;
+}
+
+message InternalKVExistsReply {
+  GcsStatus status = 1;
+  bool exists = 2;
+}
+
+message InternalKVKeysRequest {
+  bytes prefix = 1;
+  bytes namespace = 2;
+}
+
+message InternalKVKeysReply {
+  GcsStatus status = 1;
+  repeated bytes results = 2;
+}
+
+// Service for KV storage
+service InternalKVGcsService {
+  rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
+  rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
+  rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
+  rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
+  rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
+}
+
+message PinRuntimeEnvURIRequest {
+  string uri = 1;
+  int32 expiration_s = 2;
+}
+
+message PinRuntimeEnvURIReply {
+  GcsStatus status = 1;
+}
+
+/// Handles pinning package URIs that are stored in the GCS.
+/// Future runtime_env-related RPCs should be added to this service.
+service RuntimeEnvGcsService {
+  rpc PinRuntimeEnvURI(PinRuntimeEnvURIRequest) returns (PinRuntimeEnvURIReply);
+}
+
+message GcsPublishRequest {
+  /// The messages that are published.
+  repeated PubMessage pub_messages = 1;
+}
+
+message GcsPublishReply {
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+message GcsSubscriberPollRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+}
+
+message GcsSubscriberPollReply {
+  /// The messages that are published.
+  repeated PubMessage pub_messages = 1;
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+message GcsSubscriberCommandBatchRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+  /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
+  repeated Command commands = 2;
+}
+
+message GcsSubscriberCommandBatchReply {
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+/// This supports subscribing updates from GCS with long poll, and registering /
+/// de-registering subscribers.
+service InternalPubSubGcsService {
+  /// The request to sent to GCS to publish messages.
+  /// Currently only supporting error info, logs and Python function messages.
+  rpc GcsPublish(GcsPublishRequest) returns (GcsPublishReply);
+  /// The long polling request sent to GCS for pubsub operations.
+  /// The long poll request will be replied once there are a batch of messages that
+  /// need to be published to the caller (subscriber).
+  rpc GcsSubscriberPoll(GcsSubscriberPollRequest) returns (GcsSubscriberPollReply);
+  /// A batch of subscribe / unsubscribe requests sent by the subscriber.
+  rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest)
+      returns (GcsSubscriberCommandBatchReply);
+}
+
+message GetAllResourceUsageRequest {
+}
+
+message GetAllResourceUsageReply {
+  GcsStatus status = 1;
+  ResourceUsageBatchData resource_usage_data = 2;
+}
+
+// Service for node resource info access.
+service NodeResourceInfoGcsService {
+  // Get node's resources from GCS Service.
+  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
+  // Get available resources of all nodes.
+  rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
+      returns (GetAllAvailableResourcesReply);
+  // Report resource usage of a node to GCS Service.
+  rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
+  // Get resource usage of all nodes from GCS Service.
+  rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+}
+
+message GcsStatus {
+  int32 code = 1;
+  string message = 2;
+}
+
+// Service for node info access.
+service NodeInfoGcsService {
+  // Register a node to GCS Service.
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
+  // Drain a node from GCS Service.
+  // When the RPC is replied,
+  // - It is guaranteed that the requested nodes are going to be drained eventually.
+  // - It is guaranteed that GCS has persisted the draining states.
+  // - It is **not** guarateed that nodes receive the drain requests from GCS.
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
+  // Get information of all nodes from GCS Service.
+  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+  // Get cluster internal config.
+  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
+}
+///////////////////////////////////////////////////////////////////////////////

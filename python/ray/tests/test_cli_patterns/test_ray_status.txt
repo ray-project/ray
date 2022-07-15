@@ -1,0 +1,19 @@
+======== Autoscaler status: .+
+Node status
+---------------------------------------------------------------
+Healthy:
+ 1 node_.+
+Pending:
+ \(no pending nodes\)
+Recent failures:
+ \(no failures\)
+
+Resources
+---------------------------------------------------------------
+Usage:
+ 0.0/3.0 CPU
+ 0.+
+ 0.+
+
+Demands:
+ \(no resource demands\)

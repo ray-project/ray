@@ -1,0 +1,19 @@
+Number of trials: 14/14 (14 TERMINATED)
++-------------------------------------------------+------------+--------+------------------+---------+----------+----------------------+----------------------+--------------------+
+| Trial name                                      | status     |   iter |   total time (s) |      ts |   reward |   episode_reward_max |   episode_reward_min |   episode_len_mean |
+|-------------------------------------------------+------------+--------+------------------+---------+----------+----------------------+----------------------+--------------------|
+| A2C_TF_BreakoutNoFrameskip-v4_a7184_00000       | TERMINATED |    352 |          3606.77 | 2852500 |    3.63  |               11     |                0     |             716.08 |
+| A2C_TORCH_BreakoutNoFrameskip-v4_a7184_00001    | TERMINATED |    351 |          3608.87 | 2523000 |   18.52  |               48     |                6     |            2628.03 |
+| APEX_TF_BreakoutNoFrameskip-v4_a7184_00002      | TERMINATED |    104 |          3606.78 | 5265120 |   12.09  |               29     |                3     |            2022.17 |
+| APEX_TORCH_BreakoutNoFrameskip-v4_a7184_00003   | TERMINATED |     83 |          3628.33 | 4170400 |   11.29  |               30     |                2     |            1945.28 |
+| DQN_TF_BreakoutNoFrameskip-v4_a7184_00004       | TERMINATED |     22 |          3682.02 |  230000 |   15.77  |               30     |                1     |            2092.43 |
+| DQN_TORCH_BreakoutNoFrameskip-v4_a7184_00005    | TERMINATED |     21 |          3692.11 |  220000 |   13.91  |               30     |                5     |            2002.19 |
+| IMPALA_TF_BreakoutNoFrameskip-v4_a7184_00006    | TERMINATED |    357 |          3609.24 | 7618000 |  345.44  |              438     |               41     |            9281.76 |
+| IMPALA_TORCH_BreakoutNoFrameskip-v4_a7184_00007 | TERMINATED |    359 |          3603.18 | 6755500 |  355.43  |              441     |               69     |            9519.54 |
+| PPO_TF_BreakoutNoFrameskip-v4_a7184_00008       | TERMINATED |   1336 |          3600.41 | 6680000 |   45.31  |              186     |                4     |            4325.41 |
+| PPO_TORCH_BreakoutNoFrameskip-v4_a7184_00009    | TERMINATED |    575 |          3605.2  | 2875000 |   21.97  |              222     |                8     |            2426.03 |
+| SAC_TF_HalfCheetahBulletEnv-v0_a7184_00010      | TERMINATED |     43 |          3601.63 |   52000 |  549.44  |              669.02  |              438.538 |            1000    |
+| SAC_TORCH_HalfCheetahBulletEnv-v0_a7184_00011   | TERMINATED |     17 |          3719.08 |   26000 | -500.77  |             -388.206 |             -677.982 |            1000    |
+| DDPG_TF_HalfCheetahBulletEnv-v0_a7184_00012     | TERMINATED |    213 |          3600.1  |  213000 | -845.139 |              344.203 |            -2012.73  |            1000    |
+| DDPG_TORCH_HalfCheetahBulletEnv-v0_a7184_00013  | TERMINATED |    157 |          3616.63 |  157000 | -897.804 |              419.357 |            -1718.27  |            1000    |
++-------------------------------------------------+------------+--------+------------------+---------+----------+----------------------+----------------------+--------------------+

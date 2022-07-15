@@ -1,0 +1,2 @@
+# CI requirements: this is the file buildkite needs.
+-r requirements-doc.txt

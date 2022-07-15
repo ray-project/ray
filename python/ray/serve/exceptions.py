@@ -1,0 +1,2 @@
+class RayServeException(Exception):
+    pass

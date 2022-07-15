@@ -1,0 +1,27 @@
+halfcheetah-mbmpo:
+    env: ray.rllib.examples.env.mbmpo_env.HalfCheetahWrapper
+    run: MBMPO
+    stop:
+        training_iteration: 500
+    config:
+        # Only supported in torch right now.
+        framework: torch
+        # 200 in paper, 1000 will take forever
+        horizon: 200
+        num_envs_per_worker: 20
+        inner_adaptation_steps: 1
+        maml_optimizer_steps: 8
+        gamma: 0.99
+        lambda: 1.0
+        lr: 0.001
+        clip_param: 0.5
+        kl_target: 0.003
+        kl_coeff: 0.0000000001
+        num_workers: 20
+        num_gpus: 1
+        inner_lr: 0.001
+        clip_actions: False
+        num_maml_steps: 15
+        model:
+            fcnet_hiddens: [32, 32]
+            free_log_std: True

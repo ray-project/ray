@@ -1,0 +1,26 @@
+repeat-after-me-ppo-w-lstm:
+    # Default case: Discrete(2) observations/actions.
+    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
+    run: PPO
+    stop:
+        episode_reward_mean: 50
+        timesteps_total: 100000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        # Make env partially observable.
+        env_config:
+          config:
+            repeat_delay: 2
+        gamma: 0.9
+        lr: 0.0003
+        num_workers: 0
+        num_envs_per_worker: 20
+        num_sgd_iter: 5
+        entropy_coeff: 0.00001
+        model:
+            use_lstm: true
+            lstm_cell_size: 64
+            max_seq_len: 20
+            fcnet_hiddens: [64]
+            vf_share_layers: true

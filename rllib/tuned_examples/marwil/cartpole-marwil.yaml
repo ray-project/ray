@@ -1,0 +1,21 @@
+# To generate training data, first run:
+# $ ./train.py --run=PPO --env=CartPole-v0 \
+#      --stop='{"timesteps_total": 50000}' \
+#      --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
+cartpole-marwil:
+    env: CartPole-v0
+    run: MARWIL
+    stop:
+        timesteps_total: 500000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        # In order to evaluate on an actual environment, use these following
+        # settings:
+        evaluation_num_workers: 1
+        evaluation_interval: 1
+        evaluation_config:
+            input: sampler
+        beta: 1.0  # Compare to behavior cloning (beta=0.0).
+        # The historic (offline) data file from the PPO run (at the top).
+        input: /tmp/out

@@ -1,0 +1,69 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+import "src/ray/protobuf/runtime_env_common.proto";
+
+import "src/ray/protobuf/agent_manager.proto";
+
+message GetOrCreateRuntimeEnvRequest {
+  string serialized_runtime_env = 1;
+  RuntimeEnvConfig runtime_env_config = 2;
+  bytes job_id = 3;
+  // Serialized allocated resource instances. Key is resource type, value is allocated
+  // instances. For example,{"CPU":20000,"memory":40000,"GPU":[10000, 10000]} means 2 cpu
+  // cores, 2 Gi memory, GPU 0 and GPU 1.
+  string serialized_allocated_resource_instances = 4;
+  string source_process = 5;
+}
+
+message GetOrCreateRuntimeEnvReply {
+  AgentRpcStatus status = 1;
+  string error_message = 2;
+  string serialized_runtime_env_context = 3;
+}
+
+message DeleteRuntimeEnvIfPossibleRequest {
+  string serialized_runtime_env = 1;
+  string source_process = 2;
+}
+
+message DeleteRuntimeEnvIfPossibleReply {
+  AgentRpcStatus status = 1;
+  string error_message = 2;
+}
+
+message GetRuntimeEnvsInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
+
+message GetRuntimeEnvsInfoReply {
+  repeated RuntimeEnvState runtime_env_states = 1;
+  // Length of the corresponding resource without truncation.
+  int64 total = 2;
+}
+
+service RuntimeEnvService {
+  rpc GetOrCreateRuntimeEnv(GetOrCreateRuntimeEnvRequest)
+      returns (GetOrCreateRuntimeEnvReply);
+  rpc DeleteRuntimeEnvIfPossible(DeleteRuntimeEnvIfPossibleRequest)
+      returns (DeleteRuntimeEnvIfPossibleReply);
+  rpc GetRuntimeEnvsInfo(GetRuntimeEnvsInfoRequest) returns (GetRuntimeEnvsInfoReply);
+}

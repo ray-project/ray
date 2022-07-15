@@ -1,0 +1,1 @@
+../ci/lint/check-bazel-team-owner.py

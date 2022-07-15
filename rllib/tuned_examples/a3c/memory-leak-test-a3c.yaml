@@ -1,0 +1,15 @@
+memory-leak-test-a3c:
+    stop:
+        timesteps_total: 150000
+    env:
+        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnv
+    run: A3C
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        # Switch off np.random, which is known to have memory leaks.
+        env_config:
+            config:
+                static_samples: true
+        num_workers: 4
+        num_envs_per_worker: 5

@@ -1,0 +1,13 @@
+{
+    "broadcast_time": 87.82919862000006,
+    "num_nodes": 50,
+    "object_size": 1073741824,
+    "perf_metrics": [
+        {
+            "perf_metric_name": "time_to_broadcast_1073741824_bytes_to_50_nodes",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 87.82919862000006
+        }
+    ],
+    "success": "1"
+}

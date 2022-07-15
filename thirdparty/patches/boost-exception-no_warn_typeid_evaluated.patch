@@ -1,0 +1,10 @@
+diff --git boost/exception/info.hpp boost/exception/info.hpp
+--- boost/exception/info.hpp
++++ boost/exception/info.hpp
+@@ -84,3 +84,4 @@ boost
+ #ifndef BOOST_NO_RTTI
+-                    BOOST_ASSERT( *BOOST_EXCEPTION_DYNAMIC_TYPEID(*p).type_==*ti.type_ );
++                    error_info_base &target = *p; (void)target;  // Avoid -Wpotentially-evaluated-expression
++                    BOOST_ASSERT( *BOOST_EXCEPTION_DYNAMIC_TYPEID(target).type_==*ti.type_ );
+ #endif
+-- 

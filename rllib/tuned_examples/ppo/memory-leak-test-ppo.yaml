@@ -1,0 +1,17 @@
+memory-leak-test-ppo:
+    env:
+        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnv
+    run: PPO
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        # Switch off np.random, which is known to have memory leaks.
+        env_config:
+            config:
+                static_samples: true
+        rollout_fragment_length: 20
+        num_workers: 4
+        num_envs_per_worker: 5
+        train_batch_size: 1000
+        sgd_minibatch_size: 256
+        num_sgd_iter: 5

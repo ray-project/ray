@@ -1,0 +1,677 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+import "src/ray/protobuf/runtime_env_common.proto";
+
+option java_package = "io.ray.runtime.generated";
+
+// Language of a task or worker.
+enum Language {
+  PYTHON = 0;
+  JAVA = 1;
+  CPP = 2;
+}
+
+// Type of a worker.
+enum WorkerType {
+  WORKER = 0;
+  DRIVER = 1;
+  // IO worker types.
+  SPILL_WORKER = 2;
+  RESTORE_WORKER = 3;
+}
+
+// Type of a task.
+enum TaskType {
+  // Normal task.
+  NORMAL_TASK = 0;
+  // Actor creation task.
+  ACTOR_CREATION_TASK = 1;
+  // Actor task.
+  ACTOR_TASK = 2;
+  // Driver task.
+  DRIVER_TASK = 3;
+}
+
+message NodeAffinitySchedulingStrategy {
+  bytes node_id = 1;
+  bool soft = 2;
+}
+
+message PlacementGroupSchedulingStrategy {
+  // Placement group that is associated with this task.
+  bytes placement_group_id = 1;
+  // Placement group bundle that is associated with this task.
+  int64 placement_group_bundle_index = 2;
+  // Whether or not this task should capture parent's placement group automatically.
+  bool placement_group_capture_child_tasks = 3;
+}
+
+message DefaultSchedulingStrategy {}
+
+message SpreadSchedulingStrategy {}
+
+// Update std::hash<SchedulingStrategy> in task_spec.h when this is changed.
+message SchedulingStrategy {
+  oneof scheduling_strategy {
+    // Default hybrid scheduling strategy.
+    DefaultSchedulingStrategy default_scheduling_strategy = 1;
+    // Placement group based scheduling strategy.
+    PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 2;
+    // Best effort spread scheduling strategy.
+    SpreadSchedulingStrategy spread_scheduling_strategy = 3;
+    NodeAffinitySchedulingStrategy node_affinity_scheduling_strategy = 4;
+  }
+}
+
+// Address of a worker or node manager.
+message Address {
+  bytes raylet_id = 1;
+  string ip_address = 2;
+  int32 port = 3;
+  // Optional unique id for the worker.
+  bytes worker_id = 4;
+}
+
+/// Function descriptor for Java.
+message JavaFunctionDescriptor {
+  string class_name = 1;
+  string function_name = 2;
+  string signature = 3;
+}
+
+/// Function descriptor for Python.
+message PythonFunctionDescriptor {
+  string module_name = 1;
+  string class_name = 2;
+  string function_name = 3;
+  string function_hash = 4;
+}
+
+/// Function descriptor for C/C++.
+message CppFunctionDescriptor {
+  /// Remote function name.
+  string function_name = 1;
+  string caller = 2;
+  string class_name = 3;
+}
+
+// A union wrapper for various function descriptor types.
+message FunctionDescriptor {
+  oneof function_descriptor {
+    JavaFunctionDescriptor java_function_descriptor = 1;
+    PythonFunctionDescriptor python_function_descriptor = 2;
+    CppFunctionDescriptor cpp_function_descriptor = 3;
+  }
+}
+
+// Actor concurrency group is used to define a concurrent
+// unit to indicate how some methods are performed concurrently.
+message ConcurrencyGroup {
+  // The name of the method concurrency group.
+  string name = 1;
+  // The maximum concurrency of this group.
+  int32 max_concurrency = 2;
+  // Function descriptors of the actor methods that will run in this concurrency group.
+  repeated FunctionDescriptor function_descriptors = 3;
+}
+
+// This enum type is used as object's metadata to indicate the object's
+// creating task has failed because of a certain error.
+// TODO(hchen): We may want to make these errors more specific. E.g., we may
+// want to distinguish between intentional and expected actor failures, and
+// between worker process failure and node failure.
+enum ErrorType {
+  // Indicates that a task failed because the worker died unexpectedly while
+  // executing it.
+  WORKER_DIED = 0;
+  // Indicates that a task failed because the actor died unexpectedly before
+  // finishing it.
+  ACTOR_DIED = 1;
+  // This object was lost from distributed memory due to a node failure or
+  // system error. We use this error when lineage reconstruction is enabled,
+  // but this object is not reconstructable (created by actor, ray.put, or a
+  // borowed ObjectRef).
+  OBJECT_UNRECONSTRUCTABLE = 2;
+  // Indicates that a task failed due to user code failure.
+  TASK_EXECUTION_EXCEPTION = 3;
+  // Indicates that the object has been placed in plasma. This error shouldn't
+  // ever be exposed to user code; it is only used internally to indicate the
+  // result of a direct call has been placed in plasma.
+  OBJECT_IN_PLASMA = 4;
+  // Indicates that an object has been cancelled.
+  TASK_CANCELLED = 5;
+  // Indicates that the GCS service failed to create the actor.
+  ACTOR_CREATION_FAILED = 6;
+  // Indicates that the runtime_env failed to be created.
+  RUNTIME_ENV_SETUP_FAILED = 7;
+  // This object was lost from distributed memory to a node failure or system
+  // error. We use this error when lineage reconstruction is disabled.
+  OBJECT_LOST = 8;
+  // This object is unreachable because its owner has died.
+  OWNER_DIED = 9;
+  // This object is unreachable because the owner is alive but no longer has a
+  // record of this object, meaning that the physical object has likely already
+  // been deleted from distributed memory. This can happen in distributed
+  // reference counting, due to a bug or corner case.
+  OBJECT_DELETED = 10;
+  // Indicates there is some error when resolving the dependence
+  DEPENDENCY_RESOLUTION_FAILED = 11;
+  // The object is reconstructable but we have already exceeded its maximum
+  // number of task retries.
+  OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED = 12;
+  // The object is reconstructable, but its lineage was evicted due to memory
+  // pressure.
+  OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = 13;
+  // We use this error for object fetches that have timed out. This error will
+  // get thrown if an object appears to be created, but the requestor is not
+  // able to fetch it after the configured timeout.
+  OBJECT_FETCH_TIMED_OUT = 14;
+  // Indicates that a task failed because the local raylet died.
+  LOCAL_RAYLET_DIED = 15;
+  // Indicates that the placement group corresponding to a task has been removed.
+  TASK_PLACEMENT_GROUP_REMOVED = 16;
+  // Indicates that the placement group corresponding to an actor has been removed.
+  ACTOR_PLACEMENT_GROUP_REMOVED = 17;
+  // The task is unschedulable.
+  TASK_UNSCHEDULABLE_ERROR = 18;
+  // The actor is unschedulable.
+  ACTOR_UNSCHEDULABLE_ERROR = 19;
+  // We use this error for object fetches that failed due to out of disk.
+  OUT_OF_DISK_ERROR = 20;
+}
+
+/// The information per ray error type.
+message RayErrorInfo {
+  oneof error {
+    ActorDeathCause actor_died_error = 2;
+    RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
+    string error_message = 4;
+  }
+}
+
+/// The task exception encapsulates all information about task
+/// execution execeptions.
+message RayException {
+  // Language of this exception.
+  Language language = 1;
+  // The serialized exception.
+  bytes serialized_exception = 2;
+  // The formatted exception string.
+  string formatted_exception_string = 3;
+}
+
+message ActorDeathCause {
+  oneof context {
+    // Indicates that this actor is marked as DEAD due to actor creation task failure.
+    RayException creation_task_failure_context = 1;
+    RuntimeEnvFailedContext runtime_env_failed_context = 2;
+    ActorDiedErrorContext actor_died_error_context = 3;
+    ActorUnschedulableContext actor_unschedulable_context = 4;
+  }
+}
+// ---Actor death contexts start----
+// Indicates that this actor is marked as DEAD due to runtime environment setup failure.
+message RuntimeEnvFailedContext {
+  // TODO(sang,lixin) Get this error message from agent.
+  string error_message = 1;
+}
+
+message ActorUnschedulableContext {
+  string error_message = 1;
+}
+
+message ActorDiedErrorContext {
+  string error_message = 1;
+  // The id of owner of the actor.
+  bytes owner_id = 2;
+  // The ip address of the owner worker.
+  string owner_ip_address = 3;
+  // The IP address where actor was created.
+  string node_ip_address = 4;
+  // The process id of this actor.
+  uint32 pid = 5;
+  // Name of the actor.
+  string name = 6;
+  // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 7;
+  // The actor's class name.
+  string class_name = 8;
+  // The id of the actor
+  bytes actor_id = 9;
+}
+// ---Actor death contexts end----
+
+/// The task specification encapsulates all immutable information about the
+/// task.
+message TaskSpec {
+  // Type of this task.
+  TaskType type = 1;
+  // Name of this task.
+  string name = 2;
+  // Language of this task.
+  Language language = 3;
+  // Function descriptor of this task uniquely describe the function to execute.
+  FunctionDescriptor function_descriptor = 4;
+  // ID of the job that this task belongs to.
+  bytes job_id = 5;
+  // Task ID of the task.
+  bytes task_id = 6;
+  // Task ID of the parent task.
+  bytes parent_task_id = 7;
+  // A count of the number of tasks submitted by the parent task before this one.
+  uint64 parent_counter = 8;
+  // Task ID of the caller. This is the same as parent_task_id for non-actors.
+  // This is the actor ID (embedded in a nil task ID) for actors.
+  bytes caller_id = 9;
+  /// Address of the caller.
+  Address caller_address = 10;
+  // Task arguments.
+  repeated TaskArg args = 11;
+  // Number of return objects.
+  uint64 num_returns = 12;
+  // Quantities of the different resources required by this task.
+  map<string, double> required_resources = 13;
+  // The resources required for placing this task on a node. If this is empty,
+  // then the placement resources are equal to the required_resources.
+  map<string, double> required_placement_resources = 14;
+  // Task specification for an actor creation task.
+  // This field is only valid when `type == ACTOR_CREATION_TASK`.
+  ActorCreationTaskSpec actor_creation_task_spec = 15;
+  // Task specification for an actor task.
+  // This field is only valid when `type == ACTOR_TASK`.
+  ActorTaskSpec actor_task_spec = 16;
+  // Number of times this task may be retried on worker failure.
+  int32 max_retries = 17;
+  // Whether or not to skip the execution of this task. When it's true,
+  // the receiver will not execute the task. This field is used by async actors
+  // to guarantee task submission order after restart.
+  bool skip_execution = 21;
+  // Breakpoint if this task should drop into the debugger when it starts executing
+  // and "" if the task should not drop into the debugger.
+  bytes debugger_breakpoint = 22;
+  // Runtime environment for this task.
+  RuntimeEnvInfo runtime_env_info = 23;
+  // The concurrency group name in which this task will be performed.
+  string concurrency_group_name = 24;
+  // Whether application-level errors (exceptions) should be retried.
+  bool retry_exceptions = 25;
+  // The depth of the task. The driver has depth 0, anything it calls has depth
+  // 1, etc.
+  int64 depth = 26;
+  // Strategy about how to schedule this task.
+  SchedulingStrategy scheduling_strategy = 27;
+  // A count of the number of times this task has been attempted so far. 0
+  // means this is the first execution.
+  uint64 attempt_number = 28;
+}
+
+message TaskInfoEntry {
+  // Type of this task.
+  TaskType type = 1;
+  // Name of this task.
+  string name = 2;
+  // Language of this task.
+  Language language = 3;
+  // Function descriptor of this task uniquely describe the function to execute.
+  string func_or_class_name = 4;
+  TaskStatus scheduling_state = 5;
+  // ID of the job that this task belongs to.
+  bytes job_id = 6;
+  // Task ID of the task.
+  bytes task_id = 7;
+  // Task ID of the parent task.
+  bytes parent_task_id = 8;
+  // Quantities of the different resources required by this task.
+  map<string, double> required_resources = 13;
+  // Runtime environment for this task.
+  RuntimeEnvInfo runtime_env_info = 23;
+}
+
+message Bundle {
+  message BundleIdentifier {
+    bytes placement_group_id = 1;
+    int32 bundle_index = 2;
+  }
+  BundleIdentifier bundle_id = 1;
+  map<string, double> unit_resources = 2;
+  // The location of this bundle.
+  bytes node_id = 3;
+}
+
+message PlacementGroupSpec {
+  // ID of the PlacementGroup.
+  bytes placement_group_id = 1;
+  // The name of the placement group.
+  string name = 2;
+  // The array of the bundle in Placement Group.
+  repeated Bundle bundles = 3;
+  // The schedule strategy of this Placement Group.
+  PlacementStrategy strategy = 4;
+  // The job id that created this placement group.
+  bytes creator_job_id = 5;
+  // The actor id that created this placement group.
+  bytes creator_actor_id = 6;
+  // Whether or not if the creator job is dead.
+  bool creator_job_dead = 7;
+  // Whether or not if the creator actor is dead.
+  bool creator_actor_dead = 8;
+  // Whether the placement group is persistent.
+  bool is_detached = 9;
+}
+
+message ObjectReference {
+  // ObjectID that the worker has a reference to.
+  bytes object_id = 1;
+  // The address of the object's owner.
+  Address owner_address = 2;
+  // Language call site of the object reference (i.e., file and line number).
+  // Used to print debugging information if there is an error retrieving the
+  // object.
+  string call_site = 3;
+}
+
+message ObjectReferenceCount {
+  // The reference that the worker has or had a reference to.
+  ObjectReference reference = 1;
+  // Whether the worker is still using the ObjectID locally. This means that
+  // it has a copy of the ObjectID in the language frontend, has a pending task
+  // that depends on the object, and/or owns an ObjectID that is in scope and
+  // that contains the ObjectID.
+  bool has_local_ref = 2;
+  // Any other borrowers that the worker created (by passing the ID on to them).
+  repeated Address borrowers = 3;
+  // The borrower may have returned the object ID nested inside the return
+  // value of a task that it executed. This list contains all task returns that
+  // were owned by a process other than the borrower. Then, the process that
+  // owns the task's return value is also a borrower for as long as it has the
+  // task return ID in scope. Note that only the object ID and owner address
+  // are used for elements in this list.
+  repeated ObjectReference stored_in_objects = 4;
+  // The borrowed object ID that contained this object, if any. This is used
+  // for nested object IDs.
+  repeated bytes contained_in_borrowed_ids = 5;
+  // The object IDs that this object contains, if any. This is used for nested
+  // object IDs.
+  repeated bytes contains = 6;
+}
+
+// Argument in the task.
+message TaskArg {
+  // A pass-by-ref argument.
+  ObjectReference object_ref = 1;
+  // Data for pass-by-value arguments.
+  bytes data = 2;
+  // Metadata for pass-by-value arguments.
+  bytes metadata = 3;
+  // ObjectIDs that were nested in the inlined arguments of the data field.
+  repeated ObjectReference nested_inlined_refs = 4;
+}
+
+// Task spec of an actor creation task.
+message ActorCreationTaskSpec {
+  // ID of the actor that will be created by this task.
+  bytes actor_id = 2;
+  // The max number of times this actor should be restarted.
+  // If this number is 0 the actor won't be restarted.
+  // If this number is -1 the actor will be restarted indefinitely.
+  int64 max_actor_restarts = 3;
+  // The max number of times tasks submitted on this actor should be retried
+  // if the actor fails and is restarted.
+  // If this number is 0 the tasks won't be resubmitted.
+  // If this number is -1 the tasks will be resubmitted indefinitely.
+  int64 max_task_retries = 4;
+  // The dynamic options used in the worker command when starting a worker process for
+  // an actor creation task. If the list isn't empty, the options will be used to replace
+  // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
+  repeated string dynamic_worker_options = 5;
+  // The max number of concurrent calls for default concurrency group of this actor.
+  int32 max_concurrency = 6;
+  // Whether the actor is persistent.
+  bool is_detached = 7;
+  // Globally-unique name of the actor. Should only be populated when is_detached is true.
+  string name = 8;
+  // The namespace of the actor. Should only be populated when is_detached is true.
+  string ray_namespace = 9;
+  // Whether the actor use async actor calls.
+  bool is_asyncio = 10;
+  // Field used for storing application-level extensions to the actor definition.
+  string extension_data = 11;
+  // Serialized bytes of the Handle to the actor that will be created by this task.
+  bytes serialized_actor_handle = 12;
+  // The concurrency groups of this actor.
+  repeated ConcurrencyGroup concurrency_groups = 13;
+  // Whether to enable out of order execution.
+  bool execute_out_of_order = 14;
+  // The max number of pending actor calls.
+  int32 max_pending_calls = 15;
+}
+
+// Task spec of an actor task.
+message ActorTaskSpec {
+  // Actor ID of the actor that this task is executed on.
+  bytes actor_id = 2;
+  // The dummy object ID of the actor creation task.
+  bytes actor_creation_dummy_object_id = 4;
+  // Number of tasks that have been submitted to this actor so far.
+  uint64 actor_counter = 5;
+  // The dummy object ID of the previous actor task.
+  bytes previous_actor_task_dummy_object_id = 7;
+}
+
+// Represents a task, including task spec.
+message Task {
+  TaskSpec task_spec = 1;
+}
+
+// Represents a resource id.
+message ResourceId {
+  // The index of the resource (i.e., CPU #3).
+  int64 index = 1;
+  // The quantity of the resource assigned (i.e., 0.5 CPU).
+  double quantity = 2;
+}
+
+// Represents a set of resource ids.
+message ResourceMapEntry {
+  // The name of the resource (i.e., "CPU").
+  string name = 1;
+  // The set of resource ids assigned.
+  repeated ResourceId resource_ids = 2;
+}
+
+message ViewData {
+  message Measure {
+    // A short string that describes the tags for this mesaure, e.g.,
+    // "Tag1:Value1,Tag2:Value2,Tag3:Value3"
+    string tags = 1;
+    // Int64 type value (if present).
+    int64 int_value = 2;
+    // Double type value (if present).
+    double double_value = 3;
+    // Distribution type value (if present).
+    double distribution_min = 4;
+    double distribution_mean = 5;
+    double distribution_max = 6;
+    double distribution_count = 7;
+    repeated double distribution_bucket_boundaries = 8;
+    repeated double distribution_bucket_counts = 9;
+  }
+
+  // The name of this Census view.
+  string view_name = 1;
+  // The list of measures recorded under this view.
+  repeated Measure measures = 2;
+}
+
+enum TaskStatus {
+  // We don't have a status for this task because we are not the owner or the
+  // task metadata has already been deleted.
+  NIL = 0;
+  // The task is waiting for its dependencies to be created.
+  WAITING_FOR_DEPENDENCIES = 1;
+  // All dependencies have been created and the task is scheduled to execute.
+  SCHEDULED = 2;
+  // The task finished successfully.
+  FINISHED = 3;
+  // The task is scheduled properly and waiting for execution.
+  // It includes time to deliver the task to the remote worker + queueing time
+  // from the execution side.
+  WAITING_FOR_EXECUTION = 5;
+  // The task that is running.
+  RUNNING = 6;
+}
+
+// Debug info for a referenced object.
+message ObjectRefInfo {
+  // Object id that is referenced.
+  bytes object_id = 1;
+  // Language call site of the object reference (i.e., file and line number).
+  string call_site = 2;
+  // Size of the object if this core worker is the owner, otherwise -1.
+  int64 object_size = 3;
+  // Number of local references to the object.
+  int64 local_ref_count = 4;
+  // Number of references in submitted tasks.
+  int64 submitted_task_ref_count = 5;
+  // Object ids that contain this object.
+  repeated bytes contained_in_owned = 6;
+  // True if this object is pinned in memory by the current process.
+  bool pinned_in_memory = 7;
+  // Status of the task that creates this object.
+  TaskStatus task_status = 8;
+  // A count of the number of times this task has been attempted so far. 0
+  // means this is the first execution.
+  uint64 attempt_number = 9;
+}
+
+// Details about the allocation of a given resource. Some resources
+// (e.g., GPUs) have individually allocatable units that are represented
+// as "slots" here.
+message ResourceAllocations {
+  message ResourceSlot {
+    int64 slot = 1;
+    double allocation = 2;
+  }
+  repeated ResourceSlot resource_slots = 1;
+}
+
+// Debug info returned from the core worker.
+message CoreWorkerStats {
+  // Debug string of the currently executing task.
+  string current_task_desc = 1;
+  // Number of pending normal and actor tasks.
+  int32 num_pending_tasks = 2;
+  // Number of object refs in local scope.
+  int32 num_object_refs_in_scope = 3;
+  // IP address of the core worker.
+  string ip_address = 7;
+  // Port of the core worker.
+  int64 port = 8;
+  // Actor ID.
+  bytes actor_id = 9;
+  // A map from the resource name (e.g. "CPU") to its allocation.
+  map<string, ResourceAllocations> used_resources = 10;
+  // A string displayed on Dashboard.
+  map<string, string> webui_display = 11;
+  // Number of objects that are IN_PLASMA_ERROR in the local memory store.
+  int32 num_in_plasma = 12;
+  // Number of objects stored in local memory.
+  int32 num_local_objects = 13;
+  // Used local object store memory.
+  int64 used_object_store_memory = 14;
+  // Length of the task queue.
+  int32 task_queue_length = 15;
+  // Number of executed tasks.
+  int32 num_executed_tasks = 16;
+  // Actor constructor.
+  string actor_title = 17;
+  // Local reference table.
+  repeated ObjectRefInfo object_refs = 18;
+  // Job ID.
+  bytes job_id = 19;
+  // Worker id of core worker.
+  bytes worker_id = 20;
+  // Language
+  Language language = 21;
+  // PID of the worker process.
+  uint32 pid = 22;
+  // The worker type.
+  WorkerType worker_type = 23;
+  // Length of the number of objects without truncation.
+  int64 objects_total = 24;
+}
+
+message MetricPoint {
+  // Name of the metric.
+  string metric_name = 1;
+  // Timestamp when metric is exported.
+  int64 timestamp = 2;
+  // Value of the metric point.
+  double value = 3;
+  // Tags of the metric.
+  map<string, string> tags = 4;
+  // [Optional] Description of the metric.
+  string description = 5;
+  // [Optional] Unit of the metric.
+  string units = 6;
+}
+
+// Type of a worker exit.
+enum WorkerExitType {
+  // Worker exit due to system level failures (i.e. worker crash).
+  SYSTEM_ERROR = 0;
+  // System-level exit that is intended. E.g.,
+  // Workers that are killed because they are idle for a long time.
+  INTENDED_SYSTEM_EXIT = 1;
+  // Worker exits because of user error.
+  // E.g., execptions from the actor initialization.
+  USER_ERROR = 2;
+  // Intended exit from users (e.g., users exit workers with exit code 0
+  // or exit initated by Ray API such as ray.kill).
+  INTENDED_USER_EXIT = 3;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/* Please do not modify/remove/change the following enum to maintain
+backwards compatibility in autoscaler. This is necessary to make sure we can
+run autoscaler with any version of ray. For example, the K8s operator runs
+autoscaler in a separate pod, if the user upgrades the ray version on the head
+pod autoscaler can crash (if the newer version of ray modified the messages
+below). */
+
+// Type of placement group strategy.
+enum PlacementStrategy {
+  // Packs Bundles into as few nodes as possible.
+  PACK = 0;
+  // Places Bundles across distinct nodes or processes as even as possible.
+  SPREAD = 1;
+  // Packs Bundles within one node. The group is not allowed to span multiple nodes.
+  STRICT_PACK = 2;
+  // Places Bundles across distinct nodes.
+  // The group is not allowed to deploy more than one bundle on a node.
+  STRICT_SPREAD = 3;
+}
+///////////////////////////////////////////////////////////////////////////////
+
+// Info about a named actor.
+message NamedActorInfo {
+  string ray_namespace = 1;
+  string name = 2;
+}

@@ -1,0 +1,25 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+max_workers: 1
+
+head_node_type:
+    name: head_node
+    # 4 cpus, 16G mem, $0.224/hr on demand
+    instance_type: m5.xlarge
+
+worker_node_types:
+    - name: worker_node
+      instance_type: m5.xlarge
+      max_workers: 1
+      min_workers: 1
+      use_spot: false
+
+aws:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: anyscale-user
+          Value: '{{env["ANYSCALE_USER"]}}'
+        - Key: anyscale-expiration
+          Value: '{{env["EXPIRATION_1D"]}}'

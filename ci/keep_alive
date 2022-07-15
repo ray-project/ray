@@ -1,0 +1,29 @@
+#!/bin/bash
+# Run a command, printing periodically to keep travis alive.
+
+PID=$$
+
+# Print output to avoid travis killing us
+watchdog() {
+    for i in $(seq 2 2 500); do
+        sleep 120
+        echo "(running, ${i}m total)"
+    done
+    echo "TIMED OUT"
+    kill -SIGKILL $PID
+}
+
+watchdog 2>/dev/null &
+WATCHDOG_PID=$!
+
+time "$@"
+
+CODE=$?
+if [ $CODE != 0 ]; then
+    echo "FAILED $CODE"
+    kill $WATCHDOG_PID
+    exit $CODE
+fi
+
+kill $WATCHDOG_PID
+exit 0

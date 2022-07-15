@@ -1,0 +1,83 @@
+[
+   {
+      "EvaluationPeriods":1,
+      "ComparisonOperator":"GreaterThanThreshold",
+      "AlarmActions":[
+         "TODO: Add alarm actions! See https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html"
+      ],
+      "Namespace":"{cluster_name}-ray-CWAgent",
+      "AlarmDescription":"Memory used exceeds 90 percent for 5 minutes",
+      "Period":300,
+      "Threshold":90.0,
+      "AlarmName":"high mem_used_percent_{instance_id}",
+      "Dimensions":[
+         {
+            "Name":"InstanceId",
+            "Value":"{instance_id}"
+         }
+      ],
+      "Statistic":"Average",
+      "InsufficientDataActions":[
+
+      ],
+      "OKActions":[
+
+      ],
+      "ActionsEnabled":true,
+      "MetricName":"mem_used_percent"
+   },
+   {
+      "EvaluationPeriods":1,
+      "ComparisonOperator":"GreaterThanThreshold",
+      "AlarmActions":[
+         "TODO: Add alarm actions! See https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html"
+      ],
+      "Namespace":"{cluster_name}-ray-CWAgent",
+      "AlarmDescription":"Disk used exceeds 90 percent for five minutes",
+      "Period":300,
+      "Threshold":90.0,
+      "AlarmName":"high disk_used_percent_{instance_id}",
+      "Dimensions": [
+            {
+                "Name": "InstanceId",
+                "Value": "{instance_id}"
+            }
+        ],
+      "Statistic":"Average",
+      "InsufficientDataActions":[
+
+      ],
+      "OKActions":[
+
+      ],
+      "ActionsEnabled":true,
+      "MetricName":"disk_used_percent"
+   },
+   {
+      "EvaluationPeriods":1,
+      "ComparisonOperator":"GreaterThanThreshold",
+      "AlarmActions":[
+         "TODO: Add alarm actions! See https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html"
+      ],
+      "Namespace":"AWS/EC2",
+      "AlarmDescription":"CPU used exceeds 90 percent for 2 hours",
+      "Period":7200,
+      "Threshold":90.0,
+      "AlarmName":"high_CPUUtilization_{instance_id}",
+      "Dimensions":[
+         {
+            "Name":"InstanceId",
+            "Value":"{instance_id}"
+         }
+      ],
+      "Statistic":"Average",
+      "InsufficientDataActions":[
+
+      ],
+      "OKActions":[
+
+      ],
+      "ActionsEnabled":true,
+      "MetricName":"CPUUtilization"
+   }
+]

@@ -1,0 +1,28 @@
+pong-deterministic-rainbow:
+    env: PongDeterministic-v4
+    run: DQN
+    stop:
+        episode_reward_mean: 20
+    config:
+        num_atoms: 51
+        noisy: True
+        gamma: 0.99
+        lr: .0001
+        hiddens: [512]
+        rollout_fragment_length: 4
+        train_batch_size: 32
+        exploration_config:
+          epsilon_timesteps: 2
+          final_epsilon: 0.0
+        target_network_update_freq: 500
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          prioritized_replay_alpha: 0.5
+          learning_starts: 10000
+          capacity: 50000
+        n_step: 3
+        gpu: True
+        model:
+          grayscale: True
+          zero_mean: False
+          dim: 42

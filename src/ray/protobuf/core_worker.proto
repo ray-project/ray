@@ -1,0 +1,417 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/pubsub.proto";
+
+message ActiveObjectIDs {
+  repeated bytes object_ids = 1;
+}
+
+// Persistent state of an ActorHandle.
+message ActorHandle {
+  // ID of the actor.
+  bytes actor_id = 1;
+
+  // The task or actor ID of the actor's owner.
+  bytes owner_id = 2;
+
+  // The address of the actor's owner.
+  Address owner_address = 3;
+
+  // ID of the job that created the actor (it is possible that the handle
+  // exists on a job with a different job ID).
+  bytes creation_job_id = 4;
+
+  // Language of the actor.
+  Language actor_language = 5;
+
+  // Function descriptor of actor creation task.
+  FunctionDescriptor actor_creation_task_function_descriptor = 6;
+
+  // The unique id of the dummy object returned by the actor creation task.
+  // It's used as a dependency for the first task.
+  // TODO: Remove this once scheduling is done by task counter only.
+  bytes actor_cursor = 7;
+
+  // An extension field that is used for storing app-language-specific data.
+  bytes extension_data = 8;
+
+  // How many times tasks may be retried on this actor if the actor fails.
+  int64 max_task_retries = 9;
+
+  // The name of the actor.
+  string name = 10;
+
+  // The namespace that this actor belongs to.
+  string ray_namespace = 11;
+
+  // Whether the actor supports out of order execution.
+  bool execute_out_of_order = 12;
+
+  // The max number of pending actor calls.
+  int32 max_pending_calls = 13;
+}
+
+message ReturnObject {
+  // Object ID.
+  bytes object_id = 1;
+  // If set, indicates the data is in plasma instead of inline. This
+  // means that data and metadata will be empty.
+  bool in_plasma = 2;
+  // Data of the object.
+  bytes data = 3;
+  // Metadata of the object.
+  bytes metadata = 4;
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  repeated ObjectReference nested_inlined_refs = 5;
+  // Size of this object.
+  int64 size = 6;
+}
+
+message PushTaskRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // The task to be pushed.
+  TaskSpec task_spec = 2;
+  // The sequence number of the task for this client. This must increase
+  // sequentially starting from zero for each actor handle. The server
+  // will guarantee tasks execute in this sequence, waiting for any
+  // out-of-order request messages to arrive as necessary.
+  // If set to -1, ordering is disabled and the task executes immediately.
+  int64 sequence_number = 3;
+  // The max sequence number the client has processed responses for. This
+  // is a performance optimization that allows the client to tell the server
+  // to cancel any PushTaskRequests with seqno <= this value, rather than
+  // waiting for the server to time out waiting for missing messages.
+  int64 client_processed_up_to = 4;
+  // Resource mapping ids assigned to the worker executing the task.
+  repeated ResourceMapEntry resource_mapping = 5;
+}
+
+message PushTaskReply {
+  // The returned objects.
+  repeated ReturnObject return_objects = 1;
+  // Set to true if the worker will be exiting.
+  bool worker_exiting = 3;
+  // The references that the worker borrowed during the task execution. A
+  // borrower is a process that is currently using the object ID, in one of 3
+  // ways:
+  // 1. Has an ObjectID copy in Python.
+  // 2. Has submitted a task that depends on the object and that is still
+  // pending.
+  // 3. Owns another object that is in scope and whose value contains the
+  // ObjectID.
+  // This list includes the reference counts for any IDs that were passed to
+  // the worker in the task spec as an argument by reference, or an ObjectID
+  // that was serialized in an inlined argument. It also includes reference
+  // counts for any IDs that were nested inside these objects that the worker
+  // may now be borrowing. The reference counts also include any new borrowers
+  // that the worker created by passing a borrowed ID into a nested task.
+  repeated ObjectReferenceCount borrowed_refs = 4;
+  // Whether the result contains an application-level error (exception).
+  bool is_application_level_error = 5;
+}
+
+message DirectActorCallArgWaitCompleteRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // Id used to uniquely identify this request. This is sent back to the core
+  // worker to notify the wait has completed.
+  int64 tag = 2;
+}
+
+message DirectActorCallArgWaitCompleteReply {}
+
+message GetObjectStatusRequest {
+  // The ID of the worker that owns this object. This is also
+  // the ID of the worker that this message is intended for.
+  bytes owner_worker_id = 1;
+  // Wait for this object's status.
+  bytes object_id = 2;
+}
+
+message RayObject {
+  // Data of the object.
+  bytes data = 1;
+  // Metadata of the object.
+  bytes metadata = 2;
+  // ObjectRefs that were nested in this object.
+  repeated ObjectReference nested_inlined_refs = 3;
+}
+
+message GetObjectStatusReply {
+  enum ObjectStatus {
+    CREATED = 0;
+    OUT_OF_SCOPE = 1;
+    FREED = 2;
+  }
+  ObjectStatus status = 1;
+  // The Ray object: either a concrete value, an in-Plasma indicator, or an
+  // exception.
+  RayObject object = 2;
+  // This object's locations.
+  repeated bytes node_ids = 3;
+  // The size of the object in bytes.
+  uint64 object_size = 4;
+}
+
+message WaitForActorOutOfScopeRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ActorID of the actor in scope.
+  bytes actor_id = 2;
+}
+
+message WaitForActorOutOfScopeReply {}
+
+message UpdateObjectLocationBatchRequest {
+  bytes intended_worker_id = 1;
+  bytes node_id = 2;
+  repeated ObjectLocationUpdate object_location_updates = 3;
+}
+
+message UpdateObjectLocationBatchReply {}
+
+enum ObjectPlasmaLocationUpdate {
+  // Object is added to plasma store.
+  ADDED = 0;
+  // Object is removed from plasma store.
+  REMOVED = 1;
+}
+
+message ObjectSpilledLocationUpdate {
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 3;
+  // Whether the object is spilled to local storage or cloud storage.
+  bool spilled_to_local_storage = 4;
+}
+
+message ObjectLocationUpdate {
+  bytes object_id = 1;
+  // When it's set, it indicates whether the object is added or removed from plasma store.
+  optional ObjectPlasmaLocationUpdate plasma_location_update = 2;
+  // When it's set, it contains where the object is spilled to.
+  optional ObjectSpilledLocationUpdate spilled_location_update = 3;
+}
+
+message GetObjectLocationsOwnerRequest {
+  WorkerObjectLocationsSubMessage object_location_request = 1;
+}
+
+message GetObjectLocationsOwnerReply {
+  WorkerObjectLocationsPubMessage object_location_info = 1;
+}
+
+message KillActorRequest {
+  // ID of the actor that is intended to be killed.
+  bytes intended_actor_id = 1;
+  // Whether to force kill the actor.
+  bool force_kill = 2;
+  // If set to true, the killed actor will not be restarted anymore.
+  bool no_restart = 3;
+  // The precise reason why this actor receives a kill request.
+  ActorDeathCause death_cause = 4;
+}
+
+message KillActorReply {}
+
+message CancelTaskRequest {
+  // ID of task that should be killed.
+  bytes intended_task_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
+}
+
+message CancelTaskReply {
+  // Whether the requested task is the currently running task.
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
+}
+
+message RemoteCancelTaskRequest {
+  // Object ID of the remote task that should be killed.
+  bytes remote_object_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
+}
+
+message RemoteCancelTaskReply {}
+
+message GetCoreWorkerStatsRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // Whether to include memory stats. This could be large since it includes
+  // metadata for all live object references.
+  bool include_memory_info = 2;
+  // Whether to include task information. This could be large since it
+  // includes metadata for all live tasks.
+  bool include_task_info = 3;
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 4;
+}
+
+message GetCoreWorkerStatsReply {
+  // Debug information returned from the core worker.
+  CoreWorkerStats core_worker_stats = 1;
+  /// Task information
+  /// Task information is scattered to 3 places.
+  /// Owner of tasks: knows the general state of task
+  ///   (e.g., waiting for deps or scheduling).
+  /// Worker that executes tasks: knows whether or not the task is actually running.
+  ///   This is necessary because the task can be queued on the execution side.
+  /// Raylet: Knows the exact scheduling state.
+  // A list of task information of the current worker.
+  repeated TaskInfoEntry owned_task_info_entries = 2;
+  // A list of task that's currently running.
+  // All tasks must be treated as TaskStatus::RUNNING
+  // from the caller side.
+  repeated bytes running_task_ids = 3;
+  // Length of the number of tasks without truncation.
+  int64 tasks_total = 4;
+}
+
+message LocalGCRequest {
+  // Whether this is triggered by a global gc.
+  bool triggered_by_global_gc = 1;
+}
+
+message LocalGCReply {}
+
+message PlasmaObjectReadyRequest {
+  bytes object_id = 1;
+}
+
+message PlasmaObjectReadyReply {}
+
+message SpillObjectsRequest {
+  repeated ObjectReference object_refs_to_spill = 1;
+}
+
+message SpillObjectsReply {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message RestoreSpilledObjectsRequest {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+  // Object ids to restore. The order of object ids
+  // must be the same as spilled_objects_url.
+  repeated bytes object_ids_to_restore = 2;
+}
+
+message RestoreSpilledObjectsReply {
+  int64 bytes_restored_total = 1;
+}
+
+message DeleteSpilledObjectsRequest {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message DeleteSpilledObjectsReply {}
+
+message ExitRequest {}
+
+message ExitReply {
+  /// Whether or not exit succeeds. If the core worker owns any object, the request fails.
+  bool success = 1;
+}
+
+message AssignObjectOwnerRequest {
+  // The ID of added object.
+  bytes object_id = 1;
+  // The size of the object in bytes.
+  uint64 object_size = 2;
+  // The IDs of contained objects.
+  repeated bytes contained_object_ids = 3;
+  // The borrower address.
+  Address borrower_address = 4;
+  // Description of the call site where the reference was created.
+  string call_site = 5;
+}
+
+message AssignObjectOwnerReply {}
+
+message RayletNotifyGCSRestartRequest {}
+
+message RayletNotifyGCSRestartReply {}
+
+service CoreWorkerService {
+  // Notify core worker GCS has restarted.
+  rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
+      returns (RayletNotifyGCSRestartReply);
+  // Push a task directly to this worker from another.
+  rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+  // Reply from raylet that wait for direct actor call args has completed.
+  rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
+      returns (DirectActorCallArgWaitCompleteReply);
+  // Ask the object's owner about the object's current status.
+  rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Wait for the actor's owner to decide that the actor has gone out of scope.
+  // Replying to this message indicates that the client should force-kill the
+  // actor process, if still alive.
+  rpc WaitForActorOutOfScope(WaitForActorOutOfScopeRequest)
+      returns (WaitForActorOutOfScopeReply);
+  /// The long polling request sent to the core worker for pubsub operations.
+  /// It is replied once there are batch of objects that need to be published to
+  /// the caller (subscriber).
+  rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
+  /// The pubsub command batch request used by the subscriber.
+  rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
+  // Update the batched object location information to the ownership-based object
+  // directory.
+  rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
+      returns (UpdateObjectLocationBatchReply);
+  // Get object locations from the ownership-based object directory.
+  rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
+      returns (GetObjectLocationsOwnerReply);
+  // Request that the worker shut down without completing outstanding work.
+  rpc KillActor(KillActorRequest) returns (KillActorReply);
+  // Request that a worker cancels a task.
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
+  // Request for a worker to issue a cancelation.
+  rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
+  // Get metrics from core workers.
+  rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
+  // Trigger local GC on the worker.
+  rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Spill objects to external storage. Caller: raylet; callee: I/O worker.
+  rpc SpillObjects(SpillObjectsRequest) returns (SpillObjectsReply);
+  // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
+      returns (RestoreSpilledObjectsReply);
+  // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
+      returns (DeleteSpilledObjectsReply);
+  // Notification from raylet that an object ID is available in local plasma.
+  rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
+  // Request for a worker to exit.
+  rpc Exit(ExitRequest) returns (ExitReply);
+  // Assign the owner of an object to the intended worker.
+  rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
+}
