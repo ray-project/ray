@@ -61,6 +61,12 @@ DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
+# Use this to prefix important warning messages for the user.
+WARN_PREFIX = "⚠️ "
+
+# Use this to prefix important success messages for the user.
+OK_PREFIX = "✔️ "
+
 
 @DeveloperAPI
 class DatasetContext:
