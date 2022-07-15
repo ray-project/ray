@@ -1,6 +1,5 @@
 import asyncio
 import concurrent.futures
-import dataclasses
 from datetime import datetime
 import enum
 import logging
@@ -141,7 +140,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         # Get activity information for driver
         driver_activity_info = await self._get_job_activity_info(timeout=timeout)
-        resp = {"driver": dataclasses.asdict(driver_activity_info)}
+        resp = {"driver": dict(driver_activity_info)}
 
         if RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
             try:
