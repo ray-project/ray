@@ -124,6 +124,7 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
   std::string concurrency_group_name = "";
   std::string serialzied_runtime_env_info = "";
 
+  bool if_forward = false;
   if (callOptions) {
     jobject java_resources =
         env->GetObjectField(callOptions, java_base_task_options_resources);
@@ -150,8 +151,10 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
     }
   }
 
+  if_forward = (bool) env->GetBooleanField(callOptions, java_call_options_if_forward);
   TaskOptions task_options{
-      name, numReturns, resources, concurrency_group_name, serialzied_runtime_env_info};
+      name, numReturns, resources, concurrency_group_name,
+      serialzied_runtime_env_info, if_forward};
   return task_options;
 }
 

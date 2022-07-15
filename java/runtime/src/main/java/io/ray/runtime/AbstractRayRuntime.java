@@ -323,7 +323,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
     ObjectRefImpl<?> impl = new ObjectRefImpl<>();
     /// Mapping the object id to the object ref.
-    List<ObjectId> preparedReturnIds = getCurrentReturnIds(numReturns, ActorId.NIL);
+    List<ObjectId> preparedReturnIds = getCurrentReturnIds(numReturns, ActorId.NIL,
+        options.forwardObjectToParentTask);
     if (rayConfig.runMode == RunMode.CLUSTER && numReturns > 0) {
       ObjectRefImpl.registerObjectRefImpl(preparedReturnIds.get(0), impl);
     }
@@ -354,7 +355,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
     ObjectRefImpl<?> impl = new ObjectRefImpl<>();
     /// Mapping the object id to the object ref.
-    List<ObjectId> preparedReturnIds = getCurrentReturnIds(numReturns, rayActor.getId());
+    System.err.println(options.forwardObjectToParentTask);
+    List<ObjectId> preparedReturnIds = getCurrentReturnIds(numReturns, rayActor.getId(),
+        options.forwardObjectToParentTask);
     if (rayConfig.runMode == RunMode.CLUSTER && numReturns > 0) {
       ObjectRefImpl.registerObjectRefImpl(preparedReturnIds.get(0), impl);
     }
@@ -394,7 +397,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return actor;
   }
 
-  abstract List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId);
+  abstract List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId, boolean ifForward);
 
   public WorkerContext getWorkerContext() {
     return workerContext;

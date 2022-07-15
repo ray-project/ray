@@ -66,7 +66,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
-      bool is_reconstructable = max_retries != 0;
+      bool is_reconstructable = true;
+      // bool is_reconstructable = max_retries != 0;
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
       // publish the WaitForRefRemoved message that we are now a borrower for
@@ -98,7 +99,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   {
     absl::MutexLock lock(&mu_);
     auto inserted = submissible_tasks_.emplace(spec.TaskId(),
-                                               TaskEntry(spec, max_retries, num_returns));
+                                               TaskEntry(spec, 1, num_returns));
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }

@@ -673,7 +673,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Get the expected return ids of the next task.
   std::vector<ObjectID> GetCurrentReturnIds(int num_returns,
-                                            const ActorID &callee_actor_id);
+                                            const ActorID &callee_actor_id,
+                                            bool use_parent_task_id);
 
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
@@ -844,6 +845,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::Address &address,
       const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args,
+      int parent_num_returns,
       uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,

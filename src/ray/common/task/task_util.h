@@ -107,6 +107,7 @@ class TaskSpecBuilder {
       uint64_t parent_counter,
       const TaskID &caller_id,
       const rpc::Address &caller_address,
+      int parent_num_returns,
       uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
@@ -124,6 +125,7 @@ class TaskSpecBuilder {
     message_->set_parent_counter(parent_counter);
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);
+    message_->set_parent_num_returns(parent_num_returns);
     message_->set_num_returns(num_returns);
     message_->mutable_required_resources()->insert(required_resources.begin(),
                                                    required_resources.end());

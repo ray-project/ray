@@ -79,12 +79,12 @@ build_jars_multiplatform() {
       return
     fi
   fi
-  if download_jars "ray-runtime-$version.jar"; then
-    prepare_native
-    build_jars multiplatform false
-  else
-    echo "download_jars failed, skip building multiplatform jars"
-  fi
+  # if download_jars "ray-runtime-$version.jar"; then
+  prepare_native
+  build_jars linux
+  # else
+  #   echo "download_jars failed, skip building multiplatform jars"
+  # fi
 }
 
 # Download darwin/windows ray-related jar from s3
@@ -124,7 +124,8 @@ download_jars() {
 
 # prepare native binaries and libraries.
 prepare_native() {
-  for os in 'darwin' 'linux'; do
+  # for os in 'darwin' 'linux'; do
+  for os in 'linux'; do
     cd "$JAR_BASE_DIR/$os"
     jar xf "ray-runtime-$version.jar" "native/$os"
     local native_dir="$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os"
@@ -137,7 +138,8 @@ prepare_native() {
 # Return 0 if native bianries and libraries exist and 1 if not.
 native_files_exist() {
   local os
-  for os in 'darwin' 'linux'; do
+  # for os in 'darwin' 'linux'; do
+  for os in 'linux'; do
     native_dirs=()
     native_dirs+=("$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os")
     for native_dir in "${native_dirs[@]}"; do

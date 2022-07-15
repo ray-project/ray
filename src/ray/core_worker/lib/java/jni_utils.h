@@ -178,8 +178,11 @@ extern jfieldID java_task_creation_options_group;
 extern jfieldID java_task_creation_options_bundle_index;
 /// concurrencyGroupName field of CallOptions class
 extern jfieldID java_call_options_concurrency_group_name;
+
 /// serializedRuntimeEnvInfo field of CallOptions class
 extern jfieldID java_call_options_serialized_runtime_env_info;
+
+extern jfieldID java_call_options_if_forward;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;

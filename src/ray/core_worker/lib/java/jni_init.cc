@@ -101,6 +101,7 @@ jfieldID java_task_creation_options_group;
 jfieldID java_task_creation_options_bundle_index;
 jfieldID java_call_options_concurrency_group_name;
 jfieldID java_call_options_serialized_runtime_env_info;
+jfieldID java_call_options_if_forward;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_name;
@@ -319,6 +320,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       java_call_options_class, "concurrencyGroupName", "Ljava/lang/String;");
   java_call_options_serialized_runtime_env_info = env->GetFieldID(
       java_call_options_class, "serializedRuntimeEnvInfo", "Ljava/lang/String;");
+  java_call_options_if_forward = env->GetFieldID(
+      java_call_options_class, "forwardObjectToParentTask", "Z");
+
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");

@@ -217,8 +217,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId) {
-    List<byte[]> ret = nativeGetCurrentReturnIds(numReturns, actorId.getBytes());
+  List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId, boolean ifForward) {
+    List<byte[]> ret = nativeGetCurrentReturnIds(numReturns, actorId.getBytes(), ifForward);
     return ret.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
@@ -291,7 +291,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native String nativeGetNamespace();
 
-  private static native List<byte[]> nativeGetCurrentReturnIds(int numReturns, byte[] actorId);
+  private static native List<byte[]> nativeGetCurrentReturnIds(int numReturns, byte[] actorId, boolean ifForward);
 
   private static native byte[] nativeGetCurrentNodeId();
 }

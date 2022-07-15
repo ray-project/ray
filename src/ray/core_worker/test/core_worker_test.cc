@@ -559,6 +559,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                               0,
                               RandomTaskId(),
                               address,
+                              -1,
                               num_returns,
                               resources,
                               resources,

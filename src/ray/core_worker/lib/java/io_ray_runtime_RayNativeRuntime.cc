@@ -428,11 +428,12 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentNodeId(JNIEnv *env, jclass)
 }
 
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentReturnIds(
-    JNIEnv *env, jclass, jint numReturns, jbyteArray actorIdByteArray) {
+    JNIEnv *env, jclass, jint numReturns, jbyteArray actorIdByteArray, jboolean ifForward) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   auto return_ids = core_worker.GetCurrentReturnIds(
       static_cast<int>(numReturns),
-      JavaByteArrayToId<ray::ActorID>(env, actorIdByteArray));
+      JavaByteArrayToId<ray::ActorID>(env, actorIdByteArray),
+      static_cast<bool>(ifForward));
   return NativeIdVectorToJavaByteArrayList<ray::ObjectID>(env, return_ids);
 }
 

@@ -1530,6 +1530,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const rpc::Address &address,
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
+    int parent_num_returns,
     uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
@@ -1549,6 +1550,7 @@ void CoreWorker::BuildCommonTaskSpec(
                             task_index,
                             caller_id,
                             address,
+                            parent_num_returns,
                             num_returns,
                             required_resources,
                             required_placement_resources,
@@ -1597,6 +1599,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       rpc_address_,
                       function,
                       args,
+                      -1,
                       task_options.num_returns,
                       constrained_resources,
                       required_resources,
@@ -1676,6 +1679,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       rpc_address_,
                       function,
                       args,
+                      -1,
                       1,
                       new_resource,
                       new_placement_resources,
@@ -1872,7 +1876,13 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
-
+  int parent_num_returns = -1;
+  if (task_options.use_parent_task_id) {
+    auto current_task = worker_context_.GetCurrentTask();
+    parent_num_returns = current_task->NumReturns();
+  }
+  RAY_LOG(ERROR) << parent_num_returns;
+  RAY_LOG(ERROR) << task_options.use_parent_task_id;
   // Build common task spec.
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
@@ -1899,6 +1909,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       rpc_address_,
                       function,
                       args,
+                      parent_num_returns,
                       num_returns,
                       task_options.resources,
                       required_resources,
@@ -3392,11 +3403,20 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
 }
 
 std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
-                                                      const ActorID &callee_actor_id) {
+                                                      const ActorID &callee_actor_id,
+                                                      bool use_parent_task_id) {
   std::vector<ObjectID> return_ids(num_returns);
   const auto next_task_index = worker_context_.GetTaskIndex() + 1;
   TaskID task_id;
-  if (callee_actor_id.IsNil()) {
+  if (use_parent_task_id) {
+    task_id = worker_context_.GetCurrentTaskID();
+    auto current_task = worker_context_.GetCurrentTask();
+    size_t parent_task_num_returns = current_task->NumReturns();
+    for (int i = 0; i < num_returns; i++) {
+      return_ids[i] = ObjectID::FromIndex(task_id, parent_task_num_returns + i + 1);
+    }
+    return return_ids;
+  } else if (callee_actor_id.IsNil()) {
     /// Return ids for normal task call.
     task_id = TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                                     worker_context_.GetCurrentInternalTaskId(),

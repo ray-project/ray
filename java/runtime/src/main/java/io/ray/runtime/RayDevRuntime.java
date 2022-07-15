@@ -93,7 +93,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId) {
+  List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId, boolean ifForward) {
     return null;
   }
 

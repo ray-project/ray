@@ -45,6 +45,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             0,
                             TaskID::Nil(),
                             empty_address,
+                            -1,
                             1,
                             resources,
                             resources,

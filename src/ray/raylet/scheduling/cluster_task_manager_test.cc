@@ -161,6 +161,7 @@ RayTask CreateTask(
                                  0,
                                  TaskID::Nil(),
                                  address,
+                                 -1,
                                  0,
                                  required_resources,
                                  {},

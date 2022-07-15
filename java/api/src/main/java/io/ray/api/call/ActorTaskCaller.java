@@ -28,6 +28,11 @@ public class ActorTaskCaller<R> {
     return self();
   }
 
+  public ActorTaskCaller<R> setForwardObjectToParentTask(boolean ifForward) {
+    builder.setForwardObjectToParentTask(ifForward);
+    return self();
+  }
+
   private ActorTaskCaller<R> self() {
     return this;
   }

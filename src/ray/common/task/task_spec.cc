@@ -198,7 +198,12 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
-  return ObjectID::FromIndex(TaskId(), return_index + 1);
+  auto parent_num_returns = this->message_->parent_num_returns();
+  if (parent_num_returns < 0) {
+    return ObjectID::FromIndex(TaskId(), return_index + 1);
+  } else {
+    return ObjectID::FromIndex(ParentTaskId(), parent_num_returns + return_index + 1);
+  }
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {

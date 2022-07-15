@@ -13,6 +13,7 @@ public class CallOptions extends BaseTaskOptions {
   public final int bundleIndex;
   public final String concurrencyGroupName;
   private final String serializedRuntimeEnvInfo;
+  public final boolean forwardObjectToParentTask;
 
   private CallOptions(
       String name,
@@ -20,13 +21,15 @@ public class CallOptions extends BaseTaskOptions {
       PlacementGroup group,
       int bundleIndex,
       String concurrencyGroupName,
-      RuntimeEnv runtimeEnv) {
+      RuntimeEnv runtimeEnv, 
+      boolean forwardObjectToParentTask) {
     super(resources);
     this.name = name;
     this.group = group;
     this.bundleIndex = bundleIndex;
     this.concurrencyGroupName = concurrencyGroupName;
     this.serializedRuntimeEnvInfo = runtimeEnv == null ? "" : runtimeEnv.toJsonBytes();
+    this.forwardObjectToParentTask = forwardObjectToParentTask;
   }
 
   /** This inner class for building CallOptions. */
@@ -38,6 +41,7 @@ public class CallOptions extends BaseTaskOptions {
     private int bundleIndex;
     private String concurrencyGroupName = "";
     private RuntimeEnv runtimeEnv = null;
+    private boolean forwardObjectToParentTask = false;
 
     /**
      * Set a name for this task.
@@ -98,8 +102,14 @@ public class CallOptions extends BaseTaskOptions {
       return this;
     }
 
+    public Builder setForwardObjectToParentTask(boolean ifForward) {
+      this.forwardObjectToParentTask = ifForward;
+      return this;
+    }
+
     public CallOptions build() {
-      return new CallOptions(name, resources, group, bundleIndex, concurrencyGroupName, runtimeEnv);
+      return new CallOptions(name, resources, group, bundleIndex, concurrencyGroupName,
+          runtimeEnv, forwardObjectToParentTask);
     }
   }
 }
