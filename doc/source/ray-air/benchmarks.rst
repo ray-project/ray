@@ -11,7 +11,10 @@ using an XGBoost model.
 
 We test out the performance across different cluster sizes and data sizes.
 
-.. TODO: Link to script and cluster configuration when merged
+`XGBoost Prediction Script`_
+`XGBoost Cluster configuration` (description)
+
+.. TODO: Add script for generating data and running the benchmark.
 
 .. list-table::
 
@@ -43,6 +46,10 @@ with different amounts of parallelism.
 
 XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
 
+
+`XGBoost Training Script`_
+`XGBoost Cluster configuration` (description)
+
 .. list-table::
 
     * - Cluster Configuration
@@ -60,3 +67,9 @@ XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
       - 100 GB
       - 260M rows
       - 693 s
+
+
+
+.. _`XGBoost Training Script`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/workloads/xgboost_benchmark.py#L40-L58
+.. _`XGBoost Prediction Script`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/workloads/xgboost_benchmark.py#L63-L71
+.. _`XGBoost Cluster configuration`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/xgboost_compute_tpl.yaml#L6-L24
