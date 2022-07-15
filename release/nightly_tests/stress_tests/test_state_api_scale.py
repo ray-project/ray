@@ -212,6 +212,7 @@ def test_many_objects(num_objects, num_actors):
             ("type", "=", "Worker"),
         ],
         limit=STATE_LIST_LIMIT,
+        timeout=STATE_LIST_TIMEOUT,
     )
 
     exiting_actors = [actor.exit.remote() for actor in actors]
