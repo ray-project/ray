@@ -167,8 +167,12 @@ if __name__ == "__main__":
     parser.add_argument("--dataset-size-gb", type=float, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
     parser.add_argument("--window-size-gb", type=float, default=10)
+    parser.add_argument("--s3-data", type=str, default="")
     args = parser.parse_args()
-    ds = make_ds(args.dataset_size_gb)
+    if args.s3_data:
+        ds = ray.data.read_parquet(args.s3_data)
+    else:
+        ds = make_ds(args.dataset_size_gb)
     if args.benchmark == "ingest":
         if args.streaming:
             run_ingest_streaming(ds, args.num_workers)
