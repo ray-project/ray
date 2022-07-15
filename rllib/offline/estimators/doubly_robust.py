@@ -94,7 +94,7 @@ class DoublyRobust(OffPolicyEstimator):
             - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
             - v_gain_std: The standard deviation corresponding to v_gain
         """
-        self.convert_ma_batch_to_sample_batch(batch)
+        batch = self.convert_ma_batch_to_sample_batch(batch)
         self.check_action_prob_in_batch(batch)
         estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
         # Calculate doubly robust OPE estimates
@@ -141,6 +141,6 @@ class DoublyRobust(OffPolicyEstimator):
         Returns:
         A dict with key "loss" and value as the mean training loss.
         """
-        self.convert_ma_batch_to_sample_batch(batch)
+        batch = self.convert_ma_batch_to_sample_batch(batch)
         losses = self.model.train(batch)
         return {"loss": np.mean(losses)}

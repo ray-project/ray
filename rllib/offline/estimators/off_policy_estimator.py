@@ -1,5 +1,9 @@
 import logging
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import (
+    MultiAgentBatch,
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+)
 from ray.rllib.policy import Policy
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -41,11 +45,14 @@ class OffPolicyEstimator:
         raise NotImplementedError
 
     @DeveloperAPI
-    def convert_ma_batch_to_sample_batch(self, batch: SampleBatchType) -> None:
+    def convert_ma_batch_to_sample_batch(self, batch: SampleBatchType) -> SampleBatch:
         """Converts a MultiAgentBatch to a SampleBatch if neccessary.
 
         Args:
-            batch: The batch to convert in-place.
+            batch: The SampleBatchType to convert.
+
+        Returns:
+            batch: the converted SampleBatch
 
         Raises:
             ValueError if the MultiAgentBatch has more than one policy_id
@@ -62,6 +69,7 @@ class OffPolicyEstimator:
                     "multi-agent batches. You can set "
                     "`off_policy_estimation_methods: {}` to resolve this."
                 )
+        return batch
 
     @DeveloperAPI
     def check_action_prob_in_batch(self, batch: SampleBatchType) -> None:
