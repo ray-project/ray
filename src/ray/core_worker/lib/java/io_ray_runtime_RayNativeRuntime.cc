@@ -257,17 +257,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
     }
   };
 
-  auto on_worker_shutdown = [](const WorkerID &worker_id) {
-    JNIEnv *env = GetJNIEnv();
-    auto worker_id_bytes = IdToJavaByteArray<WorkerID>(env, worker_id);
-    if (java_task_executor) {
-      env->CallVoidMethod(java_task_executor,
-                          java_native_task_executor_on_worker_shutdown,
-                          worker_id_bytes);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-    }
-  };
-
   std::string serialized_job_config =
       (jobConfig == nullptr ? "" : JavaByteArrayToNativeString(env, jobConfig));
   CoreWorkerOptions options;
@@ -286,7 +275,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.raylet_ip_address = JavaStringToNativeString(env, nodeIpAddress);
   options.driver_name = JavaStringToNativeString(env, driverName);
   options.task_execution_callback = task_execution_callback;
-  options.on_worker_shutdown = on_worker_shutdown;
+  options.on_worker_shutdown = [](const WorkerID &) {};
   options.gc_collect = gc_collect;
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
