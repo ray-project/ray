@@ -74,7 +74,7 @@ def run_ingest_streaming(dataset, num_workers):
     trainer.fit()
 
 
-def run_infer_bulk(dataset, num_workers, post=None, stream=False):
+def run_infer_bulk(dataset, num_workers, post=None, stream=False, window_size_gb=10):
     start = time.time()
     checkpoint = Checkpoint.from_dict({"dummy": 1})
     # TODO: add preprocessor here
@@ -82,7 +82,7 @@ def run_infer_bulk(dataset, num_workers, post=None, stream=False):
     if stream:
         result = predictor.predict_pipelined(
             dataset,
-            bytes_per_window=1e9 * num_workers,
+            bytes_per_window=window_size_gb,
             batch_size=1024 // 8,
             min_scoring_workers=num_workers,
             max_scoring_workers=num_workers,
@@ -102,12 +102,14 @@ def run_infer_bulk(dataset, num_workers, post=None, stream=False):
     print("Total runtime", time.time() - start)
 
 
-def run_infer_streaming(dataset, num_workers):
+def run_infer_streaming(dataset, num_workers, window_size_gb):
     def post(result):
         for b in result.iter_batches():
             pass
 
-    return run_infer_bulk(dataset, num_workers, post, stream=True)
+    return run_infer_bulk(
+        dataset, num_workers, post, stream=True, window_size_gb=window_size_gb
+    )
 
 
 if __name__ == "__main__":
@@ -118,11 +120,12 @@ if __name__ == "__main__":
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--dataset-size-gb", type=int, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
+    parser.add_argument("--window-size-gb", type=int, default=10)
     args = parser.parse_args()
     ds = make_ds(args.dataset_size_gb)
     if args.benchmark == "ingest":
         if args.streaming:
-            run_ingest_streaming(ds, args.num_workers)
+            run_ingest_streaming(ds, args.num_workers, args.window_size_gb)
         else:
             run_ingest_bulk(ds, args.num_workers)
     elif args.benchmark == "infer":
