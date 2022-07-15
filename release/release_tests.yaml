@@ -2821,8 +2821,8 @@
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
-    timeout: 7200
-    script: python stress_tests/test_state_api_scale.py
+    timeout: 3600
+    script: python stress_tests/test_state_api_scale.py --num-actors 1000
     type: sdk_command
     file_manager: sdk
 

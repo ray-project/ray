@@ -43,6 +43,9 @@ class SignalActor:
 
 
 def test_many_tasks(num_tasks: int):
+    if num_tasks == 0:
+        print("Skipping test with no tasks")
+        return
     # No tasks
     invoke_state_api(
         lambda res: len(res) == 0,
@@ -100,6 +103,10 @@ def test_many_tasks(num_tasks: int):
 
 
 def test_many_actors(num_actors: int):
+    if num_actors == 0:
+        print("Skipping test with no actors")
+        return
+
     @ray.remote(num_cpus=0.00001)
     class TestActor:
         def running(self):
@@ -150,6 +157,10 @@ def test_many_actors(num_actors: int):
 
 
 def test_many_objects(num_objects, num_actors):
+    if num_objects == 0:
+        print("Skipping test with no objects")
+        return
+
     @ray.remote(num_cpus=0.1)
     class ObjectActor:
         def __init__(self):
@@ -209,6 +220,10 @@ def test_many_objects(num_objects, num_actors):
 
 
 def test_large_log_file(log_file_size_byte: int):
+    if log_file_size_byte == 0:
+        print("Skipping test with 0 log file size")
+        return
+
     import sys
     import string
     import random
