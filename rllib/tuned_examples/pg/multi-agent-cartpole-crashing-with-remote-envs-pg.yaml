@@ -1,16 +1,17 @@
-cartpole-crashing-pg:
-    env: ray.rllib.examples.env.cartpole_crashing.CartPoleCrashing
+multi-agent-cartpole-crashing-pg:
+    env: ray.rllib.examples.env.cartpole_crashing.MultiAgentCartPoleCrashing
     run: PG
     stop:
-        evaluation/episode_reward_mean: 180.0
-        num_env_steps_sampled: 150000
+        evaluation/episode_reward_mean: 320.0
+        num_env_steps_sampled: 300000
     config:
         # Works for both torch and tf.
         framework: tf
 
         env_config:
             config:
-                # Crash roughly every 300 ts. This should be ok to measure 180.0
+                num_agents: 2
+                # Crash roughly every 300 ts. This should be ok to measure 300+
                 # reward (episodes are 200 ts long).
                 p_crash: 0.0025  # prob to crash during step()
                 p_crash_reset: 0.01  # prob to crash during reset()
@@ -19,8 +20,11 @@ cartpole-crashing-pg:
                 # in its place and will take this long (sleep) to "initialize".
                 init_time_s: 1.0
         horizon: 200
-        num_workers: 2
-        num_envs_per_worker: 5
+        num_workers: 4
+        num_envs_per_worker: 3
+        # Use parallel remote envs.
+        remote_worker_envs: true
+
         # Switch on resiliency for failed sub environments (within a vectorized stack).
         restart_failed_sub_environments: true
 
@@ -29,9 +33,9 @@ cartpole-crashing-pg:
         # `restart_failed_sub_environments=True` failure tolerance mode.
         disable_env_checking: true
 
-        evaluation_num_workers: 2
+        evaluation_num_workers: 1
         evaluation_interval: 1
-        evaluation_duration: 20
+        evaluation_duration: 10
         evaluation_duration_unit: episodes
         evaluation_parallel_to_training: true
         evaluation_config:

@@ -1,16 +1,17 @@
-cartpole-crashing-pg:
-    env: ray.rllib.examples.env.cartpole_crashing.CartPoleCrashing
+multi-agent-cartpole-crashing-pg:
+    env: ray.rllib.examples.env.cartpole_crashing.MultiAgentCartPoleCrashing
     run: PG
     stop:
-        evaluation/episode_reward_mean: 180.0
-        num_env_steps_sampled: 150000
+        evaluation/episode_reward_mean: 320.0
+        num_env_steps_sampled: 300000
     config:
         # Works for both torch and tf.
         framework: tf
 
         env_config:
             config:
-                # Crash roughly every 300 ts. This should be ok to measure 180.0
+                num_agents: 2
+                # Crash roughly every 300 ts. This should be ok to measure 300+
                 # reward (episodes are 200 ts long).
                 p_crash: 0.0025  # prob to crash during step()
                 p_crash_reset: 0.01  # prob to crash during reset()
