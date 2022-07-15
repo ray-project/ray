@@ -47,7 +47,7 @@ class SklearnPredictor(Predictor):
                 ``SklearnTrainer`` run.
         """
         estimator, preprocessor = load_checkpoint(checkpoint)
-        return SklearnPredictor(estimator=estimator, preprocessor=preprocessor)
+        return cls(estimator=estimator, preprocessor=preprocessor)
 
     def _predict_pandas(
         self,
