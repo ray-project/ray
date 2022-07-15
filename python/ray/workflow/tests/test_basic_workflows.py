@@ -215,8 +215,8 @@ def test_options_update():
 
     # Options are given in decorator first, then in the first .options()
     # and finally in the second .options()
-    @workflow.options(name="old_name", metadata={"k": "v"}, max_retries=1)
-    @ray.remote(num_cpus=2)
+    @workflow.options(name="old_name", metadata={"k": "v"})
+    @ray.remote(num_cpus=2, max_retries=1)
     def f():
         return
 
@@ -232,11 +232,11 @@ def test_options_update():
     assert options == {
         "num_cpus": 2,
         "num_returns": 2,
+        "max_retries": 1,
         "_metadata": {
             WORKFLOW_OPTIONS: {
                 "name": "new_name",
                 "metadata": {"extra_k2": "extra_v2"},
-                "max_retries": 1,
             }
         },
     }

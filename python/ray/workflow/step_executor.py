@@ -36,8 +36,6 @@ logger = logging.getLogger(__name__)
 def get_step_executor(step_options: "WorkflowStepRuntimeOptions"):
     if step_options.step_type == StepType.FUNCTION:
         # prevent automatic lineage reconstruction
-        # TODO(suquark): Raise an error if the original "max_retries"
-        #  is set and greater than 0.
         step_options.ray_options["max_retries"] = 0
         executor = _workflow_step_executor_remote.options(
             **step_options.ray_options

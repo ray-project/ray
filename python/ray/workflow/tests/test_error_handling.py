@@ -5,8 +5,7 @@ from ray import workflow
 
 
 def test_step_failure(workflow_start_regular_shared, tmp_path):
-    @workflow.options(max_retries=10)
-    @ray.remote
+    @ray.remote(max_retries=10)
     def unstable_task_exception(n):
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -14,8 +13,7 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    @workflow.options(max_retries=10)
-    @ray.remote
+    @ray.remote(max_retries=10)
     def unstable_task_crash(n):
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -25,8 +23,7 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
             os.kill(os.getpid(), 9)
         return v
 
-    @workflow.options(max_retries=10)
-    @ray.remote
+    @ray.remote(max_retries=10)
     def unstable_task_crash_then_exception(n):
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -39,9 +36,7 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
         return v
 
     with pytest.raises(Exception):
-        workflow.run_async(
-            unstable_task_exception.options(**workflow.options(max_retries=-2).bind())
-        )
+        unstable_task_exception.options(max_retries=-2)
 
     for task in (
         unstable_task_exception,

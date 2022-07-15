@@ -572,7 +572,6 @@ class options:
             "name",
             "metadata",
             "catch_exceptions",
-            "max_retries",
             "allow_inplace",
             "checkpoint",
         }
