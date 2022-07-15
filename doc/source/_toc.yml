@@ -249,7 +249,7 @@ parts:
       - file: cluster/key-concepts
       - file: cluster/user-guide
       - file: cluster/cloud
-      - file: cluster/kubernetes
+      - file: cluster/kuberay
       - file: cluster/deploy
       - file: cluster/api
       - file: cluster/usage-stats
