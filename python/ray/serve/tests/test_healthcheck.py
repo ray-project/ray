@@ -74,8 +74,7 @@ def test_no_user_defined_method(serve_instance, use_class):
         def A(*args):
             return ray.get_runtime_context().current_actor
 
-    A.deploy()
-    h = A.get_handle()
+    h = serve.run(A.bind())
     actor = ray.get(h.remote())
     ray.kill(actor)
 
@@ -84,8 +83,7 @@ def test_no_user_defined_method(serve_instance, use_class):
 
 
 def test_user_defined_method_fails(serve_instance):
-    Patient.deploy()
-    h = Patient.get_handle()
+    h = serve.run(Patient.bind())
     actor = ray.get(h.remote())
     ray.get(h.set_should_fail.remote())
 
@@ -94,8 +92,7 @@ def test_user_defined_method_fails(serve_instance):
 
 
 def test_user_defined_method_hangs(serve_instance):
-    Patient.deploy()
-    h = Patient.get_handle()
+    h = serve.run(Patient.bind())
     actor = ray.get(h.remote())
     ray.get(h.set_should_hang.remote())
 
@@ -104,8 +101,7 @@ def test_user_defined_method_hangs(serve_instance):
 
 
 def test_multiple_replicas(serve_instance):
-    Patient.options(num_replicas=2).deploy()
-    h = Patient.get_handle()
+    h = serve.run(Patient.options(num_replicas=2).bind())
     actors = {a._actor_id for a in ray.get([h.remote() for _ in range(100)])}
     assert len(actors) == 2
 
@@ -135,8 +131,7 @@ def test_inherit_healthcheck(serve_instance):
         def __call__(self, *args):
             return ray.get_runtime_context().current_actor
 
-    Child.deploy()
-    h = Child.get_handle()
+    h = serve.run(Child.bind())
     actors = {ray.get(h.remote())._actor_id for _ in range(100)}
     assert len(actors) == 1
 
@@ -158,8 +153,7 @@ def test_nonconsecutive_failures(serve_instance):
         def __call__(self, *args):
             return ray.get_runtime_context().current_actor
 
-    FlakyHealthCheck.deploy()
-    h = FlakyHealthCheck.get_handle()
+    h = serve.run(FlakyHealthCheck.bind())
     a1 = ray.get(h.remote())
 
     # Wait for 10 health check periods, should never get marked unhealthy.
@@ -190,8 +184,7 @@ def test_consecutive_failures(serve_instance):
         def __call__(self, *args):
             return self._actor_id
 
-    ChronicallyUnhealthy.deploy()
-    h = ChronicallyUnhealthy.get_handle()
+    h = serve.run(ChronicallyUnhealthy.bind())
 
     def check_fails_3_times():
         original_actor_id = ray.get(h.set_should_fail.remote())

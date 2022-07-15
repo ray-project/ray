@@ -15,11 +15,10 @@ def test_serve_metrics_for_successful_connection(serve_instance):
     async def f(request):
         return "hello"
 
-    f.deploy()
+    handle = serve.run(f.bind())
 
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
-    handle = f.get_handle()
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
     ray.get([handle.remote(url) for _ in range(10)])
 
@@ -103,7 +102,7 @@ def test_http_metrics(serve_instance):
             # Trigger RayActorError
             os._exit(0)
 
-    A.deploy()
+    serve.run(A.bind())
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
     try:

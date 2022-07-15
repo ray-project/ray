@@ -90,7 +90,7 @@ def test_shutdown(ray_shutdown):
     def f():
         pass
 
-    f.deploy()
+    serve.run(f.bind())
 
     serve_controller_name = serve.context._global_client._controller_name
     actor_names = [
@@ -176,8 +176,8 @@ def test_connect(detached, ray_shutdown):
     def connect_in_deployment(*args):
         connect_in_deployment.options(name="deployment-ception").deploy()
 
-    connect_in_deployment.deploy()
-    ray.get(connect_in_deployment.get_handle().remote())
+    handle = serve.run(connect_in_deployment.bind())
+    ray.get(handle.remote())
     assert "deployment-ception" in serve.list_deployments()
 
 
@@ -347,7 +347,7 @@ def test_http_root_url(ray_shutdown):
     port = new_port()
     os.environ[SERVE_ROOT_URL_ENV_KEY] = root_url
     serve.start(http_options=dict(port=port))
-    f.deploy()
+    serve.run(f.bind())
     assert f.url == root_url + "/f"
     serve.shutdown()
     ray.shutdown()
@@ -355,7 +355,7 @@ def test_http_root_url(ray_shutdown):
 
     port = new_port()
     serve.start(http_options=dict(port=port))
-    f.deploy()
+    serve.run(f.bind())
     assert f.url != root_url + "/f"
     assert f.url == f"http://127.0.0.1:{port}/f"
     serve.shutdown()
@@ -364,7 +364,7 @@ def test_http_root_url(ray_shutdown):
     ray.init(runtime_env={"env_vars": {SERVE_ROOT_URL_ENV_KEY: root_url}})
     port = new_port()
     serve.start(http_options=dict(port=port))
-    f.deploy()
+    serve.run(f.bind())
     assert f.url == root_url + "/f"
     serve.shutdown()
     ray.shutdown()
@@ -430,9 +430,9 @@ def test_no_http(ray_shutdown):
         def hello(*args):
             return "hello"
 
-        hello.deploy()
+        handle = serve.run(hello.bind())
 
-        assert ray.get(hello.get_handle().remote()) == "hello"
+        assert ray.get(handle.remote()) == "hello"
         serve.shutdown()
 
 
@@ -516,7 +516,7 @@ def test_serve_shutdown(ray_shutdown):
         def __call__(self, *args):
             return "hi"
 
-    A.deploy()
+    serve.run(A.bind())
 
     assert len(serve.list_deployments()) == 1
 
@@ -525,7 +525,7 @@ def test_serve_shutdown(ray_shutdown):
 
     assert len(serve.list_deployments()) == 0
 
-    A.deploy()
+    serve.run(A.bind())
 
     assert len(serve.list_deployments()) == 1
 
@@ -558,7 +558,7 @@ serve.start(detached=True, http_options={{"port": {port}}})
 class A:
     pass
 
-A.deploy()"""
+serve.run(A.bind())"""
 
     run_string_as_driver(
         driver_template.format(address=address, namespace="test_namespace1", port=8000)
@@ -645,7 +645,7 @@ def test_snapshot_always_written_to_internal_kv(
             return False
 
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
-    hello.deploy()
+    serve.run(hello.bind())
     check()
 
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -711,7 +711,7 @@ def test_recovering_controller_no_redeploy():
     def f():
         pass
 
-    f.deploy()
+    serve.run(f.bind())
 
     num_actors = len(ray.util.list_named_actors(all_namespaces=True))
     pid = ray.get(client._controller.get_pid.remote())
@@ -743,7 +743,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     def f(*args):
         pass
 
-    f.deploy(_blocking=False)
+    serve.run(f.bind(), _blocking=False)
 
     def updating_message():
         deployment_status = client.get_serve_status().deployment_statuses[0]
@@ -772,7 +772,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         def __call__(self, request):
             pass
 
-    f.deploy(_blocking=False)
+    serve.run(f.bind(), _blocking=False)
 
     wait_for_condition(
         lambda: client.get_serve_status().deployment_statuses[0].status == "UNHEALTHY",
