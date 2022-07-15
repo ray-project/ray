@@ -28,6 +28,11 @@ predictor = TensorflowPredictor.from_checkpoint(
 
 data = np.array([[1], [2], [3], [4]])
 predictions = predictor.predict(data)
+print(predictions)
+# [[-1.6930283]
+#  [-3.3860567]
+#  [-5.079085 ]
+#  [-6.7721133]]
 # __use_predictor_end__
 
 # __batch_prediction_start__
@@ -38,6 +43,10 @@ batch_predictor = BatchPredictor(
 )
 predict_dataset = ray.data.range(3)
 predictions = batch_predictor.predict(predict_dataset)
+print(predictions.show())
+# {'predictions': array([0.], dtype=float32)}
+# {'predictions': array([-0.6512989], dtype=float32)}
+# {'predictions': array([-1.3025978], dtype=float32)}
 # __batch_prediction_end__
 
 # __pipelined_prediction_start__
@@ -62,7 +71,11 @@ batch_pred = BatchPredictor(Checkpoint.from_dict({"x": 0}), DummyPredictor)
 # Create a dummy dataset.
 ds = ray.data.range_tensor(1000, parallelism=4)
 # Setup a prediction pipeline.
-print(batch_pred.predict_pipelined(ds, blocks_per_window=1))
-# > DatasetPipeline(num_windows=4, num_stages=3)
+pipeline = batch_pred.predict_pipelined(ds, blocks_per_window=1)
+for batch in pipeline.iter_batches():
+    print("Pipeline result", batch)
+    # 0    42
+    # 1    42
+    # ...
 # __pipelined_prediction_end__
 

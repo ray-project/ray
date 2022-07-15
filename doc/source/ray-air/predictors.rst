@@ -18,7 +18,7 @@ Checkpoints can be generated from a variety of different ways -- see the :ref:`C
 
 The checkpoint then is used to create a framework specific Predictor (in our example, a `TensorflowPredictor`), which then can be used for inference:
 
-.. literalinclude:: doc_code/use_pretrained_model.py
+.. literalinclude:: doc_code/predictors.py
     :language: python
     :start-after: __use_predictor_start__
     :end-before: __use_predictor_end__
@@ -45,7 +45,7 @@ large-scale batch prediction on a given dataset in a parallel/distributed fashio
 ``predict()`` will load the entire given dataset into memory, which may be a problem if your dataset
 size is larger than your available cluster memory. See the :ref:`pipelined-prediction` section for more details.
 
-.. literalinclude:: doc_code/use_pretrained_model.py
+.. literalinclude:: doc_code/predictors.py
     :language: python
     :start-after: __batch_prediction_start__
     :end-before: __batch_prediction_end__
@@ -82,7 +82,15 @@ Tabular
 Image
 ~~~~~
 
-Coming soon!
+.. tabbed:: Pytorch
+
+    .. literalinclude:: examples/torch_image_batch_pretrained.py
+        :language: python
+
+
+.. tabbed:: Tensorflow
+
+    Coming soon!
 
 Text
 ~~~~
@@ -104,7 +112,7 @@ The lazy loading of the data will allow you to operate on datasets much greater 
 Execution can be triggered by pulling from the pipeline, as shown in the example below.
 
 
-.. literalinclude:: doc_code/use_pretrained_model.py
+.. literalinclude:: doc_code/predictors.py
     :language: python
     :start-after: __pipelined_prediction_start__
     :end-before: __pipelined_prediction_end__

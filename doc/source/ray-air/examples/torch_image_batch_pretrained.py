@@ -57,4 +57,4 @@ preprocessor = BatchMapper(preprocess)
 ckpt = to_air_checkpoint(model=model, preprocessor=preprocessor)
 
 predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-predictor.predict(dataset, num_gpus_per_worker=1)
+predictor.predict(dataset)
