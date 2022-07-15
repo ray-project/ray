@@ -92,7 +92,7 @@ Status InMemoryStoreClient::AsyncMultiGet(
   }
   main_io_service_.post(
       [result = std::move(result), callback]() mutable { callback(std::move(result)); },
-      "GcsInMemoryStore.GetAll");
+      "GcsInMemoryStore.MultiGet");
   return Status::OK();
 }
 
