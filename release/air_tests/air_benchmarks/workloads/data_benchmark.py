@@ -53,9 +53,7 @@ if __name__ == "__main__":
     ds = make_ds(args.dataset_size_gib)
 
     start = time.time()
-    run_ingest_bulk(
-        ds, args.num_workers, args.num_cpus_per_worker
-    )
+    run_ingest_bulk(ds, args.num_workers, args.num_cpus_per_worker)
     end = time.time()
     time_taken = end - start
 
