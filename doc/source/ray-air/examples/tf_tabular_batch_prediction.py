@@ -1,7 +1,5 @@
 from typing import List
 import numpy as np
-from tensorflow import keras
-from tensorflow.keras import layers
 
 import ray
 from ray.data.preprocessors import Concatenator
@@ -10,6 +8,9 @@ from ray.train.batch_predictor import BatchPredictor
 
 
 def create_model(input_features):
+    from tensorflow import keras  # this is needed for tf<2.9
+    from tensorflow.keras import layers
+
     return keras.Sequential(
         [
             keras.Input(shape=(input_features,)),
