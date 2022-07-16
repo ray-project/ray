@@ -1,9 +1,5 @@
-import numpy as np
 import pandas as pd
-from io import BytesIO
-from typing import List
 
-from PIL import Image
 from torchvision import transforms
 from torchvision.models import resnet18
 
@@ -22,7 +18,6 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     """
     preprocess = transforms.Compose(
         [
-            lambda ray_tensor: ray_tensor.to_numpy(),
             transforms.ToTensor(),
             transforms.Resize(256),
             transforms.CenterCrop(224),
