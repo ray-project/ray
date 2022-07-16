@@ -200,9 +200,7 @@ class TFPolicy(Policy):
 
         # If `explore` is explicitly set to False, don't create an exploration
         # component.
-        self.exploration = (
-            self._create_exploration(sess) if explore is not False else None
-        )
+        self.exploration = self._create_exploration() if explore is not False else None
 
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input

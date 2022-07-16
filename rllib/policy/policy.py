@@ -944,7 +944,7 @@ class Policy(metaclass=ABCMeta):
 
         return num_gpus
 
-    def _create_exploration(self, tf_sess=None) -> Exploration:
+    def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
 
         This method only exists b/c some Trainers do not use TfPolicy nor
@@ -957,13 +957,13 @@ class Policy(metaclass=ABCMeta):
         """
         if getattr(self, "exploration", None) is not None:
             return self.exploration
+
         exploration = from_config(
             Exploration,
             self.config.get("exploration_config", {"type": "StochasticSampling"}),
             action_space=self.action_space,
             policy_config=self.config,
             model=getattr(self, "model", None),
-            tf_sess=tf_sess,
             num_workers=self.config.get("num_workers", 0),
             worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", self.config.get("framework", "tf")),

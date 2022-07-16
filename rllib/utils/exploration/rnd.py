@@ -57,7 +57,7 @@ class RND(Exploration):
         *,
         framework: str,
         model: ModelV2,
-        tf_sess,
+        tf_sess,        
         embed_dim: int = 128,
         distill_net_config: Optional[ModelConfigDict] = None,
         lr: float = 1e-3,
@@ -118,7 +118,7 @@ class RND(Exploration):
         """
 
         super().__init__(
-            action_space, framework=framework, model=model, tf_sess=tf_sess, **kwargs
+            action_space, framework=framework, model=model, **kwargs
         )
 
         # Check for parallel execution.
@@ -459,7 +459,7 @@ class RND(Exploration):
 
             # TODO: This part can be merged together with Torch
             # Compute advantages and value targets.
-            return self._compute_advantages(sample_batch, last_r)
+            return self._compute_advantages(sample_batch, np.array([last_r]))
             # -------------------------- Encapsulate -------------------------
             
             # -------------------------------------------------------------------
@@ -705,11 +705,11 @@ class RND(Exploration):
         assert (
             "exploration_vf_preds" in sample_batch
         ), "Cannot use GAE in RND without value predictions."
-        
+         
         # Compare this computation with the computation of advantages in 
         # `postprocessing.compute_advantages()`.
         vpred_t = np.concatenate(
-                [sample_batch["exploration_vf_preds"], np.array([last_r])]
+                [sample_batch["exploration_vf_preds"], last_r]
         )
         delta_t = (
             self._intrinsic_reward_np + self.gamma * vpred_t[1:] - vpred_t[:-1]
