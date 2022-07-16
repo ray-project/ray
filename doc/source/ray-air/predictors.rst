@@ -3,7 +3,10 @@
 Inference with trained models
 =============================
 
-.. image:: images/air-predictors.png
+.. https://docs.google.com/presentation/d/1jfkQk0tGqgkLgl10vp4-xjcbYG9EEtlZV_Vnve_NenQ/edit
+
+.. image:: images/predictors.png
+
 
 After you train a model, you will often want to use the model to do inference and prediction.
 To do so, you can use a Ray AIR Predictor. In this guide, we'll cover how to use the Predictor
