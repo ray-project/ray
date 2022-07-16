@@ -66,7 +66,12 @@ from ray.data.block import (
     U,
     _validate_key_fn,
 )
-from ray.data.context import DatasetContext, WARN_PREFIX, OK_PREFIX
+from ray.data.context import (
+    DatasetContext,
+    WARN_PREFIX,
+    OK_PREFIX,
+    ESTIMATED_SAFE_MEMORY_FRACTION,
+)
 from ray.data.datasource import (
     BlockWritePathProvider,
     CSVDatasource,
@@ -3136,16 +3141,14 @@ class Dataset(Generic[T]):
                     obj_store_mem = ray.cluster_resources().get(
                         "object_store_memory", 0
                     )
-                    # Spilling may occur if the dataset is more than a small fraction
-                    # of object store memory. Conservatively choose 25% as the warning
-                    # threshold here.
-                    if mean_bytes > obj_store_mem * 0.25:
+                    safe_mem_bytes = int(obj_store_mem * ESTIMATED_SAFE_MEMORY_FRACTION)
+                    if mean_bytes > safe_mem_bytes:
                         logger.warning(
                             f"{WARN_PREFIX} This pipeline's windows are "
                             f"~{fmt(mean_bytes)} in size each and may not fit in "
                             "object store memory without spilling. To improve "
                             "performance, consider reducing the size of each window "
-                            f"to {fmt(int(obj_store_mem * 0.25))} or less."
+                            f"to {fmt(safe_mem_bytes)} or less."
                         )
                     else:
                         logger.info(
