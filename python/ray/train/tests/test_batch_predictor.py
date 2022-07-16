@@ -127,6 +127,25 @@ def test_batch_prediction_keep_cols():
     assert output_df["b"].tolist() == [4, 5, 6]
 
 
+def test_batch_prediction_from_pandas_udf():
+    def check_truth(df, all_true=False):
+        if all_true:
+            return pd.DataFrame({"bool": [True] * len(df)})
+        return pd.DataFrame({"bool": df["a"] == df["b"]})
+
+    batch_predictor = BatchPredictor.from_pandas_udf(check_truth)
+
+    test_dataset = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [1, 5, 6]}))
+
+    output_ds = batch_predictor.predict(test_dataset)
+    output = [row["bool"] for row in output_ds.take()]
+    assert output == [True, False, False]
+
+    output_ds = batch_predictor.predict(test_dataset, all_true=True)
+    output = [row["bool"] for row in output_ds.take()]
+    assert output == [True, True, True]
+
+
 def test_automatic_enable_gpu_from_num_gpus_per_worker():
     """
     Test we automatically set underlying Predictor creation use_gpu to True if
