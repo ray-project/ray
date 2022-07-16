@@ -65,7 +65,7 @@ def _split_single_block(
     meta: BlockMetadata,
     block_size: int,
     split_indices: List[int],
-) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
+) -> List[Tuple[ObjectRef[Block], BlockMetadata, int]]:
     """Split the provided block at the given row index."""
     if len(split_indices) == 0:
         return [(block, meta)]
@@ -77,7 +77,6 @@ def _split_single_block(
     for index in split_indices:
         logger.debug(f"slicing block {prev_index}:{index}")
         split_block = block.slice(prev_index, index, copy=True)
-        prev_index = index
         accessor = BlockAccessor.for_block(split_block)
         split_meta = BlockMetadata(
             num_rows=accessor.num_rows(),
@@ -86,7 +85,8 @@ def _split_single_block(
             input_files=meta.input_files,
             exec_stats=stats.build(),
         )
-        split_result.append((ray.put(split_block), split_meta))
+        split_result.append((ray.put(split_block), split_meta, (index - prev_index)))
+        prev_index = index
     return split_result
 
 
@@ -105,9 +105,11 @@ def _split_at_indices(
     """
     split_single_block = cached_remote_fn(_split_single_block)
 
-    block_sizes = _calculate_blocks_size(blocks_with_metadata)
-    split_plan = _generate_split_plan(block_sizes, indices)
-    split_results = ray.get(
+    block_sizes: List[int] = _calculate_blocks_size(blocks_with_metadata)
+    split_plan: List[List[int]] = _generate_split_plan(block_sizes, indices)
+    all_blocks_split_results: List[
+        List[Tuple[ObjectRef[Block], BlockMetadata, int]]
+    ] = ray.get(
         [
             split_single_block.remote(
                 block_with_metadata[0],
@@ -118,6 +120,24 @@ def _split_at_indices(
             for i, block_with_metadata in enumerate(blocks_with_metadata)
         ]
     )
+
+    result_blocks = []
+    result_metas = []
+    current_blocks = []
+    current_meta = []
+    for single_block_split_result in all_blocks_split_results:
+        for i, (block, meta, _) in enumerate(single_block_split_result):
+            if i == 0:
+                current_blocks.append(block)
+                current_meta.append(meta)
+            else:
+                result_blocks.append(current_blocks)
+                result_metas.append(current_meta)
+                current_blocks = []
+                current_meta = []
+    result_blocks.append(current_blocks)
+    result_metas.append(current_meta)
+    return result_blocks, result_metas
 
 
 def _get_num_rows(block: Block) -> int:
