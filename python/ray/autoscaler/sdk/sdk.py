@@ -247,9 +247,7 @@ def request_resources(
             for bundle in bundles:
                 if isinstance(bundle, Dict):
                     for key in bundle.keys():
-                        if not isinstance(key, str) and not isinstance(
-                            bundle[key], int
-                        ):
+                        if not (isinstance(key, str) and isinstance(bundle[key], int)):
                             raise TypeError(
                                 "each bundle key should be str and value as int."
                             )
