@@ -86,15 +86,10 @@ It's the same code after all.
 Placement groups are not composable
 -----------------------------------
 
-
-**Issue**
-
-If you have a task that is called from something that runs in a placement
+**Issue**: If you have a task that is called from something that runs in a placement
 group, the resources are never allocated and it hangs. 
 
-**Example**
-
-You are using Ray Tune which creates placement groups, and you want to 
+**Example**: You are using Ray Tune which creates placement groups, and you want to
 apply it to an objective function, but that objective function makes use 
 of Ray Tasks itself, e.g.
 
