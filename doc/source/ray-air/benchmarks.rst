@@ -140,27 +140,19 @@ We test out the performance across different cluster sizes and data sizes.
 
     * - **Cluster Setup**
       - **Data Size**
-      - **# of images**
-      - **Time taken**
-      - **Throughput**
+      - **Performance**
       - **Command**
     * - 1 g3.8xlarge node
-      - 1 GB
-      - 1623 images
-      - 72.59 s
-      - 22.3 images/sec
+      - 1 GB (1623 images)
+      - 72.59 s (22.3 images/sec)
       - `python gpu_batch_prediction.py --data-size-gb=1`
     * - 1 g3.8xlarge node
-      - 20 GB
-      - 32460 images
-      - 1213.48 s
-      - 26.76 images/sec
+      - 20 GB (32460 images)
+      - 1213.48 s (26.76 images/sec)
       - `python gpu_batch_prediction.py --data-size-gb=20`
     * - 8 g3.8xlarge node
-      - 100 GB
-      - 162300 images
-      - 784.91 s
-      - 206.78 images/sec
+      - 100 GB (162300 images)
+      - 784.91 s (206.78 images/sec)
       - `python gpu_batch_prediction.py --data-size-gb=100`
 
 
@@ -178,28 +170,16 @@ We test out the performance across different cluster sizes and data sizes.
 .. list-table::
 
     * - **Cluster Setup**
-      - **# of workers**
-      - **# of epochs**
       - **Data Size**
-      - **# of images**
-      - **Time taken**
-      - **Throughput**
+      - **Performance**
       - **Command**
-    * - 1 g3.8xlarge node
-      - 1 worker
-      - 2 epochs
-      - 1 GB
-      - 1623 images
-      - 79.76 s
-      - 40.7 images/sec
+    * - 1 g3.8xlarge node (1 worker)
+      - 1 GB (1623 images)
+      - 79.76 s (2 epochs, 40.7 images/sec)
       - `python pytorch_training_e2e.py --data-size-gb=1`
-    * - 1 g3.8xlarge node
-      - 1 worker
-      - 2 epochs
-      - 20 GB
-      - 32460 images
-      - 1388.33 s
-      - 46.76 images/sec
+    * - 1 g3.8xlarge node (1 worker)
+      - 20 GB (32460 images)
+      - 1388.33 s (2 epochs, 46.76 images/sec)
       - `python pytorch_training_e2e.py --data-size-gb=20`
 
 
