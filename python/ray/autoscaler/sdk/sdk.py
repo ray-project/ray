@@ -240,6 +240,22 @@ def request_resources(
         >>> request_resources( # doctest: +SKIP
         ...     bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
+    if num_cpus is not None and not isinstance(num_cpus, int):
+        raise TypeError("num_cpus should be of type int.")
+    if bundles is not None:
+        if isinstance(bundles, List):
+            for bundle in bundles:
+                if isinstance(bundle, Dict):
+                    for key in bundle.keys():
+                        if not (isinstance(key, str) and isinstance(bundle[key], int)):
+                            raise TypeError(
+                                "each bundle key should be str and value as int."
+                            )
+                else:
+                    raise TypeError("each bundle should be a Dict.")
+        else:
+            raise TypeError("bundles should be of type List")
+
     return commands.request_resources(num_cpus, bundles)
 
 

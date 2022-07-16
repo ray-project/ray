@@ -3561,6 +3561,21 @@ MemAvailable:   33000000 kB
                     monitor.run()
                 mock_publish.assert_called_once()
 
+    def testInitializeSDKArguments(self):
+        # https://github.com/ray-project/ray/issues/23166
+        from ray.autoscaler.sdk import request_resources
+
+        with self.assertRaises(TypeError):
+            request_resources(num_cpus="bar")
+        with self.assertRaises(TypeError):
+            request_resources(bundles="bar")
+        with self.assertRaises(TypeError):
+            request_resources(bundles=["foo"])
+        with self.assertRaises(TypeError):
+            request_resources(bundles=[{"foo": "bar"}])
+        with self.assertRaises(TypeError):
+            request_resources(bundles=[{"foo": 1}, {"bar": "baz"}])
+
 
 def test_import():
     """This test ensures that all the autoscaler imports work as expected to
