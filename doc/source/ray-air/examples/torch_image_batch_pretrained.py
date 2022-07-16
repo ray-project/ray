@@ -14,20 +14,6 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
 
 
-# TODO(rliaw): Remove this once ImageFolder #24641 merges
-def convert_to_pandas(byte_item_list: List[bytes]) -> pd.DataFrame:
-    """
-    Convert input bytes into pandas DataFrame with image column and value of
-    TensorArray to prevent serializing ndarray image data.
-    """
-    images = [
-        Image.open(BytesIO(byte_item)).convert("RGB") for byte_item in byte_item_list
-    ]
-    images = [np.asarray(image) for image in images]
-
-    return pd.DataFrame({"image": TensorArray(images)})
-
-
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     """
     User Pytorch code to transform user image. Note we still use pandas as
@@ -35,6 +21,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     """
     preprocess = transforms.Compose(
         [
+            lambda ray_tensor: ray_tensor.to_numpy(),
             transforms.ToTensor(),
             transforms.Resize(256),
             transforms.CenterCrop(224),
@@ -49,8 +36,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
 
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
 print(f"Running GPU batch prediction with 1GB data from {data_url}")
-dataset = ray.data.read_binary_files(paths=data_url)
-dataset = dataset.map_batches(convert_to_pandas)
+dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[data_url])
 
 model = resnet18(pretrained=True)
 
