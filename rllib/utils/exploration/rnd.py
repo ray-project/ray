@@ -57,7 +57,7 @@ class RND(Exploration):
         *,
         framework: str,
         model: ModelV2,
-        tf_sess,        
+        tf_sess,
         embed_dim: int = 128,
         distill_net_config: Optional[ModelConfigDict] = None,
         lr: float = 1e-3,
@@ -117,9 +117,7 @@ class RND(Exploration):
                 used with a `PiecewiseSchedule`, i.e. using the `random_timesteps`.
         """
 
-        super().__init__(
-            action_space, framework=framework, model=model, **kwargs
-        )
+        super().__init__(action_space, framework=framework, model=model, **kwargs)
 
         # Check for parallel execution.
         if self.policy_config["num_workers"] != 0:
@@ -433,7 +431,7 @@ class RND(Exploration):
                 )
         # tf-eager: Perform model calls, loss calculation, and optimizer
         # stepping on the fly.
-        else:    
+        else:
             # Update the weights of the predictor network only, if the
             # update should happen locally.
             novelty, _ = self._postprocess_helper_tf(
@@ -441,7 +439,7 @@ class RND(Exploration):
                 not self.global_update,
             )
             self._novelty_np = novelty.numpy()
-        self._compute_intrinsic_reward(sample_batch)        
+        self._compute_intrinsic_reward(sample_batch)
         if self.normalize:
             self._intrinsic_reward_np = self._moving_mean_std(self._intrinsic_reward_np)
 
@@ -452,7 +450,6 @@ class RND(Exploration):
             )
         else:
 
-
             # TODO: this also can be merged together with Torch.
             # Calculate non-episodic returns and estimate value targets.
             last_r = self._predict_nonepisodic_value(sample_batch, policy, tf_sess)
@@ -461,13 +458,11 @@ class RND(Exploration):
             # Compute advantages and value targets.
             return self._compute_advantages(sample_batch, np.array([last_r]))
             # -------------------------- Encapsulate -------------------------
-            
+
             # -------------------------------------------------------------------
 
         return sample_batch
 
-    
-    
     def _postprocess_helper_tf(self, obs, optimize: bool = True):
         """Computes novelty and gradients."""
         with (
@@ -504,9 +499,6 @@ class RND(Exploration):
 
     def _postprocess_torch(self, policy, sample_batch):
         """Calculates the intrinsic reward and updates the parameters."""
-        # TODO: Check, if this can be imported globally. There are circular
-        # import problems if imported at the beginning of the script.
-        from ray.rllib.evaluation.postprocessing import discount_cumsum
 
         novelty = self._compute_novelty(
             torch.from_numpy(sample_batch[SampleBatch.OBS]).to(policy.device)
@@ -547,7 +539,7 @@ class RND(Exploration):
             )
             # Compute advantages and value targets.
             sample_batch = self._compute_advantages(sample_batch, last_r)
-            
+
         # When no global update is chosen, perform an optimization
         # step after each trajectory is collected.
         if not self.global_update:
@@ -630,9 +622,7 @@ class RND(Exploration):
                     * tf.constant(self.vf_loss_coeff)
                 )
                 if self.framework == "tf":
-                    self._vf_intrinsic_loss_np = self._sess.run(
-                        vf_intrinsic_loss
-                    )
+                    self._vf_intrinsic_loss_np = self._sess.run(vf_intrinsic_loss)
                 else:
                     if not self.policy_config["eager_tracing"]:
                         self._vf_intrinsic_loss_np = vf_intrinsic_loss.numpy()
@@ -699,21 +689,17 @@ class RND(Exploration):
             return self.model._exploration_value_branch()[0]
 
     def _compute_advantages(self, sample_batch, last_r):
-        """Compute advantages for the non-episodic returns."""        
+        """Compute advantages for the non-episodic returns."""
         from ray.rllib.evaluation.postprocessing import discount_cumsum
-        
+
         assert (
             "exploration_vf_preds" in sample_batch
         ), "Cannot use GAE in RND without value predictions."
-         
-        # Compare this computation with the computation of advantages in 
+
+        # Compare this computation with the computation of advantages in
         # `postprocessing.compute_advantages()`.
-        vpred_t = np.concatenate(
-                [sample_batch["exploration_vf_preds"], last_r]
-        )
-        delta_t = (
-            self._intrinsic_reward_np + self.gamma * vpred_t[1:] - vpred_t[:-1]
-        )
+        vpred_t = np.concatenate([sample_batch["exploration_vf_preds"], last_r])
+        delta_t = self._intrinsic_reward_np + self.gamma * vpred_t[1:] - vpred_t[:-1]
         sample_batch["exploration_advantages"] = discount_cumsum(
             delta_t, self.gamma * self.lambda_
         )
@@ -726,7 +712,7 @@ class RND(Exploration):
         ].astype(np.float32)
         sample_batch["exploration_vf_preds"].astype(np.float32)
         return sample_batch
-    
+
     def _attach_rnd_batch_callbacks(self, policy):
         """Attaches the RNDBatchCallbacks to add non-episodic advantages.
 
