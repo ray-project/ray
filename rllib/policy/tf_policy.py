@@ -476,12 +476,12 @@ class TFPolicy(Policy):
     @DeveloperAPI
     def get_exploration_weights(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         return self.exploration.get_weights()
-    
+
     @override(Policy)
     @DeveloperAPI
     def set_exploration_weights(self, weights) -> None:
         return self.exploration.set_weights(weights)
-    
+
     @override(Policy)
     @DeveloperAPI
     def get_exploration_state(self) -> Dict[str, TensorType]:
