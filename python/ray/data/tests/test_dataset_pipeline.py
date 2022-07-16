@@ -603,9 +603,11 @@ def test_sort_each_window(ray_start_regular_shared):
     assert pipe.take() == list(range(12))
 
     pipe = (
-        ray.data.range(12).window(blocks_per_window=3).sort_each_window(descending=True)
+        ray.data.range(12)
+        .window(blocks_per_window=12)
+        .sort_each_window(descending=True)
     )
-    assert pipe.take() == [2, 1, 0, 5, 4, 3, 8, 7, 6, 11, 10, 9]
+    assert pipe.take() == [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
     pipe = (
         ray.data.range(12)
