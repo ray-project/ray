@@ -16,6 +16,7 @@ We test out the performance across different cluster sizes.
 For this benchmark, we configured the nodes to have reasonable disk size and throughput to account for object spilling.
 
 .. code-block:: yaml
+
     aws:
         BlockDeviceMappings:
             - DeviceName: /dev/sda1
@@ -48,7 +49,7 @@ For this benchmark, we configured the nodes to have reasonable disk size and thr
     * - 20 m5.4xlarge nodes
       - 20 actors
       - 3.8 s
-      - 390 GiB/s
+      - 52.6 GiB/s
       - 0 GB
       - `python data_benchmark.py --dataset-size-gib=200 --num-workers=20 --placement-strategy=SPREAD`
 
@@ -125,8 +126,8 @@ XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
       - `python xgboost_benchmark.py --size 100GB`
 
 
-.. _`Bulk Ingest Script`: https://github.com/ray-project/ray/blob/4cebdf499a01987bf0bfbbbf24465d6f9e6fe98a/release/air_tests/air_benchmarks/workloads/data_benchmark.py#L25-L42
-.. _`Bulk Ingest Cluster Configuration`: https://github.com/ray-project/ray/blob/4cebdf499a01987bf0bfbbbf24465d6f9e6fe98a/release/air_tests/air_benchmarks/data_20_nodes.yaml#L6-L15
+.. _`Bulk Ingest Script`: https://github.com/ray-project/ray/blob/a30bdf9ef34a45f973b589993f7707a763df6ebf/release/air_tests/air_benchmarks/workloads/data_benchmark.py#L25-L40
+.. _`Bulk Ingest Cluster Configuration`: https://github.com/ray-project/ray/blob/a30bdf9ef34a45f973b589993f7707a763df6ebf/release/air_tests/air_benchmarks/data_20_nodes.yaml#L6-L15
 .. _`XGBoost Training Script`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/workloads/xgboost_benchmark.py#L40-L58
 .. _`XGBoost Prediction Script`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/workloads/xgboost_benchmark.py#L63-L71
 .. _`XGBoost Cluster Configuration`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/xgboost_compute_tpl.yaml#L6-L24
