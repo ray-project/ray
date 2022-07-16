@@ -6,10 +6,9 @@ import pandas as pd
 import numpy as np
 
 import ray
-from ray.data import dataset, Dataset
+from ray.data import dataset
 from ray.data.context import DatasetContext, WARN_PREFIX, OK_PREFIX
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.data._internal.arrow_block import ArrowRow
 
 from ray.tests.conftest import *  # noqa
 
