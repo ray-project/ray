@@ -212,6 +212,24 @@ class Exploration:
             policy: The `Policy` object that called this function.
         """
         pass
+    
+    @DeveloperAPI
+    def extra_action_out_fn(
+        self,
+        policy: "Policy",
+    ) -> Dict[str, TensorType]:
+        """May compute and initialize some extra action output fetches.
+        
+        Exploration modules might need to compute some extra output during 
+        action computation. This is especially important when using TensorFlow
+        with a static graph as values can be initialized, placeholders created 
+        and values cached. Note, this function is only activated, if 
+        `global_update` is set to `True`.
+        
+        Args: 
+            policy: The `Policy` object that calls this function.            
+        """
+        return policy.extra_action_out_fn()
 
     @DeveloperAPI
     def get_weights(self) -> ModelWeights:
