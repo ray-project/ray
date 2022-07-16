@@ -1,10 +1,7 @@
-import collections
-import enum
 import logging
-from typing import Iterable, Tuple, List, Optional
+from typing import Iterable, Tuple, List
 
 import ray
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
     Block,
@@ -32,6 +29,14 @@ def _calculate_blocks_size(
     return block_sizes
 
 
+def _generate_invalid_indices(
+    num_rows_per_block: List[int],
+    split_indices: List[int],
+) -> List[int]:
+    total_rows = sum(num_rows_per_block)
+    return [min(index, total_rows) for index in split_indices]
+
+
 def _generate_split_plan(
     num_rows_per_block: List[int],
     split_indices: List[int],
@@ -52,25 +57,12 @@ def _generate_split_plan(
         split_plan.append(current_block_split_index)
         current_block_split_index = []
         offset += num_rows_per_block[current_input_block_id]
-        current_block_id += 1
+        current_input_block_id += 1
 
     while len(split_plan) < len(num_rows_per_block):
         split_plan.append(current_block_split_index)
         current_block_split_index = []
     return split_plan
-
-
-def _get_all_blocks_split_results(
-    block: ObjectRef[Block],
-    meta: BlockMetadata,
-    block_size: int,
-    split_indices: List[int],
-) -> List[Tuple[ObjectRef[Block], BlockMetadata, int]]:
-    """Split the provided block at the given row index."""
-    if len(split_indices) == 0:
-        return [(block, meta, block_size)]
-    split_single_block = cached_remote_fn(_split_single_block)
-    return ray.get(split_single_block.remote(block, meta, block_size, split_indices))
 
 
 def _split_single_block(
@@ -80,8 +72,6 @@ def _split_single_block(
     split_indices: List[int],
 ) -> List[Tuple[ObjectRef[Block], BlockMetadata, int]]:
     """Split the provided block at the given row index."""
-    if len(split_indices) == 0:
-        return [(block, meta)]
     split_indices.append(block_size)
     split_result = []
     stats = BlockExecStats.builder()
@@ -162,7 +152,8 @@ def _split_at_indices(
         corresponding block split future will be None.
     """
     block_sizes: List[int] = _calculate_blocks_size(blocks_with_metadata)
-    split_plan: List[List[int]] = _generate_split_plan(block_sizes, indices)
+    valid_indices = _generate_invalid_indices(block_sizes, indices)
+    split_plan: List[List[int]] = _generate_split_plan(block_sizes, valid_indices)
     all_blocks_split_results: List[
         List[Tuple[ObjectRef[Block], BlockMetadata, int]]
     ] = _get_all_blocks_split_results(blocks_with_metadata, block_sizes, split_plan)
@@ -173,16 +164,16 @@ def _split_at_indices(
     current_meta = []
     for single_block_split_result in all_blocks_split_results:
         for i, (block, meta, _) in enumerate(single_block_split_result):
-            if i == 0:
-                current_blocks.append(block)
-                current_meta.append(meta)
-            else:
+            if i != 0:
                 result_blocks.append(current_blocks)
                 result_metas.append(current_meta)
                 current_blocks = []
                 current_meta = []
+            current_blocks.append(block)
+            current_meta.append(meta)
     result_blocks.append(current_blocks)
     result_metas.append(current_meta)
+
     return result_blocks, result_metas
 
 
