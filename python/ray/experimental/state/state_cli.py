@@ -145,7 +145,7 @@ def get_api_server_url() -> str:
     return api_server_url
 
 
-def get_table_output(state_data: List):
+def get_table_output(state_data: List) -> str:
     time = datetime.now()
     header = "=" * 8 + f" List: {time} " + "=" * 8
     headers = []
@@ -170,7 +170,7 @@ Table:
 
 def output_with_format(
     state_data: List, format: AvailableFormat = AvailableFormat.DEFAULT
-):
+) -> str:
     # Default is yaml.
     if format == AvailableFormat.DEFAULT:
         return get_table_output(state_data)
@@ -187,7 +187,7 @@ def output_with_format(
         )
 
 
-def format_summary_output(state_data: Dict, *, resource: StateResource):
+def format_summary_output(state_data: Dict, *, resource: StateResource) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
 
@@ -230,7 +230,7 @@ Table (group by {summary_by}):
 """
 
 
-def format_object_summary_output(state_data: Dict):
+def format_object_summary_output(state_data: Dict) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
 
@@ -258,13 +258,13 @@ def format_object_summary_output(state_data: Dict):
             table, headers=headers, showindex=True, numalign="left"
         )
 
-        # Format callsite.
+        # Format callsite. | is a separator for ray callsite.
         formatted_callsite = callsite.replace("|", "\n|")
         tables.append(f"{formatted_callsite}\n{table_for_callsite}")
 
     time = datetime.now()
     header = "=" * 8 + f" Object Summary: {time} " + "=" * 8
-    table_string = "\n\n\n".join(tables)
+    table_string = "\n\n\n\n".join(tables)
     return f"""
 {header}
 Stats:
@@ -281,7 +281,7 @@ def format_get_api_output(
     state_data: Union[dict, list],
     id: str,
     format: AvailableFormat = AvailableFormat.DEFAULT,
-):
+) -> str:
     if len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
@@ -290,13 +290,13 @@ def format_get_api_output(
 
 def format_list_api_output(
     state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
-):
+) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
     return output_with_format(state_data, format)
 
 
-def _should_explain(format: AvailableFormat):
+def _should_explain(format: AvailableFormat) -> bool:
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
