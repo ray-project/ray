@@ -251,8 +251,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       serialized_runtime_env = JavaStringToNativeString(env, java_serialized_runtime_env);
     }
 
-    auto java_namespace = (jstring)env->GetObjectField(actorCreationOptions,
-                                                  java_actor_creation_options_namespace);
+    auto java_namespace = (jstring)env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_namespace);
     if (java_namespace) {
       ray_namespace = JavaStringToNativeString(env, java_namespace);
     }
@@ -337,7 +337,8 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
   return PlacementGroupCreationOptions(name,
                                        ConvertStrategy(java_strategy),
                                        bundles,
-                                       /*is_detached=*/false);
+                                       /*is_detached=*/false,
+                                       /*max_cpu_fraction_per_node*/ 1.0);
 }
 
 #ifdef __cplusplus
