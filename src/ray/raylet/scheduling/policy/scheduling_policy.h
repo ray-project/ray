@@ -25,13 +25,6 @@ namespace raylet_scheduling_policy {
 
 // Status of resource scheduling result.
 struct SchedulingResultStatus {
-  bool IsFailed() const { return code == SchedulingResultStatusCode::FAILED; }
-  bool IsInfeasible() const { return code == SchedulingResultStatusCode::INFEASIBLE; }
-  bool IsSuccess() const { return code == SchedulingResultStatusCode::SUCCESS; }
-  bool IsPartialSuccess() const {
-    return code == SchedulingResultStatusCode::PARTIAL_SUCCESS;
-  }
-
   enum class SchedulingResultStatusCode {
     // Scheduling failed but retryable.
     FAILED = 0,
@@ -42,6 +35,15 @@ struct SchedulingResultStatus {
     // Only part of the requested resources succeed when batch scheduling.
     PARTIAL_SUCCESS = 3,
   };
+
+  bool IsFailed() const { return code == SchedulingResultStatusCode::FAILED; }
+  bool IsInfeasible() const { return code == SchedulingResultStatusCode::INFEASIBLE; }
+  bool IsSuccess() const { return code == SchedulingResultStatusCode::SUCCESS; }
+  bool IsPartialSuccess() const {
+    return code == SchedulingResultStatusCode::PARTIAL_SUCCESS;
+  }
+  SchedulingResultStatusCode Status() const { return code; }
+
   SchedulingResultStatusCode code = SchedulingResultStatusCode::SUCCESS;
 };
 
