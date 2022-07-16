@@ -36,11 +36,16 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 PARQUET_READER_ROW_BATCH_SIZE = 100000
 FILE_READING_RETRY = 8
 
-# The estimated bytes size multiplier for reading Parquet data source in Arrow,
+# The minimum size multiplier for reading Parquet data source in Arrow,
 # as Arrow in-memory representation uses much more memory compared to Parquet
 # uncompressed representation. See https://github.com/ray-project/ray/pull/26516
-# for more context.
-PARQUET_TO_ARROW_SIZE_MULTIPLIER = 5
+# for more context. Datasets will try to estimate the correct multiplier, using this
+# constant as a lower bound for safety.
+PARQUET_COMPRESSION_RATIO_ESTIMATE_LOWER_BOUND = 5
+
+# The number of row samples to take from the dataset to try to get an estimate of the
+# parquet compression ratio.
+PARQUET_COMPRESSION_RATIO_ESTIMATE_NUM_SAMPLES = 4
 
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
@@ -194,16 +199,15 @@ class _ParquetDatasourceReader(Reader):
         self._reader_args = reader_args
         self._columns = columns
         self._schema = schema
+        self._decompression_multiplier = self._estimate_decompression_multiplier()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        # TODO(ekl/chengsu) better estimate the in-memory size here,
-        # when columns pruning is used.
         total_size = 0
         for file_metadata in self._metadata:
             for row_group_idx in range(file_metadata.num_row_groups):
                 row_group_metadata = file_metadata.row_group(row_group_idx)
                 total_size += row_group_metadata.total_byte_size
-        return total_size * PARQUET_TO_ARROW_SIZE_MULTIPLIER
+        return total_size * self._decompression_multiplier
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
@@ -225,6 +229,7 @@ class _ParquetDatasourceReader(Reader):
                 pieces=pieces,
                 prefetched_metadata=metadata,
             )
+            meta.size_bytes *= self._decompression_multiplier
             block_udf, reader_args, columns, schema = (
                 self._block_udf,
                 self._reader_args,
@@ -245,6 +250,31 @@ class _ParquetDatasourceReader(Reader):
             )
 
         return read_tasks
+
+    def _estimate_decompression_multiplier(self) -> float:
+        """Return an estimate of the decompression multipler.
+
+        To avoid OOMs, it is safer to return an over-estimate than an underestimate.
+        """
+        # Sample a few rows from the row group to estimate the ratio.
+        # TODO(ekl/cheng) take into account column pruning.
+        num_samples = min(
+            PARQUET_COMPRESSION_RATIO_ESTIMATE_NUM_SAMPLES, len(self._pq_ds.pieces))
+        row_group_samples = [
+            p.subset(row_group_ids=[0])
+            for p in self._pq_ds.pieces[:num_samples]
+        ]
+        sample_ratios = []
+        for rg in row_group_samples:
+            metadata = rg.metadata.row_group(0)
+            sample_rg_row_size = metadata.total_byte_size / metadata.num_rows
+            sample_row_size = rg.head(1).nbytes
+            sample_ratios.append(sample_row_size / sample_rg_row_size)
+        mean_ratio = np.mean(sample_ratios)
+        logger.info(
+            f"Estimated parquet decompression ratio {mean_ratio} "
+            f"(mean of samples {sample_ratios}).")
+        return max(PARQUET_COMPRESSION_RATIO_ESTIMATE_LOWER_BOUND, mean_ratio)
 
 
 def _read_pieces(
