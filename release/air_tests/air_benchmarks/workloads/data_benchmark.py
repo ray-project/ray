@@ -22,14 +22,13 @@ def make_ds(size_gib: int):
     return dataset
 
 
-def run_ingest_bulk(dataset, num_workers, num_cpus_per_worker, placement_strategy):
+def run_ingest_bulk(dataset, num_workers, num_cpus_per_worker):
     dummy_prep = BatchMapper(lambda df: df * 2)
     trainer = DummyTrainer(
         scaling_config={
             "num_workers": num_workers,
             "trainer_resources": {"CPU": 0},
             "resources_per_worker": {"CPU": num_cpus_per_worker},
-            "placement_strategy": placement_strategy,
         },
         datasets={"train": dataset},
         preprocessor=dummy_prep,
@@ -49,19 +48,13 @@ if __name__ == "__main__":
         default=1,
         help="Number of CPUs for each training worker.",
     )
-    parser.add_argument(
-        "--placement-strategy",
-        type=str,
-        default="PACK",
-        help="Worker placement strategy.",
-    )
     parser.add_argument("--dataset-size-gib", type=int, default=200)
     args = parser.parse_args()
     ds = make_ds(args.dataset_size_gib)
 
     start = time.time()
     run_ingest_bulk(
-        ds, args.num_workers, args.num_cpus_per_worker, args.placement_strategy
+        ds, args.num_workers, args.num_cpus_per_worker
     )
     end = time.time()
     time_taken = end - start

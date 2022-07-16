@@ -39,19 +39,19 @@ For this benchmark, we configured the nodes to have reasonable disk size and thr
       - 390 s
       - 0.51 GB/s
       - 205 GiB
-      - `python data_benchmark.py --dataset-size-gib=200 --num-workers=1 --placement-strategy=SPREAD`
+      - `python data_benchmark.py --dataset-size-gib=200 --num-workers=1`
     * - 5 m5.4xlarge
       - 5 actors
       - 70 s
       - 2.85 GiB/s
       - 206 GiB
-      - `python data_benchmark.py --dataset-size-gib=200 --num-workers=5 --placement-strategy=SPREAD`
+      - `python data_benchmark.py --dataset-size-gib=200 --num-workers=5`
     * - 20 m5.4xlarge nodes
       - 20 actors
       - 3.8 s
       - 52.6 GiB/s
       - 0 GB
-      - `python data_benchmark.py --dataset-size-gib=200 --num-workers=20 --placement-strategy=SPREAD`
+      - `python data_benchmark.py --dataset-size-gib=200 --num-workers=20`
 
 
 XGBoost Batch Prediction
