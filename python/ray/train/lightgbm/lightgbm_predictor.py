@@ -8,11 +8,13 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.train.lightgbm.utils import load_checkpoint
 from ray.train.predictor import Predictor
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 class LightGBMPredictor(Predictor):
     """A predictor for LightGBM models.
 
@@ -41,7 +43,7 @@ class LightGBMPredictor(Predictor):
 
         """
         bst, preprocessor = load_checkpoint(checkpoint)
-        return LightGBMPredictor(model=bst, preprocessor=preprocessor)
+        return cls(model=bst, preprocessor=preprocessor)
 
     def _predict_pandas(
         self,

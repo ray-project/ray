@@ -176,7 +176,6 @@ class Dataset(Generic[T]):
         lazy: bool,
         *,
         defer_execution: bool = False,
-        used_from_dataset_pipeline: bool = False,
     ):
         """Construct a Dataset (internal API).
 
@@ -190,7 +189,6 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
-        self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
         if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
@@ -1127,7 +1125,6 @@ class Dataset(Generic[T]):
                         ),
                         self._epoch,
                         self._lazy,
-                        used_from_dataset_pipeline=self._used_from_dataset_pipeline,
                     )
                     for blocks in np.array_split(block_refs, n)
                 ],
@@ -1240,7 +1237,6 @@ class Dataset(Generic[T]):
                     ),
                     self._epoch,
                     self._lazy,
-                    used_from_dataset_pipeline=self._used_from_dataset_pipeline,
                 )
                 for actor in locality_hints
             ],
@@ -1430,7 +1426,6 @@ class Dataset(Generic[T]):
             ExecutionPlan(blocklist, dataset_stats),
             max_epoch,
             self._lazy,
-            used_from_dataset_pipeline=self._used_from_dataset_pipeline,
         )
 
     def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
@@ -3076,10 +3071,9 @@ class Dataset(Generic[T]):
             raise ValueError("`times` must be >= 1, got {}".format(times))
 
         class Iterator:
-            def __init__(self, blocks, used_from_dataset_pipeline):
+            def __init__(self, blocks):
                 self._blocks = blocks
                 self._i = 0
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
@@ -3093,7 +3087,6 @@ class Dataset(Generic[T]):
                         ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
                         epoch,
                         lazy=False,
-                        used_from_dataset_pipeline=True,
                     )
                     ds._set_uuid(uuid)
                     return ds
@@ -3101,25 +3094,17 @@ class Dataset(Generic[T]):
                 return gen
 
         class Iterable:
-            def __init__(self, blocks, used_from_dataset_pipeline):
+            def __init__(self, blocks):
                 self._blocks = blocks
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __iter__(self):
-                return Iterator(self._blocks, self._used_from_dataset_pipeline)
+                return Iterator(self._blocks)
 
-        pipe = DatasetPipeline(
-            Iterable(blocks, self._used_from_dataset_pipeline),
-            False,
-            length=times or float("inf"),
-        )
+        pipe = DatasetPipeline(Iterable(blocks), False, length=times or float("inf"))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage),
-                    ds._epoch,
-                    True,
-                    used_from_dataset_pipeline=True,
+                    ds._plan.with_stage(read_stage), ds._epoch, True
                 )
             )
         return pipe
@@ -3201,10 +3186,9 @@ class Dataset(Generic[T]):
             read_stage = None
 
         class Iterator:
-            def __init__(self, splits, epoch, used_from_dataset_pipeline):
+            def __init__(self, splits, epoch):
                 self._splits = splits.copy()
                 self._epoch = epoch
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __next__(self) -> "Dataset[T]":
                 if not self._splits:
@@ -3214,23 +3198,21 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats),
-                        self._epoch,
-                        lazy=True,
-                        used_from_dataset_pipeline=True,
+                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True
                     )
                     return ds
 
                 return gen
 
         class Iterable:
-            def __init__(self, blocks, epoch, used_from_dataset_pipeline):
+            def __init__(self, blocks, epoch):
                 if bytes_per_window:
                     self._splits = blocks.split_by_bytes(bytes_per_window)
                 else:
                     self._splits = blocks.split(split_size=blocks_per_window)
                 try:
                     sizes = [s.size_bytes() for s in self._splits]
+                    num_blocks = [s.initial_num_blocks() for s in self._splits]
                     assert [s > 0 for s in sizes], sizes
 
                     def fmt(size_bytes):
@@ -3248,6 +3230,16 @@ class Dataset(Generic[T]):
                             fmt(int(np.mean(sizes))),
                         )
                     )
+                    logger.info(
+                        "Blocks per window: "
+                        "{} min, {} max, {} mean".format(
+                            min(num_blocks),
+                            max(num_blocks),
+                            int(np.mean(num_blocks)),
+                        )
+                    )
+                    # TODO(ekl): log a warning if the blocks per window are much less
+                    # than the available parallelism.
                 except Exception as e:
                     logger.info(
                         "Created DatasetPipeline with {} windows; "
@@ -3257,22 +3249,16 @@ class Dataset(Generic[T]):
                         )
                     )
                 self._epoch = epoch
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __iter__(self):
-                return Iterator(
-                    self._splits, self._epoch, self._used_from_dataset_pipeline
-                )
+                return Iterator(self._splits, self._epoch)
 
-        it = Iterable(blocks, self._epoch, self._used_from_dataset_pipeline)
+        it = Iterable(blocks, self._epoch)
         pipe = DatasetPipeline(it, False, length=len(it._splits))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage),
-                    ds._epoch,
-                    True,
-                    used_from_dataset_pipeline=True,
+                    ds._plan.with_stage(read_stage), ds._epoch, True
                 )
             )
         return pipe
@@ -3455,8 +3441,6 @@ class Dataset(Generic[T]):
                 left_metadata.append(ray.get(m0))
                 right_blocks.append(b1)
                 right_metadata.append(ray.get(m1))
-                if self._lazy and self._used_from_dataset_pipeline:
-                    ray._private.internal_api.free(b, local_only=False)
             count += num_rows
 
         split_duration = time.perf_counter() - start_time
@@ -3482,7 +3466,6 @@ class Dataset(Generic[T]):
             ),
             self._epoch,
             self._lazy,
-            used_from_dataset_pipeline=self._used_from_dataset_pipeline,
         )
         if return_right_half:
             right_meta_for_stats = [
@@ -3507,7 +3490,6 @@ class Dataset(Generic[T]):
                 ),
                 self._epoch,
                 self._lazy,
-                used_from_dataset_pipeline=self._used_from_dataset_pipeline,
             )
         else:
             right = None
