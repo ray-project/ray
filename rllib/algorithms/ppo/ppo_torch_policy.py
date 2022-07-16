@@ -126,8 +126,7 @@ class PPOTorchPolicy(
                     " have near-zero probability. This can happen naturally in"
                     " deterministic environments where the optimal policy has zero mass"
                     " for a specific action. To fix this issue, consider setting"
-                    " 'kl_coeff' to zero or increasing 'entropy_coeff'. Discarding KL"
-                    " loss term for this update."
+                    " 'kl_coeff' to zero or increasing 'entropy_coeff'."
                 )
                 # TODO smorad: should we do anything besides warn? Could discard KL term
                 # for this update

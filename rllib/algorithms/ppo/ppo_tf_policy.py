@@ -50,8 +50,7 @@ def warn_kl_loss(mean_kl_loss):
         " training process. Action(s) in a specific state have near-zero probability."
         " This can happen naturally in deterministic environments where the optimal"
         " policy has zero mass for a specific action. To fix this issue, consider"
-        " setting 'kl_coeff' to zero or increasing 'entropy_coeff'. Discarding KL loss"
-        " term for this update."
+        " setting 'kl_coeff' to zero or increasing 'entropy_coeff'."
     )
     return tf.constant(0.0)
 
