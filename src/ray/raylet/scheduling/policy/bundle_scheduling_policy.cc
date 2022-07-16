@@ -18,13 +18,18 @@ namespace {
 
 bool AllocationWillExceedMaxCpuFraction(const ray::NodeResources &node_resources,
                                         const ray::ResourceRequest &resource_request,
-                                        double max_reservable_cpu_fraction) {
+                                        double max_cpu_fraction_per_node) {
   auto cpu_id = ray::ResourceID::CPU();
   auto remaining_cpus = node_resources.available.Get(cpu_id).Double() -
                         resource_request.Get(cpu_id).Double();
   auto total_allocated_cpus = node_resources.total.Get(cpu_id).Double() - remaining_cpus;
   auto max_reservable_cpus =
-      max_reservable_cpu_fraction * node_resources.total.Get(cpu_id).Double();
+      max_cpu_fraction_per_node * node_resources.total.Get(cpu_id).Double();
+
+  // If the max reservable cpu < 1, we allow at least 1 CPU.
+  if (max_reservable_cpus < 1) {
+    max_reservable_cpus = 1;
+  }
   return total_allocated_cpus > max_reservable_cpus;
 }
 
@@ -140,7 +145,7 @@ std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
   for (const auto &[node_id, node] : candidate_nodes) {
     const auto &node_resources = node->GetLocalView();
     if (AllocationWillExceedMaxCpuFraction(
-            node_resources, required_resources, options.max_reservable_cpu_fraction)) {
+            node_resources, required_resources, options.max_cpu_fraction_per_node)) {
       continue;
     }
 
@@ -206,7 +211,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
                                                      // exceed max cpu fraction.
                  node_resources,
                  *iter->second,
-                 options.max_reservable_cpu_fraction)) {
+                 options.max_cpu_fraction_per_node)) {
         // Then allocate it.
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
             best_node.first, *iter->second));
@@ -332,7 +337,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
                                                       // exceed max cpu fraction.
                     node_resources,
                     aggregated_resource_request,
-                    options.max_reservable_cpu_fraction));
+                    options.max_cpu_fraction_per_node));
         return allocatable;
       });
 

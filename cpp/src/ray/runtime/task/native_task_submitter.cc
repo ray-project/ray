@@ -168,7 +168,7 @@ ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
       (ray::core::PlacementStrategy)create_options.strategy,
       create_options.bundles,
       false,
-      0.0);
+      1.0);
   ray::PlacementGroupID placement_group_id;
   auto status = CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
       options, &placement_group_id);

@@ -94,12 +94,12 @@ def test_placement_group_max_cpu_frac(
 
     # Input validation - max_cpu_fraction_per_node must be between 0 and 1.
     with pytest.raises(ValueError):
-        ray.util.placement_group(bundles, max_cpu_fraction_per_node=-1)
+        ray.util.placement_group(bundles, _max_cpu_fraction_per_node=-1)
     with pytest.raises(ValueError):
-        ray.util.placement_group(bundles, max_cpu_fraction_per_node=2)
+        ray.util.placement_group(bundles, _max_cpu_fraction_per_node=2)
 
     pg = ray.util.placement_group(
-        bundles, strategy=scheduling_strategy, max_cpu_fraction_per_node=0.5
+        bundles, strategy=scheduling_strategy, _max_cpu_fraction_per_node=0.5
     )
 
     # Placement group will never be scheduled since it would violate the max CPU
@@ -117,6 +117,40 @@ def test_placement_group_max_cpu_frac(
     cluster.wait_for_nodes()
     # The placement group should be schedulable so this shouldn't raise.
     ray.get(pg.ready(), timeout=5)
+
+
+def test_placement_group_max_cpu_frac_multiple_pgs(ray_start_cluster):
+    """
+    Make sure when there's more than 1 pg, they respect the fraction.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=8)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # This pg should be scheduable.
+    pg = ray.util.placement_group([{"CPU": 4}], _max_cpu_fraction_per_node=0.5)
+    ray.get(pg.ready())
+
+    # When we schedule another placement group, it shouldn't be scheduled.
+    pg2 = ray.util.placement_group([{"CPU": 4}], _max_cpu_fraction_per_node=0.5)
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg2.ready(), timeout=5)
+
+    cluster.add_node(num_cpus=8)
+    ray.get(pg2.ready())
+
+    """
+    Make sure when the CPU * frac < 1, we can at least
+    guarantee to have 1 CPU for pg.
+    """
+    ray.util.remove_placement_group(pg)
+    ray.util.remove_placement_group(pg2)
+
+    # We can reserve up to 0.8 CPU, but it should round up to 1, so this pg
+    # is schedulable.
+    pg = ray.util.placement_group([{"CPU": 1}], _max_cpu_fraction_per_node=0.1)
+    ray.get(pg.ready())
 
 
 if __name__ == "__main__":
