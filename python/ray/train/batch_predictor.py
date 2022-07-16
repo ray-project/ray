@@ -46,13 +46,20 @@ class BatchPredictor:
     def from_pandas_udf(
         cls, pandas_udf: Callable[[pd.DataFrame], pd.DataFrame]
     ) -> "BatchPredictor":
+        """Create a Predictor from a Pandas UDF.
+
+        Args:
+            pandas_udf: A function that takes a pandas.DataFrame and other
+                optional kwargs and returns a pandas.DataFrame.
+        """
+
         class PandasUDFPredictor(Predictor):
             @classmethod
             def from_checkpoint(cls, checkpoint, **kwargs):
-                return PandasUDFPredictor(None)
+                return PandasUDFPredictor()
 
             def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
-                return pandas_udf(df)
+                return pandas_udf(df, **kwargs)
 
         return cls(
             checkpoint=Checkpoint.from_dict({"dummy": 1}),
