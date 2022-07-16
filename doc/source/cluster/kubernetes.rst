@@ -18,7 +18,7 @@ Deploying with the legacy Ray Kubernetes Operator
    - :ref:`Ray's guides for deploying using KubeRay<kuberay-index>`.
    - `The KubeRay documentation`_.
    - `The KubeRay GitHub`_.
-   - :ref:`A comparison of KubeRay and the legacy Ray Operator<kuberay-vs-legacy>`_.
+   - :ref:`A comparison of KubeRay and the legacy Ray Operator<kuberay-vs-legacy>`.
 
 
 Overview
