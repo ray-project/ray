@@ -194,6 +194,8 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
         if self._stages_after_snapshot:
             if fetch_if_missing:
                 if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
@@ -396,6 +398,8 @@ class ExecutionPlan:
 
     def is_read_stage_equivalent(self) -> bool:
         """Return whether this plan can be executed as only a read stage."""
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
         context = DatasetContext.get_current()
         remaining_stages = self._stages_after_snapshot
         if (
@@ -712,20 +716,6 @@ class AllToAllStage(Stage):
         return blocks, stage_info
 
 
-class RandomizeBlocksStage(AllToAllStage):
-    def __init__(self, seed: Optional[int]):
-        self._seed = seed
-
-        super().__init__("randomize_block_order", None, self.do_randomize)
-
-    def do_randomize(self, block_list, *_):
-        num_blocks = block_list.initial_num_blocks()
-        if num_blocks == 0:
-            return block_list, {}
-        randomized_block_list = block_list.randomize_block_order(self._seed)
-        return randomized_block_list, {}
-
-
 def _rewrite_read_stages(
     blocks: BlockList,
     stats: DatasetStats,
@@ -758,6 +748,8 @@ def _rewrite_read_stage(
         Non-lazy block list containing read tasks for not-yet-read block partitions,
         new stats for the block list, and the new list of stages.
     """
+    from ray.data._internal.stage_impl import RandomizeBlocksStage
+
     # Generate the "GetReadTasks" stage blocks.
     remote_args = in_blocks._remote_args
     blocks, metadata = [], []
@@ -798,6 +790,7 @@ def _reorder_stages(stages: List[Stage]) -> List[Stage]:
     Returns:
         Reordered stages.
     """
+    from ray.data._internal.stage_impl import RandomizeBlocksStage
 
     output: List[Stage] = []
     reorder_buf: List[RandomizeBlocksStage] = []
