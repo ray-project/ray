@@ -110,29 +110,6 @@ def _split_single_block(
     return split_result
 
 
-def _split_at_index(
-    blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
-    index: int,
-    return_right_half: bool,
-) -> Tuple[
-    List[ObjectRef[Block]],
-    List[BlockMetadata],
-    List[ObjectRef[Block]],
-    List[BlockMetadata],
-]:
-    """Split blocks at the provided index.
-    Args:
-        blocks_with_metadata: Block futures to split, including the associated metadata.
-        index: The (global) index at which to split the blocks.
-        return_right_half: Whether we want to return or drop the data to the right of
-            the index.
-    Returns:
-        The block split futures and their metadata for left and right of the index.
-    """
-    blocks_splits, metadata_splits = _split_at_indices(blocks_with_metadata, [index])
-    return blocks_splits[0], metadata_splits[0], blocks_splits[1], metadata_splits[1]
-
-
 def _split_all_blocks(
     blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
     block_sizes: List[int],
@@ -215,3 +192,26 @@ def _split_at_indices(
 def _get_num_rows(block: Block) -> int:
     """Get the number of rows contained in the provided block."""
     return BlockAccessor.for_block(block).num_rows()
+
+
+def _split_at_index(
+    blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
+    index: int,
+    return_right_half: bool,
+) -> Tuple[
+    List[ObjectRef[Block]],
+    List[BlockMetadata],
+    List[ObjectRef[Block]],
+    List[BlockMetadata],
+]:
+    """Split blocks at the provided index.
+    Args:
+        blocks_with_metadata: Block futures to split, including the associated metadata.
+        index: The (global) index at which to split the blocks.
+        return_right_half: Whether we want to return or drop the data to the right of
+            the index.
+    Returns:
+        The block split futures and their metadata for left and right of the index.
+    """
+    blocks_splits, metadata_splits = _split_at_indices(blocks_with_metadata, [index])
+    return blocks_splits[0], metadata_splits[0], blocks_splits[1], metadata_splits[1]
