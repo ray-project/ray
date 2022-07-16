@@ -21,6 +21,7 @@ from ray.data.preprocessors import BatchMapper
 from ray import train
 from ray.air import session
 from ray.train.torch import TorchTrainer
+from ray.data.datasource import ImageFolderDatasource
 
 
 # TODO(jiaodong): Remove this once ImageFolder #24641 merges
@@ -101,14 +102,15 @@ def train_loop_per_worker(config):
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
 @click.option("--data-size-gb", type=int, default=1)
-@click.option("--num-epochs", type=int, default=10)
-def main(data_size_gb: int, num_epochs=10):
+@click.option("--num-epochs", type=int, default=2)
+@click.option("--num-workers", type=int, default=1)
+def main(data_size_gb: int, num_epochs=2, num_workers=1):
     data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
     print(
         "Running Pytorch image model training with "
         f"{data_size_gb}GB data from {data_url}"
     )
-    print(f"Training for {num_epochs} epochs.")
+    print(f"Training for {num_epochs} epochs with {num_workers} workers.")
     start = time.time()
     dataset = ray.data.read_binary_files(paths=data_url)
     # TODO(jiaodong): Remove this once ImageFolder #24641 merges
@@ -121,7 +123,7 @@ def main(data_size_gb: int, num_epochs=10):
         train_loop_config={"batch_size": 64, "num_epochs": num_epochs},
         datasets={"train": dataset},
         preprocessor=preprocessor,
-        scaling_config={"num_workers": 1, "use_gpu": True},
+        scaling_config={"num_workers": num_workers, "use_gpu": True},
     )
     trainer.fit()
 
