@@ -701,7 +701,7 @@ class DynamicTFPolicyV2(TFPolicy):
             if self._cached_extra_action_fetches:
                 return self._cached_extra_action_fetches
             self._cached_extra_action_fetches = self.exploration.extra_action_out_fn(
-                self
+                policy=self
             )
             return self._cached_extra_action_fetches
 
