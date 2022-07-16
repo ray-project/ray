@@ -1,7 +1,7 @@
 .. _air-predictors:
 
-Inference with trained models
-=============================
+Inference with `Predictors`
+===========================
 
 .. https://docs.google.com/presentation/d/1jfkQk0tGqgkLgl10vp4-xjcbYG9EEtlZV_Vnve_NenQ/edit
 
