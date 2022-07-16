@@ -44,6 +44,18 @@ def validate_config(config: AlgorithmConfigDict) -> None:
         )
 
 
+def warn_kl_loss(mean_kl_loss):
+    logger.warning(
+        "KL divergence is non-finite, this will likely destabilize your model and the"
+        " training process. Action(s) in a specific state have near-zero probability."
+        " This can happen naturally in deterministic environments where the optimal"
+        " policy has zero mass for a specific action. To fix this issue, consider"
+        " setting 'kl_coeff' to zero or increasing 'entropy_coeff'. Discarding KL loss"
+        " term for this update."
+    )
+    return tf.constant(0.0)
+
+
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
 def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
@@ -71,6 +83,7 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             existing_model=None,
             existing_inputs=None,
         ):
+            self.should_warn_kl = False
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
@@ -149,6 +162,14 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             if self.config["kl_coeff"] > 0.0:
                 action_kl = prev_action_dist.kl(curr_action_dist)
                 mean_kl_loss = reduce_mean_valid(action_kl)
+                # Warn on infinite KL
+                if self.loss_initialized():
+                    tf.cond(
+                        tf.math.is_inf(mean_kl_loss),
+                        false_fn=lambda: mean_kl_loss,
+                        true_fn=lambda: warn_kl_loss(mean_kl_loss),
+                    )
+                    mean_kl_loss = tf.constant(0.0)
             else:
                 mean_kl_loss = tf.constant(0.0)
 
