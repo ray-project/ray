@@ -1,5 +1,5 @@
-AIR Benchmarks
-==============
+Benchmarks
+==========
 
 Below we document key performance benchmarks for common AIR tasks and workflows.
 
