@@ -3136,6 +3136,9 @@ class Dataset(Generic[T]):
                     obj_store_mem = ray.cluster_resources().get(
                         "object_store_memory", 0
                     )
+                    # Spilling may occur if the dataset is more than a small fraction
+                    # of object store memory. Conservatively choose 25% as the warning
+                    # threshold here.
                     if mean_bytes > obj_store_mem * 0.25:
                         logger.warning(
                             f"{WARN_PREFIX} This pipeline's windows are "
