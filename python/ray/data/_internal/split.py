@@ -30,13 +30,13 @@ def _calculate_blocks_size(
             num_rows = metadata.num_rows
         block_sizes.append(num_rows)
     return block_sizes
-    
+
 
 def _generate_split_plan(
     num_rows_per_block: List[int],
     split_indices: List[int],
 ) -> List[List[int]]:
-    split_plan = [] 
+    split_plan = []
     current_input_block_id = 0
     current_block_split_index = []
     offset = 0
@@ -61,10 +61,10 @@ def _generate_split_plan(
 
 
 def _split_single_block(
-   block: ObjectRef[Block], 
-   meta: BlockMetadata,
-   block_size: int,
-   split_indices: List[int],
+    block: ObjectRef[Block],
+    meta: BlockMetadata,
+    block_size: int,
+    split_indices: List[int],
 ) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Split the provided block at the given row index."""
     if len(split_indices) == 0:
@@ -107,7 +107,17 @@ def _split_at_indices(
 
     block_sizes = _calculate_blocks_size(blocks_with_metadata)
     split_plan = _generate_split_plan(block_sizes, indices)
-    split_results = ray.get([split_single_block.remote(block_with_metadata[0], block_with_metadata[1], block_sizes[i], split_plan[i]) for i, block_with_metadata in enumerate(blocks_with_metadata)])
+    split_results = ray.get(
+        [
+            split_single_block.remote(
+                block_with_metadata[0],
+                block_with_metadata[1],
+                block_sizes[i],
+                split_plan[i],
+            )
+            for i, block_with_metadata in enumerate(blocks_with_metadata)
+        ]
+    )
 
 
 def _get_num_rows(block: Block) -> int:
