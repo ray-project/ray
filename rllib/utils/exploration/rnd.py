@@ -380,17 +380,38 @@ class RND(Exploration):
     @override(Exploration)
     def get_weights(self) -> ModelWeights:
         # TODO: Create the same for TF in base branch
-        return {
-            k: v.cpu().detach().numpy()
-            for k, v in self._distill_predictor_net.state_dict().items()
-        }
+        if self.framework == "torch":
+            return {
+                k: v.cpu().detach().numpy()
+                for k, v in self._distill_predictor_net.state_dict().items()
+            }
+        else: 
+            return self._optimizer_var_list.get_weights()
 
     @override(Exploration)
     def set_weights(self, weights: ModelWeights):
-        weights = convert_to_torch_tensor(weights, device=self.device)
-        self._distill_predictor_net.load_state_dict(weights)
+        if self.framework == "torch":
+            weights = convert_to_torch_tensor(weights, device=self.device)
+            self._distill_predictor_net.load_state_dict(weights)
+        else:
+            self._optimizer_var_list.set_weights(weights)
+        
+    # TODO: Add typing    
+    @override(Exploration)
+    def extra_action_out_fn(self, policy):
+        extra_action_out = super().extra_action_out_fn(policy)
+            
+        if isinstance(self.model, tf.keras.Model):
+            return extra_action_out
 
-    @profile
+        extra_action_out.update(
+            {
+                "exploration_vf_preds": self.model._exploration_value_branch()
+            }
+        )
+        return extra_action_out
+        
+
     def _postprocess_tf(self, policy, sample_batch, tf_sess):
         """Calculates the intrinsic reward and updates the parameters."""
         # tf1 static-graph: Perform session call on our loss and update ops.
@@ -432,18 +453,9 @@ class RND(Exploration):
         else:
             from ray.rllib.evaluation.postprocessing import discount_cumsum
 
+            # TODO: this also can be merged together with Torch.
             # Calculate non-episodic returns and estimate value targets.
             last_r = self._predict_nonepisodic_value(sample_batch, policy, tf_sess)
-
-            # Get the non-episodic value predictions for all observations
-            # in the trajectory.
-            #model_out, _ = policy.model(sample_batch)
-            # TODO: Is this necessary? Could we instead call the whole static graph?
-            # sample_batch["exploration_vf_preds"] = tf_sess.run(
-            #     policy.model._exploration_value_branch()
-            # )
-            #sample_batch["exploration_vf_preds"] = policy.model._exploration_value_branch()
-            
 
             # TODO: This part can be merged together with Torch
             # Compute advantages and value targets.
@@ -626,6 +638,7 @@ class RND(Exploration):
 
                 # Attach the RNDBatchCallbacks to compute non-episodic advantages.
                 self._attach_rnd_batch_callbacks(policy)
+                # TODO: Check if this cannot be optimized away with a cached fetch.
                 model_out, _ = self.model(sample_batch)
                 value_fn_out = self.model._exploration_value_branch()[0]
                 _ = sample_batch["exploration_advantages"] * 2.0
@@ -648,13 +661,6 @@ class RND(Exploration):
                     self._vf_intrinsic_loss = vf_intrinsic_loss
                 else:
                     self._vf_intrinsic_loss_np = vf_intrinsic_loss.numpy()
-                # Add intrinsic advantages to the extrinsic advantages.
-                # During postprocessing the policy's advantages are not yet provided.
-                # sample_batch[Postprocessing.ADVANTAGES] = (
-                #     self.adv_ext_coeff * sample_batch[Postprocessing.ADVANTAGES]
-                #     + self.adv_int_coeff * sample_batch["exploration_advantages"]
-                # )
-
             else:
                 # Else, return zero loss.
                 vf_intrinsic_loss = tf.constant(0.0)

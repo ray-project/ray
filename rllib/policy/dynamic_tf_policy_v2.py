@@ -84,19 +84,18 @@ class DynamicTFPolicyV2(TFPolicy):
 
         self._init_state_inputs(existing_inputs)
         self._init_view_requirements()
-
-        # Phase 1 init.
-        sess = tf1.get_default_session() or tf1.Session(
-            config=tf1.ConfigProto(**self.config["tf_session_args"])
-        )
-
         timestep, explore = self._init_input_dict_and_dummy_batch(existing_inputs)
         (
             sampled_action,
             sampled_action_logp,
             dist_inputs,
             self._policy_extra_action_fetches,
-        ) = self._init_action_fetches(timestep, explore, sess)
+        ) = self._init_action_fetches(timestep, explore)
+
+        # Phase 1 init.
+        sess = tf1.get_default_session() or tf1.Session(
+            config=tf1.ConfigProto(**self.config["tf_session_args"])
+        )
 
         batch_divisibility_req = self.get_batch_divisibility_req()
 
@@ -559,10 +558,7 @@ class DynamicTFPolicyV2(TFPolicy):
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
     def _init_action_fetches(
-        self,
-        timestep: Union[int, TensorType],
-        explore: Union[bool, TensorType],
-        tf_sess,
+        self, timestep: Union[int, TensorType], explore: Union[bool, TensorType]
     ) -> Tuple[TensorType, TensorType, TensorType, type, Dict[str, TensorType]]:
         """Create action related fields for base Policy and loss initialization."""
         # Multi-GPU towers do not need any action computing/exploration
@@ -574,7 +570,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self._state_out = None
         if not self._is_tower:
             # Create the Exploration object to use for this Policy.
-            self.exploration = self._create_exploration(tf_sess)
+            self.exploration = self._create_exploration()
 
             # Fully customized action generation (e.g., custom policy).
             if is_overridden(self.action_sampler_fn):
@@ -657,7 +653,7 @@ class DynamicTFPolicyV2(TFPolicy):
             # Check, if exploration needs to update its parameters together with
             # policy in each iteration.
             if self.exploration.global_update:
-                self.add_exploration_loss_and_update()
+                self.add_exploration_loss_and_updates()
         # No optimizers produced -> Return.
         if not optimizers:
             return
@@ -669,7 +665,7 @@ class DynamicTFPolicyV2(TFPolicy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def add_exploration_loss_and_update(self):
+    def add_exploration_loss_and_updates(self):
         self.policy_loss = self.loss.__get__(self, type(self))
 
         def loss(
@@ -685,6 +681,29 @@ class DynamicTFPolicyV2(TFPolicy):
             ) + self.exploration.compute_loss_and_update(train_batch, self)
 
         self.loss = loss.__get__(self, type(self))
+
+        # Add additional extra action output fetches.
+        self.policy_extra_action_out_fn = self.extra_action_out_fn.__get__(
+            self, type(self)
+        )
+        # Cache values only for static graph implementation.
+        if not self._should_cache_extra_action:
+            self._should_cache_extra_action = self.config["framework"] == "tf"
+
+        def extra_action_out_fn(self) -> Dict[str, TensorType]:
+            # Cache the extra action outputs, if needed. This is done
+            # to increase performance in TensorFlow 1.x implementations
+            # with static graph.
+            if not self._should_cache_extra_action:
+                return self.exploration.extra_action_out_fn(self)
+            if self._cached_extra_action_fetches:
+                return self._cached_extra_action_fetches
+            self._cached_extra_action_fetches = self.exploration.extra_action_out_fn(
+                self
+            )
+            return self._cached_extra_action_fetches
+
+        self.extra_action_out_fn = extra_action_out_fn.__get__(self, type(self))
 
     def maybe_initialize_optimizer_and_loss(self):
         # We don't need to initialize loss calculation for MultiGPUTowerStack.
