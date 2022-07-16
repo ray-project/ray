@@ -967,6 +967,7 @@ class Policy(metaclass=ABCMeta):
             num_workers=self.config.get("num_workers", 0),
             worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", self.config.get("framework", "tf")),
+            tf_sess=self.get_session(),
         )
         return exploration
 

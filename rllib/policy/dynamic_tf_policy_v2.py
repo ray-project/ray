@@ -23,7 +23,9 @@ from ray.rllib.utils.annotations import (
     override,
 )
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
@@ -85,17 +87,19 @@ class DynamicTFPolicyV2(TFPolicy):
         self._init_state_inputs(existing_inputs)
         self._init_view_requirements()
         timestep, explore = self._init_input_dict_and_dummy_batch(existing_inputs)
+        
+        # Phase 1 init.
+        sess = tf1.get_default_session() or tf1.Session(
+            config=tf1.ConfigProto(**self.config["tf_session_args"])
+        )
+        self._sess = sess
+        
         (
             sampled_action,
             sampled_action_logp,
             dist_inputs,
             self._policy_extra_action_fetches,
         ) = self._init_action_fetches(timestep, explore)
-
-        # Phase 1 init.
-        sess = tf1.get_default_session() or tf1.Session(
-            config=tf1.ConfigProto(**self.config["tf_session_args"])
-        )
 
         batch_divisibility_req = self.get_batch_divisibility_req()
 
@@ -556,7 +560,7 @@ class DynamicTFPolicyV2(TFPolicy):
         dummy_batch = self._get_dummy_batch_from_view_requirements(batch_size=32)
 
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
-
+    
     def _init_action_fetches(
         self, timestep: Union[int, TensorType], explore: Union[bool, TensorType]
     ) -> Tuple[TensorType, TensorType, TensorType, type, Dict[str, TensorType]]:

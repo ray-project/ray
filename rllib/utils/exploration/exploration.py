@@ -36,7 +36,8 @@ class Exploration:
         policy_config: AlgorithmConfigDict,
         model: ModelV2,
         num_workers: int,
-        worker_index: int
+        worker_index: int,
+        **kwargs,
     ):
         """
         Args:

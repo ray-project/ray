@@ -420,7 +420,7 @@ class EagerTFPolicyV2(Policy):
             # Check, if exploration needs to update its parameters together with
             # policy in each iteration.
             if self.exploration.global_update:
-                self.add_exploration_loss_and_update()
+                self.add_exploration_loss_and_updates()
         # The list of local (tf) optimizers (one per loss term).
         self._optimizers: List[LocalOptimizer] = optimizers
         # Backward compatibility: A user's policy may only support a single
@@ -434,7 +434,7 @@ class EagerTFPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def add_custom_loss_and_update(self):
+    def add_exploration_loss_and_updates(self):
         self.policy_loss = self.loss.__get__(self, type(self))
 
         def loss(
@@ -450,6 +450,29 @@ class EagerTFPolicyV2(Policy):
             ) + self.exploration.compute_loss_and_update(train_batch, self)
 
         self.loss = loss.__get__(self, type(self))
+        
+        # Add additional extra action output fetches.
+        self.policy_extra_action_out_fn = self.extra_action_out_fn.__get__(
+            self, type(self)
+        )
+        # Cache values only for static graph implementation.
+        if not self._should_cache_extra_action:
+            self._should_cache_extra_action = self.config["framework"] == "tf"
+
+        def extra_action_out_fn(self) -> Dict[str, TensorType]:
+            # Cache the extra action outputs, if needed. This is done
+            # to increase performance in TensorFlow 1.x implementations
+            # with static graph.
+            if not self._should_cache_extra_action:
+                return self.exploration.extra_action_out_fn(self)
+            if self._cached_extra_action_fetches:
+                return self._cached_extra_action_fetches
+            self._cached_extra_action_fetches = self.exploration.extra_action_out_fn(
+                self
+            )
+            return self._cached_extra_action_fetches
+
+        self.extra_action_out_fn = extra_action_out_fn.__get__(self, type(self))
 
     @override(Policy)
     def compute_actions_from_input_dict(

@@ -18,7 +18,9 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -193,6 +195,7 @@ class TFPolicy(Policy):
             "not allowed! You passed in {}.".format(model)
         )
         self.model = model
+        self._sess = sess
         # Auto-update model's inference view requirements, if recurrent.
         if self.model is not None:
             self._update_model_view_requirements_from_init_state()
@@ -201,7 +204,6 @@ class TFPolicy(Policy):
         # component.
         self.exploration = self._create_exploration() if explore is not False else None
 
-        self._sess = sess
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input
         self._prev_reward_input = prev_reward_input
