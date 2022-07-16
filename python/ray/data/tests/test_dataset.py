@@ -1693,7 +1693,7 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
 
     base = range(100).take_all()
 
-    # Explicit shuffle buffer minimum size.
+    # Local shuffle.
     r1 = unbatch(
         range(100, parallelism=10).iter_batches(
             batch_size=3,
