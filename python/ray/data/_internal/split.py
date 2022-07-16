@@ -150,29 +150,10 @@ def _split_all_blocks(
     return all_blocks_split_results
 
 
-def _split_at_indices(
-    blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
-    indices: List[int],
+def _merge_all_blocks_split_results(
+    all_blocks_split_results: List[List[Tuple[ObjectRef[Block], BlockMetadata, int]]],
 ) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
-    """Split blocks at the provided indices.
-
-    Args:
-        blocks_with_metadata: Block futures to split, including the associated metadata.
-        indices: The (global) indices at which to split the blocks.
-    Returns:
-        The block split futures and their metadata. If an index split is empty, the
-        corresponding block split future will be None.
-    """
-    block_sizes: List[int] = _calculate_blocks_size(blocks_with_metadata)
-    valid_indices = _generate_valid_indices(block_sizes, indices)
-    per_block_split_indices: List[List[int]] = _generate_per_block_split_indices(
-        block_sizes, valid_indices
-    )
-    all_blocks_split_results: List[
-        List[Tuple[ObjectRef[Block], BlockMetadata, int]]
-    ] = _split_all_blocks(blocks_with_metadata, block_sizes, per_block_split_indices)
-
-    # Merge per block split results
+    """Merge per block's split result into final split result."""
     result_blocks = []
     result_metas = []
     current_blocks = []
@@ -190,6 +171,37 @@ def _split_at_indices(
     result_metas.append(current_meta)
 
     return result_blocks, result_metas
+
+
+def _split_at_indices(
+    blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
+    indices: List[int],
+) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
+    """Split blocks at the provided indices.
+
+    Args:
+        blocks_with_metadata: Block futures to split, including the associated metadata.
+        indices: The (global) indices at which to split the blocks.
+    Returns:
+        The block split futures and their metadata. If an index split is empty, the
+        corresponding block split future will be None.
+    """
+
+    # We implement the split in 3 phases.
+    # phase 1: calculate the per block split indices.
+    block_sizes: List[int] = _calculate_blocks_size(blocks_with_metadata)
+    valid_indices = _generate_valid_indices(block_sizes, indices)
+    per_block_split_indices: List[List[int]] = _generate_per_block_split_indices(
+        block_sizes, valid_indices
+    )
+
+    # phase 2: split each block based on the indices from previous step.
+    all_blocks_split_results: List[
+        List[Tuple[ObjectRef[Block], BlockMetadata, int]]
+    ] = _split_all_blocks(blocks_with_metadata, block_sizes, per_block_split_indices)
+
+    # phase 3: generate the final split.
+    return _merge_all_blocks_split_results(all_blocks_split_results)
 
 
 def _get_num_rows(block: Block) -> int:
