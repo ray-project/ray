@@ -60,8 +60,21 @@ def _generate_split_plan(
     return split_plan
 
 
-def _split_single_block(
+def _get_all_blocks_split_results(
     block: ObjectRef[Block],
+    meta: BlockMetadata,
+    block_size: int,
+    split_indices: List[int],
+) -> List[Tuple[ObjectRef[Block], BlockMetadata, int]]:
+    """Split the provided block at the given row index."""
+    if len(split_indices) == 0:
+        return [(block, meta, block_size)]
+    split_single_block = cached_remote_fn(_split_single_block)
+    return ray.get(split_single_block.remote(block, meta, block_size, split_indices))
+
+
+def _split_single_block(
+    block: Block,
     meta: BlockMetadata,
     block_size: int,
     split_indices: List[int],
@@ -90,23 +103,35 @@ def _split_single_block(
     return split_result
 
 
-def _split_at_indices(
+def _split_at_index(
     blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
-    indices: List[int],
-) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
-    """Split blocks at the provided indices.
-
+    index: int,
+    return_right_half: bool,
+) -> Tuple[
+    List[ObjectRef[Block]],
+    List[BlockMetadata],
+    List[ObjectRef[Block]],
+    List[BlockMetadata],
+]:
+    """Split blocks at the provided index.
     Args:
         blocks_with_metadata: Block futures to split, including the associated metadata.
-        indices: The (global) indices at which to split the blocks.
+        index: The (global) index at which to split the blocks.
+        return_right_half: Whether we want to return or drop the data to the right of
+            the index.
     Returns:
-        The block split futures and their metadata. If an index split is empty, the
-        corresponding block split future will be None.
+        The block split futures and their metadata for left and right of the index.
     """
-    split_single_block = cached_remote_fn(_split_single_block)
+    blocks_splits, metadata_splits = _split_at_indices(blocks_with_metadata, [index])
+    return blocks_splits[0], metadata_splits[0], blocks_splits[1], metadata_splits[1]
 
-    block_sizes: List[int] = _calculate_blocks_size(blocks_with_metadata)
-    split_plan: List[List[int]] = _generate_split_plan(block_sizes, indices)
+
+def _get_all_blocks_split_results(
+    blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
+    block_sizes: List[int],
+    split_plan: List[List[int]],
+) -> List[Tuple[ObjectRef[Block], BlockMetadata, int]]:
+    split_single_block = cached_remote_fn(_split_single_block)
     all_blocks_split_results: List[
         List[Tuple[ObjectRef[Block], BlockMetadata, int]]
     ] = ray.get(
@@ -120,6 +145,27 @@ def _split_at_indices(
             for i, block_with_metadata in enumerate(blocks_with_metadata)
         ]
     )
+    return all_blocks_split_results
+
+
+def _split_at_indices(
+    blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
+    indices: List[int],
+) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
+    """Split blocks at the provided indices.
+
+    Args:
+        blocks_with_metadata: Block futures to split, including the associated metadata.
+        indices: The (global) indices at which to split the blocks.
+    Returns:
+        The block split futures and their metadata. If an index split is empty, the
+        corresponding block split future will be None.
+    """
+    block_sizes: List[int] = _calculate_blocks_size(blocks_with_metadata)
+    split_plan: List[List[int]] = _generate_split_plan(block_sizes, indices)
+    all_blocks_split_results: List[
+        List[Tuple[ObjectRef[Block], BlockMetadata, int]]
+    ] = _get_all_blocks_split_results(blocks_with_metadata, block_sizes, split_plan)
 
     result_blocks = []
     result_metas = []
