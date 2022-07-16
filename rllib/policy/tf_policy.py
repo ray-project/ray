@@ -18,9 +18,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action

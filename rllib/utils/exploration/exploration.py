@@ -72,7 +72,7 @@ class Exploration:
         timestep: Optional[Union[TensorType, int]] = None,
         explore: Optional[Union[TensorType, bool]] = None,
         tf_sess: Optional["tf.Session"] = None,
-        **kwargs
+        **kwargs,
     ):
         """Hook for preparations before policy.compute_actions() is called.
 
@@ -127,7 +127,7 @@ class Exploration:
         *,
         environment: BaseEnv = None,
         episode: int = None,
-        tf_sess: Optional["tf.Session"] = None
+        tf_sess: Optional["tf.Session"] = None,
     ):
         """Handles necessary exploration logic at the beginning of an episode.
 
@@ -146,7 +146,7 @@ class Exploration:
         *,
         environment: BaseEnv = None,
         episode: int = None,
-        tf_sess: Optional["tf.Session"] = None
+        tf_sess: Optional["tf.Session"] = None,
     ):
         """Handles necessary exploration logic at the end of an episode.
 

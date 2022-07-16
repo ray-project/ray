@@ -450,7 +450,7 @@ class EagerTFPolicyV2(Policy):
             ) + self.exploration.compute_loss_and_update(train_batch, self)
 
         self.loss = loss.__get__(self, type(self))
-        
+
         # Add additional extra action output fetches.
         self.policy_extra_action_out_fn = self.extra_action_out_fn.__get__(
             self, type(self)
