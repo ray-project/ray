@@ -12,86 +12,69 @@ while this is mostly true, this doesn't work.
 Environment variables are not passed from the driver to workers
 ---------------------------------------------------------------
 
-**Issue**
+**Issue**: If you set an environment variable at the command line, it is not passed to all the workers running in the cluster
+if the cluster was started previously.
 
-If you set an environment variable at the command line, it is not passed to all the workers running in the cluster. 
+**Example**: If you have a file ``baz.py`` in the directory you are running Ray in, and you run the following command:
 
-**Example**
+.. literalinclude:: doc_code/gotchas.py
+  :language: python
+  :start-after: __env_var_start__
+  :end-before: __env_var_end__
 
-If you do ``FOO=bar python baz.py``
+**Expected behavior**: Most people would expect (as if it was a single process on a single machine) that the environment variables would be the same in all workers. It won’t be.
 
-and then in ``baz.py`` there is 
-
-.. code-block:: python
-
-  @ray.remote
-  def myfunc():
-    myenv = os.environ.get('FOO'); 
-    print(f'myenv is {myenv}'}
+**Fix**: Use runtime environments to pass environment variables explicity.
+If you call ``ray.init(runtime_env=...)``,
+then the workers will have the environment variable set.
 
 
-this will print ``myenv is None``
+.. literalinclude:: doc_code/gotchas.py
+  :language: python
+  :start-after: __env_var_fix_start__
+  :end-before: __env_var_fix_end__
 
-**Expected behavior**
-
-Most people would expect (as if it was a single process on a single machine) that the environment variables would be the same in all workers. It won’t be.  
-
-**Fix**
-
-Use runtime environments to pass environment variables explicity. 
-
-In the ``ray.init()`` call pass the environment variable, 
-e.g. if you do 
-``ray.init(runtime_env = {"env_vars": {"FOO": "bar"}})`` 
-that should achieve the same goal.
 
 Filenames work sometimes and not at other times
 -----------------------------------------------
 
-**Issue**
-
-If you reference a file by name in a task or actor, 
+**Issue**: If you reference a file by name in a task or actor,
 it will sometimes work and sometimes fail. This is 
 because if the task or actor runs on the head node 
 of the cluster, it will work, but if the task or actor 
-runs on another machine it won’t.
+runs on another machine it won't.
 
-**Example**
-
-Let’s say we do the following command:
+**Example**: Let's say we do the following command:
 
 .. code-block:: bash
 
 	% touch /tmp/foo.txt
 
-
 And I have this code: 
 
 .. code-block:: python
 
-  from os.path import exists
+  import os
 
   ray.init()
   @ray.remote
-  def checkFile():
-    foo_exists = exists('/tmp/foo.txt')
-    print(f'Foo exists? {foo_exists}')
+  def check_file():
+    foo_exists = os.path.exists("/tmp/foo.txt")
+    print(f"Foo exists? {foo_exists}")
   
   futures = []
   for _ in range(1000): 
-    futures.append(checkFile.remote())
+    futures.append(check_file.remote())
 
   ray.get(futures)
 
 
 then you will get a mix of True and False. If 
-``checkFile()`` runs on the head node, or we’re running 
+``check_file()`` runs on the head node, or we're running
 locally it works. But if it runs on a worker node, it returns ``False``.
 
-**Expected behavior**
-
-Most people would expect this to either fail or succeed consistently. 
-It’s the same code after all. 
+**Expected behavior**: Most people would expect this to either fail or succeed consistently.
+It's the same code after all.
 
 **Fix**
 
@@ -117,19 +100,29 @@ of Ray Tasks itself, e.g.
 
 .. code-block:: python
 
+  def create_task_that_uses_resources():
+    @ray.remote(num_cpus=10)
+    def sample_task():
+      print("Hello")
+      return
+
+    return ray.get([my_task.remote() for i in range(10)])
+
   def objective(config):
-    createTaskThatUsesResources()
+    create_task_that_uses_resources()
 
   analysis = tune.run(objective, config=search_space)
 
 This will hang forever. 
 
-**Expected behavior**
+**Expected behavior**: The above executes and doesn't hang.
 
-The above executes and doesn’t hang. 
-
-**Fix**
-
-In the ``@ray.remote`` declaration of tasks 
-called by ``createTaskThatUsesResources()`` , include a 
+**Fix**: In the ``@ray.remote`` declaration of tasks
+called by ``create_task_that_uses_resources()`` , include a
 ``placement_group=None``.
+
+.. code-block:: diff
+
+  def create_task_that_uses_resources():
+  +     @ray.remote(num_cpus=10, placement_group=None)
+  -     @ray.remote(num_cpus=10)
