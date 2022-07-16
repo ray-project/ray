@@ -2,12 +2,8 @@ import click
 import time
 import json
 import os
-import numpy as np
 import pandas as pd
-from io import BytesIO
-from typing import List
 
-from PIL import Image
 from torchvision import transforms
 from torchvision.models import resnet18
 import torch
@@ -24,26 +20,10 @@ from ray.train.torch import TorchTrainer
 from ray.data.datasource import ImageFolderDatasource
 
 
-# TODO(jiaodong): Remove this once ImageFolder #24641 merges
-def convert_to_pandas(byte_item_list: List[bytes]) -> pd.DataFrame:
+def preprocess_image_with_label(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Convert input bytes into pandas DataFrame with image column and value of
-    TensorArray to prevent serializing ndarray image data.
-    """
-    images = [
-        Image.open(BytesIO(byte_item)).convert("RGB") for byte_item in byte_item_list
-    ]
-    images = [np.asarray(image) for image in images]
-    # Dummy label since we're only testing training throughput
-    labels = [1 for _ in range(len(images))]
-
-    return pd.DataFrame({"image": TensorArray(images), "label": labels})
-
-
-def preprocess(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    User Pytorch code to transform user image. Note we still use pandas as
-    intermediate format to hold images as shorthand of python dictionary.
+    User Pytorch code to transform user image. Note we still use TensorArray as
+    intermediate format to hold images for now.
     """
     preprocess = transforms.Compose(
         [
@@ -53,9 +33,9 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df["image"] = df["image"].map(preprocess)
-    df["image"] = df["image"].map(lambda x: x.numpy())
-    df["image"] = TensorArray(df["image"])
+    df["image"] = TensorArray([preprocess(image.to_numpy()) for image in df["image"]])
+    # Fix fixed synthetic value for perf benchmark purpose
+    df["label"] = df["label"].map(lambda _: 1)
     return df
 
 
@@ -112,11 +92,9 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     )
     print(f"Training for {num_epochs} epochs with {num_workers} workers.")
     start = time.time()
-    dataset = ray.data.read_binary_files(paths=data_url)
-    # TODO(jiaodong): Remove this once ImageFolder #24641 merges
-    dataset = dataset.map_batches(convert_to_pandas)
+    dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[data_url])
 
-    preprocessor = BatchMapper(preprocess)
+    preprocessor = BatchMapper(preprocess_image_with_label)
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,

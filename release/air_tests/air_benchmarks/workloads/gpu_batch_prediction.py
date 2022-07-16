@@ -17,8 +17,8 @@ from ray.data.datasource import ImageFolderDatasource
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     """
-    User Pytorch code to transform user image. Note we still use pandas as
-    intermediate format to hold images as shorthand of python dictionary.
+    User Pytorch code to transform user image. Note we still use TensorArray as
+    intermediate format to hold images for now.
     """
     preprocess = transforms.Compose(
         [
