@@ -84,7 +84,7 @@ We test out the performance across different cluster sizes and data sizes.
       - 94.5k rows/sec
       - `python xgboost_benchmark.py --size 10GB`
     * - 10 m5.4xlarge nodes
-      - 10 actors (12 CPUs each)
+      - 10 actors
       - 100 GB
       - 260M rows
       - 331 s
@@ -119,7 +119,7 @@ XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
       - 692 s
       - `python xgboost_benchmark.py --size 10GB`
     * - 10 m5.4xlarge nodes
-      - 10 actors (12 CPUs each)
+      - 10 actors
       - 100 GB
       - 260M rows
       - 693 s
