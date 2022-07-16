@@ -76,3 +76,12 @@ AIR Feature Guides
         :type: ref
         :text: How to use a pretrained model for inference?
         :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: benchmarks
+        :type: ref
+        :text: Ray AIR benchmarks
+        :classes: btn-link btn-block stretched-link
