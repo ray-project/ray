@@ -267,10 +267,10 @@ class _ParquetDatasourceReader(Reader):
         # Sample a few rows from the row group to estimate the ratio.
         # TODO(ekl/cheng) take into account column pruning.
         num_samples = min(
-            PARQUET_COMPRESSION_RATIO_ESTIMATE_NUM_SAMPLES, len(self._pq_ds.pieces))
+            PARQUET_COMPRESSION_RATIO_ESTIMATE_NUM_SAMPLES, len(self._pq_ds.pieces)
+        )
         row_group_samples = [
-            p.subset(row_group_ids=[0])
-            for p in self._pq_ds.pieces[:num_samples]
+            p.subset(row_group_ids=[0]) for p in self._pq_ds.pieces[:num_samples]
         ]
         sample_ratios = []
         for rg in row_group_samples:
@@ -279,10 +279,15 @@ class _ParquetDatasourceReader(Reader):
             sample_row_size = rg.head(1).nbytes
             sample_ratios.append(sample_row_size / sample_rg_row_size)
         mean_ratio = np.mean(sample_ratios)
-        logger.info(
-            f"Estimated parquet decompression ratio {mean_ratio} "
-            f"(mean of samples {sample_ratios}).")
-        return max(PARQUET_COMPRESSION_RATIO_ESTIMATE_LOWER_BOUND, mean_ratio)
+
+        if mean_ratio > PARQUET_COMPRESSION_RATIO_ESTIMATE_LOWER_BOUND:
+            logger.info(
+                f"Estimated parquet decompression ratio is {mean_ratio} "
+                f"(mean of samples {sample_ratios})."
+            )
+            return mean_ratio
+
+        return PARQUET_COMPRESSION_RATIO_ESTIMATE_LOWER_BOUND
 
 
 def _read_pieces(
