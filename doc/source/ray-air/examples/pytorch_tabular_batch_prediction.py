@@ -19,8 +19,8 @@ def create_model(input_features):
 
 
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-num_features = len(dataset.schema().names) - 1
 dataset = dataset.drop_columns(["target"])
+num_features = len(dataset.schema().names)
 
 prep = Concatenator(dtype=np.float32)
 
