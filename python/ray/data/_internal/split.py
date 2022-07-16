@@ -66,7 +66,9 @@ def _generate_per_block_split_indices(
         split_index = split_indices[current_index_id]
         current_block_row = num_rows_per_block[current_input_block_id]
         if split_index - current_block_global_offset <= current_block_row:
-            current_block_split_indices.append(split_index - current_block_global_offset)
+            current_block_split_indices.append(
+                split_index - current_block_global_offset
+            )
             current_index_id += 1
             continue
         per_block_split_indices.append(current_block_split_indices)
