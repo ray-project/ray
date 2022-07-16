@@ -23,7 +23,6 @@ parts:
         - file: ray-air/examples/serving_guide
         - file: ray-air/deployment
         - file: ray-air/use-pretrained-model
-        - file: ray-air/benchmarks
     - file: ray-air/examples/index
       sections:
         - file: ray-air/examples/torch_image_example
@@ -39,6 +38,7 @@ parts:
         - file: ray-air/examples/rl_offline_example
         - file: ray-air/examples/feast_example
     - file: ray-air/package-ref
+    - file: ray-air/benchmarks
 
   - caption: Ray Libraries
     chapters:
