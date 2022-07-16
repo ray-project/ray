@@ -192,7 +192,7 @@ def test_split_small(ray_start_regular_shared, pipelined):
     assert not fail, fail
 
 
-def test_split_at_indices(ray_start_regular_shared):
+def test_split_at_indices_simple(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=3)
 
     with pytest.raises(ValueError):

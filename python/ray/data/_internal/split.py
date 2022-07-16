@@ -162,7 +162,12 @@ def _generate_global_split_results(
     result_metas = []
     current_blocks = []
     current_meta = []
+
+    if len(all_blocks_split_results) == 0:
+        return ([], [])
+
     for single_block_split_result in all_blocks_split_results:
+        assert len(single_block_split_result) > 0
         for i, (block, meta) in enumerate(single_block_split_result):
             # we should create a new global split whenever
             # we encountered a new local split in the per block
@@ -174,6 +179,8 @@ def _generate_global_split_results(
                 current_meta = []
             current_blocks.append(block)
             current_meta.append(meta)
+
+    assert len(current_blocks) > 0
     result_blocks.append(current_blocks)
     result_metas.append(current_meta)
 
@@ -198,7 +205,7 @@ def _split_at_indices(
     # phase 1: calculate the per block split indices.
     blocks_with_metadata = list(blocks_with_metadata)
     if len(blocks_with_metadata) == 0:
-        return ([], [])
+        return ([] * (len(indices) + 1), [] * (len(indices) + 1))
     block_rows: List[int] = _calculate_blocks_rows(blocks_with_metadata)
     valid_indices = _generate_valid_indices(block_rows, indices)
     per_block_split_indices: List[List[int]] = _generate_per_block_split_indices(
