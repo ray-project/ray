@@ -87,7 +87,7 @@ cdef class ObjectRef(BaseID):
         # it up.
         c_bool in_core_worker
         c_string call_site_data
-        c_string spilled_url
+        c_string _spilled_url
         c_string spilled_node_id
         c_string _global_owner_id
 

@@ -696,8 +696,11 @@ void NodeManager::HandleRequestObjectSpillage(
           RAY_CHECK(it != object_to_spilled_url.end());
           reply->set_object_url(it->second);
           reply->set_spilled_node_id(NodeID::Nil().Binary());
+          send_reply_callback(Status::OK(), nullptr, nullptr);
+        } else {
+          RAY_LOG(ERROR) << "Failed to spill object " << object_id << ". Status: " << status;
+          send_reply_callback(status, nullptr, nullptr);
         }
-        send_reply_callback(Status::OK(), nullptr, nullptr);
       });
 }
 
@@ -1522,6 +1525,9 @@ void NodeManager::ProcessFetchOrReconstructMessage(
                                                     *message->owner_addresses(),
                                                     *message->spilled_urls(),
                                                     *message->global_owner_ids());
+  for (const auto &ref: refs) {
+    RAY_LOG(INFO) << "ProcessFetchOrReconstructMessage " << ObjectID::FromBinary(ref.object_id()) << ", spilled_url: " << ref.spilled_url() << ", fetch_only: " << message->fetch_only();
+  }
   // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
   // non-direct call support.
   if (message->fetch_only()) {

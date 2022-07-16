@@ -251,7 +251,7 @@ class FileSystemStorage(ExternalStorage):
             spill objects doesn't exist.
     """
 
-    def __init__(self, directory_path, buffer_size=None):
+    def __init__(self, directory_path, buffer_size=None, enable_delete=True):
         # -- sub directory name --
         self._spill_dir_name = DEFAULT_OBJECT_PREFIX
         # -- A list of directory paths to spill objects --
@@ -260,6 +260,7 @@ class FileSystemStorage(ExternalStorage):
         self._current_directory_index = 0
         # -- File buffer size to spill objects --
         self._buffer_size = -1
+        self._enable_delete = enable_delete
 
         # Validation.
         assert (
@@ -334,6 +335,8 @@ class FileSystemStorage(ExternalStorage):
         return total
 
     def delete_spilled_objects(self, urls: List[str]):
+        if not self._enable_delete:
+            return
         for url in urls:
             path = parse_url_with_offset(url.decode()).base_url
             os.remove(path)
@@ -633,7 +636,7 @@ def setup_external_storage(config, session_name):
         elif storage_type == "mock_distributed_fs":
             # This storage is used to unit test distributed external storages.
             # TODO(sang): Delete it after introducing the mock S3 test.
-            _external_storage = FileSystemStorage(**config["params"])
+            _external_storage = FileSystemStorage(**config["params"], enable_delete=False)
         elif storage_type == "unstable_fs":
             # This storage is used to unit test unstable file system for fault
             # tolerance.

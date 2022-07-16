@@ -50,7 +50,6 @@ cdef class ObjectRef(BaseID):
         self.owner_addr = owner_addr
         self.in_core_worker = False
         self.call_site_data = call_site_data
-        self.spilled_url = spilled_url
         if spilled_node_id:
             self.spilled_node_id = spilled_node_id
         else:
@@ -116,7 +115,7 @@ cdef class ObjectRef(BaseID):
         return CObjectID.Size()
 
     def spilled_url(self):
-        return self._spilled_url.decode("utf-8")
+        return self._spilled_url
 
     def global_owner_id(self):
         return self._global_owner_id

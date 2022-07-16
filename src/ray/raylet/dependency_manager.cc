@@ -29,7 +29,7 @@ bool DependencyManager::GetOwnerAddress(const ObjectID &object_id,
     return false;
   }
 
-  *owner_address = obj->second.owner_address;
+  *owner_address = obj->second.ref.owner_address();
   return !owner_address->worker_id().empty();
 }
 
@@ -128,8 +128,7 @@ void DependencyManager::StartOrUpdateGetRequest(
     for (auto &obj_id : get_request.first) {
       auto it = required_objects_.find(obj_id);
       RAY_CHECK(it != required_objects_.end());
-      auto ref = ObjectIdToRef(obj_id, it->second.owner_address);
-      refs.push_back(std::move(ref));
+      refs.push_back(it->second.ref);
     }
     // Pull the new dependencies before canceling the old request, in case some
     // of the old dependencies are still being fetched.

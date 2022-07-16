@@ -203,14 +203,6 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &id
   return fbb.CreateVector(results);
 }
 
-static inline ray::rpc::ObjectReference ObjectIdToRef(
-    const ray::ObjectID &object_id, const ray::rpc::Address owner_address) {
-  ray::rpc::ObjectReference ref;
-  ref.set_object_id(object_id.Binary());
-  ref.mutable_owner_address()->CopyFrom(owner_address);
-  return ref;
-}
-
 static inline ray::ObjectID ObjectRefToId(const ray::rpc::ObjectReference &object_ref) {
   return ray::ObjectID::FromBinary(object_ref.object_id());
 }

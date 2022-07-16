@@ -3,12 +3,22 @@ import pytest
 import ray
 import time
 import numpy as np
+import json
+from ray.tests.conftest import (
+    mock_distributed_fs_object_spilling_config,
+)
 
 
 def test_owner_failed(ray_start_cluster):
     cluster_node_config = [
-        {"num_cpus": 1, "resources": {f"node{i+1}": 10}} for i in range(3)
+        {
+            "num_cpus": 1,
+            "resources": {f"node{i+1}": 10}
+        } for i in range(3)
     ]
+    cluster_node_config[0]["_system_config"] = {
+        "object_spilling_config": json.dumps(mock_distributed_fs_object_spilling_config)
+    }
     cluster = ray_start_cluster
     for kwargs in cluster_node_config:
         cluster.add_node(**kwargs)

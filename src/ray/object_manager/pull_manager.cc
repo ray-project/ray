@@ -58,6 +58,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       seen.insert(id);
       deduplicated.emplace_back(ref);
     }
+    RAY_LOG(INFO) << "Pull object " << id << ", spilled_url: " << ref.spilled_url() << ",spilled_node_id: " << ref.spilled_node_id();
   }
 
   BundlePullRequest bundle_pull_request(ObjectRefsToIds(deduplicated));
@@ -77,6 +78,8 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       // the retry timer fire immediately.
       it = object_pull_requests_.emplace(obj_id, ObjectPullRequest(get_time_seconds_()))
                .first;
+      it->second.spilled_url = ref.spilled_url();
+      it->second.spilled_node_id = NodeID::FromBinary(ref.spilled_node_id());
     } else {
       if (it->second.IsPullable()) {
         bundle_pull_request.MarkObjectAsPullable(obj_id);
@@ -104,6 +107,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
 bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
                                                 bool respect_quota,
                                                 std::vector<ObjectID> *objects_to_pull) {
+  RAY_LOG(INFO) << "ActivateNextBundlePullRequest";
   if (bundles.inactive_requests.empty()) {
     // No inactive requests in the queue.
     return false;
@@ -225,6 +229,7 @@ int64_t PullManager::RemainingQuota() {
 bool PullManager::OverQuota() { return RemainingQuota() < 0L; }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available) {
+  RAY_LOG(INFO) << "UpdatePullsBasedOnAvailableMemory " << num_bytes_available;
   if (num_bytes_available_ != num_bytes_available) {
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
@@ -360,6 +365,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const NodeID &spilled_node_id,
                                    bool pending_creation,
                                    size_t object_size) {
+  RAY_LOG(INFO) << "OnLocationChange " << object_id << ", spilled_url: " << spilled_url;
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
@@ -439,6 +445,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
 }
 
 void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
+  RAY_LOG(INFO) << "TryToMakeObjectLocal " << object_id;
   // The object is already local; abort.
   if (object_is_local_(object_id)) {
     return;
@@ -466,11 +473,19 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   // check if we can restore the object directly in the current raylet.
   // first check local spilled objects
   std::string direct_restore_url = get_locally_spilled_object_url_(object_id);
+  RAY_LOG(INFO) << "TryToMakeObjectLocal " << object_id
+                << ", direct_restore_url: " << direct_restore_url
+                << ", request.spilled_url: " << request.spilled_url
+                << ", request.spilled_node_id: " << request.spilled_node_id;
   if (direct_restore_url.empty()) {
     if (!request.spilled_url.empty() && request.spilled_node_id.IsNil()) {
       direct_restore_url = request.spilled_url;
     }
   }
+  RAY_LOG(INFO) << "TryToMakeObjectLocal " << object_id
+                << ", direct_restore_url: " << direct_restore_url
+                << ", request.spilled_url: " << request.spilled_url
+                << ", request.spilled_node_id: " << request.spilled_node_id;
   if (!direct_restore_url.empty()) {
     // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);

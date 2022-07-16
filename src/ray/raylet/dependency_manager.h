@@ -167,7 +167,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// and/or one queued task.
   struct ObjectDependencies {
     ObjectDependencies(const rpc::ObjectReference &ref)
-        : owner_address(ref.owner_address()) {}
+        : ref(ref) {}
     /// The tasks that depend on this object, either because the object is a task argument
     /// or because the task called `ray.get` on the object.
     std::unordered_set<TaskID> dependent_tasks;
@@ -180,8 +180,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
     /// If this object is required by at least one worker that called `ray.wait`, this is
     /// the pull request ID.
     uint64_t wait_request_id = 0;
-    /// The address of the worker that owns this object.
-    rpc::Address owner_address;
+    /// The object reference.
+    rpc::ObjectReference ref;
 
     bool Empty() const {
       return dependent_tasks.empty() && dependent_get_requests.empty() &&

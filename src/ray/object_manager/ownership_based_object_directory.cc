@@ -55,6 +55,7 @@ bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
                            NodeID *spilled_node_id,
                            bool *pending_creation,
                            size_t *object_size) {
+  RAY_LOG(INFO) << "UpdateObjectLocations spilled_url: " << *spilled_url;
   bool is_updated = false;
   std::unordered_set<NodeID> new_node_ids;
   // The size can be 0 if the update was a deletion. This assumes that an
@@ -74,18 +75,23 @@ bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
     *node_ids = new_node_ids;
     is_updated = true;
   }
-  const std::string &new_spilled_url = location_info.spilled_url();
-  if (new_spilled_url != *spilled_url) {
-    const auto new_spilled_node_id = NodeID::FromBinary(location_info.spilled_node_id());
-    RAY_LOG(DEBUG) << "Received object spilled to " << new_spilled_url << " spilled on "
-                   << new_spilled_node_id;
-    if (gcs_client->Nodes().IsRemoved(new_spilled_node_id)) {
-      *spilled_url = "";
-      *spilled_node_id = NodeID::Nil();
-    } else {
-      *spilled_url = new_spilled_url;
-      *spilled_node_id = new_spilled_node_id;
+  if (spilled_url->empty() || !spilled_node_id->IsNil()) {
+    const std::string &new_spilled_url = location_info.spilled_url();
+    if (new_spilled_url != *spilled_url) {
+      const auto new_spilled_node_id =
+          NodeID::FromBinary(location_info.spilled_node_id());
+      RAY_LOG(DEBUG) << "Received object spilled to " << new_spilled_url << " spilled on "
+                     << new_spilled_node_id;
+      if (gcs_client->Nodes().IsRemoved(new_spilled_node_id)) {
+        *spilled_url = "";
+        *spilled_node_id = NodeID::Nil();
+      } else {
+        *spilled_url = new_spilled_url;
+        *spilled_node_id = new_spilled_node_id;
+      }
+      is_updated = true;
     }
+  } else {
     is_updated = true;
   }
   if (location_info.pending_creation() != *pending_creation) {
@@ -267,6 +273,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
     const rpc::WorkerObjectLocationsPubMessage &location_info,
     const ObjectID &object_id,
     bool location_lookup_failed) {
+  RAY_LOG(INFO) << "ObjectLocationSubscriptionCallback: " << object_id;
   // Objects are added to this map in SubscribeObjectLocations.
   auto it = listeners_.find(object_id);
   // Do nothing for objects we are not listening for.
@@ -289,6 +296,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
                                                 &it->second.spilled_node_id,
                                                 &it->second.pending_creation,
                                                 &it->second.object_size);
+  RAY_LOG(INFO) << "location_updated of " << object_id << " is " << location_updated;
 
   // If the lookup has failed, that means the object is lost. Trigger the callback in this
   // case to handle failure properly.
@@ -329,6 +337,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     const std::string &spilled_url,
     const NodeID &spilled_node_id,
     const OnLocationsFound &callback) {
+  RAY_LOG(INFO) << "SubscribeObjectLocations: " << object_id;
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
     // Create an object eviction subscription message.
@@ -349,8 +358,9 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
                                 const std::string &object_id_binary,
                                 const Status &status) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
+      RAY_LOG(INFO) << "failure_callback " << object_id;
       rpc::WorkerObjectLocationsPubMessage location_info;
-      if (!spilled_url.empty() && !spilled_node_id.IsNil()) {
+      if (spilled_url.empty() || !spilled_node_id.IsNil()) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Failed to get the location for " << object_id
                         << status.ToString();
@@ -386,6 +396,8 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 
     auto location_state = LocationListenerState();
     location_state.owner_address = owner_address;
+    location_state.spilled_url = spilled_url;
+    location_state.spilled_node_id = spilled_node_id;
     it = listeners_.emplace(object_id, std::move(location_state)).first;
   }
   auto &listener_state = it->second;

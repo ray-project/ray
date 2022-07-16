@@ -1081,24 +1081,8 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
-  if (spilled_url) {
-    std::promise<std::string> sync_promise;
-    auto future = sync_promise.get_future();
-    local_raylet_client_->RequestObjectSpillage(
-      object_id,
-      [object_id, &sync_promise](const Status &status,
-                            const rpc::RequestObjectSpillageReply &reply) {
-        if (!status.ok() || !reply.success()) {
-          RAY_LOG(FATAL) << "Failed to spill object " << object_id
-                         << ", raylet unreachable or object could not be spilled.";
-        }
-        sync_promise.set_value(reply.object_url());
-      });
-    *spilled_url = future.get();
-    RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
-  }
 
-  if (pin_object && spilled_url == nullptr) {
+  if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
     local_raylet_client_->PinObjectIDs(
@@ -1118,6 +1102,25 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
 
+  if (spilled_url) {
+    std::promise<std::string> sync_promise;
+    auto future = sync_promise.get_future();
+    local_raylet_client_->RequestObjectSpillage(
+      object_id,
+      [object_id, &sync_promise](const Status &status,
+                            const rpc::RequestObjectSpillageReply &reply) {
+        if (!status.ok() || !reply.success()) {
+          RAY_LOG(FATAL) << "Failed to spill object " << object_id
+                         << ", raylet unreachable or object could not be spilled. Status: "
+                         << status;
+        }
+        sync_promise.set_value(reply.object_url());
+      });
+    *spilled_url = future.get();
+    RAY_CHECK(reference_counter_->HandleObjectSpilled(object_id, *spilled_url, NodeID::Nil()));
+    RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
+  }
+
   return Status::OK();
 }
 
@@ -1126,6 +1129,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const std::vector<std::string> &global_owner_ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
+  for (size_t i = 0; i < ids.size(); i++) {
+    RAY_LOG(INFO) << "CoreWorker::Get " << ids[i] << ", spilled_url: " << spilled_urls[i];
+  }
   RAY_CHECK(ids.size() == spilled_urls.size());
   RAY_CHECK(ids.size() == global_owner_ids.size());
   results->resize(ids.size(), nullptr);
