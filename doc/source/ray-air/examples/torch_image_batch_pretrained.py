@@ -12,6 +12,7 @@ from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.train.torch import to_air_checkpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
+from ray.data.datasource import ImageFolderDatasource
 
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
