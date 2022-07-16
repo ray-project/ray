@@ -180,7 +180,7 @@ def _generate_global_split_results(
             current_blocks.append(block)
             current_meta.append(meta)
 
-    assert len(current_blocks) > 0, ""
+    assert len(current_blocks) > 0
     result_blocks.append(current_blocks)
     result_metas.append(current_meta)
 
