@@ -153,10 +153,14 @@ tasks launched from within a placement group will be executed outside of that pl
 group by default. This can be thought of as Datasets requesting resources from the
 margins of the cluster, outside of those ML library placement groups.
 
-Although this is the default behavior, you can force all Datasets workloads to be
-scheduled within a placement group by specifying a placement group as the global
-scheduling strategy for all Datasets tasks/actors, using the global
-:class:`DatasetContext <ray.data.DatasetContext>`.
+To avoid hangs or CPU starvation of Datasets when used with Tune or Train, you can
+exclude a fraction of CPUs from placement group scheduling, using the
+``_max_cpu_fraction_per_node`` placement group option (Experimental).
+
+.. warning::
+
+    ``_max_cpu_fraction_per_node`` is experimental and not recommended for use with
+    autoscaling clusters.
 
 Example: Datasets in Tune
 =========================
@@ -165,9 +169,9 @@ Example: Datasets in Tune
 
 Here's an example of how you can configure Datasets to run within Tune trials, which
 is the typical case of when you'd encounter placement groups with Datasets. Two
-scenarios are shown: running outside the trial group, and running within the trial placement group.
+scenarios are shown: running outside the trial group using spare resources, and running within the trial placement group.
 
-.. tabbed:: Outside Trial Placement Group
+.. tabbed:: Using Spare Cluster Resources
 
     By default, Dataset tasks escape the trial placement group. This means they will use
     spare cluster resources for execution, which can be problematic since the availability
@@ -178,18 +182,19 @@ scenarios are shown: running outside the trial group, and running within the tri
       :start-after: __resource_allocation_1_begin__
       :end-before: __resource_allocation_1_end__
 
-.. tabbed:: Inside Trial Placement Group
+.. tabbed:: Using Reserved CPUs (Experimental)
 
-    Datasets can be configured to use resources within the trial's placement group. This
-    requires you to explicitly reserve resource bundles in the placement group for
-    use by Datasets.
+    The ``_max_cpu_fraction_per_node`` option can be used to exclude CPUs from placement
+    group scheduling. In the below example, setting this parameter to ``0.8`` enables Tune
+    trials to run smoothly without risk of deadlock.
 
     .. literalinclude:: ./doc_code/key_concepts.py
       :language: python
       :start-after: __resource_allocation_2_begin__
       :end-before: __resource_allocation_2_end__
 
-    .. note::
+    .. warning::
 
       This is an experimental feature subject to change as we work to improve our
-      resource allocation model for Datasets.
+      resource allocation model for Datasets. It is not recommended for use with
+      autoscaling clusters.
