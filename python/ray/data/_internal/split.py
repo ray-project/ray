@@ -74,6 +74,8 @@ def _generate_per_block_split_indices(
         current_block_global_offset += num_rows_per_block[current_input_block_id]
         current_input_block_id += 1
 
+    # we might finished all the indices but there are still blocks left, also
+    # current_block_split_indice might not be added yet.
     while len(per_block_split_indices) < len(num_rows_per_block):
         per_block_split_indices.append(current_block_split_indice)
         current_block_split_indice = []
@@ -162,6 +164,8 @@ def _merge_all_blocks_split_results(
     result_metas = []
     current_blocks = []
     current_meta = []
+    # the merge algorithm is simple: we only need to create a new
+    # split if the current block has more than 1 split.
     for single_block_split_result in all_blocks_split_results:
         for i, (block, meta, _) in enumerate(single_block_split_result):
             if i != 0:
