@@ -92,7 +92,7 @@ the ``Preprocessor`` and the fitting and transformation logic will occur once pe
 Checkpoint
 ~~~~~~~~~~
 
-``Trainer.fit()`` returns a ``Results`` object which contains a ``Checkpoint``.
+``Trainer.fit()`` returns a ``Result`` object which contains a ``Checkpoint``.
 If a ``Preprocessor`` was passed into the ``Trainer``, then it will be saved in the ``Checkpoint`` along with any fitted state.
 
 As a sanity check, let's confirm the ``Preprocessor`` is available in the ``Checkpoint``. In practice you should not need to do this.
