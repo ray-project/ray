@@ -106,6 +106,11 @@ if spilling is occuring, and you can check this as well with the ``ray memory --
 care to ensure the cluster has enough disk space to handle the spilled blocks. Alternatively, consider using machine with more memory /
 more machines to avoid spilling.
 
+In short, use bulk ingest when:
+ * you have enough memory to fit data blocks in cluster object store;
+ * your preprocessing step is expensive per each epoch; and
+ * you want best performance when both or either the above conditions are met.
+
 Streaming Ingest
 ~~~~~~~~~~~~~~~~
 
@@ -122,6 +127,12 @@ once deserialized in memory, or if individual files are larger than the window s
 
 If the window size is set to -1, then an infinite window size will be used. This case is equivalent to using bulk loading
 (including the performance advantages of caching preprocessed blocks), but still exposing a DatasetPipeline reader.
+
+In short, use streaming ingest when:
+ * you have large datasets that don't fit into memory;
+ * you want to process small chunks or blocks per window;
+ * you can use small windows with small data blocks minimizing or avoiding memmory starvation or OOM errors; and
+ * your preprocessoring step is not a bottleneck or not an expensive operation since it's re-executed on each pass over the data.
 
 .. warning::
 
