@@ -52,16 +52,16 @@ def _generate_per_block_split_indices(
     Returns:
         Per block split indices indicates each input block's split point(s).
     """
+    # for each split index, we iterate though the currnet input block
+    # to see if the index falls into this block. if the index
+    # falls into this block, we push it back to the current block's
+    # split indices. Otherwise, we move on to the next block.
     per_block_split_indices = []
     current_input_block_id = 0
     current_block_split_indice = []
     current_block_global_offset = 0
     current_index_id = 0
 
-    # for each split index, we iterate though the current block
-    # to see if the index fall into this block. if the index
-    # fall into this block we push it back to the current block's
-    # split indices. Otherwise, we move on to next block.
     while current_index_id < len(split_indices):
         split_index = split_indices[current_index_id]
         current_block_row = num_rows_per_block[current_input_block_id]
@@ -121,9 +121,9 @@ def _split_all_blocks(
     """Split all the input blocks based on the split indices"""
     split_single_block = cached_remote_fn(_split_single_block)
 
-    all_blocks_split_results: List[
-        List[Tuple[ObjectRef[Block], BlockMetadata]]
-    ] = [None] * len(blocks_with_metadata)
+    all_blocks_split_results: List[List[Tuple[ObjectRef[Block], BlockMetadata]]] = [
+        None
+    ] * len(blocks_with_metadata)
 
     split_single_block_futures = []
 
@@ -155,13 +155,16 @@ def _split_all_blocks(
 def _generate_global_split_results(
     all_blocks_split_results: List[List[Tuple[ObjectRef[Block], BlockMetadata]]],
 ) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
-    """Merge per block's split result into final split result."""
+    """Reassemble per block's split result into final split result."""
     result_blocks = []
     result_metas = []
     current_blocks = []
     current_meta = []
     for single_block_split_result in all_blocks_split_results:
         for i, (block, meta) in enumerate(single_block_split_result):
+            # we should create a new global split whenever
+            # we encountered a new local split in the per block
+            # split result.
             if i != 0:
                 result_blocks.append(current_blocks)
                 result_metas.append(current_meta)
@@ -186,7 +189,7 @@ def _split_at_indices(
         indices: The (global) indices at which to split the blocks.
     Returns:
         The block split futures and their metadata. If an index split is empty, the
-        corresponding block split future will be None.
+        corresponding block split will be empty .
     """
 
     # We implement the split in 3 phases.
