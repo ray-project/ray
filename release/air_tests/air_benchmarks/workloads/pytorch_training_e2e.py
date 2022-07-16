@@ -105,7 +105,8 @@ def train_loop_per_worker(config):
 def main(data_size_gb: int, num_epochs=10):
     data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
     print(
-        f"Running Pytorch image model training with {data_size_gb}GB data from {data_url}"
+        "Running Pytorch image model training with "
+        f"{data_size_gb}GB data from {data_url}"
     )
     print(f"Training for {num_epochs} epochs.")
     start = time.time()
