@@ -47,11 +47,6 @@ from ray.data._internal.stage_impl import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.shuffle_and_partition import (
-    PushBasedShufflePartitionOp,
-    SimpleShufflePartitionOp,
-)
-from ray.data._internal.sort import sort_impl
 from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.table_block import VALUE_COL_NAME
@@ -61,7 +56,6 @@ from ray.data.block import (
     BatchUDF,
     Block,
     BlockAccessor,
-    BlockExecStats,
     BlockMetadata,
     BlockPartition,
     BlockPartitionMetadata,
