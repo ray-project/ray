@@ -390,6 +390,7 @@ class RND(Exploration):
         weights = convert_to_torch_tensor(weights, device=self.device)
         self._distill_predictor_net.load_state_dict(weights)
 
+    @profile
     def _postprocess_tf(self, policy, sample_batch, tf_sess):
         """Calculates the intrinsic reward and updates the parameters."""
         # tf1 static-graph: Perform session call on our loss and update ops.
@@ -436,11 +437,13 @@ class RND(Exploration):
 
             # Get the non-episodic value predictions for all observations
             # in the trajectory.
-            model_out, _ = policy.model(sample_batch)
+            #model_out, _ = policy.model(sample_batch)
             # TODO: Is this necessary? Could we instead call the whole static graph?
-            sample_batch["exploration_vf_preds"] = tf_sess.run(
-                policy.model._exploration_value_branch()
-            )
+            # sample_batch["exploration_vf_preds"] = tf_sess.run(
+            #     policy.model._exploration_value_branch()
+            # )
+            #sample_batch["exploration_vf_preds"] = policy.model._exploration_value_branch()
+            
 
             # TODO: This part can be merged together with Torch
             # Compute advantages and value targets.
