@@ -257,6 +257,28 @@
   alert: default
 
 
+- name: air_benchmark_torch_batch_prediction_gpu_1x1
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_1.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/gpu_batch_prediction.py --data-size-gb 20
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
 - name: air_benchmark_torch_mnist_cpu_4x4
   group: AIR tests
   working_dir: air_tests/air_benchmarks
