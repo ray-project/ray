@@ -1,5 +1,5 @@
 from gym.spaces import Space
-from typing import Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, overload, Union, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
@@ -11,6 +11,8 @@ from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import AlgorithmConfigDict, LocalOptimizer, ModelWeights
 
 if TYPE_CHECKING:
+    from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+    from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
     from ray.rllib.policy.policy import Policy
     from ray.rllib.utils import try_import_tf
 
@@ -215,6 +217,7 @@ class Exploration:
         pass
 
     @DeveloperAPI
+    @overload
     def extra_action_out_fn(
         self,
         policy: "Policy",
@@ -229,8 +232,49 @@ class Exploration:
 
         Args:
             policy: The `Policy` object that calls this function.
+
+        Returns:
+            Extra outputs to return in a `compute_actions_from_input_dict()`
+            call (3rd return value).
         """
         return policy.policy_extra_action_out_fn()
+
+    @DeveloperAPI
+    @overload
+    def extra_action_out_fn(
+        self,
+        input_dict: Dict[str, TensorType],
+        state_batches: List[TensorType],
+        model: "TorchModelV2",
+        action_dist: "TorchDistributionWrapper",
+        policy: "Policy",
+    ) -> Dict[str, TensorType]:
+        """May compute and initialize some extra action output fetches.
+
+        Exploration modules might need to compute some extra output during
+        action computation. Note, this function is only activated, if
+        `global_update` is set to `True`. As Torch needs different parameters
+        the function is overloaded.
+
+        Args:
+            Args:
+            input_dict: Dict of model input tensors.
+            state_batches: List of state tensors.
+            model: Reference to the model object.
+            action_dist: Torch action dist object
+                to get log-probs (e.g. for already sampled actions).
+            policy: The `Policy` object that calls this function.
+
+        Returns:
+            Extra outputs to return in a `compute_actions_from_input_dict()`
+            call (3rd return value).
+        """
+        return policy.policy_action_out_fn(
+            input_dict,
+            state_batches,
+            model,
+            action_dist,
+        )
 
     @DeveloperAPI
     def get_weights(self) -> ModelWeights:
