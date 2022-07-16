@@ -1,6 +1,6 @@
 (kuberay-ml-example)=
 
-# Examples: Machine Learning with Ray on Kubernetes
+# Example machine learning workloads
 
 :::{warning}
 This page is under construction!

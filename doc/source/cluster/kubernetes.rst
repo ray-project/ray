@@ -2,8 +2,8 @@
 
 .. _ray-k8s-deploy:
 
-Deploying with the legacy Ray Kubernetes Operator
-=================================================
+The legacy Ray Kubernetes Operator
+==================================
 
 .. note::
 
