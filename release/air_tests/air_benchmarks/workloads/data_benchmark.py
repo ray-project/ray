@@ -11,9 +11,9 @@ from ray.data.preprocessors import BatchMapper
 GiB = 1024 * 1024 * 1024
 
 
-def make_ds(size_gb: int):
+def make_ds(size_gib: int):
     # Dataset of 10KiB tensor records.
-    total_size = 1024 * 1024 * 1024 * size_gb
+    total_size = GiB * size_gib
     record_dim = 1280
     record_size = record_dim * 8
     num_records = int(total_size / record_size)
@@ -39,8 +39,6 @@ def run_ingest_bulk(dataset, num_workers, num_cpus_per_worker, placement_strateg
     )
     trainer.fit()
 
-    return {}
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -57,9 +55,9 @@ if __name__ == "__main__":
         default="PACK",
         help="Worker placement strategy.",
     )
-    parser.add_argument("--dataset-size-gb", type=int, default=200)
+    parser.add_argument("--dataset-size-gib", type=int, default=200)
     args = parser.parse_args()
-    ds = make_ds(args.dataset_size_gb)
+    ds = make_ds(args.dataset_size_gib)
 
     start = time.time()
     run_ingest_bulk(
