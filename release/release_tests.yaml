@@ -153,6 +153,31 @@
 
   alert: default
 
+
+- name: air_benchmark_data_bulk_ingest
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_20_nodes.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/data_benchmark.py --dataset-size-gib=200 --num-workers=20 --placement-strategy=SPREAD
+
+    wait_for_nodes:
+      num_nodes: 20
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 # AIR benchmarks for XGBoost CUJ
 - name: air_benchmark_xgboost_cpu_10
   group: AIR tests
