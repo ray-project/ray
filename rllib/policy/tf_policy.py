@@ -193,6 +193,7 @@ class TFPolicy(Policy):
             "not allowed! You passed in {}.".format(model)
         )
         self.model = model
+        self._sess = sess
         # Auto-update model's inference view requirements, if recurrent.
         if self.model is not None:
             self._update_model_view_requirements_from_init_state()
@@ -203,7 +204,6 @@ class TFPolicy(Policy):
             self._create_exploration(sess) if explore is not False else None
         )
 
-        self._sess = sess
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input
         self._prev_reward_input = prev_reward_input

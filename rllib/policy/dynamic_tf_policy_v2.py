@@ -85,17 +85,19 @@ class DynamicTFPolicyV2(TFPolicy):
         self._init_state_inputs(existing_inputs)
         self._init_view_requirements()
         timestep, explore = self._init_input_dict_and_dummy_batch(existing_inputs)
+
+        # Phase 1 init.
+        sess = tf1.get_default_session() or tf1.Session(
+            config=tf1.ConfigProto(**self.config["tf_session_args"])
+        )
+        self._sess = sess
+
         (
             sampled_action,
             sampled_action_logp,
             dist_inputs,
             self._policy_extra_action_fetches,
         ) = self._init_action_fetches(timestep, explore)
-
-        # Phase 1 init.
-        sess = tf1.get_default_session() or tf1.Session(
-            config=tf1.ConfigProto(**self.config["tf_session_args"])
-        )
 
         batch_divisibility_req = self.get_batch_divisibility_req()
 
