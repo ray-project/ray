@@ -194,6 +194,8 @@ def _split_at_indices(
     # We implement the split in 3 phases.
     # phase 1: calculate the per block split indices.
     blocks_with_metadata = list(blocks_with_metadata)
+    if len(blocks_with_metadata) == 0:
+        return ([], [])
     block_sizes: List[int] = _calculate_blocks_size(blocks_with_metadata)
     valid_indices = _generate_valid_indices(block_sizes, indices)
     per_block_split_indices: List[List[int]] = _generate_per_block_split_indices(

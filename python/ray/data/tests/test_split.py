@@ -11,6 +11,9 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.split import (
+    _generate_valid_indices,
+    _generate_per_block_split_indices)
 from ray.data.block import BlockAccessor
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
@@ -467,3 +470,12 @@ def test_split_hints(ray_start_regular_shared):
         ["n1", "n2", "n0"],
         [range(200, 301), range(100, 200), list(range(0, 50)) + list(range(50, 100))],
     )
+
+def test_generate_valid_indices():
+    assert [1, 2, 3] == _generate_valid_indices([10], [1, 2, 3])
+    assert [1, 2, 2] == _generate_valid_indices([1, 1], [1, 2, 3])
+
+def test_generate_per_block_split_indices():
+    assert [[1], [1, 2], [], []] == _generate_per_block_split_indices([3, 3, 3, 1], [1, 4, 5])
+    assert [[3], [], [], [1, 1]] == _generate_per_block_split_indices([3, 3, 3, 1], [3, 10, 10])
+    assert [[], [], [], []] == _generate_per_block_split_indices([3, 3, 3, 1], [])
