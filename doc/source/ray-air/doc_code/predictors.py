@@ -29,7 +29,7 @@ predictor = TensorflowPredictor.from_checkpoint(
     checkpoint, model_definition=build_model
 )
 
-data = np.array([[1], [2], [3], [4]])
+data = np.array([1, 2, 3, 4])
 predictions = predictor.predict(data)
 print(predictions)
 # [[-1.6930283]
@@ -72,7 +72,7 @@ class DummyPredictor(Predictor):
 # Create a batch predictor for this dummy predictor.
 batch_pred = BatchPredictor(Checkpoint.from_dict({"x": 0}), DummyPredictor)
 # Create a dummy dataset.
-ds = ray.data.range_tensor(1000, parallelism=4)
+ds = ray.data.range_tensor(200, parallelism=4)
 # Setup a prediction pipeline.
 pipeline = batch_pred.predict_pipelined(ds, blocks_per_window=1)
 for batch in pipeline.iter_batches():

@@ -14,6 +14,7 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
 
 
+# TODO(rliaw): Remove this once ImageFolder #24641 merges
 def convert_to_pandas(byte_item_list: List[bytes]) -> pd.DataFrame:
     """
     Convert input bytes into pandas DataFrame with image column and value of

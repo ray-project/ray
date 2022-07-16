@@ -1,3 +1,4 @@
+from typing import List
 import numpy as np
 import torch.nn as nn
 
@@ -7,7 +8,7 @@ from ray.train.torch import to_air_checkpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 
 
-def create_model(input_features):
+def create_model(input_features: int):
     return nn.Sequential(
         nn.Linear(in_features=input_features, out_features=16),
         nn.ReLU(),
@@ -19,8 +20,10 @@ def create_model(input_features):
 
 
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-dataset = dataset.drop_columns(["target"])
-num_features = len(dataset.schema().names)
+all_features: List[str] = dataset.schema().names
+all_features.remove("target")
+
+num_features = len(all_features)
 
 prep = Concatenator(dtype=np.float32)
 
@@ -30,7 +33,7 @@ checkpoint = to_air_checkpoint(model=create_model(num_features), preprocessor=pr
 
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
 
-predicted_probabilities = batch_predictor.predict(dataset)
+predicted_probabilities = batch_predictor.predict(dataset, feature_columns=all_features)
 predicted_probabilities.show()
 # {'predictions': array([1.], dtype=float32)}
 # {'predictions': array([0.], dtype=float32)}
