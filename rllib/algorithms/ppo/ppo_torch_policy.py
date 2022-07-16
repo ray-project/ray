@@ -129,7 +129,8 @@ class PPOTorchPolicy(
                     " 'kl_coeff' to zero or increasing 'entropy_coeff'. Discarding KL"
                     " loss term for this update."
                 )
-                mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
+                # TODO smorad: should we do anything besides warn? Could discard KL term
+                # for this update
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
