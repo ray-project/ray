@@ -93,7 +93,6 @@ def _split_single_block(
 ) -> Tuple[int, List[Tuple[ObjectRef[Block], BlockMetadata]]]:
     """Split the provided block at the given indices."""
     split_result = []
-    stats = BlockExecStats.builder()
     block_accessor = BlockAccessor.for_block(block)
     prev_index = 0
     # append one more entry at the last so we don't
@@ -101,6 +100,7 @@ def _split_single_block(
     split_indices.append(block_row)
     for index in split_indices:
         logger.debug(f"slicing block {prev_index}:{index}")
+        stats = BlockExecStats.builder()
         split_block = block_accessor.slice(prev_index, index, copy=True)
         accessor = BlockAccessor.for_block(split_block)
         split_meta = BlockMetadata(
@@ -180,7 +180,7 @@ def _generate_global_split_results(
             current_blocks.append(block)
             current_meta.append(meta)
 
-    assert len(current_blocks) > 0
+    assert len(current_blocks) > 0, ""
     result_blocks.append(current_blocks)
     result_metas.append(current_meta)
 
