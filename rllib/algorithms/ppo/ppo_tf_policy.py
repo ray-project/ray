@@ -83,7 +83,6 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             existing_model=None,
             existing_inputs=None,
         ):
-            self.should_warn_kl = False
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
