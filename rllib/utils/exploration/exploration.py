@@ -230,7 +230,7 @@ class Exploration:
         Args:
             policy: The `Policy` object that calls this function.
         """
-        return policy.extra_action_out_fn()
+        return policy.policy_extra_action_out_fn()
 
     @DeveloperAPI
     def get_weights(self) -> ModelWeights:
