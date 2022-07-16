@@ -47,6 +47,7 @@ from ray.data._internal.stage_impl import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
@@ -55,7 +56,6 @@ from ray.data.block import (
     BatchUDF,
     Block,
     BlockAccessor,
-    BlockExecStats,
     BlockMetadata,
     BlockPartition,
     BlockPartitionMetadata,
@@ -1203,16 +1203,25 @@ class Dataset(Generic[T]):
             raise ValueError("indices must be sorted")
         if indices[0] < 0:
             raise ValueError("indices must be positive")
-
-        rest = self
+        start_time = time.perf_counter()
+        blocks_with_metadata = self._plan.execute().get_blocks_with_metadata()
+        blocks, metadata = _split_at_indices(blocks_with_metadata, indices)
+        split_duration = time.perf_counter() - start_time
+        parent_stats = self._plan.stats()
         splits = []
-        prev = 0
-        for i in indices:
-            first, rest = rest._split(i - prev, return_right_half=True)
-            prev = i
-            splits.append(first)
-        splits.append(rest)
-
+        for bs, ms in zip(blocks, metadata):
+            stats = DatasetStats(stages={"split": ms}, parent=parent_stats)
+            stats.time_total_s = split_duration
+            splits.append(
+                Dataset(
+                    ExecutionPlan(
+                        BlockList(bs, ms),
+                        stats,
+                    ),
+                    self._epoch,
+                    self._lazy,
+                )
+            )
         return splits
 
     def split_proportionately(self, proportions: List[float]) -> List["Dataset[T]"]:
@@ -3278,41 +3287,12 @@ class Dataset(Generic[T]):
         self, index: int, return_right_half: bool
     ) -> ("Dataset[T]", "Dataset[T]"):
         start_time = time.perf_counter()
-        get_num_rows = cached_remote_fn(_get_num_rows)
-        split_block = cached_remote_fn(_split_block, num_returns=4)
-
-        count = 0
-        left_blocks = []
-        left_metadata = []
-        right_blocks = []
-        right_metadata = []
-        it = self._plan.execute().get_blocks_with_metadata()
-        for b, m in it:
-            if m.num_rows is None:
-                num_rows = ray.get(get_num_rows.remote(b))
-            else:
-                num_rows = m.num_rows
-            if count >= index:
-                if not return_right_half:
-                    break
-                right_blocks.append(b)
-                right_metadata.append(m)
-            elif count + num_rows < index:
-                left_blocks.append(b)
-                left_metadata.append(m)
-            elif count + num_rows == index:
-                left_blocks.append(b)
-                left_metadata.append(m)
-            else:
-                b0, m0, b1, m1 = split_block.remote(
-                    b, m, index - count, return_right_half
-                )
-                left_blocks.append(b0)
-                left_metadata.append(ray.get(m0))
-                right_blocks.append(b1)
-                right_metadata.append(ray.get(m1))
-            count += num_rows
-
+        blocks_with_metadata = self._plan.execute().get_blocks_with_metadata()
+        left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
+            blocks_with_metadata,
+            index,
+            return_right_half,
+        )
         split_duration = time.perf_counter() - start_time
         left_meta_for_stats = [
             BlockMetadata(
@@ -3528,11 +3508,6 @@ class Dataset(Generic[T]):
             )
 
 
-def _get_num_rows(block: Block) -> int:
-    block = BlockAccessor.for_block(block)
-    return block.num_rows()
-
-
 def _get_size_bytes(block: Block) -> int:
     block = BlockAccessor.for_block(block)
     return block.size_bytes()
@@ -3579,37 +3554,6 @@ def _sliding_window(iterable: Iterable, n: int):
     for elem in it:
         window.append(elem)
         yield tuple(window)
-
-
-def _split_block(
-    block: Block, meta: BlockMetadata, count: int, return_right_half: bool
-) -> (Block, BlockMetadata, Optional[Block], Optional[BlockMetadata]):
-    stats = BlockExecStats.builder()
-    block = BlockAccessor.for_block(block)
-    logger.debug("Truncating last block to size: {}".format(count))
-    b0 = block.slice(0, count, copy=True)
-    a0 = BlockAccessor.for_block(b0)
-    m0 = BlockMetadata(
-        num_rows=a0.num_rows(),
-        size_bytes=a0.size_bytes(),
-        schema=meta.schema,
-        input_files=meta.input_files,
-        exec_stats=stats.build(),
-    )
-    if return_right_half:
-        b1 = block.slice(count, block.num_rows(), copy=True)
-        a1 = BlockAccessor.for_block(b1)
-        m1 = BlockMetadata(
-            num_rows=a1.num_rows(),
-            size_bytes=a1.size_bytes(),
-            schema=meta.schema,
-            input_files=meta.input_files,
-            exec_stats=stats.build(),
-        )
-    else:
-        b1 = None
-        m1 = None
-    return b0, m0, b1, m1
 
 
 def _do_write(
