@@ -1,7 +1,10 @@
+(kuberay-quickstart)=
+
 # Quickstart
 
-Step-by-step guide for running an example cluster on KinD or minikube.
-Examples of all of the modes for interacting with a Ray cluster (kubectl, job submission, Ray client).
+:::{warning}
+This page is under construction!
+:::
 
 Here we describe how you can deploy an autoscaling Ray cluster on KubeRay. The following instructions are for
 Minikube but the deployment works the same way on a real Kubernetes cluster. You need to have at

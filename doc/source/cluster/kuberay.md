@@ -1,3 +1,5 @@
+(kuberay-index)=
+
 # Deploying with KubeRay
 
 ```{admonition} What is Kuberay?
