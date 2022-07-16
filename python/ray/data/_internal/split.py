@@ -54,25 +54,29 @@ def _generate_per_block_split_indices(
     """
     per_block_split_indices = []
     current_input_block_id = 0
-    current_block_split_index = []
-    offset = 0
+    current_block_split_indice = []
+    current_block_global_offset = 0
     current_index_id = 0
 
+    # for each split index, we iterate though the current block
+    # to see if the index fall into this block. if the index
+    # fall into this block we push it back to the current block's
+    # split indices. Otherwise, we move on to next block.
     while current_index_id < len(split_indices):
         split_index = split_indices[current_index_id]
         current_block_size = num_rows_per_block[current_input_block_id]
-        if split_index - offset <= current_block_size:
-            current_block_split_index.append(split_index - offset)
+        if split_index - current_block_global_offset <= current_block_size:
+            current_block_split_indice.append(split_index - current_block_global_offset)
             current_index_id += 1
             continue
-        per_block_split_indices.append(current_block_split_index)
-        current_block_split_index = []
-        offset += num_rows_per_block[current_input_block_id]
+        per_block_split_indices.append(current_block_split_indice)
+        current_block_split_indice = []
+        current_block_global_offset += num_rows_per_block[current_input_block_id]
         current_input_block_id += 1
 
     while len(per_block_split_indices) < len(num_rows_per_block):
-        per_block_split_indices.append(current_block_split_index)
-        current_block_split_index = []
+        per_block_split_indices.append(current_block_split_indice)
+        current_block_split_indice = []
     return per_block_split_indices
 
 
