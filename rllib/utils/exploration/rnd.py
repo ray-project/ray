@@ -385,7 +385,7 @@ class RND(Exploration):
                 k: v.cpu().detach().numpy()
                 for k, v in self._distill_predictor_net.state_dict().items()
             }
-        else: 
+        else:
             return self._optimizer_var_list.get_weights()
 
     @override(Exploration)
@@ -395,22 +395,19 @@ class RND(Exploration):
             self._distill_predictor_net.load_state_dict(weights)
         else:
             self._optimizer_var_list.set_weights(weights)
-        
-    # TODO: Add typing    
+
+    # TODO: Add typing
     @override(Exploration)
     def extra_action_out_fn(self, policy):
         extra_action_out = super().extra_action_out_fn(policy)
-            
+
         if isinstance(self.model, tf.keras.Model):
             return extra_action_out
 
         extra_action_out.update(
-            {
-                "exploration_vf_preds": self.model._exploration_value_branch()
-            }
+            {"exploration_vf_preds": self.model._exploration_value_branch()}
         )
         return extra_action_out
-        
 
     def _postprocess_tf(self, policy, sample_batch, tf_sess):
         """Calculates the intrinsic reward and updates the parameters."""
