@@ -1,8 +1,9 @@
 from typing import Any, Dict, List
 
 import ray
-from ray._raylet_py import ObjectRef
 
+# Import directly from ray._raylet to avoid circular imports
+from ray._raylet import ObjectRef
 
 def get_object_locations(
     obj_refs: List[ObjectRef], timeout_ms: int = -1
