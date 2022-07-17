@@ -151,3 +151,74 @@ my_trainer = TorchTrainer(
 )
 my_trainer.fit()
 # __config_5_end__
+
+# __global_shuffling_start__
+import ray
+from ray import train
+from ray.data import Dataset
+from ray.train.torch import TorchTrainer
+from ray.air.config import DatasetConfig
+
+
+def train_loop_per_worker():
+    data_shard: Dataset = train.get_dataset_shard("train")
+
+    # Iterate over 10 epochs of data.
+    for epoch in range(10):
+        for batch in data_shard.iter_batches():
+            print("Do some training on batch", batch)
+
+    # View the stats for performance debugging.
+    print(data_shard.stats())
+
+
+my_trainer = TorchTrainer(
+    train_loop_per_worker,
+    scaling_config={"num_workers": 2},
+    datasets={"train": ray.data.range_tensor(1000)},
+    dataset_config={
+        "train": DatasetConfig(global_shuffle=True),
+    },
+)
+print(my_trainer.get_dataset_config())
+# -> {'train': DatasetConfig(fit=True, split=True, global_shuffle=True, ...)}
+my_trainer.fit()
+# __global_shuffling_end__
+
+# __local_shuffling_start__
+import ray
+from ray import train
+from ray.data import Dataset
+from ray.train.torch import TorchTrainer
+from ray.air.config import DatasetConfig
+
+
+def train_loop_per_worker():
+    data_shard: Dataset = train.get_dataset_shard("train")
+
+    # Iterate over 10 epochs of data.
+    for epoch in range(10):
+        for batch in data_shard.iter_batches(
+            batch_size=10_000,
+            local_shuffle_buffer_size=100_000,
+        ):
+            print("Do some training on batch", batch)
+
+    # View the stats for performance debugging.
+    print(data_shard.stats())
+
+
+my_trainer = TorchTrainer(
+    train_loop_per_worker,
+    scaling_config={"num_workers": 2},
+    datasets={"train": ray.data.range_tensor(1000)},
+    dataset_config={
+        # global_shuffle is disabled by default, but we're emphasizing here that you
+        # would NOT want to use both global and local shuffling together.
+        "train": DatasetConfig(global_shuffle=False),
+    },
+)
+print(my_trainer.get_dataset_config())
+# -> {'train': DatasetConfig(fit=True, split=True, global_shuffle=False, ...)}
+my_trainer.fit()
+# __local_shuffling_end__

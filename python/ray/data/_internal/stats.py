@@ -185,6 +185,7 @@ class DatasetStats:
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
+        self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
@@ -259,12 +260,14 @@ class DatasetStats:
         if (
             self.iter_total_s.get()
             or self.iter_wait_s.get()
+            or self.iter_next_batch_s.get()
             or self.iter_format_batch_s.get()
             or self.iter_get_s.get()
         ):
             out += "\nDataset iterator time breakdown:\n"
             out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
+            out += "* In next_batch(): {}\n".format(fmt(self.iter_next_batch_s.get()))
             out += "* In format_batch(): {}\n".format(
                 fmt(self.iter_format_batch_s.get())
             )
@@ -377,6 +380,7 @@ class DatasetPipelineStats:
         self.iter_ds_wait_s: Timer = Timer()
         self.iter_wait_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
+        self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
@@ -393,6 +397,7 @@ class DatasetPipelineStats:
         if (
             self.iter_total_s.get()
             or self.iter_wait_s.get()
+            or self.iter_next_batch_s.get()
             or self.iter_format_batch_s.get()
             or self.iter_get_s.get()
         ):
@@ -402,6 +407,7 @@ class DatasetPipelineStats:
             )
             out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
+            out += "* In next_batch(): {}\n".format(fmt(self.iter_next_batch_s.get()))
             out += "* In format_batch(): {}\n".format(
                 fmt(self.iter_format_batch_s.get())
             )

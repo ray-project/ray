@@ -157,6 +157,51 @@ See the following examples for clarification:
         :start-after: __config_5__
         :end-before: __config_5_end__
 
+Shuffling Data
+~~~~~~~~~~~~~~
+
+AIR offers several options for per-epoch shuffling, including *local
+(per-shard) shuffling*  and *global (whole-dataset) shuffling*.
+
+.. tabbed:: Local Shuffling
+
+    Local shuffling is an in-iterator shuffle that fills a trainer-local in-memory shuffle
+    buffer with records and then pops random samples as batches, keeping the buffer above a
+    user-provided threshold to ensure samples are mixed throughout the entirety of the
+    trainer's shard. This local shuffle doesn't mix samples across trainer shards between
+    epochs as the global shuffle does, and will therefore be a lower-quality shuffle;
+    however, since this shuffle only involves a local in-memory buffer, it is much less
+    expensive.
+
+    For configuring the size of the in-memory shuffle buffer, it is recommended to
+    allocate as large of a buffer as the trainer's CPU memory constraints will allow;
+    note that the ceiling of the CPU memory usage on a given node will be
+    ``(# of trainers on node) * max(memory used by prefetching, memory used by shuffle
+    buffer)``, where the aggressiveness of the prefetching is controlled by the
+    ``prefetch_blocks`` argument. See
+    :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` for details.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __local_shuffling_start__
+        :end-before: __local_shuffling_end__
+
+.. tabbed:: Global Shuffling
+
+    Global shuffling provides more uniformly random (decorrelated) samples and is carried
+    out via a distributed map-reduce operation. This higher quality shuffle can often lead
+    to more precision gain per training step, but it is also an expensive distributed
+    operation and will decrease the ingest throughput. As long as the shuffled ingest
+    throughput matches or exceeds the model training (forward pass, backward pass, gradient sync)
+    throughput, this higher-quality shuffle shouldn't slow down the overall training.
+
+    If global shuffling *is* causing the ingest throughput to become the training
+    bottleneck, local shuffling may be a better option.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __global_shuffling_start__
+        :end-before: __global_shuffling_end__
 
 Ingest and Ray Tune
 -------------------
