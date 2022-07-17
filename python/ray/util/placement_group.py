@@ -148,21 +148,13 @@ def placement_group(
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.
-        _max_cpu_fraction_per_node: THIS FEATURE IS EXPERIMENTAL
-            The maximum fraction of CPU cores this placement group can take
-            up on each node. This must be a float between 0 and 1.
-            If provided, the placement group won't take up more than
-            _max_cpu_fraction_per_node * node["num_cpus"] CPU cores on each node. This
-            is useful for ensuring that some percentage of CPU cores are available on
-            each node for workloads that aren't using this placement group.
-            NOTE: When the _max_cpu_fraction_per_node * node["num_cpus"] < 1,
-            it can reserve up to 1 CPU.
-            NOTE: The fraction is applied per node, not per placement group.
-            For example, if there are 2 placement groups each of which has
-            the fraction 0.5, it doesn't mean 2 placement groups can take
-            the whole CPUs. If there are 2 placement groups with bundles {CPU: 4},
-            _max_cpu_fraction_per_node=0.5 and there is a node with 8 CPUs,
-            only one placement group can be scheduled on this node.
+        _max_cpu_fraction_per_node: (Experimental) The max fraction of CPUs this
+            placement group can take up on *per node*, in [0.0, 1.0]. This prevents
+            placement groups from fully occupying node resources. Note that when
+            `max_cpu_fraction_per_node < 1.0`, at least 1 CPU will be excluded from
+            placement group scheduling. Warning: this feature is experimental and is
+            not recommended for use with autoscaling clusters (scale-up will not
+            trigger properly).
 
     Raises:
         ValueError if bundle type is not a list.
