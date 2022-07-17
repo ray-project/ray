@@ -133,10 +133,14 @@ class ScalingConfigDataClass:
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
+        if self._max_cpu_fraction_per_node is not None:
+            kwargs = {
+                "_max_cpu_fraction_per_node": self._max_cpu_fraction_per_node,
+            }
+        else:
+            kwargs = {}
         return PlacementGroupFactory(
-            bundles,
-            strategy=self.placement_strategy,
-            _max_cpu_fraction_per_node=self._max_cpu_fraction_per_node,
+            bundles, strategy=self.placement_strategy, **kwargs
         )
 
     @classmethod
