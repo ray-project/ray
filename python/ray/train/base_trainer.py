@@ -137,7 +137,6 @@ class BaseTrainer(abc.ABC):
 
     _scaling_config_allowed_keys: List[str] = [
         "trainer_resources",
-        "placement_strategy",
         "_max_cpu_fraction_per_node",
     ]
 
