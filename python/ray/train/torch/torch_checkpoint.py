@@ -5,10 +5,13 @@ from ray.air.checkpoint import Checkpoint
 
 class TorchCheckpoint(Checkpoint):
 
+    def __init__(self, checkpoint: Checkpoint):
+        self._clone_storage_from(checkpoint)
+
     @staticmethod
     def from_torch_model(
         model: torch.nn.Module, *, preprocessor: Optional["Preprocessor"] = None
-    ) -> Checkpoint:
+    ) -> TorchCheckpoint:
         """Create a Torch trainer checkpoint from a torch module.
 
         Args:
@@ -19,7 +22,7 @@ class TorchCheckpoint(Checkpoint):
         Returns:
             A checkpoint that can be loaded by TorchPredictor.
         """
-        checkpoint = Checkpoint.from_dict(
+        checkpoint = TorchCheckpoint.from_dict(
             {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model}
         )
         return checkpoint
