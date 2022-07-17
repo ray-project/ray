@@ -144,14 +144,11 @@ See :ref:`Execution and Memory Management <data_advanced>` for more details abou
 Resource Allocation Model
 -------------------------
 
-Unlike other libraries in Ray's ML ecosystem, such as Tune and Train, Datasets does not
-natively use placement groups to allocate resources for Datasets workloads (tasks and
-actor pools). Instead, Datasets makes plain CPU/GPU resource requests to the cluster,
-and in order to not compete with Tune/Train for resources within those library's
-placement groups, Datasets **escapes placement groups by default**. Any Datasets
-tasks launched from within a placement group will be executed outside of that placement
-group by default. This can be thought of as Datasets requesting resources from the
-margins of the cluster, outside of those ML library placement groups.
+Unlike libraries like Tune and Train, Datasets does not use placement groups to allocate
+resources for execution (its tasks and actor pools). Instead, Datasets makes plain
+CPU/GPU resource requests to the cluster, *ignoring placement groups by default*. This
+can be thought of as Datasets requesting resources from the margins of the cluster,
+outside of those ML library placement groups.
 
 To avoid hangs or CPU starvation of Datasets when used with Tune or Train, you can
 exclude a fraction of CPUs from placement group scheduling, using the
