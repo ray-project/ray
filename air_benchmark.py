@@ -116,7 +116,10 @@ def run_infer_bulk(
                 del df["__value__"]
             else:
                 df["image"] = TensorArray(
-                    [preprocess(image.to_numpy()) for image in df["image"]]
+                    [
+                        preprocess(Image.fromarray(image.to_numpy()))
+                        for image in df["image"]
+                    ]
                 )
             return df
 
