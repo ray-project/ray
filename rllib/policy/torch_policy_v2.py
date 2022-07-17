@@ -448,11 +448,9 @@ class TorchPolicyV2(Policy):
         self.loss = loss.__get__(self, type(self))
 
         # Add additional extra action output fetches.
-        self.policy_extra_action_out_fn = self.extra_action_out_fn.__get__(
-            self, type(self)
-        )
+        self.policy_extra_action_out = self.extra_action_out.__get__(self, type(self))
 
-        def extra_action_out_fn(
+        def extra_action_out(
             self,
             input_dict: Dict[str, TensorType],
             state_batches: List[TensorType],
@@ -460,7 +458,7 @@ class TorchPolicyV2(Policy):
             action_dist: TorchDistributionWrapper,
         ) -> Dict[str, TensorType]:
 
-            return self.exploration.extra_action_out_fn(
+            return self.exploration.extra_action_out(
                 input_dict=input_dict,
                 state_batches=state_batches,
                 model=model,
@@ -468,7 +466,7 @@ class TorchPolicyV2(Policy):
                 policy=self,
             )
 
-        self.extra_action_out_fn = extra_action_out_fn.__get__(self, type(self))
+        self.extra_action_out = extra_action_out.__get__(self, type(self))
 
     def _init_model_and_dist_class(self):
         if is_overridden(self.make_model) and is_overridden(

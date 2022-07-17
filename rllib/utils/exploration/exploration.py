@@ -1,5 +1,5 @@
 from gym.spaces import Space
-from typing import Dict, List, Optional, overload, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
@@ -217,13 +217,14 @@ class Exploration:
         pass
 
     @DeveloperAPI
-    @overload
     def extra_action_out_fn(
         self,
         policy: "Policy",
     ) -> Dict[str, TensorType]:
         """May compute and initialize some extra action output fetches.
 
+        This function is explicitly for TensorFlow. See `extra_action_out()`
+        above for the equivalent for PyTorch.
         Exploration modules might need to compute some extra output during
         action computation. This is especially important when using TensorFlow
         with a static graph as values can be initialized, placeholders created
@@ -240,8 +241,7 @@ class Exploration:
         return policy.policy_extra_action_out_fn()
 
     @DeveloperAPI
-    @overload
-    def extra_action_out_fn(
+    def extra_action_out(
         self,
         input_dict: Dict[str, TensorType],
         state_batches: List[TensorType],
@@ -251,6 +251,8 @@ class Exploration:
     ) -> Dict[str, TensorType]:
         """May compute and initialize some extra action output fetches.
 
+        This function is explicitly for PyTorch. See `extra_action_out_fn()`
+        above for the equivalent for TensorFlow.
         Exploration modules might need to compute some extra output during
         action computation. Note, this function is only activated, if
         `global_update` is set to `True`. As Torch needs different parameters
@@ -269,7 +271,7 @@ class Exploration:
             Extra outputs to return in a `compute_actions_from_input_dict()`
             call (3rd return value).
         """
-        return policy.policy_action_out_fn(
+        return policy.policy_action_out(
             input_dict,
             state_batches,
             model,
