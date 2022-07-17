@@ -194,6 +194,7 @@ class RND(Exploration):
                 )
                 # Add a corresponding value_function() such that the cached
                 # values can be used.
+
                 def _exploration_value_function(model) -> TensorType:
                     assert model._features is not None, "must call forward() first"
                     if model._value_branch_separate:
@@ -229,6 +230,7 @@ class RND(Exploration):
                     outputs=model.base_model.output + [exploration_value_out],
                 )
                 # Redefine the `forward()` function to use the expanded model.
+
                 def forward(
                     model,
                     input_dict: Dict[str, TensorType],
@@ -246,6 +248,7 @@ class RND(Exploration):
                 model.forward = forward.__get__(model, type(model))
                 # Add also a new function to receive explicitly the values
                 # of the non-episodic returns.
+
                 def _exploration_value_branch(model) -> TensorType:
                     return tf.reshape(model._exploration_value_out, [-1])
 
@@ -257,6 +260,7 @@ class RND(Exploration):
                 self._sess = tf_sess
                 # Define a value function for single input and include it into
                 # the static graph, if existent.
+
                 @make_tf_callable(self._sess)
                 def _value_function(**input_dict):
                     input_dict = SampleBatch(input_dict)
@@ -672,6 +676,7 @@ class RND(Exploration):
         )
         # Add a corresponding value_function() such that the cached
         # values can be used.
+
         def _exploration_value_function(model) -> TensorType:
             assert model._features is not None, "must call forward() first"
             if model._value_branch_separate:
