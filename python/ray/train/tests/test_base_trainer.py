@@ -10,6 +10,7 @@ import pytest
 import ray
 from ray import tune
 from ray.data.preprocessor import Preprocessor
+from ray.train import base_trainer
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
@@ -169,7 +170,7 @@ def test_reserved_cpus(ray_start_4_cpus):
     def train_loop(self):
         ray.data.range(10).show()
 
-    # Will deadlock without reserved CPU fractin.
+    # Will deadlock without reserved CPU fraction.
     scale_config = {"num_workers": 1, "_max_cpu_fraction_per_node": 0.9}
     trainer = DummyTrainer(
         train_loop,
@@ -186,6 +187,51 @@ def test_reserved_cpus(ray_start_4_cpus):
 #        scaling_config=scale_config,
 #    )
 #    tune.run(trainer.as_trainable(), num_samples=4)
+
+
+def test_reserved_cpu_warnings(ray_start_4_cpus):
+    def train_loop(self):
+        pass
+
+    class MockLogger:
+        def __init__(self):
+            self.warnings = []
+
+        def warning(self, msg):
+            self.warnings.append(msg)
+
+        def info(self, msg):
+            print(msg)
+
+    try:
+        old = base_trainer.logger
+        base_trainer.logger = MockLogger()
+
+        # Fraction correctly specified.
+        DummyTrainer(
+            train_loop,
+            scaling_config={"num_workers": 1, "_max_cpu_fraction_per_node": 0.9},
+            datasets={"train": ray.data.range(10)},
+        )
+        assert not base_trainer.logger.warnings
+
+        # No datasets, no fraction.
+        DummyTrainer(
+            train_loop,
+            scaling_config={"num_workers": 1},
+        )
+        assert not base_trainer.logger.warnings
+
+        # Should warn.
+        DummyTrainer(
+            train_loop,
+            scaling_config={"num_workers": 1},
+            datasets={"train": ray.data.range(10)},
+        )
+        assert len(base_trainer.logger.warnings) == 1, base_trainer.logger.warnings
+        assert "_max_cpu_fraction_per_node" in base_trainer.logger.warnings[0]
+    finally:
+        base_trainer.logger = old
 
 
 def test_setup(ray_start_4_cpus):
