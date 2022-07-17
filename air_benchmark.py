@@ -22,6 +22,10 @@ def dummy_predict(data: "pd.DataFrame") -> "pd.DataFrame":
     return pd.DataFrame({"label": [42] * len(data)})
 
 
+def trivial_predict(data: "pd.DataFrame") -> "pd.DataFrame":
+    return pd.DataFrame({"label": [42] * len(data)})
+
+
 def make_ds(size_gb: int):
     # Dataset of 10KiB tensor records.
     total_size = 1024 * 1024 * 1024 * size_gb
@@ -79,10 +83,12 @@ def run_infer_bulk(
     window_size_gb=10,
     images=False,
     use_gpu=False,
+    trivial=False,
 ):
     start = time.time()
 
     if images:
+        assert not trivial
         from PIL import Image
         from torchvision import transforms
         from torchvision.models import resnet18
@@ -127,7 +133,10 @@ def run_infer_bulk(
             return batch * 2
 
         dummy_prep = BatchMapper(fn)
-        predictor = BatchPredictor.from_pandas_udf(dummy_predict)
+        if trivial:
+            predictor = BatchPredictor.from_pandas_udf(trivial_predict)
+        else:
+            predictor = BatchPredictor.from_pandas_udf(dummy_predict)
         predictor.set_preprocessor(dummy_prep)
 
     if stream:
@@ -157,7 +166,7 @@ def run_infer_bulk(
     print("Total runtime", time.time() - start)
 
 
-def run_infer_streaming(dataset, num_workers, window_size_gb, images, use_gpu):
+def run_infer_streaming(dataset, num_workers, window_size_gb, images, use_gpu, trivial):
     def post(result):
         for b in result.iter_batches():
             pass
@@ -170,6 +179,7 @@ def run_infer_streaming(dataset, num_workers, window_size_gb, images, use_gpu):
         window_size_gb=window_size_gb,
         images=images,
         use_gpu=use_gpu,
+        trivial=trivial,
     )
 
 
@@ -182,6 +192,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset-size-gb", type=float, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
     parser.add_argument("--use-gpu", action="store_true", default=False)
+    parser.add_argument("--trivial", action="store_true", default=False)
     parser.add_argument("--window-size-gb", type=float, default=10)
     parser.add_argument("--s3-data", type=str, default="")
     parser.add_argument("--s3-images", type=str, default="")
@@ -206,6 +217,7 @@ if __name__ == "__main__":
                 args.window_size_gb,
                 images=args.benchmark == "infer_images",
                 use_gpu=args.use_gpu,
+                trivial=args.trivial,
             )
         else:
             run_infer_bulk(
@@ -213,6 +225,7 @@ if __name__ == "__main__":
                 args.num_workers,
                 images=args.benchmark == "infer_images",
                 use_gpu=args.use_gpu,
+                trivial=args.trivial,
             )
     else:
         assert False
