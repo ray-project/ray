@@ -169,7 +169,7 @@ Example: Datasets in Tune
 
 Here's an example of how you can configure Datasets to run within Tune trials, which
 is the typical case of when you'd encounter placement groups with Datasets. Two
-scenarios are shown: running outside the trial group using spare resources, and running within the trial placement group.
+scenarios are shown: running outside the trial group using spare resources, and running with reserved resources.
 
 .. tabbed:: Using Spare Cluster Resources
 
