@@ -6,7 +6,8 @@ import ray
 from ray.air import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
-from ray.data import Preprocessor, BatchMapper
+from ray.data import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -82,8 +83,8 @@ class BatchPredictor:
         batch_size: int = 4096,
         min_scoring_workers: int = 1,
         max_scoring_workers: Optional[int] = None,
-        num_cpus_per_worker: int = 1,
-        num_gpus_per_worker: int = 0,
+        num_cpus_per_worker: Optional[int] = None,
+        num_gpus_per_worker: Optional[int] = None,
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
@@ -148,6 +149,13 @@ class BatchPredictor:
             Dataset containing scoring results.
 
         """
+        if num_gpus_per_worker is None:
+            num_gpus_per_worker = 0
+        if num_cpus_per_worker is None:
+            if num_gpus_per_worker > 0:
+                num_cpus_per_worker = 0
+            else:
+                num_cpus_per_worker = 1
         predictor_cls = self._predictor_cls
         checkpoint_ref = self._checkpoint_ref
         predictor_kwargs = self._predictor_kwargs
@@ -218,8 +226,8 @@ class BatchPredictor:
         batch_size: int = 4096,
         min_scoring_workers: int = 1,
         max_scoring_workers: Optional[int] = None,
-        num_cpus_per_worker: int = 1,
-        num_gpus_per_worker: int = 0,
+        num_cpus_per_worker: Optional[int] = None,
+        num_gpus_per_worker: Optional[int] = None,
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
