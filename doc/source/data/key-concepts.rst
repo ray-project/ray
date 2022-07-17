@@ -178,7 +178,8 @@ scenarios are shown: running outside the trial group using spare resources, and 
 
     The ``_max_cpu_fraction_per_node`` option can be used to exclude CPUs from placement
     group scheduling. In the below example, setting this parameter to ``0.8`` enables Tune
-    trials to run smoothly without risk of deadlock.
+    trials to run smoothly without risk of deadlock by reserving 20% of node CPUs for
+    Dataset execution.
 
     .. warning::
 
