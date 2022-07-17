@@ -1335,6 +1335,7 @@ class StandardAutoscaler:
         Returns:
             AutoscalerSummary: The summary.
         """
+        # For type checking, assert that this object has been instantitiated.
         assert self.provider
 
         if not self.non_terminated_nodes:
