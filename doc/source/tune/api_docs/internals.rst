@@ -37,7 +37,7 @@ Callbacks
 PlacementGroupFactory
 ---------------------
 
-.. autoclass:: ray.tune.utils.placement_groups.PlacementGroupFactory
+.. autoclass:: ray.tune.execution.placement_groups.PlacementGroupFactory
 
 
 

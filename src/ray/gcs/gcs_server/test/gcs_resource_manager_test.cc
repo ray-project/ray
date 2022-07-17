@@ -29,7 +29,7 @@ class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest() {
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, nullptr, cluster_resource_manager_, NodeID::FromRandom());
+        io_service_, cluster_resource_manager_, NodeID::FromRandom());
   }
 
   instrumented_io_context io_service_;

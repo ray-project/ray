@@ -7,7 +7,8 @@ Requires the ZOOpt library to be installed (`pip install zoopt`).
 import time
 
 from ray import tune
-from ray.tune.suggest.zoopt import ZOOptSearch
+from ray.air import session
+from ray.tune.search.zoopt import ZOOptSearch
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
@@ -24,7 +25,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        session.report({"iterations": step, "mean_loss": intermediate_score})
 
 
 if __name__ == "__main__":

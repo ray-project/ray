@@ -1,17 +1,22 @@
-import os
 import asyncio
 import logging
+import os
 import random
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import ray
-
-import ray.dashboard.utils as dashboard_utils
 import ray._private.usage.usage_lib as ray_usage_lib
-
+import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.utils import async_loop_forever
+from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.dashboard.consts import env_integer
 
 logger = logging.getLogger(__name__)
+
+
+def gcs_query_timeout():
+    return env_integer("GCS_QUERY_TIMEOUT_DEFAULT", 10)
 
 
 class UsageStatsHead(dashboard_utils.DashboardHeadModule):
@@ -34,6 +39,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         self.total_failed = 0
         # The seq number of report. It increments whenever a new report is sent.
         self.seq_no = 0
+        self._state_api_data_source_client = None
 
     if ray._private.utils.check_dashboard_dependencies_installed():
         import aiohttp
@@ -49,7 +55,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
             )
 
-    def _report_usage_sync(self):
+    def _report_usage_sync(self, total_num_nodes: Optional[int]):
         """
         - Always write usage_stats.json regardless of report success/failure.
         - If report fails, the error message should be written to usage_stats.json
@@ -66,6 +72,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 self.total_success,
                 self.total_failed,
                 self.seq_no,
+                total_num_nodes,
             )
 
             error = None
@@ -94,7 +101,19 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
-            await loop.run_in_executor(executor, self._report_usage_sync)
+            # Find the number of nodes.
+            total_num_nodes = None
+            try:
+                result = await self._state_api_data_source_client.get_all_node_info(
+                    timeout=gcs_query_timeout()
+                )
+                total_num_nodes = len(result.node_info_list)
+            except Exception as e:
+                logger.info(f"Faile to query number of nodes in the cluster: {e}")
+
+            await loop.run_in_executor(
+                executor, lambda: self._report_usage_sync(total_num_nodes)
+            )
 
     @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())
     async def periodically_report_usage(self):
@@ -106,6 +125,8 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             return
         else:
             logger.info("Usage reporting is enabled.")
+            gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
+            self._state_api_data_source_client = StateDataSourceClient(gcs_channel)
             # Wait for 1 minutes to send the first report
             # so autoscaler has the chance to set DEBUG_AUTOSCALING_STATUS.
             await asyncio.sleep(min(60, ray_usage_lib._usage_stats_report_interval_s()))

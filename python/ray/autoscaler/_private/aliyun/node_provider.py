@@ -1,31 +1,29 @@
+import logging
 import random
 import threading
-from collections import defaultdict
-import logging
 import time
+from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
+from ray.autoscaler._private.aliyun.config import (
+    PENDING,
+    RUNNING,
+    STOPPED,
+    STOPPING,
+    bootstrap_aliyun,
+)
+from ray.autoscaler._private.aliyun.utils import AcsClient
+from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
+from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
-    TAG_RAY_NODE_NAME,
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE,
+    TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
-)
-from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
-from ray.autoscaler._private.log_timer import LogTimer
-
-from ray.autoscaler._private.cli_logger import cli_logger
-
-from ray.autoscaler._private.aliyun.utils import AcsClient
-from ray.autoscaler._private.aliyun.config import (
-    PENDING,
-    STOPPED,
-    STOPPING,
-    RUNNING,
-    bootstrap_aliyun,
+    TAG_RAY_USER_NODE_TYPE,
 )
 
 logger = logging.getLogger(__name__)

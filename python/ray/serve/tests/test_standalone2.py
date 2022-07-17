@@ -1,24 +1,25 @@
-from contextlib import contextmanager
-import sys
 import os
-import time
 import subprocess
+import sys
+import time
+from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
-import requests
 from typing import Dict
 
 import pytest
-from ray.cluster_utils import AutoscalingCluster
-from ray.exceptions import RayActorError
+import requests
 
 import ray
-import ray.state
+import ray._private.state
 from ray import serve
-from ray.serve.context import get_global_client
-from ray.serve.schema import ServeApplicationSchema
+from ray._private.test_utils import wait_for_condition
+from ray.cluster_utils import AutoscalingCluster
+from ray.exceptions import RayActorError
 from ray.serve.client import ServeControllerClient
 from ray.serve.common import ApplicationStatus
-from ray._private.test_utils import wait_for_condition
+from ray.serve.constants import SERVE_NAMESPACE
+from ray.serve.context import get_global_client
+from ray.serve.schema import ServeApplicationSchema
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -78,115 +79,69 @@ def test_memory_omitted_option(ray_shutdown):
         return "world"
 
     ray.init(num_gpus=3, namespace="serve")
-    serve.start()
-    hello.deploy()
+    serve.run(hello.bind())
 
     assert ray.get(hello.get_handle().remote()) == "world"
 
 
 @pytest.mark.parametrize("detached", [True, False])
-def test_override_namespace(shutdown_ray, detached):
-    """Test the _override_controller_namespace flag in serve.start()."""
+@pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
+def test_serve_namespace(shutdown_ray, detached, ray_namespace):
+    """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
-    ray_namespace = "ray_namespace"
-    controller_namespace = "controller_namespace"
-
-    ray.init(namespace=ray_namespace)
-    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
-
-    controller_name = get_global_client()._controller_name
-    ray.get_actor(controller_name, namespace=controller_namespace)
-
-    serve.shutdown()
-
-
-@pytest.mark.parametrize("detached", [True, False])
-def test_deploy_with_overriden_namespace(shutdown_ray, detached):
-    """Test deployments with overriden namespace."""
-
-    ray_namespace = "ray_namespace"
-    controller_namespace = "controller_namespace"
-
-    ray.init(namespace=ray_namespace)
-    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
-
-    for iteration in range(2):
+    with ray.init(namespace=ray_namespace):
 
         @serve.deployment
         def f(*args):
-            return f"{iteration}"
+            return "got f"
 
-        f.deploy()
-        assert requests.get("http://localhost:8000/f").text == f"{iteration}"
+        serve.run(f.bind())
 
-    serve.shutdown()
+        actors = ray.util.list_named_actors(all_namespaces=True)
 
+        assert len(actors) == 3
+        assert all(actor["namespace"] == SERVE_NAMESPACE for actor in actors)
+        assert requests.get("http://localhost:8000/f").text == "got f"
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_update_num_replicas_anonymous_namespace(shutdown_ray, detached):
-    """Test updating num_replicas with anonymous namespace."""
-
-    ray.init()
-    serve.start(detached=detached)
-
-    @serve.deployment(num_replicas=1)
-    def f(*args):
-        return "got f"
-
-    f.deploy()
-
-    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
-
-    for _ in range(5):
-        f.deploy()
-        assert num_actors == len(ray.util.list_named_actors(all_namespaces=True))
-
-    serve.shutdown()
+        serve.shutdown()
 
 
 @pytest.mark.parametrize("detached", [True, False])
-def test_update_num_replicas_with_overriden_namespace(shutdown_ray, detached):
-    """Test updating num_replicas with overriden namespace."""
+def test_update_num_replicas(shutdown_ray, detached):
+    """Test updating num_replicas."""
 
-    ray_namespace = "ray_namespace"
-    controller_namespace = "controller_namespace"
+    with ray.init():
 
-    ray.init(namespace=ray_namespace)
-    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+        @serve.deployment(num_replicas=2)
+        def f(*args):
+            return "got f"
 
-    @serve.deployment(num_replicas=2)
-    def f(*args):
-        return "got f"
+        serve.run(f.bind())
 
-    f.deploy()
+        actors = ray.util.list_named_actors(all_namespaces=True)
 
-    actors = ray.util.list_named_actors(all_namespaces=True)
+        serve.run(f.options(num_replicas=4).bind())
+        updated_actors = ray.util.list_named_actors(all_namespaces=True)
 
-    f.options(num_replicas=4).deploy()
-    updated_actors = ray.util.list_named_actors(all_namespaces=True)
+        # Check that only 2 new replicas were created
+        assert len(updated_actors) == len(actors) + 2
 
-    # Check that only 2 new replicas were created
-    assert len(updated_actors) == len(actors) + 2
+        serve.run(f.options(num_replicas=1).bind())
+        updated_actors = ray.util.list_named_actors(all_namespaces=True)
 
-    f.options(num_replicas=1).deploy()
-    updated_actors = ray.util.list_named_actors(all_namespaces=True)
+        # Check that all but 1 replica has spun down
+        assert len(updated_actors) == len(actors) - 1
 
-    # Check that all but 1 replica has spun down
-    assert len(updated_actors) == len(actors) - 1
-
-    serve.shutdown()
+        serve.shutdown()
 
 
 @pytest.mark.parametrize("detached", [True, False])
 def test_refresh_controller_after_death(shutdown_ray, detached):
     """Check if serve.start() refreshes the controller handle if it's dead."""
 
-    ray_namespace = "ray_namespace"
-    controller_namespace = "controller_namespace"
-
-    ray.init(namespace=ray_namespace)
+    ray.init(namespace="ray_namespace")
     serve.shutdown()  # Ensure serve isn't running before beginning the test
-    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+    serve.start(detached=detached)
 
     old_handle = get_global_client()._controller
     ray.kill(old_handle, no_restart=True)
@@ -201,7 +156,7 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
     wait_for_condition(controller_died, handle=old_handle, timeout=15)
 
     # Call start again to refresh handle
-    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+    serve.start(detached=detached)
 
     new_handle = get_global_client()._controller
     assert new_handle is not old_handle
@@ -216,14 +171,14 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
 def test_get_serve_status(shutdown_ray):
 
     ray.init()
-    client = serve.start()
 
     @serve.deployment
     def f(*args):
         return "Hello world"
 
-    f.deploy()
+    serve.run(f.bind())
 
+    client = get_global_client()
     status_info_1 = client.get_serve_status()
     assert status_info_1.app_status.status == "RUNNING"
     assert status_info_1.deployment_statuses[0].name == "f"
@@ -240,8 +195,8 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
-        from ray.serve.api import build
         from ray._private.utils import import_attr
+        from ray.serve.api import build
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
@@ -252,7 +207,7 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
             app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
 
         # Run the graph locally on the cluster
-        serve.start(detached=True, _override_controller_namespace="serve")
+        serve.start(detached=True)
         serve.run(graph)
 
     # Start Serve controller in a directory without access to the graph code
@@ -293,8 +248,9 @@ def test_controller_deserialization_args_and_kwargs():
         pass
 
     def generate_pid_based_deserializer(pid, raw_deserializer):
+        """Cannot be deserialized by the process with specified pid."""
+
         def deserializer(*args):
-            """Cannot be deserialized by the process with specified pid."""
 
             import os
 
@@ -318,7 +274,7 @@ def test_controller_deserialization_args_and_kwargs():
         def __call__(self, request):
             return self.arg_str + self.kwarg_str
 
-    Echo.deploy(PidBasedString("hello "), kwarg_str=PidBasedString("world!"))
+    serve.run(Echo.bind(PidBasedString("hello "), kwarg_str=PidBasedString("world!")))
 
     assert requests.get("http://localhost:8000/Echo").text == "hello world!"
 
@@ -527,7 +483,7 @@ class TestDeployApp:
             "runtime_env": {
                 "working_dir": (
                     "https://github.com/ray-project/test_dag/archive/"
-                    "cc246509ba3c9371f8450f74fdc18018428630bd.zip"
+                    "76a741f6de31df78411b1f302071cde46f098418.zip"
                 )
             },
         }
@@ -556,6 +512,50 @@ class TestDeployApp:
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
             == "3 pizzas please!"
         )
+
+    def test_controller_recover_and_deploy(self, client: ServeControllerClient):
+        """Ensure that in-progress deploy can finish even after controller dies."""
+
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        client.deploy_app(config)
+
+        # Wait for app to deploy
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "9 pizzas please!"
+        )
+        deployment_timestamp = client.get_serve_status().app_status.deployment_timestamp
+
+        # Delete all deployments, but don't update config
+        client.delete_deployments(
+            ["Router", "Multiplier", "Adder", "create_order", "DAGDriver"]
+        )
+
+        ray.kill(client._controller, no_restart=False)
+
+        # When controller restarts, it should redeploy config automatically
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "9 pizzas please!"
+        )
+        assert (
+            deployment_timestamp
+            == client.get_serve_status().app_status.deployment_timestamp
+        )
+
+        serve.shutdown()
+        client = serve.start(detached=True)
+
+        # Ensure config checkpoint has been deleted
+        assert client.get_serve_status().app_status.deployment_timestamp == 0
 
 
 def test_controller_recover_and_delete():
@@ -612,7 +612,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         "def f(*args):\n"
         '   return "got f"\n'
         "\n"
-        "f.deploy()\n"
+        "serve.run(f.bind())\n"
     )
 
     shutdown_serve_script = (
@@ -678,7 +678,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     assert ray.get(a.ready.remote()) == 1
 
     # 2 proxies, 1 controller, and one placeholder.
-    wait_for_condition(lambda: len(ray.state.actors()) == 4)
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 4)
     assert len(ray.nodes()) == 2
 
     # Now make sure the placeholder actor exits.
@@ -686,7 +686,12 @@ def test_autoscaler_shutdown_node_http_everynode(
     # The http proxy on worker node should exit as well.
     wait_for_condition(
         lambda: len(
-            list(filter(lambda a: a["State"] == "ALIVE", ray.state.actors().values()))
+            list(
+                filter(
+                    lambda a: a["State"] == "ALIVE",
+                    ray._private.state.actors().values(),
+                )
+            )
         )
         == 2
     )

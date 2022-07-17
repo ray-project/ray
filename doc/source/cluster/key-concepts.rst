@@ -87,7 +87,7 @@ and managing a Ray application. To learn more about Ray jobs, refer to the
 Cloud clusters
 --------------
 
-If you’re using AWS, Azure, GCP or Aliyun, you can use the
+If you’re using AWS, GCP, Azure (community-maintained) or Aliyun (community-maintained), you can use the
 :ref:`Ray cluster launcher<cluster-launcher>` to launch cloud clusters, which
 greatly simplifies the cluster setup process.
 

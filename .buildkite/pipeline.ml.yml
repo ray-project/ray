@@ -5,6 +5,7 @@
     - DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu,-needs_credentials python/ray/air/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-gpu_only,-gpu,-needs_credentials python/ray/train/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air python/ray/data/...
 
 - label: ":brain: RLlib: Learning discr. actions TF2-static-graph"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
@@ -122,24 +123,24 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: Trainer Tests (generic)"
+- label: ":brain: RLlib: Algorithm Tests (generic)"
   conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
-    # Test all tests in the `agents` (soon to be "trainers") dir:
+    # Test all tests in the `algorithms` dir:
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=algorithms_dir_generic,-multi_gpu
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: Trainer Tests (specific algos)"
+- label: ":brain: RLlib: Algorithm Tests (specific algos)"
   conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
-    # Test all tests in the `agents` (soon to be "trainers") dir:
+    # Test all tests in the `algorithms` dir:
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=algorithms_dir,-algorithms_dir_generic,-multi_gpu
@@ -352,7 +353,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/data/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-ray_air python/ray/data/...
 
 - label: ":potable_water: Workflow tests (Python 3.7)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -370,15 +371,15 @@
 
 - label: ":book: Doc tests and examples (excluding Ray AIR examples)"
   conditions:
-    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED"]
+    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - DOC_TESTING=1 INSTALL_HOROVOD=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-ray_air,-gpu,-py37,-post_wheel_build doc/...
 
 - label: ":book: :airplane: Ray AIR examples"
   conditions:
-    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED"]
+    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh

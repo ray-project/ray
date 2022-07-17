@@ -34,13 +34,6 @@ except (ImportError, ModuleNotFoundError):
 
 from ray import logger
 
-# We keep these constants for legacy compatibility with Tune's sync client
-# After Tune fully moved to using pyarrow.fs we can remove these.
-S3_PREFIX = "s3://"
-GS_PREFIX = "gs://"
-HDFS_PREFIX = "hdfs://"
-ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
-
 
 def _assert_pyarrow_installed():
     if pyarrow is None:
@@ -77,11 +70,7 @@ def is_non_local_path_uri(uri: str) -> bool:
 
     if bool(get_fs_and_path(uri)[0]):
         return True
-    # Keep manual check for prefixes for backwards compatibility with the
-    # TrialCheckpoint class. Remove once fully deprecated.
-    # Deprecated: Remove in Ray > 1.13
-    if any(uri.startswith(p) for p in ALLOWED_REMOTE_PREFIXES):
-        return True
+
     return False
 
 
@@ -108,7 +97,7 @@ def get_fs_and_path(
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
         _cached_fs[cache_key] = fs
         return fs, path
-    except pyarrow.lib.ArrowInvalid:
+    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
         if not fsspec:
             # Only return if fsspec is not installed
@@ -207,8 +196,8 @@ def _upload_to_uri_with_exclude(
             if _should_exclude(candidate):
                 continue
 
-            full_source_path = os.path.join(local_path, candidate)
-            full_target_path = os.path.join(bucket_path, candidate)
+            full_source_path = os.path.normpath(os.path.join(local_path, candidate))
+            full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
 
             pyarrow.fs.copy_files(
                 full_source_path, full_target_path, destination_filesystem=fs

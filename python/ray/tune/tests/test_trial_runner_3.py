@@ -6,25 +6,24 @@ import shutil
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.search import BasicVariantGenerator
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
-from ray.tune.suggest.repeater import Repeater
-from ray.tune.suggest._mock import _MockSuggestionAlgorithm
-from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
-from ray.tune.suggest.search_generator import SearchGenerator
-from ray.tune.syncer import SyncConfig
+from ray.tune.search.repeater import Repeater
+from ray.tune.search._mock import _MockSuggestionAlgorithm
+from ray.tune.search import Searcher, ConcurrencyLimiter
+from ray.tune.search.search_generator import SearchGenerator
+from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
 
 
@@ -748,19 +747,37 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 2)
 
-    @patch("ray.tune.syncer.SYNC_PERIOD", 0)
     def testCheckpointAutoPeriod(self):
         ray.init(num_cpus=3)
 
         # This makes checkpointing take 2 seconds.
-        def sync_up(source, target, exclude=None):
-            time.sleep(2)
-            return True
+
+        class CustomSyncer(Syncer):
+            def __init__(self, sync_period: float = 300.0):
+                super(CustomSyncer, self).__init__(sync_period=sync_period)
+                self._sync_status = {}
+
+            def sync_up(
+                self, local_dir: str, remote_dir: str, exclude: list = None
+            ) -> bool:
+                time.sleep(2)
+                return True
+
+            def sync_down(
+                self, remote_dir: str, local_dir: str, exclude: list = None
+            ) -> bool:
+                time.sleep(2)
+                return True
+
+            def delete(self, remote_dir: str) -> bool:
+                pass
 
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             checkpoint_period="auto",
-            sync_config=SyncConfig(upload_dir="fake", syncer=sync_up),
+            sync_config=SyncConfig(
+                upload_dir="fake", syncer=CustomSyncer(), sync_period=0
+            ),
             remote_checkpoint_dir="fake",
         )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))

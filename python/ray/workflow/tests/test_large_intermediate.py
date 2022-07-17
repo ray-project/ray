@@ -27,7 +27,7 @@ def test_simple_large_intermediate(workflow_start_regular_shared):
         return workflow.continuation(average.bind(y))
 
     start = time.time()
-    outputs = workflow.create(simple_large_intermediate.bind()).run()
+    outputs = workflow.run(simple_large_intermediate.bind())
     print(f"duration = {time.time() - start}")
     assert np.isclose(outputs, 8388607.5)
 

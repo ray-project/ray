@@ -35,7 +35,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.rllib.agents import ppo
+from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.look_and_push import LookAndPush, OneHot
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
@@ -170,10 +170,10 @@ if __name__ == "__main__":
             raise ValueError("Only support --run PPO with --no-tune.")
         ppo_config = ppo.DEFAULT_CONFIG.copy()
         ppo_config.update(config)
-        trainer = ppo.PPO(config=ppo_config, env=args.env)
+        algo = ppo.PPO(config=ppo_config, env=args.env)
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
-            result = trainer.train()
+            result = algo.train()
             print(pretty_print(result))
             # stop training if the target train steps or reward are reached
             if (
@@ -201,7 +201,7 @@ if __name__ == "__main__":
             # run one iteration until done
             print(f"RepeatAfterMeEnv with {config['env_config']}")
             while not done:
-                action, state_out, _ = trainer.compute_single_action(obs, state)
+                action, state_out, _ = algo.compute_single_action(obs, state)
                 next_obs, reward, done, _ = env.step(action)
                 print(f"Obs: {obs}, Action: {action}, Reward: {reward}")
                 obs = next_obs
@@ -212,7 +212,7 @@ if __name__ == "__main__":
                 ]
             print(f"Total reward in test episode: {total_reward}")
 
-    # Run with Tune for auto env and trainer creation and TensorBoard.
+    # Run with Tune for auto env and algorithm creation and TensorBoard.
     else:
         results = tune.run(args.run, config=config, stop=stop, verbose=2)
 

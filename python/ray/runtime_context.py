@@ -1,5 +1,6 @@
-import ray.worker
 import logging
+
+import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import PublicAPI
@@ -7,7 +8,7 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class RuntimeContext(object):
     """A class used for getting runtime context."""
 
@@ -26,7 +27,7 @@ class RuntimeContext(object):
             "node_id": self.node_id,
             "namespace": self.namespace,
         }
-        if self.worker.mode == ray.worker.WORKER_MODE:
+        if self.worker.mode == ray._private.worker.WORKER_MODE:
             if self.task_id is not None:
                 context["task_id"] = self.task_id
             if self.actor_id is not None:
@@ -92,7 +93,7 @@ class RuntimeContext(object):
         """
         # only worker mode has actor_id
         assert (
-            self.worker.mode == ray.worker.WORKER_MODE
+            self.worker.mode == ray._private.worker.WORKER_MODE
         ), f"This method is only available when the process is a\
                  worker. Current mode: {self.worker.mode}"
         task_id = self.worker.current_task_id
@@ -110,7 +111,7 @@ class RuntimeContext(object):
         """
         # only worker mode has actor_id
         assert (
-            self.worker.mode == ray.worker.WORKER_MODE
+            self.worker.mode == ray._private.worker.WORKER_MODE
         ), f"This method is only available when the process is a\
                  worker. Current mode: {self.worker.mode}"
         actor_id = self.worker.actor_id
@@ -135,7 +136,7 @@ class RuntimeContext(object):
         assert (
             not self.actor_id.is_nil()
         ), "This method should't be called inside Ray tasks."
-        actor_info = ray.state.actors(self.actor_id.hex())
+        actor_info = ray._private.state.actors(self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
     @property
@@ -191,6 +192,15 @@ class RuntimeContext(object):
         worker.check_connected()
         return worker.core_worker.get_actor_handle(self.actor_id)
 
+    @property
+    def gcs_address(self):
+        """Get the GCS address of the ray cluster.
+        Returns:
+            The GCS address of the cluster.
+        """
+        self.worker.check_connected()
+        return self.worker.gcs_client.address
+
     def _get_actor_call_stats(self):
         """Get the current worker's task counters.
 
@@ -207,7 +217,7 @@ class RuntimeContext(object):
 _runtime_context = None
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 @client_mode_hook(auto_init=False)
 def get_runtime_context():
     """Get the runtime context of the current driver/worker.
@@ -223,6 +233,6 @@ def get_runtime_context():
     """
     global _runtime_context
     if _runtime_context is None:
-        _runtime_context = RuntimeContext(ray.worker.global_worker)
+        _runtime_context = RuntimeContext(ray._private.worker.global_worker)
 
     return _runtime_context

@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
@@ -65,16 +65,16 @@ class MyCallbacks(DefaultCallbacks):
             optim_lr = policy._optimizer.lr.numpy()
         assert lr == optim_lr, "LR scheduling error!"
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs):
+    def on_train_result(self, *, algorithm, result: dict, **kwargs):
         stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
         # Learning rate should go to 0 after 1 iter.
-        check(stats["cur_lr"], 5e-5 if trainer.iteration == 1 else 0.0)
+        check(stats["cur_lr"], 5e-5 if algorithm.iteration == 1 else 0.0)
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
-        check(stats["entropy_coeff"], 0.1 if trainer.iteration == 1 else 0.05)
+        check(stats["entropy_coeff"], 0.1 if algorithm.iteration == 1 else 0.05)
 
-        trainer.workers.foreach_policy(
+        algorithm.workers.foreach_policy(
             self._check_lr_torch
-            if trainer.config["framework"] == "torch"
+            if algorithm.config["framework"] == "torch"
             else self._check_lr_tf
         )
 
@@ -264,7 +264,7 @@ class TestPPO(unittest.TestCase):
         ppo_config = ppo.DEFAULT_CONFIG
         # Expect warning.
         print(f"Accessing learning-rate from legacy config dict: {ppo_config['lr']}")
-        # Build Trainer.
+        # Build Algorithm.
         ppo_trainer = ppo.PPO(config=ppo_config, env="CartPole-v1")
         print(ppo_trainer.train())
 

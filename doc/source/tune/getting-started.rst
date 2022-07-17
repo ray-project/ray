@@ -63,7 +63,7 @@ Below, we define a function that trains the Pytorch model for multiple epochs.
 This function will be executed on a separate :ref:`Ray Actor (process) <actor-guide>` underneath the hood,
 so we need to communicate the performance of the model back to Tune (which is on the main Python process).
 
-To do this, we call :ref:`tune.report <tune-function-docstring>` in our training function,
+To do this, we call :ref:`session.report <tune-function-docstring>` in our training function,
 which sends the performance value back to Tune. Since the function is executed on the separate process,
 make sure that the function is :ref:`serializable by Ray <serialization-guide>`.
 

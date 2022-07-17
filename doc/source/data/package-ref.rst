@@ -12,6 +12,7 @@ Creating Datasets
 .. autofunction:: ray.data.read_csv
 .. autofunction:: ray.data.read_json
 .. autofunction:: ray.data.read_parquet
+.. autofunction:: ray.data.read_parquet_bulk
 .. autofunction:: ray.data.read_numpy
 .. autofunction:: ray.data.read_text
 .. autofunction:: ray.data.read_binary_files
@@ -99,6 +100,8 @@ RandomAccessDataset API
 .. autoclass:: ray.data.random_access_dataset.RandomAccessDataset
     :members:
 
+.. _dataset-tensor-extension-api:
+
 Tensor Column Extension API
 ---------------------------
 
@@ -151,6 +154,8 @@ Built-in Datasources
 
 .. autoclass:: ray.data.datasource.FileBasedDatasource
     :members:
+
+.. autoclass:: ray.data.datasource.ImageFolderDatasource
 
 .. autoclass:: ray.data.datasource.JSONDatasource
     :members:

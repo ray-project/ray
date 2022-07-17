@@ -133,7 +133,7 @@ class Curiosity(Exploration):
         self.beta = beta
         self.eta = eta
         self.lr = lr
-        # TODO: (sven) if sub_exploration is None, use Trainer's default
+        # TODO: (sven) if sub_exploration is None, use Algorithm's default
         #  Exploration config.
         if sub_exploration is None:
             raise NotImplementedError

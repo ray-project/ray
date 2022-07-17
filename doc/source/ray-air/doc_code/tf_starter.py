@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_tf_preprocess_start__
 import ray
@@ -14,9 +15,9 @@ dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
 
 # __air_tf_train_start__
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
 
-import ray.train as train
+from ray.air import session
+from ray.air.callbacks.keras import Callback
 from ray.train.tensorflow import prepare_dataset_shard
 from ray.train.tensorflow import TensorflowTrainer
 
@@ -30,12 +31,6 @@ def build_model() -> tf.keras.Model:
         ]
     )
     return model
-
-
-class TrainCheckpointReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{"model": self.model.get_weights()})
-        train.report(**logs)
 
 
 def train_func(config: dict):
@@ -52,7 +47,7 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = train.get_dataset_shard("train")
+    dataset = session.get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):
@@ -66,9 +61,7 @@ def train_func(config: dict):
                 batch_size=batch_size,
             )
         )
-        history = multi_worker_model.fit(
-            tf_dataset, callbacks=[TrainCheckpointReportCallback()]
-        )
+        history = multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
         results.append(history.history)
     return results
 
@@ -91,8 +84,8 @@ print(result.metrics)
 # __air_tf_batchpred_start__
 import numpy as np
 
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.tensorflow import TensorflowPredictor
 
 
 batch_predictor = BatchPredictor.from_checkpoint(
@@ -104,7 +97,7 @@ prediction_dataset = ray.data.from_items(items)
 
 predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
 
-pandas_predictions = predictions.to_pandas(float("inf"))
+print("PREDICTIONS")
+predictions.show()
 
-print(f"PREDICTIONS\n{pandas_predictions}")
 # __air_tf_batchpred_end__

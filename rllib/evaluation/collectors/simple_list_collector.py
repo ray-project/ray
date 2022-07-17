@@ -30,7 +30,7 @@ _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 logger = logging.getLogger(__name__)
 

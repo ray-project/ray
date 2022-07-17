@@ -1,66 +1,10 @@
 # flake8: noqa
+# isort: skip_file
 
-# __shared_dataset_start__
-import ray
-from ray.air.util.check_ingest import DummyTrainer
-from ray.tune.tuner import Tuner, TuneConfig
-
-ray.init(num_cpus=5)
-
-# Generate a synthetic 100MiB tensor dataset.
-dataset = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=10)
-
-# Create an example trainer that simply loops over the data a few times.
-trainer = DummyTrainer(datasets={"train": dataset}, runtime_seconds=1)
-
-# Run the Trainer 4x in parallel with Tune.
-tuner = Tuner(
-    trainer,
-    tune_config=TuneConfig(num_samples=4),
-)
-tuner.fit()
-# __shared_dataset_end__
-
-ray.shutdown()
-
-# __indep_dataset_start__
-import ray
-from ray import tune
-from ray.air.util.check_ingest import DummyTrainer
-from ray.tune.tuner import Tuner, TuneConfig
-
-ray.init(num_cpus=5)
-
-
-def make_ds_1():
-    """Dataset creator function 1."""
-    return ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=10)
-
-
-def make_ds_2():
-    """Dataset creator function 2."""
-    return ray.data.range_tensor(50, shape=(80, 80, 4), parallelism=10)
-
-
-# Create an example trainer that simply loops over the data a few times.
-trainer = DummyTrainer(datasets={}, runtime_seconds=1)
-
-# Run the Trainer 4x in parallel with Tune.
-# Two trials will use the dataset created by `make_ds_1`, and two trials will
-# use the dataset created by `make_ds_2`.
-tuner = Tuner(
-    trainer,
-    # Instead of passing Dataset references directly, we pass functions that
-    # generate the dataset when called.
-    param_space={"datasets": {"train": tune.grid_search([make_ds_1, make_ds_2])}},
-    tune_config=TuneConfig(num_samples=2),
-)
-tuner.fit()
-# __indep_dataset_end__
 
 # __check_ingest_1__
 import ray
-from ray.air.preprocessors import Chain, BatchMapper
+from ray.data.preprocessors import Chain, BatchMapper
 from ray.air.util.check_ingest import DummyTrainer
 
 # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
@@ -81,7 +25,7 @@ trainer = DummyTrainer(
     scaling_config={"num_workers": 1, "use_gpu": False},
     datasets={"train": dataset},
     preprocessor=preprocessor,
-    runtime_seconds=1,  # Stop after this amount or time or 1 epoch is read.
+    num_epochs=1,  # Stop after this number of epochs is read.
     prefetch_blocks=1,  # Number of blocks to prefetch when reading data.
     batch_size=None,  # Use whole blocks as batches.
 )
@@ -142,7 +86,7 @@ print(my_trainer.get_dataset_config())
 
 # __config_4__
 import ray
-from ray import train
+from ray.air import session
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
@@ -150,7 +94,7 @@ from ray.air.config import DatasetConfig
 
 def train_loop_per_worker():
     # By default, bulk loading is used and returns a Dataset object.
-    data_shard: Dataset = train.get_dataset_shard("train")
+    data_shard: Dataset = session.get_dataset_shard("train")
 
     # Manually iterate over the data 10 times (10 epochs).
     for _ in range(10):
@@ -173,7 +117,7 @@ my_trainer.fit()
 
 # __config_5__
 import ray
-from ray import train
+from ray.air import session
 from ray.data import DatasetPipeline
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
@@ -181,7 +125,7 @@ from ray.air.config import DatasetConfig
 
 def train_loop_per_worker():
     # A DatasetPipeline object is returned when `use_stream_api` is set.
-    data_shard: DatasetPipeline = train.get_dataset_shard("train")
+    data_shard: DatasetPipeline = session.get_dataset_shard("train")
 
     # Use iter_epochs(10) to iterate over 10 epochs of data.
     for epoch in data_shard.iter_epochs(10):

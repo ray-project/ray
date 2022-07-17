@@ -1,15 +1,14 @@
-from typing import Callable, Optional, Dict, Tuple, Type, Union, TYPE_CHECKING
-import tensorflow as tf
+from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
 
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.trainer import GenDataset
-from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="alpha")
@@ -39,36 +38,35 @@ class TensorflowTrainer(DataParallelTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
+    shards that can then be accessed by ``session.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
+    :ref:`Ray AIR session methods <air-session-ref>` and
     :ref:`Ray Train function utils <train-api-func-utils>`.
 
     .. code-block:: python
 
         def train_loop_per_worker():
-            # Report intermediate results for callbacks or logging.
-            train.report(...)
-
-            # Checkpoints the provided args as restorable state.
-            train.save_checkpoint(...)
+            # Report intermediate results for callbacks or logging and
+            # checkpoint data.
+            session.report(...)
 
             # Returns dict of last saved checkpoint.
-            train.load_checkpoint()
+            session.get_checkpoint()
 
             # Returns the Ray Dataset shard for the given key.
-            train.get_dataset_shard("my_dataset")
+            session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            train.get_world_size()
+            session.get_world_size()
 
             # Returns the rank of this worker.
-            train.get_world_rank()
+            session.get_world_rank()
 
             # Returns the rank of the worker on the current node.
-            train.get_local_rank()
+            session.get_local_rank()
 
     You can also use any of the :ref:`TensorFlow specific function utils
     <train-api-tensorflow-utils>`.
@@ -78,12 +76,15 @@ class TensorflowTrainer(DataParallelTrainer):
         def train_loop_per_worker():
             # Turns off autosharding for a dataset.
             # You should use this if you are doing
-            # `train.get_dataset_shard(...).to_tf(...)`
+            # `session.get_dataset_shard(...).to_tf(...)`
             # as the data will be already sharded.
             train.tensorflow.prepare_dataset_shard(...)
 
+    Any returns from the ``train_loop_per_worker`` will be discarded and not
+    used or persisted anywhere.
+
     To save a model to use for the ``TensorflowPredictor``, you must save it under the
-    "model" kwarg in ``train.save_checkpoint()``.
+    "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 
     Example:
 
@@ -93,9 +94,8 @@ class TensorflowTrainer(DataParallelTrainer):
 
         import ray
         from ray import train
-        from ray.train.tensorflow import prepare_dataset_shard
-
-        from ray.train.tensorflow import TensorflowTrainer
+        from ray.air import session, Checkpoint
+        from ray.train.tensorflow import prepare_dataset_shard, TensorflowTrainer
 
         input_size = 1
 
@@ -107,7 +107,7 @@ class TensorflowTrainer(DataParallelTrainer):
             )
 
         def train_loop_for_worker(config):
-            dataset_shard = train.get_dataset_shard("train")
+            dataset_shard = session.get_dataset_shard("train")
             strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
             with strategy.scope():
                 model = build_model()
@@ -126,8 +126,14 @@ class TensorflowTrainer(DataParallelTrainer):
                     )
                 )
                 model.fit(tf_dataset)
-                train.save_checkpoint(
-                    epoch=epoch, model=model.get_weights())
+                # You can also use ray.air.callbacks.keras.Callback
+                # for reporting and checkpointing instead of reporting manually.
+                session.report(
+                    {},
+                    checkpoint=Checkpoint.from_dict(
+                        dict(epoch=epoch, model=model.get_weights())
+                    ),
+                )
 
         train_dataset = ray.data.from_items(
             [{"x": x, "y": x + 1} for x in range(32)])
@@ -153,7 +159,7 @@ class TensorflowTrainer(DataParallelTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
@@ -185,27 +191,3 @@ class TensorflowTrainer(DataParallelTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
-
-
-def load_checkpoint(
-    checkpoint: Checkpoint,
-    model: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model], tf.keras.Model],
-) -> Tuple[tf.keras.Model, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``TensorflowTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the model and
-            preprocessor from. It is expected to be from the result of a
-            ``TensorflowTrainer`` run.
-        model: A callable that returns a TensorFlow Keras model
-            to use, or an instantiated model.
-            Model weights will be loaded from the checkpoint.
-
-    Returns:
-        The model with set weights and AIR preprocessor contained within.
-    """
-    model_weights, preprocessor = _load_checkpoint(checkpoint, "TensorflowTrainer")
-    if isinstance(model, type) or callable(model):
-        model = model()
-    model.set_weights(model_weights)
-    return model, preprocessor

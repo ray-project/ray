@@ -30,23 +30,150 @@
 # - Miscellaneous small bug fixes and optimizations.
 
 import numbers
-from typing import Sequence, Any, Union, Tuple, Optional, Callable
+import os
+from distutils.version import LooseVersion
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 from pandas._typing import Dtype
 from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
+from pandas.core.indexers import check_array_indexer, validate_indices
+from pandas.io.formats.format import ExtensionArrayFormatter
+
+from ray.util.annotations import PublicAPI
 
 try:
     from pandas.core.dtypes.generic import ABCIndex
 except ImportError:
     # ABCIndexClass changed to ABCIndex in Pandas 1.3
     from pandas.core.dtypes.generic import ABCIndexClass as ABCIndex
-from pandas.core.indexers import check_array_indexer, validate_indices
-import pyarrow as pa
 
-from ray.util.annotations import PublicAPI
+
+#############################################
+# Begin patching of ExtensionArrayFormatter #
+#############################################
+
+
+def _format_strings_patched(self) -> List[str]:
+    from pandas.core.construction import extract_array
+    from pandas.io.formats.format import format_array
+
+    if not isinstance(self.values, TensorArray):
+        return self._format_strings_orig()
+
+    values = extract_array(self.values, extract_numpy=True)
+    array = np.asarray(values)
+
+    if array.ndim == 1:
+        return self._format_strings_orig()
+
+    def format_array_wrap(array_, formatter_):
+        fmt_values = format_array(
+            array_,
+            formatter_,
+            float_format=self.float_format,
+            na_rep=self.na_rep,
+            digits=self.digits,
+            space=self.space,
+            justify=self.justify,
+            decimal=self.decimal,
+            leading_space=self.leading_space,
+            quoting=self.quoting,
+        )
+        return fmt_values
+
+    flat_formatter = self.formatter
+    if flat_formatter is None:
+        flat_formatter = values._formatter(boxed=True)
+
+    # Flatten array, call function, reshape (use ravel_compat in v1.3.0)
+    flat_array = array.ravel("K")
+    fmt_flat_array = np.asarray(format_array_wrap(flat_array, flat_formatter))
+    order = "F" if array.flags.f_contiguous else "C"
+    fmt_array = fmt_flat_array.reshape(array.shape, order=order)
+
+    # Format the array of nested strings, use default formatter
+    return format_array_wrap(fmt_array, None)
+
+
+def _format_strings_patched_v1_0_0(self) -> List[str]:
+    from functools import partial
+
+    from pandas.core.construction import extract_array
+    from pandas.io.formats.format import format_array
+    from pandas.io.formats.printing import pprint_thing
+
+    if not isinstance(self.values, TensorArray):
+        return self._format_strings_orig()
+
+    values = extract_array(self.values, extract_numpy=True)
+    array = np.asarray(values)
+
+    if array.ndim == 1:
+        return self._format_strings_orig()
+
+    def format_array_wrap(array_, formatter_):
+        fmt_values = format_array(
+            array_,
+            formatter_,
+            float_format=self.float_format,
+            na_rep=self.na_rep,
+            digits=self.digits,
+            space=self.space,
+            justify=self.justify,
+            decimal=self.decimal,
+            leading_space=self.leading_space,
+        )
+        return fmt_values
+
+    flat_formatter = self.formatter
+    if flat_formatter is None:
+        flat_formatter = values._formatter(boxed=True)
+
+    # Flatten array, call function, reshape (use ravel_compat in v1.3.0)
+    flat_array = array.ravel("K")
+    fmt_flat_array = np.asarray(format_array_wrap(flat_array, flat_formatter))
+    order = "F" if array.flags.f_contiguous else "C"
+    fmt_array = fmt_flat_array.reshape(array.shape, order=order)
+
+    # Slimmed down version of GenericArrayFormatter due to:
+    # https://github.com/pandas-dev/pandas/issues/33770
+    def format_strings_slim(array_, leading_space):
+        formatter = partial(
+            pprint_thing,
+            escape_chars=("\t", "\r", "\n"),
+        )
+
+        def _format(x):
+            return str(formatter(x))
+
+        fmt_values = []
+        for v in array_:
+            tpl = "{v}" if leading_space is False else " {v}"
+            fmt_values.append(tpl.format(v=_format(v)))
+        return fmt_values
+
+    return format_strings_slim(fmt_array, self.leading_space)
+
+
+_FORMATTER_ENABLED_ENV_VAR = "TENSOR_COLUMN_EXTENSION_FORMATTER_ENABLED"
+
+if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
+    ExtensionArrayFormatter._format_strings_orig = (
+        ExtensionArrayFormatter._format_strings
+    )
+    if LooseVersion("1.1.0") <= LooseVersion(pd.__version__) < LooseVersion("1.3.0"):
+        ExtensionArrayFormatter._format_strings = _format_strings_patched
+    else:
+        ExtensionArrayFormatter._format_strings = _format_strings_patched_v1_0_0
+    ExtensionArrayFormatter._patched_by_ray_datasets = True
+
+###########################################
+# End patching of ExtensionArrayFormatter #
+###########################################
 
 
 @PublicAPI(stability="beta")
@@ -316,7 +443,31 @@ class TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
         return cls._create_method(op)
 
 
-class TensorArrayElement(TensorOpsMixin):
+class TensorScalarCastMixin:
+    """
+    Mixin for casting scalar tensors to a particular numeric type.
+    """
+
+    def _scalarfunc(self, func: Callable[[Any], Any]):
+        return func(self._tensor)
+
+    def __complex__(self):
+        return self._scalarfunc(complex)
+
+    def __float__(self):
+        return self._scalarfunc(float)
+
+    def __int__(self):
+        return self._scalarfunc(int)
+
+    def __hex__(self):
+        return self._scalarfunc(hex)
+
+    def __oct__(self):
+        return self._scalarfunc(oct)
+
+
+class TensorArrayElement(TensorOpsMixin, TensorScalarCastMixin):
     """
     Single element of a TensorArray, wrapping an underlying ndarray.
     """
@@ -336,18 +487,54 @@ class TensorArrayElement(TensorOpsMixin):
     def __str__(self):
         return self._tensor.__str__()
 
+    @property
+    def numpy_dtype(self):
+        """
+        Get the dtype of the tensor.
+        :return: The numpy dtype of the backing ndarray
+        """
+        return self._tensor.dtype
+
+    @property
+    def numpy_ndim(self):
+        """
+        Get the number of tensor dimensions.
+        :return: integer for the number of dimensions
+        """
+        return self._tensor.ndim
+
+    @property
+    def numpy_shape(self):
+        """
+        Get the shape of the tensor.
+        :return: A tuple of integers for the numpy shape of the backing ndarray
+        """
+        return self._tensor.shape
+
+    @property
+    def numpy_size(self):
+        """
+        Get the size of the tensor.
+        :return: integer for the number of elements in the tensor
+        """
+        return self._tensor.size
+
     def to_numpy(self):
         """
         Return the values of this element as a NumPy ndarray.
         """
         return np.asarray(self._tensor)
 
-    def __array__(self):
-        return np.asarray(self._tensor)
+    def __array__(self, dtype: np.dtype = None, **kwargs) -> np.ndarray:
+        return np.asarray(self._tensor, dtype=dtype, **kwargs)
 
 
 @PublicAPI(stability="beta")
-class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
+class TensorArray(
+    pd.api.extensions.ExtensionArray,
+    TensorOpsMixin,
+    TensorScalarCastMixin,
+):
     """
     Pandas `ExtensionArray` representing a tensor column, i.e. a column
     consisting of ndarrays as elements. All tensors in a column must have the
@@ -891,8 +1078,8 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         except KeyError:
             raise NotImplementedError(f"'{name}' aggregate not implemented.") from None
 
-    def __array__(self, dtype: np.dtype = None):
-        return np.asarray(self._tensor, dtype=dtype)
+    def __array__(self, dtype: np.dtype = None, **kwargs) -> np.ndarray:
+        return np.asarray(self._tensor, dtype=dtype, **kwargs)
 
     def __array_ufunc__(self, ufunc: Callable, method: str, *inputs, **kwargs):
         """
@@ -988,6 +1175,14 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         :return: A tuple of integers for the numpy shape of the backing ndarray
         """
         return self._tensor.shape
+
+    @property
+    def numpy_size(self):
+        """
+        Get the size of the tensor.
+        :return: integer for the number of elements in the tensor
+        """
+        return self._tensor.size
 
     @property
     def _is_boolean(self):

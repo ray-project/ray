@@ -71,9 +71,9 @@ class TestModels(unittest.TestCase):
             },
             "num_workers": 0,
         }
-        trainer = ppo.PPO(config=config)
+        algo = ppo.PPO(config=config)
         for _ in range(2):
-            results = trainer.train()
+            results = algo.train()
             print(results)
 
 

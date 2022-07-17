@@ -11,7 +11,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -90,8 +90,8 @@ if __name__ == "__main__":
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_last_checkpoint()
     # Create new Trainer and restore its state from the last checkpoint.
-    trainer = get_trainer_class(args.run)(config=config)
-    trainer.restore(checkpoint)
+    algo = get_algorithm_class(args.run)(config=config)
+    algo.restore(checkpoint)
 
     # Create the env to do inference in.
     env = gym.make("FrozenLake-v1")
@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
     while num_episodes < args.num_episodes_during_inference:
         # Compute an action (`a`).
-        a = trainer.compute_single_action(
+        a = algo.compute_single_action(
             observation=obs,
             explore=args.explore_during_inference,
             policy_id="default_policy",  # <- default value

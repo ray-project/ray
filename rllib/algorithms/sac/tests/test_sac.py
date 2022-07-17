@@ -246,7 +246,7 @@ class TestSAC(unittest.TestCase):
         for fw, sess in framework_iterator(
             config, frameworks=("tf", "torch"), session=True
         ):
-            # Generate Trainer and get its default Policy object.
+            # Generate Algorithm and get its default Policy object.
             trainer = config.build(env=env)
             policy = trainer.get_policy()
             p_sess = None

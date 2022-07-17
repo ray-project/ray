@@ -292,7 +292,7 @@ class TestCheckBaseEnv:
         with pytest.raises(
             ValueError,
             match="The element returned by step, "
-            "next_obs has values that are not"
+            "next_obs contains values that are not"
             " MultiAgentDicts",
         ):
             check_env(env)

@@ -88,9 +88,9 @@ def ray_deps_setup():
     # https://github.com/ray-project/ray/issues/14117
     http_archive(
         name = "com_google_protobuf",
-        strip_prefix = "protobuf-3.16.0",
-        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.16.0.tar.gz"],
-        sha256 = "7892a35d979304a404400a101c46ce90e85ec9e2a766a86041bb361f626247f5",
+        strip_prefix = "protobuf-3.19.4",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
+        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
     )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests

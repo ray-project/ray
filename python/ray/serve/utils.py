@@ -1,33 +1,31 @@
-from functools import wraps
+import copy
 import importlib
-from itertools import groupby
 import inspect
+import os
 import pickle
 import random
 import string
 import time
-from typing import Iterable, List, Dict, Tuple
-import os
-import copy
 import traceback
 from enum import Enum
-import __main__
-from ray.actor import ActorHandle
+from functools import wraps
+from typing import Dict, Iterable, List, Tuple
 
-import requests
+import fastapi.encoders
 import numpy as np
 import pydantic
 import pydantic.json
-import fastapi.encoders
+import requests
 
 import ray
-import ray.serialization_addons
+import ray.util.serialization_addons
+from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
+from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.serve.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
-from ray.serve.constants import (
-    HTTP_PROXY_TIMEOUT,
-)
+
+import __main__
 
 try:
     import pandas as pd
@@ -147,41 +145,20 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
-def get_all_node_ids():
-    """Get IDs for all nodes in the cluster.
+def get_all_node_ids() -> List[Tuple[str, str]]:
+    """Get IDs for all live nodes in the cluster.
 
-    Handles multiple nodes on the same IP by appending an index to the
-    node_id, e.g., 'node_id-index'.
-
-    Returns a list of ('node_id-index', 'node_id') tuples (the latter can be
-    used as a resource requirement for actor placements).
+    Returns a list of (node_id: str, ip_address: str). The node_id can be
+    passed into the Ray SchedulingPolicy API.
     """
     node_ids = []
-    # We need to use the node_id and index here because we could
-    # have multiple virtual nodes on the same host. In that case
-    # they will have the same IP and therefore node_id.
-    for _, node_id_group in groupby(sorted(ray.state.node_ids())):
-        for index, node_id in enumerate(node_id_group):
-            node_ids.append(("{}-{}".format(node_id, index), node_id))
+    # Sort on NodeID to ensure the ordering is deterministic across the cluster.
+    for node in sorted(ray.nodes(), key=lambda entry: entry["NodeID"]):
+        # print(node)
+        if node["Alive"]:
+            node_ids.append((node["NodeID"], node["NodeName"]))
 
     return node_ids
-
-
-def node_id_to_ip_addr(node_id: str):
-    """Recovers the IP address for an entry from get_all_node_ids."""
-    if ":" in node_id:
-        node_id = node_id.split(":")[1]
-
-    if "-" in node_id:
-        node_id = node_id.split("-")[0]
-
-    return node_id
-
-
-def get_node_id_for_actor(actor_handle):
-    """Given an actor handle, return the node id it's placed on."""
-
-    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
 
 
 def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
@@ -241,7 +218,7 @@ def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
-    ray.serialization_addons.apply(ctx)
+    ray.util.serialization_addons.apply(ctx)
 
 
 def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
@@ -256,7 +233,7 @@ def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
 
 
 def msgpack_serialize(obj):
-    ctx = ray.worker.global_worker.get_serialization_context()
+    ctx = ray._private.worker.global_worker.get_serialization_context()
     buffer = ctx.serialize(obj)
     serialized = buffer.to_bytes()
     return serialized
@@ -430,7 +407,7 @@ def require_packages(packages: List[str]):
                 check_import_once()
                 return await func(*args, **kwargs)
 
-        elif inspect.isfunction(func):
+        elif inspect.isroutine(func):
 
             @wraps(func)
             def wrapped(*args, **kwargs):

@@ -3,11 +3,11 @@ from six.moves import queue
 import threading
 from typing import Dict, Optional
 
+from ray.util.timer import _Timer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, LEARNER_INFO
-from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.util.iter import _NextValueNotReady
 
@@ -56,10 +56,10 @@ class LearnerThread(threading.Thread):
             num_passes=num_sgd_iter,
             init_num_passes=num_sgd_iter,
         )
-        self.queue_timer = TimerStat()
-        self.grad_timer = TimerStat()
-        self.load_timer = TimerStat()
-        self.load_wait_timer = TimerStat()
+        self.queue_timer = _Timer()
+        self.grad_timer = _Timer()
+        self.load_timer = _Timer()
+        self.load_wait_timer = _Timer()
         self.daemon = True
         self.weights_updated = False
         self.learner_info = {}
@@ -98,7 +98,7 @@ class LearnerThread(threading.Thread):
         self.learner_queue_size.push(self.inqueue.qsize())
 
     def add_learner_metrics(self, result: Dict, overwrite_learner_info=True) -> Dict:
-        """Add internal metrics to a trainer result dict."""
+        """Add internal metrics to a result dict."""
 
         def timer_to_ms(timer):
             return round(1000 * timer.mean, 3)

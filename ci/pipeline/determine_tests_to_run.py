@@ -1,15 +1,13 @@
 # Script used for checking changes for incremental testing cases
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import argparse
 import json
 import os
-from pprint import pformat
 import re
 import subprocess
 import sys
+from pprint import pformat
 
 
 # NOTE(simon): do not add type hint here because it's ran using python2 in CI.
@@ -139,10 +137,12 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/train"):
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/util/ml_utils"):
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1

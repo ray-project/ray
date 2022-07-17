@@ -55,11 +55,24 @@ template <class, class = void>
 struct is_python_t : std::false_type {};
 
 template <class T>
-struct is_python_t<T, std::void_t<decltype(std::declval<T>().is_python())>>
+struct is_python_t<T, std::void_t<decltype(std::declval<T>().IsPython())>>
     : std::true_type {};
 
 template <typename T>
 auto constexpr is_python_v = is_python_t<T>::value;
+
+template <class, class = void>
+struct is_java_t : std::false_type {};
+
+template <class T>
+struct is_java_t<T, std::void_t<decltype(std::declval<T>().IsJava())>> : std::true_type {
+};
+
+template <typename T>
+auto constexpr is_java_v = is_java_t<T>::value;
+
+template <typename T>
+auto constexpr is_x_lang_v = is_java_v<T> || is_python_v<T>;
 
 }  // namespace internal
 }  // namespace ray

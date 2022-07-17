@@ -57,7 +57,7 @@ class PandasRow(TableRow):
             # Try to interpret this as a numpy-type value.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
             return item.item()
-        except AttributeError:
+        except (AttributeError, ValueError):
             # Fallback to the original form.
             return item
 
@@ -292,10 +292,16 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List["pandas.DataFrame"], key: KeyFn, aggs: Tuple[AggregateFn]
+        blocks: List["pandas.DataFrame"],
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+        finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.aggregate_combined_blocks(
-            [BlockAccessor.for_block(block).to_arrow() for block in blocks], key, aggs
+            [BlockAccessor.for_block(block).to_arrow() for block in blocks],
+            key,
+            aggs,
+            finalize,
         )
         return BlockAccessor.for_block(block).to_pandas(), metadata

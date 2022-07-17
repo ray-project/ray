@@ -26,7 +26,7 @@ class RemoteBaseEnv(BaseEnv):
 
     You shouldn't need to instantiate this class directly. It's automatically
     inserted when you use the `remote_worker_envs=True` option in your
-    Trainer's config.
+    Algorithm's config.
     """
 
     def __init__(

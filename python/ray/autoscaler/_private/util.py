@@ -1,25 +1,25 @@
 import collections
 import copy
-from dataclasses import dataclass
-from datetime import datetime
-import logging
 import hashlib
 import json
-from numbers import Number, Real
+import logging
 import os
 import re
 import threading
-from typing import Any, Dict, Optional, Tuple, List, Union
+from dataclasses import dataclass
+from datetime import datetime
+from numbers import Number, Real
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-import ray.ray_constants
+import ray._private.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
+from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
-from ray.autoscaler._private.docker import validate_docker_config
-from ray.autoscaler._private.cli_logger import cli_logger
-from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
 REQUIRED, OPTIONAL = True, False
 

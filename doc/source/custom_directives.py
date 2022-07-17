@@ -1,20 +1,21 @@
-from pathlib import Path
-import urllib
-import urllib.request
-import requests
-import mock
-import sys
-from preprocess_github_markdown import preprocess_github_markdown_file
-
-from sphinx.util import logging as sphinx_logging
 import logging
 import logging.handlers
+import sys
+import urllib
+import urllib.request
+from pathlib import Path
 from queue import Queue
-from sphinx.util.console import red  # type: ignore
+
+import requests
+import scipy.linalg  # noqa: F401
 
 # Note: the scipy import has to stay here, it's used implicitly down the line
 import scipy.stats  # noqa: F401
-import scipy.linalg  # noqa: F401
+from preprocess_github_markdown import preprocess_github_markdown_file
+from sphinx.util import logging as sphinx_logging
+from sphinx.util.console import red  # type: ignore
+
+import mock
 
 __all__ = [
     "fix_xgb_lgbm_docs",
@@ -137,32 +138,13 @@ MOCK_MODULES = [
     "scipy.stats",
     "setproctitle",
     "tensorflow_probability",
-    "tensorflow",
     "tensorflow.contrib",
     "tensorflow.contrib.all_reduce",
-    "transformers",
-    "transformers.modeling_utils",
-    "transformers.models",
-    "transformers.models.auto",
-    "transformers.pipelines",
-    "transformers.pipelines.table_question_answering",
-    "transformers.trainer",
-    "transformers.training_args",
-    "transformers.trainer_callback",
-    "transformers.utils",
-    "transformers.utils.logging",
-    "transformers.utils.versions",
-    "tree",
     "tensorflow.contrib.all_reduce.python",
     "tensorflow.contrib.layers",
     "tensorflow.contrib.rnn",
     "tensorflow.contrib.slim",
-    "tensorflow.core",
-    "tensorflow.core.util",
-    "tensorflow.keras.callbacks",
-    "tensorflow.python",
-    "tensorflow.python.client",
-    "tensorflow.python.util",
+    "tree",
     "wandb",
     "zoopt",
 ]
@@ -186,8 +168,6 @@ def mock_modules():
         sys.modules[mod_name] = mock_module
 
     sys.modules["ray._raylet"].ObjectRef = make_typing_mock("ray", "ObjectRef")
-
-    sys.modules["tensorflow"].VERSION = "9.9.9"
 
 
 # Add doc files from external repositories to be downloaded during build here
@@ -275,9 +255,11 @@ class _BrokenLinksQueue(Queue):
 
     def __init__(self, maxsize: int = 0) -> None:
         self._last_line_no = None
+        self.used = False
         super().__init__(maxsize)
 
     def put(self, item: logging.LogRecord, block=True, timeout=None):
+        self.used = True
         message = item.getMessage()
         # line nos are separate records
         if ": line" in message:
@@ -318,6 +300,9 @@ class LinkcheckSummarizer:
 
     def summarize(self, *args, **kwargs):
         """Summarizes broken links."""
+        if not self.log_queue.used:
+            return
+
         self.logger.logger.removeHandler(self.queue_handler)
 
         self.logger.info("\nBROKEN LINKS SUMMARY:\n")

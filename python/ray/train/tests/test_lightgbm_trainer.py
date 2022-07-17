@@ -9,8 +9,8 @@ from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
+from ray.data.preprocessor import Preprocessor
 from ray.train.lightgbm import LightGBMTrainer, load_checkpoint
-from ray.air.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split

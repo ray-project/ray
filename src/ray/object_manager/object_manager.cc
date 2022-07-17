@@ -65,7 +65,7 @@ ObjectManager::ObjectManager(
     AddObjectCallback add_object_callback,
     DeleteObjectCallback delete_object_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-    const std::function<void(const ObjectID &)> fail_pull_request)
+    const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -622,6 +622,9 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
   } else {
     num_chunks_received_failed_due_to_plasma_++;
     RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.message();
+    if (chunk_status.IsOutOfDisk()) {
+      pull_manager_->SetOutOfDisk(object_id);
+    }
     return false;
   }
 }

@@ -15,4 +15,4 @@ mountaincarcontinuous-apex-ddpg:
         target_network_update_freq: 50000
         tau: 1.0
         evaluation_interval: 5
-        evaluation_num_episodes: 10
+        evaluation_duration: 10

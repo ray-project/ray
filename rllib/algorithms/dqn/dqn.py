@@ -2,7 +2,7 @@
 Deep Q-Networks (DQN, Rainbow, Parametric DQN)
 ==============================================
 
-This file defines the distributed Trainer class for the Deep Q-Networks
+This file defines the distributed Algorithm class for the Deep Q-Networks
 algorithm. See `dqn_[tf|torch]_policy.py` for the definition of the policies.
 
 Detailed documentation:
@@ -32,7 +32,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.typing import (
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 class DQNConfig(SimpleQConfig):
-    """Defines a configuration class from which a DQN Trainer can be built.
+    """Defines a configuration class from which a DQN Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -115,9 +115,9 @@ class DQNConfig(SimpleQConfig):
         >>>       .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(trainer_class=trainer_class or DQN)
+        super().__init__(algo_class=algo_class or DQN)
 
         # DQN specific config settings.
         # fmt: off
@@ -248,7 +248,7 @@ class DQNConfig(SimpleQConfig):
                 zero, there is still a chance of drawing the sample.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -281,7 +281,7 @@ class DQNConfig(SimpleQConfig):
         return self
 
 
-def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
+def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
@@ -311,11 +311,11 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
 class DQN(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DEFAULT_CONFIG
 
     @override(SimpleQ)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -325,7 +325,7 @@ class DQN(SimpleQ):
 
     @override(SimpleQ)
     def get_default_policy_class(
-        self, config: TrainerConfigDict
+        self, config: AlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return DQNTorchPolicy

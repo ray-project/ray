@@ -24,6 +24,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     STATUS_UP_TO_DATE,
 )
+from ray._private.utils import get_ray_temp_dir
 import pytest
 
 
@@ -53,6 +54,14 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         local_node_provider = _NODE_PROVIDERS.get("local")({})
         assert local_node_provider is LocalNodeProvider
 
+    @pytest.fixture(autouse=True)
+    def _set_monkeypatch(self, monkeypatch):
+        self._monkeypatch = monkeypatch
+
+    @pytest.fixture(autouse=True)
+    def _set_tmpdir(self, tmpdir):
+        self._tmpdir = tmpdir
+
     def testClusterStateInit(self):
         """Check ClusterState __init__ func generates correct state file.
 
@@ -61,6 +70,9 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # Use a random head_ip so that the state file is regenerated each time
         # this test is run. (Otherwise the test will fail spuriously when run a
         # second time.)
+        self._monkeypatch.setenv("RAY_TMPDIR", self._tmpdir)
+        # ensure that a new cluster can start up if RAY_TMPDIR doesn't exist yet
+        assert not os.path.exists(get_ray_temp_dir())
         head_ip = ".".join(str(random.randint(0, 255)) for _ in range(4))
         cluster_config = {
             "cluster_name": "random_name",
@@ -77,6 +89,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         node_provider = _get_node_provider(
             provider_config, cluster_config["cluster_name"], use_cache=False
         )
+        assert os.path.exists(get_ray_temp_dir())
         assert node_provider.external_ip(head_ip) == "0.0.0.0.3"
         assert isinstance(node_provider, LocalNodeProvider)
         expected_workers = {}
@@ -280,4 +293,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

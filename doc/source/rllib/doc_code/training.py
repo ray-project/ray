@@ -24,8 +24,8 @@ prep.transform(env.reset()).shape
 import numpy as np
 from ray.rllib.algorithms.ppo import PPO
 
-trainer = PPO(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
-policy = trainer.get_policy()
+algo = PPO(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
+policy = algo.get_policy()
 # <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
 # Run a forward pass to get model output logits. Note that complex observations
@@ -82,8 +82,8 @@ _____________________________________________________________________
 import numpy as np
 from ray.rllib.algorithms.dqn import DQN
 
-trainer = DQN(env="CartPole-v0", config={"framework": "tf2"})
-model = trainer.get_policy().model
+algo = DQN(env="CartPole-v0", config={"framework": "tf2"})
+model = algo.get_policy().model
 # <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 
 # List of all model variables

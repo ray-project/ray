@@ -1,6 +1,7 @@
-from collections import Counter
 import sys
 import time
+from collections import Counter
+
 import ray
 
 # Run this script on the Ray head node using kubectl exec.

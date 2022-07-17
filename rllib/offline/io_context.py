@@ -2,7 +2,7 @@ import os
 from typing import Optional, TYPE_CHECKING
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.sampler import SamplerInput
@@ -21,7 +21,7 @@ class IOContext:
     def __init__(
         self,
         log_dir: Optional[str] = None,
-        config: Optional[TrainerConfigDict] = None,
+        config: Optional[AlgorithmConfigDict] = None,
         worker_index: int = 0,
         worker: Optional["RolloutWorker"] = None,
     ):
@@ -29,7 +29,7 @@ class IOContext:
 
         Args:
             log_dir: The logging directory to read from/write to.
-            config: The Trainer's main config dict.
+            config: The Algorithm's main config dict.
             worker_index: When there are multiple workers created, this
                 uniquely identifies the current worker. 0 for the local
                 worker, >0 for any of the remote workers.
