@@ -826,18 +826,19 @@ class StandardAutoscaler:
         assert self.provider
 
         nodes_not_allowed_to_terminate: Set[NodeID] = set()
+        static_node_resources: Dict[
+            NodeIP, ResourceDict
+        ] = self.load_metrics.get_static_node_resources_by_ip()
+
         head_node_resources: ResourceDict = copy.deepcopy(
             self.available_node_types[self.config["head_node_type"]]["resources"]
         )
-        # Legacy yaml might include {} in the resources field.
         # TODO(ameer): this is somewhat duplicated in
         # resource_demand_scheduler.py.
-        static_nodes: Dict[
-            NodeIP, ResourceDict
-        ] = self.load_metrics.get_static_node_resources_by_ip()
         if not head_node_resources:
+            # Legacy yaml might include {} in the resources field.
             head_node_ip = self.provider.internal_ip(self.non_terminated_nodes.head_id)
-            head_node_resources = static_nodes.get(head_node_ip, {})
+            head_node_resources = static_node_resources.get(head_node_ip, {})
 
         max_node_resources: List[ResourceDict] = [head_node_resources]
         resource_demand_vector_worker_node_ids = []
@@ -850,8 +851,9 @@ class StandardAutoscaler:
                     self.available_node_types[node_type]["resources"]
                 )
                 if not node_resources:
+                    # Legacy yaml might include {} in the resources field.
                     node_ip = self.provider.internal_ip(node_id)
-                    node_resources = static_nodes.get(node_ip, {})
+                    node_resources = static_node_resources.get(node_ip, {})
                 max_node_resources.append(node_resources)
                 resource_demand_vector_worker_node_ids.append(node_id)
         # Since it is sorted based on last used, we "keep" nodes that are
