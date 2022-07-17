@@ -55,7 +55,7 @@ class ScalingConfigDataClass:
     num_workers: Optional[int] = None
     use_gpu: bool = False
     resources_per_worker: Optional[Dict] = None
-    placement_strategy: str = "PACK"
+    placement_strategy: str = "SPREAD"
     _max_cpu_fraction_per_node: Optional[float] = None
 
     def __post_init__(self):
