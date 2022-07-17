@@ -153,6 +153,8 @@ class BatchPredictor:
             num_gpus_per_worker = 0
         if num_cpus_per_worker is None:
             if num_gpus_per_worker > 0:
+                # Don't request a CPU here, to avoid unnecessary contention. The GPU
+                # resource request suffices for scheduling.
                 num_cpus_per_worker = 0
             else:
                 num_cpus_per_worker = 1
