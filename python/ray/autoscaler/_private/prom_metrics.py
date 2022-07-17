@@ -1,6 +1,5 @@
 from typing import Optional
 
-
 try:
 
     from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram

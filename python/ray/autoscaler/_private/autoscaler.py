@@ -833,7 +833,8 @@ class StandardAutoscaler:
         # TODO(ameer): this is somewhat duplicated in
         # resource_demand_scheduler.py.
         static_nodes: Dict[
-            NodeIP, ResourceDict] = self.load_metrics.get_static_node_resources_by_ip()
+            NodeIP, ResourceDict
+        ] = self.load_metrics.get_static_node_resources_by_ip()
         if not head_node_resources:
             head_node_ip = self.provider.internal_ip(self.non_terminated_nodes.head_id)
             head_node_resources = static_nodes.get(head_node_ip, {})
