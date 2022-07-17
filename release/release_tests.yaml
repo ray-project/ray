@@ -168,7 +168,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/data_benchmark.py --dataset-size-gib=200 --num-workers=20 --placement-strategy=SPREAD
+    script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
 
     wait_for_nodes:
       num_nodes: 20

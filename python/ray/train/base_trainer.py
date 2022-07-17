@@ -135,7 +135,10 @@ class BaseTrainer(abc.ABC):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
-    _scaling_config_allowed_keys: List[str] = ["trainer_resources"]
+    _scaling_config_allowed_keys: List[str] = [
+        "trainer_resources",
+        "_max_cpu_fraction_per_node",
+    ]
 
     def __init__(
         self,

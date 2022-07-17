@@ -1,3 +1,5 @@
+.. _air-checkpoints-doc:
+
 Checkpoints
 ===========
 

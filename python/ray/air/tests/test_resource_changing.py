@@ -55,10 +55,9 @@ class AssertingDataParallelTrainer(DataParallelTrainer):
         scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
             self.scaling_config
         )
-        assert (
-            scaling_config_dataclass.as_placement_group_factory()
-            == session.get_trial_resources()
-        )
+        pgf = scaling_config_dataclass.as_placement_group_factory()
+        tr = session.get_trial_resources()
+        assert pgf == tr, (pgf, tr)
         return super().training_loop()
 
 
