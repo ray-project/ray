@@ -877,6 +877,16 @@ class Dataset(Generic[T]):
         if n <= 0:
             raise ValueError(f"The number of splits {n} is not positive.")
 
+        if equal:
+            count = self.count()
+            split_index = count // n
+            # we are creating n split_indices which will generate
+            # n + 1 splits; the last split will at most contains (n - 1)
+            # rows, which could be safely dropped.
+            split_indices = [split_index * i for i in range(1, n + 1)]
+            shards = self.split_at_indices(split_indices)
+            return shards[:n]
+
         if locality_hints and len(locality_hints) != n:
             raise ValueError(
                 f"The length of locality_hints {len(locality_hints)} "
