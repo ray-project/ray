@@ -192,7 +192,7 @@ class RND(Exploration):
                     initializer=torch_normc_initializer(0.01),
                     activation_fn=None,
                 )
-                # Add a corresponding value_function() such that the cached 
+                # Add a corresponding value_function() such that the cached
                 # values can be used.
                 def _exploration_value_function(model) -> TensorType:
                     assert model._features is not None, "must call forward() first"
@@ -201,7 +201,10 @@ class RND(Exploration):
                             model._value_branch_separate(model._last_flat_in)
                         ).squeeze(1)
                     else:
-                        return model._exploration_value_branch(model._features).squeeze(1)
+                        return model._exploration_value_branch(model._features).squeeze(
+                            1
+                        )
+
                 # Assign this function to the model.
                 model._exploration_value_function = _exploration_value_function.__get__(
                     model, type(model)
@@ -219,7 +222,7 @@ class RND(Exploration):
                     kernel_initializer=tf_normc_initializer(0.01),
                 )(prev_layer)
                 # Add the value branch to the model to receive also the outputs
-                # of the added value branch. This increases performance as the 
+                # of the added value branch. This increases performance as the
                 # model is only called once and then it is worked on cached values.
                 model.base_model = tf.keras.Model(
                     inputs=model.base_model.inputs,
@@ -238,25 +241,28 @@ class RND(Exploration):
                         model._exploration_value_out,
                     ) = model.base_model(input_dict["obs_flat"])
                     return model_out, state
+
                 # Assign the new `forward()` function to the model.
                 model.forward = forward.__get__(model, type(model))
                 # Add also a new function to receive explicitly the values
                 # of the non-episodic returns.
                 def _exploration_value_branch(model) -> TensorType:
                     return tf.reshape(model._exploration_value_out, [-1])
+
                 # Assign this function to the model
                 model._exploration_value_branch = _exploration_value_branch.__get__(
                     model, type(model)
-                )                
-                self.model = model                
+                )
+                self.model = model
                 self._sess = tf_sess
-                # Define a value function for single input and include it into 
+                # Define a value function for single input and include it into
                 # the static graph, if existent.
                 @make_tf_callable(self._sess)
                 def _value_function(**input_dict):
                     input_dict = SampleBatch(input_dict)
                     model_out, _ = self.model(input_dict)
                     return self.model._exploration_value_branch()[0]
+
                 # Assign the value function to the exploration module.
                 self._value_function = _value_function
 
@@ -266,6 +272,7 @@ class RND(Exploration):
         if self.normalize:
             # Use the `_MovingMeanStd` class to normalize the intrinsic rewards.
             from ray.rllib.utils.exploration.random_encoder import _MovingMeanStd
+
             self._moving_mean_std = _MovingMeanStd()
 
         if sub_exploration is None:
@@ -387,7 +394,7 @@ class RND(Exploration):
                 # self._vf_intrinsic_loss_np = self._sess.run(
                 #     self._vf_intrinsic_loss
                 # )
-                self._vf_intrinsic_loss_np = self._vf_intrinsic_loss                
+                self._vf_intrinsic_loss_np = self._vf_intrinsic_loss
             return (
                 self._intrinsic_reward_np,
                 self._distill_loss_np,
@@ -430,16 +437,9 @@ class RND(Exploration):
             {"exploration_vf_preds": self.model._exploration_value_branch()}
         )
         return extra_action_out
-    
+
     @override(Exploration)
-    def extra_action_out(
-        self,
-        input_dict,
-        state_batches,
-        model,
-        action_dist,
-        policy
-    ):
+    def extra_action_out(self, input_dict, state_batches, model, action_dist, policy):
         extra_action_out = super().extra_action_out(
             input_dict=input_dict,
             state_batches=state_batches,
@@ -447,11 +447,9 @@ class RND(Exploration):
             action_dist=action_dist,
             policy=policy,
         )
-        
+
         extra_action_out.update(
-            {
-                "exploration_vf_preds": self.model._exploration_value_function()
-            }
+            {"exploration_vf_preds": self.model._exploration_value_function()}
         )
         return extra_action_out
 
@@ -499,7 +497,7 @@ class RND(Exploration):
         else:
             # Calculate non-episodic returns and estimate value targets.
             last_r = self._predict_nonepisodic_value(sample_batch, policy, tf_sess)
-            
+
             # Compute advantages and value targets.
             return self._compute_advantages(sample_batch, np.array([last_r]))
 
@@ -519,11 +517,11 @@ class RND(Exploration):
             # novelty = tf.norm(phi - phi_target + 1e-12, axis=1)
             # TODO: @simonsays1980: Should be probably mean over dim=1 and then
             # sum over batches.
-            distill_loss = tf.reduce_mean(novelty, axis=-1)            
-            
+            distill_loss = tf.reduce_mean(novelty, axis=-1)
+
             update_op = None
             if optimize:
-                
+
                 # Step the optimizer
                 if self.framework != "tf":
                     self._distill_loss_np = distill_loss.numpy()
@@ -537,7 +535,7 @@ class RND(Exploration):
                 else:
                     update_op = self._optimizer.minimize(
                         distill_loss, var_list=self._optimizer_var_list
-                    )                    
+                    )
 
         return novelty, update_op
 
@@ -651,7 +649,7 @@ class RND(Exploration):
                     * tf.constant(self.vf_loss_coeff)
                 )
                 if self.framework == "tf":
-                    #self._vf_intrinsic_loss_np = self._sess.run(vf_intrinsic_loss)
+                    # self._vf_intrinsic_loss_np = self._sess.run(vf_intrinsic_loss)
                     self._vf_intrinsic_loss = vf_intrinsic_loss
                 else:
                     if not self.policy_config["eager_tracing"]:
@@ -664,9 +662,7 @@ class RND(Exploration):
 
     def _add_nonepisodic_value_branch_torch(self, model):
         # Get the previous layer's embedding size.
-        prev_layer_size = (
-            model._value_branch_separate[-1]._model[-2].out_features
-        )
+        prev_layer_size = model._value_branch_separate[-1]._model[-2].out_features
         # Add another value branch for the non-episodic returns.
         model._exploration_value_branch = SlimFC(
             in_size=prev_layer_size,
@@ -674,7 +670,7 @@ class RND(Exploration):
             initializer=torch_normc_initializer(0.01),
             activation_fn=None,
         )
-        # Add a corresponding value_function() such that the cached 
+        # Add a corresponding value_function() such that the cached
         # values can be used.
         def _exploration_value_function(model) -> TensorType:
             assert model._features is not None, "must call forward() first"
@@ -684,12 +680,13 @@ class RND(Exploration):
                 ).squeeze(1)
             else:
                 return model._exploration_value_branch(model._features).squeeze(1)
+
         # Assign this function to the model.
         model._exploration_value_function = _exploration_value_function.__get__(
             model, type(model)
         )
         return model
-    
+
     def _compute_novelty(self, obs):
         # TODO: Include TF
         # Push observations through the distillation networks.
@@ -768,7 +765,7 @@ class RND(Exploration):
         sample_batch["exploration_advantages"] = sample_batch[
             "exploration_advantages"
         ].astype(np.float32)
-        sample_batch["exploration_vf_preds"].astype(np.float32)        
+        sample_batch["exploration_vf_preds"].astype(np.float32)
         return sample_batch
 
     def _attach_rnd_batch_callbacks(self, policy):

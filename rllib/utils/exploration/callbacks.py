@@ -65,22 +65,15 @@ class RNDMetricsCallbacks(DefaultCallbacks):
         # Get the actual state values of the NovelD exploration.
         exploration_state = policies["default_policy"].exploration.get_state()
         if hasattr(policies["default_policy"].exploration, "nonepisodic_returns"):
-            (
-                intrinsic_reward,
-                distillation_loss,
-                vf_intrinsic_loss
-            ) = exploration_state
+            (intrinsic_reward, distillation_loss, vf_intrinsic_loss) = exploration_state
         else:
-            (
-                intrinsic_reward,
-                distillation_loss
-            ) = exploration_state
+            (intrinsic_reward, distillation_loss) = exploration_state
 
         # Average over batch.
         episode.user_data["intrinsic_reward"].append(np.mean(intrinsic_reward))
         episode.user_data["distillation_loss"].append(np.mean(distillation_loss))
         if hasattr(policies["default_policy"].exploration, "nonepisodic_returns"):
-            episode.user_data["vf_intrinsic_loss"].append(np.mean(vf_intrinsic_loss))        
+            episode.user_data["vf_intrinsic_loss"].append(np.mean(vf_intrinsic_loss))
 
     def on_episode_end(
         self,
@@ -280,4 +273,3 @@ class RNDBatchCallbacks(DefaultCallbacks):
         #         train_batch["exploration_advantages"]
         #         + train_batch["exploration_vf_preds"]
         #     )
-            
