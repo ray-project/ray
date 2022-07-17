@@ -23,16 +23,6 @@ if TYPE_CHECKING:
 tf1, tf, tfv = try_import_tf()
 
 
-def enable_eager_execution_if_tf2():
-    """Helper function for enalbing TF2 eager exec when restoring a TF2 policy.
-
-    Note: this is done as a separate util so users can run this first thing
-    after program starts.
-    """
-    if tf1 and not tf1.executing_eagerly():
-        tf1.enable_eager_execution()
-
-
 @PublicAPI
 def create_policy_for_framework(
     policy_id: str,
