@@ -38,8 +38,7 @@ class DummyPreprocessor(Preprocessor):
 
 
 class DummyTrainer(BaseTrainer):
-    _scaling_config_allowed_keys = [
-        "trainer_resources",
+    _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "use_gpu",
         "resources_per_worker",
@@ -164,6 +163,29 @@ def test_arg_override(ray_start_4_cpus):
     }
 
     tune.run(trainer.as_trainable(), config=new_config)
+
+
+def test_reserved_cpus(ray_start_4_cpus):
+    def train_loop(self):
+        ray.data.range(10).show()
+
+    # Will deadlock without reserved CPU fractin.
+    scale_config = {"num_workers": 1, "_max_cpu_fraction_per_node": 0.9}
+    trainer = DummyTrainer(
+        train_loop,
+        scaling_config=scale_config,
+    )
+    tune.run(trainer.as_trainable(), num_samples=4)
+
+
+# TODO(ekl/sang) this currently fails.
+#    # Check we don't deadlock with too low of a fraction either.
+#    scale_config = {"num_workers": 1, "_max_cpu_fraction_per_node": 0.01}
+#    trainer = DummyTrainer(
+#        train_loop,
+#        scaling_config=scale_config,
+#    )
+#    tune.run(trainer.as_trainable(), num_samples=4)
 
 
 def test_setup(ray_start_4_cpus):

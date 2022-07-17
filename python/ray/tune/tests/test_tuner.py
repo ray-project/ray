@@ -23,8 +23,7 @@ from ray.tune.tuner import Tuner
 
 
 class DummyTrainer(BaseTrainer):
-    _scaling_config_allowed_keys = [
-        "trainer_resources",
+    _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "use_gpu",
         "resources_per_worker",
