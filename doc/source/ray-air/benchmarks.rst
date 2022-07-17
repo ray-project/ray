@@ -145,8 +145,8 @@ We test out the performance across different cluster sizes and data sizes.
 
 .. note::
 
-    For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC, all 
-    ports are open in the secure group and scheduled in the same aws placement group.
+    For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC and 
+    all ports are open in the secure group.
 
 
 .. list-table::
