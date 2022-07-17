@@ -1,13 +1,10 @@
 # TODO (@Kourosh) move this to a better location and consolidate the parent class with
 # OPE
 
-from typing import Callable, List
+from typing import Callable, Dict, Any
 from ray.rllib.policy import Policy
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.offline.estimators.off_policy_estimator import (
-    OffPolicyEstimator,
-    OffPolicyEstimate,
-)
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 
 import numpy as np
 import copy
@@ -22,7 +19,6 @@ def perturb_fn(batch: np.ndarray, index: int):
 class FeatureImportance(OffPolicyEstimator):
     def __init__(
         self,
-        name: str,
         policy: Policy,
         gamma: float,
         repeat: int = 1,
@@ -61,18 +57,17 @@ class FeatureImportance(OffPolicyEstimator):
         ```
 
         Args:
-            name: string to save the feature importance results under.
             policy: the policy to use for feature importance.
             repeat: number of times to repeat the perturbation.
             gamma: dummy discount factor to be passed to the super class.
             perturb_fn: function to perturb the features. By default reshuffle the
             features within the batch.
         """
-        super().__init__(name, policy, gamma=gamma)
+        super().__init__(policy, gamma)
         self.repeat = repeat
         self.perturb_fn = perturb_fn
 
-    def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
+    def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
         """Estimate the feature importance of the policy.
 
         Given a batch of tabular observations, the importance of each feature is
@@ -84,9 +79,7 @@ class FeatureImportance(OffPolicyEstimator):
             batch: the batch of data to use for feature importance.
 
         Returns:
-            A list of OffPolicyEstimate objects. Each OffPolicyEstimate object contains
-            a metics name and a dictionary of metrics mapping feature index to its
-            importance.
+            A dict mapping each feature index string to its importance.
         """
 
         obs_batch = batch["obs"]
@@ -107,6 +100,5 @@ class FeatureImportance(OffPolicyEstimator):
         # take an average across repeats
         importance = importance.mean(0)
         metrics = {f"feature_{i}": importance[i] for i in range(len(importance))}
-        ret = [OffPolicyEstimate(self.name, metrics)]
 
-        return ret
+        return metrics
