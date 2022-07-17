@@ -38,7 +38,8 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-assert args.checkpoint_file, "Must specify --checkpoint_file flag."
+args.checkpoint_file = "/Users/jungong/ray/rllib/tests/data/checkpoints/PPO_open_spiel_checkpoint-6"
+#assert args.checkpoint_file, "Must specify --checkpoint_file flag."
 
 
 class AddPolicyCallback(DefaultCallbacks):
@@ -75,7 +76,7 @@ class AddPolicyCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
 
     register_env(
         "open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game("connect_four"))
@@ -112,6 +113,10 @@ if __name__ == "__main__":
         },
         "num_workers": 1,
         "framework": "torch",
+        # We will be restoring a TF2 policy.
+        # So tell the RolloutWorkers to enable TF eager exec as well, even if
+        # framework is set to torch.
+        "enable_tf1_exec_eagerly": True,
     }
 
     stop = {

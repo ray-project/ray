@@ -30,6 +30,13 @@ class RandomPolicy(Policy):
         else:
             self.action_space_for_sampling = self.action_space
 
+        # Disable view requirements for all columns except OBS, which is
+        # actually used.
+        for k, v in self.view_requirements.items():
+            if k == SampleBatch.OBS or k == SampleBatch.NEXT_OBS: continue
+            v.used_for_training = False
+            v.used_for_compute_actions = False
+
     @override(Policy)
     def compute_actions(
         self,
