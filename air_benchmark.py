@@ -8,6 +8,7 @@ import ray
 from ray.air.config import DatasetConfig
 from ray.air.util.check_ingest import DummyTrainer
 from ray.air.util.tensor_extensions.pandas import TensorArray
+from ray.data.datasource import ImageFolderDatasource
 from ray.data.preprocessors import BatchMapper
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor, to_air_checkpoint
@@ -91,14 +92,20 @@ def run_infer_bulk(
                     ),
                 ]
             )
-            images = df["__value__"].map(
-                lambda i: preprocess(
-                    Image.fromarray(np.random.rand(1024, 768, 3).astype(np.uint8))
+            if "image" not in df:
+                # Gen a synthetic image.
+                images = df["__value__"].map(
+                    lambda i: preprocess(
+                        Image.fromarray(np.random.rand(1024, 768, 3).astype(np.uint8))
+                    )
                 )
-            )
-            images = [np.array(i) for i in images]
-            df["image"] = TensorArray(images)
-            del df["__value__"]
+                images = [np.array(i) for i in images]
+                df["image"] = TensorArray(images)
+                del df["__value__"]
+            else:
+                df["image"] = TensorArray(
+                    [preprocess(image.to_numpy()) for image in df["image"]]
+                )
             return df
 
         preprocessor = BatchMapper(preprocess)
@@ -126,6 +133,7 @@ def run_infer_bulk(
             max_scoring_workers=num_workers,
             num_cpus_per_worker=1,
             num_gpus_per_worker=1 if infer_gpu else 0,
+            feature_columns=["image"] if infer_gpu else None,
         )
     else:
         result = predictor.predict(
@@ -135,6 +143,7 @@ def run_infer_bulk(
             max_scoring_workers=num_workers,
             num_cpus_per_worker=1,
             num_gpus_per_worker=1 if infer_gpu else 0,
+            feature_columns=["image"] if infer_gpu else None,
         )
     if post:
         post(result)
@@ -167,9 +176,13 @@ if __name__ == "__main__":
     parser.add_argument("--streaming", action="store_true", default=False)
     parser.add_argument("--window-size-gb", type=float, default=10)
     parser.add_argument("--s3-data", type=str, default="")
+    parser.add_argument("--s3-images", type=str, default="")
     args = parser.parse_args()
     if args.s3_data:
         ds = ray.data.read_parquet(args.s3_data)
+    elif args.s3_images:
+        assert args.benchmark == "infer_gpu"
+        ds = ray.data.read_datasource(ImageFolderDatasource(), paths=[args.s3_images])
     else:
         ds = make_ds(args.dataset_size_gb)
     if args.benchmark == "ingest":
