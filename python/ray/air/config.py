@@ -49,7 +49,7 @@ class ScalingConfigDataClass:
     num_workers: Optional[int] = None
     use_gpu: bool = False
     resources_per_worker: Optional[Dict] = None
-    placement_strategy: str = "PACK"
+    placement_strategy: str = "SPREAD"
 
     def __post_init__(self):
         if self.resources_per_worker:

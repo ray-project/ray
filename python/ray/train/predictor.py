@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Type, Optional
+from typing import Dict, Type, Optional, Callable
 
 import numpy as np
 import pandas as pd
@@ -94,6 +94,33 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
+    @classmethod
+    def from_pandas_udf(
+        cls, pandas_udf: Callable[[pd.DataFrame], pd.DataFrame]
+    ) -> "Predictor":
+        """Create a Predictor from a Pandas UDF.
+
+        Args:
+            pandas_udf: A function that takes a pandas.DataFrame and other
+                optional kwargs and returns a pandas.DataFrame.
+        """
+
+        class PandasUDFPredictor(Predictor):
+            @classmethod
+            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs):
+                return PandasUDFPredictor()
+
+            def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
+                return pandas_udf(df, **kwargs)
+
+        return PandasUDFPredictor.from_checkpoint(Checkpoint.from_dict({"dummy": 1}))
+
+    def get_preprocessor(self) -> Optional[Preprocessor]:
+        return self.preprocessor
+
+    def set_preprocessor(self, preprocessor: Optional[Preprocessor]) -> None:
+        self.preprocessor = preprocessor
+
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
 
@@ -120,12 +147,6 @@ class Predictor(abc.ABC):
         return convert_pandas_to_batch_type(
             predictions_df, type=TYPE_TO_ENUM[type(data)]
         )
-
-    def get_preprocessor(self) -> Optional[Preprocessor]:
-        return self.preprocessor
-
-    def set_preprocessor(self, preprocessor: Optional[Preprocessor]) -> None:
-        self.preprocessor = preprocessor
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

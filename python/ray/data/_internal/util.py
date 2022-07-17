@@ -152,3 +152,10 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
         return min(cluster_cpus, pg_cpus)
 
     return cluster_cpus
+
+
+def _estimate_available_parallelism() -> int:
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
+    If we are currently in a placement group, take that into account."""
+    cur_pg = ray.util.get_current_placement_group()
+    return _estimate_avail_cpus(cur_pg)
