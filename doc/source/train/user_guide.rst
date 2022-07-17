@@ -507,7 +507,7 @@ is shared with Ray Tune.
 
 .. _train-checkpointing:
 
-Ray Train also provides a way to save :ref:`Checkpoints <air-checkpoints>` during the training process. This is
+Ray Train also provides a way to save :ref:`Checkpoints <air-checkpoints-doc>` during the training process. This is
 useful for:
 
 1. :ref:`Integration with Ray Tune <train-tune>` to use certain Ray Tune
@@ -547,7 +547,7 @@ the end of each training epoch.
 Saving checkpoints
 ++++++++++++++++++
 
-:ref:`Checkpoints <air-checkpoints>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
+:ref:`Checkpoints <air-checkpoints-doc>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 
