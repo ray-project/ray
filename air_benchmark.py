@@ -139,7 +139,7 @@ def run_infer_bulk(
             max_scoring_workers=num_workers,
             num_cpus_per_worker=1,
             num_gpus_per_worker=1 if use_gpu else 0,
-            feature_columns=["image"] if use_gpu else None,
+            feature_columns=["image"] if images else None,
         )
     else:
         result = predictor.predict(
@@ -149,7 +149,7 @@ def run_infer_bulk(
             max_scoring_workers=num_workers,
             num_cpus_per_worker=1,
             num_gpus_per_worker=1 if use_gpu else 0,
-            feature_columns=["image"] if use_gpu else None,
+            feature_columns=["image"] if images else None,
         )
     if post:
         post(result)

@@ -76,7 +76,7 @@ class Predictor(abc.ABC):
         preprocessor: The preprocessor to use prior to execution predictions.
     """
 
-    def __init__(self, preprocessor: Optional[Preprocessor]):
+    def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
         self.preprocessor: Optional[Preprocessor] = preprocessor
 
