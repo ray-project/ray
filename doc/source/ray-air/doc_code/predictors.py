@@ -52,6 +52,47 @@ print(predictions.show())
 # {'predictions': array([-1.3025978], dtype=float32)}
 # __batch_prediction_end__
 
+# __scoring_start__
+import pandas as pd
+import ray
+from ray.air import Checkpoint
+from ray.train.predictor import Predictor
+from ray.train.batch_predictor import BatchPredictor
+
+# Create a dummy predictor that returns identity as the predictions.
+class DummyPredictor(Predictor):
+    @classmethod
+    def from_checkpoint(cls, checkpoint, **kwargs):
+        return cls(**kwargs)
+
+    def _predict_pandas(self, data_df, **kwargs):
+        return pd.DataFrame({"predictions": data_df["feature_1"]})
+
+
+# Create a batch predictor for this dummy predictor.
+batch_pred = BatchPredictor(Checkpoint.from_dict({"x": 0}), DummyPredictor)
+
+# Create a dummy dataset.
+ds = ray.data.from_pandas(pd.DataFrame({"feature_1": [1, 2, 3], "label": [1, 2, 3]}))
+
+predictions = batch_pred.predict(
+    ds, feature_columns=["feature_1"], keep_columns=["label"]
+)
+print(predictions.show())
+# {'predictions': 1, 'label': 1}
+# {'predictions': 2, 'label': 2}
+# {'predictions': 3, 'label': 3}
+
+# Calculate final accuracy.
+def calculate_accuracy(df):
+    return pd.DataFrame({"correct": df["predictions"] == df["label"]})
+
+
+correct = predictions.map_batches(calculate_accuracy)
+print("Final accuracy: ", correct.mean(on="correct"))
+# Final accuracy:  1.0
+# __scoring_end__
+
 # __pipelined_prediction_start__
 import pandas as pd
 import ray

@@ -56,6 +56,13 @@ size is larger than your available cluster memory. See the :ref:`pipelined-predi
     :start-after: __batch_prediction_start__
     :end-before: __batch_prediction_end__
 
+You can also use the ``BatchPredictor`` to do scoring on test datasets..
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __scoring_start__
+    :end-before: __scoring_end__
+
 Below, we provide examples of using common frameworks to do batch inference for different data types:
 
 Tabular

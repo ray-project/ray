@@ -69,7 +69,7 @@ class BatchPredictor:
             ...     def from_checkpoint(cls, checkpoint, **kwargs):
             ...         return cls()
             ...     def _predict_pandas(self, data_df, **kwargs):
-            ...         return data_df
+            ...         return pd.DataFrame({"predictions": data_df["feature_1"]})
             >>> # Create a batch predictor for this dummy predictor.
             >>> batch_pred = BatchPredictor( # doctest: +SKIP
             ...     Checkpoint.from_dict({"x": 0}), DummyPredictor)
