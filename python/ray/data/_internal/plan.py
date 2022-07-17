@@ -41,9 +41,12 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 class Stage:
     """Represents a Dataset transform stage (e.g., map or shuffle)."""
 
-    def __init__(self, name: str, num_blocks: Optional[int]):
+    def __init__(
+        self, name: str, num_blocks: Optional[int], run_by_pipeline: bool = False
+    ):
         self.name = name
         self.num_blocks = num_blocks
+        self.run_by_pipeline = run_by_pipeline
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
@@ -107,6 +110,16 @@ class ExecutionPlan:
         self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
         if not stats.dataset_uuid:
             stats.dataset_uuid = self._dataset_uuid
+
+    def __repr__(self) -> str:
+        return (
+            f"ExecutionPlan("
+            f"dataset_uuid={self._dataset_uuid}, "
+            f"in_blocks={self._in_blocks}, "
+            f"stages_before_snapshot={self._stages_before_snapshot}, "
+            f"stages_after_snapshot={self._stages_after_snapshot}, "
+            f"snapshot_blocks={self._snapshot_blocks})"
+        )
 
     def with_stage(self, stage: "Stage") -> "ExecutionPlan":
         """Return a copy of this plan with the given stage appended.
@@ -504,6 +517,7 @@ class OneToOneStage(Stage):
         block_fn: BlockTransform,
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
+        run_by_pipeline: bool = False,
         fn: Optional[UDF] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -514,6 +528,7 @@ class OneToOneStage(Stage):
         self.block_fn = block_fn
         self.compute = compute or "tasks"
         self.ray_remote_args = ray_remote_args or {}
+        self.run_by_pipeline = run_by_pipeline
         self.fn = fn
         self.fn_args = fn_args
         self.fn_kwargs = fn_kwargs
@@ -610,6 +625,7 @@ class OneToOneStage(Stage):
             block_fn,
             self.compute,
             prev.ray_remote_args,
+            run_by_pipeline=self.run_by_pipeline,
             fn=self.fn,
             fn_args=fn_args,
             fn_kwargs={},
@@ -637,6 +653,7 @@ class OneToOneStage(Stage):
             fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
         assert isinstance(blocks, BlockList), blocks
+        blocks._created_by_pipeline = self.run_by_pipeline
         return blocks, {}
 
 
@@ -651,12 +668,14 @@ class AllToAllStage(Stage):
         supports_block_udf: bool = False,
         block_udf: Optional[BlockTransform] = None,
         remote_args: Optional[Dict[str, Any]] = None,
+        run_by_pipeline: bool = False,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
         self.ray_remote_args = remote_args or {}
+        self.run_by_pipeline = run_by_pipeline
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
@@ -709,10 +728,22 @@ class AllToAllStage(Stage):
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
+        in_blocks_created_by_pipeline = blocks._created_by_pipeline
+        if in_blocks_created_by_pipeline:
+            assert (
+                self.run_by_pipeline
+            ), "Pipeline outputs can only be consumed by pipeline"
         blocks, stage_info = self.fn(
             blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
         )
         assert isinstance(blocks, BlockList), blocks
+        if isinstance(self, RandomizeBlocksStage):
+            blocks._created_by_pipeline = in_blocks_created_by_pipeline
+        else:
+            blocks._created_by_pipeline = self.run_by_pipeline
+
         return blocks, stage_info
 
 

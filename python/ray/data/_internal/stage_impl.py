@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class RepartitionStage(AllToAllStage):
     """Implementation of `Dataset.repartition()`."""
 
-    def __init__(self, num_blocks: int, shuffle: bool):
+    def __init__(self, num_blocks: int, shuffle: bool, run_by_pipeline: bool = False):
         if shuffle:
 
             def do_shuffle(
@@ -53,7 +53,11 @@ class RepartitionStage(AllToAllStage):
                 )
 
             super().__init__(
-                "repartition", num_blocks, do_shuffle, supports_block_udf=True
+                "repartition",
+                num_blocks,
+                do_shuffle,
+                supports_block_udf=True,
+                run_by_pipeline=run_by_pipeline,
             )
 
         else:
@@ -66,16 +70,26 @@ class RepartitionStage(AllToAllStage):
                     blocks = block_list
                 return fast_repartition(blocks, num_blocks)
 
-            super().__init__("repartition", num_blocks, do_fast_repartition)
+            super().__init__(
+                "repartition",
+                num_blocks,
+                do_fast_repartition,
+                run_by_pipeline=run_by_pipeline,
+            )
 
 
 class RandomizeBlocksStage(AllToAllStage):
     """Implementation of `Dataset.randomize_blocks()`."""
 
-    def __init__(self, seed: Optional[int]):
+    def __init__(self, seed: Optional[int], run_by_pipeline: bool = False):
         self._seed = seed
 
-        super().__init__("randomize_block_order", None, self.do_randomize)
+        super().__init__(
+            "randomize_block_order",
+            None,
+            self.do_randomize,
+            run_by_pipeline=run_by_pipeline,
+        )
 
     def do_randomize(self, block_list, *_):
         num_blocks = block_list.initial_num_blocks()
@@ -88,7 +102,12 @@ class RandomizeBlocksStage(AllToAllStage):
 class RandomShuffleStage(AllToAllStage):
     """Implementation of `Dataset.random_shuffle()`."""
 
-    def __init__(self, seed: Optional[int], output_num_blocks: Optional[int]):
+    def __init__(
+        self,
+        seed: Optional[int],
+        output_num_blocks: Optional[int],
+        run_by_pipeline: bool = False,
+    ):
         def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
@@ -119,7 +138,11 @@ class RandomShuffleStage(AllToAllStage):
             )
 
         super().__init__(
-            "random_shuffle", output_num_blocks, do_shuffle, supports_block_udf=True
+            "random_shuffle",
+            output_num_blocks,
+            do_shuffle,
+            supports_block_udf=True,
+            run_by_pipeline=run_by_pipeline,
         )
 
 
@@ -172,7 +195,13 @@ class ZipStage(AllToAllStage):
 class SortStage(AllToAllStage):
     """Implementation of `Dataset.sort()`."""
 
-    def __init__(self, ds: "Dataset", key: Optional[KeyFn], descending: bool):
+    def __init__(
+        self,
+        ds: "Dataset",
+        key: Optional[KeyFn],
+        descending: bool,
+        run_by_pipeline: bool = False,
+    ):
         def do_sort(block_list, clear_input_blocks: bool, *_):
             # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
@@ -191,4 +220,4 @@ class SortStage(AllToAllStage):
                 _validate_key_fn(ds, key)
             return sort_impl(blocks, clear_input_blocks, key, descending)
 
-        super().__init__("sort", None, do_sort)
+        super().__init__("sort", None, do_sort, run_by_pipeline=run_by_pipeline)
