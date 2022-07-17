@@ -166,17 +166,6 @@ def test_arg_override(ray_start_4_cpus):
     tune.run(trainer.as_trainable(), config=new_config)
 
 
-class MockLogger:
-    def __init__(self):
-        self.warnings = []
-
-    def warning(self, msg):
-        self.warnings.append(msg)
-
-    def info(self, msg):
-        print(msg)
-
-
 def test_reserved_cpus(ray_start_4_cpus):
     def train_loop(self):
         ray.data.range(10).show()
@@ -203,6 +192,16 @@ def test_reserved_cpus(ray_start_4_cpus):
 def test_reserved_cpu_warnings(ray_start_4_cpus):
     def train_loop(self):
         pass
+
+    class MockLogger:
+        def __init__(self):
+            self.warnings = []
+
+        def warning(self, msg):
+            self.warnings.append(msg)
+
+        def info(self, msg):
+            print(msg)
 
     try:
         old = base_trainer.logger
