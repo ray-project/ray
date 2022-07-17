@@ -154,11 +154,6 @@ To avoid hangs or CPU starvation of Datasets when used with Tune or Train, you c
 exclude a fraction of CPUs from placement group scheduling, using the
 ``_max_cpu_fraction_per_node`` placement group option (Experimental).
 
-.. warning::
-
-    ``_max_cpu_fraction_per_node`` is experimental and not recommended for use with
-    autoscaling clusters (scale-up will not trigger properly).
-
 Example: Datasets in Tune
 =========================
 
@@ -185,13 +180,12 @@ scenarios are shown: running outside the trial group using spare resources, and 
     group scheduling. In the below example, setting this parameter to ``0.8`` enables Tune
     trials to run smoothly without risk of deadlock.
 
+    .. warning::
+
+        ``_max_cpu_fraction_per_node`` is experimental and not recommended for use with
+        autoscaling clusters (scale-up will not trigger properly).
+
     .. literalinclude:: ./doc_code/key_concepts.py
       :language: python
       :start-after: __resource_allocation_2_begin__
       :end-before: __resource_allocation_2_end__
-
-    .. warning::
-
-      This is an experimental feature subject to change as we work to improve our
-      resource allocation model for Datasets. It is not recommended for use with
-      autoscaling clusters (scale-up will not trigger properly).
