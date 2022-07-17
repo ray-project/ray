@@ -1,19 +1,16 @@
 import logging
-from typing import List, Optional
-
 import os
-
-import pytest
 import shutil
 import tempfile
+from typing import List, Optional
 
+import pytest
 from freezegun import freeze_time
 
 import ray
-
 from ray import tune
 from ray.tune import TuneError
-from ray.tune.syncer import _DefaultSyncer, Syncer, _validate_upload_dir
+from ray.tune.syncer import Syncer, _DefaultSyncer, _validate_upload_dir
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
@@ -91,7 +88,8 @@ class CustomSyncer(Syncer):
         return True
 
     def delete(self, remote_dir: str) -> bool:
-        raise NotImplementedError
+        self._sync_status.pop(remote_dir, None)
+        return True
 
     def retry(self):
         raise NotImplementedError
@@ -347,6 +345,10 @@ def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
     assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "custom_syncer.txt"))
 
+    ray.get(trainable.delete_checkpoint.remote(checkpoint_dir))
+
+    assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+
 
 def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
     """Check that Trainable.save() triggers syncing using custom syncer"""
@@ -361,6 +363,11 @@ def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
 
     assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
     assert_file(True, tmp_target, os.path.join(checkpoint_dir, "custom_syncer.txt"))
+
+    ray.get(trainable.delete_checkpoint.remote(checkpoint_dir))
+
+    assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+    assert_file(False, tmp_target, os.path.join(checkpoint_dir, "custom_syncer.txt"))
 
 
 if __name__ == "__main__":

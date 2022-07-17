@@ -25,23 +25,34 @@ import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import CallableClass, ComputeStrategy, cache_wrapper
+from ray.data._internal.compute import (
+    ActorPoolStrategy,
+    CallableClass,
+    ComputeStrategy,
+    TaskPoolStrategy,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage
+from ray.data._internal.plan import (
+    ExecutionPlan,
+    OneToOneStage,
+)
+from ray.data._internal.stage_impl import (
+    RandomizeBlocksStage,
+    RepartitionStage,
+    RandomShuffleStage,
+    ZipStage,
+    SortStage,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.shuffle_and_partition import (
-    PushBasedShufflePartitionOp,
-    SimpleShufflePartitionOp,
-)
-from ray.data._internal.sort import sort_impl
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
+    VALID_BATCH_FORMATS,
+    BatchUDF,
     Block,
     BlockAccessor,
     BlockExecStats,
@@ -49,6 +60,7 @@ from ray.data.block import (
     BlockPartition,
     BlockPartitionMetadata,
     KeyFn,
+    RowUDF,
     T,
     U,
     _validate_key_fn,
@@ -67,7 +79,7 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
-    _wrap_arrow_serialization_workaround,
+    _wrap_and_register_arrow_serialization_workaround,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
@@ -161,6 +173,8 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool,
+        *,
+        defer_execution: bool = False,
     ):
         """Construct a Dataset (internal API).
 
@@ -175,7 +189,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
         self._lazy = lazy
 
-        if not lazy:
+        if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
@@ -184,9 +198,9 @@ class Dataset(Generic[T]):
 
     def map(
         self,
-        fn: Union[CallableClass, Callable[[T], U]],
+        fn: RowUDF,
         *,
-        compute: Optional[str] = None,
+        compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset[U]":
         """Apply the given function to each record of this dataset.
@@ -226,16 +240,31 @@ class Dataset(Generic[T]):
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, or "actors" to use an autoscaling actor pool. If wanting to
+                configure the min or max size of the autoscaling actor pool, you can
+                provide an
+                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
+                instance. If using callable classes for fn, the actor compute strategy
+                must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
+        if isinstance(fn, CallableClass) and (
+            compute is None
+            or compute == "tasks"
+            or isinstance(compute, TaskPoolStrategy)
+        ):
+            raise ValueError(
+                "``compute`` must be specified when using a CallableClass, and must "
+                f"specify the actor compute strategy, but got: {compute}"
+                'For example, use ``compute="actors"`` or '
+                "``compute=ActorPoolStrategy(min, max)``."
+            )
 
         self._warn_slow()
-        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -248,17 +277,27 @@ class Dataset(Generic[T]):
                 yield output_buffer.next()
 
         plan = self._plan.with_stage(
-            OneToOneStage("map", transform, compute, ray_remote_args)
+            OneToOneStage(
+                "map",
+                transform,
+                compute,
+                ray_remote_args,
+                fn=fn,
+            )
         )
         return Dataset(plan, self._epoch, self._lazy)
 
     def map_batches(
         self,
-        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        fn: BatchUDF,
         *,
         batch_size: Optional[int] = 4096,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "native",
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
@@ -311,10 +350,32 @@ class Dataset(Generic[T]):
             batch_size: Request a specific batch size, or None to use entire
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, or "actors" to use an autoscaling actor pool. If wanting to
+                configure the min or max size of the autoscaling actor pool, you can
+                provide an
+                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
+                instance. If using callable classes for fn, the actor compute strategy
+                must be used.
             batch_format: Specify "native" to use the native block format (promotes
                 tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, or "pyarrow" to select `pyarrow.Table``.
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
+                to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
+            fn_args: Positional arguments to pass to ``fn``, after the data batch. These
+                arguments will be top-level arguments in the underlying Ray task that's
+                submitted.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments will be
+                top-level arguments in the underlying Ray task that's submitted.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class and the actor
+                compute strategy is being used. These arguments will be top-level
+                arguments in the underlying Ray actor construction task that's
+                submitted.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class and the actor
+                compute strategy is being used. These arguments will be top-level
+                arguments in the underlying Ray actor construction task that's
+                submitted.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -324,10 +385,48 @@ class Dataset(Generic[T]):
         if batch_size is not None and batch_size < 1:
             raise ValueError("Batch size cannot be negative or 0")
 
-        fn = cache_wrapper(fn, compute)
+        if batch_format not in VALID_BATCH_FORMATS:
+            raise ValueError(
+                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
+                f"{batch_format}"
+            )
+
+        if isinstance(fn, CallableClass) and (
+            compute is None
+            or compute == "tasks"
+            or isinstance(compute, TaskPoolStrategy)
+        ):
+            raise ValueError(
+                "``compute`` must be specified when using a CallableClass, and must "
+                f"specify the actor compute strategy, but got: {compute}"
+                'For example, use ``compute="actors"`` or '
+                "``compute=ActorPoolStrategy(min, max)``."
+            )
+
+        if fn_constructor_args is not None or fn_constructor_kwargs is not None:
+            if compute is None or (
+                compute != "actors" and not isinstance(compute, ActorPoolStrategy)
+            ):
+                raise ValueError(
+                    "fn_constructor_args and fn_constructor_kwargs can only be "
+                    "specified if using the actor pool compute strategy, but got: "
+                    f"{compute}"
+                )
+            if not isinstance(fn, CallableClass):
+                raise ValueError(
+                    "fn_constructor_args and fn_constructor_kwargs can only be "
+                    "specified if providing a CallableClass instance for fn, but got: "
+                    f"{fn}"
+                )
+
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Iterable[Block]:
+        def transform(
+            block: Block,
+            batch_fn: BatchUDF,
+            *fn_args,
+            **fn_kwargs,
+        ) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -342,31 +441,25 @@ class Dataset(Generic[T]):
                 # Make sure to copy if slicing to avoid the Arrow serialization
                 # bug where we include the entire base view on serialization.
                 view = block.slice(start, end, copy=batch_size is not None)
-                if batch_format == "native":
-                    view = BlockAccessor.for_block(view).to_native()
-                elif batch_format == "pandas":
-                    view = BlockAccessor.for_block(view).to_pandas()
-                elif batch_format == "pyarrow":
-                    view = BlockAccessor.for_block(view).to_arrow()
-                else:
-                    raise ValueError(
-                        "The batch format must be one of 'native', 'pandas', "
-                        "or 'pyarrow', got: {}".format(batch_format)
-                    )
+                # Convert to batch format.
+                view = BlockAccessor.for_block(view).to_batch_format(batch_format)
 
-                applied = fn(view)
+                applied = batch_fn(view, *fn_args, **fn_kwargs)
                 if not (
                     isinstance(applied, list)
                     or isinstance(applied, pa.Table)
                     or isinstance(applied, np.ndarray)
+                    or (
+                        isinstance(applied, dict)
+                        and all(isinstance(col, np.ndarray) for col in applied.values())
+                    )
                     or isinstance(applied, pd.core.frame.DataFrame)
                 ):
                     raise ValueError(
                         "The map batches UDF returned the value "
                         f"{applied} of type {type(applied)}, "
                         "which is not allowed. "
-                        "The return type must be either list, "
-                        "pandas.DataFrame, or pyarrow.Table"
+                        f"The return type must be one of: {BatchType}"
                     )
                 output_buffer.add_batch(applied)
                 if output_buffer.has_next():
@@ -377,7 +470,17 @@ class Dataset(Generic[T]):
                 yield output_buffer.next()
 
         plan = self._plan.with_stage(
-            OneToOneStage("map_batches", transform, compute, ray_remote_args)
+            OneToOneStage(
+                "map_batches",
+                transform,
+                compute,
+                ray_remote_args,
+                fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
+                fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
+            )
         )
         return Dataset(plan, self._epoch, self._lazy)
 
@@ -428,11 +531,47 @@ class Dataset(Generic[T]):
             process_batch, batch_format="pandas", compute=compute, **ray_remote_args
         )
 
-    def flat_map(
+    def drop_columns(
         self,
-        fn: Union[CallableClass, Callable[[T], Iterable[U]]],
+        cols: List[str],
         *,
         compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[U]":
+        """Drop one or more columns from the dataset.
+
+        This is a blocking operation.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range_table(100) # doctest: +SKIP
+            >>> # Add a new column equal to value * 2.
+            >>> ds = ds.add_column( # doctest: +SKIP
+            ...     "new_col", lambda df: df["value"] * 2)
+            >>> # Drop the existing "value" column.
+            >>> ds = ds.drop_columns(["value"]) # doctest: +SKIP
+
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            cols: Names of the columns to drop. If any name does not exist,
+                an exception will be raised.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+
+        return self.map_batches(
+            lambda batch: batch.drop(columns=cols), compute=compute, **ray_remote_args
+        )
+
+    def flat_map(
+        self,
+        fn: RowUDF,
+        *,
+        compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
@@ -452,16 +591,31 @@ class Dataset(Generic[T]):
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, or "actors" to use an autoscaling actor pool. If wanting to
+                configure the min or max size of the autoscaling actor pool, you can
+                provide an
+                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
+                instance. If using callable classes for fn, the actor compute strategy
+                must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
+        if isinstance(fn, CallableClass) and (
+            compute is None
+            or compute == "tasks"
+            or isinstance(compute, TaskPoolStrategy)
+        ):
+            raise ValueError(
+                "``compute`` must be specified when using a CallableClass, and must "
+                f"specify the actor compute strategy, but got: {compute}"
+                'For example, use ``compute="actors"`` or '
+                "``compute=ActorPoolStrategy(min, max)``."
+            )
 
         self._warn_slow()
-        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -475,15 +629,15 @@ class Dataset(Generic[T]):
                 yield output_buffer.next()
 
         plan = self._plan.with_stage(
-            OneToOneStage("flat_map", transform, compute, ray_remote_args)
+            OneToOneStage("flat_map", transform, compute, ray_remote_args, fn=fn)
         )
         return Dataset(plan, self._epoch, self._lazy)
 
     def filter(
         self,
-        fn: Union[CallableClass, Callable[[T], bool]],
+        fn: RowUDF,
         *,
-        compute: Optional[str] = None,
+        compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset[T]":
         """Filter out records that do not satisfy the given predicate.
@@ -503,16 +657,31 @@ class Dataset(Generic[T]):
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, or "actors" to use an autoscaling actor pool. If wanting to
+                configure the min or max size of the autoscaling actor pool, you can
+                provide an
+                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
+                instance. If using callable classes for fn, the actor compute strategy
+                must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
+        if isinstance(fn, CallableClass) and (
+            compute is None
+            or compute == "tasks"
+            or isinstance(compute, TaskPoolStrategy)
+        ):
+            raise ValueError(
+                "``compute`` must be specified when using a CallableClass, and must "
+                f"specify the actor compute strategy, but got: {compute}"
+                'For example, use ``compute="actors"`` or '
+                "``compute=ActorPoolStrategy(min, max)``."
+            )
 
         self._warn_slow()
-        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = block.builder()
@@ -522,7 +691,7 @@ class Dataset(Generic[T]):
             return [builder.build()]
 
         plan = self._plan.with_stage(
-            OneToOneStage("filter", transform, compute, ray_remote_args)
+            OneToOneStage("filter", transform, compute, ray_remote_args, fn=fn)
         )
         return Dataset(plan, self._epoch, self._lazy)
 
@@ -553,50 +722,7 @@ class Dataset(Generic[T]):
             The repartitioned dataset.
         """
 
-        if shuffle:
-
-            def do_shuffle(
-                block_list, clear_input_blocks: bool, block_udf, remote_args
-            ):
-                if clear_input_blocks:
-                    blocks = block_list.copy()
-                    block_list.clear()
-                else:
-                    blocks = block_list
-                context = DatasetContext.get_current()
-                if context.use_push_based_shuffle:
-                    shuffle_op_cls = PushBasedShufflePartitionOp
-                else:
-                    shuffle_op_cls = SimpleShufflePartitionOp
-                shuffle_op = shuffle_op_cls(block_udf, random_shuffle=False)
-                return shuffle_op.execute(
-                    blocks,
-                    num_blocks,
-                    clear_input_blocks,
-                    map_ray_remote_args=remote_args,
-                    reduce_ray_remote_args=remote_args,
-                )
-
-            plan = self._plan.with_stage(
-                AllToAllStage(
-                    "repartition", num_blocks, do_shuffle, supports_block_udf=True
-                )
-            )
-
-        else:
-
-            def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
-                if clear_input_blocks:
-                    blocks = block_list.copy()
-                    block_list.clear()
-                else:
-                    blocks = block_list
-                return fast_repartition(blocks, num_blocks)
-
-            plan = self._plan.with_stage(
-                AllToAllStage("repartition", num_blocks, do_fast_repartition)
-            )
-
+        plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
         return Dataset(plan, self._epoch, self._lazy)
 
     def random_shuffle(
@@ -629,36 +755,7 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
-            num_blocks = block_list.executed_num_blocks()  # Blocking.
-            if num_blocks == 0:
-                return block_list, {}
-            if clear_input_blocks:
-                blocks = block_list.copy()
-                block_list.clear()
-            else:
-                blocks = block_list
-            context = DatasetContext.get_current()
-            if context.use_push_based_shuffle:
-                shuffle_op_cls = PushBasedShufflePartitionOp
-            else:
-                shuffle_op_cls = SimpleShufflePartitionOp
-            random_shuffle_op = shuffle_op_cls(
-                block_udf, random_shuffle=True, random_seed=seed
-            )
-            return random_shuffle_op.execute(
-                blocks,
-                num_blocks,
-                clear_input_blocks,
-                map_ray_remote_args=remote_args,
-                reduce_ray_remote_args=remote_args,
-            )
-
-        plan = self._plan.with_stage(
-            AllToAllStage(
-                "random_shuffle", num_blocks, do_shuffle, supports_block_udf=True
-            )
-        )
+        plan = self._plan.with_stage(RandomShuffleStage(seed, num_blocks))
         return Dataset(plan, self._epoch, self._lazy)
 
     def randomize_block_order(
@@ -681,26 +778,11 @@ class Dataset(Generic[T]):
                 based on system randomness.
 
         Returns:
-            The shuffled dataset.
+            The block-shuffled dataset.
         """
 
-        def do_randomize_block_order(block_list, *_):
-            num_blocks = block_list.executed_num_blocks()  # Blocking.
-            if num_blocks == 0:
-                return block_list, {}
-
-            randomized_block_list = block_list.randomize_block_order(seed)
-
-            return randomized_block_list, {}
-
-        plan = self._plan.with_stage(
-            AllToAllStage(
-                "randomize_block_order",
-                None,
-                do_randomize_block_order,
-            )
-        )
-        return Dataset(plan, self._epoch, self._lazy)
+        plan = self._plan.with_stage(RandomizeBlocksStage(seed))
+        return Dataset(plan, self._epoch, self._lazy, defer_execution=True)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -1026,7 +1108,7 @@ class Dataset(Generic[T]):
 
         def build_node_id_by_actor(actors: List[Any]) -> Dict[Any, str]:
             """Build a map from a actor to its node_id."""
-            actors_state = ray.state.actors()
+            actors_state = ray._private.state.actors()
             return {
                 actor: actors_state.get(actor._actor_id.hex(), {})
                 .get("Address", {})
@@ -1679,25 +1761,7 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(block_list, clear_input_blocks: bool, *_):
-            # Handle empty dataset.
-            if block_list.initial_num_blocks() == 0:
-                return block_list, {}
-            if clear_input_blocks:
-                blocks = block_list.copy()
-                block_list.clear()
-            else:
-                blocks = block_list
-            if isinstance(key, list):
-                if not key:
-                    raise ValueError("`key` must be a list of non-zero length")
-                for subkey in key:
-                    _validate_key_fn(self, subkey)
-            else:
-                _validate_key_fn(self, key)
-            return sort_impl(blocks, clear_input_blocks, key, descending)
-
-        plan = self._plan.with_stage(AllToAllStage("sort", None, do_sort))
+        plan = self._plan.with_stage(SortStage(self, key, descending))
         return Dataset(plan, self._epoch, self._lazy)
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
@@ -1727,46 +1791,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(block_list, clear_input_blocks: bool, *_):
-            blocks1 = block_list.get_blocks()
-            blocks2 = other.get_internal_block_refs()
-
-            if clear_input_blocks:
-                block_list.clear()
-
-            if len(blocks1) != len(blocks2):
-                # TODO(ekl) consider supporting if num_rows are equal.
-                raise ValueError(
-                    "Cannot zip dataset of different num blocks: {} vs {}".format(
-                        len(blocks1), len(blocks2)
-                    )
-                )
-
-            def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
-                stats = BlockExecStats.builder()
-                b1 = BlockAccessor.for_block(block1)
-                result = b1.zip(block2)
-                br = BlockAccessor.for_block(result)
-                return result, br.get_metadata(input_files=[], exec_stats=stats.build())
-
-            do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
-
-            blocks = []
-            metadata = []
-            for b1, b2 in zip(blocks1, blocks2):
-                res, meta = do_zip_fn.remote(b1, b2)
-                blocks.append(res)
-                metadata.append(meta)
-
-            # Early release memory.
-            del blocks1, blocks2
-
-            # TODO(ekl) it might be nice to have a progress bar here.
-            metadata = ray.get(metadata)
-            blocks = BlockList(blocks, metadata)
-            return blocks, {}
-
-        plan = self._plan.with_stage(AllToAllStage("zip", None, do_zip_all))
+        plan = self._plan.with_stage(ZipStage(other))
         return Dataset(plan, self._epoch, self._lazy)
 
     def limit(self, limit: int) -> "Dataset[T]":
@@ -2215,7 +2240,7 @@ class Dataset(Generic[T]):
                     blocks,
                     metadata,
                     ray_remote_args,
-                    _wrap_arrow_serialization_workaround(write_args),
+                    _wrap_and_register_arrow_serialization_workaround(write_args),
                 )
             )
 
@@ -2297,8 +2322,9 @@ class Dataset(Generic[T]):
             batch_format: The format in which to return each batch.
                 Specify "native" to use the native block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, or "pyarrow" to select ``pyarrow.Table``. Default
-                is "native".
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
+                to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -2762,10 +2788,13 @@ class Dataset(Generic[T]):
             number of records.
         """
 
-        if self.count() > limit:
+        count = self.count()
+        if count > limit:
             raise ValueError(
-                "The dataset has more than the given limit of {} records. "
-                "Use ds.limit(N).to_pandas().".format(limit)
+                f"The dataset has more than the given limit of {limit} "
+                f"records: {count}. If you are sure that a DataFrame with "
+                f"{count} rows will fit in local memory, use "
+                f"ds.to_pandas(limit={count})."
             )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
@@ -2896,10 +2925,11 @@ class Dataset(Generic[T]):
         from ray.data.dataset_pipeline import DatasetPipeline
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
@@ -2940,7 +2970,7 @@ class Dataset(Generic[T]):
             def __iter__(self):
                 return Iterator(self._blocks)
 
-        pipe = DatasetPipeline(Iterable(blocks), length=times or float("inf"))
+        pipe = DatasetPipeline(Iterable(blocks), False, length=times or float("inf"))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
@@ -3015,10 +3045,11 @@ class Dataset(Generic[T]):
             blocks_per_window = 10
 
         ctx = DatasetContext.get_current()
-        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _, _ = self._plan._get_source_blocks_and_stages()
+        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
+            blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
-            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
+            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
+            read_stage = stages[0]
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
@@ -3051,6 +3082,7 @@ class Dataset(Generic[T]):
                     self._splits = blocks.split(split_size=blocks_per_window)
                 try:
                     sizes = [s.size_bytes() for s in self._splits]
+                    num_blocks = [s.initial_num_blocks() for s in self._splits]
                     assert [s > 0 for s in sizes], sizes
 
                     def fmt(size_bytes):
@@ -3068,6 +3100,16 @@ class Dataset(Generic[T]):
                             fmt(int(np.mean(sizes))),
                         )
                     )
+                    logger.info(
+                        "Blocks per window: "
+                        "{} min, {} max, {} mean".format(
+                            min(num_blocks),
+                            max(num_blocks),
+                            int(np.mean(num_blocks)),
+                        )
+                    )
+                    # TODO(ekl): log a warning if the blocks per window are much less
+                    # than the available parallelism.
                 except Exception as e:
                     logger.info(
                         "Created DatasetPipeline with {} windows; "
@@ -3082,7 +3124,7 @@ class Dataset(Generic[T]):
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        pipe = DatasetPipeline(it, length=len(it._splits))
+        pipe = DatasetPipeline(it, False, length=len(it._splits))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
@@ -3194,7 +3236,7 @@ class Dataset(Generic[T]):
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
-        def _reduce(rf: ray.remote_function.RemoteFunction):
+        def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
             # Custom reducer for Ray remote function handles that allows for
             # cross-cluster serialization.
             # This manually unsets the last export session and job to force re-exporting
@@ -3205,10 +3247,10 @@ class Dataset(Generic[T]):
             state["_last_export_session_and_job"] = None
             return reconstructor, args, state
 
-        context = ray.worker.global_worker.get_serialization_context()
+        context = ray._private.worker.global_worker.get_serialization_context()
         try:
             context._register_cloudpickle_reducer(
-                ray.remote_function.RemoteFunction, _reduce
+                ray.remote_function.RemoteFunction, _reduce_remote_fn
             )
             serialized = pickle.dumps(ds)
         finally:

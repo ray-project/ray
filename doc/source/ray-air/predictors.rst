@@ -1,107 +1,133 @@
 .. _air-predictors:
 
-Inference with Ray AIR
-======================
+Inference with `Predictors`
+===========================
 
-.. figure:: images/air-predictor.png
+.. https://docs.google.com/presentation/d/1jfkQk0tGqgkLgl10vp4-xjcbYG9EEtlZV_Vnve_NenQ/edit
 
-Ray AIR Predictors load models from checkpoints to perform inference.
+.. image:: images/predictors.png
 
-After training a model, using it for inference is a key component of any ML workload.
+After you train a model, you will often want to use the model to do inference and prediction.
+To do so, you can use a Ray AIR Predictor. In this guide, we'll cover how to use the Predictor
+on different types of data.
 
-Ray AIR's predictors and associated utilities allow you to easily
 
-Once you have a trained model, you can use Ray AIR's Predictors and associated utilities to perform scalable offline and
-online prediction.
-
-Creating a Predictor
+What are predictors?
 --------------------
-Predictors can be created from Checkpoints.
 
-Either as a result of Training (Result, ResultGrid) or from a :ref:`pretrained model` <use-pretrained-model>.
+Ray AIR Predictors are a class that loads models from `Checkpoint` to perform inference.
 
-Checkpoints contain the trained model for prediction and the fitted Preprocessor
+Predictors are used by `BatchPredictor` and `PredictorDeployment` to do large-scale scoring or online inference.
 
-Link to Checkpoint docs when they exist.
+Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition. 
+Checkpoints can be generated from a variety of different ways -- see the :ref:`Checkpoints <air-checkpoints-doc>` user guide for more details.
 
-Code snippet showing from_checkpoint.
+The checkpoint then is used to create a framework specific Predictor (in our example, a `TensorflowPredictor`), which then can be used for inference:
 
-Using Predictors
-------------------------
-Predictors load models from checkpoints to perform inference.
-
-Predictors expose a ``predict`` method that accepts an input batch of type
-    ``DataBatchType`` and outputs predictions of the same type as the input batch.
-
-When the ``predict`` method is called the following occurs:
-
-        - The input batch is converted into a pandas DataFrame. Tensor input (like a
-          ``np.ndarray``) will be converted into a single column Pandas Dataframe.
-        - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided
-          :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to
-          transform the DataFrame.
-        - The transformed DataFrame will be passed to the model for inference (via the
-          ``predictor._predict_pandas`` method).
-        - The predictions will be outputted by ``predict`` in the same type as the
-          original input.
-
-There are three ways to do prediction.
-
-.. _air-predictor-standalone:
-
-1: Standalone for development/debugging
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Show how to pass in a single batch of data.
-Make sure that your Predictor works with your model/checkpoint.
-
-2: Offline Batch Prediction
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Link to batch prediction guide
-
-3: Online Prediction with Ray Serve
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Link to serving guide
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __use_predictor_start__
+    :end-before: __use_predictor_end__
 
 
-Examples
---------
+Predictors expose a ``predict`` method that accepts an input batch of type ``DataBatchType`` (which is a typing union of different standard Python ecosystem data types, such as Pandas Dataframe or Numpy Array) and outputs predictions of the same type as the input batch.
 
-Non Deep Learning
-~~~~~~~~~~~~~~~~~
-Show tabs for xgboost and lightgbm
+**Life of a prediction:** Underneath the hood, when the ``Predictor.predict`` method is called the following occurs:
 
-Link to full batch prediction example
-Link to full online serving example
+- The input batch is converted into a Pandas DataFrame. Tensor input (like a ``np.ndarray``) will be converted into a single column Pandas Dataframe.
+- If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to transform the DataFrame.
+- The transformed DataFrame will be passed to the model for inference.
+- The predictions will be outputted by ``predict`` in the same type as the original input.
 
-Deep Learning
-~~~~~~~~~~~~~
-Show tabs for Torch/Tf for each
 
-Single tensor (e.g. Image Data)
-###############################
-Link to full batch prediction example
-Link to full online serving
+Batch Prediction
+----------------
+
+Ray AIR provides a ``BatchPredictor`` utility for large-scale batch inference.
+
+The BatchPredictor takes in a checkpoint and a predictor class and executes 
+large-scale batch prediction on a given dataset in a parallel/distributed fashion when calling ``predict()``.
+
+``predict()`` will load the entire given dataset into memory, which may be a problem if your dataset
+size is larger than your available cluster memory. See the :ref:`pipelined-prediction` section for more details.
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __batch_prediction_start__
+    :end-before: __batch_prediction_end__
+
+Below, we provide examples of using common frameworks to do batch inference for different data types:
 
 Tabular
-#######
-Link to full batch prediction example
-Link to full online serving example
+~~~~~~~
 
-Multi-modal
-###########
-Link to full batch prediction example
-Link to full online serving example
+.. tabbed:: XGBoost
+
+    .. literalinclude:: examples/xgboost_batch_prediction.py
+        :language: python
+
+.. tabbed:: Pytorch
+
+    .. literalinclude:: examples/pytorch_tabular_batch_prediction.py
+        :language: python
+
+.. tabbed:: Tensorflow
+
+    .. literalinclude:: examples/tf_tabular_batch_prediction.py
+        :language: python
+
+
+Image
+~~~~~
+
+.. tabbed:: Pytorch
+
+    .. literalinclude:: examples/torch_image_batch_pretrained.py
+        :language: python
+
+
+.. tabbed:: Tensorflow
+
+    Coming soon!
+
+Text
+~~~~
+
+Coming soon!
+
+.. _pipelined-prediction:
+
+Lazy/Pipelined Prediction
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you have a large dataset but not a lot of available memory, you can use the 
+:meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
+
+Unlike :py:meth:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a 
+:class:`DatasetPipeline`` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
+
+The lazy loading of the data will allow you to operate on datasets much greater than your available memory.
+Execution can be triggered by pulling from the pipeline, as shown in the example below.
+
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __pipelined_prediction_start__
+    :end-before: __pipelined_prediction_end__
+
+
+Online inference
+----------------
+
+Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.
+
 
 Developer Guide: Implementing your own Predictor
 ------------------------------------------------
-    To implement a new Predictor for your particular framework, you should subclass
-    the base ``Predictor`` and implement the following two methods:
+To implement a new Predictor for your particular framework, you should subclass the base ``Predictor`` and implement the following two methods:
 
-        1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
-            pandas.DataFrame containing predictions.
-        2. ``from_checkpoint``: Logic for creating a Predictor from an
-           :ref:`AIR Checkpoint <air-checkpoint-ref>`.
-        3. Optionally ``_predict_arrow`` for better performance when working with
-           tensor data to avoid extra copies from Pandas conversions.
+1. ``_predict_pandas``: Given a pandas.DataFrame input, return a pandas.DataFrame containing predictions.
+2. ``from_checkpoint``: Logic for creating a Predictor from an :ref:`AIR Checkpoint <air-checkpoint-ref>`.
+3. Optionally ``_predict_arrow`` for better performance when working with tensor data to avoid extra copies from Pandas conversions.
 
 

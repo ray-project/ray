@@ -1,15 +1,14 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.simple_q as simple_q
-from ray.rllib.algorithms.simple_q.simple_q_tf_policy import build_q_losses as loss_tf
-from ray.rllib.algorithms.simple_q.simple_q_torch_policy import (
-    build_q_losses as loss_torch,
-)
+from ray.rllib.algorithms.simple_q.simple_q_tf_policy import SimpleQTF2Policy
+from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.numpy import fc, one_hot, huber_loss
+from ray.rllib.utils.numpy import fc, huber_loss, one_hot
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -138,14 +137,15 @@ class TestSimpleQ(unittest.TestCase):
                     feed_dict=policy._get_loss_inputs_dict(input_, shuffle=False),
                 )
             else:
-                out = (loss_torch if fw == "torch" else loss_tf)(
+                out = (SimpleQTorchPolicy if fw == "torch" else SimpleQTF2Policy).loss(
                     policy, policy.model, None, input_
                 )
             check(out, expected_loss, decimals=1)
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

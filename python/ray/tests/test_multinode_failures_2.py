@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import get_other_nodes
-import ray.ray_constants as ray_constants
 
 
 @pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")
@@ -58,7 +58,7 @@ def test_object_reconstruction(ray_start_cluster):
         # node.
         for x in xs:
             ray.get(x)
-            ray.internal.free([x], local_only=True)
+            ray._private.internal_api.free([x], local_only=True)
 
         # Kill a component on one of the nodes.
         process.terminate()
@@ -125,6 +125,10 @@ def test_actor_creation_node_failure(ray_start_cluster):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

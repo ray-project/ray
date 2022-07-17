@@ -170,6 +170,7 @@ test_python() {
       python/ray/tests/...
       -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
+      -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -322,7 +323,7 @@ install_cython_examples() {
 
 install_go() {
   local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
-  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.14.2 bash)"
+  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.18.3 bash)"
 
   if [ -z "${GOPATH-}" ]; then
     GOPATH="${GOPATH:-${HOME}/go_dir}"
@@ -520,7 +521,7 @@ lint_bazel() {
     export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
 
     # Build buildifier
-    go get github.com/bazelbuild/buildtools/buildifier
+    go install github.com/bazelbuild/buildtools/buildifier@latest
 
     # Now run buildifier
     "${ROOT_DIR}"/lint/bazel-format.sh

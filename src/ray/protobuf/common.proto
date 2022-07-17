@@ -193,6 +193,8 @@ enum ErrorType {
   TASK_UNSCHEDULABLE_ERROR = 18;
   // The actor is unschedulable.
   ACTOR_UNSCHEDULABLE_ERROR = 19;
+  // We use this error for object fetches that failed due to out of disk.
+  OUT_OF_DISK_ERROR = 20;
 }
 
 /// The information per ray error type.
@@ -612,6 +614,8 @@ message CoreWorkerStats {
   uint32 pid = 22;
   // The worker type.
   WorkerType worker_type = 23;
+  // Length of the number of objects without truncation.
+  int64 objects_total = 24;
 }
 
 message MetricPoint {

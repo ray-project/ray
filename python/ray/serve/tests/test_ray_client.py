@@ -141,7 +141,7 @@ def test_quickstart_class(serve_with_client):
         name = request.query_params["name"]
         return f"Hello {name}!"
 
-    hello.deploy()
+    serve.run(hello.bind())
 
     # Query our endpoint over HTTP.
     response = requests.get("http://127.0.0.1:8000/hello?name=serve").text
@@ -149,8 +149,6 @@ def test_quickstart_class(serve_with_client):
 
 
 def test_quickstart_counter(serve_with_client):
-    serve.start()
-
     @serve.deployment
     class Counter:
         def __init__(self):
@@ -161,13 +159,13 @@ def test_quickstart_counter(serve_with_client):
             return {"count": self.count}
 
     # Deploy our class.
-    Counter.deploy()
+    handle = serve.run(Counter.bind())
     print("deploy finished")
 
     # Query our endpoint in two different ways: from HTTP and from Python.
     assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
     print("query 1 finished")
-    assert ray.get(Counter.get_handle().remote()) == {"count": 2}
+    assert ray.get(handle.remote()) == {"count": 2}
     print("query 2 finished")
 
 
@@ -189,15 +187,12 @@ def test_handle_hanging(serve_with_client):
     # With https://github.com/ray-project/ray/issues/20971
     # the following will hang forever.
 
-    serve.start()
-
     @serve.deployment
     def f():
         return 1
 
-    f.deploy()
+    handle = serve.run(f.bind())
 
-    handle = f.get_handle()
     for _ in range(5):
         assert ray.get(handle.remote()) == 1
         time.sleep(0.5)

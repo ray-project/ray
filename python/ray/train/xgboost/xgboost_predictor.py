@@ -6,12 +6,14 @@ import xgboost
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.train.predictor import Predictor
-from ray.train.xgboost.xgboost_trainer import load_checkpoint
+from ray.train.xgboost.utils import load_checkpoint
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 class XGBoostPredictor(Predictor):
     """A predictor for XGBoost models.
 
@@ -40,7 +42,7 @@ class XGBoostPredictor(Predictor):
 
         """
         bst, preprocessor = load_checkpoint(checkpoint)
-        return XGBoostPredictor(model=bst, preprocessor=preprocessor)
+        return cls(model=bst, preprocessor=preprocessor)
 
     def _predict_pandas(
         self,
@@ -110,12 +112,27 @@ class XGBoostPredictor(Predictor):
         """
         dmatrix_kwargs = dmatrix_kwargs or {}
 
+        feature_names = None
         if TENSOR_COLUMN_NAME in data:
             data = data[TENSOR_COLUMN_NAME].to_numpy()
             if feature_columns:
+                # In this case feature_columns is a list of integers
                 data = data[:, feature_columns]
         elif feature_columns:
-            data = data[feature_columns]
+            # feature_columns is a list of integers or strings
+            data = data[feature_columns].to_numpy()
+            # Only set the feature names if they are strings
+            if all(isinstance(fc, str) for fc in feature_columns):
+                feature_names = feature_columns
+        else:
+            feature_columns = data.columns.tolist()
+            data = data.to_numpy()
+
+            if all(isinstance(fc, str) for fc in feature_columns):
+                feature_names = feature_columns
+
+        if feature_names:
+            dmatrix_kwargs["feature_names"] = feature_names
 
         matrix = xgboost.DMatrix(data, **dmatrix_kwargs)
         df = pd.DataFrame(self.model.predict(matrix, **predict_kwargs))

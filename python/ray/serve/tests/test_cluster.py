@@ -1,16 +1,15 @@
-from collections import defaultdict
 import os
 import sys
 import time
+from collections import defaultdict
 
 import pytest
 import requests
 
 import ray
-from ray.cluster_utils import Cluster
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.cluster_utils import Cluster
 from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.deployment_state import ReplicaStartupStatus, ReplicaState
 
@@ -77,8 +76,15 @@ def test_scale_up(ray_cluster):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_node_failure(ray_cluster):
     cluster = ray_cluster
+
     cluster.add_node(num_cpus=3)
     cluster.connect(namespace=SERVE_NAMESPACE)
+
+    # NOTE(edoakes): we need to start serve before adding the worker node to
+    # guarantee that the controller is placed on the head node (we should be
+    # able to tolerate being placed on workers, but there's currently a bug).
+    # We should add an explicit test for that in the future when it's fixed.
+    serve.start(detached=True)
 
     worker_node = cluster.add_node(num_cpus=2)
 
@@ -93,12 +99,11 @@ def test_node_failure(ray_cluster):
             pids.add(requests.get("http://localhost:8000/D").text)
             if time.time() - start >= timeout:
                 raise TimeoutError("Timed out waiting for pids.")
+            time.sleep(1)
         return pids
 
-    serve.start(detached=True)
-
     print("Initial deploy.")
-    D.deploy()
+    serve.run(D.bind())
     pids1 = get_pids(5)
 
     # Remove the node. There should still be three replicas running.
@@ -179,10 +184,10 @@ def test_intelligent_scale_down(ray_cluster):
         pass
 
     def get_actor_distributions():
-        actors = ray.state.actors()
+        actors = ray._private.state.actors()
         node_to_actors = defaultdict(list)
         for actor in actors.values():
-            if "RayServeWrappedReplica" not in actor["ActorClassName"]:
+            if "ServeReplica" not in actor["ActorClassName"]:
                 continue
             if actor["State"] != "ALIVE":
                 continue

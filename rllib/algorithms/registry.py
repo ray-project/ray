@@ -277,7 +277,7 @@ def _get_algorithm_class(alg: str, return_config=False) -> type:
             _ParameterTuningTrainer.get_default_config(),
         )
     else:
-        raise Exception(("Unknown algorithm {}.").format(alg))
+        raise Exception("Unknown algorithm {}.".format(alg))
 
     if return_config:
         return class_, config

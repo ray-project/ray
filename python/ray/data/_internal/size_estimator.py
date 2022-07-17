@@ -44,7 +44,7 @@ class SizeEstimator:
             _ray_initialized = True
             ray.put(None)
         return (
-            ray.worker.global_worker.get_serialization_context()
+            ray._private.worker.global_worker.get_serialization_context()
             .serialize(item)
             .total_bytes
         )

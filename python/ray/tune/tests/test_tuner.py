@@ -17,7 +17,6 @@ from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.tune import Callback, TuneError
-from ray.tune.cloud import TrialCheckpoint
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -32,6 +31,16 @@ class DummyTrainer(BaseTrainer):
         "placement_strategy",
     ]
 
+    def training_loop(self) -> None:
+        for i in range(5):
+            with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(str(i))
+            tune.report(step=i)
+
+
+class FailingTrainer(DummyTrainer):
     def training_loop(self) -> None:
         raise RuntimeError("There is an error in trainer!")
 
@@ -118,7 +127,6 @@ class TunerTest(unittest.TestCase):
             _tuner_kwargs={"max_concurrent_trials": 1},
         )
         results = tuner.fit()
-        assert not isinstance(results.get_best_result().checkpoint, TrialCheckpoint)
         assert len(results) == 4
 
     def test_tuner_with_xgboost_trainer_driver_fail_and_resume(self):
@@ -189,7 +197,7 @@ class TunerTest(unittest.TestCase):
         assert len(results) == 4
 
     def test_tuner_trainer_fail(self):
-        trainer = DummyTrainer()
+        trainer = FailingTrainer()
         param_space = {
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),

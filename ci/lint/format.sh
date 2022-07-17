@@ -145,16 +145,6 @@ MYPY_FILES=(
     '_private/gcs_utils.py'
 )
 
-ISORT_PATHS=(
-    # TODO: Expand this list and remove once it is applied to the entire codebase.
-    'python/ray/autoscaler/'
-    'doc/'
-)
-
-ISORT_GIT_LS_EXCLUDES=(
-  ':(exclude)doc/**/doc_code/*'
-)
-
 
 BLACK_EXCLUDES=(
     '--force-exclude' 'python/ray/cloudpickle/*'
@@ -171,6 +161,7 @@ GIT_LS_EXCLUDES=(
 
 JAVA_EXCLUDES=(
   'java/api/src/main/java/io/ray/api/ActorCall.java'
+  'java/api/src/main/java/io/ray/api/CppActorCall.java'
   'java/api/src/main/java/io/ray/api/PyActorCall.java'
   'java/api/src/main/java/io/ray/api/RayCall.java'
 )
@@ -201,12 +192,6 @@ mypy_on_each() {
     popd
 }
 
-isort_on_paths() {
-    for path in "$@"; do
-       echo "Running isort on files under $path"
-       isort "$path"
-    done
-}
 
 # Format specified files
 format_files() {
@@ -264,7 +249,8 @@ format_all_scripts() {
 
     # Run isort before black to fix imports and let black deal with file format.
     echo "$(date)" "isort...."
-    isort_on_paths "${ISORT_PATHS[@]}"
+    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
+      isort
     echo "$(date)" "Black...."
     git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       black "${BLACK_EXCLUDES[@]}"
@@ -322,8 +308,8 @@ format_changed() {
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' "${ISORT_GIT_LS_EXCLUDES[@]}" &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' "${ISORT_GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
             isort
     fi
 

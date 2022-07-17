@@ -1,20 +1,19 @@
 import math
 import random
 import time
-
 from unittest.mock import patch
+
 import numpy as np
 import pytest
 
 import ray
-
-from ray.tests.conftest import *  # noqa
-from ray.data.dataset import Dataset
-from ray.data.block import BlockAccessor
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.stats import DatasetStats
 from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.stats import DatasetStats
+from ray.data.block import BlockAccessor
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 @ray.remote
@@ -324,7 +323,7 @@ def test_split_hints(ray_start_regular_shared):
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
-            with patch("ray.state.actors") as state_mock:
+            with patch("ray._private.state.actors") as state_mock:
                 block_locations = {}
                 for i, node_id in enumerate(block_node_ids):
                     if node_id:

@@ -1,8 +1,8 @@
 from typing import Any, Dict, Optional, Tuple, List
 
-from ray.experimental.dag import DAGNode
-from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.experimental.dag.constants import PARENT_CLASS_NODE_KEY
+from ray.dag import DAGNode
+from ray.dag.format_utils import get_dag_node_str
+from ray.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.serve.deployment import Deployment
 
 

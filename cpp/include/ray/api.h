@@ -97,6 +97,9 @@ ray::internal::TaskCaller<F> Task(F func);
 template <typename R>
 ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func);
 
+template <typename R>
+ray::internal::TaskCaller<JavaFunction<R>> Task(JavaFunction<R> func);
+
 /// Generic version of creating an actor
 /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
 /// ray::Actor(Counter::FactoryCreate<int>).Remote(1);
@@ -108,14 +111,24 @@ ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func);
 ray::internal::ActorCreator<JavaActorClass> Actor(JavaActorClass func);
 
 /// Get a handle to a named actor in current namespace.
-/// Gets a handle to a named actor with the given name. The actor must have been created
-/// with name specified.
+/// The actor must have been created with name specified.
 ///
 /// \param[in] actor_name The name of the named actor.
 /// \return An ActorHandle to the actor if the actor of specified name exists or an
 /// empty optional object.
 template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
+
+/// Get a handle to a named actor in the given namespace.
+/// The actor must have been created with name specified.
+///
+/// \param[in] actor_name The name of the named actor.
+/// \param[in] namespace The namespace of the actor.
+/// \return An ActorHandle to the actor if the actor of specified name exists in
+/// specifiled namespace or an empty optional object.
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
+                                         const std::string &ray_namespace);
 
 /// Intentionally exit the current actor.
 /// It is used to disconnect an actor and exit the worker.
@@ -232,6 +245,13 @@ inline ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func) {
   return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 
+template <typename R>
+inline ray::internal::TaskCaller<JavaFunction<R>> Task(JavaFunction<R> func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(
+      "", func.function_name, func.class_name, ray::internal::LangType::JAVA);
+  return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
+}
+
 inline ray::internal::ActorCreator<JavaActorClass> Actor(JavaActorClass func) {
   ray::internal::RemoteFunctionHolder remote_func_holder(func.module_name,
                                                          func.function_name,
@@ -261,11 +281,17 @@ inline ray::internal::ActorCreator<F> Actor(F create_func) {
 
 template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
+  return GetActor<T>(actor_name, "");
+}
+
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
+                                         const std::string &ray_namespace) {
   if (actor_name.empty()) {
     return {};
   }
 
-  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(actor_name);
+  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(actor_name, ray_namespace);
   if (actor_id.empty()) {
     return {};
   }

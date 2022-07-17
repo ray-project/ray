@@ -175,7 +175,7 @@ class QRegTorchModel:
                 q_values, _ = self.q_model({"obs": obs[idxs]}, [], None)
                 q_acts = torch.gather(
                     q_values, -1, actions[idxs].unsqueeze(-1)
-                ).squeeze()
+                ).squeeze(-1)
                 loss = discounts[idxs] * ps[idxs] * (returns[idxs] - q_acts) ** 2
                 loss = torch.mean(loss)
                 self.optimizer.zero_grad()
@@ -205,7 +205,7 @@ class QRegTorchModel:
         q_values, _ = self.q_model({"obs": obs}, [], None)
         if actions is not None:
             actions = torch.tensor(actions, device=self.device, dtype=int)
-            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
+            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
         return q_values.detach()
 
     def estimate_v(

@@ -193,6 +193,8 @@ def test_fallback_allocation_failure(shutdown_only):
         _temp_dir="/dev/shm",
         _system_config={
             "object_spilling_config": json.dumps(file_system_config),
+            # set local fs capacity to 100% so it never errors with out of disk.
+            "local_fs_capacity_threshold": 1,
         },
     )
     shm_size = shutil.disk_usage("/dev/shm").total
@@ -327,4 +329,7 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

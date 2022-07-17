@@ -11,7 +11,7 @@ import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.algorithms.appo.appo_tf_policy import make_appo_model
+from ray.rllib.algorithms.appo.utils import make_appo_models
 import ray.rllib.algorithms.impala.vtrace_torch as vtrace
 from ray.rllib.algorithms.impala.impala_torch_policy import (
     make_time_major,
@@ -101,7 +101,7 @@ class APPOTorchPolicy(
 
     @override(TorchPolicyV2)
     def make_model(self) -> ModelV2:
-        return make_appo_model(self)
+        return make_appo_models(self)
 
     @override(TorchPolicyV2)
     def loss(

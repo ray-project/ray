@@ -3,13 +3,13 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import gym
 import logging
 import threading
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
-from ray.util.debug import log_once
+import gym
+import tree  # pip install dm_tree
+
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -39,11 +39,12 @@ from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    AlgorithmConfigDict,
 )
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -83,6 +84,14 @@ class EagerTFPolicyV2(Policy):
         self.explore = tf.Variable(
             self.config["explore"], trainable=False, dtype=tf.bool
         )
+
+        # Log device and worker index.
+        num_gpus = self._get_num_gpus_for_policy()
+        if num_gpus > 0:
+            gpu_ids = get_gpu_devices()
+            logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
+
+        self._is_training = False
 
         self._loss_initialized = False
         # Backward compatibility workaround so Policy will call self.loss() directly.
@@ -243,15 +252,12 @@ class EagerTFPolicyV2(Policy):
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
-        policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
         grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy: The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
             optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
             grads: The gradient tensor to be applied.
@@ -389,11 +395,12 @@ class EagerTFPolicyV2(Policy):
                     "`make_model` is required if `action_sampler_fn` OR "
                     "`action_distribution_fn` is given"
                 )
+            return None
         else:
             dist_class, _ = ModelCatalog.get_action_dist(
                 self.action_space, self.config["model"]
             )
-        return dist_class
+            return dist_class
 
     def _init_view_requirements(self):
         # Auto-update model's inference view requirements, if recurrent.
@@ -546,15 +553,14 @@ class EagerTFPolicyV2(Policy):
 
         # Action dist class and inputs are generated via custom function.
         if is_overridden(self.action_distribution_fn):
-            dist_inputs, dist_class, _ = self.action_distribution_fn(
+            dist_inputs, self.dist_class, _ = self.action_distribution_fn(
                 self, self.model, input_batch, explore=False, is_training=False
             )
         # Default log-likelihood calculation.
         else:
             dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
-            dist_class = self.dist_class
 
-        action_dist = dist_class(dist_inputs, self.model)
+        action_dist = self.dist_class(dist_inputs, self.model)
 
         # Normalize actions if necessary.
         if not actions_normalized and self.config["normalize_actions"]:
@@ -742,7 +748,7 @@ class EagerTFPolicyV2(Policy):
                 state_out = []
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                     self.model,
-                    input_dict[SampleBatch.CUR_OBS],
+                    input_dict[SampleBatch.OBS],
                     explore=explore,
                     timestep=timestep,
                     episodes=episodes,
@@ -758,7 +764,7 @@ class EagerTFPolicyV2(Policy):
                         state_out,
                     ) = self.action_distribution_fn(
                         self.model,
-                        input_dict=input_dict,
+                        obs_batch=input_dict[SampleBatch.OBS],
                         state_batches=state_batches,
                         seq_lens=seq_lens,
                         explore=explore,

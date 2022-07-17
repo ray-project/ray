@@ -75,10 +75,10 @@ def get_cli_args():
     return args
 
 
-# The modified Trainer class we will use. This is the exact same
-# as a PPO, but with the additional default_resource_request
-# override, telling tune that it's ok (not mandatory) to place our
-# n remote envs on a different node (each env using 1 CPU).
+# The modified Algorithm class we will use:
+# Subclassing from PPO, our algo will only modity `default_resource_request`,
+# telling Ray Tune that it's ok (not mandatory) to place our n remote envs on a
+# different node (each env using 1 CPU).
 class PPORemoteInference(PPO):
     @classmethod
     @override(Algorithm)
@@ -145,7 +145,7 @@ if __name__ == "__main__":
             ):
                 break
 
-    # Run with Tune for auto env and trainer creation and TensorBoard.
+    # Run with Tune for auto env and algorithm creation and TensorBoard.
     else:
         stop = {
             "training_iteration": args.stop_iters,

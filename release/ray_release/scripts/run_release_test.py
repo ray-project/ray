@@ -3,22 +3,22 @@ import sys
 from typing import Optional
 
 import click
-
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
+    DEFAULT_PYTHON_VERSION,
+    DEFAULT_WHEEL_WAIT_TIMEOUT,
+    as_smoke_test,
+    find_test,
     parse_python_version,
     read_and_validate_release_test_collection,
-    find_test,
-    as_smoke_test,
-    DEFAULT_WHEEL_WAIT_TIMEOUT,
-    DEFAULT_PYTHON_VERSION,
 )
+from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
-from ray_release.reporter.legacy_rds import LegacyRDSReporter
 from ray_release.reporter.db import DBReporter
+from ray_release.reporter.legacy_rds import LegacyRDSReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
@@ -72,6 +72,12 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     help="Cluster env ID of existing cluster env to be re-used.",
 )
 @click.option(
+    "--env",
+    default=None,
+    type=click.Choice(["prod", "staging"]),
+    help="Environment to use. Will overwrite environment used in test config.",
+)
+@click.option(
     "--no-terminate",
     default=False,
     type=bool,
@@ -86,6 +92,7 @@ def main(
     ray_wheels: Optional[str] = None,
     cluster_id: Optional[str] = None,
     cluster_env_id: Optional[str] = None,
+    env: Optional[str] = None,
     no_terminate: bool = False,
 ):
     test_collection_file = test_collection_file or os.path.join(
@@ -102,6 +109,10 @@ def main(
 
     if smoke_test:
         test = as_smoke_test(test)
+
+    env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
+    env_dict = load_environment(env_to_use)
+    populate_os_env(env_dict)
 
     if "python" in test:
         python_version = parse_python_version(test["python"])
@@ -143,12 +154,14 @@ def main(
             cluster_env_id=cluster_env_id,
             no_terminate=no_terminate,
         )
+        return_code = result.return_code
     except ReleaseTestError as e:
         logger.exception(e)
+        return_code = e.exit_code.value
 
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
-        f"Returning with exit code = {result.return_code}"
+        f"Returning with exit code = {return_code}"
     )
     sys.exit(result.return_code)
 

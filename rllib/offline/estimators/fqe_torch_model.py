@@ -153,7 +153,7 @@ class FQETorchModel:
                 )
 
                 q_values, _ = self.q_model({"obs": obs}, [], None)
-                q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
+                q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
                 with torch.no_grad():
                     next_q_values, _ = self.target_q_model({"obs": next_obs}, [], None)
                 next_v = torch.sum(next_q_values * next_action_prob, axis=-1)
@@ -188,7 +188,7 @@ class FQETorchModel:
         q_values, _ = self.q_model({"obs": obs}, [], None)
         if actions is not None:
             actions = torch.tensor(actions, device=self.device, dtype=int)
-            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
+            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze(-1)
         return q_values.detach()
 
     def estimate_v(

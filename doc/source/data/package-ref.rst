@@ -100,6 +100,8 @@ RandomAccessDataset API
 .. autoclass:: ray.data.random_access_dataset.RandomAccessDataset
     :members:
 
+.. _dataset-tensor-extension-api:
+
 Tensor Column Extension API
 ---------------------------
 
@@ -152,6 +154,8 @@ Built-in Datasources
 
 .. autoclass:: ray.data.datasource.FileBasedDatasource
     :members:
+
+.. autoclass:: ray.data.datasource.ImageFolderDatasource
 
 .. autoclass:: ray.data.datasource.JSONDatasource
     :members:

@@ -1,5 +1,7 @@
 import logging
 
+from ray._private.usage import usage_lib
+
 # Note: do not introduce unnecessary library dependencies here, e.g. gym.
 # This file is imported from the tune module in order to register RLlib agents.
 from ray.rllib.env.base_env import BaseEnv
@@ -12,7 +14,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.tune.registry import register_trainable
-from ray._private.usage import usage_lib
 
 
 def _setup_logger():
@@ -37,7 +38,6 @@ def _register_all():
         + list(CONTRIBUTED_ALGORITHMS.keys())
         + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]
     ):
-        logging.warning(key)
         register_trainable(key, get_algorithm_class(key))
 
     def _see_contrib(name):

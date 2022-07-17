@@ -8,14 +8,13 @@ which includes and a priority update, given that a fitting buffer is provided.
 """
 
 import argparse
-import os
 
 import ray
 from ray import tune
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.algorithms.r2d2 import R2D2Config
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 tf1, tf, tfv = try_import_tf()
 
@@ -47,14 +46,14 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
+    ray.init(num_cpus=args.num_cpus or None)
 
     config = (
         R2D2Config()
         .environment(env="CartPole-v0")
         .training(model=dict(use_lstm=True, lstm_cell_size=64, max_seq_len=20))
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .framework(framework=args.framework)
+        .rollouts(num_workers=4)
     )
 
     stop_config = {
