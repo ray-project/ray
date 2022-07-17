@@ -127,9 +127,9 @@ We test out the performance across different cluster sizes and data sizes.
       - 20 GB (32460 images)
       - 1213.48 s (26.76 images/sec)
       - `python gpu_batch_prediction.py --data-size-gb=20`
-    * - 8 g3.8xlarge node
+    * - 4 g3.16xlarge nodes
       - 100 GB (162300 images)
-      - 784.91 s (206.78 images/sec)
+      - 885.98 s (183.19 images/sec)
       - `python gpu_batch_prediction.py --data-size-gb=100`
 
 
@@ -145,7 +145,8 @@ We test out the performance across different cluster sizes and data sizes.
 
 .. note::
 
-    For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC, and all ports are open in the secure group.
+    For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC, all 
+    ports are open in the secure group and scheduled in the same aws placement group.
 
 
 .. list-table::
@@ -162,7 +163,7 @@ We test out the performance across different cluster sizes and data sizes.
       - 20 GB (32460 images)
       - 1388.33 s (2 epochs, 46.76 images/sec)
       - `python pytorch_training_e2e.py --data-size-gb=20`
-    * - 4 g3.16xlarge node (16 workers)
+    * - 4 g3.16xlarge nodes (16 workers)
       - 100 GB (162300 images)
       - 434.95 s (2 epochs, 746.29 images/sec)
       - `python pytorch_training_e2e.py --data-size-gb=100 --num-workers=16`
