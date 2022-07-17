@@ -24,9 +24,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df["image"] = df["image"].map(preprocess)
-    df["image"] = df["image"].map(lambda x: x.numpy())
-    df["image"] = TensorArray(df["image"])
+    df["image"] = TensorArray([preprocess(x.to_numpy()) for x in df["image"]])
     return df
 
 
@@ -40,4 +38,4 @@ preprocessor = BatchMapper(preprocess)
 ckpt = to_air_checkpoint(model=model, preprocessor=preprocessor)
 
 predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-predictor.predict(dataset)
+predictor.predict(dataset, feature_columns=["image"])

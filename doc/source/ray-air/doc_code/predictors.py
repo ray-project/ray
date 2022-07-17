@@ -59,18 +59,11 @@ from ray.air import Checkpoint
 from ray.train.predictor import Predictor
 from ray.train.batch_predictor import BatchPredictor
 
-# Create a dummy predictor that always returns `42` for each input.
-class DummyPredictor(Predictor):
-    @classmethod
-    def from_checkpoint(cls, checkpoint, **kwargs):
-        return DummyPredictor()
+# Create a BatchPredictor that always returns `42` for each input.
+batch_pred = BatchPredictor.from_pandas_udf(
+    lambda data: pd.DataFrame({"a": [42] * len(data)})
+)
 
-    def predict(self, data, **kwargs):
-        return pd.DataFrame({"a": [42] * len(data)})
-
-
-# Create a batch predictor for this dummy predictor.
-batch_pred = BatchPredictor(Checkpoint.from_dict({"x": 0}), DummyPredictor)
 # Create a dummy dataset.
 ds = ray.data.range_tensor(200, parallelism=4)
 # Setup a prediction pipeline.
