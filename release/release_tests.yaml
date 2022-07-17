@@ -292,7 +292,7 @@
     cluster_compute: compute_gpu_16.yaml
 
   run:
-    timeout: 3600
+    timeout: 10800
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
 
     type: sdk_command
@@ -436,7 +436,7 @@
     cluster_compute: compute_gpu_16.yaml
 
   run:
-    timeout: 3600
+    timeout: 10800
     script: python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
 
     type: sdk_command
