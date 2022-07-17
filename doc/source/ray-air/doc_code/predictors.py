@@ -60,6 +60,7 @@ print(predictions.show())
 def calculate_accuracy(df):
     return pd.DataFrame({"correct": int(df["predictions"][0]) == df["label"]})
 
+
 predictions = batch_predictor.predict(
     ds, feature_columns=["feature_1"], keep_columns=["label"]
 )
