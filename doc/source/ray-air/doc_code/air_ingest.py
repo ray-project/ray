@@ -163,9 +163,9 @@ from ray.air.config import DatasetConfig
 def train_loop_per_worker():
     data_shard: Dataset = train.get_dataset_shard("train")
 
-    # Use iter_epochs(10) to iterate over 10 epochs of data.
-    for epoch in data_shard.iter_epochs(10):
-        for batch in epoch.iter_batches():
+    # Iterate over 10 epochs of data.
+    for epoch in range(10):
+        for batch in data_shard.iter_batches():
             print("Do some training on batch", batch)
 
     # View the stats for performance debugging.
@@ -196,9 +196,9 @@ from ray.air.config import DatasetConfig
 def train_loop_per_worker():
     data_shard: Dataset = train.get_dataset_shard("train")
 
-    # Use iter_epochs(10) to iterate over 10 epochs of data.
-    for epoch in data_shard.iter_epochs(10):
-        for batch in epoch.iter_batches(
+    # Iterate over 10 epochs of data.
+    for epoch in range(10):
+        for batch in data_shard.iter_batches(
             batch_size=10_000,
             local_shuffle_buffer_size=100_000,
         ):
