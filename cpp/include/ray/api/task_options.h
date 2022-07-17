@@ -99,6 +99,7 @@ struct CallOptions {
 
 struct ActorCreationOptions {
   std::string name;
+  std::string ray_namespace;
   std::unordered_map<std::string, double> resources;
   int max_restarts = 0;
   int max_concurrency = 1;

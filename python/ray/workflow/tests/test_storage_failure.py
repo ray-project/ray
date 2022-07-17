@@ -90,7 +90,7 @@ def test_failure_with_storage(workflow_start_regular):
                     await debug_store.replay(i)
 
             asyncio_run(replay())
-            return ray.get(workflow.resume(workflow_id="complex_workflow"))
+            return workflow.resume(workflow_id="complex_workflow")
 
         with pytest.raises(ValueError):
             # in cases, the replayed records are too few to resume the

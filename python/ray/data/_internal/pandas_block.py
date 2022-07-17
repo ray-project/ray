@@ -57,7 +57,7 @@ class PandasRow(TableRow):
             # Try to interpret this as a numpy-type value.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
             return item.item()
-        except AttributeError:
+        except (AttributeError, ValueError):
             # Fallback to the original form.
             return item
 

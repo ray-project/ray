@@ -6,6 +6,7 @@ from ray.train.session import _TrainSessionImpl
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
@@ -118,7 +119,7 @@ def get_trial_id() -> str:
     return _get_session().trial_id
 
 
-def get_trial_resources() -> Dict[str, float]:
+def get_trial_resources() -> "PlacementGroupFactory":
     """Trial resources for the corresponding trial."""
     return _get_session().trial_resources
 

@@ -1,6 +1,7 @@
 import argparse
 
 import numpy as np
+from ray.air import session
 import torch
 import torch.nn as nn
 import ray.train as train
@@ -78,8 +79,8 @@ def train_func(config):
     for _ in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
         result = validate_epoch(validation_loader, model, loss_fn)
-        train.report(**result)
         results.append(result)
+        session.report(result)
 
     return results
 

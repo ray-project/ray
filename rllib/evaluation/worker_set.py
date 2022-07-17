@@ -99,14 +99,12 @@ class WorkerSet:
         }
         self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
-
         if _setup:
             # Force a local worker if num_workers == 0 (no remote workers).
             # Otherwise, this WorkerSet would be empty.
             self._local_worker = None
             if num_workers == 0:
                 local_worker = True
-
             self._local_config = merge_dicts(
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]},
@@ -639,11 +637,6 @@ class WorkerSet:
                 compress_columns=config["output_compress_columns"],
             )
 
-        if config["input"] == "sampler":
-            off_policy_estimation_methods = {}
-        else:
-            off_policy_estimation_methods = config["off_policy_estimation_methods"]
-
         # Assert everything is correct in "multiagent" config dict (if given).
         ma_policies = config["multiagent"]["policies"]
         if ma_policies:
@@ -693,7 +686,7 @@ class WorkerSet:
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            off_policy_estimation_methods=off_policy_estimation_methods,
+            off_policy_estimation_methods=config["off_policy_estimation_methods"],
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
@@ -736,6 +729,26 @@ class WorkerSet:
                 faulty_worker_indices.append(i + 1)
 
         return faulty_worker_indices
+
+    @classmethod
+    def _valid_module(cls, class_path):
+        del cls
+        if (
+            isinstance(class_path, str)
+            and not os.path.isfile(class_path)
+            and "." in class_path
+        ):
+            module_path, class_name = class_path.rsplit(".", 1)
+            try:
+                spec = importlib.util.find_spec(module_path)
+                if spec is not None:
+                    return True
+            except (ModuleNotFoundError, ValueError):
+                print(
+                    f"module {module_path} not found while trying to get "
+                    f"input {class_path}"
+                )
+        return False
 
     @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
     def foreach_trainable_policy(self, func):

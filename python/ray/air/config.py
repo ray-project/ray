@@ -26,7 +26,7 @@ class ScalingConfigDataClass:
     This is the schema for the scaling_config dict, and after beta, this will be the
     actual representation for Scaling config objects.
 
-    trainer_resources: Resources to allocate for the trainer. If none is provided,
+    trainer_resources: Resources to allocate for the trainer. If None is provided,
         will default to 1 CPU.
     num_workers: The number of workers (Ray actors) to launch.
         Each worker will reserve 1 CPU by default. The number of CPUs
@@ -43,18 +43,22 @@ class ScalingConfigDataClass:
     placement_strategy: The placement strategy to use for the
         placement group of the Ray actors. See :ref:`Placement Group
         Strategies <pgroup-strategy>` for the possible options.
+    _max_cpu_fraction_per_node: (Experimental) The max fraction of CPUs per node that
+        Train will use for scheduling training actors. The remaining CPUs can be used
+        for dataset tasks. It is highly recommended that you set this to less than
+        1.0 (e.g., 0.8) when passing datasets to trainers, to avoid hangs / CPU
+        starvation of dataset tasks. Warning: this feature is experimental and is not
+        recommended for use with autoscaling (scale-up will not trigger properly).
     """
 
     trainer_resources: Optional[Dict] = None
     num_workers: Optional[int] = None
     use_gpu: bool = False
     resources_per_worker: Optional[Dict] = None
-    placement_strategy: str = "PACK"
+    placement_strategy: str = "SPREAD"
+    _max_cpu_fraction_per_node: Optional[float] = None
 
     def __post_init__(self):
-        self.resources_per_worker = (
-            self.resources_per_worker if self.resources_per_worker else {}
-        )
         if self.resources_per_worker:
             if not self.use_gpu and self.num_gpus_per_worker > 0:
                 raise ValueError(
@@ -71,22 +75,43 @@ class ScalingConfigDataClass:
                     "`resources_per_worker."
                 )
 
+    def __eq__(self, o: "ScalingConfigDataClass") -> bool:
+        if not isinstance(o, type(self)):
+            return False
+        return self.as_placement_group_factory() == o.as_placement_group_factory()
+
+    @property
+    def _resources_per_worker_not_none(self):
+        if self.resources_per_worker is None:
+            return {"CPU": 1, "GPU": int(self.use_gpu)}
+        resources_per_worker = {
+            k: v for k, v in self.resources_per_worker.items() if v != 0
+        }
+        resources_per_worker.setdefault("GPU", int(self.use_gpu))
+        return resources_per_worker
+
+    @property
+    def _trainer_resources_not_none(self):
+        if self.trainer_resources is None:
+            return {"CPU": 1}
+        return {k: v for k, v in self.trainer_resources.items() if v != 0}
+
     @property
     def num_cpus_per_worker(self):
         """The number of CPUs to set per worker."""
-        return self.resources_per_worker.get("CPU", 1)
+        return self._resources_per_worker_not_none.get("CPU", 0)
 
     @property
     def num_gpus_per_worker(self):
         """The number of GPUs to set per worker."""
-        return self.resources_per_worker.get("GPU", int(self.use_gpu))
+        return self._resources_per_worker_not_none.get("GPU", 0)
 
     @property
     def additional_resources_per_worker(self):
         """Resources per worker, not including CPU or GPU resources."""
         return {
             k: v
-            for k, v in self.resources_per_worker.items()
+            for k, v in self._resources_per_worker_not_none.items()
             if k not in ["CPU", "GPU"]
         }
 
@@ -94,9 +119,7 @@ class ScalingConfigDataClass:
         """Returns a PlacementGroupFactory to specify resources for Tune."""
         from ray.tune.execution.placement_groups import PlacementGroupFactory
 
-        trainer_resources = (
-            self.trainer_resources if self.trainer_resources else {"CPU": 1}
-        )
+        trainer_resources = self._trainer_resources_not_none
         trainer_bundle = [trainer_resources]
         worker_resources = {
             "CPU": self.num_cpus_per_worker,
@@ -110,7 +133,51 @@ class ScalingConfigDataClass:
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
-        return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
+        if self._max_cpu_fraction_per_node is not None:
+            kwargs = {
+                "_max_cpu_fraction_per_node": self._max_cpu_fraction_per_node,
+            }
+        else:
+            kwargs = {}
+        return PlacementGroupFactory(
+            bundles, strategy=self.placement_strategy, **kwargs
+        )
+
+    @classmethod
+    def from_placement_group_factory(
+        cls, pgf: "PlacementGroupFactory"
+    ) -> "ScalingConfigDataClass":
+        """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
+        if pgf.head_bundle_is_empty:
+            trainer_resources = {}
+            worker_bundles = pgf.bundles
+        else:
+            trainer_resources = pgf.bundles[0]
+            worker_bundles = pgf.bundles[1:]
+
+        use_gpu = False
+        placement_strategy = pgf.strategy
+        resources_per_worker = None
+        num_workers = None
+
+        if worker_bundles:
+            first_bundle = worker_bundles[0]
+            if not all(bundle == first_bundle for bundle in worker_bundles[1:]):
+                raise ValueError(
+                    "All worker bundles (any other than the first one) "
+                    "must be equal to each other."
+                )
+            use_gpu = bool(first_bundle.get("GPU"))
+            num_workers = len(worker_bundles)
+            resources_per_worker = first_bundle
+
+        return ScalingConfigDataClass(
+            trainer_resources=trainer_resources,
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            resources_per_worker=resources_per_worker,
+            placement_strategy=placement_strategy,
+        )
 
 
 @dataclass
@@ -284,9 +351,26 @@ class FailureConfig:
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
+        fail_fast: Whether to fail upon the first error.
+            If fail_fast='raise' provided, Tune will automatically
+            raise the exception received by the Trainable. fail_fast='raise'
+            can easily leak resources and should be used with caution (it
+            is best used with `ray.init(local_mode=True)`).
     """
 
     max_failures: int = 0
+    fail_fast: Union[bool, str] = False
+
+    def __post_init__(self):
+        # Same check as in tune.run
+        if self.fail_fast and self.max_failures != 0:
+            raise ValueError("max_failures must be 0 if fail_fast=True.")
+
+        # Same check as in TrialRunner
+        if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() != "RAISE"):
+            raise ValueError(
+                "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
+            )
 
 
 @dataclass
