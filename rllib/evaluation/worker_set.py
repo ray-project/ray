@@ -687,7 +687,6 @@ class WorkerSet:
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            off_policy_estimation_methods=config["off_policy_estimation_methods"],
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
