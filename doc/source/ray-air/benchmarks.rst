@@ -29,29 +29,21 @@ For this benchmark, we configured the nodes to have reasonable disk size and thr
 .. list-table::
 
     * - **Cluster Setup**
-      - **# workers**
-      - **Time taken**
-      - **Throughput**
-      - **Data Spilled**
+      - **Performance**
+      - **Disk Spill**
       - **Command**
-    * - 1 m5.4xlarge
-      - 1 actor
-      - 390 s
-      - 0.51 GB/s
+    * - 1 m5.4xlarge node (1 actor)
+      - 390 s (0.51 GiB/s)
       - 205 GiB
-      - `python data_benchmark.py --dataset-size-gib=200 --num-workers=1 --placement-strategy=SPREAD`
-    * - 5 m5.4xlarge
-      - 5 actors
-      - 70 s
-      - 2.85 GiB/s
+      - `python data_benchmark.py --dataset-size-gb=200 --num-workers=1`
+    * - 5 m5.4xlarge nodes (2 actors)
+      - 70 s (2.85 GiB/S)
       - 206 GiB
-      - `python data_benchmark.py --dataset-size-gib=200 --num-workers=5 --placement-strategy=SPREAD`
-    * - 20 m5.4xlarge nodes
-      - 20 actors
-      - 3.8 s
-      - 52.6 GiB/s
+      - `python data_benchmark.py --dataset-size-gb=200 --num-workers=5`
+    * - 20 m5.4xlarge nodes (20 actors)
+      - 3.8 s (52.6 GiB/s)
       - 0 GB
-      - `python data_benchmark.py --dataset-size-gib=200 --num-workers=20 --placement-strategy=SPREAD`
+      - `python data_benchmark.py --dataset-size-gb=200 --num-workers=20`
 
 
 XGBoost Batch Prediction
@@ -70,25 +62,16 @@ We test out the performance across different cluster sizes and data sizes.
 .. list-table::
 
     * - **Cluster Setup**
-      - **# workers**
       - **Data Size**
-      - **# of rows**
-      - **Time taken**
-      - **Throughput**
+      - **Performance**
       - **Command**
-    * - 1 m5.4xlarge
-      - 1 actor
-      - 10 GB
-      - 26M rows
-      - 275 s
-      - 94.5k rows/sec
+    * - 1 m5.4xlarge node (1 actor)
+      - 10 GB (26M rows)
+      - 275 s (94.5k rows/s)
       - `python xgboost_benchmark.py --size 10GB`
-    * - 10 m5.4xlarge nodes
-      - 10 actors (12 CPUs each)
-      - 100 GB
-      - 260M rows
-      - 331 s
-      - 786k rows/sec
+    * - 10 m5.4xlarge nodes (10 actors)
+      - 100 GB (260M rows)
+      - 331 s (786k rows/s)
       - `python xgboost_benchmark.py --size 100GB`
 
 
@@ -107,21 +90,15 @@ XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
 .. list-table::
 
     * - **Cluster Setup**
-      - **# workers**
       - **Data Size**
-      - **# of rows**
-      - **Time taken**
+      - **Performance**
       - **Command**
-    * - 1 m5.4xlarge
-      - 1 actor
-      - 10 GB
-      - 26M rows
+    * - 1 m5.4xlarge node (1 actor)
+      - 10 GB (26M rows)
       - 692 s
       - `python xgboost_benchmark.py --size 10GB`
-    * - 10 m5.4xlarge nodes
-      - 10 actors (12 CPUs each)
-      - 100 GB
-      - 260M rows
+    * - 10 m5.4xlarge nodes (10 actors)
+      - 100 GB (260M rows)
       - 693 s
       - `python xgboost_benchmark.py --size 100GB`
 
