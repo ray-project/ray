@@ -111,8 +111,8 @@ In short, use bulk ingest when:
  * your preprocessing step is expensive per each epoch; and
  * you want best performance when both or either the above conditions are met.
 
-Streaming Ingest
-~~~~~~~~~~~~~~~~
+Streaming Ingest (experimental)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 AIR also supports streaming ingest via the DatasetPipeline feature. Streaming ingest is preferable when you are using large datasets
 that don't fit into memory, and prefer to read *windows* of data from storage to minimize the active memory required for data ingest.
@@ -132,11 +132,11 @@ In short, use streaming ingest when:
  * you have large datasets that don't fit into memory;
  * you want to process small chunks or blocks per window;
  * you can use small windows with small data blocks minimizing or avoiding memory starvation or OOM errors; and
- * your preprocessoring step is not a bottleneck or not an expensive operation since it's re-executed on each pass over the data.
+ * your preprocessing step is not a bottleneck or not an expensive operation since it's re-executed on each pass over the data.
 
 .. warning::
 
-    In AIR alpha, streaming ingest only applies to preprocessor transform, not preprocessor fitting.
+    Streaming ingest only applies to preprocessor transform, not preprocessor fitting.
     This means that the preprocessor will be initially fit in bulk, after which data will be transformed
     as it is loaded in a streaming manner.
 
