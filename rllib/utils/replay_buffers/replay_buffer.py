@@ -44,8 +44,8 @@ class StorageUnit(str, Enum):
 @DeveloperAPI
 @unique
 class StorageLocation(str, Enum):
-    ON_DISK = "on_disk"
-    IN_MEMORY = "in_memory"
+    ON_DISK = "disk"
+    IN_MEMORY = "memory"
 
 
 # TODO (artur): Remove ParallelIteratorWorker once we no longer support executionplans
@@ -110,7 +110,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         capacity_ts: int = math.inf,
         capacity_bytes: int = math.inf,
         storage_unit: Union[str, StorageUnit] = "timesteps",
-        storage_location: Union[str, StorageLocation] = "in_memory",
+        storage_location: Union[str, StorageLocation] = "memory",
         **kwargs,
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
@@ -129,7 +129,7 @@ class ReplayBuffer(ParallelIteratorWorker):
             storage_unit: If not a StorageUnit, either 'timesteps',
             'sequences' or 'episodes'. Specifies how experiences are stored.
             ``**kwargs``: Forward compatibility kwargs.
-            storage_location: Either 'in_memory' or 'on_disk'.
+            storage_location: Either 'memory' or 'disk'.
                 Specifies where experiences are stored.
             **kwargs: Forward compatibility kwargs.
         """

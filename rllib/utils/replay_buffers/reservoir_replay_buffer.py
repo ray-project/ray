@@ -23,7 +23,7 @@ class ReservoirReplayBuffer(ReplayBuffer):
         capacity_ts: int = math.inf,
         capacity_bytes: int = math.inf,
         storage_unit: str = "timesteps",
-        storage_location: str = "in_memory",
+        storage_location: str = "memory",
         **kwargs
     ):
         """Initializes a ReservoirBuffer instance.
@@ -41,7 +41,7 @@ class ReservoirReplayBuffer(ReplayBuffer):
                 for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
-            storage_location: Either 'in_memory' or 'on_disk'.
+            storage_location: Either 'memory' or 'disk'.
                 Specifies where experiences are stored.
         """
         ReplayBuffer.__init__(

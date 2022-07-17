@@ -343,7 +343,7 @@ class LocalStorage(Sized, Iterable):
         """
         if idx < 0:
             raise IndexError("Buffer index out of range")
-        return (self._oldest_item_idx + idx) % self._max_items
+        return (self._oldest_item_idx + idx) % max(1, self._max_items)
 
     def _get_external_index(self, idx: int):
         """Translate the given internal circular buffer index into
@@ -767,7 +767,16 @@ class OnDiskStorage(LocalStorage):
         if self._samples is not None:
             self._samples.close()
         if self._rm_file_on_del and os.path.exists(self._buffer_file_dir):
-            os.remove(self._buffer_file_dir)
+            try:
+                os.remove(self._buffer_file)
+                os.rmdir(self._buffer_file_dir)
+            except PermissionError:
+                logger.error(
+                    "Lacking permission to remove on-disk replay buffer "
+                    "storage files at path `{}`. Remove them manually and "
+                    "set permissions accordingly to avoid this error in the "
+                    "future.".format(self._buffer_file_dir)
+                )
 
     def _warn_replay_capacity(self, item: SampleBatchType, num_items: int) -> None:
         """Warn if the configured replay buffer capacity is too large."""

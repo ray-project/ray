@@ -27,7 +27,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         capacity_ts: int = math.inf,
         capacity_bytes: int = math.inf,
         storage_unit: str = "timesteps",
-        storage_location: str = "in_memory",
+        storage_location: str = "memory",
         alpha: float = 1.0,
         **kwargs
     ):
@@ -46,7 +46,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
-            storage_location: Either 'in_memory' or 'on_disk'.
+            storage_location: Either 'memory' or 'disk'.
                 Specifies where experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
@@ -105,8 +105,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                     self._storage._get_internal_index(0) - i
                 ) % self.capacity_items
                 if del_idx != add_idx:
-                    assert self._it_sum[del_idx] != self._it_sum.neutral_element
-                    assert self._it_min[del_idx] != self._it_min.neutral_element
+                    # Set deleted item's priorities to neutral element
                     self._it_sum[del_idx] = self._it_sum.neutral_element
                     self._it_min[del_idx] = self._it_min.neutral_element
 
