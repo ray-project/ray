@@ -7,7 +7,7 @@ import torch
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
-from ray.train.torch.utils import load_checkpoint
+from ray.train.data_parallel_trainer import _load_checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.util.annotations import PublicAPI
 
@@ -80,7 +80,8 @@ class TorchPredictor(DLPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """
-        model, preprocessor = load_checkpoint(checkpoint, model)
+        saved_model, preprocessor = _load_checkpoint(checkpoint, "TorchTrainer")
+        model = load_torch_model(saved_model=saved_model, model_definition=model)
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
     def _array_to_tensor(
@@ -174,3 +175,25 @@ class TorchPredictor(DLPredictor):
                 input type.
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
+
+    @staticmethod
+    def create_checkpoint_from_torch_model(
+        model: torch.nn.Module, *, preprocessor: Optional["Preprocessor"] = None
+    ) -> Checkpoint:
+        """Convert a pretrained model to AIR checkpoint for serve or inference.
+
+        Args:
+            model: A pretrained model.
+            preprocessor: A fitted preprocessor. The preprocessing logic will
+                be applied to the inputs for serving/inference.
+        Returns:
+            A Ray Air checkpoint.
+        """
+        checkpoint = Checkpoint.from_dict(
+            {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model}
+        )
+        return checkpoint
+
+    def get_torch_model(self) -> torch.nn.Module:
+        """Return the torch model loaded for this Predictor."""
+        return self.model
