@@ -189,14 +189,15 @@ class DatasetPipeline(Generic[T]):
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                Increasing this will improve the randomness of the shuffle but will
-                increase CPU memory utilization and the latency to the first batch. The
-                CPU memory utilization ceiling is the max of the prefetch buffer size
-                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+                the global :py:meth:`Dataset.random_shuffle()` operation; this shuffle
+                will be less random but will be faster and less resource-intensive.
+                This buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling. Increasing this will improve the randomness of the shuffle
+                but will increase CPU memory utilization and the latency to the first
+                batch. The CPU memory utilization ceiling is the max of the prefetch
+                buffer size (controlled by ``prefetch_blocks``) and this shuffle
+                buffer size.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
