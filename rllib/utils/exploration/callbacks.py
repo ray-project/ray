@@ -43,6 +43,9 @@ class RNDMetricsCallbacks(DefaultCallbacks):
         )
 
         episode.user_data["intrinsic_reward"] = []
+        episode.user_data["distillation_loss"] = []
+        if hasattr(policies["default_policy"].exploration, "nonepisodic_returns"):
+            episode.user_data["vf_intrinsic_loss"] = []
 
     def on_episode_step(
         self,
@@ -60,10 +63,24 @@ class RNDMetricsCallbacks(DefaultCallbacks):
         )
 
         # Get the actual state values of the NovelD exploration.
-        intrinsic_reward = policies["default_policy"].get_exploration_state()
+        exploration_state = policies["default_policy"].exploration.get_state()
+        if hasattr(policies["default_policy"].exploration, "nonepisodic_returns"):
+            (
+                intrinsic_reward,
+                distillation_loss,
+                vf_intrinsic_loss
+            ) = exploration_state
+        else:
+            (
+                intrinsic_reward,
+                distillation_loss
+            ) = exploration_state
 
         # Average over batch.
         episode.user_data["intrinsic_reward"].append(np.mean(intrinsic_reward))
+        episode.user_data["distillation_loss"].append(np.mean(distillation_loss))
+        if hasattr(policies["default_policy"].exploration, "nonepisodic_returns"):
+            episode.user_data["vf_intrinsic_loss"].append(np.mean(vf_intrinsic_loss))        
 
     def on_episode_end(
         self,
@@ -79,6 +96,13 @@ class RNDMetricsCallbacks(DefaultCallbacks):
         episode.custom_metrics["rnd/intrinsic_reward"] = np.mean(
             episode.user_data["intrinsic_reward"]
         )
+        episode.custom_metrics["rnd/distillation_loss"] = np.mean(
+            episode.user_data["distillation_loss"]
+        )
+        if hasattr(policies["default_policy"].exploration, "nonepisodic_returns"):
+            episode.custom_metrics["rnd/vf_intrinsic_loss"] = np.mean(
+                episode.user_data["vf_intrinsic_loss"]
+            )
 
         # Show also histograms of episodic intrinsic rewards.
         episode.hist_data["rnd/intrinsic_reward"] = episode.user_data[
@@ -251,3 +275,9 @@ class RNDBatchCallbacks(DefaultCallbacks):
                 + policy.exploration.adv_int_coeff
                 * train_batch["exploration_advantages"]
             )
+        # if train_batch.keys() & {"exploration_advantages", "exploration_vf_preds"}:
+        #     train_batch["exploration_value_targets"] = (
+        #         train_batch["exploration_advantages"]
+        #         + train_batch["exploration_vf_preds"]
+        #     )
+            
