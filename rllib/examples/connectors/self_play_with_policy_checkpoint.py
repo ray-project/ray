@@ -38,8 +38,7 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-args.checkpoint_file = "/Users/jungong/ray/rllib/tests/data/checkpoints/PPO_open_spiel_checkpoint-6"
-#assert args.checkpoint_file, "Must specify --checkpoint_file flag."
+assert args.checkpoint_file, "Must specify --checkpoint_file flag."
 
 
 class AddPolicyCallback(DefaultCallbacks):
@@ -76,7 +75,7 @@ class AddPolicyCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
+    ray.init()
 
     register_env(
         "open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game("connect_four"))

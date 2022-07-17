@@ -423,8 +423,8 @@ class RolloutWorker(ParallelIteratorWorker):
         if (
             tf1
             and (
-                policy_config.get("framework") in ["tf2", "tfe"] or
-                policy_config.get("enable_tf1_exec_eagerly")
+                policy_config.get("framework") in ["tf2", "tfe"]
+                or policy_config.get("enable_tf1_exec_eagerly")
             )
             # This eager check is necessary for certain all-framework tests
             # that use tf's eager_mode() context generator.
@@ -476,7 +476,9 @@ class RolloutWorker(ParallelIteratorWorker):
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
-        self.preprocessing_enabled: bool = not policy_config.get("_disable_preprocessor_api")
+        self.preprocessing_enabled: bool = not policy_config.get(
+            "_disable_preprocessor_api"
+        )
         self.observation_filter = observation_filter
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: Optional[dict] = None
@@ -1846,14 +1848,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model")
                 )
-                # Original observation space should be accessible at obs_space.original_space
-                # after this step.
+                # Original observation space should be accessible at
+                # obs_space.original_space after this step.
                 if preprocessor is not None:
                     obs_space = preprocessor.observation_space
 
                 if not connectors_enabled:
-                    # If connectors are not enabled, rollout worker will handle the running
-                    # of these preprocessors.
+                    # If connectors are not enabled, rollout worker will handle
+                    # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
                 else:
                     # Rollout worker will not handle preprocessing.

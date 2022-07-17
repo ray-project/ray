@@ -12,7 +12,6 @@ from ray.rllib.utils.typing import (
     AgentConnectorsOutput,
     PartialAlgorithmConfigDict,
     PolicyID,
-    PolicyOutputType,
     PolicyState,
     TensorStructType,
 )

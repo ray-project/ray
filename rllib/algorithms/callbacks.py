@@ -96,11 +96,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
-    def on_create_policy(
-        self,
-        *,
-        policy_id: PolicyID,
-        policy: Policy) -> None:
+    def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
         """Callback run whenever a new policy is added to an algorithm.
 
         Args:
