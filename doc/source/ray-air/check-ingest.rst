@@ -188,7 +188,7 @@ AIR offers several options for per-epoch shuffling, including *global
     trainer's shard. This local shuffle doesn't mix samples across trainer shards between
     epochs as the global shuffle does, and will therefore be a lower-quality shuffle;
     however, since this shuffle only involves a local in-memory buffer, it is much less
-    expensive and is often within 10% of the throughput of a no-shuffling batch iterator.
+    expensive.
 
     For configuring the size of the in-memory shuffle buffer, it is recommended to
     allocate as large of a buffer as the trainer's CPU memory constraints will allow;
