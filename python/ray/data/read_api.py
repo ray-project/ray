@@ -17,7 +17,7 @@ from ray.data._internal.util import (
     _autodetect_parallelism,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
 from ray.data.dataset import Dataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -277,8 +277,8 @@ def read_datasource(
     if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
         perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
         logger.warning(
-            f"The blocks of this dataset are estimated to be {perc}x larger than the "
-            "target block size "
+            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
+            "larger than the target block size "
             f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
             "out-of-memory errors during processing. Consider reducing the size of "
             "input files or using `.repartition(n)` to increase the number of "
@@ -288,10 +288,12 @@ def read_datasource(
         len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
-            "The number of blocks in this dataset ({}) limits its parallelism to {} "
-            "concurrent tasks. This is much less than the number of available "
-            "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
-            "dataset blocks.".format(len(read_tasks), len(read_tasks))
+            f"{WARN_PREFIX} The number of blocks in this dataset ({len(read_tasks)}) "
+            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
+            "This is much less than the number "
+            "of available CPU slots in the cluster. Use `.repartition(n)` to "
+            "increase the number of "
+            "dataset blocks."
         )
 
     if ray_remote_args is None:
