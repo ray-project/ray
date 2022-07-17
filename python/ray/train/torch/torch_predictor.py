@@ -80,7 +80,9 @@ class TorchPredictor(DLPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """
-        saved_model, preprocessor = _load_checkpoint(checkpoint, "TorchTrainer")
+        preprocessor = checkpoint.get_preprocessor()
+        torch_checkpoint = TorchCheckpoint(checkpoint)
+        saved_model = torch_checkpoint.get_model()
         model = load_torch_model(saved_model=saved_model, model_definition=model)
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
@@ -175,26 +177,3 @@ class TorchPredictor(DLPredictor):
                 input type.
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
-
-    @staticmethod
-    def create_checkpoint_from_torch_model(
-        model: torch.nn.Module, *, preprocessor: Optional["Preprocessor"] = None
-    ) -> Checkpoint:
-        """Create a TorchPredictor checkpoint from a torch module.
-
-        Args:
-            model: A pretrained model.
-            preprocessor: A fitted preprocessor. The preprocessing logic will
-                be applied to the inputs for serving/inference.
-
-        Returns:
-            A checkpoint that can be loaded by TorchPredictor.
-        """
-        checkpoint = Checkpoint.from_dict(
-            {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model}
-        )
-        return checkpoint
-
-    def get_torch_model(self) -> torch.nn.Module:
-        """Return the torch model loaded for this Predictor."""
-        return self.model
