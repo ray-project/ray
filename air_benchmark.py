@@ -72,11 +72,17 @@ def run_ingest_streaming(dataset, num_workers):
 
 
 def run_infer_bulk(
-    dataset, num_workers, post=None, stream=False, window_size_gb=10, infer_gpu=False
+    dataset,
+    num_workers,
+    post=None,
+    stream=False,
+    window_size_gb=10,
+    images=False,
+    use_gpu=False,
 ):
     start = time.time()
 
-    if infer_gpu:
+    if images:
         from PIL import Image
         from torchvision import transforms
         from torchvision.models import resnet18
@@ -132,8 +138,8 @@ def run_infer_bulk(
             min_scoring_workers=num_workers,
             max_scoring_workers=num_workers,
             num_cpus_per_worker=1,
-            num_gpus_per_worker=1 if infer_gpu else 0,
-            feature_columns=["image"] if infer_gpu else None,
+            num_gpus_per_worker=1 if use_gpu else 0,
+            feature_columns=["image"] if use_gpu else None,
         )
     else:
         result = predictor.predict(
@@ -142,8 +148,8 @@ def run_infer_bulk(
             min_scoring_workers=num_workers,
             max_scoring_workers=num_workers,
             num_cpus_per_worker=1,
-            num_gpus_per_worker=1 if infer_gpu else 0,
-            feature_columns=["image"] if infer_gpu else None,
+            num_gpus_per_worker=1 if use_gpu else 0,
+            feature_columns=["image"] if use_gpu else None,
         )
     if post:
         post(result)
@@ -151,7 +157,7 @@ def run_infer_bulk(
     print("Total runtime", time.time() - start)
 
 
-def run_infer_streaming(dataset, num_workers, window_size_gb, infer_gpu):
+def run_infer_streaming(dataset, num_workers, window_size_gb, images, use_gpu):
     def post(result):
         for b in result.iter_batches():
             pass
@@ -162,18 +168,20 @@ def run_infer_streaming(dataset, num_workers, window_size_gb, infer_gpu):
         post,
         stream=True,
         window_size_gb=window_size_gb,
-        infer_gpu=infer_gpu,
+        images=images,
+        use_gpu=use_gpu,
     )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--benchmark", type=str, default="ingest", help="ingest/infer/infer_gpu"
+        "--benchmark", type=str, default="ingest", help="ingest/infer/infer_images"
     )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--dataset-size-gb", type=float, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
+    parser.add_argument("--use-gpu", action="store_true", default=False)
     parser.add_argument("--window-size-gb", type=float, default=10)
     parser.add_argument("--s3-data", type=str, default="")
     parser.add_argument("--s3-images", type=str, default="")
@@ -181,7 +189,7 @@ if __name__ == "__main__":
     if args.s3_data:
         ds = ray.data.read_parquet(args.s3_data)
     elif args.s3_images:
-        assert args.benchmark == "infer_gpu"
+        assert args.benchmark == "infer_images"
         ds = ray.data.read_datasource(ImageFolderDatasource(), paths=[args.s3_images])
     else:
         ds = make_ds(args.dataset_size_gb)
@@ -190,17 +198,21 @@ if __name__ == "__main__":
             run_ingest_streaming(ds, args.num_workers)
         else:
             run_ingest_bulk(ds, args.num_workers)
-    elif args.benchmark in ["infer", "infer_gpu"]:
+    elif args.benchmark in ["infer", "infer_images"]:
         if args.streaming:
             run_infer_streaming(
                 ds,
                 args.num_workers,
                 args.window_size_gb,
-                infer_gpu=args.benchmark == "infer_gpu",
+                images=args.benchmark == "infer_images",
+                use_gpu=args.use_gpu,
             )
         else:
             run_infer_bulk(
-                ds, args.num_workers, infer_gpu=args.benchmark == "infer_gpu"
+                ds,
+                args.num_workers,
+                images=args.benchmark == "infer_images",
+                use_gpu=args.use_gpu,
             )
     else:
         assert False
