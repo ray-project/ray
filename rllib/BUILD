@@ -756,6 +756,13 @@ py_test(
     srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
+py_test(
+    name = "test_node_failure_tolerance",
+    tags = ["team:rllib", "tests_dir"],
+    size = "medium",
+    srcs = ["tests/test_node_failure_tolerance.py"],
+)
+
 # Specific Algorithms
 
 # A2C

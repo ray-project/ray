@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class FailureInjectorCallback(Callback):
-    """Adds random failure injection to the TrialExecutor."""
+    """Adds failure injection to the TrialExecutor."""
 
     def __init__(
         self,
+        when_to_fail="randomly_on_step_begin",
         config_path="~/ray_bootstrap_config.yaml",
         probability=0.1,
         time_between_checks=0,
@@ -24,44 +25,69 @@ class FailureInjectorCallback(Callback):
         self.probability = probability
         self.config_path = os.path.expanduser(config_path)
         self.disable = disable
+        self.when_to_fail = when_to_fail
 
-        self.time_between_checks = time_between_checks
-        # Initialize with current time so we don't fail right away
-        self.last_fail_check = time.monotonic()
+        if self.when_to_fail == "randomly_on_step_begin":
 
-    def on_step_begin(self, **info):
-        if not os.path.exists(self.config_path):
-            return
-        if time.monotonic() < self.last_fail_check + self.time_between_checks:
-            return
-        self.last_fail_check = time.monotonic()
+            self.time_between_checks = time_between_checks
+            # Initialize with current time so that we don't fail right away
+            self.last_fail_check = time.monotonic()
+
+            def on_step_begin(cb, **info):
+                if not os.path.exists(self.config_path):
+                    return
+                if time.monotonic() < self.last_fail_check + self.time_between_checks:
+                    return
+                self.last_fail_check = time.monotonic()
+                # With 10% probability inject failure to a worker.
+                if random.random() < self.probability and not self.disable:
+                    # With 10% probability fully terminate the node.
+                    should_terminate = random.random() < self.probability
+                    self.try_to_fail(should_terminate)
+
+            self.on_step_begin = on_step_begin
+
+        elif self.when_to_fail == "once_on_trial_result":
+            self.failed = False
+
+            def on_trial_result(cb, **info):
+                # Fail only once, after the first step
+                if not os.path.exists(self.config_path) or self.failed:
+                    return
+
+                self.try_to_fail(hard=True)
+
+            self.on_trial_result = on_trial_result
+
+        else:
+            raise ValueError(
+                "Unupported value `{}` for argument "
+                "`when_to_fail`.".format((when_to_fail))
+            )
+
+    def try_to_fail(self, hard):
         import click
         from ray.autoscaler._private.commands import kill_node
 
         failures = 0
         max_failures = 3
-        # With 10% probability inject failure to a worker.
-        if random.random() < self.probability and not self.disable:
-            # With 10% probability fully terminate the node.
-            should_terminate = random.random() < self.probability
-            while failures < max_failures:
-                try:
-                    kill_node(
-                        self.config_path,
-                        yes=True,
-                        hard=should_terminate,
-                        override_cluster_name=None,
-                    )
-                    return
-                except click.exceptions.ClickException:
-                    failures += 1
-                    logger.exception(
-                        "Killing random node failed in attempt "
-                        "{}. "
-                        "Retrying {} more times".format(
-                            str(failures), str(max_failures - failures)
-                        )
-                    )
+        try:
+            kill_node(
+                self.config_path,
+                yes=True,
+                hard=hard,
+                override_cluster_name=None,
+            )
+            return
+        except click.exceptions.ClickException:
+            failures += 1
+            logger.exception(
+                "Killing random node failed in attempt "
+                "{}. "
+                "Retrying {} more times".format(
+                    str(failures), str(max_failures - failures)
+                )
+            )
 
 
 class TrialStatusSnapshot:

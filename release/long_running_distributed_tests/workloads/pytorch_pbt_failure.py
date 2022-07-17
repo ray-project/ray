@@ -69,7 +69,12 @@ tuner = Tuner(
     ),
     run_config=RunConfig(
         stop={"training_iteration": 1} if args.smoke_test else None,
-        callbacks=[FailureInjectorCallback(time_between_checks=90), ProgressCallback()],
+        callbacks=[
+            FailureInjectorCallback(
+                time_between_checks=90, when_to_fail="randomly_on_step_begin"
+            ),
+            ProgressCallback(),
+        ],
     ),
 )
 
