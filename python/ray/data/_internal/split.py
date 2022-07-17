@@ -139,7 +139,7 @@ def _split_all_blocks(
         else:
             # otherwise call split remote function.
             split_single_block_futures.append(
-                split_single_block.remote(
+                split_single_block.options(scheduling_strategy="SPREAD").remote(
                     block_id,
                     block_ref,
                     meta,
