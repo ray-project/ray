@@ -4,15 +4,17 @@ from ray.air.checkpoint import Checkpoint
 
 
 class TorchCheckpoint(Checkpoint):
+    """Wrapper class that adds torch-specific accessors to a Checkpoint."""
 
     def __init__(self, checkpoint: Checkpoint):
+        """Construct a TorchCheckpoint from a generic Checkpoint object."""
         self._clone_storage_from(checkpoint)
 
     @staticmethod
     def from_torch_model(
         model: torch.nn.Module, *, preprocessor: Optional["Preprocessor"] = None
     ) -> TorchCheckpoint:
-        """Create a Torch trainer checkpoint from a torch module.
+        """Create a (Torch)Checkpoint from a torch module.
 
         Args:
             model: A pretrained model.
