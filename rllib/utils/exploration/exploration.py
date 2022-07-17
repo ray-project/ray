@@ -271,7 +271,7 @@ class Exploration:
             Extra outputs to return in a `compute_actions_from_input_dict()`
             call (3rd return value).
         """
-        return policy.policy_action_out(
+        return policy.policy_extra_action_out(
             input_dict,
             state_batches,
             model,
