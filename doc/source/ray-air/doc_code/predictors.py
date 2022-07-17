@@ -39,18 +39,39 @@ print(predictions)
 # __use_predictor_end__
 
 # __batch_prediction_start__
+import pandas as pd
 from ray.train.batch_predictor import BatchPredictor
 
 batch_predictor = BatchPredictor(
     checkpoint, TensorflowPredictor, model_definition=build_model
 )
-predict_dataset = ray.data.range(3)
-predictions = batch_predictor.predict(predict_dataset)
+# Create a dummy dataset.
+ds = ray.data.from_pandas(pd.DataFrame({"feature_1": [1, 2, 3], "label": [1, 2, 3]}))
+
+# Use `feature_columns` to specify the input columns to your model.
+predictions = batch_predictor.predict(ds, feature_columns=["feature_1"])
 print(predictions.show())
-# {'predictions': array([0.], dtype=float32)}
-# {'predictions': array([-0.6512989], dtype=float32)}
-# {'predictions': array([-1.3025978], dtype=float32)}
+# {'predictions': array([-1.2789773], dtype=float32)}
+# {'predictions': array([-2.5579545], dtype=float32)}
+# {'predictions': array([-3.8369317], dtype=float32)}
 # __batch_prediction_end__
+
+# __compute_accuracy_start__
+def calculate_accuracy(df):
+    return pd.DataFrame({"correct": int(df["predictions"][0]) == df["label"]})
+
+predictions = batch_predictor.predict(
+    ds, feature_columns=["feature_1"], keep_columns=["label"]
+)
+print(predictions.show())
+# {'predictions': array([-1.2789773], dtype=float32), 'label': 0}
+# {'predictions': array([-2.5579545], dtype=float32), 'label': 1}
+# {'predictions': array([-3.8369317], dtype=float32), 'label': 0}
+
+correct = predictions.map_batches(calculate_accuracy)
+print("Final accuracy: ", correct.mean(on="correct"))
+# Final accuracy:  0.5
+# __compute_accuracy_end__
 
 # __pipelined_prediction_start__
 import pandas as pd

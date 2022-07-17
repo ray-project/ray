@@ -49,14 +49,30 @@ Ray AIR provides a ``BatchPredictor`` utility for large-scale batch inference.
 The BatchPredictor takes in a checkpoint and a predictor class and executes 
 large-scale batch prediction on a given dataset in a parallel/distributed fashion when calling ``predict()``.
 
-``predict()`` will load the entire given dataset into memory, which may be a problem if your dataset
-size is larger than your available cluster memory. See the :ref:`pipelined-prediction` section for more details.
+.. note::
+    ``predict()`` will load the entire given dataset into memory, which may be a problem if your dataset
+    size is larger than your available cluster memory. See the :ref:`pipelined-prediction` section for a workaround.
 
 .. literalinclude:: doc_code/predictors.py
     :language: python
     :start-after: __batch_prediction_start__
     :end-before: __batch_prediction_end__
 
+
+Additionally, you can compute metrics from the predictions. Do this by:
+
+1. specifying a function for computing metrics
+2. using `keep_columns` to keep the label column in the returned dataset
+3. using `map_batches` to compute metrics on a batch-by-batch basis
+4. Aggregate batch metrics via `mean()`
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __compute_accuracy_start__
+    :end-before: __compute_accuracy_end__
+
+Batch Inference Examples
+------------------------
 Below, we provide examples of using common frameworks to do batch inference for different data types:
 
 Tabular
@@ -99,7 +115,7 @@ Coming soon!
 .. _pipelined-prediction:
 
 Lazy/Pipelined Prediction
-~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------
 
 If you have a large dataset but not a lot of available memory, you can use the 
 :meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
@@ -117,7 +133,7 @@ Execution can be triggered by pulling from the pipeline, as shown in the example
     :end-before: __pipelined_prediction_end__
 
 
-Online inference
+Online Inference
 ----------------
 
 Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.
