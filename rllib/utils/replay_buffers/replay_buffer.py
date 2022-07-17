@@ -156,7 +156,11 @@ class ReplayBuffer(ParallelIteratorWorker):
                 )
             )
         self._storage_location = storage_location
-        self._storage = self._create_storage(capacity_ts=capacity_ts)
+        self._storage = self._create_storage(
+            capacity_items=capacity_items,
+            capacity_ts=capacity_ts,
+            capacity_bytes=capacity_bytes,
+        )
 
         # Number of (single) timesteps that have been sampled from the buffer
         # over its lifetime.
@@ -331,17 +335,20 @@ class ReplayBuffer(ParallelIteratorWorker):
         # The actual storage.
         self.storage_unit = state["storage_unit"]
         self._storage_location = state["_storage_location"]
-        self._storage = self._create_storage(1)
+        self._storage = self._create_storage(capacity_items=1)
         self._storage.set_state(state["_storage"])
         # Stats and counts.
         self._num_timesteps_sampled = state["sampled_count"]
 
-    def _create_storage(self, capacity_ts: int) -> LocalStorage:
+    def _create_storage(self, **kwargs) -> LocalStorage:
         if self._storage_location == StorageLocation.IN_MEMORY:
-            return InMemoryStorage(capacity_ts=capacity_ts)
+            return InMemoryStorage(**kwargs)
         elif self._storage_location == StorageLocation.ON_DISK:
-            return OnDiskStorage(capacity_ts=capacity_ts)
-        raise ValueError("Unknown storage location: {}".format(self._storage_location))
+            return OnDiskStorage(**kwargs)
+        else:
+            raise ValueError(
+                "Unknown storage location: {}".format(self._storage_location)
+            )
 
     @DeveloperAPI
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:

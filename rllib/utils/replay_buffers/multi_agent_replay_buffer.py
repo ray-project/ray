@@ -126,11 +126,25 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 the underlying buffers.
             ``**kwargs``: Forward compatibility kwargs.
         """
+        capacity_items = (
+            capacity_items // num_shards
+            if capacity_items != math.inf
+            else capacity_items
+        )
+        capacity_ts = (
+            capacity_ts // num_shards if capacity_ts != math.inf else capacity_ts
+        )
+        capacity_bytes = (
+            capacity_bytes // num_shards
+            if capacity_bytes != math.inf
+            else capacity_bytes
+        )
+
         ReplayBuffer.__init__(
             self,
-            capacity_items=capacity_items // num_shards,
-            capacity_ts=capacity_ts // num_shards,
-            capacity_bytes=capacity_bytes // num_shards,
+            capacity_items=capacity_items,
+            capacity_ts=capacity_ts,
+            capacity_bytes=capacity_bytes,
             storage_unit=storage_unit,
             storage_location=storage_location,
         )
@@ -183,9 +197,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         if self.underlying_buffer_config:
             ctor_args = {
                 **{
-                    "capacity_items": capacity_items // num_shards,
-                    "capacity_ts": capacity_ts // num_shards,
-                    "capacity_bytes": capacity_bytes // num_shards,
+                    "capacity_items": capacity_items,
+                    "capacity_ts": capacity_ts,
+                    "capacity_bytes": capacity_bytes,
                     "storage_unit": StorageUnit.FRAGMENTS,
                     "storage_location": storage_location,
                 },
@@ -200,9 +214,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             def new_buffer():
                 self.underlying_buffer_call_args = {}
                 return ReplayBuffer(
-                    capacity_items=capacity_items // num_shards,
-                    capacity_ts=capacity_ts // num_shards,
-                    capacity_bytes=capacity_bytes // num_shards,
+                    capacity_items=capacity_items,
+                    capacity_ts=capacity_ts,
+                    capacity_bytes=capacity_bytes,
                     storage_unit=StorageUnit.FRAGMENTS,
                     storage_location=storage_location,
                 )
