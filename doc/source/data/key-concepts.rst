@@ -181,12 +181,12 @@ scenarios are shown: running outside the trial group using spare resources, and 
     trials to run smoothly without risk of deadlock by reserving 20% of node CPUs for
     Dataset execution.
 
-    .. warning::
-
-        ``_max_cpu_fraction_per_node`` is experimental and not currently recommended for use with
-        autoscaling clusters (scale-up will not trigger properly).
-
     .. literalinclude:: ./doc_code/key_concepts.py
       :language: python
       :start-after: __resource_allocation_2_begin__
       :end-before: __resource_allocation_2_end__
+
+    .. warning::
+
+        ``_max_cpu_fraction_per_node`` is experimental and not currently recommended for use with
+        autoscaling clusters (scale-up will not trigger properly).
