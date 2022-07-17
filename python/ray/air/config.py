@@ -159,6 +159,7 @@ class ScalingConfigDataClass:
         placement_strategy = pgf.strategy
         resources_per_worker = None
         num_workers = None
+        max_cpu_fraction_per_node = None
 
         if worker_bundles:
             first_bundle = worker_bundles[0]
@@ -171,12 +172,16 @@ class ScalingConfigDataClass:
             num_workers = len(worker_bundles)
             resources_per_worker = first_bundle
 
+        if "_max_cpu_fraction_per_node" in pgf._kwargs:
+            max_cpu_fraction_per_node = pgf._kwargs["_max_cpu_fraction_per_node"]
+
         return ScalingConfigDataClass(
             trainer_resources=trainer_resources,
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
+            _max_cpu_fraction_per_node=max_cpu_fraction_per_node,
         )
 
 
