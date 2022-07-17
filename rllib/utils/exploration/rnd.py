@@ -406,6 +406,28 @@ class RND(Exploration):
             {"exploration_vf_preds": self.model._exploration_value_branch()}
         )
         return extra_action_out
+    
+    @override(Exploration)
+    def extra_action_out(
+        self,
+        input_dict,
+        state_batches,
+        model,
+        action_dist,
+        policy
+    ):
+        extra_action_out = super().extra_action_out(
+            input_dict=input_dict,
+            state_batches=state_batches,
+            model=model,
+            action_dist=action_dist,
+            policy=policy,
+        )
+        return extra_action_out.update(
+            {
+                "exploration_vf_preds": self.model._exploration_value_branch().squeeze()
+            }
+        )
 
     def _postprocess_tf(self, policy, sample_batch, tf_sess):
         """Calculates the intrinsic reward and updates the parameters."""
