@@ -12,6 +12,29 @@ def gen_block(num_rows):
 def test_shuffling_batcher():
     batch_size = 5
     buffer_size = 20
+
+    with pytest.raises(
+        ValueError, match="Must specify a batch_size if using a local shuffle."
+    ):
+        ShufflingBatcher(batch_size=None, shuffle_buffer_min_size=buffer_size)
+
+    with pytest.raises(
+        ValueError,
+        match="Shuffle buffer min size must be at least as large as the batch size",
+    ):
+        ShufflingBatcher(batch_size=batch_size, shuffle_buffer_min_size=batch_size - 1)
+
+    with pytest.raises(
+        ValueError,
+        match="Shuffle buffer capacity must be at least as large as the shuffle "
+        "buffer min size plus the batch size",
+    ):
+        ShufflingBatcher(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=buffer_size,
+            shuffle_buffer_capacity=batch_size + buffer_size - 1,
+        )
+
     batcher = ShufflingBatcher(
         batch_size=batch_size,
         shuffle_buffer_min_size=buffer_size,

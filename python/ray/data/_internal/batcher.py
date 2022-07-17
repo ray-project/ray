@@ -143,7 +143,7 @@ class ShufflingBatcher(BatcherInterface):
     # Note that (1) and (2) only happen when new blocks are added, upon the next
     # retrieval. I.e., if no new blocks have been added since the last batch retrieval,
     # and there are still batches in the existing concrete shuffle buffer to be yielded,
-    # then each batch retreival will only involve slicing the batch out of the concrete
+    # then each batch retrieval will only involve slicing the batch out of the concrete
     # shuffle buffer.
     #
     # Similarly, adding blocks is very cheap. Each added block will be appended to a
@@ -169,17 +169,20 @@ class ShufflingBatcher(BatcherInterface):
             batch_size: Record batch size.
             shuffle_buffer_min_size: Minimum number of rows that must be in the local
                 in-memory shuffle buffer in order to yield a batch. This must be greater
-                than or equal to ``batch_size``. Increasing this will improve the
+                than or equal to ``batch_size``. When there are no more rows to be added
+                to the buffer, the number of rows in the buffer *will* decrease below
+                this value while yielding the remaining batches, and the final batch may
+                have less than ``batch_size`` rows. Increasing this will improve the
                 randomness of the shuffle but may increase the latency to the first
                 batch.
             shuffle_buffer_capacity: Soft maximum number of rows allowed in the local
                 in-memory shuffle buffer. This must be greater than or equal to
-                ``batch_size``. Note that this is a soft max: if the buffer is currently
-                smaller than this max, we will add a new data block to the buffer, but
-                this new data block may push the buffer over this max; we don't take the
-                size of the new data block into account when doing this capacity check.
-                Default is ``max(2 * shuffle_buffer_min_size, shuffle_buffer_min_size +
-                batch_size)``.
+                ``batch_size`` plus ``shuffle_buffer_min_size``. Note that this is a
+                soft max: if the buffer is currently smaller than this max, we will add
+                a new data block to the buffer, but this new data block may push the
+                buffer over this max; we don't take the size of the new data block into
+                account when doing this capacity check. Default is ``max(2 *
+                shuffle_buffer_min_size, shuffle_buffer_min_size + batch_size)``.
             shuffle_seed: The seed to use for the local random shuffle.
         """
         if batch_size is None:

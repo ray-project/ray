@@ -2466,10 +2466,14 @@ class Dataset(Generic[T]):
                 random but will be faster and less resource-intensive. This buffer size
                 must be greater than or equal to ``batch_size``, and therefore
                 ``batch_size`` must also be specified when using local shuffling.
-                Increasing this will improve the randomness of the shuffle but will
-                increase CPU memory utilization and the latency to the first batch. The
-                CPU memory utilization ceiling is the max of the prefetch buffer size
-                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+                When there are no more rows to be added to the buffer, the number of
+                rows in the buffer *will* decrease below this value while yielding
+                the remaining batches, and the final batch may have less than
+                ``batch_size`` rows. Increasing this will improve the randomness of
+                the shuffle but will increase CPU memory utilization and the latency
+                to the first batch. The CPU memory utilization ceiling is the max of
+                the prefetch buffer size (controlled by ``prefetch_blocks``) and
+                this shuffle buffer size.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
