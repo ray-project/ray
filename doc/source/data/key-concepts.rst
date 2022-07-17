@@ -182,7 +182,7 @@ scenarios are shown: running outside the trial group using spare resources, and 
 
     .. warning::
 
-        ``_max_cpu_fraction_per_node`` is experimental and not recommended for use with
+        ``_max_cpu_fraction_per_node`` is experimental and not currently recommended for use with
         autoscaling clusters (scale-up will not trigger properly).
 
     .. literalinclude:: ./doc_code/key_concepts.py
