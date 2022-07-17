@@ -24,32 +24,23 @@ tune.run(objective, num_samples=1, resources_per_trial={"cpu": 1})
 # __resource_allocation_2_begin__
 import ray
 from ray import tune
-from ray.data.context import DatasetContext
-from ray.tune.error import TuneError
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-# Tune launches its trainable functions in placement groups.
+# This Dataset workload will use reserved cluster resources for execution.
 def objective(*args):
-    # Tell Datasets to use the current placement group for all Datasets tasks.
-    ctx = DatasetContext.get_current()
-    ctx.scheduling_strategy = PlacementGroupSchedulingStrategy(
-        ray.util.get_current_placement_group())
-    # This Dataset workload will use that placement group for all read and map tasks.
     ray.data.range(10).show()
 
 # Create a cluster with 4 CPU slots available.
 ray.init(num_cpus=4)
 
-# This will error, since Tune has no resources reserved for Dataset tasks.
-try:
-    tune.run(objective)
-except TuneError:
-    print("This failed as expected")
-
-# This runs fine, since there are 4 CPUs in the trial's placement group. The first
-# CPU slot is used to run the objective function, leaving 3 for Dataset tasks.
+# This runs smoothly since _max_cpu_fraction_per_node is set to 0.8, effectively
+# reserving 1 CPU for Datasets task execution.
 tune.run(
-    objective, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 1}] * 4),
+    objective,
+    num_samples=4,
+    resources_per_trial=tune.PlacementGroupFactory(
+        [{"CPU": 1}],
+        _max_cpu_fraction_per_node=0.8,
+    ),
 )
 # __resource_allocation_2_end__
 # fmt: on
