@@ -1,11 +1,13 @@
 import inspect
-from typing import Any, Dict, Optional, List, Type, Union
+from typing import Any, Dict, Optional, List, Type, Union, Callable
+import pandas as pd
 
 import ray
 from ray.air import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
-from ray.data import Preprocessor, BatchMapper
+from ray.data import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -37,6 +39,30 @@ class BatchPredictor:
     ) -> "BatchPredictor":
         return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
+    @classmethod
+    def from_pandas_udf(
+        cls, pandas_udf: Callable[[pd.DataFrame], pd.DataFrame]
+    ) -> "BatchPredictor":
+        """Create a Predictor from a Pandas UDF.
+
+        Args:
+            pandas_udf: A function that takes a pandas.DataFrame and other
+                optional kwargs and returns a pandas.DataFrame.
+        """
+
+        class PandasUDFPredictor(Predictor):
+            @classmethod
+            def from_checkpoint(cls, checkpoint, **kwargs):
+                return PandasUDFPredictor()
+
+            def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
+                return pandas_udf(df, **kwargs)
+
+        return cls(
+            checkpoint=Checkpoint.from_dict({"dummy": 1}),
+            predictor_cls=PandasUDFPredictor,
+        )
+
     def get_preprocessor(self) -> Preprocessor:
         if self._override_preprocessor:
             return self._override_preprocessor
@@ -57,8 +83,8 @@ class BatchPredictor:
         batch_size: int = 4096,
         min_scoring_workers: int = 1,
         max_scoring_workers: Optional[int] = None,
-        num_cpus_per_worker: int = 1,
-        num_gpus_per_worker: int = 0,
+        num_cpus_per_worker: Optional[int] = None,
+        num_gpus_per_worker: Optional[int] = None,
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
@@ -123,6 +149,13 @@ class BatchPredictor:
             Dataset containing scoring results.
 
         """
+        if num_gpus_per_worker is None:
+            num_gpus_per_worker = 0
+        if num_cpus_per_worker is None:
+            if num_gpus_per_worker > 0:
+                num_cpus_per_worker = 0
+            else:
+                num_cpus_per_worker = 1
         predictor_cls = self._predictor_cls
         checkpoint_ref = self._checkpoint_ref
         predictor_kwargs = self._predictor_kwargs
@@ -193,8 +226,8 @@ class BatchPredictor:
         batch_size: int = 4096,
         min_scoring_workers: int = 1,
         max_scoring_workers: Optional[int] = None,
-        num_cpus_per_worker: int = 1,
-        num_gpus_per_worker: int = 0,
+        num_cpus_per_worker: Optional[int] = None,
+        num_gpus_per_worker: Optional[int] = None,
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
