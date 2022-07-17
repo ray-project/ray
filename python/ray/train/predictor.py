@@ -94,20 +94,28 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
-    @staticmethod
+    @classmethod
     def from_pandas_udf(
-        pandas_udf: Callable[[pd.DataFrame], pd.DataFrame]
+        cls, pandas_udf: Callable[[pd.DataFrame], pd.DataFrame]
     ) -> "Predictor":
+        """Create a Predictor from a Pandas UDF.
+
+        Args:
+            pandas_udf: A function that takes a pandas.DataFrame and other
+                optional kwargs and returns a pandas.DataFrame.
+        """
+
         class PandasUDFPredictor(Predictor):
             @classmethod
-            def from_checkpoint(cls, **kwargs):
-                return PandasUDFPredictor(None)
+            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs):
+                return PandasUDFPredictor()
 
             def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
-                return pandas_udf(df)
+                return pandas_udf(df, **kwargs)
 
         return PandasUDFPredictor.from_checkpoint(Checkpoint.from_dict({"dummy": 1}))
 
+    @PublicAPI(stability="alpha")
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
 
