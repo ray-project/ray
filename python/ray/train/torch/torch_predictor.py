@@ -180,14 +180,15 @@ class TorchPredictor(DLPredictor):
     def create_checkpoint_from_torch_model(
         model: torch.nn.Module, *, preprocessor: Optional["Preprocessor"] = None
     ) -> Checkpoint:
-        """Convert a pretrained model to AIR checkpoint for serve or inference.
+        """Create a TorchPredictor checkpoint from a torch module.
 
         Args:
             model: A pretrained model.
             preprocessor: A fitted preprocessor. The preprocessing logic will
                 be applied to the inputs for serving/inference.
+
         Returns:
-            A Ray Air checkpoint.
+            A checkpoint that can be loaded by TorchPredictor.
         """
         checkpoint = Checkpoint.from_dict(
             {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model}
