@@ -160,7 +160,7 @@ exclude a fraction of CPUs from placement group scheduling, using the
 .. warning::
 
     ``_max_cpu_fraction_per_node`` is experimental and not recommended for use with
-    autoscaling clusters.
+    autoscaling clusters (scale-up will not trigger properly).
 
 Example: Datasets in Tune
 =========================
@@ -197,4 +197,4 @@ scenarios are shown: running outside the trial group using spare resources, and 
 
       This is an experimental feature subject to change as we work to improve our
       resource allocation model for Datasets. It is not recommended for use with
-      autoscaling clusters.
+      autoscaling clusters (scale-up will not trigger properly).

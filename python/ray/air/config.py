@@ -48,7 +48,7 @@ class ScalingConfigDataClass:
         for dataset tasks. It is highly recommended that you set this to less than
         1.0 (e.g., 0.8) when passing datasets to trainers, to avoid hangs / CPU
         starvation of dataset tasks. Warning: this feature is experimental and is not
-        recommended for use with autoscaling clusters.
+        recommended for use with autoscaling (scale-up will not trigger properly).
     """
 
     trainer_resources: Optional[Dict] = None

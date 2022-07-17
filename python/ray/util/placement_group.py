@@ -153,7 +153,8 @@ def placement_group(
             placement groups from fully occupying node resources. Note that when
             `max_cpu_fraction_per_node < 1.0`, at least 1 CPU will be excluded from
             placement group scheduling. Warning: this feature is experimental and is
-            not recommended for use with autoscaling clusters.
+            not recommended for use with autoscaling clusters (scale-up will not
+            trigger properly).
 
     Raises:
         ValueError if bundle type is not a list.
