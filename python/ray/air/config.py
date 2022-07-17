@@ -229,7 +229,8 @@ class DatasetConfig:
 
     # Whether to enable global shuffle (per pipeline window in streaming mode). Note
     # that this is an expensive all-to-all operation, and most likely you want to use
-    # local shuffle instead. See https://docs.ray.io/en/master/data/faq.html
+    # local shuffle instead. See https://docs.ray.io/en/master/data/faq.html and
+    # https://docs.ray.io/en/master/air/check-ingest.html.
     # False by default.
     global_shuffle: Optional[bool] = None
 

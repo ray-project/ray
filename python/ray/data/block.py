@@ -256,6 +256,17 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
+    def take(self, indices: List[int]) -> Block:
+        """Return a new block containing the provided row indices.
+
+        Args:
+            indices: The row indices to return.
+
+        Returns:
+            A new block containing the provided row indices.
+        """
+        raise NotImplementedError
+
     def random_shuffle(self, random_seed: Optional[int]) -> Block:
         """Randomly shuffle this block."""
         raise NotImplementedError
