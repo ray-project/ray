@@ -20,11 +20,9 @@ class TestFeatureImportance(unittest.TestCase):
         sample_batch = synchronous_parallel_sample(worker_set=runner.workers)
 
         for repeat in [1, 10]:
-            evaluator = FeatureImportance(
-                name="feature_importance", policy=policy, gamma=0.0, repeat=repeat
-            )
+            evaluator = FeatureImportance(policy=policy, gamma=0.0, repeat=repeat)
 
-            estimate = evaluator.estimate(sample_batch)[0].metrics
+            estimate = evaluator.estimate(sample_batch)
 
             # check if the estimate is positive
             assert all([val > 0 for val in estimate.values()])

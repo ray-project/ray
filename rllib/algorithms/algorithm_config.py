@@ -898,9 +898,7 @@ class AlgorithmConfig:
             else:
                 self.evaluation_config = evaluation_config
         if off_policy_estimation_methods is not None:
-            self.evaluation_config[
-                "off_policy_estimation_methods"
-            ] = off_policy_estimation_methods
+            self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not None:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
@@ -917,8 +915,7 @@ class AlgorithmConfig:
         input_config=None,
         actions_in_input_normalized=None,
         input_evaluation=None,
-        off_policy_estimation_methods=None,
-        postprocess_inputs=None,  # `def postprocess_trajectory()`
+        postprocess_inputs=None,
         shuffle_buffer_size=None,
         output=None,
         output_config=None,
@@ -991,7 +988,7 @@ class AlgorithmConfig:
             self.input_config = input_config
         if actions_in_input_normalized is not None:
             self.actions_in_input_normalized = actions_in_input_normalized
-        if input_evaluation is not None or off_policy_estimation_methods is not None:
+        if input_evaluation is not None:
             deprecation_warning(
                 old="offline_data(input_evaluation={})".format(input_evaluation),
                 new="evaluation(off_policy_estimation_methods={})".format(
