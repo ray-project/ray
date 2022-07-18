@@ -1,6 +1,8 @@
 import json
 import os
+import socket
 import time
+from contextlib import closing
 from typing import Dict, Tuple
 
 import click
@@ -8,6 +10,7 @@ import numpy as np
 import torch
 from torch import nn, distributed
 from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data.dataloader import default_collate
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
@@ -120,15 +123,33 @@ def train_func(use_ray: bool, config: Dict):
         training_sampler = DistributedSampler(training_data, shuffle=shuffle)
         test_sampler = DistributedSampler(test_data, shuffle=shuffle)
 
+    if not use_ray and config.get("use_gpu", False):
+        assert torch.cuda.is_available(), "No GPUs available"
+        gpu_id = config.get("gpu_id", 0)
+        vanilla_device = torch.device(f"cuda:{gpu_id}")
+        torch.cuda.set_device(vanilla_device)
+
+        def collate_fn(x):
+            return tuple(x_.to(vanilla_device) for x_ in default_collate(x))
+
+    else:
+        vanilla_device = torch.device("cpu")
+        collate_fn = None
+
     # Create data loaders and potentially pass distributed sampler
     train_dataloader = DataLoader(
         training_data,
         shuffle=shuffle,
         batch_size=worker_batch_size,
         sampler=training_sampler,
+        collate_fn=collate_fn,
     )
     test_dataloader = DataLoader(
-        test_data, shuffle=shuffle, batch_size=worker_batch_size, sampler=test_sampler
+        test_data,
+        shuffle=shuffle,
+        batch_size=worker_batch_size,
+        sampler=test_sampler,
+        collate_fn=collate_fn,
     )
 
     if use_ray:
@@ -143,9 +164,14 @@ def train_func(use_ray: bool, config: Dict):
     if use_ray:
         model = train.torch.prepare_model(model)
     else:
-        model = nn.parallel.DistributedDataParallel(model)
-        device = torch.device("cpu")
-        model = model.to(device)
+        model = model.to(vanilla_device)
+
+        if config.get("use_gpu", False):
+            model = nn.parallel.DistributedDataParallel(
+                model, device_ids=[gpu_id], output_device=gpu_id
+            )
+        else:
+            model = nn.parallel.DistributedDataParallel(model)
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
@@ -222,8 +248,12 @@ def train_torch_vanilla_worker(
 
     os.environ["MASTER_ADDR"] = master_addr
     os.environ["MASTER_PORT"] = str(master_port)
-    distributed.init_process_group(backend=backend, rank=rank, world_size=world_size)
+    os.environ["NCCL_BLOCKING_WAIT"] = "1"
+    distributed.init_process_group(
+        backend=backend, rank=rank, world_size=world_size, init_method="env://"
+    )
 
+    config["use_gpu"] = use_gpu
     train_func(use_ray=False, config=config)
 
     distributed.destroy_process_group()
@@ -240,14 +270,35 @@ def train_torch_vanilla(
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
     import ray
-    from benchmark_util import upload_file_to_all_nodes, run_commands_with_resources
+    from benchmark_util import (
+        upload_file_to_all_nodes,
+        create_actors_with_resources,
+        run_commands_on_actors,
+        run_fn_on_actors,
+    )
 
     path = os.path.abspath(__file__)
     upload_file_to_all_nodes(path)
-    master_addr = ray.util.get_node_ip_address()
-    master_port = master_port
 
     num_epochs = config["epochs"]
+
+    actors = create_actors_with_resources(
+        num_actors=num_workers,
+        resources={
+            "CPU": cpus_per_worker,
+            "GPU": int(use_gpu),
+        },
+    )
+
+    def get_ip_port():
+        ip = ray.util.get_node_ip_address()
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            s.bind(("localhost", 0))
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            port = s.getsockname()[1]
+        return ip, port
+
+    [(master_addr, master_port)] = run_fn_on_actors(actors=[actors[0]], fn=get_ip_port)
 
     cmds = [
         [
@@ -270,13 +321,7 @@ def train_torch_vanilla(
     ]
 
     start_time = time.monotonic()
-    run_commands_with_resources(
-        cmds,
-        resources={
-            "CPU": cpus_per_worker,
-            "GPU": int(use_gpu),
-        },
-    )
+    run_commands_on_actors(actors=actors, cmds=cmds)
     time_taken = time.monotonic() - start_time
 
     loss = 0.0
@@ -314,7 +359,18 @@ def run(
     config = CONFIG.copy()
     config["epochs"] = num_epochs
 
-    ray.init("auto")
+    # Find interface
+    for iface in os.listdir("/sys/class/net"):
+        if iface.startswith("ens"):
+            network_interface = iface
+            break
+    else:
+        network_interface = "^lo,docker"
+
+    ray.init(
+        "auto",
+        runtime_env={"env_vars": {"NCCL_SOCKET_IFNAME": network_interface}},
+    )
     print("Preparing Torch benchmark: Downloading MNIST")
 
     path = os.path.abspath("workloads/_torch_prepare.py")
