@@ -458,6 +458,29 @@ def test_range_table(ray_start_regular_shared):
     assert ds.take() == [{"value": i} for i in range(10)]
 
 
+def test_tensor_array_validation():
+    # Test unknown input type raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(object())
+
+    # Test ragged tensor raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object))
+
+    with pytest.raises(TypeError):
+        TensorArray([np.ones((2, 2)), np.ones((3, 3))])
+
+    with pytest.raises(TypeError):
+        TensorArray(pd.Series([np.ones((2, 2)), np.ones((3, 3))]))
+
+    # Test non-primitive element raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(np.array([object(), object()]))
+
+    with pytest.raises(TypeError):
+        TensorArray([object(), object()])
+
+
 def test_tensor_array_block_slice():
     # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
@@ -815,6 +838,21 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         "Dataset(num_blocks=10, num_rows=20, "
         "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
     )
+
+    # Test map_batches ndarray column.
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
+    )
+    assert str(ds) == (
+        "Dataset(num_blocks=4, num_rows=24, "
+        "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
+    )
+
+    # Test map_batches ragged ndarray column falls back to opaque object-typed column.
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}), batch_size=2
+    )
+    assert str(ds) == ("Dataset(num_blocks=4, num_rows=16, schema={a: object})")
 
 
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
