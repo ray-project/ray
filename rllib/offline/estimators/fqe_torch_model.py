@@ -212,7 +212,7 @@ class FQETorchModel:
         if is_overridden(self.policy.action_distribution_fn):
             try:
                 # TorchPolicyV2 function signature
-                dist_inputs, dist_class, _ = self.action_distribution_fn(
+                dist_inputs, dist_class, _ = self.policy.action_distribution_fn(
                     self.policy.model,
                     obs_batch=input_dict,
                     state_batches=state_batches,
