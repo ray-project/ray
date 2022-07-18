@@ -27,7 +27,7 @@ class TestOPE(unittest.TestCase):
         env_name = "CartPole-v0"
         cls.gamma = 0.99
         n_episodes = 40
-        cls.q_model_config = {"n_iters": 600, "tau": 0.05}
+        cls.q_model_config = {"n_iters": 600}
 
         config = (
             DQNConfig()
