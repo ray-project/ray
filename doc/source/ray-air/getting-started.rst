@@ -160,7 +160,7 @@ See the :ref:`Key Concepts <air-key-concepts>` for more that Ray AIR has to offe
 Why Ray AIR?
 ------------
 
-Today, there are myriad machine learning frameworks, platforms, and tools. Why would you elect Ray AIR and what makes it different? Ray AIR provides three 
+Today, there are a myriad of machine learning frameworks, platforms, and tools. Why would you choose Ray AIR and what makes it different? Ray AIR provides three 
 unique functional values derived from Ray. Let's examine each.
 
 **1. Seamless development to production**: Ray AIR reduces development friction going from development to production. Unlike in other frameworks, scaling Ray applications from a laptop to large clusters doesn't require a separate way of running -- the same code scales up seamlessly.
