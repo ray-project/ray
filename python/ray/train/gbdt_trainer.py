@@ -72,6 +72,8 @@ class GBDTTrainer(BaseTrainer):
         "use_gpu",
         "placement_strategy",
     ]
+    _handles_checkpoint_freq = True
+
     _dmatrix_cls: type
     _ray_params_cls: type
     _tune_callback_report_cls: type

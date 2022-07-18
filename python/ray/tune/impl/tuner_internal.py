@@ -153,6 +153,17 @@ class TunerInternal:
         """Get tune.run arguments common for both new and resumed runs."""
         checkpoint_freq = self._run_config.checkpoint_config.checkpoint_frequency
         if checkpoint_freq and issubclass(trainable, FunctionTrainable):
+            # Function trainables usually don't handle the checkpoint_frequency
+            # argument - in this case, raise an error. If they do handle them,
+            # set checkpoint_freq to 0 instead.
+            if not getattr(trainable, "_handles_checkpoint_freq", True):
+                raise ValueError(
+                    f"You passed `checkpoint_freq={checkpoint_freq}` to your "
+                    f"CheckpointConfig, but this trainer does not support "
+                    f"this argument. If the trainer takes in a training loop, "
+                    f"you will need to trigger checkpointing yourself using "
+                    f"`ray.air.session.report(metrics=..., checkpoint=...)`."
+                )
             checkpoint_freq = 0
 
         return dict(
