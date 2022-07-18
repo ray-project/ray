@@ -365,13 +365,11 @@ def run(
             network_interface = iface
             break
     else:
-        network_interface = "docker0"
+        network_interface = "^lo,docker"
 
     ray.init(
         "auto",
-        runtime_env={
-            "env_vars": {"NCCL_SOCKET_IFNAME": network_interface, "NCCL_DEBUG": "INFO"}
-        },
+        runtime_env={"env_vars": {"NCCL_SOCKET_IFNAME": network_interface}},
     )
     print("Preparing Torch benchmark: Downloading MNIST")
 
