@@ -24,7 +24,7 @@ from ray.tune.search._mock import _MockSuggestionAlgorithm
 from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
-from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
+from ray.tune.tests.tune_test_util import TrialResultObserver
 
 
 class TrialRunnerTest3(unittest.TestCase):
