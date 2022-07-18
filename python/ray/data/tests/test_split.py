@@ -1,3 +1,4 @@
+import itertools
 import math
 import random
 import time
@@ -10,6 +11,10 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.split import (
+    _generate_valid_indices,
+    _generate_per_block_split_indices,
+)
 from ray.data.block import BlockAccessor
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
@@ -187,7 +192,7 @@ def test_split_small(ray_start_regular_shared, pipelined):
     assert not fail, fail
 
 
-def test_split_at_indices(ray_start_regular_shared):
+def test_split_at_indices_simple(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=3)
 
     with pytest.raises(ValueError):
@@ -218,6 +223,79 @@ def test_split_at_indices(ray_start_regular_shared):
     splits = ds.split_at_indices([0])
     r = [s.take() for s in splits]
     assert r == [[], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
+
+
+@pytest.mark.parametrize("num_blocks", list(range(1, 20)) + [25, 40])
+@pytest.mark.parametrize(
+    "indices",
+    [
+        # Two-splits.
+        [5],
+        [10],
+        [15],
+        # Three-splits.
+        [5, 12],
+        [1, 18],
+        [9, 10],
+        # Misc.
+        [3, 10, 17],
+        [2, 4, 11, 12, 19],
+        list(range(20)),
+        list(range(0, 20, 2)),
+        # Empty splits.
+        [10, 10],
+        [5, 10, 10, 15],
+        # Out-of-bounds.
+        [25],
+        [7, 11, 23, 33],
+    ],
+)
+def test_split_at_indices_coverage(ray_start_regular_shared, num_blocks, indices):
+    # Test that split_at_indices() creates the expected splits on a set of partition and
+    # indices configurations.
+    ds = ray.data.range(20, parallelism=num_blocks)
+    splits = ds.split_at_indices(indices)
+    r = [s.take_all() for s in splits]
+    # Use np.array_split() semantics as our correctness ground-truth.
+    assert r == [arr.tolist() for arr in np.array_split(list(range(20)), indices)]
+
+
+@pytest.mark.parametrize("num_blocks", list(range(1, 5)) + [8, 10])
+@pytest.mark.parametrize(
+    "indices",
+    [
+        # Two-splits.
+        list(range(5)),
+    ]
+    + list(
+        # Three-splits.
+        map(list, itertools.combinations_with_replacement(list(range(5)), 2))
+    )
+    + list(
+        # Four-splits.
+        map(list, itertools.combinations_with_replacement(list(range(5)), 3))
+    )
+    + list(
+        # Five-splits.
+        map(list, itertools.combinations_with_replacement(list(range(5)), 4))
+    )
+    + list(
+        # Six-splits.
+        map(list, itertools.combinations_with_replacement(list(range(5)), 5))
+    ),
+)
+def test_split_at_indices_coverage_complete(
+    ray_start_regular_shared,
+    num_blocks,
+    indices,
+):
+    # Test that split_at_indices() creates the expected splits on a set of partition and
+    # indices configurations.
+    ds = ray.data.range(5, parallelism=num_blocks)
+    splits = ds.split_at_indices(indices)
+    r = [s.take_all() for s in splits]
+    # Use np.array_split() semantics as our correctness ground-truth.
+    assert r == [arr.tolist() for arr in np.array_split(list(range(5)), indices)]
 
 
 def test_split_proportionately(ray_start_regular_shared):
@@ -393,3 +471,18 @@ def test_split_hints(ray_start_regular_shared):
         ["n1", "n2", "n0"],
         [range(200, 301), range(100, 200), list(range(0, 50)) + list(range(50, 100))],
     )
+
+
+def test_generate_valid_indices():
+    assert [1, 2, 3] == _generate_valid_indices([10], [1, 2, 3])
+    assert [1, 2, 2] == _generate_valid_indices([1, 1], [1, 2, 3])
+
+
+def test_generate_per_block_split_indices():
+    assert [[1], [1, 2], [], []] == _generate_per_block_split_indices(
+        [3, 3, 3, 1], [1, 4, 5]
+    )
+    assert [[3], [], [], [1, 1]] == _generate_per_block_split_indices(
+        [3, 3, 3, 1], [3, 10, 10]
+    )
+    assert [[], [], [], []] == _generate_per_block_split_indices([3, 3, 3, 1], [])

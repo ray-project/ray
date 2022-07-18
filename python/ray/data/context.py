@@ -10,6 +10,10 @@ from ray.util.scheduling_strategies import SchedulingStrategyT
 _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
 
+# An estimate of what fraction of the object store a Dataset can use without too high
+# a risk of triggering spilling. This is used to generate user warnings only.
+ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
+
 # The max target block size in bytes for reads and transformations.
 # We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
@@ -60,6 +64,12 @@ DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
+
+# Use this to prefix important warning messages for the user.
+WARN_PREFIX = "⚠️ "
+
+# Use this to prefix important success messages for the user.
+OK_PREFIX = "✔️ "
 
 
 @DeveloperAPI
