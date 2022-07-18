@@ -194,6 +194,7 @@ class TunerInternal:
                 scheduler=self._tune_config.scheduler,
                 name=self._run_config.name,
                 progress_reporter=self._run_config.progress_reporter,
+                reuse_actors=self._run_config.reuse_actors,
             ),
             **self._tuner_kwargs,
         }
@@ -210,6 +211,7 @@ class TunerInternal:
                 run_or_experiment=trainable,
                 resume=True,
                 progress_reporter=self._run_config.progress_reporter,
+                reuse_actors=self._run_config.reuse_actors,
             ),
             **self._tuner_kwargs,
         }

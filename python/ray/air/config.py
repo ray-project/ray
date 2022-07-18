@@ -414,6 +414,12 @@ class RunConfig:
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results. Defaults to 2.
+        reuse_actors: Whether to reuse actors between different trials
+            when possible. This can drastically speed up experiments that start
+            and stop actors often (e.g., PBT in time-multiplexing mode). This
+            requires trials to have the same resource requirements.
+            Defaults to ``True`` for function trainables and ``False`` for
+            class and registered trainables.
     """
 
     # TODO(xwjiang): Add more.
@@ -426,3 +432,4 @@ class RunConfig:
     checkpoint_config: Optional[CheckpointConfig] = None
     progress_reporter: Optional[ProgressReporter] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
+    reuse_actors: Optional[bool] = None
