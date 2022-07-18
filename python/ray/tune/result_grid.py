@@ -159,6 +159,29 @@ class ResultGrid:
             self._experiment_analysis.trials[i],
         )
 
+    @property
+    def errors(self):
+        """Returns the exceptions of errored trials."""
+        return [result.error for result in self if result.error]
+
+    @property
+    def num_errors(self):
+        """Returns the number of errored trials."""
+        return len(
+            [t for t in self._experiment_analysis.trials if t.status == Trial.ERROR]
+        )
+
+    @property
+    def num_terminated(self):
+        """Returns the number of terminated (but not errored) trials."""
+        return len(
+            [
+                t
+                for t in self._experiment_analysis.trials
+                if t.status == Trial.TERMINATED
+            ]
+        )
+
     @staticmethod
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
         if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):

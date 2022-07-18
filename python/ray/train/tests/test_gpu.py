@@ -18,6 +18,7 @@ from ray.cluster_utils import Cluster
 
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
+from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
@@ -358,7 +359,7 @@ def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
 
@@ -375,7 +376,7 @@ def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = TorchTrainer(
         fashion_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
 
@@ -390,7 +391,7 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = HorovodTrainer(
         horovod_torch_train_func,
         train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
     result = results.metrics
