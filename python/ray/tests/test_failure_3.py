@@ -1,9 +1,9 @@
 import os
 import sys
 import signal
+import threading
 
 import ray
-
 import numpy as np
 import pytest
 import time
@@ -139,6 +139,36 @@ def test_async_actor_task_retries(ray_start_regular):
     ray.get(signal.send.remote())
     assert ray.get(ref_1) == 1
     assert ray.get(ref_3) == 3
+
+
+def test_actor_failure_async(ray_start_regular):
+    @ray.remote
+    class A:
+        def echo(self):
+            pass
+
+        def pid(self):
+            return os.getpid()
+
+    a = A.remote()
+    rs = []
+
+    def submit():
+        for i in range(100000):
+            r = a.echo.remote()
+            r._on_completed(lambda x: 1)
+            rs.append(r)
+
+    t = threading.Thread(target=submit)
+    pid = ray.get(a.pid.remote())
+
+    t.start()
+    from time import sleep
+
+    sleep(0.1)
+    os.kill(pid, signal.SIGKILL)
+
+    t.join()
 
 
 if __name__ == "__main__":
