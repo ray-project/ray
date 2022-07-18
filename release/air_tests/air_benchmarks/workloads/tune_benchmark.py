@@ -1,26 +1,32 @@
 import json
 import os
+import timeit
+import click
 
 import ray
 from ray.train.torch import TorchTrainer
 
-CONFIG = {"lr": 1e-3, "batch_size": 64, "epochs": 20}
+
+CONFIG = {"lr": 1e-3, "batch_size": 64, "epochs": 10}
 
 
 def prepare_mnist():
     # Pre-download the data onto each node.
-    from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
+    from benchmark_util import schedule_remote_fn_on_all_nodes
 
-    ray.init("auto")
     print("Preparing Torch benchmark: Downloading MNIST")
 
-    path = os.path.abspath("workloads/_torch_prepare.py")
-    upload_file_to_all_nodes(path)
-    run_command_on_all_nodes(["python", path])
-    ray.shutdown()
+    @ray.remote
+    def _download_data():
+        import torchvision
+
+        torchvision.datasets.FashionMNIST("/tmp/data_fashion_mnist", download=True)
+        return True
+
+    ray.get(schedule_remote_fn_on_all_nodes(_download_data))
 
 
-def get_trainer():
+def get_trainer(num_workers: int = 4, use_gpu: bool = False):
     """Get the trainer to be used across train and tune to ensure consistency."""
     from torch_benchmark import train_func
 
@@ -31,21 +37,21 @@ def get_trainer():
         train_loop_per_worker=train_loop,
         train_loop_config=CONFIG,
         scaling_config={
-            "num_workers": 4,
+            "num_workers": num_workers,
             "resources_per_worker": {"CPU": 2},
             "trainer_resources": {"CPU": 0},
-            "use_gpu": False,
+            "use_gpu": use_gpu,
         },
     )
     return trainer
 
 
-def train_torch():
-    trainer = get_trainer()
+def train_torch(num_workers: int):
+    trainer = get_trainer(num_workers=num_workers)
     trainer.fit()
 
 
-def tune_torch():
+def tune_torch(num_workers: int = 4, num_trials: int = 8, use_gpu: bool = False):
     """Making sure that tuning multiple trials in parallel is not
     taking significantly longer than training each one individually.
 
@@ -62,20 +68,29 @@ def tune_torch():
         },
     }
 
-    trainer = get_trainer()
+    trainer = get_trainer(num_workers=num_workers, use_gpu=use_gpu)
     tuner = Tuner(
         trainable=trainer,
         param_space=param_space,
-        tune_config=TuneConfig(mode="min", metric="loss", num_samples=8),
+        tune_config=TuneConfig(mode="min", metric="loss", num_samples=num_trials),
     )
     tuner.fit()
 
 
-def main():
-    from benchmark_util import time_it
-
-    train_time = time_it(train_torch())
-    tune_time = time_it(tune_torch())
+@click.command(help="Run Benchmark comparing Train to Tune.")
+@click.option("--num-trials", type=int, default=8)
+@click.option("--num-workers", type=int, default=4)
+@click.option("--use-gpu", type=bool, default=False)
+def main(num_trials, num_workers, use_gpu):
+    ray.init()
+    prepare_mnist()
+    train_time = timeit.timeit(lambda: train_torch(num_workers=num_workers), number=1)
+    tune_time = timeit.timeit(
+        lambda: tune_torch(
+            num_workers=num_workers, num_trials=num_trials, use_gpu=use_gpu
+        ),
+        number=1,
+    )
     result = {"train_time": train_time, "tune_time": tune_time}
     print("Results:", result)
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
