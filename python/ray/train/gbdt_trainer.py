@@ -217,6 +217,9 @@ class GBDTTrainer(BaseTrainer):
 
             @classmethod
             def default_resource_request(cls, config):
+                # `config["scaling_config"] is a dataclass when passed via the
+                # `scaling_config` argument in `Trainer` and is a dict when passed
+                # via the `scaling_config` key of `param_spec`.
                 updated_scaling_config = config.get("scaling_config", scaling_config)
                 if isinstance(updated_scaling_config, dict):
                     updated_scaling_config = ScalingConfig(**updated_scaling_config)
