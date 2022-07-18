@@ -1679,7 +1679,10 @@ py_test(
     tags = ["team:rllib", "offline"],
     size = "medium",
     srcs = ["offline/tests/test_dataset_reader.py"],
-    data = ["tests/data/pendulum/large.json"],
+    data = [
+        "tests/data/pendulum/large.json",
+        "tests/data/pendulum/enormous.zip",
+    ],
 )
 
 py_test(
