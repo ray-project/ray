@@ -82,10 +82,16 @@ def tune_torch(num_workers: int = 4, num_trials: int = 8, use_gpu: bool = False)
 @click.option("--num-workers", type=int, default=4)
 @click.option("--use-gpu", is_flag=True)
 def main(num_trials, num_workers, use_gpu):
-    ray.init(runtime_env={"working_dir": ".", "env_vars": {"NCCL_SOCKET_IFNAME": "ens"}})
+    ray.init(
+        runtime_env={
+            # "working_dir": ".",  # uncomment if running on fresh cluster
+            "env_vars": {"NCCL_SOCKET_IFNAME": "ens"}
+        }
+    )
     prepare_mnist()
-    train_time = timeit.timeit(lambda: train_torch(
-        num_workers=num_workers, use_gpu=use_gpu), number=1)
+    train_time = timeit.timeit(
+        lambda: train_torch(num_workers=num_workers, use_gpu=use_gpu), number=1
+    )
     tune_time = timeit.timeit(
         lambda: tune_torch(
             num_workers=num_workers, num_trials=num_trials, use_gpu=use_gpu

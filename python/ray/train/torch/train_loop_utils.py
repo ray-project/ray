@@ -467,7 +467,15 @@ class _TorchAccelerator(Accelerator):
         if torch.cuda.is_available():
             gpu_ids = ray.get_gpu_ids()
             if len(gpu_ids) > 0:
-                device_id = gpu_ids[0]
+                # Some backwards compatibility
+                try:
+                    local_rank = session.get_local_rank()
+                except Exception:
+                    local_rank = train.local_rank()
+                # https://github.com/pytorch/pytorch/blob/35563f4fcd28e486cc5
+                # 8053acc15fe280123e7be/torch/distributed/launch.py#L72-L97
+                device_id = local_rank
+                logger.debug(f"setting device id {device_id} as local rank.")
             else:
                 # If called on the driver or outside of Ray Train, return the
                 # 0th device.
