@@ -599,18 +599,22 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
 
 
 def test_sort_each_window(ray_start_regular_shared):
-    pipe = ray.data.range(12).window(blocks_per_window=3).sort_each_window()
+    pipe = (
+        ray.data.range(12, parallelism=12)
+        .window(blocks_per_window=3)
+        .sort_each_window()
+    )
     assert pipe.take() == list(range(12))
 
     pipe = (
-        ray.data.range(12)
-        .window(blocks_per_window=12)
+        ray.data.range(12, parallelism=12)
+        .window(blocks_per_window=3)
         .sort_each_window(descending=True)
     )
-    assert pipe.take() == [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+    assert pipe.take() == [2, 1, 0, 5, 4, 3, 8, 7, 6, 11, 10, 9]
 
     pipe = (
-        ray.data.range(12)
+        ray.data.range(12, parallelism=12)
         .window(blocks_per_window=3)
         .sort_each_window(key=lambda x: -x, descending=True)
     )
