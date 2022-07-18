@@ -76,6 +76,7 @@ class Raylet {
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
 
+  ///Try to get agent info, after its success, register the current node to GCS.
   void TryToGetAgentInfoAndRegisterGcs();
 
   friend class TestObjectManagerIntegration;
