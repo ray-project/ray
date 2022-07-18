@@ -269,6 +269,10 @@ class TunerTest(unittest.TestCase):
             {"run_config": RunConfig(log_to_file="some_file")},
             lambda kw: kw["log_to_file"] == "some_file",
         ),
+        (
+            {"tune_config": TuneConfig(max_concurrent_trials=3)},
+            lambda kw: kw["max_concurrent_trials"] == 3,
+        ),
     ],
 )
 def test_tuner_api_kwargs(params_expected):
