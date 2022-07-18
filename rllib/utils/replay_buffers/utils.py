@@ -1,5 +1,4 @@
 import logging
-import psutil
 from typing import Optional, Any
 
 from ray.rllib.policy.sample_batch import SampleBatch
