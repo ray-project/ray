@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -40,16 +41,19 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.api import get_log, list_logs
-from ray.experimental.state.common import DEFAULT_LIMIT
-from ray.experimental.state.state_cli import (
-    get_api_server_url,
-    get_state_api_output_to_print,
-)
-from ray.experimental.state.state_cli import list as cli_list
+from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
+
+from ray.experimental.state.state_cli import (
+    _alpha_doc,
+    get as state_cli_get,
+    list as state_cli_list,
+    get_api_server_url,
+    output_with_format,
+    summary_state_cli_group,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +122,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port, no_config_ca
         ]
         click.echo(
             "Attempting to establish dashboard locally at"
-            " localhost:{} connected to"
+            " http://localhost:{}/ connected to"
             " remote port {}".format(port, remote_port)
         )
         # We want to probe with a no-op that returns quickly to avoid
@@ -420,7 +424,7 @@ def debug(address):
 @click.option(
     "--dashboard-agent-listen-port",
     type=int,
-    default=0,
+    default=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     help="the port for dashboard agents to listen for http on.",
 )
 @click.option(
@@ -644,7 +648,7 @@ def start(
 
         if disable_usage_stats:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
-        usage_lib.show_usage_stats_prompt()
+        usage_lib.show_usage_stats_prompt(cli=True)
         cli_logger.newline()
 
         if port is None:
@@ -910,33 +914,55 @@ def start(
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
-                "This command will now block until terminated by a signal."
+                "This command will now block forever until terminated by a signal."
             )
             cli_logger.print(
                 "Running subprocesses are monitored and a message will be "
-                "printed if any of them terminate unexpectedly."
+                "printed if any of them terminate unexpectedly. Subprocesses "
+                "exit with SIGTERM will be treated as graceful, thus NOT reported."
             )
             cli_logger.flush()
 
         while True:
             time.sleep(1)
             deceased = node.dead_processes()
-            if len(deceased) > 0:
+
+            # Report unexpected exits of subprocesses with unexpected return codes.
+            # We are explicitly expecting SIGTERM because this is how `ray stop` sends
+            # shutdown signal to subprocesses, i.e. log_monitor, raylet...
+            # NOTE(rickyyx): We are treating 128+15 as an expected return code since
+            # this is what autoscaler/_private/monitor.py does upon SIGTERM
+            # handling.
+            expected_return_codes = [
+                0,
+                signal.SIGTERM,
+                -1 * signal.SIGTERM,
+                128 + signal.SIGTERM,
+            ]
+            unexpected_deceased = [
+                (process_type, process)
+                for process_type, process in deceased
+                if process.returncode not in expected_return_codes
+            ]
+            if len(unexpected_deceased) > 0:
                 cli_logger.newline()
-                cli_logger.error("Some Ray subprcesses exited unexpectedly:")
+                cli_logger.error("Some Ray subprocesses exited unexpectedly:")
 
                 with cli_logger.indented():
-                    for process_type, process in deceased:
+                    for process_type, process in unexpected_deceased:
                         cli_logger.error(
                             "{}",
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)},
                         )
 
-                # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
-                sys.exit(1)
+                # explicitly kill all processes since atexit handlers
+                # will not exit with errors.
+                node.kill_all_processes(check_alive=False, allow_graceful=False)
+                os._exit(1)
+        # not-reachable
 
 
 @cli.command()
@@ -2014,6 +2040,16 @@ def local_dump(
     help="The interval to print new logs when `--follow` is specified.",
     hidden=True,
 )
+@click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=(
+        "Timeout in seconds for the API requests. "
+        f"Default is {DEFAULT_RPC_TIMEOUT}. If --follow is specified, "
+        "this option will be ignored."
+    ),
+)
+@_alpha_doc()
 def logs(
     glob_filter,
     node_ip: str,
@@ -2024,7 +2060,13 @@ def logs(
     follow: bool,
     tail: int,
     interval: float,
+    timeout: int,
 ):
+    # TODO: We will need to finalize on some example usage of the command.
+    """
+    Get logs from the ray cluster
+
+    """
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
 
@@ -2045,6 +2087,7 @@ def logs(
             node_id=node_id,
             node_ip=node_ip,
             glob_filter=glob_filter,
+            timeout=timeout,
         )
         log_files_found = []
         for _, log_files in logs.items():
@@ -2061,12 +2104,12 @@ def logs(
                 print(f"Node ID: {node_id}")
             elif node_ip:
                 print(f"Node IP: {node_ip}")
-            print(get_state_api_output_to_print(logs))
+            print(output_with_format(logs))
 
     # If there's an unique match, print the log file.
     if match_unique:
         if not tail:
-            tail = 0 if follow else DEFAULT_LIMIT
+            tail = 0 if follow else DEFAULT_LOG_LIMIT
 
             if tail > 0:
                 print(
@@ -2085,6 +2128,7 @@ def logs(
             tail=tail,
             follow=follow,
             _interval=interval,
+            timeout=timeout,
         ):
             print(chunk, end="", flush=True)
 
@@ -2254,6 +2298,10 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
         KubeRay cluster configs.
     `ray kuberay-autoscaler` is NOT a public CLI.
     """
+    # Delay import to avoid introducing Ray core dependency on the Python Kubernetes
+    # client.
+    from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
+
     run_kuberay_autoscaler(cluster_name, cluster_namespace)
 
 
@@ -2479,7 +2527,9 @@ cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
-cli.add_command(cli_list)
+cli.add_command(state_cli_list)
+cli.add_command(state_cli_get)
+add_command_alias(summary_state_cli_group, name="summary", hidden=True)
 
 try:
     from ray.serve.scripts import serve_cli

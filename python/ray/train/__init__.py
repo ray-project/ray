@@ -12,13 +12,16 @@ from ray.train.train_loop_utils import (
     world_size,
 )
 from ray.train.trainer import Trainer, TrainingIterator
+from ray.air.config import CheckpointConfig
+
+# Deprecated. Alias of CheckpointConfig for backwards compat
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 usage_lib.record_library_usage("train")
 
 __all__ = [
     "BackendConfig",
-    "CheckpointStrategy",
+    "CheckpointConfig",
     "get_dataset_shard",
     "load_checkpoint",
     "local_rank",
@@ -30,4 +33,5 @@ __all__ = [
     "world_rank",
     "world_size",
     "TRAIN_DATASET_KEY",
+    "CheckpointStrategy",
 ]

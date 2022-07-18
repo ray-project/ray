@@ -64,9 +64,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
-            print(_)
-            print(view_req_policy)
-            print(view_req_model)
             assert len(view_req_model) == 1, view_req_model
             assert len(view_req_policy) == 11, view_req_policy
             for key in [

@@ -1163,45 +1163,48 @@ calls an "evaluation step" is run:
     }
 
 
-One such evaluation step runs over ``evaluation_duration`` episodes or timesteps, depending
+An evaluation step runs - using its own RolloutWorkers - for ``evaluation_duration`` episodes or timesteps, depending
 on the ``evaluation_duration_unit`` setting, which can be either "episodes" (default) or "timesteps".
 
 
 .. code-block:: python
 
-    # Every time we do run an evaluation step, run it for exactly 10 episodes.
+    # Every time we run an evaluation step, run it for exactly 10 episodes.
     {
         "evaluation_duration": 10,
         "evaluation_duration_unit": "episodes",
     }
-    # Every time we do run an evaluation step, run it for close to 200 timesteps.
+    # Every time we run an evaluation step, run it for (close to) 200 timesteps.
     {
         "evaluation_duration": 200,
         "evaluation_duration_unit": "timesteps",
     }
 
 
+Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration`` setting is NOT dividable
+by the number of evaluation workers (configurable via ``evaluation_num_workers``), RLlib will round up the number of timesteps specified to the nearest whole number of timesteps that is divisible by the number of evaluation workers.
+
 Before each evaluation step, weights from the main model are synchronized to all evaluation workers.
 
-Normally, the evaluation step is run right after the respective train step. For example, for
-``evaluation_interval=2``, the sequence of steps is: ``train, train, eval, train, train, eval, ...``.
+By default, the evaluation step is run right after the respective training step. For example, for
+``evaluation_interval=2``, the sequence of events is: ``train, train, eval, train, train, eval, ...``.
 For ``evaluation_interval=1``, the sequence is: ``train, eval, train, eval, ...``.
 
 However, it is possible to run evaluation in parallel to training via the ``evaluation_parallel_to_training=True``
-config setting. In this case, both steps (train and eval) are run at the same time via threading.
+config setting. In this case, both training- and evaluation steps are run at the same time via threading.
 This can speed up the evaluation process significantly, but leads to a 1-iteration delay between reported
-training results and evaluation results (the evaluation results are behind b/c they use slightly outdated
-model weights).
+training- and evaluation results. The evaluation results are behind b/c they use slightly outdated
+model weights (synchronized after the previous training step).
 
 When running with the ``evaluation_parallel_to_training=True`` setting, a special "auto" value
 is supported for ``evaluation_duration``. This can be used to make the evaluation step take
-roughly as long as the train step:
+roughly as long as the concurrently ongoing training step:
 
 .. code-block:: python
 
-    # Run eval and train at the same time via threading and make sure they roughly
+    # Run evaluation and training at the same time via threading and make sure they roughly
     # take the same time, such that the next `Algorithm.train()` call can execute
-    # immediately and not have to wait for a still ongoing (e.g. very long episode)
+    # immediately and not have to wait for a still ongoing (e.g. b/c of very long episodes)
     # evaluation step:
     {
         "evaluation_interval": 1,
@@ -1230,18 +1233,21 @@ do:
     policy, even if this is a stochastic one. Setting "explore=False" above
     will result in the evaluation workers not using this stochastic policy.
 
-Parallelism for the evaluation step is determined via the ``evaluation_num_workers``
+
+The level of parallelism within the evaluation step is determined via the ``evaluation_num_workers``
 setting. Set this to larger values if you want the desired evaluation episodes or timesteps to
 run as much in parallel as possible. For example, if your ``evaluation_duration=10``,
-``evaluation_duration_unit=episodes``, and ``evaluation_num_workers=10``, each eval worker
-only has to run 1 episode in each eval step.
+``evaluation_duration_unit=episodes``, and ``evaluation_num_workers=10``, each eval RolloutWorker
+only has to run 1 episode in each evaluation step.
 
 In case you would like to entirely customize the evaluation step, set ``custom_eval_function`` in your
-config to a callable taking the Algorithm object and a WorkerSet object (the evaluation WorkerSet)
+config to a callable taking the Algorithm object and a WorkerSet object (the Algorithm's ``self.evaluation_workers`` WorkerSet instance)
 and returning a metrics dict. See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
 for further documentation.
 
-There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
+There is also an end-to-end example of how to set up a custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__.
+Note that if you only want to evaluate your policy at the end of training, you can set ``evaluation_interval: [int]``, where ``[int]`` should be the number of training
+iterations before stopping.
 
 Below are some examples of how the custom evaluation metrics are reported nested under the ``evaluation`` key of normal training results:
 
@@ -1292,6 +1298,7 @@ Below are some examples of how the custom evaluation metrics are reported nested
         episode_reward_min: 0.0
         episodes_this_iter: 223
         foo: 1
+
 
 Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~

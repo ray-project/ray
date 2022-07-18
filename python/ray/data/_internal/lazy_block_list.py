@@ -321,6 +321,29 @@ class LazyBlockList(BlockList):
             self._cached_metadata[0] = metadata
         return metadata
 
+    def iter_blocks(self) -> Iterator[ObjectRef[Block]]:
+        """Iterate over the blocks of this block list.
+
+        This blocks on the execution of the tasks generating block outputs.
+        The length of this iterator is not known until execution.
+        """
+        self._check_if_cleared()
+        outer = self
+
+        class Iter:
+            def __init__(self):
+                self._base_iter = outer.iter_blocks_with_metadata()
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                ref, meta = next(self._base_iter)
+                assert isinstance(ref, ray.ObjectRef), (ref, meta)
+                return ref
+
+        return Iter()
+
     def iter_blocks_with_metadata(
         self,
         block_for_metadata: bool = False,

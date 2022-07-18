@@ -41,6 +41,12 @@ def test_path_validation(serve_instance):
     D4.options(name="test2").deploy()
 
 
+def test_routes_healthz(serve_instance):
+    resp = requests.get("http://localhost:8000/-/healthz")
+    assert resp.status_code == 200
+    assert resp.content == b"success"
+
+
 def test_routes_endpoint(serve_instance):
     @serve.deployment
     class D1:

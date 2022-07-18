@@ -34,6 +34,11 @@ from typing import (
 import colorama
 import setproctitle
 
+if sys.version_info >= (3, 8):
+    from typing import Literal, Protocol
+else:
+    from typing_extensions import Literal, Protocol
+
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.import_thread as import_thread
@@ -77,7 +82,9 @@ from ray.experimental.internal_kv import (
 )
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
+from ray.widgets import Template
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -965,6 +972,20 @@ class RayContext(BaseContext, Mapping):
         # Include disconnect() to stay consistent with ClientContext
         ray.shutdown()
 
+    def _repr_html_(self):
+        if self.dashboard_url:
+            dashboard_row = Template("context_dashrow.html.j2").render(
+                dashboard_url="http://" + self.dashboard_url
+            )
+        else:
+            dashboard_row = None
+
+        return Template("context.html.j2").render(
+            python_version=self.python_version,
+            ray_version=self.ray_version,
+            dashboard_row=dashboard_row,
+        )
+
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
@@ -1086,7 +1107,7 @@ def init(
             is true.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace: Namespace to use
+        namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         storage: [Experimental] Specify a URI for persistent cluster-wide storage.
@@ -1306,10 +1327,13 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
-        # Don't collect usage stats in ray.init().
+        # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
 
-        usage_lib.set_usage_stats_enabled_via_env_var(False)
+        if usage_lib.is_nightly_wheel():
+            usage_lib.show_usage_stats_prompt(cli=False)
+        else:
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
@@ -2494,71 +2518,143 @@ def _make_remote(function_or_class, options):
     )
 
 
+class RemoteDecorator(Protocol):
+    @overload
+    def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
+        ...
+
+    @overload
+    def __call__(self, __function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
+        ...
+
+    @overload
+    def __call__(self, __function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
+        ...
+
+    @overload
+    def __call__(
+        self, __function: Callable[[T0, T1, T2], R]
+    ) -> RemoteFunction2[R, T0, T1, T2]:
+        ...
+
+    @overload
+    def __call__(
+        self, __function: Callable[[T0, T1, T2, T3], R]
+    ) -> RemoteFunction3[R, T0, T1, T2, T3]:
+        ...
+
+    @overload
+    def __call__(
+        self, __function: Callable[[T0, T1, T2, T3, T4], R]
+    ) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
+        ...
+
+    @overload
+    def __call__(
+        self, __function: Callable[[T0, T1, T2, T3, T4, T5], R]
+    ) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
+        ...
+
+    @overload
+    def __call__(
+        self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
+    ) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
+        ...
+
+    @overload
+    def __call__(
+        self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
+    ) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
+        ...
+
+    @overload
+    def __call__(
+        self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
+    ) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
+        ...
+
+    @overload
+    def __call__(
+        self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+    ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
+        ...
+
+    # Pass on typing actors for now. The following makes it so no type errors
+    # are generated for actors.
+    @overload
+    def __call__(self, __t: type) -> Any:
+        ...
+
+
+# Only used for type annotations as a placeholder
+Undefined: Any = object()
+
+
 @overload
-def remote(function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
+def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
     ...
 
 
 @overload
-def remote(function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
+def remote(__function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
     ...
 
 
 @overload
-def remote(function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
+def remote(__function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
     ...
 
 
 @overload
-def remote(function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, T2]:
+def remote(__function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, T2]:
     ...
 
 
 @overload
 def remote(
-    function: Callable[[T0, T1, T2, T3], R]
+    __function: Callable[[T0, T1, T2, T3], R]
 ) -> RemoteFunction3[R, T0, T1, T2, T3]:
     ...
 
 
 @overload
 def remote(
-    function: Callable[[T0, T1, T2, T3, T4], R]
+    __function: Callable[[T0, T1, T2, T3, T4], R]
 ) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
     ...
 
 
 @overload
 def remote(
-    function: Callable[[T0, T1, T2, T3, T4, T5], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5], R]
 ) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
     ...
 
 
 @overload
 def remote(
-    function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
 ) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
     ...
 
 
 @overload
 def remote(
-    function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
 ) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
     ...
 
 
 @overload
 def remote(
-    function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
 ) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
     ...
 
 
 @overload
 def remote(
-    function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
 ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
     ...
 
@@ -2566,7 +2662,31 @@ def remote(
 # Pass on typing actors for now. The following makes it so no type errors
 # are generated for actors.
 @overload
-def remote(t: type) -> Any:
+def remote(__t: type) -> Any:
+    ...
+
+
+# Passing options
+@overload
+def remote(
+    *,
+    num_returns: Union[int, float] = Undefined,
+    num_cpus: Union[int, float] = Undefined,
+    num_gpus: Union[int, float] = Undefined,
+    resources: Dict[str, float] = Undefined,
+    accelerator_type: str = Undefined,
+    memory: Union[int, float] = Undefined,
+    object_store_memory: int = Undefined,
+    max_calls: int = Undefined,
+    max_restarts: int = Undefined,
+    max_task_retries: int = Undefined,
+    max_retries: int = Undefined,
+    runtime_env: Dict[str, Any] = Undefined,
+    retry_exceptions: bool = Undefined,
+    scheduling_strategy: Union[
+        None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
+    ] = Undefined,
+) -> RemoteDecorator:
     ...
 
 
@@ -2638,7 +2758,7 @@ def remote(*args, **kwargs):
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
         memory: The heap memory request for this task/actor.
-        object_store_memory: The object store memory request for this task/actor.
+        object_store_memory: The object store memory request for actors only.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit

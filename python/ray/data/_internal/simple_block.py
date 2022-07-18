@@ -67,11 +67,14 @@ class SimpleBlockAccessor(BlockAccessor):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def slice(self, start: int, end: int, copy: bool) -> "SimpleBlockAccessor[T]":
+    def slice(self, start: int, end: int, copy: bool) -> List[T]:
         view = self._items[start:end]
         if copy:
             view = view.copy()
         return view
+
+    def take(self, indices: List[int]) -> List[T]:
+        return [self._items[i] for i in indices]
 
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
         random = np.random.RandomState(random_seed)
@@ -356,7 +359,8 @@ class SimpleBlockAccessor(BlockAccessor):
         blocks: List[Block[Tuple[KeyType, AggType]]],
         key: KeyFn,
         aggs: Tuple[AggregateFn],
-    ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
+        finalize: bool,
+    ) -> Tuple[Block[Tuple[KeyType, Union[U, AggType]]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -367,6 +371,9 @@ class SimpleBlockAccessor(BlockAccessor):
             key: The key function that returns the key from the row
                 or None for global aggregation.
             aggs: The aggregations to do.
+            finalize: Whether to finalize the aggregation. This is used as an
+                optimization for cases where we repeatedly combine partially
+                aggregated groups.
 
         Returns:
             A block of (k, v_1, ..., v_n) tuples and its metadata where k is
@@ -412,21 +419,27 @@ class SimpleBlockAccessor(BlockAccessor):
                             accumulators[i] = aggs[i].merge(
                                 accumulators[i], r[i + 1] if key else r[i]
                             )
-                if key is None:
-                    ret.append(
-                        tuple(
-                            agg.finalize(accumulator)
-                            for agg, accumulator in zip(aggs, accumulators)
+                if finalize:
+                    if key is None:
+                        ret.append(
+                            tuple(
+                                agg.finalize(accumulator)
+                                for agg, accumulator in zip(aggs, accumulators)
+                            )
                         )
-                    )
+                    else:
+                        ret.append(
+                            (next_key,)
+                            + tuple(
+                                agg.finalize(accumulator)
+                                for agg, accumulator in zip(aggs, accumulators)
+                            )
+                        )
                 else:
-                    ret.append(
-                        (next_key,)
-                        + tuple(
-                            agg.finalize(accumulator)
-                            for agg, accumulator in zip(aggs, accumulators)
-                        )
-                    )
+                    if key is None:
+                        ret.append(tuple(accumulators))
+                    else:
+                        ret.append((next_key,) + tuple(accumulators))
             except StopIteration:
                 break
 

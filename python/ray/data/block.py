@@ -98,6 +98,29 @@ Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 # returned from batch UDFs.
 DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
 
+# A class type that implements __call__.
+CallableClass = type
+
+# A UDF on data batches.
+BatchUDF = Union[
+    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
+    # UDF type.
+    # Callable[[DataBatch, ...], DataBatch]
+    Callable[[DataBatch], DataBatch],
+    Callable[..., DataBatch],
+    CallableClass,
+]
+
+# A UDF on data rows.
+RowUDF = Union[
+    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
+    # UDF type.
+    # Callable[[T, ...], U]
+    Callable[[T], U],
+    Callable[..., U],
+    CallableClass,
+]
+
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
 BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
@@ -230,6 +253,17 @@ class BlockAccessor(Generic[T]):
 
         Returns:
             The sliced block result.
+        """
+        raise NotImplementedError
+
+    def take(self, indices: List[int]) -> Block:
+        """Return a new block containing the provided row indices.
+
+        Args:
+            indices: The row indices to return.
+
+        Returns:
+            A new block containing the provided row indices.
         """
         raise NotImplementedError
 

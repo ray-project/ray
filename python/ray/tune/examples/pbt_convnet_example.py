@@ -17,7 +17,7 @@ import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils import validate_save_restore
-from ray.tune.trial import ExportFormat
+from ray.tune.experiment.trial import ExportFormat
 # __tutorial_imports_end__
 
 

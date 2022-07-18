@@ -228,7 +228,7 @@ workers = [Worker.remote(i) for i in range(4)]
 ds = ray.data.range(10000)
 # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
-shards = ds.split(n=4, locality_hints=workers)
+shards = ds.split(n=4)
 # -> [Dataset(num_blocks=13, num_rows=2500, schema=<class 'int'>),
 #     Dataset(num_blocks=13, num_rows=2500, schema=<class 'int'>), ...]
 

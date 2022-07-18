@@ -1,18 +1,17 @@
-# Deploying with KubeRay (experimental)
+# Deploying with KubeRay
 
 ```{admonition} What is Kuberay?
 [KubeRay](https://github.com/ray-project/kuberay) is a set of tools for running Ray on Kubernetes.
 It has been used by some larger corporations to deploy Ray on their infrastructure.
 Going forward, we would like to make this way of deployment accessible and seamless for
 all Ray users and standardize Ray deployment on Kubernetes around KubeRay's operator.
-Presently you should consider this integration a minimal viable product that is not polished
-enough for general use and prefer the [Kubernetes integration](kubernetes.rst) for running
-Ray on Kubernetes. If you are brave enough to try the KubeRay integration out, this documentation
-is for you! We would love your feedback as a [Github issue](https://github.com/ray-project/ray/issues)
-including `[KubeRay]` in the title.
+While KubeRay has been used in production to manage large Ray deployments, certain integrations
+are still under development -- in particular, KubeRay's autoscaling functionality is alpha.
+It is still valid to use the existing [Kubernetes integration](kubernetes.rst) hosted in the Ray repository for running Ray on Kubernetes. However, if you would like to try the KubeRay integration out, this documentation is for you! We would love your feedback as a [Github issue](https://github.com/ray-project/ray/issues) including `[KubeRay]` in the title.
+You may also wish to check out the [KubeRay repository's documentation](https://ray-project.github.io/kuberay/).
 ```
 
-Here we describe how you can deploy a Ray cluster on KubeRay. The following instructions are for
+Here we describe how you can deploy an autoscaling Ray cluster on KubeRay. The following instructions are for
 Minikube but the deployment works the same way on a real Kubernetes cluster. You need to have at
 least 4 CPUs to run this example. First we make sure Minikube is initialized with
 
@@ -25,6 +24,10 @@ Now you can deploy the KubeRay operator using
 ```shell
 ./ray/python/ray/autoscaler/kuberay/init-config.sh
 kubectl create -k "ray/python/ray/autoscaler/kuberay/config/default"
+```
+
+```{admonition} Use kubectl create
+Note `kubectl apply` will not work in the above command. `kubectl create` is required. See [KubeRay issue #271](https://github.com/ray-project/kuberay/issues/271).
 ```
 
 You can verify that the operator has been deployed using
@@ -56,11 +59,13 @@ ray.init("auto")
 ray.autoscaler.sdk.request_resources(num_cpus=4)
 ```
 
-> **_NOTE:_**  The example config ray-cluster.complete.yaml specifies rayproject/ray:8c5fe4
-> as the Ray autoscaler image. This image carries the latest improvements to KubeRay autoscaling
-> support. This autoscaler image is confirmed to be compatible with Ray versions >= 1.11.0.
-> Once Ray autoscaler support is stable, the recommended pattern will be to use the same
-> Ray version in the autoscaler and Ray containers.
+```{admonition} The Ray autoscaler image.
+The example config ray-cluster.complete.yaml specifies rayproject/ray:8c5fe4
+as the Ray autoscaler image. This image carries the latest improvements to KubeRay autoscaling
+support. This autoscaler image is confirmed to be compatible with Ray versions >= 1.11.0.
+Once Ray autoscaler support is stable, the recommended pattern will be to use the same
+Ray version in the autoscaler and Ray containers.
+```
 
 ## Uninstalling the KubeRay operator
 
@@ -71,6 +76,11 @@ kubectl delete -k "ray/python/ray/autoscaler/kuberay/config/default"
 ```
 
 Note that all running Ray clusters will automatically be terminated.
+
+## Further details on Ray autoscaler support.
+
+Check out the [KubeRay documentation](https://ray-project.github.io/kuberay/guidance/autoscaler/)
+for more details on Ray autoscaler support.
 
 ## Developing the KubeRay integration (advanced)
 

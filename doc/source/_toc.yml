@@ -16,12 +16,11 @@ parts:
       sections:
         - file: ray-air/preprocessors
         - file: ray-air/check-ingest
+        - file: ray-air/checkpoints
         - file: ray-air/examples/analyze_tuning_results
-        - file: ray-air/examples/upload_to_comet_ml
-        - file: ray-air/examples/upload_to_wandb
+        - file: ray-air/predictors
         - file: ray-air/examples/serving_guide
         - file: ray-air/deployment
-        - file: ray-air/use-pretrained-model
     - file: ray-air/examples/index
       sections:
         - file: ray-air/examples/torch_image_example
@@ -35,10 +34,13 @@ parts:
         - file: ray-air/examples/rl_serving_example
         - file: ray-air/examples/rl_online_example
         - file: ray-air/examples/rl_offline_example
+        - file: ray-air/examples/upload_to_comet_ml
+        - file: ray-air/examples/upload_to_wandb
         - file: ray-air/examples/feast_example
     - file: ray-air/package-ref
+    - file: ray-air/benchmarks
 
-  - caption: AIR Libraries
+  - caption: Ray Libraries
     chapters:
       - file: data/dataset
         title: Ray Data
@@ -52,6 +54,8 @@ parts:
                 title: Processing the NYC taxi dataset
               - file: data/examples/big_data_ingestion
                 title: Large-scale ML Ingest
+              - file: data/examples/ocr_example
+                title: Scaling OCR with Ray Datasets
           - file: data/faq
           - file: data/package-ref
           - file: data/integrations
@@ -164,6 +168,7 @@ parts:
               - file: serve/deploying-serve
               - file: serve/monitoring
               - file: serve/performance
+              - file: serve/autoscaling
               - file: serve/deployment-graph
                 sections:
                   - file: serve/deployment-graph/deployment-graph-e2e-tutorial
@@ -172,6 +177,7 @@ parts:
                   - file: serve/deployment-graph/control_flow_based_on_user_inputs
                   - file: serve/deployment-graph/visualize_dag_during_development
                   - file: serve/deployment-graph/http_endpoint_for_dag_graph
+              - file: serve/production
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq

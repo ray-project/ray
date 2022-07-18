@@ -43,7 +43,7 @@ class TestCheckMultiAgent(unittest.TestCase):
         config = {"replay_buffer_config": {"replay_mode": "invalid_value"}}
         self.assertRaisesRegex(
             DeprecationWarning,
-            "replay_mode",
+            "`config.multiagent.replay_mode` must be",
             lambda: DQN(config, env="CartPole-v0"),
         )
 

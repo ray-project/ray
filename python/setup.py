@@ -194,6 +194,12 @@ ray_files += [
     for filename in filenames
 ]
 
+# Files for ray.init html template.
+ray_files += [
+    "ray/widgets/templates/context_dashrow.html.j2",
+    "ray/widgets/templates/context.html.j2",
+]
+
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
@@ -289,6 +295,9 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "requests",
+        # Light weight requirement, can be replaced with "typing" once
+        # we deprecate Python 3.7 (this will take a while).
+        "typing_extensions; python_version < '3.8'",
         "virtualenv",  # For pip runtime env.
     ]
 
@@ -737,6 +746,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
@@ -749,7 +759,7 @@ setuptools.setup(
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
-            "tune=ray.tune.scripts:cli",
+            "tune=ray.tune.cli.scripts:cli",
             "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]

@@ -6,7 +6,6 @@ from ray.tests.conftest import *  # noqa
 import numpy as np
 from ray import workflow
 from ray.workflow.tests import utils
-from ray.exceptions import RaySystemError
 
 
 SIZE = 2 ** 15
@@ -39,16 +38,17 @@ def test_checkpoint_dag_recovery_skip(workflow_start_regular_shared):
     utils.unset_global_mark()
 
     start = time.time()
-    with pytest.raises(RaySystemError):
-        workflow.create(
-            checkpoint_dag.options(**workflow.options(checkpoint=False)).bind(False)
-        ).run(workflow_id="checkpoint_skip_recovery")
+    with pytest.raises(workflow.WorkflowExecutionError):
+        workflow.run(
+            checkpoint_dag.options(**workflow.options(checkpoint=False)).bind(False),
+            workflow_id="checkpoint_skip_recovery",
+        )
     run_duration_skipped = time.time() - start
 
     utils.set_global_mark()
 
     start = time.time()
-    recovered = ray.get(workflow.resume("checkpoint_skip_recovery"))
+    recovered = workflow.resume("checkpoint_skip_recovery")
     recover_duration_skipped = time.time() - start
     assert np.isclose(recovered, np.arange(SIZE).mean())
 
@@ -62,16 +62,16 @@ def test_checkpoint_dag_recovery_partial(workflow_start_regular_shared):
     utils.unset_global_mark()
 
     start = time.time()
-    with pytest.raises(RaySystemError):
-        workflow.create(checkpoint_dag.bind(False)).run(
-            workflow_id="checkpoint_partial_recovery"
+    with pytest.raises(workflow.WorkflowExecutionError):
+        workflow.run(
+            checkpoint_dag.bind(False), workflow_id="checkpoint_partial_recovery"
         )
     run_duration_partial = time.time() - start
 
     utils.set_global_mark()
 
     start = time.time()
-    recovered = ray.get(workflow.resume("checkpoint_partial_recovery"))
+    recovered = workflow.resume("checkpoint_partial_recovery")
     recover_duration_partial = time.time() - start
     assert np.isclose(recovered, np.arange(SIZE).mean())
     print(
@@ -84,16 +84,14 @@ def test_checkpoint_dag_recovery_whole(workflow_start_regular_shared):
     utils.unset_global_mark()
 
     start = time.time()
-    with pytest.raises(RaySystemError):
-        workflow.create(checkpoint_dag.bind(True)).run(
-            workflow_id="checkpoint_whole_recovery"
-        )
+    with pytest.raises(workflow.WorkflowExecutionError):
+        workflow.run(checkpoint_dag.bind(True), workflow_id="checkpoint_whole_recovery")
     run_duration_whole = time.time() - start
 
     utils.set_global_mark()
 
     start = time.time()
-    recovered = ray.get(workflow.resume("checkpoint_whole_recovery"))
+    recovered = workflow.resume("checkpoint_whole_recovery")
     recover_duration_whole = time.time() - start
     assert np.isclose(recovered, np.arange(SIZE).mean())
 
@@ -136,10 +134,10 @@ def test_checkpoint_dag_validation(workflow_start_regular):
 
     valid_checkpoint_dag_1.options(checkpoint=False).step().run()
     # check invalid configuration
-    with pytest.raises(RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         invalid_checkpoint_dag_1.options(checkpoint=False).step().run()
     # check invalid configuration
-    with pytest.raises(RaySystemError):
+    with pytest.raises(workflow.WorkflowExecutionError):
         invalid_checkpoint_dag_2.options(checkpoint=False).step().run()
 
 

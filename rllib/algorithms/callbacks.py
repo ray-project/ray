@@ -1,20 +1,21 @@
-import numpy as np
 import os
 import tracemalloc
-from typing import Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
+
+import numpy as np
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.episode_v2 import EpisodeV2
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import (
-    is_overridden,
     OverrideToImplementCustomLogic,
     PublicAPI,
 )
-from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
     compute_states_entropy,
@@ -49,13 +50,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 "a class extending rllib.algorithms.callbacks.DefaultCallbacks",
             )
         self.legacy_callbacks = legacy_callbacks_dict or {}
-        if is_overridden(self.on_trainer_init):
-            deprecation_warning(
-                old="on_trainer_init(trainer, **kwargs)",
-                new="on_algorithm_init(algorithm, **kwargs)",
-                error=True,
-            )
 
+    @OverrideToImplementCustomLogic
     def on_sub_environment_created(
         self,
         *,
@@ -81,6 +77,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """
         pass
 
+    @OverrideToImplementCustomLogic
     def on_algorithm_init(
         self,
         *,
@@ -98,13 +95,14 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """
         pass
 
+    @OverrideToImplementCustomLogic
     def on_episode_start(
         self,
         *,
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
         """Callback run on the rollout worker before each episode starts.
@@ -132,13 +130,14 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @OverrideToImplementCustomLogic
     def on_episode_step(
         self,
         *,
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Optional[Dict[PolicyID, Policy]] = None,
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
         """Runs on each episode step.
@@ -163,13 +162,14 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 {"env": base_env, "episode": episode}
             )
 
+    @OverrideToImplementCustomLogic
     def on_episode_end(
         self,
         *,
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2, Exception],
         **kwargs,
     ) -> None:
         """Runs when an episode is done.
@@ -186,6 +186,10 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+                In case of environment failures, episode may also be an Exception
+                that gets thrown from the environment before the episode finishes.
+                Users of this callback may then handle these error cases properly
+                with their custom logics.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -198,6 +202,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @OverrideToImplementCustomLogic
     def on_postprocess_trajectory(
         self,
         *,
@@ -242,6 +247,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @OverrideToImplementCustomLogic
     def on_sample_end(
         self, *, worker: "RolloutWorker", samples: SampleBatch, **kwargs
     ) -> None:
@@ -262,6 +268,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @OverrideToImplementCustomLogic
     def on_learn_on_batch(
         self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
     ) -> None:
@@ -286,6 +293,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         pass
 
+    @OverrideToImplementCustomLogic
     def on_train_result(
         self,
         *,
@@ -313,8 +321,11 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
-    @OverrideToImplementCustomLogic
-    @Deprecated(error=True)
+    @Deprecated(
+        old="on_trainer_init(trainer, **kwargs)",
+        new="on_algorithm_init(algorithm, **kwargs)",
+        error=True,
+    )
     def on_trainer_init(self, *args, **kwargs):
         raise DeprecationWarning
 
@@ -352,7 +363,7 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2, Exception],
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
@@ -408,6 +419,10 @@ class MultiCallbacks(DefaultCallbacks):
 
         return self
 
+    @Deprecated(error=True)
+    def on_trainer_init(self, *args, **kwargs):
+        raise DeprecationWarning
+
     def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
         for callback in self._callback_list:
             callback.on_algorithm_init(algorithm=algorithm, **kwargs)
@@ -434,7 +449,7 @@ class MultiCallbacks(DefaultCallbacks):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2],
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
@@ -454,7 +469,7 @@ class MultiCallbacks(DefaultCallbacks):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Optional[Dict[PolicyID, Policy]] = None,
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2],
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
@@ -474,7 +489,7 @@ class MultiCallbacks(DefaultCallbacks):
         worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode: Episode,
+        episode: Union[Episode, EpisodeV2, Exception],
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:

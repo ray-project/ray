@@ -127,9 +127,8 @@ def main(
     )
     data = ray.data.from_pandas(pd.DataFrame(prompt, columns=["prompt"]))
     prediction = predictor.predict(data, num_gpus_per_worker=int(use_gpu))
-    prediction = prediction.to_pandas().iloc[0]["generated_text"]
 
-    print(f"Generated text for prompt '{prompt}': '{prediction}'")
+    print(f"Generated text for prompt '{prompt}': '{prediction.take(1)}'")
 
 
 if __name__ == "__main__":

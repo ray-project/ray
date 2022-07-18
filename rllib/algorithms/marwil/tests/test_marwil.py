@@ -54,6 +54,7 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
                 evaluation_config={"input": "sampler"},
+                off_policy_estimation_methods={},
             )
             .offline_data(input_=[data_file])
         )
@@ -115,11 +116,11 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_parallel_to_training=True,
                 # Evaluate on actual environment.
                 evaluation_config={"input": "sampler"},
+                off_policy_estimation_methods={},
             )
             .offline_data(
                 # Learn from offline data.
                 input_=[data_file],
-                off_policy_estimation_methods=[],
             )
         )
 

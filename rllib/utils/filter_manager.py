@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -16,7 +17,10 @@ class FilterManager:
     @staticmethod
     @DeveloperAPI
     def synchronize(
-        local_filters, remotes, update_remote=True, timeout_seconds: int = None
+        local_filters,
+        remotes,
+        update_remote=True,
+        timeout_seconds: Optional[float] = None,
     ):
         """Aggregates all filters from remote evaluators.
 

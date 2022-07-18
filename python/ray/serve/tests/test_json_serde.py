@@ -15,7 +15,6 @@ from ray.serve.handle import (
 from ray.serve.json_serde import (
     DAGNodeEncoder,
     dagnode_from_json,
-    DAGNODE_TYPE_KEY,
 )
 from ray.serve.tests.resources.test_modules import (
     Model,
@@ -33,59 +32,6 @@ from ray.serve.deployment_graph_build import (
 )
 
 RayHandleLike = TypeVar("RayHandleLike")
-
-
-def _test_execution_class_node_ClassHello(original_dag_node, deserialized_dag_node):
-    # Creates actor of ClassHello
-    original_actor = original_dag_node.execute()
-    deserialized_actor = deserialized_dag_node.execute()
-
-    assert ray.get(original_actor.hello.remote()) == ray.get(
-        deserialized_actor.hello.remote()
-    )
-
-
-def _test_execution_class_node_Model(original_dag_node, deserialized_dag_node):
-    # Creates actor of Model
-    original_actor = original_dag_node.execute()
-    deserialized_actor = deserialized_dag_node.execute()
-
-    assert ray.get(original_actor.forward.remote(2)) == ray.get(
-        deserialized_actor.forward.remote(2)
-    )
-
-
-def _test_execution_function_node(original_dag_node, deserialized_dag_node):
-    assert ray.get(deserialized_dag_node.execute()) == ray.get(
-        original_dag_node.execute()
-    )
-
-
-def _test_json_serde_helper(
-    original_dag_node, executor_fn=None, expected_json_dict=None
-):
-    """Helpful function to test full round the the following behavior:
-    1) Ray DAG node can go through full JSON serde cycle
-    2) Ray DAG node and deserialized DAG node produces same output
-    3) Ray DAG node can go through multiple rounds of JSON serde and still
-        provides the same value as if it's only JSON serialized once
-    """
-    json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
-    assert json_serialized == json.dumps(expected_json_dict)
-    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
-
-    executor_fn(original_dag_node, deserialized_dag_node)
-
-    # Ensure same node can produce exactly the same results on FunctionNode
-    # from one or multiple rounds of serialization
-    multiple_json_serialized = json.dumps(
-        json.loads(
-            json.dumps(original_dag_node, cls=DAGNodeEncoder),
-            object_hook=dagnode_from_json,
-        ),
-        cls=DAGNodeEncoder,
-    )
-    assert multiple_json_serialized == json_serialized
 
 
 def test_non_json_serializable_args():
@@ -119,48 +65,21 @@ def test_simple_function_node_json_serde(serve_instance):
         - Simple function with args + kwargs, all primitive types
     """
     original_dag_node = combine.bind(1, 2)
-    _test_json_serde_helper(
+    _test_deployment_json_serde_helper(
         original_dag_node,
-        executor_fn=_test_execution_function_node,
-        expected_json_dict={
-            DAGNODE_TYPE_KEY: "FunctionNode",
-            "import_path": "ray.serve.tests.resources.test_modules.combine",
-            "args": [1, 2],
-            "kwargs": {},
-            "options": {},
-            "other_args_to_resolve": {},
-            "uuid": original_dag_node.get_stable_uuid(),
-        },
+        expected_num_deployments=1,
     )
 
     original_dag_node = combine.bind(1, 2, kwargs_output=3)
-    _test_json_serde_helper(
+    _test_deployment_json_serde_helper(
         original_dag_node,
-        executor_fn=_test_execution_function_node,
-        expected_json_dict={
-            DAGNODE_TYPE_KEY: "FunctionNode",
-            "import_path": "ray.serve.tests.resources.test_modules.combine",
-            "args": [1, 2],
-            "kwargs": {"kwargs_output": 3},
-            "options": {},
-            "other_args_to_resolve": {},
-            "uuid": original_dag_node.get_stable_uuid(),
-        },
+        expected_num_deployments=1,
     )
 
     original_dag_node = fn_hello.bind()
-    _test_json_serde_helper(
+    _test_deployment_json_serde_helper(
         original_dag_node,
-        executor_fn=_test_execution_function_node,
-        expected_json_dict={
-            DAGNODE_TYPE_KEY: "FunctionNode",
-            "import_path": "ray.serve.tests.resources.test_modules.fn_hello",
-            "args": [],
-            "kwargs": {},
-            "options": {},
-            "other_args_to_resolve": {},
-            "uuid": original_dag_node.get_stable_uuid(),
-        },
+        expected_num_deployments=1,
     )
 
 
@@ -178,49 +97,25 @@ def test_simple_class_node_json_serde(serve_instance):
         - Simple class with args + kwargs, all primitive types
         - Simple chain of class method calls, all primitive types
     """
-    original_dag_node = ClassHello.bind()
-    _test_json_serde_helper(
+    hello_actor = ClassHello.bind()
+    original_dag_node = hello_actor.hello.bind()
+    _test_deployment_json_serde_helper(
         original_dag_node,
-        executor_fn=_test_execution_class_node_ClassHello,
-        expected_json_dict={
-            DAGNODE_TYPE_KEY: "ClassNode",
-            "import_path": "ray.serve.tests.resources.test_modules.ClassHello",
-            "args": [],
-            "kwargs": {},
-            "options": {},
-            "other_args_to_resolve": {},
-            "uuid": original_dag_node.get_stable_uuid(),
-        },
+        expected_num_deployments=1,
     )
 
-    original_dag_node = Model.bind(1)
-    _test_json_serde_helper(
+    model_actor = Model.bind(1)
+    original_dag_node = model_actor.forward.bind(1)
+    _test_deployment_json_serde_helper(
         original_dag_node,
-        executor_fn=_test_execution_class_node_Model,
-        expected_json_dict={
-            DAGNODE_TYPE_KEY: "ClassNode",
-            "import_path": "ray.serve.tests.resources.test_modules.Model",
-            "args": [1],
-            "kwargs": {},
-            "options": {},
-            "other_args_to_resolve": {},
-            "uuid": original_dag_node.get_stable_uuid(),
-        },
+        expected_num_deployments=1,
     )
 
-    original_dag_node = Model.bind(1, ratio=0.5)
-    _test_json_serde_helper(
+    model_actor = Model.bind(1, ratio=0.5)
+    original_dag_node = model_actor.forward.bind(1)
+    _test_deployment_json_serde_helper(
         original_dag_node,
-        executor_fn=_test_execution_class_node_Model,
-        expected_json_dict={
-            DAGNODE_TYPE_KEY: "ClassNode",
-            "import_path": "ray.serve.tests.resources.test_modules.Model",
-            "args": [1],
-            "kwargs": {"ratio": 0.5},
-            "options": {},
-            "other_args_to_resolve": {},
-            "uuid": original_dag_node.get_stable_uuid(),
-        },
+        expected_num_deployments=1,
     )
 
 
@@ -312,7 +207,7 @@ def test_nested_deployment_node_json_serde(serve_instance):
     (
         serve_root_dag,
         deserialized_serve_root_dag_node,
-    ) = _test_deployment_json_serde_helper(ray_dag, input=1, expected_num_deployments=2)
+    ) = _test_deployment_json_serde_helper(ray_dag, input=1, expected_num_deployments=3)
     assert ray.get(serve_root_dag.execute(1)) == ray.get(
         deserialized_serve_root_dag_node.execute(1)
     )

@@ -17,7 +17,8 @@ from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import (
     ResultDict,
@@ -103,7 +104,7 @@ class MARWILConfig(AlgorithmConfig):
         # the same line.
         self.input_ = "sampler"
         # Use importance sampling estimators for reward.
-        self.off_policy_estimation_methods = {
+        self.evaluation_config["off_policy_estimation_methods"] = {
             "is": {"type": ImportanceSampling},
             "wis": {"type": WeightedImportanceSampling},
         }
@@ -253,7 +254,8 @@ class MARWIL(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
-        batch = synchronous_parallel_sample(worker_set=self.workers)
+        with self._timers[SAMPLE_TIMER]:
+            batch = synchronous_parallel_sample(worker_set=self.workers)
         batch = batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
@@ -284,7 +286,7 @@ class MARWIL(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
         # Update global vars on local worker as well.
