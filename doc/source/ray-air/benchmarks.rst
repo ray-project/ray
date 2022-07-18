@@ -36,13 +36,13 @@ For this benchmark, we configured the nodes to have reasonable disk size and thr
       - 390 s (0.51 GiB/s)
       - 205 GiB
       - `python data_benchmark.py --dataset-size-gb=200 --num-workers=1`
-    * - 5 m5.4xlarge nodes (2 actors)
+    * - 5 m5.4xlarge nodes (5 actors)
       - 70 s (2.85 GiB/S)
       - 206 GiB
       - `python data_benchmark.py --dataset-size-gb=200 --num-workers=5`
     * - 20 m5.4xlarge nodes (20 actors)
       - 3.8 s (52.6 GiB/s)
-      - 0 GB
+      - 0 GiB
       - `python data_benchmark.py --dataset-size-gb=200 --num-workers=20`
 
 
