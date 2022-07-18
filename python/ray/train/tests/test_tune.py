@@ -23,6 +23,9 @@ from ray.train.trainer import Trainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
+from ray.train.torch import TorchConfig
+from unittest.mock import patch
+
 
 @pytest.fixture
 def ray_start_4_cpus():
@@ -297,6 +300,41 @@ def test_retry_legacy(ray_start_4_cpus):
 
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 4
+
+
+def test_tune_torch_get_device(num_workers=1, num_gpus_per_worker=1):
+    num_samples = 2
+
+    @patch("torch.cuda.is_available", lambda: True)
+    def train_func():
+        train.report(device_id=train.torch.get_device().index)
+
+    trainer = Trainer(
+        TorchConfig(backend="gloo"),
+        num_workers=num_workers,
+        use_gpu=True,
+        resources_per_worker={"GPU": num_gpus_per_worker},
+    )
+    Trainable = trainer.to_tune_trainable(train_func)
+
+    tuner = Tuner(
+        Trainable,
+        param_space={
+            "train_loop_config": {
+                "dummy": tune.choice([32, 64, 128]),
+            }
+        },
+        tune_config=TuneConfig(
+            num_samples=num_samples,
+        ),
+    )
+    analysis = tuner.fit()._experiment_analysis
+    trial_dfs = list(analysis.trial_dataframes.values())
+    device_ids = [trial_df["device_id"].tolist() for trial_df in trial_dfs]
+
+    assert len(device_ids) == num_samples
+    for i in range(num_samples):
+        assert device_ids[i][0] == 0
 
 
 if __name__ == "__main__":

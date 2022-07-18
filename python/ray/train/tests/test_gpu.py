@@ -1,14 +1,22 @@
 import os
 from timeit import default_timer as timer
+from collections import Counter
 
+from unittest.mock import patch
 import pytest
 import torch
 import torchvision
-from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
+from test_tune import (
+    torch_fashion_mnist,
+    tune_tensorflow_mnist,
+    test_tune_torch_get_device,
+)
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+from ray.cluster_utils import Cluster
+
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
 from ray.train.constants import TRAINING_ITERATION
@@ -24,6 +32,7 @@ from ray.train.examples.torch_fashion_mnist_example import (
 from ray.train.examples.torch_linear_example import LinearDataset
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+from ray.train.torch import TorchConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 
 
@@ -40,6 +49,20 @@ def ray_start_1_cpu_1_gpu():
     address_info = ray.init(num_cpus=1, num_gpus=1)
     yield address_info
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_4_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=8, num_gpus=4)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 # TODO: Refactor as a backend test.
@@ -64,6 +87,40 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         assert devices == [0, 0]
     elif num_gpus_per_worker == 1:
         assert devices == [0, 1]
+    else:
+        raise RuntimeError(
+            "New parameter for this test has been added without checking that the "
+            "correct devices have been returned."
+        )
+
+
+# TODO: Refactor as a backend test.
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_torch_get_device_dist(ray_2_node_4_gpu, num_gpus_per_worker):
+    @patch("torch.cuda.is_available", lambda: True)
+    def train_fn():
+        return train.torch.get_device().index
+
+    trainer = Trainer(
+        TorchConfig(backend="gloo"),
+        num_workers=int(8 / num_gpus_per_worker),
+        use_gpu=True,
+        resources_per_worker={"GPU": num_gpus_per_worker},
+    )
+    trainer.start()
+    devices = trainer.run(train_fn)
+    trainer.shutdown()
+
+    count = Counter(devices)
+    if num_gpus_per_worker == 0.5:
+        for i in range(4):
+            assert count[i] == 4
+    elif num_gpus_per_worker == 1:
+        for i in range(4):
+            assert count[i] == 2
+    elif num_gpus_per_worker == 2:
+        for i in range(2):
+            assert count[2 * i] == 2
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
@@ -347,6 +404,10 @@ def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     torch_fashion_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
 
+def test_concurrent_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
+    torch_fashion_mnist(num_workers=1, use_gpu=True, num_samples=2)
+
+
 def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
@@ -416,6 +477,12 @@ def test_auto_transfer_data_from_host_to_device(
 
     if device_choice == "cuda" and auto_transfer:
         assert compute_average_runtime(host_to_device) >= with_auto_transfer
+
+
+# TODO: Refactor as a backend test.
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_tune_torch_get_device_gpu(ray_2_node_4_gpu, num_gpus_per_worker):
+    test_tune_torch_get_device(num_gpus_per_worker=num_gpus_per_worker)
 
 
 if __name__ == "__main__":
