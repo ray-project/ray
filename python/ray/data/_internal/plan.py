@@ -640,6 +640,12 @@ class OneToOneStage(Stage):
         assert (
             self.fn_constructor_args is None and self.fn_constructor_kwargs is None
         ) or isinstance(compute, ActorPoolStrategy)
+
+        if blocks._created_by_pipeline:
+            assert (
+                self.run_by_pipeline
+            ), "Pipeline outputs can only be consumed by pipeline"
+
         blocks = compute._apply(
             self.block_fn,
             self.ray_remote_args,
