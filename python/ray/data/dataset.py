@@ -877,7 +877,7 @@ class Dataset(Generic[T]):
         if n <= 0:
             raise ValueError(f"The number of splits {n} is not positive.")
 
-        # fallback to spilit_at_indices for equal split without locality hints.
+        # fallback to split_at_indices for equal split without locality hints.
         # simple SSML benchmarks shows spilit_at_indices yields more stable performance.
         # https://github.com/ray-project/ray/pull/26641 for more context.
         if equal and locality_hints is None:
