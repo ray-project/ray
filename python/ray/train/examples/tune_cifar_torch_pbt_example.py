@@ -12,7 +12,7 @@ from torchvision.datasets import CIFAR10
 import ray
 import ray.train as train
 from ray import tune
-from ray.air.config import FailureConfig, RunConfig
+from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.tune_config import TuneConfig
@@ -155,7 +155,9 @@ if __name__ == "__main__":
 
     trainer = TorchTrainer(
         train_func,
-        scaling_config={"num_workers": args.num_workers, "use_gpu": args.use_gpu},
+        scaling_config=ScalingConfig(
+            num_workers=args.num_workers, use_gpu=args.use_gpu
+        ),
     )
     pbt_scheduler = PopulationBasedTraining(
         time_attr="training_iteration",

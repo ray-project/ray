@@ -14,6 +14,7 @@ from ray.train.tensorflow import (
     TensorflowTrainer,
     prepare_dataset_shard,
 )
+from ray.air.config import ScalingConfig
 
 
 def get_dataset(a=5, b=10, size=1000) -> Dataset:
@@ -71,11 +72,10 @@ def train_func(config: dict):
 def train_tensorflow_linear(num_workers: int = 2, use_gpu: bool = False) -> Result:
     dataset_pipeline = get_dataset()
     config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
-    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=scaling_config,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": dataset_pipeline},
     )
     results = trainer.fit()

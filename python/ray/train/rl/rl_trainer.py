@@ -54,15 +54,12 @@ class RLTrainer(BaseTrainer):
 
         .. code-block:: python
 
-            from ray.air.config import RunConfig
+            from ray.air.config import RunConfig, ScalingConfig
             from ray.train.rl import RLTrainer
 
             trainer = RLTrainer(
                 run_config=RunConfig(stop={"training_iteration": 5}),
-                scaling_config={
-                    "num_workers": 2,
-                    "use_gpu": False,
-                },
+                scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
                 algorithm="PPO",
                 config={
                     "env": "CartPole-v0",
@@ -81,7 +78,7 @@ class RLTrainer(BaseTrainer):
         .. code-block:: python
 
             import ray
-            from ray.air.config import RunConfig
+            from ray.air.config import RunConfig, ScalingConfig
             from ray.train.rl import RLTrainer
             from ray.rllib.algorithms.bc.bc import BC
 
@@ -91,10 +88,10 @@ class RLTrainer(BaseTrainer):
 
             trainer = RLTrainer(
                 run_config=RunConfig(stop={"training_iteration": 5}),
-                scaling_config={
-                    "num_workers": 2,
-                    "use_gpu": False,
-                },
+                scaling_config=ScalingConfig(
+                    num_workers=2,
+                    use_gpu=False,
+                ),
                 datasets={"train": dataset},
                 algorithm=BCTrainer,
                 config={
@@ -149,22 +146,22 @@ class RLTrainer(BaseTrainer):
 
     def _get_rllib_config(self, process_datasets: bool = False) -> Dict:
         config = self._config.copy()
-        num_workers = self.scaling_config.get("num_workers")
+        num_workers = self.scaling_config.num_workers
         if num_workers is not None:
             config["num_workers"] = num_workers
 
-        worker_resources = self.scaling_config.get("resources_per_worker")
+        worker_resources = self.scaling_config.resources_per_worker
         if worker_resources:
             res = worker_resources.copy()
             config["num_cpus_per_worker"] = res.pop("CPU", 1)
             config["num_gpus_per_worker"] = res.pop("GPU", 0)
             config["custom_resources_per_worker"] = res
 
-        use_gpu = self.scaling_config.get("use_gpu")
+        use_gpu = self.scaling_config.use_gpu
         if use_gpu:
             config["num_gpus"] = 1
 
-        trainer_resources = self.scaling_config.get("trainer_resources")
+        trainer_resources = self.scaling_config.trainer_resources
         if trainer_resources:
             config["num_cpus_for_driver"] = trainer_resources.get("CPU", 1)
 

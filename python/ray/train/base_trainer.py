@@ -1,12 +1,12 @@
 import abc
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
@@ -150,7 +150,9 @@ class BaseTrainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        self.scaling_config = scaling_config if scaling_config is not None else {}
+        self.scaling_config = (
+            scaling_config if scaling_config is not None else ScalingConfig()
+        )
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
@@ -158,7 +160,7 @@ class BaseTrainer(abc.ABC):
 
         self._validate_attributes()
 
-        if datasets and not self.scaling_config.get("_max_cpu_fraction_per_node"):
+        if datasets and not self.scaling_config._max_cpu_fraction_per_node:
             logger.warning(
                 "When passing `datasets` to a Trainer, it is recommended to "
                 "reserve at least 20% of node CPUs for Dataset execution by setting "
@@ -188,10 +190,9 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.run_config)} with value `{self.run_config}`."
             )
         # Scaling config
-        # Todo: move to ray.air.ScalingConfig
-        if not isinstance(self.scaling_config, dict):
+        if not isinstance(self.scaling_config, ScalingConfig):
             raise ValueError(
-                f"`scaling_config` should be an instance of `dict`, "
+                "`scaling_config` should be an instance of `ScalingConfig`, "
                 f"found {type(self.scaling_config)} with value `{self.scaling_config}`."
             )
         # Datasets
@@ -228,18 +229,13 @@ class BaseTrainer(abc.ABC):
             )
 
     @classmethod
-    def _validate_and_get_scaling_config_data_class(
-        cls, dataclass_or_dict: Union[ScalingConfigDataClass, Dict[str, Any]]
-    ) -> ScalingConfigDataClass:
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
         """Return scaling config dataclass after validating updated keys."""
-        if isinstance(dataclass_or_dict, dict):
-            dataclass_or_dict = ScalingConfigDataClass(**dataclass_or_dict)
-
         ensure_only_allowed_dataclass_keys_updated(
-            dataclass=dataclass_or_dict,
+            dataclass=scaling_config,
             allowed_keys=cls._scaling_config_allowed_keys,
         )
-        return dataclass_or_dict
+        return scaling_config
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -386,21 +382,22 @@ class BaseTrainer(abc.ABC):
                 run_config = base_config.pop("run_config", None)
                 self._merged_config = merge_dicts(base_config, self.config)
                 self._merged_config["run_config"] = run_config
+                merged_scaling_config = self._merged_config.get("scaling_config")
+                if isinstance(merged_scaling_config, dict):
+                    merged_scaling_config = ScalingConfig(**merged_scaling_config)
                 self._merged_config[
                     "scaling_config"
                 ] = self._reconcile_scaling_config_with_trial_resources(
-                    self._merged_config.get("scaling_config")
+                    merged_scaling_config
                 )
 
             def _reconcile_scaling_config_with_trial_resources(
-                self, scaling_config: Union[ScalingConfigDataClass, Dict[str, Any]]
-            ) -> Dict[str, Any]:
+                self, scaling_config: ScalingConfig
+            ) -> ScalingConfig:
                 """
                 ResourceChangingScheduler workaround.
 
                 Ensures that the scaling config matches trial resources.
-                Returns a dict so that `_validate_attributes` passes
-                (change when switching scaling_config to the dataclass).
 
                 This should be replaced with RCS returning a ScalingConfig
                 in the future.
@@ -412,24 +409,20 @@ class BaseTrainer(abc.ABC):
                     return scaling_config
 
                 if scaling_config:
-                    scaling_config = (
-                        trainer_cls._validate_and_get_scaling_config_data_class(
-                            scaling_config
-                        )
+                    scaling_config = trainer_cls._validate_scaling_config(
+                        scaling_config
                     )
                 scaling_config_from_trial_resources = (
-                    ScalingConfigDataClass.from_placement_group_factory(trial_resources)
+                    ScalingConfig.from_placement_group_factory(trial_resources)
                 )
 
                 # This check should always pass if ResourceChangingScheduler is not
                 # used.
                 if scaling_config_from_trial_resources != scaling_config:
-                    scaling_config = (
-                        trainer_cls._validate_and_get_scaling_config_data_class(
-                            scaling_config_from_trial_resources
-                        )
+                    scaling_config = trainer_cls._validate_scaling_config(
+                        scaling_config_from_trial_resources
                     )
-                return scaling_config.__dict__
+                return scaling_config
 
             def _trainable_func(self, config, reporter, checkpoint_dir):
                 # We ignore the config passed by Tune and instead use the merged
@@ -438,12 +431,18 @@ class BaseTrainer(abc.ABC):
 
             @classmethod
             def default_resource_request(cls, config):
+                # `config["scaling_config"] is a dataclass when passed via the
+                # `scaling_config` argument in `Trainer` and is a dict when passed
+                # via the `scaling_config` key of `param_spec`.
+
+                # Conversion logic must be duplicated in `TrainTrainable.__init__`
+                # because this is a class method.
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = (
-                    trainer_cls._validate_and_get_scaling_config_data_class(
-                        updated_scaling_config
-                    )
+                if isinstance(updated_scaling_config, dict):
+                    updated_scaling_config = ScalingConfig(**updated_scaling_config)
+                validated_scaling_config = trainer_cls._validate_scaling_config(
+                    updated_scaling_config
                 )
-                return scaling_config_dataclass.as_placement_group_factory()
+                return validated_scaling_config.as_placement_group_factory()
 
         return TrainTrainable

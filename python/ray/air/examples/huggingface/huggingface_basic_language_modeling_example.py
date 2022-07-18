@@ -19,6 +19,7 @@ import ray
 import ray.data
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.air.config import ScalingConfig
 
 
 def main(
@@ -111,7 +112,7 @@ def main(
 
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": ray_train, "evaluation": ray_validation},
     )
     results = trainer.fit()

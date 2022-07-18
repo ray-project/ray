@@ -10,6 +10,7 @@ from torchvision.transforms import ToTensor
 
 import ray.train as train
 from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 
 # Download training data from open datasets.
 training_data = datasets.FashionMNIST(
@@ -124,7 +125,7 @@ def train_fashion_mnist(num_workers=2, use_gpu=False):
     trainer = TorchTrainer(
         train_func,
         train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": 4},
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     result = trainer.fit()
     print(f"Results: {result.metrics}")

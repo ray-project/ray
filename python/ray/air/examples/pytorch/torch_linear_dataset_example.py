@@ -13,6 +13,7 @@ from ray.air.result import Result
 from ray.data import Dataset
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor, TorchTrainer
+from ray.air.config import ScalingConfig
 
 
 def get_datasets(a=5, b=10, size=1000, split=0.8) -> Tuple[Dataset]:
@@ -110,12 +111,10 @@ def train_linear(num_workers=2, use_gpu=False):
     train_dataset, val_dataset = get_datasets()
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
 
-    scaling_config = {"num_workers": num_workers, "use_gpu": use_gpu}
-
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=scaling_config,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": train_dataset, "validation": val_dataset},
     )
 

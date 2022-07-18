@@ -14,6 +14,7 @@ from transformers.trainer_callback import TrainerState
 import ray.data
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.air.config import ScalingConfig
 from ray.train.huggingface._huggingface_utils import TrainReportCallback
 from ray.train.tests._huggingface_data import train_data, validation_data
 
@@ -64,7 +65,7 @@ def train_function(train_dataset, eval_dataset=None, **config):
 def test_e2e(ray_start_4_cpus, save_strategy):
     ray_train = ray.data.from_pandas(train_df)
     ray_validation = ray.data.from_pandas(validation_df)
-    scaling_config = {"num_workers": 2, "use_gpu": False}
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={"epochs": 4, "save_strategy": save_strategy},

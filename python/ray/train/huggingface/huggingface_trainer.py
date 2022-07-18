@@ -153,6 +153,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
             import ray
             from ray.train.huggingface import HuggingFaceTrainer
+            from ray.air.config import ScalingConfig
 
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
@@ -216,9 +217,9 @@ class HuggingFaceTrainer(TorchTrainer):
                     eval_dataset=eval_dataset,
                 )
 
-            scaling_config = {"num_workers": 3}
+            scaling_config = ScalingConfig(num_workers=3)
             # If using GPUs, use the below scaling config instead.
-            # scaling_config = {"num_workers": 3, "use_gpu": True}
+            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
             trainer = HuggingFaceTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
@@ -325,7 +326,7 @@ class HuggingFaceTrainer(TorchTrainer):
                 raise ValueError(
                     "HuggingFaceTrainer does not support `use_stream_api`."
                 )
-        gpus_per_worker = self.scaling_config.get("num_gpus_per_worker", 0)
+        gpus_per_worker = self.scaling_config.num_gpus_per_worker
         if gpus_per_worker > 1:
             raise ValueError(
                 f"You have assigned {gpus_per_worker} GPUs per worker. "
