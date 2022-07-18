@@ -6,7 +6,6 @@ import logging
 import numbers
 import os
 import shutil
-import tempfile
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import ray
 from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
+from ray.util import log_once
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.ml_utils.util import is_nan
 
@@ -130,16 +130,23 @@ class _TrackedCheckpoint:
             checkpoint_data = ray.get(checkpoint_data)
 
         if isinstance(checkpoint_data, str):
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            try:
+                checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            except FileNotFoundError:
+                if log_once("checkpoint_not_available"):
+                    logger.error(
+                        f"The requested checkpoint is not available on this node, "
+                        f"most likely because you are using Ray client or disabled "
+                        f"checkpoint synchronization. To avoid this, enable checkpoint "
+                        f"synchronization to cloud storage by specifying a "
+                        f"`SyncConfig`. The checkpoint may be available on a different "
+                        f"node - please check this location on worker nodes: "
+                        f"{checkpoint_data}"
+                    )
+                return None
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                TrainableUtil.create_from_pickle(checkpoint_data, tmpdir)
-                # Double wrap in checkpoint so we hold the data in memory and
-                # can remove the temp directory
-                checkpoint = Checkpoint.from_dict(
-                    Checkpoint.from_directory(tmpdir).to_dict()
-                )
+            checkpoint = Checkpoint.from_bytes(checkpoint_data)
         elif isinstance(checkpoint_data, dict):
             checkpoint = Checkpoint.from_dict(checkpoint_data)
         else:

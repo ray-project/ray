@@ -242,16 +242,17 @@ class SyncSampler(SamplerInput):
 
         if worker.policy_config.get("enable_connectors", False):
             self._env_runner = EnvRunnerV2(
-                worker,
-                self.base_env,
-                self.horizon,
-                multiple_episodes_in_batch,
-                callbacks,
-                self.perf_stats,
-                soft_horizon,
-                no_done_at_end,
-                rollout_fragment_length,
-                self.render,
+                worker=worker,
+                base_env=self.base_env,
+                horizon=self.horizon,
+                multiple_episodes_in_batch=multiple_episodes_in_batch,
+                callbacks=callbacks,
+                perf_stats=self.perf_stats,
+                soft_horizon=soft_horizon,
+                no_done_at_end=no_done_at_end,
+                rollout_fragment_length=rollout_fragment_length,
+                count_steps_by=count_steps_by,
+                render=self.render,
             ).run()
         else:
             # Create the rollout generator to use for calls to `get_data()`.
@@ -432,6 +433,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.rollout_fragment_length,
             count_steps_by=count_steps_by,
         )
+        self.count_steps_by = count_steps_by
 
     @override(threading.Thread)
     def run(self):
@@ -458,16 +460,17 @@ class AsyncSampler(threading.Thread, SamplerInput):
             extra_batches_putter = lambda x: self.extra_batches.put(x, timeout=600.0)
         if self.worker.policy_config.get("enable_connectors", False):
             env_runner = EnvRunnerV2(
-                self.worker,
-                self.base_env,
-                self.horizon,
-                self.multiple_episodes_in_batch,
-                self.callbacks,
-                self.perf_stats,
-                self.soft_horizon,
-                self.no_done_at_end,
-                self.rollout_fragment_length,
-                self.render,
+                worker=self.worker,
+                base_env=self.base_env,
+                horizon=self.horizon,
+                multiple_episodes_in_batch=self.multiple_episodes_in_batch,
+                callbacks=self.callbacks,
+                perf_stats=self.perf_stats,
+                soft_horizon=self.soft_horizon,
+                no_done_at_end=self.no_done_at_end,
+                rollout_fragment_length=self.rollout_fragment_length,
+                count_steps_by=self.count_steps_by,
+                render=self.render,
             ).run()
         else:
             env_runner = _env_runner(
@@ -830,9 +833,8 @@ def _process_observations(
         # This is how our BaseEnv can tell the caller to `poll()` that one of its
         # sub-environments is faulty and should be restarted (and the ongoing episode
         # should not be used for training).
-        episode_faulty = False
         if isinstance(all_agents_obs, Exception):
-            episode_faulty = True
+            episode.is_faulty = True
             assert dones[env_id]["__all__"] is True, (
                 f"ERROR: When a sub-environment (env-id {env_id}) returns an error "
                 "as observation, the dones[__all__] flag must also be set to True!"
@@ -849,7 +851,7 @@ def _process_observations(
             hit_horizon = episode.length >= horizon and not dones[env_id]["__all__"]
             all_agents_done = True
             atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
-            if not episode_faulty:
+            if not episode.is_faulty:
                 if atari_metrics is not None:
                     for m in atari_metrics:
                         outputs.append(
@@ -1004,7 +1006,7 @@ def _process_observations(
         # Exception: The very first env.poll() call causes the env to get reset
         # (no step taken yet, just a single starting observation logged).
         # We need to skip this callback in this case.
-        if not episode_faulty and episode.length > 0:
+        if not episode.is_faulty and episode.length > 0:
             callbacks.on_episode_step(
                 worker=worker,
                 base_env=base_env,
@@ -1027,13 +1029,14 @@ def _process_observations(
             # If an episode was marked faulty, perform regular postprocessing
             # (to e.g. properly flush and clean up the SampleCollector's buffers),
             # but then discard the entire batch and don't return it.
-            ma_sample_batch = sample_collector.postprocess_episode(
-                episode,
-                is_done=is_done or (hit_horizon and not soft_horizon),
-                check_dones=check_dones,
-                build=episode_faulty or not multiple_episodes_in_batch,
-            )
-            if not episode_faulty:
+            if not episode.is_faulty or episode.length > 0:
+                ma_sample_batch = sample_collector.postprocess_episode(
+                    episode,
+                    is_done=is_done or (hit_horizon and not soft_horizon),
+                    check_dones=check_dones,
+                    build=episode.is_faulty or not multiple_episodes_in_batch,
+                )
+            if not episode.is_faulty:
                 if ma_sample_batch:
                     outputs.append(ma_sample_batch)
 
@@ -1061,16 +1064,21 @@ def _process_observations(
                     env_index=env_id,
                 )
             # Horizon hit and we have a soft horizon (no hard env reset).
-            if not episode_faulty and hit_horizon and soft_horizon:
+            if not episode.is_faulty and hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {
                     env_id: all_agents_obs
                 }
             else:
                 del active_episodes[env_id]
-                resetted_obs: Dict[
-                    EnvID, Dict[AgentID, EnvObsType]
-                ] = base_env.try_reset(env_id)
+                while True:
+                    resetted_obs: Optional[
+                        Dict[EnvID, Dict[AgentID, EnvObsType]]
+                    ] = base_env.try_reset(env_id)
+                    if resetted_obs is None or not isinstance(
+                        resetted_obs[env_id], Exception
+                    ):
+                        break
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
                 if horizon != float("inf"):
@@ -1078,10 +1086,12 @@ def _process_observations(
                         "Setting episode horizon requires reset() support "
                         "from the environment."
                     )
+
             # Creates a new episode if this is not async return.
             # If reset is async, we will get its result in some future poll.
             elif resetted_obs != ASYNC_RESET_RETURN:
                 new_episode: Episode = active_episodes[env_id]
+                _assert_episode_not_faulty(new_episode)
                 resetted_obs = resetted_obs[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
@@ -1119,8 +1129,8 @@ def _process_observations(
                         env_id,
                         agent_id,
                         filtered_obs,
-                        episode.last_info_for(agent_id) or {},
-                        episode.rnn_state_for(agent_id),
+                        new_episode.last_info_for(agent_id) or {},
+                        new_episode.rnn_state_for(agent_id),
                         None,
                         0.0,
                     )
@@ -1174,6 +1184,7 @@ def _do_policy_eval(
             # have already been changed (mapping fn stay constant
             # within one episode).
             episode = active_episodes[eval_data[0].env_id]
+            _assert_episode_not_faulty(episode)
             policy_id = episode.policy_mapping_fn(
                 eval_data[0].agent_id, episode, worker=episode.worker
             )
@@ -1269,6 +1280,7 @@ def _process_policy_eval_results(
             env_id: int = eval_data[i].env_id
             agent_id: AgentID = eval_data[i].agent_id
             episode: Episode = active_episodes[env_id]
+            _assert_episode_not_faulty(episode)
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
             episode._set_last_extra_action_outs(
                 agent_id, {k: v[i] for k, v in extra_action_out_cols.items()}
@@ -1290,3 +1302,11 @@ def _process_policy_eval_results(
 def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:
     num_cols = len(rnn_state_rows[0])
     return [[row[i] for row in rnn_state_rows] for i in range(num_cols)]
+
+
+def _assert_episode_not_faulty(episode):
+    if episode.is_faulty:
+        raise AssertionError(
+            "Episodes marked as `faulty` should not be kept in the "
+            f"`active_episodes` map! Episode ID={episode.episode_id}."
+        )

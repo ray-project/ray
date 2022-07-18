@@ -1,6 +1,7 @@
 import argparse
 
 import numpy as np
+from ray.air import session
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
@@ -11,7 +12,7 @@ from torchvision.datasets import CIFAR10
 import ray
 import ray.train as train
 from ray import tune
-from ray.air.config import FailureConfig, RunConfig
+from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.tune_config import TuneConfig
@@ -20,7 +21,7 @@ from ray.util.ml_utils.resnet import ResNet18
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset) // train.world_size()
+    size = len(dataloader.dataset) // session.get_world_size()
     model.train()
     for batch, (X, y) in enumerate(dataloader):
         # Compute prediction error
@@ -38,7 +39,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
 
 
 def validate_epoch(dataloader, model, loss_fn):
-    size = len(dataloader.dataset) // train.world_size()
+    size = len(dataloader.dataset) // session.get_world_size()
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
@@ -98,7 +99,7 @@ def train_func(config):
         train_dataset = Subset(train_dataset, list(range(64)))
         validation_dataset = Subset(validation_dataset, list(range(64)))
 
-    worker_batch_size = config["batch_size"] // train.world_size()
+    worker_batch_size = config["batch_size"] // session.get_world_size()
 
     train_loader = DataLoader(train_dataset, batch_size=worker_batch_size)
     validation_loader = DataLoader(validation_dataset, batch_size=worker_batch_size)
@@ -110,11 +111,10 @@ def train_func(config):
     criterion = nn.CrossEntropyLoss()
 
     results = []
-
     for _ in range(epochs):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
-        train.report(**result)
+        session.report(result)
         results.append(result)
 
     # return required for backwards compatibility with the old API
@@ -155,7 +155,9 @@ if __name__ == "__main__":
 
     trainer = TorchTrainer(
         train_func,
-        scaling_config={"num_workers": args.num_workers, "use_gpu": args.use_gpu},
+        scaling_config=ScalingConfig(
+            num_workers=args.num_workers, use_gpu=args.use_gpu
+        ),
     )
     pbt_scheduler = PopulationBasedTraining(
         time_attr="training_iteration",

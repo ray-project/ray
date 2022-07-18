@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Type
+from typing import Dict, Type, Callable
 
 import numpy as np
 import pandas as pd
@@ -15,7 +15,8 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
     import pyarrow
-    import pyarrow.Table as pa_table
+
+    pa_table = pyarrow.Table
 except ImportError:
     pa_table = None
 
@@ -86,6 +87,27 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
+    @classmethod
+    def from_pandas_udf(
+        cls, pandas_udf: Callable[[pd.DataFrame], pd.DataFrame]
+    ) -> "Predictor":
+        """Create a Predictor from a Pandas UDF.
+
+        Args:
+            pandas_udf: A function that takes a pandas.DataFrame and other
+                optional kwargs and returns a pandas.DataFrame.
+        """
+
+        class PandasUDFPredictor(Predictor):
+            @classmethod
+            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs):
+                return PandasUDFPredictor()
+
+            def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
+                return pandas_udf(df, **kwargs)
+
+        return PandasUDFPredictor.from_checkpoint(Checkpoint.from_dict({"dummy": 1}))
+
     @PublicAPI(stability="alpha")
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
@@ -96,7 +118,8 @@ class Predictor(abc.ABC):
             directly to ``_predict_pandas``.
 
         Returns:
-            DataBatchType: Prediction result.
+            DataBatchType: Prediction result. The return type will be the same as the
+                input type.
         """
         data_df = convert_batch_type_to_pandas(data)
 

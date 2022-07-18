@@ -10,6 +10,7 @@ from ray.air.examples.horovod.horovod_pytorch_example import Net
 from ray.air.examples.horovod.horovod_pytorch_example import (
     train_func as hvd_train_func,
 )
+from ray.air.config import ScalingConfig
 from ray.train.horovod import HorovodTrainer
 from ray.train.torch import TorchPredictor
 
@@ -36,7 +37,7 @@ def test_horovod(ray_start_4_cpus):
 
     num_workers = 1
     epochs = 10
-    scaling_config = {"num_workers": num_workers}
+    scaling_config = ScalingConfig(num_workers=num_workers)
     config = {"num_epochs": epochs, "save_model_as_dict": False}
     trainer = HorovodTrainer(
         train_loop_per_worker=train_func,
@@ -73,7 +74,7 @@ def test_horovod_state_dict(ray_start_4_cpus):
 
     num_workers = 2
     epochs = 10
-    scaling_config = {"num_workers": num_workers}
+    scaling_config = ScalingConfig(num_workers=num_workers)
     config = {"num_epochs": epochs, "save_model_as_dict": True}
     trainer = HorovodTrainer(
         train_loop_per_worker=train_func,

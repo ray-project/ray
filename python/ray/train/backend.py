@@ -46,8 +46,7 @@ class Backend(metaclass=Singleton):
         """Logic to encode a data dict before sending to the driver.
 
         This function will be called on the workers for any data that is
-        sent to the driver via ``train.report()`` or
-        ``train.save_checkpoint()``.
+        sent to the driver via ``session.report()``.
         """
 
         return data_dict

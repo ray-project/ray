@@ -4,8 +4,8 @@ from typing import Optional
 import pytest
 
 import ray
-from ray import train
-from ray.air.config import DatasetConfig
+from ray.air import session
+from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -29,13 +29,13 @@ class TestBasic(DataParallelTrainer):
         self, num_workers: int, expect_ds: bool, expect_sizes: Optional[dict], **kwargs
     ):
         def train_loop_per_worker():
-            data_shard = train.get_dataset_shard("train")
+            data_shard = session.get_dataset_shard("train")
             if expect_ds:
                 assert isinstance(data_shard, Dataset), data_shard
             else:
                 assert isinstance(data_shard, DatasetPipeline), data_shard
             for k, v in expect_sizes.items():
-                shard = train.get_dataset_shard(k)
+                shard = session.get_dataset_shard(k)
                 if v == -1:
                     assert shard is None, shard
                 else:
@@ -44,9 +44,10 @@ class TestBasic(DataParallelTrainer):
                     else:
                         assert shard.count() == v, shard
 
+        kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": num_workers},
+            scaling_config=ScalingConfig(num_workers=num_workers),
             **kwargs,
         )
 
@@ -197,16 +198,17 @@ class TestStream(DataParallelTrainer):
 
     def __init__(self, check_results_fn, **kwargs):
         def train_loop_per_worker():
-            data_shard = train.get_dataset_shard("train")
+            data_shard = session.get_dataset_shard("train")
             assert isinstance(data_shard, DatasetPipeline), data_shard
             results = []
             for epoch in data_shard.iter_epochs(2):
                 results.append(epoch.take())
             check_results_fn(data_shard, results)
 
+        kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             **kwargs,
         )
 
@@ -218,14 +220,15 @@ class TestBatch(DataParallelTrainer):
 
     def __init__(self, check_results_fn, **kwargs):
         def train_loop_per_worker():
-            data_shard = train.get_dataset_shard("train")
+            data_shard = session.get_dataset_shard("train")
             assert isinstance(data_shard, Dataset), data_shard
             results = data_shard.take()
             check_results_fn(data_shard, results)
 
+        kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             **kwargs,
         )
 

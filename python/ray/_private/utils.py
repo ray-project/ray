@@ -1017,6 +1017,7 @@ def deprecated(
     removal_release: Optional[str] = None,
     removal_date: Optional[str] = None,
     warn_once: bool = True,
+    stacklevel=2,
 ):
     """
     Creates a decorator for marking functions as deprecated. The decorator
@@ -1036,6 +1037,7 @@ def deprecated(
         warn_once: If true, the deprecation warning will only be logged
             on the first invocation. Otherwise, the deprecation warning will
             be logged on every invocation. Defaults to True.
+        stacklevel: adjust the warnings stacklevel to trace the source call
 
     Returns:
         A decorator to be used for wrapping deprecated functions.
@@ -1066,7 +1068,7 @@ def deprecated(
                     )
                     + (f" {instructions}" if instructions is not None else "")
                 )
-                warnings.warn(msg)
+                warnings.warn(msg, stacklevel=stacklevel)
             return func(*args, **kwargs)
 
         return new_func
@@ -1394,7 +1396,12 @@ def get_runtime_env_info(
 
     proto_runtime_env_info = ProtoRuntimeEnvInfo()
 
-    proto_runtime_env_info.uris[:] = runtime_env.get_uris()
+    if runtime_env.get_working_dir_uri():
+        proto_runtime_env_info.uris.working_dir_uri = runtime_env.get_working_dir_uri()
+    if len(runtime_env.get_py_modules_uris()) > 0:
+        proto_runtime_env_info.uris.py_modules_uris[
+            :
+        ] = runtime_env.get_py_modules_uris()
 
     # TODO(Catch-Bull): overload `__setitem__` for `RuntimeEnv`, change the
     # runtime_env of all internal code from dict to RuntimeEnv.

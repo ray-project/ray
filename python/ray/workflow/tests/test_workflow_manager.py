@@ -5,8 +5,10 @@ from filelock import FileLock
 
 
 def test_workflow_manager_simple(workflow_start_regular):
+    from ray.workflow.exceptions import WorkflowNotFoundError
+
     assert [] == workflow.list_all()
-    with pytest.raises(workflow.common.WorkflowNotFoundError):
+    with pytest.raises(WorkflowNotFoundError):
         workflow.get_status("X")
 
 

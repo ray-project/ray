@@ -1,5 +1,4 @@
-from ray import train
-from ray.air import RunConfig
+from ray.air import ScalingConfig, RunConfig, session
 from ray.train.torch import TorchTrainer
 from ray.tune.integration.mlflow import MLflowLoggerCallback
 from ray.tune.logger import TBXLoggerCallback
@@ -7,12 +6,12 @@ from ray.tune.logger import TBXLoggerCallback
 
 def train_func():
     for i in range(3):
-        train.report(epoch=i)
+        session.report(dict(epoch=i))
 
 
 trainer = TorchTrainer(
     train_func,
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     run_config=RunConfig(
         callbacks=[
             MLflowLoggerCallback(experiment_name="train_experiment"),
