@@ -43,7 +43,7 @@ def main(data_size_gb: int):
     model = resnet18(pretrained=True)
 
     preprocessor = BatchMapper(preprocess)
-    ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
+    ckpt = TorchCheckpoint.from_torch_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
     predictor.predict(dataset, num_gpus_per_worker=1, feature_columns=["image"])

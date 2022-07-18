@@ -76,7 +76,7 @@ def train_loop_per_worker(config):
 
         session.report(
             dict(running_loss=running_loss),
-            checkpoint=TorchCheckpoint.from_model(model),
+            checkpoint=TorchCheckpoint.from_torch_model(model),
         )
 
 

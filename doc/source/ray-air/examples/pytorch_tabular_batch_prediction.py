@@ -27,7 +27,7 @@ num_features = len(all_features)
 
 prep = Concatenator(dtype=np.float32)
 
-checkpoint = TorchCheckpoint.from_model(
+checkpoint = TorchCheckpoint.from_torch_model(
     model=create_model(num_features), preprocessor=prep
 )
 # You can also fetch a checkpoint from a Trainer

@@ -35,7 +35,7 @@ dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[data_url])
 model = resnet18(pretrained=True)
 
 preprocessor = BatchMapper(preprocess)
-ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
+ckpt = TorchCheckpoint.from_torch_model(model=model, preprocessor=preprocessor)
 
 predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
 predictor.predict(dataset, feature_columns=["image"])

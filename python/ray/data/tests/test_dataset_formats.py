@@ -2780,7 +2780,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     preprocessor = BatchMapper(preprocess)
 
     model = resnet18(pretrained=True)
-    checkpoint = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
+    checkpoint = TorchCheckpoint.from_torch_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
     predictor.predict(dataset, feature_columns=["image"])
