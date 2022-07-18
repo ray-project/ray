@@ -201,6 +201,7 @@ class TestOPE(unittest.TestCase):
             )
             tmp_probs.append(torch.exp(log_probs))
         tmp_probs = torch.stack(tmp_probs).transpose(0, 1)
+        tmp_probs = convert_to_numpy(tmp_probs)
         check(action_probs, tmp_probs, decimals=3)
 
     def test_multiple_inputs(self):
