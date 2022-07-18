@@ -867,8 +867,8 @@ class Dataset(Generic[T]):
             equal: Whether to guarantee each split has an equal
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
-            locality_hints: A list of Ray actor handles of size ``n``. The
-                system will try to co-locate the blocks of the i-th dataset
+            locality_hints: [Experimental] A list of Ray actor handles of size ``n``.
+                The system will try to co-locate the blocks of the i-th dataset
                 with the i-th actor to maximize data locality.
 
         Returns:
@@ -876,6 +876,19 @@ class Dataset(Generic[T]):
         """
         if n <= 0:
             raise ValueError(f"The number of splits {n} is not positive.")
+
+        # fallback to split_at_indices for equal split without locality hints.
+        # simple benchmarks shows spilit_at_indices yields more stable performance.
+        # https://github.com/ray-project/ray/pull/26641 for more context.
+        if equal and locality_hints is None:
+            count = self.count()
+            split_index = count // n
+            # we are creating n split_indices which will generate
+            # n + 1 splits; the last split will at most contains (n - 1)
+            # rows, which could be safely dropped.
+            split_indices = [split_index * i for i in range(1, n + 1)]
+            shards = self.split_at_indices(split_indices)
+            return shards[:n]
 
         if locality_hints and len(locality_hints) != n:
             raise ValueError(

@@ -257,8 +257,8 @@ class DatasetPipeline(Generic[T]):
             equal: Whether to guarantee each split has an equal
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
-            locality_hints: A list of Ray actor handles of size ``n``. The
-                system will try to co-locate the blocks of the ith pipeline
+            locality_hints: [Experimental] A list of Ray actor handles of size ``n``.
+                The system will try to co-locate the blocks of the ith pipeline
                 shard with the ith actor to maximize data locality.
 
         Returns:
