@@ -569,6 +569,33 @@ def test_drop_columns(ray_start_regular_shared):
     assert pipe.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
 
 
+def test_in_place_transformation_doesnt_clear_objects(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3, 4, 5, 6])
+
+    def verify_integrity(p):
+        # The pipeline's output blocks are from original dataset (i.e. not created
+        # by the pipeline itself), so those blocks must not be cleared -- verified
+        # below by re-reading the dataset.
+        for b in p.iter_batches():
+            pass
+        # Verify the integrity of the blocks of original dataset.
+        assert ds.take_all() == [1, 2, 3, 4, 5, 6]
+
+    verify_integrity(ds.repeat(10).randomize_block_order_each_window())
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+    )
+    # Mix in-place and non-in place transforms.
+    verify_integrity(
+        ds.repeat(10).map_batches(lambda x: x).randomize_block_order_each_window()
+    )
+    verify_integrity(
+        ds.repeat(10).randomize_block_order_each_window().map_batches(lambda x: x)
+    )
+
+
 if __name__ == "__main__":
     import sys
 
