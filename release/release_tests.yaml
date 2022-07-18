@@ -279,26 +279,30 @@
   alert: default
 
 
-- name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
+# TODO(jiaodong): This leads to CUDA OOM on release tool but succeeds on
+# workspaces, re-enabled it once inline conversions are fixed
+# - name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
+#   group: AIR tests
+#   working_dir: air_tests/air_benchmarks
 
-  frequency: nightly
-  team: ml
-  env: staging
+#   frequency: nightly
+#   team: ml
+#   env: staging
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_16.yaml
+#   stable: false
 
-  run:
-    timeout: 10800
-    script: python workloads/gpu_batch_prediction.py --data-size-gb 100
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: compute_gpu_16.yaml
 
-    type: sdk_command
-    file_manager: job
+#   run:
+#     timeout: 10800
+#     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
 
-  alert: default
+#     type: sdk_command
+#     file_manager: job
+
+#   alert: default
 
 
 - name: air_benchmark_torch_mnist_cpu_4x4
@@ -430,6 +434,8 @@
   frequency: nightly
   team: ml
   env: staging
+
+  stable: false
 
   cluster:
     cluster_env: app_config.yaml
