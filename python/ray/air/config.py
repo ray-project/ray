@@ -18,7 +18,8 @@ if TYPE_CHECKING:
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
-SampleRange = Union[Domain, Dict[str, List], List]
+# Dict[str, List] is to support `tune.grid_search`:
+SampleRange = Union[Domain, Dict[str, List]]
 
 
 @dataclass
