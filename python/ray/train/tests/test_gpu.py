@@ -43,7 +43,9 @@ def ray_start_1_cpu_1_gpu():
 
 
 # TODO: Refactor as a backend test.
-@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
+# TODO: detect fractional gpus properly
+# @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
+@pytest.mark.parametrize("num_gpus_per_worker", [1])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     def train_fn():
         return train.torch.get_device().index
