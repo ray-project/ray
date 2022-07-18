@@ -60,7 +60,11 @@ previous_time = start_time
 # We tolerate failing workers and don't stop training
 config = (
     PPOConfig()
-    .rollouts(num_rollout_workers=2, num_failing_workers_tolerance=3)
+    .rollouts(
+        num_rollout_workers=2,
+        ignore_worker_failures=True,
+        num_failing_workers_tolerance=3,
+    )
     .training()
 )
 ppo = PPO(config=config, env="CartPole-v0")

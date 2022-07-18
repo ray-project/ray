@@ -19,7 +19,8 @@ run_experiments(
             "env": "CartPole-v0",
             "config": {
                 "num_workers": 3,
-                "worker_failure_tolerance": 0,
+                "ignore_worker_failures": True,
+                "num_failing_workers_tolerance": 0,
                 "num_gpus": 0,
             },
             "framework": "torch",
