@@ -153,6 +153,62 @@
 
   alert: default
 
+
+- name: air_benchmark_data_bulk_ingest
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_20_nodes.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
+
+    wait_for_nodes:
+      num_nodes: 20
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+# AIR benchmarks for XGBoost CUJ
+- name: air_benchmark_xgboost_cpu_10
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: xgboost_app_config.yaml
+    cluster_compute: xgboost_compute_tpl.yaml
+
+  run:
+    timeout: 36000
+    script: python workloads/xgboost_benchmark.py
+
+    wait_for_nodes:
+      num_nodes: 10
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 1800
+
+  alert: default
+
 # Ray AIR distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_cpu_4x1
   group: AIR tests
@@ -194,6 +250,28 @@
   run:
     timeout: 3600
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_torch_batch_prediction_gpu_1x1
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_1.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/gpu_batch_prediction.py --data-size-gb 20
 
     type: sdk_command
     file_manager: job
@@ -320,6 +398,28 @@
 
     wait_for_nodes:
       num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_pytorch_training_e2e_gpu_1x1
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_1.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/pytorch_training_e2e.py --data-size-gb 20
 
     type: sdk_command
     file_manager: job
