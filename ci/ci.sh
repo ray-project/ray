@@ -122,8 +122,6 @@ test_core() {
       args+=(
         -//:core_worker_test
         -//:event_test
-        -//:gcs_pub_sub_test
-        -//:gcs_server_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
         -//:gcs_client_reconnection_test
@@ -706,7 +704,10 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  _check_job_triggers "${1-}"
+  # TODO(jjyao): fix it for windows
+  if [ "${OSTYPE}" != msys ]; then
+    _check_job_triggers "${1-}"
+  fi
 
   configure_system
 
