@@ -12,8 +12,8 @@ prelude_commands: &prelude_commands |-
   rm -rf /tmp/bazel_event_logs
   cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
   (which bazel && bazel clean) || true;
-  . ./ci/ci.sh init && source ~/.zshrc
-  . ./ci/ci.sh build
+  ./ci/ci.sh init && source ~/.zshrc
+  ./ci/ci.sh build
   ./ci/env/install-dependencies.sh
 
 epilogue_commands: &epilogue_commands |-
@@ -43,10 +43,10 @@ steps:
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
-    - . ./ci/ci.sh init && source ~/.zshrc
-    - . ./ci/ci.sh build
+    - ./ci/ci.sh init && source ~/.zshrc
+    - ./ci/ci.sh build
     # Test wheels
-    - . ./ci/ci.sh test_wheels
+    - ./ci/ci.sh test_wheels
     # Build jars
     - bash ./java/build-jar-multiplatform.sh darwin
     # Upload the wheels and jars
@@ -105,7 +105,7 @@ steps:
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - . ./ci/ci.sh test_large
+    - ./ci/ci.sh test_large
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"
