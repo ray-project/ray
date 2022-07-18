@@ -30,11 +30,11 @@ class TorchCheckpoint(Checkpoint):
         Returns:
             A checkpoint that can be loaded by TorchPredictor.
         """
-        checkpoint = TorchCheckpoint.from_dict(
+        checkpoint = Checkpoint.from_dict(
             {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model}
         )
-        return checkpoint
+        return TorchCheckpoint(checkpoint)
 
     def get_model(self) -> torch.nn.Module:
         """Return the torch model contained in this Checkpoint."""
-        return self.as_dict()[MODEL_KEY]
+        return self.to_dict()[MODEL_KEY]
