@@ -878,7 +878,7 @@ class Dataset(Generic[T]):
             raise ValueError(f"The number of splits {n} is not positive.")
 
         # fallback to split_at_indices for equal split without locality hints.
-        # simple SSML benchmarks shows spilit_at_indices yields more stable performance.
+        # simple benchmarks shows spilit_at_indices yields more stable performance.
         # https://github.com/ray-project/ray/pull/26641 for more context.
         if equal and locality_hints is None:
             count = self.count()
