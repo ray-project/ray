@@ -80,7 +80,7 @@ def tune_torch(num_workers: int = 4, num_trials: int = 8, use_gpu: bool = False)
 @click.command(help="Run Benchmark comparing Train to Tune.")
 @click.option("--num-trials", type=int, default=8)
 @click.option("--num-workers", type=int, default=4)
-@click.option("--use-gpu", type=bool, default=False)
+@click.option("--use-gpu", is_flag=True)
 def main(num_trials, num_workers, use_gpu):
     ray.init()
     prepare_mnist()
@@ -93,6 +93,7 @@ def main(num_trials, num_workers, use_gpu):
     )
     result = {"train_time": train_time, "tune_time": tune_time}
     print("Results:", result)
+    assert tune_time < 2 * train_time, f"{tune_time} > 2 * {train_time}"
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
