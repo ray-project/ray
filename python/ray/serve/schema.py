@@ -118,7 +118,7 @@ class DeploymentSchema(
     user_config: Dict = Field(
         default=None,
         description=(
-            "[EXPERIMENTAL] Config to pass into this deployment's "
+            "Config to pass into this deployment's "
             "reconfigure method. This can be updated dynamically "
             "without restarting replicas"
         ),
