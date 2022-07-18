@@ -2,6 +2,7 @@ import gym
 import numpy as np
 import pytest
 import ray
+from ray.air import ScalingConfig
 
 from ray.data.preprocessor import Preprocessor
 from ray.rllib.algorithms import Algorithm
@@ -56,10 +57,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-scaling_config = {
-    "num_workers": 2,
-    "use_gpu": False,
-}
+scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 
 @pytest.mark.parametrize(

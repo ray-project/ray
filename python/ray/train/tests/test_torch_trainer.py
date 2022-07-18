@@ -100,7 +100,7 @@ def test_checkpoint_freq(ray_start_4_cpus):
     # checkpoint_freq is not supported so raise an error
     trainer = TorchTrainer(
         train_loop_per_worker=lambda config: None,
-        scaling_config={"num_workers": 1},
+        scaling_config=ray.air.ScalingConfig(num_workers=1),
         run_config=ray.air.RunConfig(
             checkpoint_config=ray.air.CheckpointConfig(
                 checkpoint_frequency=2,
