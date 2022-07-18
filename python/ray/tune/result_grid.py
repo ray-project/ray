@@ -160,6 +160,11 @@ class ResultGrid:
         )
 
     @property
+    def errors(self):
+        """Returns the exceptions of errored trials."""
+        return [result.error for result in self if result.error]
+
+    @property
     def num_errors(self):
         """Returns the number of errored trials."""
         return len(
