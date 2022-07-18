@@ -50,7 +50,7 @@ class ActorGroupMethod:
         ]
 
 
-@Deprecated(essage="Use ray.util.multiprocessing instead.")
+@Deprecated(message="Use ray.util.multiprocessing instead.")
 class ActorGroup:
     """Group of Ray Actors that can execute arbitrary functions.
 
