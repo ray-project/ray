@@ -480,8 +480,9 @@ RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
 /// Whether or not the external storage is file system.
-/// This is configured based on object_spilling_config.
-RAY_CONFIG(bool, is_external_storage_type_fs, true)
+/// Note that this value should be overridden based on the storage type
+/// specified by object_spilling_config.
+RAY_CONFIG(bool, is_external_storage_type_fs, false)
 
 /// Control the capacity threshold for ray local file system (for object store).
 /// Once we are over the capacity, all subsequent object creation will fail.

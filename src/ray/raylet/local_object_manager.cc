@@ -420,7 +420,7 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
 }
 
 std::string LocalObjectManager::GetLocalSpilledObjectURL(const ObjectID &object_id) {
-  if (!is_external_storage_type_fs_) {
+  if (is_external_storage_type_fs_) {
     // If the external storage is cloud storage like S3, returns the empty string.
     // In that case, the URL is supposed to be obtained by OBOD.
     return "";
@@ -606,14 +606,18 @@ void LocalObjectManager::RecordMetrics() const {
                                                        "Restored");
 }
 
-int64_t LocalObjectManager::GetPinnedBytes() const {
-  if (pinned_objects_size_ > 0) {
-    return pinned_objects_size_;
+int64_t LocalObjectManager::GetPrimaryBytes() const {
+  return pinned_objects_size_ + num_bytes_pending_spill_;
+}
+
+bool LocalObjectManager::HasLocallySpilledObjects() const {
+  if (is_external_storage_type_fs_) {
+    return false;
   }
   // Report non-zero usage when there are spilled / spill-pending live objects, to
   // prevent this node from being drained. Note that the value reported here is also
   // used for scheduling.
-  return (spilled_objects_url_.empty() && objects_pending_spill_.empty()) ? 0 : 1;
+  return !spilled_objects_url_.empty();
 }
 
 std::string LocalObjectManager::DebugString() const {
