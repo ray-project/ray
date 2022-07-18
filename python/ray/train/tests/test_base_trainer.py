@@ -213,7 +213,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
         # Fraction correctly specified.
         DummyTrainer(
             train_loop,
-            scaling_config={"num_workers": 1, "_max_cpu_fraction_per_node": 0.9},
+            scaling_config=ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9),
             datasets={"train": ray.data.range(10)},
         )
         assert not base_trainer.logger.warnings
@@ -221,14 +221,14 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
         # No datasets, no fraction.
         DummyTrainer(
             train_loop,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
         )
         assert not base_trainer.logger.warnings
 
         # Should warn.
         DummyTrainer(
             train_loop,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             datasets={"train": ray.data.range(10)},
         )
         assert len(base_trainer.logger.warnings) == 1, base_trainer.logger.warnings
