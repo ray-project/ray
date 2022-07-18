@@ -193,6 +193,7 @@ class TunerInternal:
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
                 name=self._run_config.name,
+                progress_reporter=self._run_config.progress_reporter,
             ),
             **self._tuner_kwargs,
         }
@@ -208,6 +209,7 @@ class TunerInternal:
             **dict(
                 run_or_experiment=trainable,
                 resume=True,
+                progress_reporter=self._run_config.progress_reporter,
             ),
             **self._tuner_kwargs,
         }

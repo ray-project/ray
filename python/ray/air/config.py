@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
 
 from ray.air.constants import WILDCARD_KEY
+from ray.tune import ProgressReporter
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
@@ -406,6 +407,10 @@ class RunConfig:
         failure_config: Failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
         checkpoint_config: Checkpointing configuration.
+        progress_reporter: Progress reporter for reporting
+            intermediate experiment progress. Defaults to CLIReporter if
+            running in command-line, or JupyterNotebookReporter if running in
+            a Jupyter notebook.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results. Defaults to 2.
@@ -419,4 +424,5 @@ class RunConfig:
     failure_config: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
     checkpoint_config: Optional[CheckpointConfig] = None
+    progress_reporter: Optional[ProgressReporter] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
