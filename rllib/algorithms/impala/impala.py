@@ -810,6 +810,11 @@ class Impala(Algorithm):
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:
+                # Setting block = True prevents the learner thread,
+                # the main thread, and the gpu loader threads from
+                # thrashing when there are more samples than the
+                # learner can reasonable process.
+                # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
                 self._learner_thread.inqueue.put(batch, block=True)
                 self.batches_to_place_on_learner.pop(0)
                 self._counters["num_samples_added_to_queue"] += (
