@@ -1,6 +1,6 @@
 import gym
 import pickle
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -15,6 +15,7 @@ from ray.rllib.utils.typing import (
     PolicyOutputType,
     PolicyState,
     TensorStructType,
+    TensorType,
 )
 from ray.util.annotations import PublicAPI
 
@@ -193,3 +194,37 @@ def policy_inference(
             acd = policy.action_connectors(acd)
         outputs.append(acd.output)
     return outputs
+
+
+@PublicAPI
+def compute_log_likelihoods_from_input_dict(
+    policy: "Policy", batch: Union[SampleBatch, Dict[str, TensorStructType]]
+):
+    """Returns log likelihood for actions in given batch for policy.
+
+    Computes likelihoods by passing the observations through the current
+    policy's `compute_log_likelihoods()` method
+
+    Args:
+        batch: The SampleBatch or MultiAgentBatch to calculate action
+            log likelihoods from. This batch/batches must contain OBS
+            and ACTIONS keys.
+
+    Returns:
+        The probabilities of the actions in the batch, given the
+        observations and the policy.
+    """
+    num_state_inputs = 0
+    for k in batch.keys():
+        if k.startswith("state_in_"):
+            num_state_inputs += 1
+    state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
+    log_likelihoods: TensorType = policy.compute_log_likelihoods(
+        actions=batch[SampleBatch.ACTIONS],
+        obs_batch=batch[SampleBatch.OBS],
+        state_batches=[batch[k] for k in state_keys],
+        prev_action_batch=batch.get(SampleBatch.PREV_ACTIONS),
+        prev_reward_batch=batch.get(SampleBatch.PREV_REWARDS),
+        actions_normalized=policy.config["actions_in_input_normalized"],
+    )
+    return log_likelihoods

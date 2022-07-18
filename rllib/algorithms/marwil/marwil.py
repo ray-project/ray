@@ -106,7 +106,7 @@ class MARWILConfig(AlgorithmConfig):
         # the same line.
         self.input_ = "sampler"
         # Use importance sampling estimators for reward.
-        self.off_policy_estimation_methods = {
+        self.evaluation_config["off_policy_estimation_methods"] = {
             "is": {"type": ImportanceSampling},
             "wis": {"type": WeightedImportanceSampling},
         }
