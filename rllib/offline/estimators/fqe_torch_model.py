@@ -110,8 +110,7 @@ class FQETorchModel:
             A list of losses for each training iteration
         """
         losses = []
-        if self.minibatch_size is None:
-            minibatch_size = batch.count
+        minibatch_size = self.minibatch_size or batch.count
         for _ in range(self.n_iters):
             minibatch_losses = []
             batch.shuffle()
