@@ -726,8 +726,9 @@ class ActorClass:
         ):
             if placement_group not in ("default", None):
                 warnings.warn(
-                    "placement_group parameter is deprecated. Use scheduling_strategy "
-                    "parameter instead, see the usage at "
+                    "placement_group parameter is deprecated. Use "
+                    "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+                    "instead, see the usage at "
                     "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",  # noqa: E501
                     DeprecationWarning,
                     stacklevel=3,
@@ -735,7 +736,8 @@ class ActorClass:
             if placement_group_bundle_index != -1:
                 warnings.warn(
                     "placement_group_bundle_index parameter is deprecated. Use "
-                    "scheduling_strategy parameter instead, see the usage at "
+                    "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+                    "instead, see the usage at "
                     "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",  # noqa: E501
                     DeprecationWarning,
                     stacklevel=3,
@@ -743,7 +745,8 @@ class ActorClass:
             if placement_group_capture_child_tasks:
                 warnings.warn(
                     "placement_group_capture_child_tasks parameter is deprecated. Use "
-                    "scheduling_strategy parameter instead, see the usage at "
+                    "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+                    "instead, see the usage at "
                     "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",  # noqa: E501
                     DeprecationWarning,
                     stacklevel=3,
