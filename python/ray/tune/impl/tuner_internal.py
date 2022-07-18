@@ -117,10 +117,11 @@ class TunerInternal:
     def _process_scaling_config(self) -> None:
         """Converts ``self._param_space["scaling_config"]`` to a dict.
 
-        The dict is converted back to a dataclass in
-        ``ray.tune.search.variant_generator.generate_variants``, after the
+        The dict is converted back to a dataclass by the Trainer, after the
         Tune search specification is resolved.
         """
+        # TODO: introduce `ray.tune.sample.TuneableDataclass` and allow Tune to
+        # natively resolve specs with dataclasses.
         scaling_config = self._param_space.get("scaling_config")
         if not isinstance(scaling_config, ScalingConfig):
             return
