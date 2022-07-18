@@ -92,18 +92,27 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// Get the information of the agent process when the agent finished register.
   ///
   /// \return The information of the agent process.
-  const rpc::AgentInfo SyncGetAgentInfo() {
-    return agent_info_promise_.get_future().get();
+  const ray::Status SyncGetAgentInfo(rpc::AgentInfo *agent_info) const {
+    if (IsAgentRegistered()) {
+      *agent_info = agent_info_;
+      return ray::Status::OK();
+    } else {
+      std::string err_msg = "The agent has not finished register yet.";
+      return ray::Status::Invalid(err_msg);
+    }
   }
 
  private:
   void StartAgent();
 
+  const bool IsAgentRegistered() const {
+    return (pid_t)agent_info_.pid() == agent_process_->GetId();
+  }
+
  private:
   Options options_;
-  pid_t agent_pid_ = 0;
-  int agent_grpc_port_ = 0;
-  int agent_http_port_ = 0;
+  std::unique_ptr<Process> agent_process_;
+  rpc::AgentInfo agent_info_;
   /// promise to get agent info, after the agent finished register.
   std::promise<rpc::AgentInfo> agent_info_promise_;
   /// Whether or not we intend to start the agent.  This is false if we

@@ -96,12 +96,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
 Raylet::~Raylet() {}
 
 void Raylet::Start() {
-  register_thread_ = std::thread([this]() mutable {
-    SetThreadName("raylet.register_itself");
-    self_node_info_.mutable_agent_info()->CopyFrom(node_manager_.SyncGetAgentInfo());
-    RAY_CHECK_OK(RegisterGcs());
-  });
-
+  TryToGetAgentInfoAndRegisterGcs();
   // Start listening for clients.
   DoAccept();
 }
@@ -110,6 +105,20 @@ void Raylet::Stop() {
   RAY_CHECK_OK(gcs_client_->Nodes().DrainSelf());
   node_manager_.Stop();
   acceptor_.close();
+}
+
+void Raylet::TryToGetAgentInfoAndRegisterGcs() {
+  rpc::AgentInfo agent_info;
+  auto status = node_manager_.SyncGetAgentInfo(&agent_info);
+  if (status.ok()) {
+      self_node_info_.mutable_agent_info()->CopyFrom(agent_info);
+      RAY_CHECK_OK(RegisterGcs());
+  } else {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    main_service_.post([this](){
+      TryToGetAgentInfoAndRegisterGcs();
+    }, "Raylet.TryToGetAgentInfoAndRegisterGcs");
+  }
 }
 
 ray::Status Raylet::RegisterGcs() {
@@ -123,9 +132,6 @@ ray::Status Raylet::RegisterGcs() {
                   << ":" << self_node_info_.object_manager_port()
                   << " hostname: " << self_node_info_.node_manager_address();
     RAY_CHECK_OK(node_manager_.RegisterGcs());
-    if (register_thread_.joinable()) {
-      register_thread_.join();
-    }
   };
 
   RAY_RETURN_NOT_OK(

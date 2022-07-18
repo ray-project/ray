@@ -240,8 +240,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the information of the agent process when the agent finished register.
   ///
   /// \return The information of the agent process.
-  const rpc::AgentInfo SyncGetAgentInfo() const {
-    return agent_manager_->SyncGetAgentInfo();
+  const ray::Status SyncGetAgentInfo(rpc::AgentInfo *agent_info) const {
+    return agent_manager_->SyncGetAgentInfo(agent_info);
   }
 
  private:
