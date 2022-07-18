@@ -63,20 +63,6 @@ def run_command_on_all_nodes(cmd: List[str]):
     return ray.get(futures)
 
 
-def run_commands_with_resources(
-    cmds: List[List[str]], resources: Dict[str, Union[float, int]]
-):
-    num_cpus = resources.pop("CPU", 1)
-    num_gpus = resources.pop("GPU", 0)
-    futures = []
-    for cmd in cmds:
-        future = _run_command.options(
-            num_cpus=num_cpus, num_gpus=num_gpus, resources=resources
-        ).remote(cmd=cmd)
-        futures.append(future)
-    return ray.get(futures)
-
-
 @ray.remote
 class CommandRunner:
     def run_command(self, cmd: str):
