@@ -45,6 +45,15 @@ AIR Feature Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
+    .. link-button:: predictors
+        :type: ref
+        :text: How to perform inference with trained models?
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
     .. link-button:: /ray-air/examples/analyze_tuning_results
         :type: ref
         :text: How to analyze your hyperparameter tuning results?
@@ -72,7 +81,7 @@ AIR Feature Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: use-pretrained-model-ref
+    .. link-button:: benchmarks
         :type: ref
-        :text: How to use a pretrained model for inference?
+        :text: Ray AIR benchmarks
         :classes: btn-link btn-block stretched-link

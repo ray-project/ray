@@ -127,7 +127,8 @@ def placement_group(
     bundles: List[Dict[str, float]],
     strategy: str = "PACK",
     name: str = "",
-    lifetime=None,
+    lifetime: Optional[str] = None,
+    _max_cpu_fraction_per_node: Optional[float] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -147,6 +148,13 @@ def placement_group(
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.
+        _max_cpu_fraction_per_node: (Experimental) The max fraction of CPUs this
+            placement group can take up on *per node*, in [0.0, 1.0]. This prevents
+            placement groups from fully occupying node resources. Note that when
+            `max_cpu_fraction_per_node < 1.0`, at least 1 CPU will be excluded from
+            placement group scheduling. Warning: this feature is experimental and is
+            not recommended for use with autoscaling clusters (scale-up will not
+            trigger properly).
 
     Raises:
         ValueError if bundle type is not a list.
@@ -161,6 +169,11 @@ def placement_group(
 
     if not isinstance(bundles, list):
         raise ValueError("The type of bundles must be list, got {}".format(bundles))
+
+    if _max_cpu_fraction_per_node is None:
+        _max_cpu_fraction_per_node = 1.0
+    if _max_cpu_fraction_per_node < 0 or _max_cpu_fraction_per_node > 1:
+        raise ValueError("max_cpu_fraction_per_node must be a float between 0 and 1.")
 
     # Validate bundles
     for bundle in bundles:
@@ -187,7 +200,11 @@ def placement_group(
         )
 
     placement_group_id = worker.core_worker.create_placement_group(
-        name, bundles, strategy, detached
+        name,
+        bundles,
+        strategy,
+        detached,
+        _max_cpu_fraction_per_node,
     )
 
     return PlacementGroup(placement_group_id)
