@@ -7,9 +7,10 @@ import torch
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
-from ray.train.data_parallel_trainer import _load_checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.util.annotations import PublicAPI
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.air._internal.torch_utils import load_torch_model
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

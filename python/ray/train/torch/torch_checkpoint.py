@@ -1,6 +1,12 @@
+from typing import TYPE_CHECKING, Optional
+
 import torch
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
 
 
 class TorchCheckpoint(Checkpoint):
@@ -13,7 +19,7 @@ class TorchCheckpoint(Checkpoint):
     @staticmethod
     def from_torch_model(
         model: torch.nn.Module, *, preprocessor: Optional["Preprocessor"] = None
-    ) -> TorchCheckpoint:
+    ) -> "TorchCheckpoint":
         """Create a (Torch)Checkpoint from a torch module.
 
         Args:

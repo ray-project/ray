@@ -20,7 +20,6 @@ from ray.train.torch.train_loop_utils import (
     prepare_model,
     prepare_optimizer,
 )
-from ray.train.torch.utils import to_air_checkpoint, load_checkpoint
 
 __all__ = [
     "TorchTrainer",
@@ -35,5 +34,5 @@ __all__ = [
     "enable_reproducibility",
     "TorchWorkerProfiler",
     "TorchPredictor",
-    "to_air_checkpoint",
+    "TorchCheckpoint",
 ]

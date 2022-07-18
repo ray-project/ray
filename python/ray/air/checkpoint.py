@@ -202,7 +202,7 @@ class Checkpoint:
         self._uri: Optional[str] = uri
         self._obj_ref: Optional[ray.ObjectRef] = obj_ref
 
-    def _clone_storage_from(self, other: Checkpoint) -> None;
+    def _clone_storage_from(self, other: "Checkpoint") -> None:
         self._local_path = other._local_path
         self._data_dict = other._data_dict
         self._uri = other._uri
