@@ -74,6 +74,10 @@ class TuneBOHB(Searcher):
         seed: Optional random seed to initialize the random number
             generator. Setting this should lead to identical initial
             configurations at each run.
+        max_concurrent: Number of maximum concurrent trials.
+            If this Searcher is used in a ``ConcurrencyLimiter``, the
+            ``max_concurrent`` value passed to it will override the
+            value passed here. Set to <= 0 for no limit on concurrency.
 
     Tune automatically converts search spaces to TuneBOHB's format:
 
@@ -128,6 +132,7 @@ class TuneBOHB(Searcher):
         mode: Optional[str] = None,
         points_to_evaluate: Optional[List[Dict]] = None,
         seed: Optional[int] = None,
+        max_concurrent: int = 0,
     ):
         assert (
             BOHB is not None
@@ -152,6 +157,10 @@ class TuneBOHB(Searcher):
         self._space = space
         self._seed = seed
 
+        self.running = set()
+        self.paused = set()
+
+        self._max_concurrent = max_concurrent
         self._points_to_evaluate = points_to_evaluate
 
         super(TuneBOHB, self).__init__(
@@ -161,6 +170,10 @@ class TuneBOHB(Searcher):
 
         if self._space:
             self._setup_bohb()
+
+    def set_max_concurrency(self, max_concurrent: int) -> bool:
+        self._max_concurrent = max_concurrent
+        return True
 
     def _setup_bohb(self):
         from hpbandster.optimizers.config_generators.bohb import BOHB
@@ -176,6 +189,9 @@ class TuneBOHB(Searcher):
 
         if self._seed is not None:
             self._space.seed(self._seed)
+
+        self.running = set()
+        self.paused = set()
 
         bohb_config = self._bohb_config or {}
         self.bohber = BOHB(self._space, **bohb_config)
@@ -211,15 +227,24 @@ class TuneBOHB(Searcher):
                 )
             )
 
+        max_concurrent = (
+            self._max_concurrent if self._max_concurrent > 0 else float("inf")
+        )
+        if len(self.running) >= max_concurrent:
+            return None
+
         if self._points_to_evaluate:
             config = self._points_to_evaluate.pop(0)
         else:
             # This parameter is not used in hpbandster implementation.
             config, _ = self.bohber.get_config(None)
         self.trial_to_params[trial_id] = copy.deepcopy(config)
+        self.running.add(trial_id)
         return unflatten_list_dict(config)
 
     def on_trial_result(self, trial_id: str, result: Dict):
+        if trial_id not in self.paused:
+            self.running.add(trial_id)
         if "hyperband_info" not in result:
             logger.warning(
                 "BOHB Info not detected in result. Are you using "
@@ -233,6 +258,8 @@ class TuneBOHB(Searcher):
         self, trial_id: str, result: Optional[Dict] = None, error: bool = False
     ):
         del self.trial_to_params[trial_id]
+        self.paused.discard(trial_id)
+        self.running.discard(trial_id)
 
     def to_wrapper(self, trial_id: str, result: Dict) -> _BOHBJobWrapper:
         return _BOHBJobWrapper(
@@ -240,6 +267,16 @@ class TuneBOHB(Searcher):
             result["hyperband_info"]["budget"],
             self.trial_to_params[trial_id],
         )
+
+    # BOHB Specific.
+    # TODO(team-ml): Refactor alongside HyperBandForBOHB
+    def on_pause(self, trial_id: str):
+        self.paused.add(trial_id)
+        self.running.remove(trial_id)
+
+    def on_unpause(self, trial_id: str):
+        self.paused.remove(trial_id)
+        self.running.add(trial_id)
 
     @staticmethod
     def convert_search_space(spec: Dict) -> "ConfigSpace.ConfigurationSpace":

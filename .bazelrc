@@ -178,6 +178,7 @@ test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Micros
 # Debug build:
 build:debug -c dbg
 build:debug --copt="-g"
+build:debug --copt -fno-omit-frame-pointer
 build:debug --strip="never"
 
 # Undefined Behavior Sanitizer

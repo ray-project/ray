@@ -1377,6 +1377,14 @@ def find_free_port():
     return port
 
 
+def wandb_setup_api_key_hook():
+    """
+    Example external hook to set up W&B API key in
+    WandbIntegrationTest.testWandbLoggerConfig
+    """
+    return "abcd"
+
+
 # Global counter to test different return values
 # for external_ray_cluster_activity_hook1.
 ray_cluster_activity_hook_counter = 0

@@ -962,137 +962,92 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 }
 
 TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars) {
-  rpc::RuntimeEnv child;
-  auto parent = std::make_shared<rpc::RuntimeEnv>();
+  json child;
+  auto parent = std::make_shared<json>();
   // child {"a": "b"}, parent {}, expected {"a": "b"}
-  (*child.mutable_env_vars())["a"] = "b";
+  child = R"({"env_vars": {"a": "b"}})"_json;
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.env_vars().size(), 1);
-  ASSERT_EQ(result.env_vars().count("a"), 1);
-  ASSERT_EQ(result.env_vars().at("a"), "b");
-  child.clear_env_vars();
-  parent->clear_env_vars();
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b"}})"_json);
+  child.clear();
+  parent->clear();
   // child {}, parent {"a": "b"}, expected {"a": "b"}
-  (*(parent->mutable_env_vars()))["a"] = "b";
+  (*parent) = R"({"env_vars": {"a": "b"}})"_json;
   result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.env_vars().size(), 1);
-  ASSERT_EQ(result.env_vars().count("a"), 1);
-  ASSERT_EQ(result.env_vars().at("a"), "b");
-  child.clear_env_vars();
-  parent->clear_env_vars();
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b"}})"_json);
+  child.clear();
+  parent->clear();
   // child {"a": "b"}, parent {"a": "d"}, expected {"a": "b"}
-  (*child.mutable_env_vars())["a"] = "b";
-  (*(parent->mutable_env_vars()))["a"] = "d";
+  child = R"({"env_vars": {"a": "b"}})"_json;
+  (*parent) = R"({"env_vars": {"a": "d"}})"_json;
   result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.env_vars().size(), 1);
-  ASSERT_EQ(result.env_vars().count("a"), 1);
-  ASSERT_EQ(result.env_vars().at("a"), "b");
-  child.clear_env_vars();
-  parent->clear_env_vars();
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b"}})"_json);
+  child.clear();
+  parent->clear();
   // child {"a": "b"}, parent {"c": "d"}, expected {"a": "b", "c": "d"}
-  (*child.mutable_env_vars())["a"] = "b";
-  (*(parent->mutable_env_vars()))["c"] = "d";
+  child = R"({"env_vars": {"a": "b"}})"_json;
+  (*parent) = R"({"env_vars": {"c": "d"}})"_json;
   result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.env_vars().size(), 2);
-  ASSERT_EQ(result.env_vars().count("a"), 1);
-  ASSERT_EQ(result.env_vars().at("a"), "b");
-  ASSERT_EQ(result.env_vars().count("c"), 1);
-  ASSERT_EQ(result.env_vars().at("c"), "d");
-  child.clear_env_vars();
-  parent->clear_env_vars();
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b", "c": "d"}})"_json);
+  child.clear();
+  parent->clear();
   // child {"a": "b"}, parent {"a": "e", "c": "d"}, expected {"a": "b", "c": "d"}
-  (*child.mutable_env_vars())["a"] = "b";
-  (*(parent->mutable_env_vars()))["a"] = "e";
-  (*(parent->mutable_env_vars()))["c"] = "d";
+  child = R"({"env_vars": {"a": "b"}})"_json;
+  (*parent) = R"({"env_vars": {"a": "e", "c": "d"}})"_json;
   result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.env_vars().size(), 2);
-  ASSERT_EQ(result.env_vars().count("a"), 1);
-  ASSERT_EQ(result.env_vars().at("a"), "b");
-  ASSERT_EQ(result.env_vars().count("c"), 1);
-  ASSERT_EQ(result.env_vars().at("c"), "d");
-  child.clear_env_vars();
-  parent->clear_env_vars();
+  ASSERT_EQ(result, R"({"env_vars": {"a": "b", "c": "d"}})"_json);
+  child.clear();
+  parent->clear();
 }
 
 TEST(TestOverrideRuntimeEnv, TestPyModulesInherit) {
-  rpc::RuntimeEnv child;
-  auto parent = std::make_shared<rpc::RuntimeEnv>();
-  parent->mutable_python_runtime_env()->mutable_py_modules()->Add("s3://456");
-  parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://456");
+  json child;
+  auto parent = std::make_shared<json>();
+  (*parent) = R"({"py_modules": ["s3://456"]})"_json;
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.python_runtime_env().py_modules().size(), 1);
-  ASSERT_EQ(result.python_runtime_env().py_modules()[0], "s3://456");
-  ASSERT_EQ(result.uris().py_modules_uris().size(), 1);
-  ASSERT_EQ(result.uris().py_modules_uris()[0], "s3://456");
+  ASSERT_EQ(result, *parent);
 }
 
 TEST(TestOverrideRuntimeEnv, TestOverridePyModules) {
-  rpc::RuntimeEnv child;
-  auto parent = std::make_shared<rpc::RuntimeEnv>();
-  child.mutable_python_runtime_env()->mutable_py_modules()->Add("s3://123");
-  child.mutable_uris()->mutable_py_modules_uris()->Add("s3://123");
-  parent->mutable_python_runtime_env()->mutable_py_modules()->Add("s3://456");
-  parent->mutable_python_runtime_env()->mutable_py_modules()->Add("s3://789");
-  parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://456");
-  parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://789");
+  json child;
+  auto parent = std::make_shared<json>();
+  child = R"({"py_modules": ["s3://123"]})"_json;
+  (*parent) = R"({"py_modules": ["s3://456", "s3://789"]})"_json;
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.python_runtime_env().py_modules().size(), 1);
-  ASSERT_EQ(result.python_runtime_env().py_modules()[0], "s3://123");
-  ASSERT_EQ(result.uris().py_modules_uris().size(), 1);
-  ASSERT_EQ(result.uris().py_modules_uris()[0], "s3://123");
+  ASSERT_EQ(result, child);
 }
 
 TEST(TestOverrideRuntimeEnv, TestWorkingDirInherit) {
-  rpc::RuntimeEnv child;
-  auto parent = std::make_shared<rpc::RuntimeEnv>();
-  parent->set_working_dir("uri://abc");
+  json child;
+  auto parent = std::make_shared<json>();
+  (*parent) = R"({"working_dir": "uri://abc"})"_json;
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.working_dir(), "uri://abc");
+  ASSERT_EQ(result, *parent);
 }
 
 TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride) {
-  rpc::RuntimeEnv child;
-  auto parent = std::make_shared<rpc::RuntimeEnv>();
-  child.set_working_dir("uri://abc");
-  parent->set_working_dir("uri://def");
+  json child;
+  auto parent = std::make_shared<json>();
+  child = R"({"working_dir": "uri://abc"})"_json;
+  (*parent) = R"({"working_dir": "uri://def"})"_json;
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.working_dir(), "uri://abc");
+  ASSERT_EQ(result, child);
 }
 
 TEST(TestOverrideRuntimeEnv, TestCondaInherit) {
-  rpc::RuntimeEnv child;
-  auto parent = std::make_shared<rpc::RuntimeEnv>();
-  child.mutable_uris()->set_working_dir_uri("gcs://abc");
-  parent->mutable_uris()->set_working_dir_uri("gcs://def");
-  parent->mutable_uris()->set_conda_uri("conda://456");
-  parent->mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
-      "my-env-name");
+  json child;
+  auto parent = std::make_shared<json>();
+  (*parent) = R"({"conda": {"dependencies": ["pytorch", "torchvision", "pip"]}})"_json;
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.uris().working_dir_uri(), "gcs://abc");
-  ASSERT_EQ(result.uris().conda_uri(), "conda://456");
-  ASSERT_TRUE(result.python_runtime_env().has_conda_runtime_env());
-  ASSERT_TRUE(result.python_runtime_env().conda_runtime_env().has_conda_env_name());
-  ASSERT_EQ(result.python_runtime_env().conda_runtime_env().conda_env_name(),
-            "my-env-name");
+  ASSERT_EQ(result, *parent);
 }
 
 TEST(TestOverrideRuntimeEnv, TestCondaOverride) {
-  rpc::RuntimeEnv child;
-  auto parent = std::make_shared<rpc::RuntimeEnv>();
-  child.mutable_uris()->set_conda_uri("conda://123");
-  child.mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
-      "my-env-name-123");
-  parent->mutable_uris()->set_conda_uri("conda://456");
-  parent->mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
-      "my-env-name-456");
-  parent->mutable_uris()->set_working_dir_uri("gcs://def");
+  json child;
+  auto parent = std::make_shared<json>();
+  child = R"({"conda": {"dependencies": ["pytorch", "torchvision", "pip"]}})"_json;
+  (*parent) = R"({"conda": {"dependencies": ["requests"]}})"_json;
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.uris().conda_uri(), "conda://123");
-  ASSERT_TRUE(result.python_runtime_env().has_conda_runtime_env());
-  ASSERT_TRUE(result.python_runtime_env().conda_runtime_env().has_conda_env_name());
-  ASSERT_EQ(result.python_runtime_env().conda_runtime_env().conda_env_name(),
-            "my-env-name-123");
-  ASSERT_EQ(result.uris().working_dir_uri(), "gcs://def");
+  ASSERT_EQ(result, child);
 }
 
 }  // namespace core

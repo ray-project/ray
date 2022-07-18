@@ -16,7 +16,7 @@ def test_slow_allocation_warning(serve_instance, capsys):
             pass
 
     num_replicas = 2
-    D.options(num_replicas=num_replicas).deploy(_blocking=False)
+    serve.run(D.options(num_replicas=num_replicas).bind(), _blocking=False)
 
     expected_warning = (
         f"Deployment '{D.name}' has "
@@ -49,7 +49,7 @@ def test_slow_initialization_warning(serve_instance, capsys):
             time.sleep(99999)
 
     num_replicas = 4
-    D.options(num_replicas=num_replicas).deploy(_blocking=False)
+    serve.run(D.options(num_replicas=num_replicas).bind(), _blocking=False)
 
     expected_warning = (
         f"Deployment '{D.name}' has "
@@ -78,7 +78,7 @@ def test_deployment_init_error_logging(serve_instance, capsys):
             0 / 0
 
     with pytest.raises(RuntimeError):
-        D.deploy()
+        serve.run(D.bind())
 
     captured = capsys.readouterr()
 

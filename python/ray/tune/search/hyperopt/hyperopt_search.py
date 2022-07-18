@@ -30,8 +30,10 @@ try:
     hyperopt_logger = logging.getLogger("hyperopt")
     hyperopt_logger.setLevel(logging.WARNING)
     import hyperopt as hpo
+    from hyperopt.pyll import Apply
 except ImportError:
     hpo = None
+    Apply = None
 
 from ray.tune.error import TuneError
 
@@ -209,7 +211,8 @@ class HyperOptSearch(Searcher):
                     _lookup(config_dict[key], space_dict[key], k)
             else:
                 if (
-                    isinstance(space_dict[key], hpo.base.pyll.Apply)
+                    key in space_dict
+                    and isinstance(space_dict[key], hpo.base.pyll.Apply)
                     and space_dict[key].name == "switch"
                 ):
                     if len(space_dict[key].pos_args) > 0:
@@ -277,9 +280,11 @@ class HyperOptSearch(Searcher):
             )
 
         if self._points_to_evaluate > 0:
+            using_point_to_evaluate = True
             new_trial = self._hpopt_trials.trials[self._points_to_evaluate - 1]
             self._points_to_evaluate -= 1
         else:
+            using_point_to_evaluate = False
             new_ids = self._hpopt_trials.new_trial_ids(1)
             self._hpopt_trials.refresh()
 
@@ -307,11 +312,29 @@ class HyperOptSearch(Searcher):
             self.domain.expr, ctrl, hpo.base.Ctrl, memo
         )
 
-        suggested_config = hpo.pyll.rec_eval(
-            self.domain.expr,
-            memo=memo,
-            print_node_on_error=self.domain.rec_eval_print_node_on_error,
-        )
+        try:
+            suggested_config = hpo.pyll.rec_eval(
+                self.domain.expr,
+                memo=memo,
+                print_node_on_error=self.domain.rec_eval_print_node_on_error,
+            )
+        except (AssertionError, TypeError) as e:
+            if using_point_to_evaluate and (
+                isinstance(e, AssertionError) or "GarbageCollected" in str(e)
+            ):
+                raise ValueError(
+                    "HyperOpt encountered a GarbageCollected switch argument. "
+                    "Usually this is caused by a config in "
+                    "`points_to_evaluate` "
+                    "missing a key present in `space`. Ensure that "
+                    "`points_to_evaluate` contains "
+                    "all non-constant keys from `space`.\n"
+                    "Config from `points_to_evaluate`: "
+                    f"{config}\n"
+                    "HyperOpt search space: "
+                    f"{self._space}"
+                ) from e
+            raise e
         return copy.deepcopy(suggested_config)
 
     def on_trial_result(self, trial_id: str, result: Dict) -> None:
