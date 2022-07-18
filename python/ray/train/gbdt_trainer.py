@@ -223,9 +223,10 @@ class GBDTTrainer(BaseTrainer):
             **config,
         )
 
-        with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
-            self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-            tune.report(**evals_result)
+        if self.run_config.checkpoint_config.checkpoint_at_end:
+            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
+                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
+                tune.report(**evals_result)
 
     def as_trainable(self) -> Type[Trainable]:
         trainable_cls = super().as_trainable()

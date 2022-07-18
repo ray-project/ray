@@ -166,6 +166,8 @@ class TunerInternal:
                 )
             checkpoint_freq = 0
 
+        checkpoint_at_end = self._run_config.checkpoint_config.checkpoint_at_end
+
         return dict(
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
@@ -178,7 +180,7 @@ class TunerInternal:
                 self._run_config.checkpoint_config._tune_legacy_checkpoint_score_attr
             ),
             checkpoint_freq=checkpoint_freq,
-            checkpoint_at_end=True,
+            checkpoint_at_end=checkpoint_at_end,
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),
