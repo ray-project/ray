@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
 
 from ray.air.constants import WILDCARD_KEY
-from ray.tune import ProgressReporter
+from ray.tune.progress_reporter import ProgressReporter
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI

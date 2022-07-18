@@ -179,7 +179,9 @@ class TunerInternal:
                 if self._run_config.failure_config
                 else False
             ),
+            progress_reporter=self._run_config.progress_reporter,
             verbose=self._run_config.verbose,
+            reuse_actors=self._run_config.reuse_actors,
         )
 
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
@@ -193,8 +195,6 @@ class TunerInternal:
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
                 name=self._run_config.name,
-                progress_reporter=self._run_config.progress_reporter,
-                reuse_actors=self._run_config.reuse_actors,
             ),
             **self._tuner_kwargs,
         }
@@ -210,8 +210,6 @@ class TunerInternal:
             **dict(
                 run_or_experiment=trainable,
                 resume=True,
-                progress_reporter=self._run_config.progress_reporter,
-                reuse_actors=self._run_config.reuse_actors,
             ),
             **self._tuner_kwargs,
         }
