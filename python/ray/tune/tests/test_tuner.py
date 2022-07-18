@@ -1,4 +1,7 @@
 import os
+from unittest.mock import patch
+
+import pytest
 import shutil
 import unittest
 from typing import Optional
@@ -16,7 +19,7 @@ from ray.data.block import BlockMetadata
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
-from ray.tune import Callback, TuneError
+from ray.tune import Callback, TuneError, CLIReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -251,9 +254,48 @@ class TunerTest(unittest.TestCase):
         assert tuner._local_tuner._run_config.stop == {"metric": 4}
 
 
+@pytest.mark.parametrize(
+    "params_expected",
+    [
+        (
+            {"run_config": RunConfig(progress_reporter=CLIReporter())},
+            lambda kw: isinstance(kw["progress_reporter"], CLIReporter),
+        ),
+        (
+            {"run_config": RunConfig(reuse_actors=True)},
+            lambda kw: kw["reuse_actors"] is True,
+        ),
+        (
+            {"run_config": RunConfig(log_to_file="some_file")},
+            lambda kw: kw["log_to_file"] == "some_file",
+        ),
+        (
+            {"tune_config": TuneConfig(max_concurrent_trials=3)},
+            lambda kw: kw["max_concurrent_trials"] == 3,
+        ),
+        (
+            {"tune_config": TuneConfig(time_budget_s=60)},
+            lambda kw: kw["time_budget_s"] == 60,
+        ),
+    ],
+)
+def test_tuner_api_kwargs(params_expected):
+    tuner_params, assertion = params_expected
+
+    tuner = Tuner(lambda config: 1, **tuner_params)
+
+    caught_kwargs = {}
+
+    def catch_kwargs(**kwargs):
+        caught_kwargs.update(kwargs)
+
+    with patch("ray.tune.impl.tuner_internal.run", catch_kwargs):
+        tuner.fit()
+
+    assert assertion(caught_kwargs)
+
+
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
