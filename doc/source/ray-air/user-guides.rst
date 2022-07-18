@@ -22,6 +22,15 @@ AIR Feature Guides
         :type: ref
         :text: How to use AIR Preprocessors?
         :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: /ray-air/checkpoints
+        :type: ref
+        :text: What are AIR Checkpoints?
+        :classes: btn-link btn-block stretched-link
+
 
     ---
     :img-top: /ray-overview/images/ray_svg_logo.svg
@@ -30,6 +39,15 @@ AIR Feature Guides
     .. link-button:: air-ingest
         :type: ref
         :text: How to configure Data Ingest?
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: predictors
+        :type: ref
+        :text: How to perform inference with trained models?
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -47,7 +65,7 @@ AIR Feature Guides
     +++
     .. link-button:: /ray-air/examples/serving_guide
         :type: ref
-        :text: How to configure AIR ModelWrapper for HTTP input or batching?
+        :text: How to configure AIR PredictorDeployment for HTTP input or batching?
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -63,7 +81,7 @@ AIR Feature Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: use-pretrained-model-ref
+    .. link-button:: benchmarks
         :type: ref
-        :text: How to use a pretrained model for inference?
+        :text: Ray AIR benchmarks
         :classes: btn-link btn-block stretched-link

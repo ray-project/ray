@@ -64,9 +64,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
-            print(_)
-            print(view_req_policy)
-            print(view_req_model)
             assert len(view_req_model) == 1, view_req_model
             assert len(view_req_policy) == 11, view_req_policy
             for key in [
@@ -321,8 +318,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             normalize_actions=False,
             num_envs=1,
         )
-        batch = rollout_worker_w_api.sample()
-        print(batch)
+        batch = rollout_worker_w_api.sample()  # noqa: F841
 
     def test_counting_by_agent_steps(self):
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)

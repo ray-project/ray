@@ -218,7 +218,6 @@ class ServeControllerClient:
         ray_actor_options: Optional[Dict] = None,
         config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
         version: Optional[str] = None,
-        prev_version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         url: Optional[str] = None,
         _blocking: Optional[bool] = True,
@@ -232,7 +231,6 @@ class ServeControllerClient:
             ray_actor_options=ray_actor_options,
             config=config,
             version=version,
-            prev_version=prev_version,
             route_prefix=route_prefix,
         )
 
@@ -262,7 +260,6 @@ class ServeControllerClient:
                     ray_actor_options=deployment["ray_actor_options"],
                     config=deployment["config"],
                     version=deployment["version"],
-                    prev_version=deployment["prev_version"],
                     route_prefix=deployment["route_prefix"],
                 )
             )
@@ -444,7 +441,6 @@ class ServeControllerClient:
         ray_actor_options: Optional[Dict] = None,
         config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
         version: Optional[str] = None,
-        prev_version: Optional[str] = None,
         route_prefix: Optional[str] = None,
     ) -> Dict:
         """
@@ -482,7 +478,6 @@ class ServeControllerClient:
             raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
         deployment_config.version = version
-        deployment_config.prev_version = prev_version
 
         if (
             deployment_config.autoscaling_config is not None

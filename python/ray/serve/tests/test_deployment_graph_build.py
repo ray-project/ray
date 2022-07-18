@@ -77,43 +77,11 @@ def test_simple_single_class(serve_instance):
     )
 
 
-def test_single_class_with_valid_ray_options(serve_instance):
-    with InputNode() as dag_input:
-        model = Model.options(num_cpus=1, memory=1000).bind(2, ratio=0.3)
-        ray_dag = model.forward.bind(dag_input)
-
-    with _DAGNodeNameGenerator() as node_name_generator:
-        serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
-        )
-    deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    assert len(deployments) == 1
-    deployments[0].deploy()
-    _validate_consistent_python_output(
-        deployments[0], ray_dag, deployments[0].name, input=1, output=0.6
-    )
-
-    deployment = serve.get_deployment(deployments[0].name)
-    assert deployment.ray_actor_options.get("num_cpus") == 1
-    assert deployment.ray_actor_options.get("memory") == 1000
-    assert deployment.ray_actor_options.get("runtime_env") == {}
-
-
 def test_single_class_with_invalid_deployment_options(serve_instance):
-    with InputNode() as dag_input:
-        model = Model.options(name="my_deployment").bind(2, ratio=0.3)
-        ray_dag = model.forward.bind(dag_input)
-
-    with _DAGNodeNameGenerator() as node_name_generator:
-        serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
-        )
-    deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    assert len(deployments) == 1
-    with pytest.raises(
-        ValueError, match="Specifying 'name' in ray_actor_options is not allowed"
-    ):
-        deployments[0].deploy()
+    with pytest.raises(TypeError, match="name must be a string"):
+        with InputNode() as dag_input:
+            model = Model.options(name=123).bind(2, ratio=0.3)
+            _ = model.forward.bind(dag_input)
 
 
 def test_func_class_with_class_method_dag(serve_instance):
@@ -127,7 +95,7 @@ def test_func_class_with_class_method_dag(serve_instance):
     serve_executor_root_dag = serve_root_dag.apply_recursive(
         transform_serve_dag_to_serve_executor_dag
     )
-    assert len(deployments) == 2
+    assert len(deployments) == 3
     for deployment in deployments:
         deployment.deploy()
 

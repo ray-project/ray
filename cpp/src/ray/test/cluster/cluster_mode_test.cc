@@ -37,6 +37,24 @@ TEST(RayClusterModeTest, Initialized) {
   EXPECT_TRUE(!ray::IsInitialized());
 }
 
+TEST(RayClusterModeTest, DefaultActorLifetimeTest) {
+  ray::RayConfig config;
+  config.default_actor_lifetime = ray::ActorLifetime::DETACHED;
+  ray::Init(config, cmd_argc, cmd_argv);
+  ray::ActorHandle<Counter> parent_actor =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  std::string child_actor_name = "child_actor_name";
+  parent_actor.Task(&Counter::CreateChildActor).Remote(child_actor_name).Get();
+  auto child_actor_optional = ray::GetActor<Counter>(child_actor_name);
+  EXPECT_TRUE(child_actor_optional);
+  auto child_actor = *child_actor_optional;
+  EXPECT_EQ(1, *child_actor.Task(&Counter::Plus1).Remote().Get());
+  parent_actor.Kill();
+  sleep(4);
+  EXPECT_EQ(2, *child_actor.Task(&Counter::Plus1).Remote().Get());
+  ray::Shutdown();
+}
+
 struct Person {
   std::string name;
   int age;
@@ -293,6 +311,11 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
 
 TEST(RayClusterModeTest, ExceptionTest) {
   EXPECT_THROW(ray::Task(ThrowTask).Remote().Get(), ray::internal::RayTaskException);
+  try {
+    ray::Task(ThrowTask).Remote().Get();
+  } catch (ray::internal::RayTaskException &e) {
+    EXPECT_TRUE(std::string(e.what()).find("std::logic_error") != std::string::npos);
+  }
 
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto object1 = actor1.Task(&Counter::ExceptionFunc).Remote();
@@ -454,6 +477,41 @@ TEST(RayClusterModeTest, TaskWithPlacementGroup) {
                .Remote();
   EXPECT_EQ(*r.Get(), 1);
   ray::RemovePlacementGroup(placement_group.GetID());
+}
+
+TEST(RayClusterModeTest, NamespaceTest) {
+  // Create a named actor in namespace `isolated_ns`.
+  std::string actor_name_in_isolated_ns = "named_actor_in_isolated_ns";
+  std::string isolated_ns_name = "isolated_ns";
+  ray::ActorHandle<Counter> actor =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+          .SetName(actor_name_in_isolated_ns, isolated_ns_name)
+          .Remote();
+  auto initialized_obj = actor.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj.Get());
+  // It is invisible to job default namespace.
+  auto actor_optional = ray::GetActor<Counter>(actor_name_in_isolated_ns);
+  EXPECT_TRUE(!actor_optional);
+  // It is visible to the namespace it belongs.
+  actor_optional = ray::GetActor<Counter>(actor_name_in_isolated_ns, isolated_ns_name);
+  EXPECT_TRUE(actor_optional);
+  // It is invisible to any other namespaces.
+  actor_optional = ray::GetActor<Counter>(actor_name_in_isolated_ns, "other_ns");
+  EXPECT_TRUE(!actor_optional);
+
+  // Create a named actor in job default namespace.
+  std::string actor_name_in_default_ns = "actor_name_in_default_ns";
+  actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+              .SetName(actor_name_in_default_ns)
+              .Remote();
+  initialized_obj = actor.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj.Get());
+  // It is visible to job default namespace.
+  actor_optional = ray::GetActor<Counter>(actor_name_in_default_ns);
+  EXPECT_TRUE(actor_optional);
+  // It is invisible to any other namespaces.
+  actor_optional = ray::GetActor<Counter>(actor_name_in_default_ns, isolated_ns_name);
+  EXPECT_TRUE(!actor_optional);
 }
 
 int main(int argc, char **argv) {

@@ -117,6 +117,10 @@ bool GcsPlacementGroup::IsDetached() const {
   return placement_group_table_data_.is_detached();
 }
 
+double GcsPlacementGroup::GetMaxCpuFractionPerNode() const {
+  return placement_group_table_data_.max_cpu_fraction_per_node();
+}
+
 const rpc::PlacementGroupStats &GcsPlacementGroup::GetStats() const {
   return placement_group_table_data_.stats();
 }
@@ -553,11 +557,23 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
     const rpc::GetAllPlacementGroupRequest &request,
     rpc::GetAllPlacementGroupReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto limit = request.has_limit() ? request.limit() : -1;
+
   RAY_LOG(DEBUG) << "Getting all placement group info.";
   auto on_done =
-      [this, reply, send_reply_callback](
+      [this, reply, send_reply_callback, limit](
           const absl::flat_hash_map<PlacementGroupID, PlacementGroupTableData> &result) {
+        // Set the total number of pgs.
+        auto total_pgs = result.size();
+        reply->set_total(total_pgs);
+
+        auto count = 0;
         for (const auto &[placement_group_id, data] : result) {
+          if (limit != -1 && count >= limit) {
+            break;
+          }
+          count += 1;
+
           auto it = registered_placement_groups_.find(placement_group_id);
           // If the pg entry exists in memory just copy from it since
           // it has less stale data. It is useful because we don't
@@ -570,6 +586,7 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
             reply->add_placement_group_table_data()->CopyFrom(data);
           }
         }
+
         RAY_LOG(DEBUG) << "Finished getting all placement group info.";
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       };

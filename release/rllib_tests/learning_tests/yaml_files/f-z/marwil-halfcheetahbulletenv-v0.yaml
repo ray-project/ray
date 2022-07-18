@@ -25,4 +25,5 @@ marwil-halfcheetahbulletenv-v0:
         evaluation_interval: 3
         evaluation_config:
             input: sampler
+            off_policy_estimation_methods: null
         always_attach_evaluation_results: True
