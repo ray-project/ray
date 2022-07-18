@@ -195,12 +195,18 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     ) -> "pyarrow.NativeFile":
         """Opens a source path for reading and returns the associated Arrow NativeFile.
 
-        The default implementation opens the source path as a sequential input stream.
+        The default implementation opens the source path as a sequential input stream,
+        using ctx.streaming_read_buffer_size as the buffer size if none is given by the
+        caller.
 
         Implementations that do not support streaming reads (e.g. that require random
         access) should override this method.
         """
-        return filesystem.open_input_stream(path, **open_args)
+        buffer_size = open_args.pop("buffer_size", None)
+        if buffer_size is None:
+            ctx = DatasetContext.get_current()
+            buffer_size = ctx.streaming_read_buffer_size
+        return filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
 
     def create_reader(self, **kwargs):
         return _FileBasedDatasourceReader(self, **kwargs)
