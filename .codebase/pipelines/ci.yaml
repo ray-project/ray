@@ -1,0 +1,44 @@
+name: Main CI
+trigger:
+  change:
+  push:
+jobs:
+  format-check:
+    image: hub.byted.org/kuberay/debian_bullseye:66045e17f9bc58a19f34893fd43d3a09
+    steps:
+      - name: FORMAT_CHECK
+        commands:
+          - bash .codebase/patch/codebase_format_check.sh
+  build-wheels:
+    depends: [format-check]
+    image: hub.byted.org/kuberay/manylinux2014_x86_64:2021-11-07-28723f3
+    steps:
+      - name: BUILD_WHEEL
+        commands:
+          - bash .codebase/patch/codebase_build_wheel.sh
+      - name: UPLOAD_WHEEL
+        uses: actions/upload-artifact
+        inputs:
+          name: release
+          path: .whl
+  core-cpp-ut:
+    depends: [format-check]
+    image: hub.byted.org/kuberay/manylinux2014_x86_64:2021-11-07-28723f3
+    steps:
+      - name: CORE_CPP_UT
+        commands:
+          - bash .codebase/patch/codebase_core_cpp_ut.sh
+  python-ut-small:
+    depends: [format-check]
+    image: hub.byted.org/kuberay/debian_bullseye:66045e17f9bc58a19f34893fd43d3a09
+    steps:
+      - name: CORE_PYTHON_UT_SMALL
+        commands:
+          - bash .codebase/patch/codebase_python_ut_small.sh
+  # python-ut-medium1:
+  #   depends: [format-check]
+  #   image: hub.byted.org/kuberay/debian_bullseye:66045e17f9bc58a19f34893fd43d3a09
+  #   steps:
+  #     - name: CORE_PYTHON_UT_MEDIUM1
+  #       commands:
+  #         - bash .codebase/patch/codebase_python_ut_medium_1.sh

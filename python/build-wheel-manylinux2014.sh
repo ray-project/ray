@@ -39,14 +39,14 @@ echo "java_bin path $java_bin"
 java_home=${java_bin%jre/bin/java}
 export JAVA_HOME="$java_home"
 
-/ray/ci/env/install-bazel.sh
+ci/env/install-bazel.sh
 # Put bazel into the PATH if building Bazel from source
 # export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
 
 # If converting down to manylinux2010, the following configuration should
 # be set for bazel
 #echo "build --config=manylinux2010" >> /root/.bazelrc
-echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
+echo "build --incompatible_linkopts_to_linklibs" >> ~/.bazelrc
 
 if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
   bazel build //java:ray_java_pkg
@@ -56,7 +56,12 @@ fi
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-source "$HOME"/.nvm/nvm.sh
+if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+  source $XDG_CONFIG_HOME/nvm.sh
+else
+  source "$HOME"/.nvm/nvm.sh
+fi
+
 nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 
@@ -64,12 +69,25 @@ nvm use "$NODE_VERSION"
 # TODO(mfitton): switch this back when deleting old dashboard code.
 pushd python/ray/dashboard/client
   npm ci
-  npm run build
+  BUILD_PATH=build npm run build
 popd
 set -x
 
 mkdir -p .whl
+IFS=',' read -r -a array <<< "$1"
 for ((i=0; i<${#PYTHONS[@]}; ++i)); do
+  find_in_input=false
+  for element in "${array[@]}"; do
+    if [ ${PYTHONS[i]} == $element ]; then
+      find_in_input=true
+      break 1
+    fi
+  done
+
+  if [ $find_in_input == false ]; then
+    continue
+  fi
+
   PYTHON=${PYTHONS[i]}
   NUMPY_VERSION=${NUMPY_VERSIONS[i]}
 
@@ -84,19 +102,19 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     # support.
     /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.26
     # Set the commit SHA in __init__.py.
-    if [ -n "$TRAVIS_COMMIT" ]; then
-      sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
-    else
-      echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
-      exit 1
-    fi
+    # if [ -n "$TRAVIS_COMMIT" ]; then
+    #   sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+    # else
+    #   echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
+    #   exit 1
+    # fi
 
     # build ray wheel
-    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
+    PATH=/opt/python/${PYTHON}/bin:$PATH \
     /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # build ray-cpp wheel
-    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
-    RAY_INSTALL_CPP=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
+    # PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
+    # RAY_INSTALL_CPP=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
   popd

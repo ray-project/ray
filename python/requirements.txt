@@ -69,7 +69,7 @@ networkx
 numba
 asyncmock
 # higher version of llvmlite breaks windows
-llvmlite==0.34.0
+# llvmlite==0.34.0
 openpyxl
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0

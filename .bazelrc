@@ -143,6 +143,8 @@ build:ci --show_progress_rate_limit=15
 build:ci --show_task_finish
 build:ci --ui_actions_shown=1024
 build:ci --show_timestamps
+build:ci --disk_cache=~/ray-bazel-cache
+build:ci --remote_cache="grpc://10.225.244.100:16015"
 build:ci-travis --disk_cache=~/ray-bazel-cache
 build:ci-travis --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 build:ci-github --experimental_repository_cache_hardlinks # GitHub Actions has low disk space, so prefer hardlinks there.

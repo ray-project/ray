@@ -276,13 +276,13 @@ build_dashboard_front_end() {
       cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
-      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
-        set +x  # suppress set -x since it'll get very noisy here
-        . "${HOME}/.nvm/nvm.sh"
-        NODE_VERSION="14"
-        nvm install $NODE_VERSION
-        nvm use --silent $NODE_VERSION
-      fi
+      # if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
+      #   set +x  # suppress set -x since it'll get very noisy here
+      #   . "${HOME}/.nvm/nvm.sh"
+      #   NODE_VERSION="14"
+      #   nvm install $NODE_VERSION
+      #   nvm use --silent $NODE_VERSION
+      # fi
       install_npm_project
       yarn build
     )

@@ -285,6 +285,29 @@ download_mnist() {
   unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"
 }
 
+install_dependencies_in_codebase() {
+  if [[  -n "${PYTHON-}" ]]; then
+    install_miniconda
+    source ~/.bashrc
+    install_upgrade_pip
+  fi
+
+  if [[ -n "${INSTALL_BAZEL:-}" ]]; then
+    install_bazel
+  fi
+  
+  if [[ -n "${NODE_VERSION:-}" ]]; then
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+    if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+      source $XDG_CONFIG_HOME/nvm.sh
+    else
+      source "$HOME"/.nvm/nvm.sh
+    fi
+    nvm install "$NODE_VERSION"
+    nvm use "$NODE_VERSION"
+  fi
+}
+
 install_dependencies() {
 
   install_bazel
@@ -427,7 +450,7 @@ install_dependencies() {
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
-install_dependencies "$@"
+install_dependencies_in_codebase "$@"
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null
