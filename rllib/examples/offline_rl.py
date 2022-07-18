@@ -19,7 +19,6 @@ Use the generated file(s) as "input" in the CQL config below
 
 import argparse
 import numpy as np
-import os
 
 from ray.rllib.algorithms import cql as cql
 from ray.rllib.utils.framework import try_import_torch
@@ -66,8 +65,10 @@ if __name__ == "__main__":
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
     }
-    config["input_config"] = {"paths": ["tests/data/pendulum/enormous.zip"], "format":
-        'json'}
+    config["input_config"] = {
+        "paths": ["tests/data/pendulum/enormous.zip"],
+        "format": "json",
+    }
     config["policy_model_config"] = {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
@@ -109,9 +110,7 @@ if __name__ == "__main__":
             # Learn until some reward is reached on an actual live env.
             if eval_results["episode_reward_mean"] >= min_reward:
                 # Test passed gracefully.
-                if (
-                    args.as_test
-                ):
+                if args.as_test:
                     print("Test passed after {} iterations.".format(i))
                     quit(0)
                 learnt = True
