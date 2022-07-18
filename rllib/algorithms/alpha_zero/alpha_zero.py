@@ -92,16 +92,17 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.sgd_minibatch_size = 128
         self.shuffle_sequences = True
         self.num_sgd_iter = 30
-        self.learning_starts = 1000
         self.replay_buffer_config = {
             "type": "ReplayBuffer",
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
-            # When to start returning samples (in batches, not timesteps!).
-            "learning_starts": 500,
             # Choosing `fragments` here makes it so that the buffer stores entire
             # batches, instead of sequences, episodes or timesteps.
             "storage_unit": "fragments",
+            # Number of timesteps in the replay buffer(s) to reach before sample()
+            # returns a batch. Before min_size is reached,
+            # sample() will return an empty batch and no learning will happen.
+            "min_size": 1000,
         }
         self.lr_schedule = None
         self.vf_share_layers = False

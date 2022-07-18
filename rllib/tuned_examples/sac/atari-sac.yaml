@@ -34,7 +34,7 @@ atari-sac-tf-and-torch:
           type: MultiAgentPrioritizedReplayBuffer
           capacity: 1000000
           # How many steps of the model to sample before learning starts.
-          learning_starts: 100000
+          min_size: 100000
           # If True prioritized replay buffer will be used.
           prioritized_replay_alpha: 0.6
           prioritized_replay_beta: 0.4

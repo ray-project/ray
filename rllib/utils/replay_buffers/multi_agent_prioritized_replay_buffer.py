@@ -40,15 +40,16 @@ class MultiAgentPrioritizedReplayBuffer(
         capacity: int = 10000,
         storage_unit: Union[StorageUnit, str] = StorageUnit.TIMESTEPS,
         num_shards: int = 1,
-        learning_starts: int = 1000,
+        min_size: int = 1000,
+        replay_sequence_override: bool = True,
         replay_mode: Union[ReplayMode, str] = ReplayMode.INDEPENDENT,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
+        underlying_buffer_config: dict = None,
         prioritized_replay_alpha: float = 0.6,
         prioritized_replay_beta: float = 0.4,
         prioritized_replay_eps: float = 1e-6,
-        underlying_buffer_config: dict = None,
         **kwargs
     ):
         """Initializes a MultiAgentReplayBuffer instance.
@@ -62,20 +63,16 @@ class MultiAgentPrioritizedReplayBuffer(
                 ignored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
-            learning_starts: Number of timesteps after which a call to
-                `replay()` will yield samples (before that, `replay()` will
+            min_size: Number of timesteps after which a call
+                to `replay()` will yield samples (before that, `replay()` will
                 return None).
-            replay_mode: Either 'independent' or 'lockstep'. Defines whether to split up
-                MultiAgentBatches by 'policy_id' ('independent') or store the whole
-                batch under the special 'policy_id' '_ALL_POLICIES',
-                which will have to be specified when calling sample() on this
-                buffer ('lockstep').
-            prioritized_replay_alpha: Alpha parameter for a prioritized
-                replay buffer. Use 0.0 for no prioritization.
-            prioritized_replay_beta: Beta parameter for a prioritized
-                replay buffer.
-            prioritized_replay_eps: Epsilon parameter for a prioritized
-                replay buffer.
+            replay_mode: One of "independent" or "lockstep". Determines,
+                whether batches are sampled independently or to an equal
+                amount.
+            replay_sequence_override: If True, ignore sequences found in incoming
+                batches, slicing them into sequences as specified by
+                `replay_sequence_length` and `replay_sequence_burn_in`. This only has
+                an effect if storage_unit is `sequences`.
             replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer.
             replay_burn_in: The burn-in length in case
@@ -97,6 +94,12 @@ class MultiAgentPrioritizedReplayBuffer(
                 "capacity": 10, "storage_unit": "timesteps",
                 prioritized_replay_alpha: 0.5, prioritized_replay_beta: 0.5,
                 prioritized_replay_eps: 0.5}
+            prioritized_replay_alpha: Alpha parameter for a prioritized
+                replay buffer. Use 0.0 for no prioritization.
+            prioritized_replay_beta: Beta parameter for a prioritized
+                replay buffer.
+            prioritized_replay_eps: Epsilon parameter for a prioritized
+                replay buffer.
             ``**kwargs``: Forward compatibility kwargs.
         """
         if "replay_mode" in kwargs and (
@@ -130,15 +133,16 @@ class MultiAgentPrioritizedReplayBuffer(
         shard_capacity = capacity // num_shards
         MultiAgentReplayBuffer.__init__(
             self,
-            shard_capacity,
-            storage_unit,
-            **kwargs,
-            underlying_buffer_config=prioritized_replay_buffer_config,
-            learning_starts=learning_starts,
+            capacity=shard_capacity,
+            storage_unit=storage_unit,
+            replay_sequence_override=replay_sequence_override,
+            min_size=min_size,
             replay_mode=replay_mode,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,
             replay_zero_init_states=replay_zero_init_states,
+            underlying_buffer_config=prioritized_replay_buffer_config,
+            **kwargs,
         )
 
         self.prioritized_replay_eps = prioritized_replay_eps

@@ -37,7 +37,7 @@ class TestDDPG(unittest.TestCase):
         config = ddpg.DDPGConfig()
         config.num_workers = 0
         config.num_envs_per_worker = 2
-        config.replay_buffer_config["learning_starts"] = 0
+        config.replay_buffer_config["min_size"] = 0
         explore = config.exploration_config.update({"random_timesteps": 100})
         config.exploration(exploration_config=explore)
 
@@ -138,7 +138,7 @@ class TestDDPG(unittest.TestCase):
         config.replay_buffer_config = {
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
-            "learning_starts": 0,
+            "min_size": 0,
         }
         # Use very simple nets.
         config.actor_hiddens = [10]

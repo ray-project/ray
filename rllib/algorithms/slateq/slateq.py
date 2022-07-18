@@ -90,8 +90,10 @@ class SlateQConfig(AlgorithmConfig):
             "replay_sequence_length": 1,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 20000,
+            # Number of timesteps in the replay buffer(s) to reach before sample()
+            # returns a batch. Before min_size is reached,
+            # sample() will return an empty batch and no learning will happen.
+            "min_size": 20000,
         }
 
         # Override some of AlgorithmConfig's default values with SlateQ-specific values.

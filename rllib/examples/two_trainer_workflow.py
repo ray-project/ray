@@ -84,7 +84,7 @@ class MyAlgo(Algorithm):
         super().setup(config)
         # Create local replay buffer.
         self.local_replay_buffer = MultiAgentReplayBuffer(
-            num_shards=1, learning_starts=1000, capacity=50000
+            num_shards=1, min_size=1000, capacity=50000
         )
 
     @override(Algorithm)

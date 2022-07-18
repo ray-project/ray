@@ -17,7 +17,7 @@ invertedpendulum-td3:
 
         # === Exploration ===
         replay_buffer_config:
-          learning_starts: 1000
+          min_size: 1000
         exploration_config:
             random_timesteps: 1000
 

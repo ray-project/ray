@@ -68,7 +68,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         capacity: int = 10000,
         storage_unit: Union[StorageUnit, str] = StorageUnit.TIMESTEPS,
         num_shards: int = 1,
-        learning_starts: int = 1000,
+        min_size: int = 1000,
         replay_mode: Union[ReplayMode, str] = ReplayMode.INDEPENDENT,
         replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
@@ -86,8 +86,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 are stored in episodes, replay_sequence_length is ignored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
-            learning_starts: Number of timesteps after which a call to
-                `sample()` will yield samples (before that, `sample()` will
+            min_size: Number of timesteps after which a call
+                to `sample()` will yield samples (before that, `sample()` will
                 return None).
             replay_mode: Either 'independent' or 'lockstep'. Defines whether to split up
                 MultiAgentBatches by 'policy_id' ('independent') or store the whole
@@ -125,7 +125,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         else:
             self.underlying_buffer_call_args = {}
         self.replay_sequence_override = replay_sequence_override
-        self.replay_starts = learning_starts // num_shards
+        self.replay_starts = min_size // num_shards
+        self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states

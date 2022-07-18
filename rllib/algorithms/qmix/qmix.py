@@ -84,12 +84,15 @@ class QMixConfig(SimpleQConfig):
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
-            # Size of the replay buffer in batches
+            # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
+            # Number of timesteps in the replay buffer(s) to reach before sample()
+            # returns a batch. Before min_size is reached,
+            # sample() will return an empty batch and no learning will happen.
+            "min_size": 1000,
             # Choosing `fragments` here makes it so that the buffer stores entire
             # batches, instead of sequences, episodes or timesteps.
             "storage_unit": "fragments",
-            "learning_starts": 1000,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }

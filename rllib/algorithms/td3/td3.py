@@ -71,7 +71,10 @@ class TD3Config(DDPGConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": 1000000,
-            "learning_starts": 10000,
+            # Number of timesteps in the replay buffer(s) to reach before sample()
+            # returns a batch. Before min_size is reached,
+            # sample() will return an empty batch and no learning will happen..
+            "min_size": 10000,
             "worker_side_prioritization": False,
         }
 

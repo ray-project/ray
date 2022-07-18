@@ -45,7 +45,7 @@ run_experiments(
                 "num_gpus": 0,
                 "replay_buffer_config": {
                     "capacity": 10000,
-                    "learning_starts": 0,
+                    "min_size": 0,
                 },
                 "rollout_fragment_length": 1,
                 "train_batch_size": 1,

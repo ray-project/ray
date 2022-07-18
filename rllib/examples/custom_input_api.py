@@ -95,7 +95,7 @@ if __name__ == "__main__":
         "clip_actions": True,
         "twin_q": True,
         "train_batch_size": 2000,
-        "learning_starts": 0,
+        "min_size": 0,
         "bc_iters": 100,
         "metrics_num_episodes_for_smoothing": 5,
         "evaluation_interval": 1,

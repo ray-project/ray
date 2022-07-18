@@ -27,7 +27,7 @@ class TestApexDQN(unittest.TestCase):
             .resources(num_gpus=0)
             .training(
                 replay_buffer_config={
-                    "learning_starts": 1000,
+                    "min_size": 1000,
                 },
                 optimizer={
                     "num_replay_buffer_shards": 1,
@@ -54,7 +54,7 @@ class TestApexDQN(unittest.TestCase):
             .resources(num_gpus=0)
             .training(
                 replay_buffer_config={
-                    "learning_starts": 1000,
+                    "min_size": 1000,
                 },
                 optimizer={
                     "num_replay_buffer_shards": 1,
@@ -110,7 +110,7 @@ class TestApexDQN(unittest.TestCase):
                 replay_buffer_config={
                     "no_local_replay_buffer": True,
                     "type": "MultiAgentPrioritizedReplayBuffer",
-                    "learning_starts": 10,
+                    "min_size": 10,
                     "capacity": 100,
                     "prioritized_replay_alpha": 0.6,
                     # Beta parameter for sampling from prioritized replay buffer.

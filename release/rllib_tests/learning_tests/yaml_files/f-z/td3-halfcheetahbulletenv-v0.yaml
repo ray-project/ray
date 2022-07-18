@@ -10,6 +10,6 @@ td3-halfcheetahbulletenv-v0:
     config:
         num_gpus: 1
         replay_buffer_config:
-          learning_starts: 10000
+          min_size: 10000
         exploration_config:
             random_timesteps: 10000

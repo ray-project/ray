@@ -84,8 +84,10 @@ class MADDPGConfig(AlgorithmConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": int(1e6),
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 1024 * 25,
+            # Number of timesteps in the replay buffer(s) to reach before sample()
+            # returns a batch. Before min_size is reached,
+            # sample() will return an empty batch and no learning will happen.
+            "min_size": 1024 * 25,
             # Force lockstep replay mode for MADDPG.
             "replay_mode": "lockstep",
         }
@@ -157,7 +159,7 @@ class MADDPGConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "learning_starts": 1000,
+                "min_size": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
