@@ -27,6 +27,7 @@ from ray.data.datasource import (
     DefaultParquetMetadataProvider,
     DummyOutputDatasource,
     FastFileMetadataProvider,
+    ImageFolderDatasource,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
@@ -41,6 +42,8 @@ from ray.data.datasource.parquet_datasource import (
     _SerializedPiece,
     _deserialize_pieces_with_retry,
 )
+from ray.data.extensions import TensorDtype
+from ray.data.preprocessors import BatchMapper
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -2729,6 +2732,60 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
         )
 
 
+def test_image_folder_datasource(ray_start_regular_shared):
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    ds = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
+
+    assert ds.count() == 3
+
+    df = ds.to_pandas()
+    assert sorted(df["label"]) == ["cat", "cat", "dog"]
+    assert type(df["image"].dtype) is TensorDtype
+    assert all(tensor.to_numpy().shape == (32, 32, 3) for tensor in df["image"])
+
+
+def test_image_folder_datasource_raises_value_error(ray_start_regular_shared):
+    # `ImageFolderDatasource` should raise an error if more than one path is passed.
+    with pytest.raises(ValueError):
+        ray.data.read_datasource(
+            ImageFolderDatasource(), paths=["imagenet/train", "imagenet/test"]
+        )
+
+
+def test_image_folder_datasource_e2e(ray_start_regular_shared):
+    from ray.air.util.tensor_extensions.pandas import TensorArray
+    from ray.train.torch import to_air_checkpoint, TorchPredictor
+    from ray.train.batch_predictor import BatchPredictor
+
+    from torchvision import transforms
+    from torchvision.models import resnet18
+
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
+
+    def preprocess(df):
+        # We convert the `TensorArrayElement` to a NumPy array because `ToTensor`
+        # expects a NumPy array or PIL image. `ToTensor` is necessary because Torch
+        # expects images to have shape (C, H, W), and `ToTensor` changes the shape of
+        # the data from (H, W, C) to (C, H, W).
+        preprocess = transforms.Compose(
+            [
+                lambda ray_tensor: ray_tensor.to_numpy(),
+                transforms.ToTensor(),
+            ]
+        )
+        df["image"] = TensorArray([preprocess(image) for image in df["image"]])
+        return df
+
+    preprocessor = BatchMapper(preprocess)
+
+    model = resnet18(pretrained=True)
+    checkpoint = to_air_checkpoint(model=model, preprocessor=preprocessor)
+
+    predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
+    predictor.predict(dataset, feature_columns=["image"])
+
+
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
 # shutdown_only fixture so the shared cluster is shut down, otherwise the below
 # test_write_datasource_ray_remote_args test, which uses a cluster_utils cluster, will
@@ -2901,6 +2958,23 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {bar_node_id}, locations
     assert sorted(ds.take()) == ["goodbye", "hello", "world"]
+
+
+def test_read_s3_file_error(ray_start_regular_shared, s3_path):
+    dummy_path = s3_path + "_dummy"
+    error_message = "Please check that file exists and has properly configured access."
+    with pytest.raises(PermissionError) as e:
+        ray.data.read_parquet(dummy_path)
+        assert error_message in str(e)
+    with pytest.raises(PermissionError) as e:
+        ray.data.read_binary_files(dummy_path)
+        assert error_message in str(e)
+    with pytest.raises(PermissionError) as e:
+        ray.data.read_csv(dummy_path)
+        assert error_message in str(e)
+    with pytest.raises(PermissionError) as e:
+        ray.data.read_json(dummy_path)
+        assert error_message in str(e)
 
 
 if __name__ == "__main__":
