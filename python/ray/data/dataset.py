@@ -34,6 +34,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.util import _estimate_available_parallelism
 from ray.data._internal.plan import (
     ExecutionPlan,
     OneToOneStage,
@@ -65,7 +66,12 @@ from ray.data.block import (
     U,
     _validate_key_fn,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import (
+    DatasetContext,
+    WARN_PREFIX,
+    OK_PREFIX,
+    ESTIMATED_SAFE_MEMORY_FRACTION,
+)
 from ray.data.datasource import (
     BlockWritePathProvider,
     CSVDatasource,
@@ -861,8 +867,8 @@ class Dataset(Generic[T]):
             equal: Whether to guarantee each split has an equal
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
-            locality_hints: A list of Ray actor handles of size ``n``. The
-                system will try to co-locate the blocks of the i-th dataset
+            locality_hints: [Experimental] A list of Ray actor handles of size ``n``.
+                The system will try to co-locate the blocks of the i-th dataset
                 with the i-th actor to maximize data locality.
 
         Returns:
@@ -870,6 +876,19 @@ class Dataset(Generic[T]):
         """
         if n <= 0:
             raise ValueError(f"The number of splits {n} is not positive.")
+
+        # fallback to split_at_indices for equal split without locality hints.
+        # simple benchmarks shows spilit_at_indices yields more stable performance.
+        # https://github.com/ray-project/ray/pull/26641 for more context.
+        if equal and locality_hints is None:
+            count = self.count()
+            split_index = count // n
+            # we are creating n split_indices which will generate
+            # n + 1 splits; the last split will at most contains (n - 1)
+            # rows, which could be safely dropped.
+            split_indices = [split_index * i for i in range(1, n + 1)]
+            shards = self.split_at_indices(split_indices)
+            return shards[:n]
 
         if locality_hints and len(locality_hints) != n:
             raise ValueError(
@@ -2314,6 +2333,8 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = None,
         batch_format: str = "native",
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
@@ -2335,6 +2356,23 @@ class Dataset(Generic[T]):
                 to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. This is a light-weight alternative to
+                the global `.random_shuffle()` operation; this shuffle will be less
+                random but will be faster and less resource-intensive. This buffer size
+                must be greater than or equal to ``batch_size``, and therefore
+                ``batch_size`` must also be specified when using local shuffling.
+                When there are no more rows to be added to the buffer, the number of
+                rows in the buffer *will* decrease below this value while yielding
+                the remaining batches, and the final batch may have less than
+                ``batch_size`` rows. Increasing this will improve the randomness of
+                the shuffle but will increase CPU memory utilization and the latency
+                to the first batch. The CPU memory utilization ceiling is the max of
+                the prefetch buffer size (controlled by ``prefetch_blocks``) and
+                this shuffle buffer size.
+            local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
             An iterator over record batches.
@@ -2351,6 +2389,8 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            shuffle_buffer_min_size=local_shuffle_buffer_size,
+            shuffle_seed=local_shuffle_seed,
         )
 
         stats.iter_total_s.add(time.perf_counter() - time_start)
@@ -2369,6 +2409,8 @@ class Dataset(Generic[T]):
         batch_size: int = 1,
         prefetch_blocks: int = 0,
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
     ) -> "torch.utils.data.IterableDataset":
@@ -2437,6 +2479,19 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. This is a light-weight alternative to
+                the global `.random_shuffle()` operation; this shuffle will be less
+                random but will be faster and less resource-intensive. This buffer size
+                must be greater than or equal to ``batch_size``, and therefore
+                ``batch_size`` must also be specified when using local shuffling.
+                Increasing this will improve the randomness of the shuffle but will
+                increase CPU memory utilization and the latency to the first batch. The
+                CPU memory utilization ceiling is the max of the prefetch buffer size
+                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+            local_shuffle_seed: The seed to use for the local random shuffle.
             unsqueeze_label_tensor: If set to True, the label tensor
                 will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
                 be left as is, that is (N, ). In general, regression loss
@@ -2495,6 +2550,8 @@ class Dataset(Generic[T]):
                 batch_format="pandas",
                 prefetch_blocks=prefetch_blocks,
                 drop_last=drop_last,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
+                local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
                     label_tensor = convert_pandas_to_torch_tensor(
@@ -2544,6 +2601,8 @@ class Dataset(Generic[T]):
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -2601,6 +2660,19 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. This is a light-weight alternative to
+                the global `.random_shuffle()` operation; this shuffle will be less
+                random but will be faster and less resource-intensive. This buffer size
+                must be greater than or equal to ``batch_size``, and therefore
+                ``batch_size`` must also be specified when using local shuffling.
+                Increasing this will improve the randomness of the shuffle but will
+                increase CPU memory utilization and the latency to the first batch. The
+                CPU memory utilization ceiling is the max of the prefetch buffer size
+                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+            local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
             A tf.data.Dataset.
@@ -2626,6 +2698,8 @@ class Dataset(Generic[T]):
                 batch_size=batch_size,
                 batch_format="pandas",
                 drop_last=drop_last,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
+                local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
                     targets = convert_pandas_to_tf_tensor(batch[[label_column]])
@@ -3095,30 +3169,69 @@ class Dataset(Generic[T]):
                     assert [s > 0 for s in sizes], sizes
 
                     def fmt(size_bytes):
-                        if size_bytes > 10 * 1024:
+                        if size_bytes > 1024 * 1024 * 1024:
+                            return "{}GiB".format(
+                                round(size_bytes / (1024 * 1024 * 1024), 2)
+                            )
+                        elif size_bytes > 10 * 1024:
                             return "{}MiB".format(round(size_bytes / (1024 * 1024), 2))
                         else:
                             return "{}b".format(size_bytes)
 
+                    mean_bytes = int(np.mean(sizes))
                     logger.info(
                         "Created DatasetPipeline with {} windows: "
                         "{} min, {} max, {} mean".format(
                             len(self._splits),
                             fmt(min(sizes)),
                             fmt(max(sizes)),
-                            fmt(int(np.mean(sizes))),
+                            fmt(mean_bytes),
                         )
                     )
+                    mean_num_blocks = int(np.mean(num_blocks))
                     logger.info(
                         "Blocks per window: "
                         "{} min, {} max, {} mean".format(
                             min(num_blocks),
                             max(num_blocks),
-                            int(np.mean(num_blocks)),
+                            mean_num_blocks,
                         )
                     )
-                    # TODO(ekl): log a warning if the blocks per window are much less
-                    # than the available parallelism.
+                    # TODO(ekl) we should try automatically choosing the default
+                    # windowing settings to meet these best-practice constraints.
+                    avail_parallelism = _estimate_available_parallelism()
+                    if mean_num_blocks < avail_parallelism:
+                        logger.warning(
+                            f"{WARN_PREFIX} This pipeline's parallelism is limited "
+                            f"by its blocks per window to ~{mean_num_blocks} "
+                            "concurrent tasks per window. To maximize "
+                            "performance, increase the blocks per window to at least "
+                            f"{avail_parallelism}. This may require increasing the "
+                            "base dataset's parallelism and/or adjusting the "
+                            "windowing parameters."
+                        )
+                    else:
+                        logger.info(
+                            f"{OK_PREFIX} This pipeline's per-window parallelism "
+                            "is high enough to fully utilize the cluster."
+                        )
+                    obj_store_mem = ray.cluster_resources().get(
+                        "object_store_memory", 0
+                    )
+                    safe_mem_bytes = int(obj_store_mem * ESTIMATED_SAFE_MEMORY_FRACTION)
+                    if mean_bytes > safe_mem_bytes:
+                        logger.warning(
+                            f"{WARN_PREFIX} This pipeline's windows are "
+                            f"~{fmt(mean_bytes)} in size each and may not fit in "
+                            "object store memory without spilling. To improve "
+                            "performance, consider reducing the size of each window "
+                            f"to {fmt(safe_mem_bytes)} or less."
+                        )
+                    else:
+                        logger.info(
+                            f"{OK_PREFIX} This pipeline's windows can each fit in "
+                            "object store memory without spilling."
+                        )
                 except Exception as e:
                     logger.info(
                         "Created DatasetPipeline with {} windows; "
