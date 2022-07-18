@@ -30,7 +30,7 @@ def test_scale_up(ray_cluster):
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
-    @serve.deployment(version="1", num_replicas=1, _health_check_period_s=1)
+    @serve.deployment(version="1", num_replicas=1, health_check_period_s=1)
     def D(*args):
         return os.getpid()
 

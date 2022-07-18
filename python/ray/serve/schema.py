@@ -160,7 +160,6 @@ class DeploymentSchema(
             "replicas. Uses a default if null."
         ),
         gt=0,
-        alias="_health_check_period_s",
     )
     health_check_timeout_s: float = Field(
         default=None,
@@ -170,7 +169,6 @@ class DeploymentSchema(
             "unhealthy. Uses a default if null."
         ),
         gt=0,
-        alias="_health_check_timeout_s",
     )
     ray_actor_options: RayActorOptionsSchema = Field(
         default=None, description="Options set for each replica actor."
