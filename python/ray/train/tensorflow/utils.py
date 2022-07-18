@@ -6,20 +6,22 @@ from tensorflow import keras
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import _load_checkpoint
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 def to_air_checkpoint(
-    model: keras.Model, preprocessor: Optional["Preprocessor"] = None
+    model: keras.Model, *, preprocessor: Optional["Preprocessor"] = None
 ) -> Checkpoint:
     """Convert a pretrained model to AIR checkpoint for serve or inference.
 
     Args:
         model: A pretrained model.
         preprocessor: A fitted preprocessor. The preprocessing logic will
-            be applied to serve/inference.
+            be applied to the inputs for serving/inference.
     Returns:
         A Ray Air checkpoint.
     """
@@ -29,6 +31,7 @@ def to_air_checkpoint(
     return checkpoint
 
 
+@PublicAPI(stability="alpha")
 def load_checkpoint(
     checkpoint: Checkpoint,
     model: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model], tf.keras.Model],

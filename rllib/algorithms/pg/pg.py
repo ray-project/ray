@@ -80,13 +80,13 @@ class PG(Algorithm):
 
             return PGTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
 
-            return PGStaticGraphTFPolicy
+            return PGTF1Policy
         else:
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGEagerTFPolicy
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
 
-            return PGEagerTFPolicy
+            return PGTF2Policy
 
 
 # Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!
