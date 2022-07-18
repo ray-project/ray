@@ -19,7 +19,7 @@ pong-deterministic-rainbow:
           type: MultiAgentPrioritizedReplayBuffer
           prioritized_replay_alpha: 0.5
           learning_starts: 10000
-          capacity: 50000
+          capacity_ts: 50000
         n_step: 3
         gpu: True
         model:

@@ -60,7 +60,7 @@ class ApexDQNConfig(DQNConfig):
         >>> print(config.replay_buffer_config)
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
-        >>>         "capacity": 100000,
+        >>>         "capacity_ts": 100000,
         >>>         "prioritized_replay_alpha": 0.45,
         >>>         "prioritized_replay_beta": 0.55,
         >>>         "prioritized_replay_eps": 3e-6,
@@ -155,7 +155,7 @@ class ApexDQNConfig(DQNConfig):
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization
             "type": "MultiAgentPrioritizedReplayBuffer",
-            "capacity": 2000000,
+            "capacity_ts": 2000000,
             # Alpha parameter for prioritized replay buffer.
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
@@ -243,7 +243,7 @@ class ApexDQNConfig(DQNConfig):
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
-                "capacity": 50000,
+                "capacity_ts": 50000,
                 "replay_batch_size": 32,
                 "replay_sequence_length": 1,
                 }
@@ -251,7 +251,7 @@ class ApexDQNConfig(DQNConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentPrioritizedReplayBuffer",
-                "capacity": 50000,
+                "capacity_ts": 50000,
                 "prioritized_replay_alpha": 0.6,
                 "prioritized_replay_beta": 0.4,
                 "prioritized_replay_eps": 1e-6,
@@ -365,8 +365,9 @@ class ApexDQN(DQN):
         # Create copy here so that we can modify without breaking other logic
         replay_actor_config = copy.deepcopy(self.config["replay_buffer_config"])
 
-        replay_actor_config["capacity"] = (
-            self.config["replay_buffer_config"]["capacity"] // num_replay_buffer_shards
+        replay_actor_config["capacity_ts"] = (
+            self.config["replay_buffer_config"]["capacity_ts"]
+            // num_replay_buffer_shards
         )
 
         ReplayActor = ray.remote(num_cpus=0)(replay_actor_config["type"])

@@ -183,7 +183,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
                 "exploration_config": {"ou_base_scale": 100.0},
                 "min_sample_timesteps_per_iteration": 1,
                 "replay_buffer_config": {
-                    "capacity": 1000,
+                    "capacity_ts": 1000,
                 },
                 "use_state_preprocessor": True,
             },
@@ -194,14 +194,14 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
         config = {
             "min_sample_timesteps_per_iteration": 1,
             "replay_buffer_config": {
-                "capacity": 1000,
+                "capacity_ts": 1000,
             },
         }
         check_support("DQN", config, tfe=True)
 
     def test_sac(self):
         check_support(
-            "SAC", {"replay_buffer_config": {"capacity": 1000}}, check_bounds=True
+            "SAC", {"replay_buffer_config": {"capacity_ts": 1000}}, check_bounds=True
         )
 
 

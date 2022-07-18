@@ -35,7 +35,7 @@ class TestReservoirBuffer(unittest.TestCase):
         buffer_size = 100
 
         buffer = ReservoirReplayBuffer(capacity_ts=buffer_size)
-        # Put 1000 batches in a buffer with capacity 100
+        # Put 1000 batches in a buffer with timestep capacity 100
         _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1000)
 
         # Expect the batch id to be ~500 on average
@@ -79,7 +79,7 @@ class TestReservoirBuffer(unittest.TestCase):
         buffer = ReservoirReplayBuffer(
             capacity_ts=buffer_size, storage_unit="fragments"
         )
-        # Put 1000 batches in a buffer with capacity 100
+        # Put 1000 batches in a buffer with timestep capacity 100
         _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1000)
 
         # Expect the batch id to be ~500 on average

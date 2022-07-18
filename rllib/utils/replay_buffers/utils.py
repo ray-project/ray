@@ -177,7 +177,17 @@ def validate_buffer_config(config: dict) -> None:
         deprecation_warning(
             old="config['buffer_size'] or config['replay_buffer_config']["
             "'buffer_size']",
-            new="config['replay_buffer_config']['capacity']",
+            help="Specify either of `capacity_ts`, `capacity_bytes` or "
+            "`capacity_items` in config['replay_buffer_config'].",
+            error=True,
+        )
+
+    capacity = config["replay_buffer_config"].get("capacity", DEPRECATED_VALUE)
+    if capacity != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['replay_buffer_config']['capacity']",
+            help="Specify either of `capacity_ts`, `capacity_bytes` or "
+            "`capacity_items` in config['replay_buffer_config'].",
             error=True,
         )
 
@@ -290,42 +300,6 @@ def validate_buffer_config(config: dict) -> None:
                 "Worker side prioritization is not supported when "
                 "prioritized_replay=False."
             )
-
-
-@DeveloperAPI
-def warn_replay_buffer_capacity(*, item: SampleBatchType, capacity: int) -> None:
-    """Warn if the configured replay buffer capacity is too large for machine's memory.
-
-    Args:
-        item: A (example) item that's supposed to be added to the buffer.
-            This is used to compute the overall memory footprint estimate for the
-            buffer.
-        capacity: The capacity value of the buffer. This is interpreted as the
-            number of items (such as given `item`) that will eventually be stored in
-            the buffer.
-
-    Raises:
-        ValueError: If computed memory footprint for the buffer exceeds the machine's
-            RAM.
-    """
-    if log_once("warn_replay_buffer_capacity"):
-        item_size = item.size_bytes()
-        psutil_mem = psutil.virtual_memory()
-        total_gb = psutil_mem.total / 1e9
-        mem_size = capacity * item_size / 1e9
-        msg = (
-            "Estimated max memory usage for replay buffer is {} GB "
-            "({} batches of size {}, {} bytes each), "
-            "available system memory is {} GB".format(
-                mem_size, capacity, item.count, item_size, total_gb
-            )
-        )
-        if mem_size > total_gb:
-            raise ValueError(msg)
-        elif mem_size > 0.2 * total_gb:
-            logger.warning(msg)
-        else:
-            logger.info(msg)
 
 
 def patch_buffer_with_fake_sampling_method(

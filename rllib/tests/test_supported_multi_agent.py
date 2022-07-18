@@ -96,7 +96,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "min_sample_timesteps_per_iteration": 100,
                 "num_gpus": 0,
                 "replay_buffer_config": {
-                    "capacity": 1000,
+                    "capacity_ts": 1000,
                     "learning_starts": 10,
                 },
                 "min_time_s_per_iteration": 1,
@@ -114,7 +114,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "num_workers": 2,
                 "min_sample_timesteps_per_iteration": 100,
                 "replay_buffer_config": {
-                    "capacity": 1000,
+                    "capacity_ts": 1000,
                     "learning_starts": 10,
                 },
                 "num_gpus": 0,
@@ -130,7 +130,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             {
                 "min_sample_timesteps_per_iteration": 1,
                 "replay_buffer_config": {
-                    "capacity": 1000,
+                    "capacity_ts": 1000,
                     "learning_starts": 500,
                 },
                 "use_state_preprocessor": True,
@@ -143,7 +143,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             {
                 "min_sample_timesteps_per_iteration": 1,
                 "replay_buffer_config": {
-                    "capacity": 1000,
+                    "capacity_ts": 1000,
                 },
             },
         )
@@ -154,7 +154,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             {
                 "num_workers": 0,
                 "replay_buffer_config": {
-                    "capacity": 1000,
+                    "capacity_ts": 1000,
                 },
                 "normalize_actions": False,
             },

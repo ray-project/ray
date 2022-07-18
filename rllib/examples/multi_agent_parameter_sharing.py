@@ -24,7 +24,7 @@ if __name__ == "__main__":
             "num_envs_per_worker": 8,
             "replay_buffer_config": {
                 "learning_starts": 1000,
-                "capacity": int(1e5),
+                "capacity_ts": int(1e5),
                 "prioritized_replay_alpha": 0.5,
             },
             "compress_observations": True,

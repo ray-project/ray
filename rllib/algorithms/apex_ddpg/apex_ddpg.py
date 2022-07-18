@@ -74,7 +74,7 @@ class ApexDDPGConfig(DDPGConfig):
         self.rollout_fragment_length = 50
         self.replay_buffer_config = {
             "type": "MultiAgentPrioritizedReplayBuffer",
-            "capacity": 2000000,
+            "capacity_ts": 2000000,
             "no_local_replay_buffer": True,
             # Alpha parameter for prioritized replay buffer.
             "prioritized_replay_alpha": 0.6,

@@ -63,7 +63,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         >>> # but always <D> as it is the newest sample
 
         # replay proportion 0.0 -> replay disabled:
-        >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0)
+        >>> buffer = MixInReplay(capacity_ts=100, replay_ratio=0.0)
         >>> buffer.add(<A>)
         >>> buffer.sample()
         ... [<A>]
@@ -147,7 +147,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 replay_buffer_config. kwargs for subsequent calls of methods
                 may also be included. Example:
                 "replay_buffer_config": {"type": PrioritizedReplayBuffer,
-                "capacity": 10, "storage_unit": "timesteps",
+                "capacity_items": 10, "storage_unit": "timesteps",
                 prioritized_replay_alpha: 0.5, prioritized_replay_beta: 0.5,
                 prioritized_replay_eps: 0.5}
             prioritized_replay_alpha: Alpha parameter for a prioritized

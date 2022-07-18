@@ -85,8 +85,7 @@ class LocalStorage(Sized, Iterable):
         # Whether we have already hit our capacity (and have therefore
         # started to evict older samples).
         self._eviction_started = False
-        # Maximum number of items that can be stored in ring buffer
-        # (max_items <= capacity)
+        # Maximum number of items this buffer has held at a time
         # max_items is increasing while capacity is not reached but it never decreases
         self._max_items = initial_size
         # Number of items currently in storage (num_items <= max_items)
@@ -99,11 +98,11 @@ class LocalStorage(Sized, Iterable):
         # more than one timestep.
         self._num_timesteps_added = 0
         # Number of timesteps currently in storage
-        # (num_items <= num_timesteps <= capacity)
+        # (num_items <= num_timesteps <= capacity_ts)
         self._num_timesteps = 0
 
         # Statistics
-        # len(self._hit_count) == capacity
+        # len(self._hit_count) == capacity_items
         self._hit_count = np.zeros(self.capacity_items, dtype=np.int64)
         self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
         self._size_bytes = 0
@@ -266,7 +265,7 @@ class LocalStorage(Sized, Iterable):
     def add(self, item: SampleBatchType) -> None:
         """Add a new item to the storage. The index of the new item
         will be assigned automatically. Moreover, old items may be
-        dropped with respect to the storage's capacity.
+        dropped with respect to the storage's capacity contraints.
 
         Args:
             item: Item (batch) to add to the storage.
@@ -611,25 +610,42 @@ class InMemoryStorage(LocalStorage):
 
     def _warn_replay_capacity(self, item: SampleBatchType, num_items: int) -> None:
         """Warn if the configured replay buffer capacity is too large."""
-        if log_once("replay_capacity_memory"):
-            item_size = item.size_bytes()
-            psutil_mem = psutil.virtual_memory()
-            free_gb = psutil_mem.available / 1e9
-            mem_size = num_items * item_size / 1e9
-            remainder = mem_size - self.size_bytes / 1e9
-            msg = (
-                "Estimated memory usage for replay buffer is {} GB "
-                "({} batches of size {}, {} bytes each), "
-                "of which {} GB are pending for allocation. "
-                "Available memory is {} GB.".format(
-                    mem_size, num_items, item.count, item_size, remainder, free_gb
-                )
+        item_size = item.size_bytes()
+        ts_size = item_size / item.count
+        psutil_mem = psutil.virtual_memory()
+        free_gb = psutil_mem.available / 1e9
+        if self._capacity_ts == math.inf:
+            max_size_for_ts_capacity = -1
+        else:
+            max_size_for_ts_capacity = self.capacity_ts * ts_size
+
+        self.est_final_size = (
+            max(self.capacity_items * item_size, max_size_for_ts_capacity) / 1e9
+        )
+        remainder = self.est_final_size - self.size_bytes / 1e9
+        msg = (
+            "Estimated memory usage for replay buffer is {} GB "
+            "({} batches of size {}, {} bytes each), "
+            "of which {} GB are pending for allocation. "
+            "Available disk space is {} GB.".format(
+                self.est_final_size,
+                self.capacity_items,
+                item.count,
+                item_size,
+                remainder,
+                free_gb,
             )
-            if remainder > free_gb:
-                raise ValueError(msg)
-            elif remainder > 0.2 * free_gb:
+        )
+
+        remainder = self.est_final_size - self.size_bytes / 1e9
+
+        if remainder > free_gb:
+            raise ValueError(msg)
+        elif remainder > 0.2 * free_gb:
+            if log_once("warning_replay_buffer_storage_capacity_disk"):
                 logger.warning(msg)
-            else:
+        else:
+            if log_once("warning_replay_buffer_storage_capacity_disk"):
                 logger.info(msg)
 
 

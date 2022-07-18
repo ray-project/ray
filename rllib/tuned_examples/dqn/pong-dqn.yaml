@@ -13,7 +13,7 @@ pong-deterministic-dqn:
         lr: .0001
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
-          capacity: 50000
+          capacity_ts: 50000
           learning_starts: 10000
         rollout_fragment_length: 4
         train_batch_size: 32

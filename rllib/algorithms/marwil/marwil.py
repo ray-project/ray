@@ -80,7 +80,7 @@ class MARWILConfig(AlgorithmConfig):
             # and adding all timesteps on one line at once. We then sample
             # uniformly from the buffer (`train_batch_size` samples) for
             # each training step.
-            "capacity": 10000,
+            "capacity_ts": 10000,
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization
             "prioritized_replay": DEPRECATED_VALUE,
@@ -145,14 +145,14 @@ class MARWILConfig(AlgorithmConfig):
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
-                "capacity": 50000,
+                "capacity_ts": 50000,
                 "replay_sequence_length": 1,
                 }
                 - OR -
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentPrioritizedReplayBuffer",
-                "capacity": 50000,
+                "capacity_ts": 50000,
                 "prioritized_replay_alpha": 0.6,
                 "prioritized_replay_beta": 0.4,
                 "prioritized_replay_eps": 1e-6,

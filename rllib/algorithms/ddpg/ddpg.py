@@ -97,7 +97,7 @@ class DDPGConfig(SimpleQConfig):
         # Common DDPG buffer parameters.
         self.replay_buffer_config = {
             "type": "MultiAgentPrioritizedReplayBuffer",
-            "capacity": 50000,
+            "capacity_ts": 50000,
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,

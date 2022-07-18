@@ -22,7 +22,7 @@ class R2D2Config(DQNConfig):
         >>> print(config.h_function_epsilon)
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
-        >>>         "capacity": 1000000,
+        >>>         "capacity_ts": 1000000,
         >>>         "replay_burn_in": 20,
         >>>     }
         >>> )
@@ -100,7 +100,7 @@ class R2D2Config(DQNConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer (in sequences, not timesteps).
-            "capacity": 100000,
+            "capacity_items": 100000,
             # This algorithm learns on sequences. We therefore require the replay buffer
             # to slice sampled batches into sequences before replay. How sequences
             # are sliced depends on the parameters `replay_sequence_length`,

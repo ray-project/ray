@@ -209,7 +209,7 @@ class TestExecution(unittest.TestCase):
         buf = MultiAgentReplayBuffer(
             num_shards=1,
             learning_starts=200,
-            capacity_ts=1000,
+            capacity_items=1000,
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=0.0001,
@@ -233,7 +233,7 @@ class TestExecution(unittest.TestCase):
         actor = ReplayActor.remote(
             num_shards=1,
             learning_starts=200,
-            capacity=1000,
+            capacity_items=1000,
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=0.0001,

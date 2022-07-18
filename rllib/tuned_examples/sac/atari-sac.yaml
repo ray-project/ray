@@ -32,7 +32,7 @@ atari-sac-tf-and-torch:
         rollout_fragment_length: 1
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
-          capacity: 1000000
+          capacity_ts: 1000000
           # How many steps of the model to sample before learning starts.
           learning_starts: 100000
           # If True prioritized replay buffer will be used.

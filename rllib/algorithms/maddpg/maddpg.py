@@ -34,7 +34,7 @@ class MADDPGConfig(AlgorithmConfig):
         >>> print(config.replay_buffer_config)
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
-        >>>         "capacity": 100000,
+        >>>         "capacity_ts": 100000,
         >>>         "prioritized_replay_alpha": 0.8,
         >>>         "prioritized_replay_beta": 0.45,
         >>>         "prioritized_replay_eps": 2e-6,
@@ -83,7 +83,7 @@ class MADDPGConfig(AlgorithmConfig):
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
-            "capacity": int(1e6),
+            "capacity_ts": int(1e6),
             # How many steps of the model to sample before learning starts.
             "learning_starts": 1024 * 25,
             # Force lockstep replay mode for MADDPG.
@@ -158,14 +158,14 @@ class MADDPGConfig(AlgorithmConfig):
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
-                "capacity": 50000,
+                "capacity_ts": 50000,
                 "replay_sequence_length": 1,
                 }
                 - OR -
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentPrioritizedReplayBuffer",
-                "capacity": 50000,
+                "capacity_ts": 50000,
                 "prioritized_replay_alpha": 0.6,
                 "prioritized_replay_beta": 0.4,
                 "prioritized_replay_eps": 1e-6,

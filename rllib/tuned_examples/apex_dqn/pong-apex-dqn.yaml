@@ -17,6 +17,6 @@ pong-apex:
         train_batch_size: 64
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
-          capacity: 1000000
+          capacity_ts: 1000000
         gamma: 0.99
         training_intensity: 16

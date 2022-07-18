@@ -79,7 +79,7 @@ class TestSAC(unittest.TestCase):
             .training(
                 n_step=3,
                 twin_q=True,
-                replay_buffer_config={"learning_starts": 0, "capacity": 40000},
+                replay_buffer_config={"learning_starts": 0, "capacity_ts": 40000},
                 store_buffer_in_checkpoints=True,
                 train_batch_size=10,
             )
@@ -523,7 +523,7 @@ class TestSAC(unittest.TestCase):
         config = (
             sac.SACConfig()
             .training(
-                replay_buffer_config={"learning_starts": 0, "capacity": 10},
+                replay_buffer_config={"learning_starts": 0, "capacity_ts": 10},
                 train_batch_size=5,
             )
             .rollouts(

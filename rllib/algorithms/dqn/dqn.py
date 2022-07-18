@@ -61,7 +61,7 @@ class DQNConfig(SimpleQConfig):
         >>> print(config.replay_buffer_config)
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
-        >>>         "capacity": 60000,
+        >>>         "capacity_ts": 60000,
         >>>         "prioritized_replay_alpha": 0.5,
         >>>         "prioritized_replay_beta": 0.5,
         >>>         "prioritized_replay_eps": 3e-6,
@@ -142,7 +142,7 @@ class DQNConfig(SimpleQConfig):
             "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer. Note that if async_updates is set,
             # then each worker will have a replay buffer of this size.
-            "capacity": 50000,
+            "capacity_ts": 50000,
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,
@@ -218,14 +218,14 @@ class DQNConfig(SimpleQConfig):
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
-                "capacity": 50000,
+                "capacity_ts": 50000,
                 "replay_sequence_length": 1,
                 }
                 - OR -
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentPrioritizedReplayBuffer",
-                "capacity": 50000,
+                "capacity_ts": 50000,
                 "prioritized_replay_alpha": 0.6,
                 "prioritized_replay_beta": 0.4,
                 "prioritized_replay_eps": 1e-6,

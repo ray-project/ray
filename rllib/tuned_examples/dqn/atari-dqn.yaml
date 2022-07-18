@@ -18,7 +18,7 @@ atari-basic-dqn:
         replay_buffer_config:
           type: MultiAgentReplayBuffer
           learning_starts: 20000
-          capacity: 1000000
+          capacity_ts: 1000000
         n_step: 1
         target_network_update_freq: 8000
         lr: .0000625

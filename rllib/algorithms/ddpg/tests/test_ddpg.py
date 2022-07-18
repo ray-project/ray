@@ -137,7 +137,7 @@ class TestDDPG(unittest.TestCase):
         config.l2_reg = 1e-10
         config.replay_buffer_config = {
             "type": "MultiAgentReplayBuffer",
-            "capacity": 50000,
+            "capacity_ts": 50000,
             "learning_starts": 0,
         }
         # Use very simple nets.

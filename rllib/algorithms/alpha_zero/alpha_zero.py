@@ -109,7 +109,7 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.replay_buffer_config = {
             "type": "ReplayBuffer",
             # Size of the replay buffer in batches (not timesteps!).
-            "capacity": 1000,
+            "capacity_items": 1000,
             # When to start returning samples (in batches, not timesteps!).
             "learning_starts": 500,
             # Choosing `fragments` here makes it so that the buffer stores entire

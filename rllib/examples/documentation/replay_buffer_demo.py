@@ -41,7 +41,7 @@ assert config == another_config == yet_another_config
 
 # __sphinx_doc_replay_buffer_basic_interaction__begin__
 # We choose fragments because it does not impose restrictions on our batch to be added
-buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.FRAGMENTS)
+buffer = ReplayBuffer(capacity_items=2, storage_unit=StorageUnit.FRAGMENTS)
 dummy_batch = SampleBatch({"a": [1], "b": [2]})
 buffer.add(dummy_batch)
 buffer.sample(2)

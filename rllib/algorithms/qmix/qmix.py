@@ -84,8 +84,7 @@ class QMixConfig(SimpleQConfig):
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
-            # Size of the replay buffer in batches
-            "capacity": 1000,
+            "capacity_ts": 1000,
             # Choosing `fragments` here makes it so that the buffer stores entire
             # batches, instead of sequences, episodes or timesteps.
             "storage_unit": "fragments",

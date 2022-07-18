@@ -42,7 +42,7 @@ if __name__ == "__main__":
     config["rollout_fragment_length"] = 1
     # Test without prioritized replay
     config["replay_buffer_config"]["type"] = "MultiAgentReplayBuffer"
-    config["replay_buffer_config"]["capacity"] = int(1e6)
+    config["replay_buffer_config"]["capacity_ts"] = int(1e6)
     config["tau"] = 0.005
     config["target_entropy"] = "auto"
     config["q_model_config"] = {

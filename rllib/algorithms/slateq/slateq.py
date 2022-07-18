@@ -79,7 +79,7 @@ class SlateQConfig(AlgorithmConfig):
         self.n_step = 1
         self.replay_buffer_config = {
             "type": "MultiAgentPrioritizedReplayBuffer",
-            "capacity": 100000,
+            "capacity_ts": 100000,
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,

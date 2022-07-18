@@ -219,6 +219,7 @@ class AlgorithmConfig:
         self.collect_metrics_timeout = DEPRECATED_VALUE
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
+        self.capacity = DEPRECATED_VALUE
         self.prioritized_replay = DEPRECATED_VALUE
         self.learning_starts = DEPRECATED_VALUE
         self.replay_batch_size = DEPRECATED_VALUE
