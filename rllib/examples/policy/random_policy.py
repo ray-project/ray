@@ -30,13 +30,14 @@ class RandomPolicy(Policy):
         else:
             self.action_space_for_sampling = self.action_space
 
-        # Disable view requirements for all columns except OBS, which is
-        # actually used.
-        for k, v in self.view_requirements.items():
-            if k == SampleBatch.OBS or k == SampleBatch.NEXT_OBS:
-                continue
-            v.used_for_training = False
-            v.used_for_compute_actions = False
+    @override(Policy)
+    def init_view_requirements(self):
+        super().init_view_requirements()
+        # Disable for_training and action attributes for SampleBatch.INFOS column
+        # since it can not be properly batched.
+        vr = self.view_requirements[SampleBatch.INFOS]
+        vr.used_for_training = False
+        vr.used_for_compute_actions = False
 
     @override(Policy)
     def compute_actions(
