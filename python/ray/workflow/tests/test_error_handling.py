@@ -134,7 +134,7 @@ def test_nested_catch_exception_3(workflow_start_regular_shared, tmp_path):
 
 @pytest.mark.skip(
     reason="Workflow does not support 'scheduling_strategy' that is not"
-    "json-serializable as remote function arguments."
+    "json-serializable as Ray task options."
 )
 def test_disable_auto_lineage_reconstruction(ray_start_cluster, tmp_path):
     """This test makes sure that workflow tasks will not be recovered automatically
