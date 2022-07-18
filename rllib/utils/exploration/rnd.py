@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Optional, Union
 import numpy as np
 
+import ray
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -62,13 +63,14 @@ class RND(Exploration):
         distill_net_config: Optional[ModelConfigDict] = None,
         lr: float = 1e-3,
         intrinsic_reward_coeff: float = 5e-3,
+        normalize: bool = True,
+        global_update: bool = False,
         nonepisodic_returns: bool = False,
         gamma: float = 0.99,
         lambda_: float = 0.95,
         vf_loss_coeff: float = None,
         adv_int_coeff: float = 1.0,
         adv_ext_coeff: float = 2.0,
-        normalize: bool = True,
         random_timesteps: int = 10000,
         sub_exploration: Optional[FromConfigSpec] = None,
         **kwargs,
@@ -110,6 +112,32 @@ class RND(Exploration):
                 rewards results in more stable exploration (after a burn-in).
                 Rewards are normalized by a logarithmic scaling using the intrinsic
                 rewards moving standard deviation.
+            global_update: Indicates, if the update of the weights of the distillation
+                predictor net should be done globally, i.e. with the update of the
+                policy model or locally after each trajectory has been recorded.
+                Note that when `num_workers` is larger 0 and/or `nonepisodic_returns`
+                is `True`, `global_update` is automatically set to `True`.
+            nonepisodic_returns: Indicates, if next to episodic returns in the
+                policy value head another value head with non-episodic returns should
+                be used. This is used in the original paper includes the intrinsic
+                rewards via the non-episodic value loss into rhe training of the
+                policy net.
+            lambda_: The parameter of the exponential weighting of the generalized
+                advantage estimation used for the non-episodic returns.
+            gamma: The discount factor for the intrinsic returns used in the
+                advantage estimation with the non-episodic returns.
+            vf_loss_coeff: The weighting factor for the value loss from the
+                non-episodic value head added by this module to the policy model.
+            adv_int_coeff: The weight for the intrinsic advantages calculated
+                with the non-episodic returns. The advantages from the non-episodic
+                returns are added to the advantages of the algorithm (e.g. PPO).
+                The ratio between them is defined by this parameter and
+                `adv_ext_coeff`.
+            adv_ext_coeff: The weight for the extrinsic advantages calculated
+                with the episodic returns. The advantages from the episodic
+                returns (e.g. from PPO) are added to the intrinsic advantages from
+                the exploration algorithm. The ratio between them is defined by
+                this parameter and `adv_int_coeff`.
             random_timesteps: The number of timesteps to act fully random when the
                 default sub-exploration is used (`subexploration=None`).
             subexploration: The config dict for the underlying Exploration
@@ -119,8 +147,9 @@ class RND(Exploration):
 
         super().__init__(action_space, framework=framework, model=model, **kwargs)
 
+        self.global_update = global_update
         # Check for parallel execution.
-        if self.policy_config["num_workers"] != 0:
+        if self.policy_config["num_workers"] != 0 and not self.global_update:
             self.global_update = True
             logger.warning(
                 "RND uses a global update for the exploration model. "
@@ -139,13 +168,31 @@ class RND(Exploration):
         self.lr = lr
         self.intrinsic_reward_coeff = intrinsic_reward_coeff
 
+        # Creates modules/layers inside the actual ModelV2 object.
+        self._distill_predictor_net = ModelCatalog.get_model_v2(
+            self.model.obs_space,
+            self.action_space,
+            self.embed_dim,
+            model_config=self.distill_net_config,
+            framework=self.framework,
+            name="_distill_predictor_net",
+        )
+        self._distill_target_net = ModelCatalog.get_model_v2(
+            self.model.obs_space,
+            self.action_space,
+            self.embed_dim,
+            model_config=self.distill_net_config,
+            framework=self.framework,
+            name="_distill_target_net",
+        )
+
         # TODO: Check which algorithms could use non-episodic returns.
         # TODO: Use also de-central update for this. Everything should work:
         #   Just add the loss and you are done.
         # Include non-episodic returns.
         self.nonepisodic_returns = nonepisodic_returns
-        # ------------ ENcapsulate ----------------------------
         if self.nonepisodic_returns:
+            self.callback_attached = False
             if self.policy_config["algo_class"].__name__ != "PPO":
                 raise ValueError(
                     "RND does support non-episodic returns only for `'PPO'`. "
@@ -172,6 +219,7 @@ class RND(Exploration):
             # Set the coefficient for the intrinsic value loss to the
             # coefficient used by the Policy if no value was provided.
             self.vf_loss_coeff = vf_loss_coeff
+            # TODO: maybe better to test out which one works best.
             if self.vf_loss_coeff is None:
                 self.vf_loss_coeff = self.policy_config["vf_loss_coeff"]
             self.adv_int_coeff = adv_int_coeff
@@ -196,6 +244,7 @@ class RND(Exploration):
                 # values can be used.
 
                 def _exploration_value_function(model) -> TensorType:
+                    """Computes the non-episodic value predictions."""
                     assert model._features is not None, "must call forward() first"
                     if model._value_branch_separate:
                         return model._exploration_value_branch(
@@ -250,6 +299,7 @@ class RND(Exploration):
                 # of the non-episodic returns.
 
                 def _exploration_value_branch(model) -> TensorType:
+                    """Calls the value head for non-episodic returns."""
                     return tf.reshape(model._exploration_value_out, [-1])
 
                 # Assign this function to the model
@@ -258,11 +308,13 @@ class RND(Exploration):
                 )
                 self.model = model
                 self._sess = tf_sess
-                # Define a value function for single input and include it into
-                # the static graph, if existent.
 
                 @make_tf_callable(self._sess)
                 def _value_function(**input_dict):
+                    """Calls the non-episodic value head for a single input.
+
+                    This gets included into the TensorFlow graph, if existent.
+                    """
                     input_dict = SampleBatch(input_dict)
                     model_out, _ = self.model(input_dict)
                     return self.model._exploration_value_branch()[0]
@@ -270,6 +322,7 @@ class RND(Exploration):
                 # Assign the value function to the exploration module.
                 self._value_function = _value_function
 
+        # Normalization of intrinsic rewards.
         self.normalize = normalize
         self._moving_mean_std = None
 
@@ -279,6 +332,7 @@ class RND(Exploration):
 
             self._moving_mean_std = _MovingMeanStd()
 
+        # Define an epsilon-greedy sub-exploration for actions.
         if sub_exploration is None:
             sub_exploration = {
                 "type": "EpsilonGreedy",
@@ -294,24 +348,6 @@ class RND(Exploration):
                 },
             }
         self.sub_exploration = sub_exploration
-
-        # Creates modules/layers inside the actual ModelV2 object.
-        self._distill_predictor_net = ModelCatalog.get_model_v2(
-            self.model.obs_space,
-            self.action_space,
-            self.embed_dim,
-            model_config=self.distill_net_config,
-            framework=self.framework,
-            name="_distill_predictor_net",
-        )
-        self._distill_target_net = ModelCatalog.get_model_v2(
-            self.model.obs_space,
-            self.action_space,
-            self.embed_dim,
-            model_config=self.distill_net_config,
-            framework=self.framework,
-            name="_distill_target_net",
-        )
 
         # This is only used to select the correct action.
         self.exploration_submodule = from_config(
@@ -349,6 +385,7 @@ class RND(Exploration):
             distill_params = list(self._distill_predictor_net.parameters())
             # TODO: Does this assign the preidctor net to the same
             # device as the policy model?
+            # TODO: This is the policy model! Make a single one for the distillation
             self.model._distill_predictor_net = self._distill_predictor_net.to(
                 self.device
             )
@@ -360,7 +397,9 @@ class RND(Exploration):
             self.model._distill_predictor_net = self._distill_predictor_net
 
             # We do not train the target network.
-            self._optimizer_var_list = self._distill_predictor_net.base_model.variables
+            self._optimizer_var_list = ray.experimental.tf_utils.TensorFlowVariables(
+                [], self._sess, self.model._distill_predictor_net.base_model.variables
+            )
             self._optimizer = tf1.train.AdamOptimizer(learning_rate=self.lr)
 
             # Create placeholders and initialize the loss.
@@ -398,7 +437,9 @@ class RND(Exploration):
                 # self._vf_intrinsic_loss_np = self._sess.run(
                 #     self._vf_intrinsic_loss
                 # )
-                self._vf_intrinsic_loss_np = self._vf_intrinsic_loss
+                # TODO: @avnishn How can this be evaluated?
+                self._vf_intrinsic_loss_np = self._vf_intrinsic_loss.eval(session=sess)
+                # self._vf_intrinsic_loss_np = self._vf_intrinsic_loss
             return (
                 self._intrinsic_reward_np,
                 self._distill_loss_np,
@@ -412,7 +453,12 @@ class RND(Exploration):
 
     @override(Exploration)
     def get_weights(self) -> ModelWeights:
-        # TODO: Create the same for TF in base branch
+        """Gets the weights of the distillation model.
+
+        This is needed, if a global update is chosen by the user.
+        Then the weights get updated in each policy training iteration.
+        This is needed when `nonepisodic_returns` is `True`.
+        """
         if self.framework == "torch":
             return {
                 k: v.cpu().detach().numpy()
@@ -423,15 +469,29 @@ class RND(Exploration):
 
     @override(Exploration)
     def set_weights(self, weights: ModelWeights):
+        """Sets the weights of the distillation model.
+
+        This is needed, if a global update is chosen by the user.
+        Then the weights get updated in each policy training iteration.
+        This is needed when `nonepisodic_returns` is `True`.
+        """
         if self.framework == "torch":
             weights = convert_to_torch_tensor(weights, device=self.device)
             self._distill_predictor_net.load_state_dict(weights)
         else:
             self._optimizer_var_list.set_weights(weights)
 
+    def vf_intrinsic_loss(self):
+        return self._vf_intrinsic_loss
+
     # TODO: Add typing
     @override(Exploration)
     def extra_action_out_fn(self, policy):
+        """Adds extra action fetches for TensorFlow.
+
+        This is included to improve performance as the policy model
+        has to be run less often.
+        """
         extra_action_out = super().extra_action_out_fn(policy)
 
         if isinstance(self.model, tf.keras.Model):
@@ -444,6 +504,11 @@ class RND(Exploration):
 
     @override(Exploration)
     def extra_action_out(self, input_dict, state_batches, model, action_dist, policy):
+        """Adds extra action fetches for PyTorch.
+
+        This is included to improve performance as the policy model
+        has to be run less often.
+        """
         extra_action_out = super().extra_action_out(
             input_dict=input_dict,
             state_batches=state_batches,
@@ -456,6 +521,84 @@ class RND(Exploration):
             {"exploration_vf_preds": self.model._exploration_value_function()}
         )
         return extra_action_out
+
+    @override(Exploration)
+    def compute_loss_and_update(self, sample_batch, policy):
+        """Enables a global update and adds a term to the policy loss.
+
+        This is called by the policy's loss function during each policy
+        training iteration and updates the distillation predictor network
+        globally.
+        In case of non-episodic returns an additional value loss is added
+        to the policy loss and is used in updating the weights of the policy
+        model together with the weights of the non-episodic value head.
+        """
+        if self.framework == "torch":
+            # Compute the novelty from the distillation networks.
+            novelty = self._compute_novelty(
+                sample_batch[SampleBatch.OBS].to(policy.device)
+            )
+            # TODO: Policy is LSTM: Padded sequence mean_valid(novelty) from PPO
+            distill_loss = torch.mean(novelty)
+            self._optimizer.zero_grad()
+            distill_loss.backward()
+            self._optimizer.step()
+            self._distill_loss_np = distill_loss.detach().numpy()
+
+            if self.nonepisodic_returns:
+                from ray.rllib.evaluation.postprocessing import Postprocessing
+
+                # Compute the intrinsic value function loss to add to the
+                # total policy loss.
+                vf_intrinsic_loss = self._compute_nonepisodic_value_loss(sample_batch)
+                self._vf_intrinsic_loss_np = vf_intrinsic_loss.detach().numpy()
+                # Add intrinsic advantages to the extrinsic advantages.
+                sample_batch[Postprocessing.ADVANTAGES] = (
+                    self.adv_ext_coeff * sample_batch[Postprocessing.ADVANTAGES]
+                    + self.adv_int_coeff * sample_batch["exploration_advantages"]
+                )
+            else:
+                # Return zero, if non-episodic returns are not used.
+                vf_intrinsic_loss = np.array([0.0])
+        else:
+            # Update the predictor network and compute the novelty from the
+            # distillation networks.
+            self.novelty, _ = self._postprocess_helper_tf(
+                sample_batch[SampleBatch.OBS], True
+            )
+
+            # Add non-episodic returns if needed.
+            if self.nonepisodic_returns:
+                from ray.rllib.evaluation.postprocessing import Postprocessing
+
+                # Attach the RNDBatchCallbacks to compute non-episodic advantages.
+                if not self.callback_attached:
+                    self._attach_rnd_batch_callbacks(policy)
+
+                # This call is artificial to let RLlib add the `exploration_advantages`
+                # to the batch.
+                # Note this has been done as otherwise the placeholder
+                # `"default_policy/advantages:0" gets overriden and the process
+                # errors out. `
+                _ = sample_batch["exploration_advantages"] * 2.0
+                # value_fn_out = self._value_function(sample_batch, policy)
+                # Compute the intrinsic value function loss to add to the
+                # total policy loss.
+                # TODO: TF1: Check, if this has to be initialized at the beginning
+                # and only calculated here.
+                vf_intrinsic_loss = self._compute_nonepisodic_value_loss(sample_batch)
+                if self.framework == "tf":
+                    # TODO: Get the numpy version of the loss.
+                    # self._vf_intrinsic_loss_np = self._sess.run(vf_intrinsic_loss)
+                    self._vf_intrinsic_loss = vf_intrinsic_loss
+                else:
+                    if not self.policy_config["eager_tracing"]:
+                        self._vf_intrinsic_loss_np = vf_intrinsic_loss.numpy()
+            else:
+                # Else, return zero loss.
+                vf_intrinsic_loss = tf.constant(0.0)
+
+        return vf_intrinsic_loss
 
     def _postprocess_tf(self, policy, sample_batch, tf_sess):
         """Calculates the intrinsic reward and updates the parameters."""
@@ -471,8 +614,8 @@ class RND(Exploration):
                     },
                 )
             else:
-                # Update the weights of the predictor network only, if the
-                # update should happen locally.
+                # Update happens locally after each trajectory has been
+                # collected.
                 self._novelty_np, _ = tf_sess.run(
                     [self._novelty, self._update_op],
                     feed_dict={
@@ -489,6 +632,7 @@ class RND(Exploration):
                 not self.global_update,
             )
             self._novelty_np = novelty.numpy()
+        # Compute the intrinsic rewards from the novelty.
         self._compute_intrinsic_reward(sample_batch)
         if self.normalize:
             self._intrinsic_reward_np = self._moving_mean_std(self._intrinsic_reward_np)
@@ -499,7 +643,7 @@ class RND(Exploration):
                 sample_batch[SampleBatch.REWARDS] + self._intrinsic_reward_np
             )
         else:
-            # Calculate non-episodic returns and estimate value targets.
+            # Calculate value for last observation in trajectory, i.e. `next_obs`.
             last_r = self._predict_nonepisodic_value(sample_batch, policy, tf_sess)
 
             # Compute advantages and value targets.
@@ -508,37 +652,39 @@ class RND(Exploration):
         return sample_batch
 
     def _postprocess_helper_tf(self, obs, optimize: bool = True):
-        """Computes novelty and gradients."""
+        """Computes novelty and gradients.
+
+        Updates only if `optimize` is set to `True`.
+        """
         with (
             tf.GradientTape() if self.framework != "tf" else NullContextManager()
         ) as tape:
 
+            # Compute the novelty from the distillation networks.
             novelty = self._compute_novelty(obs)
-            # # Push observations through the distillation networks.
-            # phi, _ = self.model._distill_predictor_net({SampleBatch.OBS: obs})
-            # phi_target, _ = self._distill_target_net({SampleBatch.OBS: obs})
-            # # Avoid dividing by zero in the gradient by adding a small epsilon.
-            # novelty = tf.norm(phi - phi_target + 1e-12, axis=1)
-            # TODO: @simonsays1980: Should be probably mean over dim=1 and then
-            # sum over batches.
+            # Compute the distillation loss by averaging over the batch.
             distill_loss = tf.reduce_mean(novelty, axis=-1)
 
             update_op = None
             if optimize:
-
                 # Step the optimizer
                 if self.framework != "tf":
                     self._distill_loss_np = distill_loss.numpy()
-                    grads = tape.gradient(distill_loss, self._optimizer_var_list)
+                    grads = tape.gradient(
+                        distill_loss, list(self._optimizer_var_list.variables.values())
+                    )
                     grads_and_vars = [
                         (g, v)
-                        for g, v in zip(grads, self._optimizer_var_list)
+                        for g, v in zip(
+                            grads, list(self._optimizer_var_list.variables.values())
+                        )
                         if g is not None
                     ]
                     update_op = self._optimizer.apply_gradients(grads_and_vars)
                 else:
                     update_op = self._optimizer.minimize(
-                        distill_loss, var_list=self._optimizer_var_list
+                        distill_loss,
+                        var_list=list(self._optimizer_var_list.variables.values()),
                     )
 
         return novelty, update_op
@@ -546,6 +692,7 @@ class RND(Exploration):
     def _postprocess_torch(self, policy, sample_batch):
         """Calculates the intrinsic reward and updates the parameters."""
 
+        # Compute the novelty by the distillation networks.
         novelty = self._compute_novelty(
             torch.from_numpy(sample_batch[SampleBatch.OBS]).to(policy.device)
         )
@@ -562,13 +709,15 @@ class RND(Exploration):
                 sample_batch[SampleBatch.REWARDS] + self._intrinsic_reward_np
             )
         else:
-            # Calculate non-episodic returns and estimate value targets.
+            # Calculate non-episodic value for the last observation, i.e.
+            # `next_obs`.
             last_r = (
                 self._predict_nonepisodic_value(sample_batch, policy)
                 .detach()
                 .numpy()
                 .reshape(-1)
             )
+            # Compute the advantages and non-episodic value targets.
             sample_batch = self._compute_advantages(sample_batch, last_r)
 
         # When no global update is chosen, perform an optimization
@@ -583,117 +732,8 @@ class RND(Exploration):
 
         return sample_batch
 
-    @override(Exploration)
-    def compute_loss_and_update(self, sample_batch, policy):
-
-        if self.framework == "torch":
-            novelty = self._compute_novelty(
-                sample_batch[SampleBatch.OBS].to(policy.device)
-            )
-            # TODO: Policy is LSTM: Padded sequence mean_valid(novelty) from PPO
-            distill_loss = torch.mean(novelty)
-            self._optimizer.zero_grad()
-            distill_loss.backward()
-            self._optimizer.step()
-            self._distill_loss_np = distill_loss.detach().numpy()
-
-            if self.nonepisodic_returns:
-                from ray.rllib.evaluation.postprocessing import Postprocessing
-
-                value_fn_out = self._value_function(sample_batch, policy)
-                # Compute the intrinsic value function loss to add to the
-                # total PPO loss.
-                vf_intrinsic_loss = (
-                    torch.mean(
-                        torch.pow(
-                            value_fn_out - sample_batch["exploration_value_targets"],
-                            2.0,
-                        )
-                    )
-                    * self.vf_loss_coeff
-                )
-                self._vf_intrinsic_loss_np = vf_intrinsic_loss.detach().numpy()
-                # Add intrinsic advantages to the extrinsic advantages.
-                sample_batch[Postprocessing.ADVANTAGES] = (
-                    self.adv_ext_coeff * sample_batch[Postprocessing.ADVANTAGES]
-                    + self.adv_int_coeff * sample_batch["exploration_advantages"]
-                )
-            else:
-                # Return zero, if non-episodic returns are not used.
-                vf_intrinsic_loss = np.array([0.0])
-        else:
-            # Update the predictor network.
-            self.novelty, _ = self._postprocess_helper_tf(
-                sample_batch[SampleBatch.OBS], True
-            )
-
-            # Add non-episodic returns if needed.
-            if self.nonepisodic_returns:
-                from ray.rllib.evaluation.postprocessing import Postprocessing
-
-                # Attach the RNDBatchCallbacks to compute non-episodic advantages.
-                self._attach_rnd_batch_callbacks(policy)
-                # TODO: Check if this cannot be optimized away with a cached fetch.
-                model_out, _ = self.model(sample_batch)
-                value_fn_out = self.model._exploration_value_branch()[0]
-                _ = sample_batch["exploration_advantages"] * 2.0
-                # value_fn_out = self._value_function(sample_batch, policy)
-                # Compute the intrinsic value function loss to add to the
-                # total PPO loss.
-                # TODO: Check, if this has to be initialized at the beginning
-                # and only calculated here.
-                vf_intrinsic_loss = (
-                    tf.reduce_mean(
-                        tf.pow(
-                            value_fn_out - sample_batch["exploration_value_targets"],
-                            2.0,
-                        ),
-                        axis=-1,
-                    )
-                    * tf.constant(self.vf_loss_coeff)
-                )
-                if self.framework == "tf":
-                    # self._vf_intrinsic_loss_np = self._sess.run(vf_intrinsic_loss)
-                    self._vf_intrinsic_loss = vf_intrinsic_loss
-                else:
-                    if not self.policy_config["eager_tracing"]:
-                        self._vf_intrinsic_loss_np = vf_intrinsic_loss.numpy()
-            else:
-                # Else, return zero loss.
-                vf_intrinsic_loss = tf.constant(0.0)
-
-        return vf_intrinsic_loss
-
-    def _add_nonepisodic_value_branch_torch(self, model):
-        # Get the previous layer's embedding size.
-        prev_layer_size = model._value_branch_separate[-1]._model[-2].out_features
-        # Add another value branch for the non-episodic returns.
-        model._exploration_value_branch = SlimFC(
-            in_size=prev_layer_size,
-            out_size=1,
-            initializer=torch_normc_initializer(0.01),
-            activation_fn=None,
-        )
-        # Add a corresponding value_function() such that the cached
-        # values can be used.
-
-        def _exploration_value_function(model) -> TensorType:
-            assert model._features is not None, "must call forward() first"
-            if model._value_branch_separate:
-                return model._exploration_value_branch(
-                    model._value_branch_separate(model._last_flat_in)
-                ).squeeze(1)
-            else:
-                return model._exploration_value_branch(model._features).squeeze(1)
-
-        # Assign this function to the model.
-        model._exploration_value_function = _exploration_value_function.__get__(
-            model, type(model)
-        )
-        return model
-
     def _compute_novelty(self, obs):
-        # TODO: Include TF
+        """Computes the novelty of states."""
         # Push observations through the distillation networks.
         phi, _ = self.model._distill_predictor_net(
             {
@@ -717,18 +757,20 @@ class RND(Exploration):
         """Computes the intrinsic reward."""
         self._intrinsic_reward_np = self._novelty_np * self.intrinsic_reward_coeff
 
-    # TODO: Check if this holds for both TF and Torch
     def _predict_nonepisodic_value(self, sample_batch, policy, tf_sess=None):
         """Uses the non-episodic value head to predict a value.
 
         Note, this is done only for the next observation.
         """
+        # Generate a single step input dict.
         input_dict = sample_batch.get_single_step_input_dict(
             self.model.view_requirements, index="last"
         )
         if self.framework == "torch":
             return self._value_function(input_dict, policy)
         else:
+            # This is a tf_callable function and needs an
+            # input dict for execution.
             return self._value_function(**input_dict)
 
     # @make_tf_callable(self.get_session())
@@ -743,10 +785,6 @@ class RND(Exploration):
                     input_dict[SampleBatch.OBS].to(policy.device)
                 )
             )
-        else:
-            # For TensorFlow.
-            model_out, _ = policy.model(input_dict)
-            return self.model._exploration_value_branch()[0]
 
     def _compute_advantages(self, sample_batch, last_r):
         """Compute advantages for the non-episodic returns."""
@@ -773,11 +811,50 @@ class RND(Exploration):
         sample_batch["exploration_vf_preds"].astype(np.float32)
         return sample_batch
 
+    # TODO: @avnishn Is it possible to make this function tf_callable?
+    # @make_tf_callable(self._sess)
+    def _compute_nonepisodic_value_loss(self, sample_batch):
+        """Computes the intrinsic (non-episodic) value loss.
+
+        This loss term is added to the policy loss to include the
+        exploration into the optimization of the policy.
+        """
+        if self.framework != "torch":
+            # model_out, _ = self.model(sample_batch)
+            # value_fn_out = self.model._exploration_value_branch()[0]
+            vf_intrinsic_loss = (
+                tf.reduce_mean(
+                    tf.pow(
+                        sample_batch["exploration_vf_preds"]
+                        - sample_batch["exploration_value_targets"],
+                        2.0,
+                    ),
+                    axis=-1,
+                )
+                * tf.constant(self.vf_loss_coeff)
+            )
+        else:
+            # Get the actual value predictions from the non-episodic value head.
+            # value_fn_out = self._value_function(sample_batch, policy)
+            # Compute the intrinsic value function loss to add to the
+            # total policy loss.
+            vf_intrinsic_loss = (
+                torch.mean(
+                    torch.pow(
+                        sample_batch["exploration_vf_preds"]
+                        - sample_batch["exploration_value_targets"],
+                        2.0,
+                    )
+                )
+                * self.vf_loss_coeff
+            )
+        return vf_intrinsic_loss
+
     def _attach_rnd_batch_callbacks(self, policy):
         """Attaches the RNDBatchCallbacks to add non-episodic advantages.
 
         For TensorFlow 1.x this is needed as otherwise the `"advantages"`'
-        placeholder is overwritten and cannot be used for feeding anymore.
+        placeholder is overidden and cannot be used for feeding anymore.
         Using a callback solves this problem as in òn_learn_on_batch()` we
         work on the numpy training batch and not the placeholders.
         """
