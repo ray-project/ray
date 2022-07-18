@@ -1401,9 +1401,9 @@ def external_ray_cluster_activity_hook1():
     global ray_cluster_activity_hook_counter
     ray_cluster_activity_hook_counter += 1
 
-    from pydantic import BaseModel
+    from pydantic import BaseModel, Extra
 
-    class TestRayActivityResponse(BaseModel):
+    class TestRayActivityResponse(BaseModel, extra=Extra.allow):
         """
         Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
         used in test_component_activities_hook to mimic typical
