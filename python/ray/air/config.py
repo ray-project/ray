@@ -438,7 +438,7 @@ class RunConfig:
             requires trials to have the same resource requirements.
             Defaults to ``True`` for function trainables (including most
             Ray AIR trainers) and ``False`` for class and registered trainables
-            (e.g. RLLib).
+            (e.g. RLlib).
 
     """
 
