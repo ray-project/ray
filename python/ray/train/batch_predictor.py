@@ -1,5 +1,6 @@
 import inspect
-from typing import Any, Dict, Optional, List, Type, Union
+from typing import Any, Dict, Optional, List, Type, Union, Callable
+import pandas as pd
 
 import ray
 from ray.air import Checkpoint
@@ -41,6 +42,30 @@ class BatchPredictor:
     ) -> "BatchPredictor":
         return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
+    @classmethod
+    def from_pandas_udf(
+        cls, pandas_udf: Callable[[pd.DataFrame], pd.DataFrame]
+    ) -> "BatchPredictor":
+        """Create a Predictor from a Pandas UDF.
+
+        Args:
+            pandas_udf: A function that takes a pandas.DataFrame and other
+                optional kwargs and returns a pandas.DataFrame.
+        """
+
+        class PandasUDFPredictor(Predictor):
+            @classmethod
+            def from_checkpoint(cls, checkpoint, **kwargs):
+                return PandasUDFPredictor()
+
+            def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
+                return pandas_udf(df, **kwargs)
+
+        return cls(
+            checkpoint=Checkpoint.from_dict({"dummy": 1}),
+            predictor_cls=PandasUDFPredictor,
+        )
+
     def predict(
         self,
         data: Union[ray.data.Dataset, ray.data.DatasetPipeline],
@@ -63,16 +88,9 @@ class BatchPredictor:
             >>> from ray.air import Checkpoint
             >>> from ray.train.predictor import Predictor
             >>> from ray.train.batch_predictor import BatchPredictor
-            >>> # Create a dummy predictor that returns identity as the predictions.
-            >>> class DummyPredictor(Predictor):
-            ...     @classmethod
-            ...     def from_checkpoint(cls, checkpoint, **kwargs):
-            ...         return cls()
-            ...     def _predict_pandas(self, data_df, **kwargs):
-            ...         return data_df
-            >>> # Create a batch predictor for this dummy predictor.
-            >>> batch_pred = BatchPredictor( # doctest: +SKIP
-            ...     Checkpoint.from_dict({"x": 0}), DummyPredictor)
+            >>> # Create a batch predictor that returns identity as the predictions.
+            >>> batch_pred = BatchPredictor.from_pandas_udf( # doctest: +SKIP
+            ...     lambda data: data)
             >>> # Create a dummy dataset.
             >>> ds = ray.data.from_pandas(pd.DataFrame({ # doctest: +SKIP
             ...     "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
@@ -191,16 +209,9 @@ class BatchPredictor:
             >>> from ray.air import Checkpoint
             >>> from ray.train.predictor import Predictor
             >>> from ray.train.batch_predictor import BatchPredictor
-            >>> # Create a dummy predictor that always returns `42` for each input.
-            >>> class DummyPredictor(Predictor):
-            ...     @classmethod
-            ...     def from_checkpoint(cls, checkpoint, **kwargs):
-            ...         return cls()
-            ...     def predict(self, data, **kwargs):
-            ...         return pd.DataFrame({"a": [42] * len(data)})
-            >>> # Create a batch predictor for this dummy predictor.
-            >>> batch_pred = BatchPredictor( # doctest: +SKIP
-            ...     Checkpoint.from_dict({"x": 0}), DummyPredictor)
+            >>> # Create a batch predictor that always returns `42` for each input.
+            >>> batch_pred = BatchPredictor.from_pandas_udf( # doctest: +SKIP
+            ...     lambda data: pd.DataFrame({"a": [42] * len(data)})
             >>> # Create a dummy dataset.
             >>> ds = ray.data.range_tensor(1000, parallelism=4) # doctest: +SKIP
             >>> # Setup a prediction pipeline.

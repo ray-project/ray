@@ -135,7 +135,10 @@ class BaseTrainer(abc.ABC):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
-    _scaling_config_allowed_keys: List[str] = ["trainer_resources"]
+    _scaling_config_allowed_keys: List[str] = [
+        "trainer_resources",
+        "_max_cpu_fraction_per_node",
+    ]
 
     def __init__(
         self,
@@ -156,6 +159,16 @@ class BaseTrainer(abc.ABC):
         self.resume_from_checkpoint = resume_from_checkpoint
 
         self._validate_attributes()
+
+        if datasets and not self.scaling_config.get("_max_cpu_fraction_per_node"):
+            logger.warning(
+                "When passing `datasets` to a Trainer, it is recommended to "
+                "reserve at least 20% of node CPUs for Dataset execution by setting "
+                "`_max_cpu_fraction_per_node = 0.8` in the Trainer `scaling_config`. "
+                "Not doing so can lead to resource contention or hangs. "
+                "See https://docs.ray.io/en/master/data/key-concepts.html"
+                "#example-datasets-in-tune for more info."
+            )
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""

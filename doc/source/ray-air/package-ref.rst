@@ -45,6 +45,8 @@ Abstract Classes
     :members:
     :show-inheritance:
 
+.. _air-results-ref:
+
 Training Result
 ###############
 
@@ -112,8 +114,6 @@ Serving
 .. autoclass:: ray.serve.air_integrations.PredictorDeployment
 
 .. autoclass:: ray.serve.air_integrations.PredictorWrapper
-
-.. _air-results-ref:
 
 Trainer and Predictor Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
