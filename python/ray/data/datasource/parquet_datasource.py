@@ -190,7 +190,11 @@ class _ParquetDatasourceReader(Reader):
                 inferred_schema = schema
         else:
             inferred_schema = schema
-        self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+
+        try:
+            self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+        except OSError as e:
+            _handle_read_os_error(e, paths)
         self._pq_ds = pq_ds
         self._meta_provider = meta_provider
         self._inferred_schema = inferred_schema

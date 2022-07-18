@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import (
     List,
     Optional,
@@ -331,7 +332,8 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
 
 def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
     # NOTE: this is not comprehensive yet, and should be extended as more errors arise.
-    if "AWS Error [code 15]: No response body" in str(error):
+    aws_error_pattern = r"^(.*)AWS Error \[code \d+\]: No response body\.$"
+    if re.match(aws_error_pattern, str(error)):
         # Specially handle AWS error when reading files, to give a clearer error
         # message to avoid confusing users. The real issue is most likely that the AWS
         # S3 file credentials have not been properly configured yet.
