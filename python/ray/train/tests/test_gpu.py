@@ -102,8 +102,8 @@ def test_torch_get_device_dist(ray_2_node_4_gpu, num_gpus_per_worker):
     devices = trainer.run(train_fn)
     trainer.shutdown()
 
+    count = Counter(devices)
     if num_gpus_per_worker == 0.5:
-        count = Counter(devices)
         for i in range(4):
             assert count[i] == 4
     elif num_gpus_per_worker == 1:
@@ -111,7 +111,7 @@ def test_torch_get_device_dist(ray_2_node_4_gpu, num_gpus_per_worker):
             assert count[i] == 2
     elif num_gpus_per_worker == 2:
         for i in range(2):
-            assert count[i] == 2
+            assert count[2 * i] == 2
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
