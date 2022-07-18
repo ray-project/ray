@@ -4,7 +4,7 @@ import os
 import time
 
 import ray
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 from ray.air.util.check_ingest import DummyTrainer
 from ray.data.preprocessors import BatchMapper
 
@@ -25,12 +25,12 @@ def make_ds(size_gb: int):
 def run_ingest_bulk(dataset, num_workers, num_cpus_per_worker):
     dummy_prep = BatchMapper(lambda df: df * 2)
     trainer = DummyTrainer(
-        scaling_config={
-            "num_workers": num_workers,
-            "trainer_resources": {"CPU": 0},
-            "resources_per_worker": {"CPU": num_cpus_per_worker},
-            "_max_cpu_fraction_per_node": 0.8,
-        },
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            trainer_resources={"CPU": 0},
+            resources_per_worker={"CPU": num_cpus_per_worker},
+            _max_cpu_fraction_per_node=0.8,
+        ),
         datasets={"train": dataset},
         preprocessor=dummy_prep,
         num_epochs=1,

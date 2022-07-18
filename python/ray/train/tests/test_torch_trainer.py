@@ -9,6 +9,7 @@ from ray.air.examples.pytorch.torch_linear_example import (
 )
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.tune import TuneError
+from ray.air.config import ScalingConfig
 
 
 @pytest.fixture
@@ -28,7 +29,7 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
 
     num_workers = num_workers
     epochs = 3
-    scaling_config = {"num_workers": num_workers}
+    scaling_config = ScalingConfig(num_workers=num_workers)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
@@ -43,7 +44,7 @@ def test_torch_e2e(ray_start_4_cpus):
         model = torch.nn.Linear(1, 1)
         session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
-    scaling_config = {"num_workers": 2}
+    scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
         train_loop_per_worker=train_func, scaling_config=scaling_config
     )
@@ -69,7 +70,7 @@ def test_torch_e2e_state_dict(ray_start_4_cpus):
         model = torch.nn.Linear(1, 1).state_dict()
         session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
-    scaling_config = {"num_workers": 2}
+    scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
         train_loop_per_worker=train_func, scaling_config=scaling_config
     )
