@@ -9,7 +9,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp.web
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Extra, Field
 
 import ray
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
@@ -39,9 +39,9 @@ class RayActivityStatus(str, enum.Enum):
     ERROR = "ERROR"
 
 
-class RayActivityResponse(BaseModel):
+class RayActivityResponse(BaseModel, extra=Extra.allow):
     """
-    Dataclass used to inform if a particular Ray component can be considered
+    Pydantic model used to inform if a particular Ray component can be considered
     active, and metadata about observation.
     """
 

@@ -1,14 +1,11 @@
-from datetime import datetime
 import os
 import sys
 import json
-from typing import Optional
 import jsonschema
 import hashlib
 import time
 
 import pprint
-from pydantic import BaseModel
 import pytest
 import requests
 
@@ -58,11 +55,10 @@ def set_ray_cluster_activity_hook(request):
     ],
     indirect=True,
 )
-async def test_component_activities_hook(set_ray_cluster_activity_hook,
-                                         call_ray_start):
+def test_component_activities_hook(set_ray_cluster_activity_hook, call_ray_start):
     """
     Tests /api/component_activities returns correctly for various
-    responses of RAY_CLUSTER_ACTIVITY_HOOK defined in ray._private.test_utils.
+    responses of RAY_CLUSTER_ACTIVITY_HOOK.
 
     Verify no active drivers are correctly reflected in response.
     """
@@ -88,39 +84,34 @@ async def test_component_activities_hook(set_ray_cluster_activity_hook,
 
     # Validate external component response can be cast to RayActivityResponse object
     if external_hook[-1] == "5":
-        external_activity_response = RayActivityResponse(
-            **data["test_component1"])
+        external_activity_response = RayActivityResponse(**data["test_component5"])
         assert external_activity_response.is_active == "ACTIVE"
         assert external_activity_response.reason == "Counter: 1"
     elif external_hook[-1] == "4":
-        external_activity_response = RayActivityResponse(
-            **data["external_component"])
+        external_activity_response = RayActivityResponse(**data["external_component"])
         assert external_activity_response.is_active == "ERROR"
-        assert (external_activity_response.reason ==
-                "Exception('Error in external cluster activity hook')")
+        assert (
+            external_activity_response.reason
+            == "Exception('Error in external cluster activity hook')"
+        )
     elif external_hook[-1] == "3":
-        external_activity_response = RayActivityResponse(
-            **data["external_component"])
+        external_activity_response = RayActivityResponse(**data["external_component"])
         assert external_activity_response.is_active == "ERROR"
     elif external_hook[-1] == "2":
-        external_activity_response = RayActivityResponse(
-            **data["test_component2"])
+        external_activity_response = RayActivityResponse(**data["test_component2"])
         assert external_activity_response.is_active == "ERROR"
     elif external_hook[-1] == "1":
-        external_activity_response = RayActivityResponse(
-            **data["test_component1"])
+        external_activity_response = RayActivityResponse(**data["test_component1"])
         assert external_activity_response.is_active == "ACTIVE"
         assert external_activity_response.reason == "Counter: 1"
 
         # Call endpoint again to validate different response
-        response = requests.get(
-            "http://127.0.0.1:8265/api/component_activities")
+        response = requests.get("http://127.0.0.1:8265/api/component_activities")
         response.raise_for_status()
         data = response.json()
         jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
-        external_activity_response = RayActivityResponse(
-            **data["test_component1"])
+        external_activity_response = RayActivityResponse(**data["test_component1"])
         assert external_activity_response.is_active == "ACTIVE"
         assert external_activity_response.reason == "Counter: 2"
 
@@ -134,12 +125,11 @@ import ray
 
 ray.init(address="auto", namespace="{namespace}")
     """
+    run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
+    run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
     run_string_as_driver_nonblocking(
-        driver_template.format(namespace="my_namespace"))
-    run_string_as_driver_nonblocking(
-        driver_template.format(namespace="my_namespace"))
-    run_string_as_driver_nonblocking(
-        driver_template.format(namespace="_ray_internal_job_info_id1"))
+        driver_template.format(namespace="_ray_internal_job_info_id1")
+    )
 
     # Wait 1 sec for drivers to start
     time.sleep(1)
@@ -186,11 +176,14 @@ ray.get(a.ping.remote())
     """
     address = ray_start_with_dashboard["address"]
     detached_driver = driver_template.format(
-        address=address, lifetime="'detached'", name="'abc'")
+        address=address, lifetime="'detached'", name="'abc'"
+    )
     named_driver = driver_template.format(
-        address=address, lifetime="None", name="'xyz'")
+        address=address, lifetime="None", name="'xyz'"
+    )
     unnamed_driver = driver_template.format(
-        address=address, lifetime="None", name="None")
+        address=address, lifetime="None", name="None"
+    )
 
     run_string_as_driver(detached_driver)
     run_string_as_driver(named_driver)
@@ -202,8 +195,8 @@ ray.get(a.ping.remote())
     response.raise_for_status()
     data = response.json()
     schema_path = os.path.join(
-        os.path.dirname(dashboard.__file__),
-        "modules/snapshot/snapshot_schema.json")
+        os.path.dirname(dashboard.__file__), "modules/snapshot/snapshot_schema.json"
+    )
     pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
@@ -224,10 +217,7 @@ ray.get(a.ping.remote())
     assert data["data"]["snapshot"]["rayVersion"] == ray.__version__
 
 
-@pytest.mark.parametrize(
-    "ray_start_with_dashboard", [{
-        "num_cpus": 4
-    }], indirect=True)
+@pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
 def test_serve_snapshot(ray_start_with_dashboard):
     """Test reconnecting to detached Serve application."""
 
@@ -267,8 +257,7 @@ my_func_deleted.delete()
 
     my_func_nondetached.deploy()
 
-    assert requests.get(
-        "http://127.0.0.1:8000/my_func_nondetached").text == "hello"
+    assert requests.get("http://127.0.0.1:8000/my_func_nondetached").text == "hello"
 
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -276,15 +265,16 @@ my_func_deleted.delete()
     response.raise_for_status()
     data = response.json()
     schema_path = os.path.join(
-        os.path.dirname(dashboard.__file__),
-        "modules/snapshot/snapshot_schema.json")
+        os.path.dirname(dashboard.__file__), "modules/snapshot/snapshot_schema.json"
+    )
     pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
     assert len(data["data"]["snapshot"]["deployments"]) == 3
 
-    entry = data["data"]["snapshot"]["deployments"][hashlib.sha1(
-        "my_func".encode()).hexdigest()]
+    entry = data["data"]["snapshot"]["deployments"][
+        hashlib.sha1("my_func".encode()).hexdigest()
+    ]
     assert entry["name"] == "my_func"
     assert entry["version"] is None
     assert entry["namespace"] == SERVE_NAMESPACE
@@ -297,14 +287,14 @@ my_func_deleted.delete()
 
     assert len(entry["actors"]) == 1
     actor_id = next(iter(entry["actors"]))
-    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
-        "serve"]
+    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"]["serve"]
     assert metadata["deploymentName"] == "my_func"
     assert metadata["version"] is None
     assert len(metadata["replicaTag"]) > 0
 
-    entry_deleted = data["data"]["snapshot"]["deployments"][hashlib.sha1(
-        "my_func_deleted".encode()).hexdigest()]
+    entry_deleted = data["data"]["snapshot"]["deployments"][
+        hashlib.sha1("my_func_deleted".encode()).hexdigest()
+    ]
     assert entry_deleted["name"] == "my_func_deleted"
     assert entry_deleted["version"] == "v1"
     assert entry_deleted["namespace"] == SERVE_NAMESPACE
@@ -315,8 +305,9 @@ my_func_deleted.delete()
     assert entry_deleted["startTime"] > 0
     assert entry_deleted["endTime"] > entry_deleted["startTime"]
 
-    entry_nondetached = data["data"]["snapshot"]["deployments"][hashlib.sha1(
-        "my_func_nondetached".encode()).hexdigest()]
+    entry_nondetached = data["data"]["snapshot"]["deployments"][
+        hashlib.sha1("my_func_nondetached".encode()).hexdigest()
+    ]
     assert entry_nondetached["name"] == "my_func_nondetached"
     assert entry_nondetached["version"] == "v1"
     assert entry_nondetached["namespace"] == SERVE_NAMESPACE
@@ -329,96 +320,12 @@ my_func_deleted.delete()
 
     assert len(entry_nondetached["actors"]) == 1
     actor_id = next(iter(entry_nondetached["actors"]))
-    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
-        "serve"]
+    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"]["serve"]
     assert metadata["deploymentName"] == "my_func_nondetached"
     assert metadata["version"] == "v1"
     assert len(metadata["replicaTag"]) > 0
 
     my_func_nondetached.delete()
-
-
-class TestRayActivityResponse(BaseModel):
-    """
-    Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
-    used in test_component_activities_hook to mimic typical
-    usage of redefining or extending response type.
-    """
-
-    is_active: str
-    reason: Optional[str] = None
-    timestamp: float
-
-
-# Global counter to test different return values
-# for external_ray_cluster_activity_hook1.
-ray_cluster_activity_hook_counter = 0
-
-
-def external_ray_cluster_activity_hook1():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns valid response and increments counter in `reason`
-    field on each call.
-    """
-    global ray_cluster_activity_hook_counter
-    ray_cluster_activity_hook_counter += 1
-    return {
-        "test_component1":
-        TestRayActivityResponse(
-            is_active="ACTIVE",
-            reason=f"Counter: {ray_cluster_activity_hook_counter}",
-            timestamp=datetime.now().timestamp(),
-        )
-    }
-
-
-def external_ray_cluster_activity_hook2():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns invalid output because the value of `test_component2`
-    should be of type RayActivityResponse.
-    """
-    return {"test_component2": "bad_output"}
-
-
-def external_ray_cluster_activity_hook3():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns invalid output because return type is not
-    Dict[str, RayActivityResponse]
-    """
-    return "bad_output"
-
-
-def external_ray_cluster_activity_hook4():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Errors during execution.
-    """
-    raise Exception("Error in external cluster activity hook")
-
-
-def external_ray_cluster_activity_hook5():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns valid response and increments counter in `reason`
-    field on each call.
-    """
-    global ray_cluster_activity_hook_counter
-    ray_cluster_activity_hook_counter += 1
-    return {
-        "test_component1": {
-            "is_active": "ACTIVE",
-            "reason": f"Counter: {ray_cluster_activity_hook_counter}",
-            "timestamp": datetime.now().timestamp(),
-        }
-    }
 
 
 if __name__ == "__main__":

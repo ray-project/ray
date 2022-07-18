@@ -52,7 +52,8 @@ class RayTestTimeoutException(Exception):
 
 def make_global_state_accessor(ray_context):
     gcs_options = GcsClientOptions.from_gcs_address(
-        ray_context.address_info["gcs_address"])
+        ray_context.address_info["gcs_address"]
+    )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
     return global_state_accessor
@@ -115,10 +116,8 @@ def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     # some deadlocks that occur when piping ray's output on Windows
     if sys.platform == "win32":
         result = check_call_module(
-            ray_main,
-            argv,
-            capture_stdout=capture_stdout,
-            capture_stderr=capture_stderr)
+            ray_main, argv, capture_stdout=capture_stdout, capture_stderr=capture_stderr
+        )
     else:
         stdout_redir = None
         stderr_redir = None
@@ -131,8 +130,7 @@ def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
         proc = subprocess.Popen(argv, stdout=stdout_redir, stderr=stderr_redir)
         (stdout, stderr) = proc.communicate()
         if proc.returncode:
-            raise subprocess.CalledProcessError(proc.returncode, argv, stdout,
-                                                stderr)
+            raise subprocess.CalledProcessError(proc.returncode, argv, stdout, stderr)
         result = b"".join([s for s in [stdout, stderr] if s is not None])
     return result
 
@@ -147,8 +145,7 @@ def wait_for_pid_to_exit(pid, timeout=20):
         if not _pid_alive(pid):
             return
         time.sleep(0.1)
-    raise RayTestTimeoutException(
-        f"Timed out while waiting for process {pid} to exit.")
+    raise RayTestTimeoutException(f"Timed out while waiting for process {pid} to exit.")
 
 
 def wait_for_children_names_of_pid(pid, children_names, timeout=20):
@@ -165,8 +162,8 @@ def wait_for_children_names_of_pid(pid, children_names, timeout=20):
         time.sleep(0.1)
     raise RayTestTimeoutException(
         "Timed out while waiting for process {} children to start "
-        "({} not found from children {}).".format(pid, not_found_children,
-                                                  children))
+        "({} not found from children {}).".format(pid, not_found_children, children)
+    )
 
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
@@ -181,7 +178,8 @@ def wait_for_children_of_pid(pid, num_children=1, timeout=20):
         time.sleep(0.1)
     raise RayTestTimeoutException(
         f"Timed out while waiting for process {pid} children to start "
-        f"({num_alive}/{num_children} started: {alive}).")
+        f"({num_alive}/{num_children} started: {alive})."
+    )
 
 
 def wait_for_children_of_pid_to_exit(pid, timeout=20):
@@ -193,7 +191,8 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
     if len(alive) > 0:
         raise RayTestTimeoutException(
             "Timed out while waiting for process children to exit."
-            " Children still alive: {}.".format([p.name() for p in alive]))
+            " Children still alive: {}.".format([p.name() for p in alive])
+        )
 
 
 def kill_process_by_name(name, SIGKILL=False):
@@ -205,9 +204,7 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script: str,
-                         env: Dict = None,
-                         encode: str = "utf-8"):
+def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "utf-8"):
     """Run a driver as a separate process.
 
     Args:
@@ -228,8 +225,9 @@ def run_string_as_driver(driver_script: str,
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
             print(ray._private.utils.decode(output, encode_type=encode))
-            raise subprocess.CalledProcessError(proc.returncode, proc.args,
-                                                output, proc.stderr)
+            raise subprocess.CalledProcessError(
+                proc.returncode, proc.args, output, proc.stderr
+            )
         out = ray._private.utils.decode(output, encode_type=encode)
     return out
 
@@ -243,13 +241,15 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     Returns:
         A handle to the driver process.
     """
-    script = "; ".join([
-        "import sys",
-        "script = sys.stdin.read()",
-        "sys.stdin.close()",
-        "del sys",
-        'exec("del script\\n" + script)',
-    ])
+    script = "; ".join(
+        [
+            "import sys",
+            "script = sys.stdin.read()",
+            "sys.stdin.close()",
+            "del sys",
+            'exec("del script\\n" + script)',
+        ]
+    )
     proc = subprocess.Popen(
         [sys.executable, "-c", script],
         stdin=subprocess.PIPE,
@@ -265,18 +265,23 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
 def convert_actor_state(state):
     if not state:
         return None
-    return gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.values_by_number[
-        state].name
+    return gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.values_by_number[state].name
 
 
 def wait_for_num_actors(num_actors, state=None, timeout=10):
     state = convert_actor_state(state)
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if (len([
-                _ for _ in ray._private.state.actors().values()
-                if state is None or _["State"] == state
-        ]) >= num_actors):
+        if (
+            len(
+                [
+                    _
+                    for _ in ray._private.state.actors().values()
+                    if state is None or _["State"] == state
+                ]
+            )
+            >= num_actors
+        ):
             return
         time.sleep(0.1)
     raise RayTestTimeoutException("Timed out while waiting for global state.")
@@ -293,21 +298,26 @@ def wait_for_num_nodes(num_nodes: int, timeout_s: int):
         if now >= max_time:
             raise RuntimeError(
                 f"Maximum wait time reached, but only "
-                f"{curr_nodes}/{num_nodes} nodes came up. Aborting.")
+                f"{curr_nodes}/{num_nodes} nodes came up. Aborting."
+            )
 
         if now >= next_feedback:
             passed = now - start
-            print(f"Waiting for more nodes to come up: "
-                  f"{curr_nodes}/{num_nodes} "
-                  f"({passed:.0f} seconds passed)")
+            print(
+                f"Waiting for more nodes to come up: "
+                f"{curr_nodes}/{num_nodes} "
+                f"({passed:.0f} seconds passed)"
+            )
             next_feedback = now + 10
 
         time.sleep(5)
         curr_nodes = len(ray.nodes())
 
     passed = time.time() - start
-    print(f"Cluster is up: {curr_nodes}/{num_nodes} nodes online after "
-          f"{passed:.0f} seconds")
+    print(
+        f"Cluster is up: {curr_nodes}/{num_nodes} nodes online after "
+        f"{passed:.0f} seconds"
+    )
 
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
@@ -317,19 +327,18 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     start = time.time()
     while time.time() - start <= timeout:
         actor_status = ray._private.state.actors(actor_id)
-        if (actor_status["State"] == convert_actor_state(
-                gcs_utils.ActorTableData.DEAD)
-                or actor_status["NumRestarts"] > current_num_restarts):
+        if (
+            actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
+            or actor_status["NumRestarts"] > current_num_restarts
+        ):
             return
         time.sleep(retry_interval_ms / 1000.0)
-    raise RuntimeError(
-        "It took too much time to kill an actor: {}".format(actor_id))
+    raise RuntimeError("It took too much time to kill an actor: {}".format(actor_id))
 
 
-def wait_for_condition(condition_predictor,
-                       timeout=10,
-                       retry_interval_ms=100,
-                       **kwargs: Any):
+def wait_for_condition(
+    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+):
     """Wait until a condition is met or time out with an exception.
 
     Args:
@@ -355,10 +364,9 @@ def wait_for_condition(condition_predictor,
     raise RuntimeError(message)
 
 
-async def async_wait_for_condition(condition_predictor,
-                                   timeout=10,
-                                   retry_interval_ms=100,
-                                   **kwargs: Any):
+async def async_wait_for_condition(
+    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+):
     """Wait until a condition is met or time out with an exception.
 
     Args:
@@ -384,10 +392,9 @@ async def async_wait_for_condition(condition_predictor,
     raise RuntimeError(message)
 
 
-async def async_wait_for_condition_async_predicate(async_condition_predictor,
-                                                   timeout=10,
-                                                   retry_interval_ms=100,
-                                                   **kwargs: Any):
+async def async_wait_for_condition_async_predicate(
+    async_condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+):
     """Wait until a condition is met or time out with an exception.
 
     Args:
@@ -437,7 +444,9 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # Raise a RuntimeError if we timeout.
                 wait_for_condition(
                     # Does redirected stdout contain all of the expected strings?
-                    lambda: all(string in out_stream.getvalue() for string in strings_to_match),
+                    lambda: all(
+                        string in out_stream.getvalue() for string in strings_to_match
+                    ),
                     timeout=timeout_s,
                     retry_interval_ms=1000,
                 )
@@ -447,12 +456,9 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
             finally:
                 sys.stdout = sys.__stdout__
                 if success:
-                    print(
-                        "Confirmed expected function stdout. Stdout follows:")
+                    print("Confirmed expected function stdout. Stdout follows:")
                 else:
-                    print(
-                        "Did not confirm expected function stdout. Stdout follows:"
-                    )
+                    print("Did not confirm expected function stdout. Stdout follows:")
                 print(out_stream.getvalue())
                 out_stream.close()
 
@@ -461,12 +467,9 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
     return decorator
 
 
-def wait_until_succeeded_without_exception(func,
-                                           exceptions,
-                                           *args,
-                                           timeout_ms=1000,
-                                           retry_interval_ms=100,
-                                           raise_last_ex=False):
+def wait_until_succeeded_without_exception(
+    func, exceptions, *args, timeout_ms=1000, retry_interval_ms=100, raise_last_ex=False
+):
     """A helper function that waits until a given function
         completes without exceptions.
 
@@ -496,8 +499,11 @@ def wait_until_succeeded_without_exception(func,
             time_elapsed = (time.time() - start) * 1000
             time.sleep(retry_interval_ms / 1000.0)
     if raise_last_ex:
-        ex_stack = (traceback.format_exception(
-            type(last_ex), last_ex, last_ex.__traceback__) if last_ex else [])
+        ex_stack = (
+            traceback.format_exception(type(last_ex), last_ex, last_ex.__traceback__)
+            if last_ex
+            else []
+        )
         ex_stack = "".join(ex_stack)
         raise Exception(f"Timed out while testing, {ex_stack}")
     return False
@@ -565,8 +571,11 @@ def dicts_equal(dict1, dict2, abs_tol=1e-4):
         return False
 
     for k, v in dict1.items():
-        if (isinstance(v, float) and isinstance(dict2[k], float)
-                and math.isclose(v, dict2[k], abs_tol=abs_tol)):
+        if (
+            isinstance(v, float)
+            and isinstance(dict2[k], float)
+            and math.isclose(v, dict2[k], abs_tol=abs_tol)
+        ):
             continue
         if v != dict2[k]:
             return False
@@ -604,9 +613,7 @@ def put_object(obj, use_ray_put):
         return _put.remote(obj)
 
 
-def wait_until_server_available(address,
-                                timeout_ms=5000,
-                                retry_interval_ms=100):
+def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
     ip_port = address.split(":")
     ip = ip_port[0]
     port = int(ip_port[1])
@@ -630,9 +637,11 @@ def wait_until_server_available(address,
 def get_other_nodes(cluster, exclude_head=False):
     """Get all nodes except the one that we're connected to."""
     return [
-        node for node in cluster.list_all_nodes()
-        if node._raylet_socket_name != ray._private.worker._global_node.
-        _raylet_socket_name and (exclude_head is False or node.head is False)
+        node
+        for node in cluster.list_all_nodes()
+        if node._raylet_socket_name
+        != ray._private.worker._global_node._raylet_socket_name
+        and (exclude_head is False or node.head is False)
     ]
 
 
@@ -643,8 +652,7 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize error info pub/sub"""
-    s = GcsErrorSubscriber(
-        address=ray._private.worker.global_worker.gcs_client.address)
+    s = GcsErrorSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
     s.subscribe()
     return s
 
@@ -672,18 +680,17 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize log pub/sub"""
-    s = GcsLogSubscriber(
-        address=ray._private.worker.global_worker.gcs_client.address)
+    s = GcsLogSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
     s.subscribe()
     return s
 
 
 def get_log_data(
-        subscriber,
-        num: int = 1e6,
-        timeout: float = 20,
-        job_id: Optional[str] = None,
-        matcher=None,
+    subscriber,
+    num: int = 1e6,
+    timeout: float = 20,
+    job_id: Optional[str] = None,
+    matcher=None,
 ) -> List[dict]:
     deadline = time.time() + timeout
     msgs = []
@@ -701,11 +708,11 @@ def get_log_data(
 
 
 def get_log_message(
-        subscriber,
-        num: int = 1e6,
-        timeout: float = 20,
-        job_id: Optional[str] = None,
-        matcher=None,
+    subscriber,
+    num: int = 1e6,
+    timeout: float = 20,
+    job_id: Optional[str] = None,
+    matcher=None,
 ) -> List[List[str]]:
     """Gets log lines through GCS subscriber.
 
@@ -719,11 +726,11 @@ def get_log_message(
 
 
 def get_log_sources(
-        subscriber,
-        num: int = 1e6,
-        timeout: float = 20,
-        job_id: Optional[str] = None,
-        matcher=None,
+    subscriber,
+    num: int = 1e6,
+    timeout: float = 20,
+    job_id: Optional[str] = None,
+    matcher=None,
 ):
     """Get the source of all log messages"""
     msgs = get_log_data(subscriber, num, timeout, job_id, matcher)
@@ -731,11 +738,11 @@ def get_log_sources(
 
 
 def get_log_batch(
-        subscriber,
-        num: int,
-        timeout: float = 20,
-        job_id: Optional[str] = None,
-        matcher=None,
+    subscriber,
+    num: int,
+    timeout: float = 20,
+    job_id: Optional[str] = None,
+    matcher=None,
 ) -> List[str]:
     """Gets log batches through GCS subscriber.
 
@@ -801,8 +808,7 @@ def fetch_prometheus(prom_addresses):
                     metric_names.add(sample.name)
                     metric_samples.append(sample)
                     if "Component" in sample.labels:
-                        components_dict[address].add(
-                            sample.labels["Component"])
+                        components_dict[address].add(sample.labels["Component"])
     return components_dict, metric_names, metric_samples
 
 
@@ -811,8 +817,7 @@ def load_test_config(config_file_name):
     here = os.path.realpath(__file__)
     path = pathlib.Path(here)
     grandparent = path.parent.parent
-    config_path = os.path.join(grandparent, "tests/test_cli_patterns",
-                               config_file_name)
+    config_path = os.path.join(grandparent, "tests/test_cli_patterns", config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
 
@@ -824,19 +829,18 @@ def set_setup_func():
 
 
 class BatchQueue(Queue):
-    def __init__(self, maxsize: int = 0,
-                 actor_options: Optional[Dict] = None) -> None:
+    def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
         actor_options = actor_options or {}
         self.maxsize = maxsize
         self.actor = (
-            ray.remote(_BatchQueueActor).options(**actor_options).remote(
-                self.maxsize))
+            ray.remote(_BatchQueueActor).options(**actor_options).remote(self.maxsize)
+        )
 
     def get_batch(
-            self,
-            batch_size: int = None,
-            total_timeout: Optional[float] = None,
-            first_timeout: Optional[float] = None,
+        self,
+        batch_size: int = None,
+        total_timeout: Optional[float] = None,
+        first_timeout: Optional[float] = None,
     ) -> List[Any]:
         """Gets batch of items from the queue and returns them in a
         list in order.
@@ -845,15 +849,12 @@ class BatchQueue(Queue):
             Empty: if the queue does not contain the desired number of items
         """
         return ray.get(
-            self.actor.get_batch.remote(batch_size, total_timeout,
-                                        first_timeout))
+            self.actor.get_batch.remote(batch_size, total_timeout, first_timeout)
+        )
 
 
 class _BatchQueueActor(_QueueActor):
-    async def get_batch(self,
-                        batch_size=None,
-                        total_timeout=None,
-                        first_timeout=None):
+    async def get_batch(self, batch_size=None, total_timeout=None, first_timeout=None):
         start = timeit.default_timer()
         try:
             first = await asyncio.wait_for(self.queue.get(), first_timeout)
@@ -869,8 +870,9 @@ class _BatchQueueActor(_QueueActor):
             while True:
                 try:
                     start = timeit.default_timer()
-                    batch.append(await asyncio.wait_for(
-                        self.queue.get(), total_timeout))
+                    batch.append(
+                        await asyncio.wait_for(self.queue.get(), total_timeout)
+                    )
                     if total_timeout:
                         end = timeit.default_timer()
                         total_timeout = max(total_timeout - (end - start), 0)
@@ -880,8 +882,9 @@ class _BatchQueueActor(_QueueActor):
             for _ in range(batch_size - 1):
                 try:
                     start = timeit.default_timer()
-                    batch.append(await asyncio.wait_for(
-                        self.queue.get(), total_timeout))
+                    batch.append(
+                        await asyncio.wait_for(self.queue.get(), total_timeout)
+                    )
                     if total_timeout:
                         end = timeit.default_timer()
                         total_timeout = max(total_timeout - (end - start), 0)
@@ -925,9 +928,9 @@ def placement_group_assert_no_leak(pgs_created):
 
 
 def monitor_memory_usage(
-        print_interval_s: int = 30,
-        record_interval_s: int = 5,
-        warning_threshold: float = 0.9,
+    print_interval_s: int = 30,
+    record_interval_s: int = 5,
+    warning_threshold: float = 0.9,
 ):
     """Run the memory monitor actor that prints the memory usage.
 
@@ -941,17 +944,16 @@ def monitor_memory_usage(
     Returns:
         The memory monitor actor.
     """
-    assert ray.is_initialized(
-    ), "The API is only available when Ray is initialized."
+    assert ray.is_initialized(), "The API is only available when Ray is initialized."
 
     @ray.remote(num_cpus=0)
     class MemoryMonitorActor:
         def __init__(
-                self,
-                print_interval_s: float = 20,
-                record_interval_s: float = 5,
-                warning_threshold: float = 0.9,
-                n: int = 10,
+            self,
+            print_interval_s: float = 20,
+            record_interval_s: float = 5,
+            warning_threshold: float = 0.9,
+            n: int = 10,
         ):
             """The actor that monitor the memory usage of the cluster.
 
@@ -996,15 +998,15 @@ def monitor_memory_usage(
             while self.is_running:
                 now = time.time()
                 used_gb, total_gb = self.monitor.get_memory_usage()
-                top_n_memory_usage = memory_monitor.get_top_n_memory_usage(
-                    n=self.n)
+                top_n_memory_usage = memory_monitor.get_top_n_memory_usage(n=self.n)
                 if used_gb > self.peak_memory_usage:
                     self.peak_memory_usage = used_gb
                     self.peak_top_n_memory_usage = top_n_memory_usage
 
                 if used_gb > total_gb * self.warning_threshold:
-                    logging.warning("The memory usage is high: "
-                                    f"{used_gb / total_gb * 100}%")
+                    logging.warning(
+                        "The memory usage is high: " f"{used_gb / total_gb * 100}%"
+                    )
                 if now - self._last_print_time > self.print_interval_s:
                     logging.info(f"Memory usage: {used_gb} / {total_gb}")
                     logging.info(f"Top {self.n} process memory usage:")
@@ -1031,13 +1033,12 @@ def monitor_memory_usage(
     current_node_ip = ray._private.worker.global_worker.node_ip_address
     # Schedule the actor on the current node.
     memory_monitor_actor = MemoryMonitorActor.options(
-        resources={
-            f"node:{current_node_ip}": 0.001
-        }).remote(
-            print_interval_s=print_interval_s,
-            record_interval_s=record_interval_s,
-            warning_threshold=warning_threshold,
-        )
+        resources={f"node:{current_node_ip}": 0.001}
+    ).remote(
+        print_interval_s=print_interval_s,
+        record_interval_s=record_interval_s,
+        warning_threshold=warning_threshold,
+    )
     print("Waiting for memory monitor actor to be ready...")
     ray.get(memory_monitor_actor.ready.remote())
     print("Memory monitor actor is ready now.")
@@ -1079,22 +1080,21 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
 
 
 def get_and_run_node_killer(
-        node_kill_interval_s,
-        namespace=None,
-        lifetime=None,
-        no_start=False,
-        max_nodes_to_kill=2,
+    node_kill_interval_s,
+    namespace=None,
+    lifetime=None,
+    no_start=False,
+    max_nodes_to_kill=2,
 ):
-    assert ray.is_initialized(
-    ), "The API is only available when Ray is initialized."
+    assert ray.is_initialized(), "The API is only available when Ray is initialized."
 
     @ray.remote(num_cpus=0)
     class NodeKillerActor:
         def __init__(
-                self,
-                head_node_id,
-                node_kill_interval_s: float = 60,
-                max_nodes_to_kill: int = 2,
+            self,
+            head_node_id,
+            node_kill_interval_s: float = 60,
+            max_nodes_to_kill: int = 2,
         ):
             self.node_kill_interval_s = node_kill_interval_s
             self.is_running = False
@@ -1119,9 +1119,12 @@ def get_and_run_node_killer(
                     for node in nodes:
                         node_id = node["NodeID"]
                         # make sure at least 1 worker node is alive.
-                        if (node["Alive"] and node_id != self.head_node_id
-                                and node_id not in self.killed_nodes
-                                and alive_nodes > 2):
+                        if (
+                            node["Alive"]
+                            and node_id != self.head_node_id
+                            and node_id not in self.killed_nodes
+                            and alive_nodes > 2
+                        ):
                             node_to_kill_ip = node["NodeManagerAddress"]
                             node_to_kill_port = node["NodeManagerPort"]
                             break
@@ -1137,12 +1140,14 @@ def get_and_run_node_killer(
                 if node_to_kill_port is not None:
                     try:
                         self._kill_raylet(
-                            node_to_kill_ip, node_to_kill_port, graceful=False)
+                            node_to_kill_ip, node_to_kill_port, graceful=False
+                        )
                     except Exception:
                         pass
                     logging.info(
                         f"Killed node {node_id} at address: "
-                        f"{node_to_kill_ip}, port: {node_to_kill_port}")
+                        f"{node_to_kill_ip}, port: {node_to_kill_port}"
+                    )
                     self.killed_nodes.add(node_id)
                 if len(self.killed_nodes) >= self.max_nodes_to_kill:
                     break
@@ -1166,7 +1171,8 @@ def get_and_run_node_killer(
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             try:
                 stub.ShutdownRaylet(
-                    node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+                    node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
+                )
             except _InactiveRpcError:
                 assert not graceful
 
@@ -1181,9 +1187,7 @@ def get_and_run_node_killer(
     head_node_id = ray._private.worker.global_worker.current_node_id.hex()
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(
-        resources={
-            f"node:{head_node_ip}": 0.001
-        },
+        resources={f"node:{head_node_ip}": 0.001},
         namespace=namespace,
         name="node_killer",
         lifetime=lifetime,
@@ -1227,18 +1231,19 @@ def test_get_directory_size_bytes():
 
 def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
-        for subdir in [
-                "conda", "pip", "working_dir_files", "py_modules_files"
-        ]:
+        for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
-                os.path.join(node.get_runtime_env_dir_path(), subdir))
+                os.path.join(node.get_runtime_env_dir_path(), subdir)
+            )
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
             # TODO(architkulkarni): these files should get cleaned up too!
-            if (len(
-                    list(
-                        filter(lambda f: not f.endswith((".lock", ".txt")),
-                               all_files))) > 0):
+            if (
+                len(
+                    list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
+                )
+                > 0
+            ):
                 print(str(all_files))
                 return False
 
@@ -1293,8 +1298,7 @@ def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
             if "Spilled" in s:
                 return False
         if fallback:
-            if "Plasma filesystem mmap usage: {} MiB".format(
-                    fallback) not in s:
+            if "Plasma filesystem mmap usage: {} MiB".format(fallback) not in s:
                 return False
         else:
             if "Plasma filesystem mmap usage:" in s:
@@ -1371,3 +1375,88 @@ def find_free_port():
     port = sock.getsockname()[1]
     sock.close()
     return port
+
+
+# Global counter to test different return values
+# for external_ray_cluster_activity_hook1.
+ray_cluster_activity_hook_counter = 0
+ray_cluster_activity_hook_5_counter = 0
+
+
+def external_ray_cluster_activity_hook1():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_counter
+    ray_cluster_activity_hook_counter += 1
+
+    from pydantic import BaseModel
+
+    class TestRayActivityResponse(BaseModel):
+        """
+        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+        used in test_component_activities_hook to mimic typical
+        usage of redefining or extending response type.
+        """
+
+        is_active: str
+        reason: Optional[str] = None
+        timestamp: float
+
+    return {
+        "test_component1": TestRayActivityResponse(
+            is_active="ACTIVE",
+            reason=f"Counter: {ray_cluster_activity_hook_counter}",
+            timestamp=datetime.now().timestamp(),
+        )
+    }
+
+
+def external_ray_cluster_activity_hook2():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because the value of `test_component2`
+    should be of type RayActivityResponse.
+    """
+    return {"test_component2": "bad_output"}
+
+
+def external_ray_cluster_activity_hook3():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because return type is not
+    Dict[str, RayActivityResponse]
+    """
+    return "bad_output"
+
+
+def external_ray_cluster_activity_hook4():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Errors during execution.
+    """
+    raise Exception("Error in external cluster activity hook")
+
+
+def external_ray_cluster_activity_hook5():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_5_counter
+    ray_cluster_activity_hook_5_counter += 1
+    return {
+        "test_component5": {
+            "is_active": "ACTIVE",
+            "reason": f"Counter: {ray_cluster_activity_hook_5_counter}",
+            "timestamp": datetime.now().timestamp(),
+        }
+    }
