@@ -100,7 +100,9 @@ def main(num_trials, num_workers, use_gpu):
     )
     result = {"train_time": train_time, "tune_time": tune_time}
     print("Results:", result)
-    assert tune_time < 2 * train_time, f"{tune_time} > 2 * {train_time}"
+
+    assert tune_time < 1.2 * train_time, f"{tune_time} > 1.2 * {train_time}"
+
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
