@@ -3,6 +3,8 @@ import pytest
 import ray
 from ray import workflow
 
+from ray.tests.conftest import *  # noqa
+
 
 def test_step_failure(workflow_start_regular_shared, tmp_path):
     @ray.remote(max_retries=10)
@@ -128,6 +130,90 @@ def test_nested_catch_exception_3(workflow_start_regular_shared, tmp_path):
     assert (10, None) == workflow.run(
         f1.options(**workflow.options(catch_exceptions=True)).bind(False)
     )
+
+
+@pytest.mark.skip(
+    reason="Workflow does not support 'scheduling_strategy' that is not"
+    "json-serializable as remote function arguments."
+)
+def test_disable_auto_lineage_reconstruction(ray_start_cluster, tmp_path):
+    """This test makes sure that workflow tasks will not be recovered automatically
+    with lineage reconstruction."""
+    import time
+
+    from filelock import FileLock
+
+    from ray.cluster_utils import Cluster
+    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+    cluster: Cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2, resources={"head": 1}, storage=str(tmp_path))
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id
+
+    lock_path = str(tmp_path / "lock")
+
+    @ray.remote
+    def f1():
+        v = int((tmp_path / "num_executed").read_text())
+        (tmp_path / "num_executed").write_text(str(v + 1))
+        import numpy as np
+
+        return np.ones(10 ** 6)
+
+    @ray.remote
+    def f2(x):
+        (tmp_path / "f2").touch()
+        with FileLock(lock_path):
+            return x
+
+    def _trigger_lineage_reconstruction(with_workflow):
+        (tmp_path / "f2").unlink(missing_ok=True)
+        (tmp_path / "num_executed").write_text("0")
+
+        worker_node_1 = cluster.add_node(
+            num_cpus=2, resources={"worker_1": 1}, storage=str(tmp_path)
+        )
+        worker_node_2 = cluster.add_node(
+            num_cpus=2, resources={"worker_2": 1}, storage=str(tmp_path)
+        )
+        worker_node_id_1 = ray.get(
+            get_node_id.options(num_cpus=0, resources={"worker_1": 1}).remote()
+        )
+        worker_node_id_2 = ray.get(
+            get_node_id.options(num_cpus=0, resources={"worker_2": 1}).remote()
+        )
+        dag = f2.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                worker_node_id_2, soft=True
+            )
+        ).bind(
+            f1.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    worker_node_id_1, soft=True
+                )
+            ).bind()
+        )
+
+        with FileLock(lock_path):
+            if with_workflow:
+                ref = workflow.run_async(dag)
+            else:
+                ref = dag.execute()
+            while not (tmp_path / "f2").exists():
+                time.sleep(0.1)
+            cluster.remove_node(worker_node_1, allow_graceful=False)
+            cluster.remove_node(worker_node_2, allow_graceful=False)
+        return ray.get(ref).sum()
+
+    assert _trigger_lineage_reconstruction(with_workflow=False) == 10 ** 6
+    assert int((tmp_path / "num_executed").read_text()) == 2
+
+    assert _trigger_lineage_reconstruction(with_workflow=True) == 10 ** 6
+    assert int((tmp_path / "num_executed").read_text()) == 1
 
 
 if __name__ == "__main__":
