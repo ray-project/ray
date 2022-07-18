@@ -170,7 +170,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
             try:
                 file_info = filesystem.get_file_info(path)
             except OSError as e:
-                _handle_read_s3_files_error(e, path)
+                _handle_read_os_error(e, path)
             if file_info.type == FileType.Directory:
                 paths, file_infos_ = _expand_directory(path, filesystem)
                 expanded_paths.extend(paths)
@@ -329,17 +329,17 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             return _fetch_metadata(pieces)
 
 
-def _handle_read_s3_files_error(error: OSError, paths: Union[str, List[str]]) -> str:
-    # Specially handle AWS error when reading files, to give a clearer error message
-    # to avoid confusing users. The real issue is most likely that the AWS S3 file
-    # credentials have not been properly configured yet.
+def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
     if "AWS Error [code 15]: No response body" in str(error):
+        # Specially handle AWS error when reading files, to give a clearer error
+        # message to avoid confusing users. The real issue is most likely that the AWS
+        # S3 file credentials have not been properly configured yet.
         if isinstance(paths, str):
             # Quote to highlight single file path in error message for better
             # readability. List of file paths will be shown up as ['foo', 'boo'],
             # so only quote single file path here.
             paths = f'"{paths}"'
-        raise PermissionError(
+        raise OSError(
             (
                 f"Failing to read AWS S3 file(s): {paths}. "
                 "Please check that file exists and has properly configured access. "
