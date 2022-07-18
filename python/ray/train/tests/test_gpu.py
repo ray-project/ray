@@ -5,7 +5,11 @@ from collections import Counter
 import pytest
 import torch
 import torchvision
-from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
+from test_tune import (
+    torch_fashion_mnist,
+    tune_tensorflow_mnist,
+    test_tune_torch_get_device,
+)
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
@@ -468,6 +472,12 @@ def test_auto_transfer_data_from_host_to_device(
 
     if device_choice == "cuda" and auto_transfer:
         assert compute_average_runtime(host_to_device) >= with_auto_transfer
+
+
+# TODO: Refactor as a backend test.
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_tune_torch_get_device_gpu(ray_2_node_4_gpu, num_gpus_per_worker):
+    test_tune_torch_get_device(num_gpus_per_worker=num_gpus_per_worker)
 
 
 if __name__ == "__main__":
