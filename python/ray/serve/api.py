@@ -398,7 +398,7 @@ def deployment(
             catch-all.
         ray_actor_options: Options to be passed to the Ray actor
             constructor such as resource requirements.
-        user_config (Optional[Any]): [experimental] Config to pass to the
+        user_config (Optional[Any]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
             restarting its replicas. The user_config needs to be hashable to
