@@ -1,11 +1,15 @@
 import logging
 import os
+import json
 from abc import ABC
-from typing import List
+from typing import List, Dict, Tuple, Any
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
-from ray._private.runtime_env.constants import RAY_RUNTIME_ENV_PLUGINS_ENV_VAR
+from ray._private.runtime_env.constants import (
+    RAY_RUNTIME_ENV_PLUGINS_ENV_VAR,
+    RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY,
+)
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import import_attr
 
@@ -91,43 +95,85 @@ class RuntimeEnvPlugin(ABC):
         return 0
 
 
+class PluginSetupContext:
+    def __init__(self, name: str, config: Any, class_instance: object):
+        self.name = name
+        self.config = config
+        self.class_instance = class_instance
+
+
 class RuntimeEnvPluginManager:
     """This manager is used to load plugins in runtime env agent."""
 
+    class Context:
+        def __init__(self, class_instance, priority):
+            self.class_instance = class_instance
+            self.priority = priority
+
     def __init__(self):
-        self.plugins = {}
-        plugins_config = os.environ.get(RAY_RUNTIME_ENV_PLUGINS_ENV_VAR)
-        if plugins_config:
-            self.load_plugins(plugins_config.split(","))
+        self.plugins: Dict[str, RuntimeEnvPluginManager.Context] = {}
+        plugin_config_str = os.environ.get(RAY_RUNTIME_ENV_PLUGINS_ENV_VAR)
+        if plugin_config_str:
+            plugin_configs = json.loads(plugin_config_str)
+            self.load_plugins(plugin_configs)
 
-    def load_plugins(self, plugin_classes: List[str]):
+    def load_plugins(self, plugin_configs: List[Dict]):
         """Load runtime env plugins"""
-        for plugin_class_path in plugin_classes:
-            plugin_class = import_attr(plugin_class_path)
+        for plugin_config in plugin_configs:
+            if not isinstance(plugin_config, dict) or "class" not in plugin_config:
+                raise RuntimeError(
+                    f"Invalid runtime env plugin config {plugin_config}, "
+                    "it should be a object which contains the 'class' field."
+                )
+            plugin_class = import_attr(plugin_config["class"])
             if not issubclass(plugin_class, RuntimeEnvPlugin):
-                default_logger.warning(
-                    "Invalid runtime env plugin class %s. "
+                raise RuntimeError(
+                    f"Invalid runtime env plugin class {plugin_class}. "
                     "The plugin class must inherit "
-                    "ray._private.runtime_env.plugin.RuntimeEnvPlugin.",
-                    plugin_class,
+                    "ray._private.runtime_env.plugin.RuntimeEnvPlugin."
                 )
-                continue
             if not plugin_class.name:
-                default_logger.warning(
-                    "No valid name in runtime env plugin %s", plugin_class
+                raise RuntimeError(
+                    f"No valid name in runtime env plugin {plugin_class}"
                 )
-                continue
             if plugin_class.name in self.plugins:
-                default_logger.warning(
-                    "The name of runtime env plugin %s conflicts with %s",
-                    plugin_class,
-                    self.plugins[plugin_class.name],
+                raise RuntimeError(
+                    f"The name of runtime env plugin {plugin_class} conflicts "
+                    f"with {self.plugins[plugin_class.name]}.",
                 )
-                continue
-            self.plugins[plugin_class.name] = plugin_class()
+            priority = RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY
+            if "priority" in plugin_config:
+                priority = plugin_config["priority"]
+                if not isinstance(priority, int) or priority < 0 or priority > 100:
+                    raise RuntimeError(
+                        f"Invalid runtime env priority {priority}, "
+                        "it should be a integer between 0 and 100."
+                    )
+            self.plugins[plugin_class.name] = RuntimeEnvPluginManager.Context(
+                plugin_class(), priority
+            )
 
-    def get_plugin(self, name: str):
-        return self.plugins.get(name)
+    def sorted_plugin_setup_contexts(
+        self, inputs: List[Tuple[str, Any]]
+    ) -> List[PluginSetupContext]:
+        used_plugins = []
+        for name, config in inputs:
+            if name not in self.plugins:
+                raise RuntimeError(f"Runtime env plugin {name} not found.")
+            print(type(self.plugins[name].class_instance))
+            used_plugins.append(
+                (
+                    name,
+                    config,
+                    self.plugins[name].class_instance,
+                    self.plugins[name].priority,
+                )
+            )
+        sort_used_plugins = sorted(used_plugins, key=lambda x: x[3], reverse=False)
+        return [
+            PluginSetupContext(name, config, class_instance)
+            for name, config, class_instance, _ in sort_used_plugins
+        ]
 
 
 @DeveloperAPI
