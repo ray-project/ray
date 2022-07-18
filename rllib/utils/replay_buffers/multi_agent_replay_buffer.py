@@ -78,22 +78,22 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """Initializes a MultiAgentReplayBuffer instance.
 
         Args:
-            num_shards: The number of buffer shards that exist in total
-                (including this one).
+            capacity: The capacity of the buffer, measured in `storage_unit`.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
+            num_shards: The number of buffer shards that exist in total
+                (including this one).
             learning_starts: Number of timesteps after which a call to
                 `sample()` will yield samples (before that, `sample()` will
                 return None).
-            capacity: The capacity of the buffer, measured in `storage_unit`.
+            replay_mode: One of "independent" or "lockstep". Determines,
+                whether batches are sampled independently or to an equal
+                amount.
             replay_sequence_override: If True, ignore sequences found in incoming
                 batches, slicing them into sequences as specified by
                 `replay_sequence_length` and `replay_sequence_burn_in`. This only has
                 an effect if storage_unit is `sequences`.
-            replay_mode: One of "independent" or "lockstep". Determines,
-                whether batches are sampled independently or to an equal
-                amount.
             replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer. This
                 only has an effect if storage_unit is 'timesteps'.

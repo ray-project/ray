@@ -76,21 +76,23 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        prioritized_replay_alpha: float = 0.6,
-        prioritized_replay_beta: float = 0.4,
-        prioritized_replay_eps: float = 1e-6,
         learning_starts: int = 1000,
+        replay_mode: str = "independent",
+        replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
         replay_ratio: float = 0.66,
         underlying_buffer_config: dict = None,
+        prioritized_replay_alpha: float = 0.6,
+        prioritized_replay_beta: float = 0.4,
+        prioritized_replay_eps: float = 1e-6,
         **kwargs
     ):
         """Initializes MultiAgentMixInReplayBuffer instance.
 
         Args:
-            capacity: Number of batches to store in total.
+            capacity: The capacity of the buffer, measured in `storage_unit`.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
@@ -99,9 +101,16 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
-            capacity: The capacity of the buffer, measured in `storage_unit`.
+            replay_mode: One of "independent" or "lockstep". Determines,
+                whether batches are sampled independently or to an equal
+                amount.
+            replay_sequence_override: If True, ignore sequences found in incoming
+                batches, slicing them into sequences as specified by
+                `replay_sequence_length` and `replay_sequence_burn_in`. This only has
+                an effect if storage_unit is `sequences`.
             replay_sequence_length: The sequence length (T) of a single
-                sample. If > 1, we will sample B x T from this buffer.
+                sample. If > 1, we will sample B x T from this buffer. This
+                only has an effect if storage_unit is 'timesteps'.
             replay_burn_in: The burn-in length in case
                 `replay_sequence_length` > 0. This is the number of timesteps
                 each sequence overlaps with the previous one to generate a
@@ -126,6 +135,12 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 "capacity": 10, "storage_unit": "timesteps",
                 prioritized_replay_alpha: 0.5, prioritized_replay_beta: 0.5,
                 prioritized_replay_eps: 0.5}
+            prioritized_replay_alpha: Alpha parameter for a prioritized
+                replay buffer. Use 0.0 for no prioritization.
+            prioritized_replay_beta: Beta parameter for a prioritized
+                replay buffer.
+            prioritized_replay_eps: Epsilon parameter for a prioritized
+                replay buffer.
             **kwargs: Forward compatibility kwargs.
         """
         if not 0 <= replay_ratio <= 1:
@@ -135,16 +150,17 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             self,
             capacity=capacity,
             storage_unit=storage_unit,
-            prioritized_replay_alpha=prioritized_replay_alpha,
-            prioritized_replay_beta=prioritized_replay_beta,
-            prioritized_replay_eps=prioritized_replay_eps,
             num_shards=num_shards,
-            replay_mode="independent",
             learning_starts=learning_starts,
+            replay_mode=replay_mode,
+            replay_sequence_override=replay_sequence_override,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,
             replay_zero_init_states=replay_zero_init_states,
             underlying_buffer_config=underlying_buffer_config,
+            prioritized_replay_alpha=prioritized_replay_alpha,
+            prioritized_replay_beta=prioritized_replay_beta,
+            prioritized_replay_eps=prioritized_replay_eps,
             **kwargs
         )
 
