@@ -1842,6 +1842,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
             # Preprocessors.
             obs_space = policy_spec.observation_space
+            # Initialize preprocessor for this policy to None.
+            self.preprocessors[name] = None
             if self.preprocessing_enabled:
                 # Policies should deal with preprocessed (automatically flattened)
                 # observations if preprocessing is enabled.
@@ -1857,10 +1859,6 @@ class RolloutWorker(ParallelIteratorWorker):
                     # If connectors are not enabled, rollout worker will handle
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
-                else:
-                    # Rollout worker will not handle preprocessing.
-                    # Instead, agent connecctors will actually run preprocessing.
-                    self.preprocessors[name] = None
 
             # Create the actual policy object.
             self.policy_map.create_policy(
