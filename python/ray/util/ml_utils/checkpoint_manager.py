@@ -230,7 +230,8 @@ class CheckpointConfig:
             by trainers that don't take in custom training loops.
         checkpoint_at_end: If True, will save a checkpoint at the end of training.
             This attribute is only supported by trainers that don't take in
-            custom training loops.
+            custom training loops. Defaults to True for trainers that support it
+            and False for generic function trainables.
 
     """
 
@@ -238,7 +239,7 @@ class CheckpointConfig:
     checkpoint_score_attribute: Optional[str] = None
     checkpoint_score_order: str = MAX
     checkpoint_frequency: int = 0
-    checkpoint_at_end: bool = True
+    checkpoint_at_end: Optional[bool] = None
 
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep < 0:

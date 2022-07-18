@@ -6,8 +6,9 @@ import ray.cloudpickle as pickle
 from ray.air.config import RunConfig
 from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
+from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
-from ray.tune.trainable import Trainable, FunctionTrainable
+from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
 
@@ -152,11 +153,17 @@ class TunerInternal:
     def _get_tune_run_arguments(self, trainable) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
         checkpoint_freq = self._run_config.checkpoint_config.checkpoint_frequency
-        if checkpoint_freq and issubclass(trainable, FunctionTrainable):
-            # Function trainables usually don't handle the checkpoint_frequency
-            # argument - in this case, raise an error. If they do handle them,
-            # set checkpoint_freq to 0 instead.
-            if not getattr(trainable, "_handles_checkpoint_freq", True):
+        checkpoint_at_end = self._run_config.checkpoint_config.checkpoint_at_end
+
+        if checkpoint_freq:
+            # Function trainables (and thus most of our trainers) usually don't handle
+            # this argument.
+            handle_checkpoint_freq = getattr(
+                trainable, "_handles_checkpoint_freq", None
+            )
+            if handle_checkpoint_freq is False:
+                # If we specifically know this trainable doesn't support the
+                # argument, raise an error
                 raise ValueError(
                     f"You passed `checkpoint_freq={checkpoint_freq}` to your "
                     f"CheckpointConfig, but this trainer does not support "
@@ -164,9 +171,36 @@ class TunerInternal:
                     f"you will need to trigger checkpointing yourself using "
                     f"`ray.air.session.report(metrics=..., checkpoint=...)`."
                 )
-            checkpoint_freq = 0
+            elif handle_checkpoint_freq is True:
+                # If we specifically support it, it's handled in the training loop,
+                # so we disable tune's bookkeeping.
+                checkpoint_freq = 0
+            # Otherwise, this is a non-trainer trainable and we just keep the
+            # user-supplied value.
 
-        checkpoint_at_end = self._run_config.checkpoint_config.checkpoint_at_end
+        if checkpoint_at_end is not None:
+            # Again, function trainables usually don't handle this argument.
+            handle_cp_at_end = getattr(trainable, "_handles_checkpoint_at_end", None)
+            if handle_cp_at_end is False:
+                # If we specifically know we don't support it, raise an error.
+                raise ValueError(
+                    f"You passed `checkpoint_at_end={checkpoint_at_end}` to your "
+                    f"CheckpointConfig, but this trainer does not support "
+                    f"this argument. If the trainer takes in a training loop, "
+                    f"you will need to trigger checkpointing yourself using "
+                    f"`ray.air.session.report(metrics=..., checkpoint=...)`. "
+                )
+            elif handle_cp_at_end is True:
+                # If we specifically support it, it's handled in the training loop,
+                # so we disable tune's internal bookkeeping.
+                checkpoint_at_end = False
+            # If this is a user-defined trainable, just keep the value
+        elif checkpoint_at_end is None:
+            # Set default to False for function trainables and True for everything else
+            if is_function_trainable(trainable):
+                checkpoint_at_end = False
+            else:
+                checkpoint_at_end = True
 
         return dict(
             mode=self._tune_config.mode,

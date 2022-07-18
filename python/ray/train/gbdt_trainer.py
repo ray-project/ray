@@ -73,6 +73,7 @@ class GBDTTrainer(BaseTrainer):
         "placement_strategy",
     ]
     _handles_checkpoint_freq = True
+    _handles_checkpoint_at_end = True
 
     _dmatrix_cls: type
     _ray_params_cls: type
