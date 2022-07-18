@@ -248,7 +248,7 @@ class TunerInternal:
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
         args = {
-            **self._get_tune_run_arguments(),
+            **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
                 resume=True,

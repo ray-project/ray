@@ -224,7 +224,11 @@ class GBDTTrainer(BaseTrainer):
             **config,
         )
 
-        if self.run_config.checkpoint_config.checkpoint_at_end:
+        checkpoint_at_end = self.run_config.checkpoint_config.checkpoint_at_end
+        if checkpoint_at_end is None:
+            checkpoint_at_end = True
+
+        if checkpoint_at_end:
             with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
                 self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
                 tune.report(**evals_result)
