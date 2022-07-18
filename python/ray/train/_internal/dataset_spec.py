@@ -28,8 +28,7 @@ class RayDatasetSpec:
         training workers (to use as locality hints). The Callable is expected to
         return a list of RayDatasets or a list of dictionaries of RayDatasets,
         with the length of the list equal to the length of the list of actor handles.
-        If None is provided, the provided Ray Dataset(s) will be simply be split using
-        the actor handles as locality hints.
+        If None is provided, the provided Ray Dataset(s) will be equally split.
 
     """
 
@@ -48,7 +47,6 @@ class RayDatasetSpec:
             return dataset_or_pipeline.split(
                 len(training_worker_handles),
                 equal=True,
-                locality_hints=training_worker_handles,
             )
 
         if isinstance(self.dataset_or_dict, dict):
@@ -209,7 +207,6 @@ class DataParallelIngestSpec:
                 dataset_splits = dataset.split(
                     len(training_worker_handles),
                     equal=True,
-                    locality_hints=training_worker_handles,
                 )
             else:
                 dataset_splits = [dataset] * len(training_worker_handles)
