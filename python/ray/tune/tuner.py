@@ -114,6 +114,7 @@ class Tuner:
                 BaseTrainer,
             ]
         ] = None,
+        *,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
