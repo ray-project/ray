@@ -1058,6 +1058,7 @@ class Dataset(Generic[T]):
 
         block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
+        created_by_pipeline = blocks._created_by_pipeline
 
         if locality_hints is None:
             ds = equalize(
@@ -1065,7 +1066,9 @@ class Dataset(Generic[T]):
                     Dataset(
                         ExecutionPlan(
                             BlockList(
-                                list(blocks), [metadata_mapping[b] for b in blocks]
+                                list(blocks),
+                                [metadata_mapping[b] for b in blocks],
+                                created_by_pipeline,
                             ),
                             stats,
                         ),
