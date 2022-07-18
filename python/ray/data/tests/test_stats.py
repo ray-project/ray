@@ -49,6 +49,7 @@ Stage N map: N/N blocks executed in T
 Dataset iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
+* In next_batch(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -251,6 +252,7 @@ DatasetPipeline iterator time breakdown:
 * Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
+* In next_batch(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -320,6 +322,7 @@ DatasetPipeline iterator time breakdown:
 * Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
+* In next_batch(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
