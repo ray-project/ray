@@ -265,6 +265,10 @@ class TunerTest(unittest.TestCase):
             {"run_config": RunConfig(reuse_actors=True)},
             lambda kw: kw["reuse_actors"] is True,
         ),
+        (
+            {"run_config": RunConfig(log_to_file="some_file")},
+            lambda kw: kw["log_to_file"] == "some_file",
+        ),
     ],
 )
 def test_tuner_api_kwargs(params_expected):

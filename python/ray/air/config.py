@@ -1,5 +1,15 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Union,
+    Tuple,
+)
 
 from ray.air.constants import WILDCARD_KEY
 from ray.tune.progress_reporter import ProgressReporter
@@ -414,6 +424,14 @@ class RunConfig:
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results. Defaults to 2.
+        log_to_file: Log stdout and stderr to files in
+            trial directories. If this is `False` (default), no files
+            are written. If `true`, outputs are written to `trialdir/stdout`
+            and `trialdir/stderr`, respectively. If this is a single string,
+            this is interpreted as a file relative to the trialdir, to which
+            both streams are written. If this is a Sequence (e.g. a Tuple),
+            it has to have length 2 and the elements indicate the files to
+            which stdout and stderr are written, respectively.
         reuse_actors: Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
@@ -432,4 +450,5 @@ class RunConfig:
     checkpoint_config: Optional[CheckpointConfig] = None
     progress_reporter: Optional[ProgressReporter] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
+    log_to_file: Union[bool, str, Tuple[str, str]] = False
     reuse_actors: Optional[bool] = None

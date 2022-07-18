@@ -195,6 +195,7 @@ class TunerInternal:
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
                 name=self._run_config.name,
+                log_to_file=self._run_config.log_to_file,
             ),
             **self._tuner_kwargs,
         }
