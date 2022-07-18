@@ -15,6 +15,7 @@ from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesys
 from ray.data.datasource.file_meta_provider import (
     DefaultParquetMetadataProvider,
     ParquetMetadataProvider,
+    _handle_read_s3_files_error,
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.types import ObjectRef
@@ -161,9 +162,12 @@ class _ParquetDatasourceReader(Reader):
             paths = paths[0]
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
-        pq_ds = pq.ParquetDataset(
-            paths, **dataset_kwargs, filesystem=filesystem, use_legacy_dataset=False
-        )
+        try:
+            pq_ds = pq.ParquetDataset(
+                paths, **dataset_kwargs, filesystem=filesystem, use_legacy_dataset=False
+            )
+        except OSError as e:
+            _handle_read_s3_files_error(e, paths)
         if schema is None:
             schema = pq_ds.schema
         if columns:
