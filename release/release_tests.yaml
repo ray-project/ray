@@ -318,7 +318,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/tune_benchmark.py --num-trials 8 --num-workers 4
+    script: python workloads/tune_torch_benchmark.py --num-trials 8 --num-workers 4
 
     wait_for_nodes:
       num_nodes: 8
@@ -342,7 +342,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/tune_benchmark.py --num-trials 4 --num-workers 4 --use-gpu
+    script: python workloads/tune_torch_benchmark.py --num-trials 4 --num-workers 4 --use-gpu
 
     wait_for_nodes:
       num_nodes: 8
