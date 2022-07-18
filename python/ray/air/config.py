@@ -436,8 +436,10 @@ class RunConfig:
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
             requires trials to have the same resource requirements.
-            Defaults to ``True`` for function trainables and ``False`` for
-            class and registered trainables.
+            Defaults to ``True`` for function trainables (including most
+            Ray AIR trainers) and ``False`` for class and registered trainables
+            (e.g. RLLib).
+
     """
 
     name: Optional[str] = None
