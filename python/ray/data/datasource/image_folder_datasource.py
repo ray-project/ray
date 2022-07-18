@@ -125,10 +125,14 @@ class ImageFolderDatasource(BinaryDatasource):
 
         image = iio.imread(data)
         label = _get_class_from_path(path, self.root)
+        try:
+            image = TensorArray([np.array(image)])
+        except TypeError:
+            pass
 
         return pd.DataFrame(
             {
-                "image": TensorArray([np.array(image)]),
+                "image": image,
                 "label": [label],
             }
         )

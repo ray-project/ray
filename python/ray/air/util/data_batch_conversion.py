@@ -1,4 +1,5 @@
 from enum import Enum, auto
+import logging
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,11 @@ try:
     import pyarrow
 except ImportError:
     pyarrow = None
+
+logger = logging.getLogger(__name__)
+
+# Whether we have warned that tensor casting has failed.
+_tensor_cast_failed_warned = False
 
 
 @DeveloperAPI
@@ -31,13 +37,25 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
         A pandas Dataframe representation of the input data.
 
     """
+    global _tensor_cast_failed_warned
     from ray.air.util.tensor_extensions.pandas import TensorArray
 
     if isinstance(data, pd.DataFrame):
         return data
 
     elif isinstance(data, np.ndarray):
-        return pd.DataFrame({TENSOR_COLUMN_NAME: TensorArray(data)})
+        try:
+            # Try to convert numpy arrays to TensorArrays.
+            data = TensorArray(data)
+        except TypeError as e:
+            # Fall back to existing NumPy array.
+            if not _tensor_cast_failed_warned:
+                logger.warning(
+                    "Tried to transparently convert ndarray batch to a TensorArray "
+                    f"but the conversion failed, leaving ndarray batch as-is: {e}"
+                )
+                _tensor_cast_failed_warned = True
+        return pd.DataFrame({TENSOR_COLUMN_NAME: data})
 
     elif isinstance(data, dict):
         tensor_dict = {}
@@ -48,8 +66,19 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
                     f"np.ndarray. Found type {type(v)} for key {k} "
                     f"instead."
                 )
-            # Convert numpy arrays to TensorArray.
-            tensor_dict[k] = TensorArray(v)
+            try:
+                # Try to convert numpy arrays to TensorArrays.
+                v = TensorArray(v)
+            except TypeError as e:
+                # Fall back to existing NumPy array.
+                if not _tensor_cast_failed_warned:
+                    logger.warning(
+                        f"Tried to transparently convert column ndarray {k} of batch "
+                        "to a TensorArray but the conversion failed, leaving column "
+                        f"as-is: {e}"
+                    )
+                    _tensor_cast_failed_warned = True
+            tensor_dict[k] = v
         return pd.DataFrame(tensor_dict)
 
     elif pyarrow is not None and isinstance(data, pyarrow.Table):

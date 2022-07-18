@@ -3564,7 +3564,7 @@ class Dataset(Generic[T]):
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
                     t = t.__name__
-                schema_str.append("{}: {}".format(n, t))
+                schema_str.append(f"{n}: {t}")
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
