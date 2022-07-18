@@ -9,6 +9,7 @@ import io.ray.api.WaitResult;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.CppActorClass;
 import io.ray.api.function.CppActorMethod;
+import io.ray.api.function.CppFunction;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -157,6 +158,8 @@ public interface RayRuntime {
    * @return The result object.
    */
   ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options);
+
+  ObjectRef call(CppFunction cppFunction, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote function on an actor.
