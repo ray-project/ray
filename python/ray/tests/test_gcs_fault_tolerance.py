@@ -383,21 +383,21 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
     )
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
-    gcs_client.internal_kv_get(b"a", None) == b"b"
+    assert gcs_client.internal_kv_get(b"a", None) == b"b"
 
     def start_gcs():
-        sleep(2)
+        sleep(5)
         ray._private.worker._global_node.start_gcs_server()
 
     ray._private.worker._global_node.kill_gcs_server()
-    if auto_reconnect is False:
+    t = threading.Thread(target=start_gcs)
+    t.start()
+    if not auto_reconnect:
         with pytest.raises(Exception):
             gcs_client.internal_kv_get(b"a", None)
     else:
-        t = threading.Thread(target=start_gcs)
-        t.start()
         assert gcs_client.internal_kv_get(b"a", None) == b"b"
-        t.join()
+    t.join()
 
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])
@@ -411,21 +411,21 @@ async def test_gcs_aio_client_reconnect(
     )
 
     await gcs_client.internal_kv_put(b"a", b"b", True, None)
-    await gcs_client.internal_kv_get(b"a", None) == b"b"
+    assert await gcs_client.internal_kv_get(b"a", None) == b"b"
 
     def start_gcs():
-        sleep(2)
+        sleep(5)
         ray._private.worker._global_node.start_gcs_server()
 
     ray._private.worker._global_node.kill_gcs_server()
+    t = threading.Thread(target=start_gcs)
+    t.start()
     if not auto_reconnect:
         with pytest.raises(Exception):
             await gcs_client.internal_kv_get(b"a", None)
     else:
-        t = threading.Thread(target=start_gcs)
-        t.start()
         assert await gcs_client.internal_kv_get(b"a", None) == b"b"
-        t.join()
+    t.join()
 
 
 @pytest.mark.parametrize(
