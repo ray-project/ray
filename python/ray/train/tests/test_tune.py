@@ -23,6 +23,9 @@ from ray.train.trainer import Trainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
+from ray.train.torch import TorchConfig
+from unittest.mock import patch
+
 
 @pytest.fixture
 def ray_start_4_cpus():
@@ -302,11 +305,12 @@ def test_retry_legacy(ray_start_4_cpus):
 def test_tune_torch_get_device(num_workers=1, num_gpus_per_worker=1):
     num_samples = 2
 
+    @patch("torch.cuda.is_available", lambda: True)
     def train_func():
         train.report(device_id=train.torch.get_device().index)
 
     trainer = Trainer(
-        "torch",
+        TorchConfig(backend="gloo"),
         num_workers=num_workers,
         use_gpu=True,
         resources_per_worker={"GPU": num_gpus_per_worker},
