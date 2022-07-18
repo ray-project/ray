@@ -1,5 +1,6 @@
+import datetime
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 from ray.tune.schedulers import TrialScheduler
 from ray.tune.search import Searcher
@@ -35,6 +36,9 @@ class TuneConfig:
             a :class:`ConcurrencyLimiter`, and thus setting this argument
             will raise an exception if the ``search_alg`` is already a
             :class:`ConcurrencyLimiter`. Defaults to None.
+        time_budget_s: Global time budget in
+            seconds after which all trials are stopped. Can also be a
+            ``datetime.timedelta`` object.
     """
 
     # Currently this is not at feature parity with `tune.run`, nor should it be.
@@ -46,3 +50,4 @@ class TuneConfig:
     scheduler: Optional[TrialScheduler] = None
     num_samples: int = 1
     max_concurrent_trials: Optional[int] = None
+    time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None

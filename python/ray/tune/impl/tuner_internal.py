@@ -183,6 +183,7 @@ class TunerInternal:
             verbose=self._run_config.verbose,
             reuse_actors=self._run_config.reuse_actors,
             max_concurrent_trials=self._tune_config.max_concurrent_trials,
+            time_budget_s=self._tune_config.time_budget_s,
         )
 
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:

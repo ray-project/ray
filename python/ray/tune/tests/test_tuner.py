@@ -273,6 +273,10 @@ class TunerTest(unittest.TestCase):
             {"tune_config": TuneConfig(max_concurrent_trials=3)},
             lambda kw: kw["max_concurrent_trials"] == 3,
         ),
+        (
+            {"tune_config": TuneConfig(time_budget_s=60)},
+            lambda kw: kw["time_budget_s"] == 60,
+        ),
     ],
 )
 def test_tuner_api_kwargs(params_expected):
