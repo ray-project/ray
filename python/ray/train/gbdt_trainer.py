@@ -1,6 +1,8 @@
+import os
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
+from ray import tune
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
@@ -72,7 +74,8 @@ class GBDTTrainer(BaseTrainer):
     ]
     _dmatrix_cls: type
     _ray_params_cls: type
-    _tune_callback_cls: type
+    _tune_callback_report_cls: type
+    _tune_callback_checkpoint_cls: type
     _default_ray_params: Dict[str, Any] = {"checkpoint_frequency": 1}
     _init_model_arg_name: str
 
@@ -138,6 +141,12 @@ class GBDTTrainer(BaseTrainer):
     def _train(self, **kwargs):
         raise NotImplementedError
 
+    def _save_model(self, model: Any, path: str):
+        raise NotImplementedError
+
+    def _model_iteration(self, model: Any) -> int:
+        raise NotImplementedError
+
     @property
     def _ray_params(self) -> "xgboost_ray.RayParams":
         scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
@@ -181,12 +190,19 @@ class GBDTTrainer(BaseTrainer):
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
-        config["callbacks"] += [
-            self._tune_callback_cls(filename=MODEL_KEY, frequency=1)
-        ]
+
+        checkpoint_frequency = self.run_config.checkpoint_config.checkpoint_frequency
+        if checkpoint_frequency > 0:
+            callback = self._tune_callback_checkpoint_cls(
+                filename=MODEL_KEY, frequency=checkpoint_frequency
+            )
+        else:
+            callback = self._tune_callback_report_cls()
+
+        config["callbacks"] += [callback]
         config[self._init_model_arg_name] = init_model
 
-        self._train(
+        model = self._train(
             params=self.params,
             dtrain=train_dmatrix,
             evals_result=evals_result,
@@ -194,6 +210,11 @@ class GBDTTrainer(BaseTrainer):
             ray_params=self._ray_params,
             **config,
         )
+
+        if self.run_config.checkpoint_config.checkpoint_at_end:
+            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
+                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
+                tune.report(**evals_result)
 
     def as_trainable(self) -> Type[Trainable]:
         trainable_cls = super().as_trainable()
