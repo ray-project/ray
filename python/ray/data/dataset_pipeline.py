@@ -208,9 +208,6 @@ class DatasetPipeline(Generic[T]):
             blocks_created_by_pipeline = (
                 self._peek()._plan.execute()._created_by_pipeline
             )
-        print(
-            blocks_created_by_pipeline,
-        )
         yield from batch_blocks(
             self._iter_blocks(),
             self._stats,
