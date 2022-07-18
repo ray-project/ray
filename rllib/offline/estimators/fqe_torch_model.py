@@ -209,18 +209,29 @@ class FQETorchModel:
         input_dict = {SampleBatch.OBS: obs}
         seq_lens = torch.ones(len(obs), device=self.device, dtype=int)
         state_batches = []
-        if self.policy.action_distribution_fn and is_overridden(
-            self.policy.action_distribution_fn
-        ):
-            dist_inputs, dist_class, _ = self.policy.action_distribution_fn(
-                self.policy,
-                self.policy.model,
-                input_dict=input_dict,
-                state_batches=state_batches,
-                seq_lens=seq_lens,
-                explore=False,
-                is_training=False,
-            )
+        if is_overridden(self.policy.action_distribution_fn):
+            try:
+                # TorchPolicyV2 function signature
+                dist_inputs, dist_class, _ = self.action_distribution_fn(
+                    self.policy.model,
+                    obs_batch=input_dict,
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
+                    explore=False,
+                    is_training=False,
+                )
+            except TypeError:
+                # TorchPolicyV1 function signature for compatibility with DQN
+                # TODO: Remove this once DQNTorchPolicy is migrated to PolicyV2
+                dist_inputs, dist_class, _ = self.policy.action_distribution_fn(
+                    self.policy,
+                    self.policy.model,
+                    input_dict=input_dict,
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
+                    explore=False,
+                    is_training=False,
+                )
         else:
             dist_class = self.policy.dist_class
             dist_inputs, _ = self.policy.model(input_dict, state_batches, seq_lens)
