@@ -103,15 +103,13 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
 @pytest.mark.parametrize(
     "freq_end_expected",
     [
-        (4, True, 8),  # 0, 4, 8, 12, 16, 20, 24, 25
-        (4, False, 7),  # 0, 4, 8, 12, 16, 20, 24
-        (5, True, 6),  # 0, 5, 10, 15, 20, 25
-        (0, True, 1),
-        (0, False, 0),
+        (4, 8),  # 0, 4, 8, 12, 16, 20, 24, 25
+        (5, 6),  # 0, 5, 10, 15, 20, 25
+        (0, 1),
     ],
 )
 def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
-    freq, end, expected = freq_end_expected
+    freq, expected = freq_end_expected
 
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
@@ -119,7 +117,6 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
         run_config=ray.air.RunConfig(
             checkpoint_config=ray.air.CheckpointConfig(
                 checkpoint_frequency=freq,
-                checkpoint_at_end=end,
             )
         ),
         scaling_config=scale_config,

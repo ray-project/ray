@@ -191,15 +191,25 @@ class GBDTTrainer(BaseTrainer):
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
 
-        checkpoint_frequency = self.run_config.checkpoint_config.checkpoint_frequency
-        if checkpoint_frequency > 0:
-            callback = self._tune_callback_checkpoint_cls(
-                filename=MODEL_KEY, frequency=checkpoint_frequency
+        if not any(
+            isinstance(
+                cb, (self._tune_callback_report_cls, self._tune_callback_checkpoint_cls)
             )
-        else:
-            callback = self._tune_callback_report_cls()
+            for cb in config["callbacks"]
+        ):
+            # Only add our own callback if it hasn't been added before
+            checkpoint_frequency = (
+                self.run_config.checkpoint_config.checkpoint_frequency
+            )
+            if checkpoint_frequency > 0:
+                callback = self._tune_callback_checkpoint_cls(
+                    filename=MODEL_KEY, frequency=checkpoint_frequency
+                )
+            else:
+                callback = self._tune_callback_report_cls()
 
-        config["callbacks"] += [callback]
+            config["callbacks"] += [callback]
+
         config[self._init_model_arg_name] = init_model
 
         model = self._train(
@@ -211,10 +221,9 @@ class GBDTTrainer(BaseTrainer):
             **config,
         )
 
-        if self.run_config.checkpoint_config.checkpoint_at_end:
-            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
-                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-                tune.report(**evals_result)
+        with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
+            self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
+            tune.report(**evals_result)
 
     def as_trainable(self) -> Type[Trainable]:
         trainable_cls = super().as_trainable()

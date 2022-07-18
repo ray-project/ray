@@ -7,7 +7,7 @@ from ray.air.config import RunConfig
 from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.result_grid import ResultGrid
-from ray.tune.trainable import Trainable
+from ray.tune.trainable import Trainable, FunctionTrainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
 
@@ -149,8 +149,12 @@ class TunerInternal:
 
         return ResultGrid(analysis)
 
-    def _get_tune_run_arguments(self) -> Dict[str, Any]:
+    def _get_tune_run_arguments(self, trainable) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
+        checkpoint_freq = self._run_config.checkpoint_config.checkpoint_frequency
+        if checkpoint_freq and issubclass(trainable, FunctionTrainable):
+            checkpoint_freq = 0
+
         return dict(
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
@@ -162,6 +166,8 @@ class TunerInternal:
             checkpoint_score_attr=(
                 self._run_config.checkpoint_config._tune_legacy_checkpoint_score_attr
             ),
+            checkpoint_freq=checkpoint_freq,
+            checkpoint_at_end=True,
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),
@@ -175,7 +181,7 @@ class TunerInternal:
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         args = {
-            **self._get_tune_run_arguments(),
+            **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
                 config={**param_space},
