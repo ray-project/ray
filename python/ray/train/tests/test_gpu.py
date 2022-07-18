@@ -1,5 +1,6 @@
 import os
 from timeit import default_timer as timer
+from collections import Counter
 
 import pytest
 import torch
@@ -9,6 +10,8 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+from ray.cluster_utils import Cluster
+
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
 from ray.train.constants import TRAINING_ITERATION
@@ -42,6 +45,20 @@ def ray_start_1_cpu_1_gpu():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_2_node_4_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=2, num_gpus=4)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
 # TODO: Refactor as a backend test.
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
@@ -62,6 +79,39 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         assert devices == [0, 0]
     elif num_gpus_per_worker == 1:
         assert devices == [0, 1]
+    else:
+        raise RuntimeError(
+            "New parameter for this test has been added without checking that the "
+            "correct devices have been returned."
+        )
+
+
+# TODO: Refactor as a backend test.
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_torch_get_device_dist(ray_2_node_4_gpu, num_gpus_per_worker):
+    def train_fn():
+        return train.torch.get_device().index
+
+    trainer = Trainer(
+        "torch",
+        num_workers=int(8 / num_gpus_per_worker),
+        use_gpu=True,
+        resources_per_worker={"GPU": num_gpus_per_worker},
+    )
+    trainer.start()
+    devices = trainer.run(train_fn)
+    trainer.shutdown()
+
+    if num_gpus_per_worker == 0.5:
+        count = Counter(devices)
+        for i in range(4):
+            assert count[i] == 4
+    elif num_gpus_per_worker == 1:
+        for i in range(4):
+            assert count[i] == 2
+    elif num_gpus_per_worker == 2:
+        for i in range(2):
+            assert count[i] == 2
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
