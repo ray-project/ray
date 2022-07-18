@@ -113,6 +113,7 @@ class ClientBuilder:
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
         self._credentials = None
+        self._metadata = None
         # Set to False if ClientBuilder is being constructed by internal
         # methods
         self._deprecation_warn_enabled = True
@@ -179,6 +180,7 @@ class ClientBuilder:
             job_config=self._job_config,
             _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs,
+            metadata=self._metadata,
         )
         get_dashboard_url = ray.remote(ray._private.worker.get_dashboard_url)
         dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
@@ -228,6 +230,10 @@ class ClientBuilder:
         if "_credentials" in kwargs.keys():
             self._credentials = kwargs["_credentials"]
             del kwargs["_credentials"]
+
+        if "_metadata" in kwargs.keys():
+            self._metadata = kwargs["_metadata"]
+            del kwargs["_metadata"]
 
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)

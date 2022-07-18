@@ -29,6 +29,7 @@ def connect(
             "Ray Client is already connected. Maybe you called "
             'ray.init("ray://<address>") twice by accident?'
         )
+
     # Enable the same hooks that RAY_CLIENT_MODE does, as calling
     # ray.init("ray://<address>") is specifically for using client mode.
     _set_client_hook_status(True)
