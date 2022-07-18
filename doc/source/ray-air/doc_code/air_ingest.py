@@ -158,7 +158,7 @@ import ray
 from ray import train
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
@@ -175,7 +175,7 @@ def train_loop_per_worker():
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={"train": ray.data.range_tensor(1000)},
     dataset_config={
         "train": DatasetConfig(global_shuffle=True),
@@ -191,7 +191,7 @@ import ray
 from ray import train
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
@@ -211,7 +211,7 @@ def train_loop_per_worker():
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={"train": ray.data.range_tensor(1000)},
     dataset_config={
         # global_shuffle is disabled by default, but we're emphasizing here that you

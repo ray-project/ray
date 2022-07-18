@@ -174,7 +174,7 @@ def test_reserved_cpus(ray_start_4_cpus):
         ray.data.range(10).show()
 
     # Will deadlock without reserved CPU fraction.
-    scale_config = {"num_workers": 1, "_max_cpu_fraction_per_node": 0.9}
+    scale_config = ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9)
     trainer = DummyTrainer(
         train_loop,
         scaling_config=scale_config,
@@ -184,7 +184,7 @@ def test_reserved_cpus(ray_start_4_cpus):
 
 # TODO(ekl/sang) this currently fails.
 #    # Check we don't deadlock with too low of a fraction either.
-#    scale_config = {"num_workers": 1, "_max_cpu_fraction_per_node": 0.01}
+#    scale_config = ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.01)
 #    trainer = DummyTrainer(
 #        train_loop,
 #        scaling_config=scale_config,
