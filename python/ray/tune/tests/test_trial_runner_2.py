@@ -16,7 +16,7 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.resources import Resources
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
+from ray.tune.tests.tune_test_util import TrialResultObserver
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
