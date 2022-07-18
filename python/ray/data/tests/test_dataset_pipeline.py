@@ -596,6 +596,82 @@ def test_in_place_transformation_doesnt_clear_objects(ray_start_regular_shared):
     )
 
 
+def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3, 4, 5, 6], parallelism=3)
+
+    @ray.remote
+    def consume(p):
+        for batch in p.iter_batches():
+            pass
+
+    def verify_integrity(p):
+        # Divide 3 blocks ([1, 2], [3, 4] and [5, 6]) into 2 splits equally must
+        # have one block got splitted. Since the blocks are not created by the
+        # pipeline (randomize_block_order_each_window() didn't create new
+        # blocks since it's in-place), so the block splitting will not clear
+        # the input block -- verified below by re-reading the dataset.
+        splits = p.split(2, equal=True)
+        ray.get([consume.remote(p) for p in splits])
+        # Verify the integrity of the blocks of original dataset
+        assert ds.take_all() == [1, 2, 3, 4, 5, 6]
+
+    verify_integrity(ds.repeat(10).randomize_block_order_each_window())
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+    )
+    # Mix in-place and non-in place transforms.
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+        .map_batches(lambda x: x)
+    )
+    verify_integrity(
+        ds.repeat(10)
+        .map_batches(lambda x: x)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+    )
+
+
+def test_blocks_created_by_pipeline(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3, 4, 5, 6], parallelism=3)
+    assert not ds._plan.execute()._created_by_pipeline
+    assert not ds.randomize_block_order()._plan.execute()._created_by_pipeline
+    assert not ds.map_batches(lambda x: x)._plan.execute()._created_by_pipeline
+
+    def verify_blocks(pipe, created_by_pipeline):
+        for ds in pipe.iter_datasets():
+            assert ds._plan.execute()._created_by_pipeline == created_by_pipeline
+
+    verify_blocks(ds.repeat(1), False)
+    verify_blocks(ds.repeat(1).randomize_block_order_each_window(), False)
+    verify_blocks(
+        ds.repeat(1).randomize_block_order_each_window().map_batches(lambda x: x), True
+    )
+    verify_blocks(ds.repeat(1).map_batches(lambda x: x), True)
+    verify_blocks(ds.repeat(1).map(lambda x: x), True)
+    verify_blocks(ds.repeat(1).filter(lambda x: x > 3), True)
+    verify_blocks(ds.repeat(1).sort_each_window(), True)
+    verify_blocks(ds.repeat(1).random_shuffle_each_window(), True)
+    verify_blocks(ds.repeat(1).repartition_each_window(2), True)
+
+    @ray.remote
+    def consume(pipe, created_by_pipeline):
+        verify_blocks(pipe, created_by_pipeline)
+
+    splits = ds.repeat(1).split(2)
+    ray.get([consume.remote(splits[0], False), consume.remote(splits[1], False)])
+
+    splits = ds.repeat(1).randomize_block_order_each_window().split(2)
+    ray.get([consume.remote(splits[0], False), consume.remote(splits[1], False)])
+
+    splits = ds.repeat(1).map_batches(lambda x: x).split(2)
+    ray.get([consume.remote(splits[0], True), consume.remote(splits[1], True)])
+
+
 if __name__ == "__main__":
     import sys
 
