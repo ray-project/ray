@@ -440,7 +440,6 @@ class RunConfig:
             class and registered trainables.
     """
 
-    # TODO(xwjiang): Add more.
     name: Optional[str] = None
     local_dir: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
