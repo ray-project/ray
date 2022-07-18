@@ -5,12 +5,15 @@ from tensorflow_mnist_example import train_func
 import ray
 from ray import tune
 from ray.train.tensorflow import TensorflowTrainer
+from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 
 def tune_tensorflow_mnist(num_workers, num_samples):
-    trainer = TensorflowTrainer(train_func, scaling_config={"num_workers": num_workers})
+    trainer = TensorflowTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers)
+    )
     tuner = Tuner(
         trainer,
         param_space={

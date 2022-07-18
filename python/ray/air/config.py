@@ -1,21 +1,12 @@
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Mapping,
-    Optional,
-    Union,
-    Tuple,
-)
+from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Union, Tuple
 
 from ray.air.constants import WILDCARD_KEY
 from ray.tune.progress_reporter import ProgressReporter
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
+from ray.tune.search.sample import Domain
 
 # Move here later when ml_utils is deprecated. Doing it now causes a circular import.
 from ray.util.ml_utils.checkpoint_manager import CheckpointConfig
@@ -26,48 +17,53 @@ if TYPE_CHECKING:
     from ray.tune.stopper import Stopper
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
-ScalingConfig = Dict[str, Any]
+
+# Dict[str, List] is to support `tune.grid_search`:
+# TODO(sumanthratna/matt): Upstream this to Tune.
+SampleRange = Union[Domain, Dict[str, List]]
 
 
 @dataclass
 @PublicAPI(stability="alpha")
-class ScalingConfigDataClass:
+class ScalingConfig:
     """Configuration for scaling training.
 
     This is the schema for the scaling_config dict, and after beta, this will be the
     actual representation for Scaling config objects.
 
-    trainer_resources: Resources to allocate for the trainer. If None is provided,
-        will default to 1 CPU.
-    num_workers: The number of workers (Ray actors) to launch.
-        Each worker will reserve 1 CPU by default. The number of CPUs
-        reserved by each worker can be overridden with the
-        ``resources_per_worker`` argument.
-    use_gpu: If True, training will be done on GPUs (1 per worker).
-        Defaults to False. The number of GPUs reserved by each
-        worker can be overridden with the ``resources_per_worker``
-        argument.
-    resources_per_worker: If specified, the resources
-        defined in this Dict will be reserved for each worker. The
-        ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
-        override the number of CPU/GPUs used by each worker.
-    placement_strategy: The placement strategy to use for the
-        placement group of the Ray actors. See :ref:`Placement Group
-        Strategies <pgroup-strategy>` for the possible options.
-    _max_cpu_fraction_per_node: (Experimental) The max fraction of CPUs per node that
-        Train will use for scheduling training actors. The remaining CPUs can be used
-        for dataset tasks. It is highly recommended that you set this to less than
-        1.0 (e.g., 0.8) when passing datasets to trainers, to avoid hangs / CPU
-        starvation of dataset tasks. Warning: this feature is experimental and is not
-        recommended for use with autoscaling (scale-up will not trigger properly).
+    Args:
+        trainer_resources: Resources to allocate for the trainer. If None is provided,
+            will default to 1 CPU.
+        num_workers: The number of workers (Ray actors) to launch.
+            Each worker will reserve 1 CPU by default. The number of CPUs
+            reserved by each worker can be overridden with the
+            ``resources_per_worker`` argument.
+        use_gpu: If True, training will be done on GPUs (1 per worker).
+            Defaults to False. The number of GPUs reserved by each
+            worker can be overridden with the ``resources_per_worker``
+            argument.
+        resources_per_worker: If specified, the resources
+            defined in this Dict will be reserved for each worker. The
+            ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
+            override the number of CPU/GPUs used by each worker.
+        placement_strategy: The placement strategy to use for the
+            placement group of the Ray actors. See :ref:`Placement Group
+            Strategies <pgroup-strategy>` for the possible options.
+        _max_cpu_fraction_per_node: (Experimental) The max fraction of CPUs per node
+            that Train will use for scheduling training actors. The remaining CPUs
+            can be used for dataset tasks. It is highly recommended that you set this
+            to less than 1.0 (e.g., 0.8) when passing datasets to trainers, to avoid
+            hangs / CPU starvation of dataset tasks. Warning: this feature is
+            experimental and is not recommended for use with autoscaling (scale-up will
+            not trigger properly).
     """
 
-    trainer_resources: Optional[Dict] = None
-    num_workers: Optional[int] = None
-    use_gpu: bool = False
-    resources_per_worker: Optional[Dict] = None
-    placement_strategy: str = "SPREAD"
-    _max_cpu_fraction_per_node: Optional[float] = None
+    trainer_resources: Optional[Union[Dict, SampleRange]] = None
+    num_workers: Optional[Union[int, SampleRange]] = None
+    use_gpu: Union[bool, SampleRange] = False
+    resources_per_worker: Optional[Union[Dict, SampleRange]] = None
+    placement_strategy: Union[str, SampleRange] = "SPREAD"
+    _max_cpu_fraction_per_node: Optional[Union[float, SampleRange]] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -86,7 +82,7 @@ class ScalingConfigDataClass:
                     "`resources_per_worker."
                 )
 
-    def __eq__(self, o: "ScalingConfigDataClass") -> bool:
+    def __eq__(self, o: "ScalingConfig") -> bool:
         if not isinstance(o, type(self)):
             return False
         return self.as_placement_group_factory() == o.as_placement_group_factory()
@@ -157,7 +153,7 @@ class ScalingConfigDataClass:
     @classmethod
     def from_placement_group_factory(
         cls, pgf: "PlacementGroupFactory"
-    ) -> "ScalingConfigDataClass":
+    ) -> "ScalingConfig":
         """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
         if pgf.head_bundle_is_empty:
             trainer_resources = {}
@@ -186,7 +182,7 @@ class ScalingConfigDataClass:
         if "_max_cpu_fraction_per_node" in pgf._kwargs:
             max_cpu_fraction_per_node = pgf._kwargs["_max_cpu_fraction_per_node"]
 
-        return ScalingConfigDataClass(
+        return ScalingConfig(
             trainer_resources=trainer_resources,
             num_workers=num_workers,
             use_gpu=use_gpu,

@@ -20,6 +20,7 @@ from ray.air import session
 from ray.air.callbacks.keras import Callback
 from ray.train.tensorflow import prepare_dataset_shard
 from ray.train.tensorflow import TensorflowTrainer
+from ray.air.config import ScalingConfig
 
 
 def build_model() -> tf.keras.Model:
@@ -74,7 +75,7 @@ config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
 trainer = TensorflowTrainer(
     train_loop_per_worker=train_func,
     train_loop_config=config,
-    scaling_config=dict(num_workers=num_workers, use_gpu=use_gpu),
+    scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     datasets={"train": dataset},
 )
 result = trainer.fit()

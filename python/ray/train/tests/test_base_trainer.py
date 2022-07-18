@@ -14,6 +14,7 @@ from ray.train import base_trainer
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
+from ray.air.config import ScalingConfig
 from ray.util.placement_group import get_current_placement_group
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,9 @@ def test_resources(ray_start_4_cpus):
         assert ray.available_resources()["CPU"] == 2
 
     assert ray.available_resources()["CPU"] == 4
-    trainer = DummyTrainer(check_cpus, scaling_config={"trainer_resources": {"CPU": 2}})
+    trainer = DummyTrainer(
+        check_cpus, scaling_config=ScalingConfig(trainer_resources={"CPU": 2})
+    )
     trainer.fit()
 
 
@@ -138,7 +141,7 @@ def test_preprocessor_already_fitted(ray_start_4_cpus):
 
 def test_arg_override(ray_start_4_cpus):
     def check_override(self):
-        assert self.scaling_config["num_workers"] == 1
+        assert self.scaling_config.num_workers == 1
         # Should do deep update.
         assert not self.custom_arg["outer"]["inner"]
         assert self.custom_arg["outer"]["fixed"] == 1
@@ -150,7 +153,7 @@ def test_arg_override(ray_start_4_cpus):
 
     preprocessor = DummyPreprocessor()
     preprocessor.original = True
-    scale_config = {"num_workers": 4}
+    scale_config = ScalingConfig(num_workers=4)
     trainer = DummyTrainer(
         check_override,
         custom_arg={"outer": {"inner": True, "fixed": 1}},
@@ -160,7 +163,7 @@ def test_arg_override(ray_start_4_cpus):
 
     new_config = {
         "custom_arg": {"outer": {"inner": False}},
-        "scaling_config": {"num_workers": 1},
+        "scaling_config": ScalingConfig(num_workers=1),
     }
 
     tune.run(trainer.as_trainable(), config=new_config)
@@ -171,7 +174,7 @@ def test_reserved_cpus(ray_start_4_cpus):
         ray.data.range(10).show()
 
     # Will deadlock without reserved CPU fraction.
-    scale_config = {"num_workers": 1, "_max_cpu_fraction_per_node": 0.9}
+    scale_config = ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9)
     trainer = DummyTrainer(
         train_loop,
         scaling_config=scale_config,
@@ -181,7 +184,7 @@ def test_reserved_cpus(ray_start_4_cpus):
 
 # TODO(ekl/sang) this currently fails.
 #    # Check we don't deadlock with too low of a fraction either.
-#    scale_config = {"num_workers": 1, "_max_cpu_fraction_per_node": 0.01}
+#    scale_config = ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.01)
 #    trainer = DummyTrainer(
 #        train_loop,
 #        scaling_config=scale_config,
@@ -210,7 +213,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
         # Fraction correctly specified.
         DummyTrainer(
             train_loop,
-            scaling_config={"num_workers": 1, "_max_cpu_fraction_per_node": 0.9},
+            scaling_config=ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9),
             datasets={"train": ray.data.range(10)},
         )
         assert not base_trainer.logger.warnings
@@ -218,14 +221,14 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
         # No datasets, no fraction.
         DummyTrainer(
             train_loop,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
         )
         assert not base_trainer.logger.warnings
 
         # Should warn.
         DummyTrainer(
             train_loop,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             datasets={"train": ray.data.range(10)},
         )
         assert len(base_trainer.logger.warnings) == 1, base_trainer.logger.warnings
@@ -275,7 +278,9 @@ def _is_trainable_name_overriden(trainer: BaseTrainer):
 
 
 def test_trainable_name_is_overriden_data_parallel_trainer(ray_start_4_cpus):
-    trainer = DataParallelTrainer(lambda x: x, scaling_config=dict(num_workers=1))
+    trainer = DataParallelTrainer(
+        lambda x: x, scaling_config=ScalingConfig(num_workers=1)
+    )
 
     _is_trainable_name_overriden(trainer)
 
@@ -285,7 +290,7 @@ def test_trainable_name_is_overriden_gbdt_trainer(ray_start_4_cpus):
         params={},
         label_column="__values__",
         datasets={"train": ray.data.from_items([1, 2, 3])},
-        scaling_config=dict(num_workers=1),
+        scaling_config=ScalingConfig(num_workers=1),
     )
 
     _is_trainable_name_overriden(trainer)

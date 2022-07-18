@@ -7,6 +7,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
 from ray.train.sklearn import SklearnTrainer, load_checkpoint
+from ray.air.config import ScalingConfig
 from ray.data.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
@@ -22,7 +23,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-scale_config = {"trainer_resources": {"CPU": 2}}
+scale_config = ScalingConfig(trainer_resources={"CPU": 2})
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
@@ -175,14 +176,14 @@ def test_validation(ray_start_4_cpus):
     with pytest.raises(ValueError, match="are not allowed to be updated"):
         SklearnTrainer(
             estimator=RandomForestClassifier(),
-            scaling_config={"num_workers": 2},
+            scaling_config=ScalingConfig(num_workers=2),
             label_column="target",
             datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         )
     with pytest.raises(ValueError, match="parallelize_cv"):
         SklearnTrainer(
             estimator=RandomForestClassifier(),
-            scaling_config={"trainer_resources": {"GPU": 1}},
+            scaling_config=ScalingConfig(trainer_resources={"GPU": 1}),
             label_column="target",
             cv=5,
             parallelize_cv=True,

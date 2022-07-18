@@ -7,7 +7,7 @@ import torch.nn as nn
 import ray
 import ray.train as train
 from ray.air import session
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
 
@@ -126,7 +126,7 @@ def train_linear(num_workers=2, use_gpu=False):
         train_loop_config=config,
         datasets=datasets,
         dataset_config=dataset_configs,
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     results = trainer.fit()
     print(results.metrics)

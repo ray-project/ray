@@ -3,7 +3,7 @@ import os
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
-from ray.air.config import RunConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.result_grid import ResultGrid
@@ -98,6 +98,7 @@ class TunerInternal:
 
         # Not used for restored Tuner.
         self._param_space = param_space or {}
+        self._process_scaling_config()
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if
@@ -112,6 +113,19 @@ class TunerInternal:
         trainable_ckpt = os.path.join(self._experiment_checkpoint_dir, _TRAINABLE_PKL)
         with open(trainable_ckpt, "wb") as fp:
             pickle.dump(self._trainable, fp)
+
+    def _process_scaling_config(self) -> None:
+        """Converts ``self._param_space["scaling_config"]`` to a dict.
+
+        The dict is converted back to a dataclass by the Trainer, after the
+        Tune search specification is resolved.
+        """
+        # TODO: introduce `ray.tune.sample.TuneableDataclass` and allow Tune to
+        # natively resolve specs with dataclasses.
+        scaling_config = self._param_space.get("scaling_config")
+        if not isinstance(scaling_config, ScalingConfig):
+            return
+        self._param_space["scaling_config"] = scaling_config.__dict__.copy()
 
     def _setup_create_experiment_checkpoint_dir(
         self, run_config: Optional[RunConfig]

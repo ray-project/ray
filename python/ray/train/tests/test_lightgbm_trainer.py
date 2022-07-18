@@ -11,6 +11,7 @@ from ray.train.constants import TRAIN_DATASET_KEY
 
 from ray.data.preprocessor import Preprocessor
 from ray.train.lightgbm import LightGBMTrainer, load_checkpoint
+from ray.air.config import ScalingConfig
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -24,7 +25,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-scale_config = {"num_workers": 2}
+scale_config = ScalingConfig(num_workers=2)
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
@@ -161,14 +162,14 @@ def test_validation(ray_start_4_cpus):
     valid_dataset = ray.data.from_pandas(test_df)
     with pytest.raises(KeyError, match=TRAIN_DATASET_KEY):
         LightGBMTrainer(
-            scaling_config={"num_workers": 2},
+            scaling_config=ScalingConfig(num_workers=2),
             label_column="target",
             params=params,
             datasets={"valid": valid_dataset},
         )
     with pytest.raises(KeyError, match="dmatrix_params"):
         LightGBMTrainer(
-            scaling_config={"num_workers": 2},
+            scaling_config=ScalingConfig(num_workers=2),
             label_column="target",
             params=params,
             dmatrix_params={"data": {}},

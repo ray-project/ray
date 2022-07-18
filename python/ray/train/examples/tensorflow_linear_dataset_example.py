@@ -6,7 +6,7 @@ from ray.air.callbacks.keras import Callback as TrainReportCallback
 
 import ray
 from ray.air import session
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import Dataset
 from ray.train.tensorflow import TensorflowTrainer, prepare_dataset_shard
 
@@ -80,7 +80,7 @@ def train_tensorflow_linear(num_workers=2, use_gpu=False):
         train_loop_config={"lr": 1e-3, "batch_size": 32, "epochs": 4},
         datasets=datasets,
         dataset_config=dataset_configs,
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     results = trainer.fit()
     print(f"Results: {results.metrics}")

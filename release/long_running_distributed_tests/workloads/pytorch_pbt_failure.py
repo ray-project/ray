@@ -5,7 +5,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.air.config import RunConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.examples.tune_cifar_torch_pbt_example import train_func
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
@@ -28,7 +28,7 @@ num_training_workers = 1 if args.smoke_test else 3
 
 trainer = TorchTrainer(
     train_func,
-    scaling_config=dict(
+    scaling_config=ScalingConfig(
         num_workers=num_training_workers,
         use_gpu=not args.smoke_test,
     ),

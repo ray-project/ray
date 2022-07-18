@@ -99,6 +99,7 @@ def train_tf_ray_air(
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.tensorflow import TensorflowTrainer
+    from ray.air.config import ScalingConfig
 
     def train_loop(config):
         train_func(use_ray=True, config=config)
@@ -107,12 +108,12 @@ def train_tf_ray_air(
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
-        scaling_config={
-            "trainer_resources": {"CPU": 0},
-            "num_workers": num_workers,
-            "resources_per_worker": {"CPU": cpus_per_worker},
-            "use_gpu": use_gpu,
-        },
+        scaling_config=ScalingConfig(
+            trainer_resources={"CPU": 0},
+            num_workers=num_workers,
+            resources_per_worker={"CPU": cpus_per_worker},
+            use_gpu=use_gpu,
+        ),
     )
     result = trainer.fit()
     time_taken = time.monotonic() - start_time

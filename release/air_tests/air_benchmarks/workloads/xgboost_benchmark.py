@@ -14,6 +14,7 @@ from ray.train.xgboost import (
     XGBoostPredictor,
 )
 from ray.train.batch_predictor import BatchPredictor
+from ray.air.config import ScalingConfig
 
 _XGB_MODEL_PATH = "model.json"
 _TRAINING_TIME_THRESHOLD = 1000
@@ -56,10 +57,10 @@ def run_xgboost_training(data_path: str, num_workers: int):
     }
 
     trainer = XGBoostTrainer(
-        scaling_config={
-            "num_workers": num_workers,
-            "resources_per_worker": {"CPU": 12},
-        },
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            resources_per_worker={"CPU": 12},
+        ),
         label_column="labels",
         params=params,
         datasets={"train": ds},

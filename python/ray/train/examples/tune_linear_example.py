@@ -5,12 +5,15 @@ from torch_linear_example import train_func
 import ray
 from ray import tune
 from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 
 def tune_linear(num_workers, num_samples):
-    trainer = TorchTrainer(train_func, scaling_config={"num_workers": num_workers})
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers)
+    )
     tuner = Tuner(
         trainer,
         param_space={

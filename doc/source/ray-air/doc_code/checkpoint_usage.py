@@ -26,6 +26,7 @@ checkpoint = to_air_checkpoint(model)
 import ray
 from ray.air import train_test_split
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 
 
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
@@ -34,7 +35,7 @@ dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
 
 trainer = XGBoostTrainer(
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     label_column="target",
     params={
         "objective": "binary:logistic",
