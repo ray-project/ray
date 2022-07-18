@@ -2,6 +2,7 @@ import torch
 
 from ray.train.torch import TorchCheckpoint
 
+
 def test_from_model_and_get_model():
     model = torch.nn.Linear(1, 1)
 

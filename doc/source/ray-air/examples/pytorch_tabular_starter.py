@@ -93,7 +93,9 @@ def train_loop_per_worker(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        session.report({"loss": loss}, checkpoint=TorchCheckpoint.from_torch_model(model))
+        session.report(
+            {"loss": loss}, checkpoint=TorchCheckpoint.from_torch_model(model)
+        )
 
 
 num_features = len(train_dataset.schema().names) - 1
