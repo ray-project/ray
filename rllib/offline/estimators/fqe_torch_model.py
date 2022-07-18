@@ -111,6 +111,8 @@ class FQETorchModel:
         """
         losses = []
         minibatch_size = self.minibatch_size or batch.count
+        # Copy batch for shuffling
+        batch = batch.copy(shallow=True)
         for _ in range(self.n_iters):
             minibatch_losses = []
             batch.shuffle()
