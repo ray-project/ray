@@ -122,8 +122,6 @@ test_core() {
       args+=(
         -//:core_worker_test
         -//:event_test
-        -//:gcs_pub_sub_test
-        -//:gcs_server_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
         -//:gcs_client_reconnection_test
