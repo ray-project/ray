@@ -31,7 +31,7 @@ assert (
 #                      redis_max_memory=redis_max_memory,
 #                      dashboard_host="0.0.0.0")
 # ray.init(address=cluster.address)
-ray.init(address="auto")
+ray.init()
 
 # Run the workload.
 
