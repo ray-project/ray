@@ -130,7 +130,8 @@ class RuntimeEnvPluginManager:
             ):
                 raise RuntimeError(
                     f"Invalid runtime env plugin config {plugin_config}, "
-                    "it should be a object which contains the 'class' field."
+                    "it should be a object which contains the "
+                    f"{RAY_RUNTIME_ENV_CLASS_FIELD_NAME} field."
                 )
             plugin_class = import_attr(plugin_config[RAY_RUNTIME_ENV_CLASS_FIELD_NAME])
             if not issubclass(plugin_class, RuntimeEnvPlugin):
@@ -141,14 +142,14 @@ class RuntimeEnvPluginManager:
                 )
             if not plugin_class.name:
                 raise RuntimeError(
-                    f"No valid name in runtime env plugin {plugin_class}"
+                    f"No valid name in runtime env plugin {plugin_class}."
                 )
             if plugin_class.name in self.plugins:
                 raise RuntimeError(
                     f"The name of runtime env plugin {plugin_class} conflicts "
                     f"with {self.plugins[plugin_class.name]}.",
                 )
-            # The priority should should be an integer between 0 and 100.
+            # The priority should be an integer between 0 and 100.
             # The default priority is 10. A smaller number indicates a
             # higher priority and the plugin will be set up first.
             priority = RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY
@@ -176,7 +177,6 @@ class RuntimeEnvPluginManager:
         for name, config in inputs:
             if name not in self.plugins:
                 raise RuntimeError(f"Runtime env plugin {name} not found.")
-            print(type(self.plugins[name].class_instance))
             used_plugins.append(
                 (
                     name,
