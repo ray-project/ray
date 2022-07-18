@@ -47,7 +47,7 @@ from ray.air import session
 from ray.air.callbacks.keras import Callback as KerasCallback
 from ray.train.tensorflow import (
     TensorflowTrainer,
-    to_air_checkpoint,
+    TensorflowCheckpoint,
     prepare_dataset_shard,
 )
 
@@ -173,7 +173,7 @@ print("Best Result:", best_result)
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import TensorflowPredictor
 
-# You can also create a checkpoint from a trained model using `to_air_checkpoint`.
+# You can also create a checkpoint from a trained model using `TensorflowCheckpoint.from_model`.
 checkpoint = best_result.checkpoint
 
 batch_predictor = BatchPredictor.from_checkpoint(

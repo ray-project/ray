@@ -2,7 +2,7 @@
 # isort: skip_file
 
 # __checkpoint_quick_start__
-from ray.train.tensorflow import to_air_checkpoint
+from ray.train.tensorflow import TensorflowCheckpoint
 import tensorflow as tf
 
 # This can be a trained model.
@@ -18,7 +18,7 @@ def build_model() -> tf.keras.Model:
 
 model = build_model()
 
-checkpoint = to_air_checkpoint(model)
+checkpoint = TensorflowCheckpoint.from_model(model)
 # __checkpoint_quick_end__
 
 
