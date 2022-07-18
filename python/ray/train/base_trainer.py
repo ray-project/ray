@@ -431,6 +431,12 @@ class BaseTrainer(abc.ABC):
 
             @classmethod
             def default_resource_request(cls, config):
+                # `config["scaling_config"] is a dataclass when passed via the
+                # `scaling_config` argument in `Trainer` and is a dict when passed
+                # via the `scaling_config` key of `param_spec`.
+
+                # Conversion logic must be duplicated in `TrainTrainable.__init__`
+                # because this is a class method.
                 updated_scaling_config = config.get("scaling_config", scaling_config)
                 if isinstance(updated_scaling_config, dict):
                     updated_scaling_config = ScalingConfig(**updated_scaling_config)
