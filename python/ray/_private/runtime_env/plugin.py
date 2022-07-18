@@ -9,6 +9,10 @@ from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.constants import (
     RAY_RUNTIME_ENV_PLUGINS_ENV_VAR,
     RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY,
+    RAY_RUNTIME_ENV_CLASS_FIELD_NAME,
+    RAY_RUNTIME_ENV_PRIORITY_FIELD_NAME,
+    RAY_RUNTIME_ENV_PLUGIN_MIN_PRIORITY,
+    RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY,
 )
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import import_attr
@@ -120,12 +124,15 @@ class RuntimeEnvPluginManager:
     def load_plugins(self, plugin_configs: List[Dict]):
         """Load runtime env plugins"""
         for plugin_config in plugin_configs:
-            if not isinstance(plugin_config, dict) or "class" not in plugin_config:
+            if (
+                not isinstance(plugin_config, dict)
+                or RAY_RUNTIME_ENV_CLASS_FIELD_NAME not in plugin_config
+            ):
                 raise RuntimeError(
                     f"Invalid runtime env plugin config {plugin_config}, "
                     "it should be a object which contains the 'class' field."
                 )
-            plugin_class = import_attr(plugin_config["class"])
+            plugin_class = import_attr(plugin_config[RAY_RUNTIME_ENV_CLASS_FIELD_NAME])
             if not issubclass(plugin_class, RuntimeEnvPlugin):
                 raise RuntimeError(
                     f"Invalid runtime env plugin class {plugin_class}. "
@@ -141,13 +148,22 @@ class RuntimeEnvPluginManager:
                     f"The name of runtime env plugin {plugin_class} conflicts "
                     f"with {self.plugins[plugin_class.name]}.",
                 )
+            # The priority should should be an integer between 0 and 100.
+            # The default priority is 10. A smaller number indicates a
+            # higher priority and the plugin will be set up first.
             priority = RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY
-            if "priority" in plugin_config:
-                priority = plugin_config["priority"]
-                if not isinstance(priority, int) or priority < 0 or priority > 100:
+            if RAY_RUNTIME_ENV_PRIORITY_FIELD_NAME in plugin_config:
+                priority = plugin_config[RAY_RUNTIME_ENV_PRIORITY_FIELD_NAME]
+                if (
+                    not isinstance(priority, int)
+                    or priority < RAY_RUNTIME_ENV_PLUGIN_MIN_PRIORITY
+                    or priority > RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY
+                ):
                     raise RuntimeError(
                         f"Invalid runtime env priority {priority}, "
-                        "it should be a integer between 0 and 100."
+                        "it should be an integer between "
+                        f"{RAY_RUNTIME_ENV_PLUGIN_MIN_PRIORITY} "
+                        f"and {RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY}."
                     )
             self.plugins[plugin_class.name] = RuntimeEnvPluginManager.Context(
                 plugin_class(), priority
