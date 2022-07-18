@@ -456,7 +456,7 @@ def run(
 
     target_ratio = 1.15
     ratio = (times_ray_mean / times_vanilla_mean) if times_vanilla_mean != 0.0 else 1.0
-    if ratio > 1.15:
+    if ratio > target_ratio:
         raise RuntimeError(
             f"Training on Ray took an average of {times_ray_mean:.2f} seconds, "
             f"which is more than {target_ratio:.2f}x of the average vanilla training "
