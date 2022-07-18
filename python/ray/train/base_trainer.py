@@ -160,7 +160,7 @@ class BaseTrainer(abc.ABC):
 
         self._validate_attributes()
 
-        if datasets and not self.scaling_config.get("_max_cpu_fraction_per_node"):
+        if datasets and not self.scaling_config._max_cpu_fraction_per_node:
             logger.warning(
                 "When passing `datasets` to a Trainer, it is recommended to "
                 "reserve at least 20% of node CPUs for Dataset execution by setting "
