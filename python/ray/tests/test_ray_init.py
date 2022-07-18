@@ -191,6 +191,7 @@ def test_ray_address(input, call_ray_start):
         res = ray.init(input)
         # Ensure this is not a client.connect()
         assert not isinstance(res, ClientContext)
+        assert res.address_info["gcs_address"] == address
         ray.shutdown()
 
     addr = "localhost:{}".format(address.split(":")[-1])
@@ -198,7 +199,50 @@ def test_ray_address(input, call_ray_start):
         res = ray.init(input)
         # Ensure this is not a client.connect()
         assert not isinstance(res, ClientContext)
+        assert res.address_info["gcs_address"] == address
         ray.shutdown()
+
+
+@pytest.mark.parametrize("address", [None, "auto"])
+def test_ray_init_no_local_instance(shutdown_only, address):
+    # Starts a new Ray instance.
+    if address is None:
+        ray.init(address=address)
+    else:
+        # Throws an error if we explicitly want to connect to an existing
+        # instance and none exists.
+        with pytest.raises(ConnectionError):
+            ray.init(address=address)
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="Flaky when run on windows CI",
+)
+@pytest.mark.parametrize("address", [None, "auto"])
+def test_ray_init_existing_instance(address):
+    cluster1, cluster2 = None, None
+    cluster1 = Cluster(initialize_head=True)
+    try:
+        # If no address is specified, we will default to an existing cluster.
+        res = ray.init(address=address)
+        assert res.address_info["gcs_address"] == cluster1.address
+        ray.shutdown()
+
+        cluster2 = Cluster(initialize_head=True)
+        # If there are multiple local instances, throw an error.
+        with pytest.raises(ConnectionError):
+            res = ray.init(address=address)
+
+        with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": cluster2.address}):
+            res = ray.init(address=address)
+            assert res.address_info["gcs_address"] == cluster2.address
+    finally:
+        ray.shutdown()
+        if cluster1 is not None:
+            cluster1.shutdown()
+        if cluster2 is not None:
+            cluster2.shutdown()
 
 
 class Credentials(grpc.ChannelCredentials):

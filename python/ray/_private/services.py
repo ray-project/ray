@@ -323,29 +323,7 @@ def _find_redis_address_or_die():
     return redis_addresses.pop()
 
 
-def _find_gcs_address_or_die():
-    """Find one GCS address unambiguously, or raise an error.
-
-    Callers outside of this module should use get_ray_address_to_use_or_die()
-    """
-    gcs_addresses = _find_address_from_flag("--gcs-address")
-    if len(gcs_addresses) > 1:
-        raise ConnectionError(
-            f"Found multiple active Ray instances: {gcs_addresses}. "
-            "Please specify the one to connect to by setting `--address` flag "
-            "or `RAY_ADDRESS` environment variable."
-        )
-        sys.exit(1)
-    elif not gcs_addresses:
-        raise ConnectionError(
-            "Could not find any running Ray instance. "
-            "Please specify the one to connect to by setting `--address` flag "
-            "or `RAY_ADDRESS` environment variable."
-        )
-    return gcs_addresses.pop()
-
-
-def get_ray_address_from_environment():
+def get_ray_address_from_environment(addr: str):
     """
     Attempts to find the address of Ray cluster to use, first from
     RAY_ADDRESS environment variable, then from the local Raylet.
@@ -353,10 +331,32 @@ def get_ray_address_from_environment():
     Returns:
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
     """
-    addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if addr is None or addr == "auto":
-        addr = _find_gcs_address_or_die()
-    return addr
+    env_addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if env_addr is not None:
+        addr = env_addr
+
+    if addr is not None and addr != "auto":
+        return addr
+    # We should try to automatically find an active local instance.
+    gcs_addr = find_gcs_address()
+    if len(gcs_addr) > 1:
+        raise ConnectionError(
+            f"Found multiple active Ray instances: {gcs_addr}. "
+            "Please specify the one to connect to by setting `--address` flag "
+            "or `RAY_ADDRESS` environment variable."
+        )
+    if not gcs_addr:
+        if addr is None:
+            # Caller should start a new instance.
+            return None
+        else:
+            raise ConnectionError(
+                "Could not find any running Ray instance. "
+                "Please specify the one to connect to by setting `--address` flag "
+                "or `RAY_ADDRESS` environment variable."
+            )
+
+    return gcs_addr.pop()
 
 
 def wait_for_node(
@@ -456,7 +456,9 @@ def canonicalize_bootstrap_address(addr: str):
         Ray cluster address string in <host:port> format.
     """
     if addr is None or addr == "auto":
-        addr = get_ray_address_from_environment()
+        addr = get_ray_address_from_environment(addr)
+    if addr is None:
+        return addr
     try:
         bootstrap_address = resolve_ip_for_localhost(addr)
     except Exception:

@@ -1156,6 +1156,8 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if configure_logging:
+        setup_logger(logging_level, logging_format)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1288,17 +1290,13 @@ def init(
         node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
     raylet_ip_address = node_ip_address
 
-    bootstrap_address, redis_address, gcs_address = None, None, None
-    if address:
-        bootstrap_address = services.canonicalize_bootstrap_address(address)
-        assert bootstrap_address is not None
+    redis_address, gcs_address = None, None
+    bootstrap_address = services.canonicalize_bootstrap_address(address)
+    if bootstrap_address is not None:
         logger.info(
             f"Connecting to existing Ray cluster at address: {bootstrap_address}"
         )
         gcs_address = bootstrap_address
-
-    if configure_logging:
-        setup_logger(logging_level, logging_format)
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -1380,6 +1378,9 @@ def init(
         # isn't called.
         _global_node = ray._private.node.Node(
             head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
+        )
+        logger.info(
+            f"Started a new local Ray instance at address: {_global_node.address}"
         )
     else:
         # In this case, we are connecting to an existing cluster.
