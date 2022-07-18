@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 
 # Dict[str, List] is to support `tune.grid_search`:
+# TODO(sumanthratna/matt): Upstream this to Tune.
 SampleRange = Union[Domain, Dict[str, List]]
 
 
