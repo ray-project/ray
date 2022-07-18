@@ -157,28 +157,14 @@ class TunerInternal:
             callbacks=self._run_config.callbacks,
             sync_config=self._run_config.sync_config,
             stop=self._run_config.stop,
-            max_failures=(
-                self._run_config.failure_config.max_failures
-                if self._run_config.failure_config
-                else 0
-            ),
-            keep_checkpoints_num=(
-                self._run_config.checkpoint_config.num_to_keep
-                if self._run_config.checkpoint_config
-                else None
-            ),
+            max_failures=self._run_config.failure_config.max_failures,
+            keep_checkpoints_num=self._run_config.checkpoint_config.num_to_keep,
             checkpoint_score_attr=(
                 self._run_config.checkpoint_config._tune_legacy_checkpoint_score_attr
-                if self._run_config.checkpoint_config
-                else None
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
-            fail_fast=(
-                self._run_config.failure_config.fail_fast
-                if self._run_config.failure_config
-                else False
-            ),
+            fail_fast=(self._run_config.failure_config.fail_fast),
             progress_reporter=self._run_config.progress_reporter,
             verbose=self._run_config.verbose,
             reuse_actors=self._run_config.reuse_actors,

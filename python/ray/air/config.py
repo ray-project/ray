@@ -451,3 +451,13 @@ class RunConfig:
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
     log_to_file: Union[bool, str, Tuple[str, str]] = False
     reuse_actors: Optional[bool] = None
+
+    def __post_init__(self):
+        if not self.failure_config:
+            self.failure_config = FailureConfig()
+
+        if not self.sync_config:
+            self.sync_config = SyncConfig()
+
+        if not self.checkpoint_config:
+            self.checkpoint_config = CheckpointConfig()
