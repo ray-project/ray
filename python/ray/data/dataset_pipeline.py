@@ -944,6 +944,50 @@ class DatasetPipeline(Generic[T]):
         output batches from the pipeline"""
         return Dataset.show(self, limit)
 
+    def iter_tf_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = None,
+        batch_format: str = "native",
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[Union["tf.Tensor", Dict[str, "tf.Tensor"]]]:
+        """Call
+        :py:meth:`Dataset.iter_tf_batches <ray.data.Dataset.iter_tf_batches>`
+        over the stream of output batches from the pipeline."""
+        return Dataset.iter_tf_batches(
+            self,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
+
+    def iter_torch_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = None,
+        batch_format: str = "native",
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[Union["torch.Tensor", Dict[str, "torch.Tensor"]]]:
+        """Call
+        :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
+        over the stream of output batches from the pipeline."""
+        return Dataset.iter_torch_batches(
+            self,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
+
     def to_tf(
         self,
         *,

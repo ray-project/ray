@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Union
 
+import numpy as np
 import pandas as pd
 import torch
 
@@ -99,6 +100,71 @@ def convert_pandas_to_torch_tensor(
         ]
     else:
         return get_tensor_for_columns(columns=columns, dtype=column_dtypes)
+
+
+def convert_ndarray_to_torch_tensor(
+    ndarray: np.ndarray,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[str] = None,
+) -> torch.Tensor:
+    """Convert a NumPy ndarray to a Torch Tensor.
+
+    Args:
+        ndarray: The NumPy ndarray that we wish to convert to a Torch Tensor.
+        dtype: The Torch dtype for the created tensor; if None, the dtype will be
+            inferred from the NumPy ndarray data.
+        device: The device on which the tensor should be placed; if None, the Torch
+            tensor will be constructed on the CPU.
+
+    Returns: A Torch Tensor.
+    """
+    torch_tensor = torch.as_tensor(ndarray, dtype=dtype, device=device)
+    # Off-the-shelf torch Modules expect the input size to have at least 2
+    # dimensions (batch_size, feature_size). If the tensor for the column
+    # is flattened, then we unqueeze it to add an extra dimension.
+    if len(torch_tensor.size()) == 1:
+        torch_tensor = torch_tensor.unsqueeze(dim=1)
+    return torch_tensor
+
+
+def convert_ndarray_batch_to_torch_tensor_batch(
+    ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
+    dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
+    device: Optional[str] = None,
+) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+    """Convert a NumPy ndarray batch to a Torch Tensor batch.
+
+    Args:
+        ndarray: A (dict of) NumPy ndarray(s) that we wish to convert to a Torch Tensor.
+        dtype: A (dict of) Torch dtype(s) for the created tensor; if None, the dtype
+            will be inferred from the NumPy ndarray data.
+        device: The device on which the tensor(s) should be placed; if None, the Torch
+            tensor(s) will be constructed on the CPU.
+
+    Returns: A (dict of) Torch Tensor(s).
+    """
+    if isinstance(ndarrays, np.ndarray):
+        # Single-tensor case.
+        if isinstance(dtypes, dict):
+            if len(dtypes) != 1:
+                raise ValueError(
+                    "When constructing a single-tensor batch, only a single dtype "
+                    f"should be given, instead got: {dtypes}"
+                )
+            dtypes = next(iter(dtypes.values()))
+        batch = convert_ndarray_to_torch_tensor(ndarrays, dtype=dtypes, device=device)
+    else:
+        # Multi-tensor case.
+        batch = {
+            col_name: convert_ndarray_to_torch_tensor(
+                col_ndarray,
+                dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                device=device,
+            )
+            for col_name, col_ndarray in ndarrays.items()
+        }
+
+    return batch
 
 
 def load_torch_model(
