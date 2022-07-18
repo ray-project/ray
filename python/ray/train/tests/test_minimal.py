@@ -11,6 +11,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import ScalingConfig
 
 
 @pytest.fixture
@@ -67,7 +68,7 @@ def test_run(ray_start_4_cpus):
         train_func,
         backend_config=config,
         resume_from_checkpoint=checkpoint,
-        scaling_config=dict(num_workers=num_workers),
+        scaling_config=ScalingConfig(num_workers=num_workers),
     )
     results = trainer.fit()
 

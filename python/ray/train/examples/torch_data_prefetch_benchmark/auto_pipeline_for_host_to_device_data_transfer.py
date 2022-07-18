@@ -8,6 +8,7 @@ import torch.nn as nn
 
 import ray.train as train
 from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 
 
 class Net(nn.Module):
@@ -105,7 +106,7 @@ def train_linear(num_workers=1, num_hidden_layers=1, use_auto_transfer=True, epo
     trainer = TorchTrainer(
         train_func,
         train_loop_config=config,
-        scaling_config={"use_gpu": True, "num_workers": num_workers},
+        scaling_config=ScalingConfig(use_gpu=True, num_workers=num_workers),
     )
     results = trainer.fit()
 
