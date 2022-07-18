@@ -32,6 +32,9 @@ def create_tune_experiment_checkpoint(trials: list, **runner_kwargs) -> str:
 
     # Update environment
     orig_env = os.environ.copy()
+
+    # Set to 1 to disable ray cluster resource lookup. That way we can
+    # create experiment checkpoints without initializing ray.
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
     try:
