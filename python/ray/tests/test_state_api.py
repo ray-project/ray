@@ -2241,7 +2241,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         wait_for_condition(_wait_to_start)
         # Wait 1 more second to make sure the API call happens after all
         # process has a call.
-        time.sleep(1)
+        time.sleep(3)
 
         # Running another 1 should return error
         with pytest.raises(RayStateApiException) as e:
