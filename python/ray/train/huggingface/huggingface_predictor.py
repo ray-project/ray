@@ -66,8 +66,8 @@ class HuggingFacePredictor(Predictor):
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
         pipeline_cls = pipeline_cls or pipeline_factory
+        preprocessor = checkpoint.get_preprocessor()
         with checkpoint.as_directory() as checkpoint_path:
-            preprocessor = load_preprocessor_from_dir(checkpoint_path)
             # Tokenizer will be loaded automatically (no need to specify
             # `tokenizer=checkpoint_path`)
             pipeline = pipeline_cls(model=checkpoint_path, **pipeline_kwargs)

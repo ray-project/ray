@@ -81,7 +81,8 @@ class TorchPredictor(DLPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """
-        model, preprocessor = load_checkpoint(checkpoint, model)
+        model, _ = load_checkpoint(checkpoint, model)
+        preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
     def _array_to_tensor(
