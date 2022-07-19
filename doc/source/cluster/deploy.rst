@@ -13,7 +13,6 @@ Ray with Cluster Managers
    :maxdepth: 2
 
    kubernetes.rst
-   kuberay.md
    yarn.rst
    slurm.rst
    lsf.rst
