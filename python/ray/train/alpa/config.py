@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import logging
 import os
 from collections import defaultdict
@@ -5,7 +6,7 @@ from typing import Callable, List, Optional, Dict, Type, Tuple, TypeVar
 
 import ray
 from ray.exceptions import RayActorError
-from ray.ray_constants import env_integer
+from ray._private.ray_constants import env_integer
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
@@ -19,6 +20,7 @@ from ray.train._internal.session import TrainingResult
 from ray.train._internal.session import init_session, get_session, shutdown_session
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
+from ray.util import PublicAPI
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
 import alpa

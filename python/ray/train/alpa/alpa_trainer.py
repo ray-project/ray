@@ -11,12 +11,13 @@ from ray.air._internal.checkpointing import (
     save_preprocessor_to_dir,
 )
 from ray.air.result import Result
-
+from ray.train.alpa.config import AlpaConfig
+ 
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
-from ray.util.annotations import PublicAPI
+from ray.util import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
@@ -68,13 +69,13 @@ if TYPE_CHECKING:
 
 from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 
+from ray.train.alpa.utils import is_ray_node_resource
+
+
 logger = logging.getLogger(__name__)
 
-
-# @PublicAPI(stability="beta")
-# class AlpaTrainer(BaseTrainer):
 @PublicAPI(stability="beta")
-class TorchTrainer(                                                                  ):
+class AlpaTrainer(BaseTrainer):
     """Alpa: Automating Parallelism trainer.
 
     References:
@@ -91,9 +92,10 @@ class TorchTrainer(                                                             
     
     def __init__(
         self,
-        train_loop: Union[Callable[[], None], Callable[[Dict], None]],
+        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
+        alpa_config: Optional[AlpaConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
@@ -109,6 +111,35 @@ class TorchTrainer(                                                             
         if not alpa.api.is_initialized:
             alpa.init("ray")
 
+
+        from ray._private.worker import _global_node as ray_global_node
+        # try:
+        self.head_info = ray_global_node.address_info
+        # except AttributeError as ae:
+        #     raise RuntimeError(
+        #         "Cannot access ray global node. Did you call ray.init?") \
+        #         from ae
+        self.head_ip = self.head_info["node_ip_address"]
+
+        # Gather host ids
+        self.host_info = []
+        for node in ray.nodes():
+            for key in node["Resources"]:
+                if is_ray_node_resource(key):
+                    self.host_info.append(node)
+
+        # Gather device info
+        self.host_num_devices = []
+        for host_info in self.host_info:
+            number = host_info["Resources"]["GPU"]
+            assert number.is_integer()
+            self.host_num_devices.append(int(number))
+        
+        from icecream import ic 
+        ic(self.host_num_devices, self.host_info)
+
+        exit()
+        
         cluster = alpa.get_global_cluster()
         logger.info(
              "Distributed Training with Alpa using "
@@ -120,31 +151,30 @@ class TorchTrainer(                                                             
         
         # self._datasets = datasets
 
+        # super(AlpaTrainer, self).__init__(
+        #     train_loop_per_worker=train_loop_per_worker,
+        #     train_loop_config=train_loop_config,
+        #     backend_config=alpa_config,
+        #     scaling_config=scaling_config,
+        #     dataset_config=dataset_config,
+        #     run_config=run_config,
+        #     datasets=datasets,
+        #     preprocessor=preprocessor,
+        #     resume_from_checkpoint=resume_from_checkpoint,
+        # )
+
         super(AlpaTrainer, self).__init__(
-            train_loop_per_worker=train_loop_per_worker,
-            train_loop_config=train_loop_config,
-            backend_config=alpa_config,
             scaling_config=scaling_config,
-            dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-
-    # def training_loop(self) -> None:
-    #     self._train_loop(self._datasets, self._train_loop_config)
+    def training_loop(self) -> None:
+        self._train_loop(self._datasets, self._train_loop_config)
         
-    # @PublicAPI(stability="alpha")
-    # def fit(self) -> Result:
-    #     self.setup()
-    #     self.preprocess_datasets()
-    #     self.training_loop()
-
-
-
-
+        
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
 
@@ -212,73 +242,73 @@ class TorchTrainer(                                                             
     
 
 
-@dataclass
-@PublicAPI(stability="alpha")
-class ScalingConfigDataClass:
+# @dataclass
+# @PublicAPI(stability="alpha")
+# class ScalingConfigDataClass:
 
-    trainer_resources: Optional[Dict] = None
-    num_workers: Optional[int] = None
-    use_gpu: bool = False
-    resources_per_worker: Optional[Dict] = None
-    placement_strategy: str = "PACK"
+#     trainer_resources: Optional[Dict] = None
+#     num_workers: Optional[int] = None
+#     use_gpu: bool = False
+#     resources_per_worker: Optional[Dict] = None
+#     placement_strategy: str = "PACK"
 
-    def __post_init__(self):
-        self.resources_per_worker = (
-            self.resources_per_worker if self.resources_per_worker else {}
-        )
-        if self.resources_per_worker:
-            if not self.use_gpu and self.num_gpus_per_worker > 0:
-                raise ValueError(
-                    "`use_gpu` is False but `GPU` was found in "
-                    "`resources_per_worker`. Either set `use_gpu` to True or "
-                    "remove `GPU` from `resources_per_worker."
-                )
+#     def __post_init__(self):
+#         self.resources_per_worker = (
+#             self.resources_per_worker if self.resources_per_worker else {}
+#         )
+#         if self.resources_per_worker:
+#             if not self.use_gpu and self.num_gpus_per_worker > 0:
+#                 raise ValueError(
+#                     "`use_gpu` is False but `GPU` was found in "
+#                     "`resources_per_worker`. Either set `use_gpu` to True or "
+#                     "remove `GPU` from `resources_per_worker."
+#                 )
 
-            if self.use_gpu and self.num_gpus_per_worker == 0:
-                raise ValueError(
-                    "`use_gpu` is True but `GPU` is set to 0 in "
-                    "`resources_per_worker`. Either set `use_gpu` to False or "
-                    "request a positive number of `GPU` in "
-                    "`resources_per_worker."
-                )
+#             if self.use_gpu and self.num_gpus_per_worker == 0:
+#                 raise ValueError(
+#                     "`use_gpu` is True but `GPU` is set to 0 in "
+#                     "`resources_per_worker`. Either set `use_gpu` to False or "
+#                     "request a positive number of `GPU` in "
+#                     "`resources_per_worker."
+#                 )
 
-    @property
-    def num_cpus_per_worker(self):
-        """The number of CPUs to set per worker."""
-        return self.resources_per_worker.get("CPU", 1)
+#     @property
+#     def num_cpus_per_worker(self):
+#         """The number of CPUs to set per worker."""
+#         return self.resources_per_worker.get("CPU", 1)
 
-    @property
-    def num_gpus_per_worker(self):
-        """The number of GPUs to set per worker."""
-        return self.resources_per_worker.get("GPU", int(self.use_gpu))
+#     @property
+#     def num_gpus_per_worker(self):
+#         """The number of GPUs to set per worker."""
+#         return self.resources_per_worker.get("GPU", int(self.use_gpu))
 
-    @property
-    def additional_resources_per_worker(self):
-        """Resources per worker, not including CPU or GPU resources."""
-        return {
-            k: v
-            for k, v in self.resources_per_worker.items()
-            if k not in ["CPU", "GPU"]
-        }
+#     @property
+#     def additional_resources_per_worker(self):
+#         """Resources per worker, not including CPU or GPU resources."""
+#         return {
+#             k: v
+#             for k, v in self.resources_per_worker.items()
+#             if k not in ["CPU", "GPU"]
+#         }
 
-    def as_placement_group_factory(self) -> "PlacementGroupFactory":
-        """Returns a PlacementGroupFactory to specify resources for Tune."""
-        from ray.tune.execution.placement_groups import PlacementGroupFactory
+#     def as_placement_group_factory(self) -> "PlacementGroupFactory":
+#         """Returns a PlacementGroupFactory to specify resources for Tune."""
+#         from ray.tune.execution.placement_groups import PlacementGroupFactory
 
-        trainer_resources = (
-            self.trainer_resources if self.trainer_resources else {"CPU": 1}
-        )
-        trainer_bundle = [trainer_resources]
-        worker_resources = {
-            "CPU": self.num_cpus_per_worker,
-            "GPU": self.num_gpus_per_worker,
-        }
-        worker_resources_extra = (
-            {} if self.resources_per_worker is None else self.resources_per_worker
-        )
-        worker_bundles = [
-            {**worker_resources, **worker_resources_extra}
-            for _ in range(self.num_workers if self.num_workers else 0)
-        ]
-        bundles = trainer_bundle + worker_bundles
-        return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
+#         trainer_resources = (
+#             self.trainer_resources if self.trainer_resources else {"CPU": 1}
+#         )
+#         trainer_bundle = [trainer_resources]
+#         worker_resources = {
+#             "CPU": self.num_cpus_per_worker,
+#             "GPU": self.num_gpus_per_worker,
+#         }
+#         worker_resources_extra = (
+#             {} if self.resources_per_worker is None else self.resources_per_worker
+#         )
+#         worker_bundles = [
+#             {**worker_resources, **worker_resources_extra}
+#             for _ in range(self.num_workers if self.num_workers else 0)
+#         ]
+#         bundles = trainer_bundle + worker_bundles
+#         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
