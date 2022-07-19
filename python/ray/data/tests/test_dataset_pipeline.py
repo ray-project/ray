@@ -636,15 +636,15 @@ def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_sh
     )
 
 
-def test_blocks_created_by_pipeline(ray_start_regular_shared):
+def test_blocks_safe_to_consume(ray_start_regular_shared):
     ds = ray.data.from_items([1, 2, 3, 4, 5, 6], parallelism=3)
-    assert not ds._plan.execute()._created_by_pipeline
-    assert not ds.randomize_block_order()._plan.execute()._created_by_pipeline
-    assert not ds.map_batches(lambda x: x)._plan.execute()._created_by_pipeline
+    assert not ds._plan.execute()._consumable
+    assert not ds.randomize_block_order()._plan.execute()._consumable
+    assert not ds.map_batches(lambda x: x)._plan.execute()._consumable
 
-    def verify_blocks(pipe, created_by_pipeline):
+    def verify_blocks(pipe, consumable):
         for ds in pipe.iter_datasets():
-            assert ds._plan.execute()._created_by_pipeline == created_by_pipeline
+            assert ds._plan.execute()._consumable == consumable
 
     verify_blocks(ds.repeat(1), False)
     verify_blocks(ds.repeat(1).randomize_block_order_each_window(), False)
@@ -659,8 +659,8 @@ def test_blocks_created_by_pipeline(ray_start_regular_shared):
     verify_blocks(ds.repeat(1).repartition_each_window(2), True)
 
     @ray.remote
-    def consume(pipe, created_by_pipeline):
-        verify_blocks(pipe, created_by_pipeline)
+    def consume(pipe, consumable):
+        verify_blocks(pipe, consumable)
 
     splits = ds.repeat(1).split(2)
     ray.get([consume.remote(splits[0], False), consume.remote(splits[1], False)])

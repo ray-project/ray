@@ -19,14 +19,14 @@ class BlockList:
         self,
         blocks: List[ObjectRef[Block]],
         metadata: List[BlockMetadata],
-        created_by_pipeline: bool = False,
+        consumable: bool = False,
     ):
         assert len(blocks) == len(metadata), (blocks, metadata)
         self._blocks: List[ObjectRef[Block]] = blocks
         self._num_blocks = len(self._blocks)
         self._metadata: List[BlockMetadata] = metadata
-        # Whether the block list was created by pipeline.
-        self._created_by_pipeline = created_by_pipeline
+        # Whether the block list can be consumed (i.e. can be deleted after read).
+        self._consumable = consumable
 
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
@@ -34,7 +34,7 @@ class BlockList:
 
     def copy(self) -> "BlockList":
         """Perform a shallow copy of this BlockList."""
-        return BlockList(self._blocks, self._metadata, self._created_by_pipeline)
+        return BlockList(self._blocks, self._metadata, self._consumable)
 
     def clear(self) -> None:
         """Erase references to the tasks tracked by the BlockList."""
@@ -64,7 +64,7 @@ class BlockList:
         meta = np.array_split(self._metadata, num_splits)
         output = []
         for b, m in zip(blocks, meta):
-            output.append(BlockList(b.tolist(), m.tolist(), self._created_by_pipeline))
+            output.append(BlockList(b.tolist(), m.tolist(), self._consumable))
         return output
 
     def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
@@ -85,9 +85,7 @@ class BlockList:
                 )
             size = m.size_bytes
             if cur_blocks and cur_size + size > bytes_per_split:
-                output.append(
-                    BlockList(cur_blocks, cur_meta, self._created_by_pipeline)
-                )
+                output.append(BlockList(cur_blocks, cur_meta, self._consumable))
                 cur_blocks = []
                 cur_meta = []
                 cur_size = 0
@@ -95,7 +93,7 @@ class BlockList:
             cur_meta.append(m)
             cur_size += size
         if cur_blocks:
-            output.append(BlockList(cur_blocks, cur_meta, self._created_by_pipeline))
+            output.append(BlockList(cur_blocks, cur_meta, self._consumable))
         return output
 
     def size_bytes(self) -> int:
@@ -122,12 +120,12 @@ class BlockList:
             BlockList(
                 self._blocks[:block_idx],
                 self._metadata[:block_idx],
-                self._created_by_pipeline,
+                self._consumable,
             ),
             BlockList(
                 self._blocks[block_idx:],
                 self._metadata[block_idx:],
-                self._created_by_pipeline,
+                self._consumable,
             ),
         )
 
@@ -197,4 +195,4 @@ class BlockList:
         random.shuffle(blocks_with_metadata)
         blocks, metadata = map(list, zip(*blocks_with_metadata))
 
-        return BlockList(blocks, metadata, self._created_by_pipeline)
+        return BlockList(blocks, metadata, self._consumable)

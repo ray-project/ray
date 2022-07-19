@@ -641,7 +641,7 @@ class OneToOneStage(Stage):
             self.fn_constructor_args is None and self.fn_constructor_kwargs is None
         ) or isinstance(compute, ActorPoolStrategy)
 
-        if blocks._created_by_pipeline:
+        if blocks._consumable:
             assert (
                 self.run_by_pipeline
             ), "Pipeline outputs can only be consumed by pipeline"
@@ -659,7 +659,7 @@ class OneToOneStage(Stage):
             fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
         assert isinstance(blocks, BlockList), blocks
-        blocks._created_by_pipeline = self.run_by_pipeline
+        blocks._consumable = self.run_by_pipeline
         return blocks, {}
 
 
@@ -736,8 +736,8 @@ class AllToAllStage(Stage):
     ) -> Tuple[BlockList, dict]:
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
-        in_blocks_created_by_pipeline = blocks._created_by_pipeline
-        if in_blocks_created_by_pipeline:
+        in_blocks_consumable = blocks._consumable
+        if in_blocks_consumable:
             assert (
                 self.run_by_pipeline
             ), "Pipeline outputs can only be consumed by pipeline"
@@ -746,9 +746,9 @@ class AllToAllStage(Stage):
         )
         assert isinstance(blocks, BlockList), blocks
         if isinstance(self, RandomizeBlocksStage):
-            blocks._created_by_pipeline = in_blocks_created_by_pipeline
+            blocks._consumable = in_blocks_consumable
         else:
-            blocks._created_by_pipeline = self.run_by_pipeline
+            blocks._consumable = self.run_by_pipeline
 
         return blocks, stage_info
 
