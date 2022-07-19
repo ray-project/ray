@@ -57,7 +57,10 @@ def test_init():
         checkpoint_predictor.estimator.feature_importances_,
         predictor.estimator.feature_importances_,
     )
-    assert checkpoint_predictor.preprocessor.attr == predictor.preprocessor.attr
+    assert (
+        checkpoint_predictor.get_preprocessor().attr
+        == predictor.get_preprocessor().attr
+    )
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
@@ -70,7 +73,7 @@ def test_predict(batch_type):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_set_cpus(ray_start_4_cpus):
@@ -81,7 +84,7 @@ def test_predict_set_cpus(ray_start_4_cpus):
     predictions = predictor.predict(data_batch, num_estimator_cpus=2)
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
     assert predictor.estimator.n_jobs == 2
 
 
@@ -93,7 +96,7 @@ def test_predict_feature_columns():
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_feature_columns_pandas():
@@ -110,7 +113,7 @@ def test_predict_feature_columns_pandas():
     predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_no_preprocessor():

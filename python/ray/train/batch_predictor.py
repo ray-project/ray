@@ -5,6 +5,7 @@ import pandas as pd
 import ray
 from ray.air import Checkpoint
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.data import Preprocessor
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -18,23 +19,17 @@ class BatchPredictor:
 
     This batch predictor wraps around a predictor class and executes it
     in a distributed way when calling ``predict()``.
-
-    Attributes:
-        checkpoint: Checkpoint loaded by the distributed predictor objects.
-        predictor_cls: Predictor class reference. When scoring, each scoring worker
-            will create an instance of this class and call ``predict(batch)`` on it.
-        **predictor_kwargs: Keyword arguments passed to the predictor on
-            initialization.
-
     """
 
     def __init__(
         self, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **predictor_kwargs
     ):
+        self._checkpoint = checkpoint
         # Store as object ref so we only serialize it once for all map workers
-        self.checkpoint_ref = checkpoint.to_object_ref()
-        self.predictor_cls = predictor_cls
-        self.predictor_kwargs = predictor_kwargs
+        self._checkpoint_ref = checkpoint.to_object_ref()
+        self._predictor_cls = predictor_cls
+        self._predictor_kwargs = predictor_kwargs
+        self._override_preprocessor: Optional[Preprocessor] = None
 
     @classmethod
     def from_checkpoint(
@@ -65,6 +60,17 @@ class BatchPredictor:
             checkpoint=Checkpoint.from_dict({"dummy": 1}),
             predictor_cls=PandasUDFPredictor,
         )
+
+    def get_preprocessor(self) -> Preprocessor:
+        """Get the preprocessor to use prior to executing predictions."""
+        if self._override_preprocessor:
+            return self._override_preprocessor
+
+        return self._checkpoint.get_preprocessor()
+
+    def set_preprocessor(self, preprocessor: Preprocessor) -> None:
+        """Set the preprocessor to use prior to executing predictions."""
+        self._override_preprocessor = preprocessor
 
     def predict(
         self,
@@ -130,9 +136,10 @@ class BatchPredictor:
             Dataset containing scoring results.
 
         """
-        predictor_cls = self.predictor_cls
-        checkpoint_ref = self.checkpoint_ref
-        predictor_kwargs = self.predictor_kwargs
+        predictor_cls = self._predictor_cls
+        checkpoint_ref = self._checkpoint_ref
+        predictor_kwargs = self._predictor_kwargs
+        override_prep = self._override_preprocessor
         # Automatic set use_gpu in predictor constructor if user provided
         # explicit GPU resources
         if (
@@ -144,16 +151,18 @@ class BatchPredictor:
         class ScoringWrapper:
             def __init__(self):
                 checkpoint = Checkpoint.from_object_ref(checkpoint_ref)
-                self.predictor = predictor_cls.from_checkpoint(
+                self._predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )
+                if override_prep:
+                    self._predictor.set_preprocessor(override_prep)
 
             def __call__(self, batch):
                 if feature_columns:
                     prediction_batch = batch[feature_columns]
                 else:
                     prediction_batch = batch
-                prediction_output = self.predictor.predict(
+                prediction_output = self._predictor.predict(
                     prediction_batch, **predict_kwargs
                 )
                 if keep_columns:

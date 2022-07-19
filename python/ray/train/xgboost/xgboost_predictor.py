@@ -27,7 +27,7 @@ class XGBoostPredictor(Predictor):
         self, model: xgboost.Booster, preprocessor: Optional["Preprocessor"] = None
     ):
         self.model = model
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "XGBoostPredictor":
@@ -41,7 +41,8 @@ class XGBoostPredictor(Predictor):
                 ``XGBoostTrainer`` run.
 
         """
-        bst, preprocessor = load_checkpoint(checkpoint)
+        bst, _ = load_checkpoint(checkpoint)
+        preprocessor = checkpoint.get_preprocessor()
         return cls(model=bst, preprocessor=preprocessor)
 
     def _predict_pandas(

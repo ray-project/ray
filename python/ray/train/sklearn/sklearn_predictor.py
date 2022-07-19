@@ -33,7 +33,7 @@ class SklearnPredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
     ):
         self.estimator = estimator
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "SklearnPredictor":
@@ -46,7 +46,8 @@ class SklearnPredictor(Predictor):
                 preprocessor from. It is expected to be from the result of a
                 ``SklearnTrainer`` run.
         """
-        estimator, preprocessor = load_checkpoint(checkpoint)
+        estimator, _ = load_checkpoint(checkpoint)
+        preprocessor = checkpoint.get_preprocessor()
         return cls(estimator=estimator, preprocessor=preprocessor)
 
     def _predict_pandas(

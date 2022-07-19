@@ -1,7 +1,9 @@
 import time
+from typing import Optional
 
 import pandas as pd
 import pytest
+from ray.air.constants import PREPROCESSOR_KEY
 
 import ray
 from ray.air.checkpoint import Checkpoint
@@ -11,22 +13,33 @@ from ray.train.predictor import Predictor
 
 
 class DummyPreprocessor(Preprocessor):
+    def __init__(self, multiplier=2):
+        self.multiplier = multiplier
+
     def transform_batch(self, df):
-        return df * 2
+        return df * self.multiplier
 
 
 class DummyPredictor(Predictor):
-    def __init__(self, factor: float = 1.0, use_gpu: bool = False):
+    def __init__(
+        self,
+        factor: float = 1.0,
+        preprocessor: Optional[Preprocessor] = None,
+        use_gpu: bool = False,
+    ):
         self.factor = factor
-        self.preprocessor = DummyPreprocessor()
         self.use_gpu = use_gpu
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
         cls, checkpoint: Checkpoint, use_gpu: bool = False, **kwargs
     ) -> "DummyPredictor":
         checkpoint_data = checkpoint.to_dict()
-        return cls(**checkpoint_data, use_gpu=use_gpu)
+        preprocessor = checkpoint.get_preprocessor()
+        return cls(
+            checkpoint_data["factor"], preprocessor=preprocessor, use_gpu=use_gpu
+        )
 
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         # Need to throw exception here instead of constructor to surface the
@@ -44,12 +57,14 @@ class DummyPredictorFS(DummyPredictor):
             # simulate reading
             time.sleep(1)
         checkpoint_data = checkpoint.to_dict()
-        return cls(**checkpoint_data)
+        preprocessor = checkpoint.get_preprocessor()
+        return cls(checkpoint_data["factor"], preprocessor=preprocessor)
 
 
 def test_batch_prediction():
     batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictor,
     )
 
     test_dataset = ray.data.range(4)
@@ -76,7 +91,8 @@ def test_batch_prediction():
 
 def test_batch_prediction_fs():
     batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0}), DummyPredictorFS
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictorFS,
     )
 
     test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0] * 32).repartition(8)
@@ -98,7 +114,8 @@ def test_batch_prediction_fs():
 
 def test_batch_prediction_feature_cols():
     batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictor,
     )
 
     test_dataset = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
@@ -110,7 +127,8 @@ def test_batch_prediction_feature_cols():
 
 def test_batch_prediction_keep_cols():
     batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictor,
     )
 
     test_dataset = ray.data.from_pandas(
@@ -153,7 +171,8 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker():
     """
 
     batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictor,
     )
     test_dataset = ray.data.range(4)
 
@@ -161,6 +180,38 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker():
         ValueError, match="DummyPredictor does not support GPU prediction"
     ):
         _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
+
+
+def test_get_and_set_preprocessor():
+    """Test preprocessor can be set and get."""
+
+    preprocessor = DummyPreprocessor(1)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: preprocessor}),
+        DummyPredictor,
+    )
+    assert batch_predictor.get_preprocessor() == preprocessor
+
+    test_dataset = ray.data.range(4)
+    output_ds = batch_predictor.predict(test_dataset)
+    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+        0.0,
+        2.0,
+        4.0,
+        6.0,
+    ]
+
+    preprocessor2 = DummyPreprocessor(2)
+    batch_predictor.set_preprocessor(preprocessor2)
+    assert batch_predictor.get_preprocessor() == preprocessor2
+
+    output_ds = batch_predictor.predict(test_dataset)
+    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+        0.0,
+        4.0,
+        8.0,
+        12.0,
+    ]
 
 
 if __name__ == "__main__":

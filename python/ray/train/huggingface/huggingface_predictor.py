@@ -7,7 +7,6 @@ from transformers.pipelines.table_question_answering import (
     TableQuestionAnsweringPipeline,
 )
 
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.train.predictor import Predictor
@@ -35,7 +34,7 @@ class HuggingFacePredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
     ):
         self.pipeline = pipeline
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
@@ -66,8 +65,8 @@ class HuggingFacePredictor(Predictor):
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
         pipeline_cls = pipeline_cls or pipeline_factory
+        preprocessor = checkpoint.get_preprocessor()
         with checkpoint.as_directory() as checkpoint_path:
-            preprocessor = load_preprocessor_from_dir(checkpoint_path)
             # Tokenizer will be loaded automatically (no need to specify
             # `tokenizer=checkpoint_path`)
             pipeline = pipeline_cls(model=checkpoint_path, **pipeline_kwargs)
