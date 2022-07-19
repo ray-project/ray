@@ -218,11 +218,10 @@ class DatasetReader(InputReader):
         # do this to disable the ray data stdout logging
         ray.data.set_progress_bars(enabled=False)
 
-        # the number of rows to return per call to next()
-        if self._ioctx:
-            self.batch_size = self._ioctx.config.get("train_batch_size", 1)
-            num_workers = self._ioctx.config.get("num_workers", 0)
-            seed = self._ioctx.config.get("seed", None)
+        # the number of steps to return per call to next()
+        self.batch_size = self._ioctx.config.get("train_batch_size", 1)
+        num_workers = self._ioctx.config.get("num_workers", 0)
+        seed = self._ioctx.config.get("seed", None)
         if num_workers:
             self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)
         # We allow the creation of a non-functioning None DatasetReader.
