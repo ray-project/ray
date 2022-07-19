@@ -344,7 +344,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       /*get_used_object_store_memory*/
       [this]() {
         if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
-          return local_object_manager_.GetPinnedBytes();
+          // Get the current bytes used by local primary object copies.  This
+          // is used to help node scale down decisions. A node can only be
+          // safely drained when this function reports zero.
+          int64_t bytes_used = local_object_manager_.GetPrimaryBytes();
+          // Report nonzero if we have objects spilled to the local filesystem.
+          if (bytes_used == 0) {
+            bytes_used = local_object_manager_.HasLocallySpilledObjects();
+          }
+          return bytes_used;
         } else {
           return object_manager_.GetUsedMemory();
         }
