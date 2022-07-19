@@ -49,7 +49,10 @@ def test_init():
         checkpoint_predictor = LightGBMPredictor.from_checkpoint(checkpoint)
 
     assert get_num_trees(checkpoint_predictor.model) == get_num_trees(predictor.model)
-    assert checkpoint_predictor.get_preprocessor().attr == predictor.get_preprocessor().attr
+    assert (
+        checkpoint_predictor.get_preprocessor().attr
+        == predictor.get_preprocessor().attr
+    )
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
