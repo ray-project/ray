@@ -28,3 +28,6 @@ apex-breakoutnoframeskip-v4:
         train_batch_size: 512
         target_network_update_freq: 50000
         min_sample_timesteps_per_iteration: 25000
+        # we should set this because few machines would be able to contain
+        # the replay buffers in memory otherwise
+        compress_observations: True

@@ -27,3 +27,6 @@ atari-dist-dqn:
           final_epsilon: 0.01
         num_gpus: 0.2
         min_sample_timesteps_per_iteration: 10000
+        # we should set this because few machines would be able to contain
+        # the replay buffers in memory otherwise
+        compress_observations: True
