@@ -10,6 +10,6 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: m5.large
-      min_workers: 99
+      min_workers: 98
       max_workers: 99
       use_spot: true
