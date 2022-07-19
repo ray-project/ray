@@ -7,7 +7,6 @@ from transformers.pipelines.table_question_answering import (
     TableQuestionAnsweringPipeline,
 )
 
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.train.predictor import Predictor
