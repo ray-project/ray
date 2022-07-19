@@ -79,11 +79,11 @@ Autoscaler Assumptions
 ------------------------
 
 Assumptions made by the autoscaler that NodeProvider should follow:
+
 #. NodeProviders are namespaced by the `cluster_name` parameter; they only operate on nodes within that namespace.
 #. The "nodes" are VM-like that could run setup commands remotely (such as via SSH) and receive remote file mount (such as via rsync) using a command runner. 
-#. The node creation and node setup are done in seperate steps. (could hack)
-#. The IP addresses of the nodes are unique. Altough GCS uses ip+port to distinguish
-different nodes, the autoscaler uses only IPs and rely on it to collect node statistics.
+#. The node creation and node setup are done in seperate steps.
+#. The IP addresses of the nodes are unique. Altough GCS uses ip+port to distinguish different nodes, the autoscaler uses only IPs and rely on it to collect node statistics.
 #. External_ips are used in "Ray up" when starting the head node. Internal_ips are used for communication within the cluster.
 #. Nodes should appear immediately once started by `create_node`, and transition immediately to terminated when `terminate_node` is called. This means any APIs, that are affected by the nodes states, especially non_terminate_nodes(), should reflect the changes immediately.
 #. Node tags should be readable by node_tags() immediately after set_node_tags() returns.  
@@ -99,6 +99,7 @@ Autoscaler Config YAML
 A customized NodeProvider goes with a customized autoscaler YAML. Besides the parts that is required by the launching process and the autoscaler, some parts of the autoscaler config YAML is only used by the NodeProvider class. As a result, those parts can also have any kind of format that helps the implementation of NodeProvider.
 
 The YAML file section that is only used by NodeProvider:
+
 * provider (besides "type" and "module")
 * available_node_types.*.node_config
 * auth (for command runner)

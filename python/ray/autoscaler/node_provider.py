@@ -29,35 +29,35 @@ class NodeProvider:
         self.cluster_name = cluster_name
         self._internal_ip_cache: Dict[str, str] = {}
         self._external_ip_cache: Dict[str, str] = {}
-    
+
     @staticmethod
     def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
         """Bootstraps the cluster config by adding env defaults if needed.
-        
+
         Args:
             cluster_config: The whole autoscaler config yaml
         """
         return cluster_config
-    
+
     @staticmethod
     def fillout_available_node_types_resources(
         cluster_config: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Fills out missing "resources" field for available_node_types.
-        
+
         Args:
             cluster_config: The whole autoscaler config yaml
         """
         return cluster_config
-    
+
     def prepare_for_head_node(self, cluster_config: Dict[str, Any]) -> Dict[str, Any]:
         """Returns a new cluster config with custom configs for head node.
-        
+
         Args:
             cluster_config: The whole autoscaler config yaml
         """
         return cluster_config
-    
+
     @property
     def max_terminate_nodes(self) -> Optional[int]:
         """The maximum number of nodes which can be terminated in one single
@@ -87,11 +87,13 @@ class NodeProvider:
         """Creates a number of nodes within the namespace.
 
         Args:
-            node_config: the "node_config" section of specific node type (under "available_node_types" section) in the autoscaler config yaml. The node type is decided by the node launcher. 
+            node_config: the "node_config" section of specific node type (under
+                "available_node_types" section) in the autoscaler config yaml.
+                The node type is decided by the node launcher.
             tags: the tags to be set to the created nodes
             count: the number of nodes to be created
 
-        Optionally returns a mapping from created node ids to node metadata. 
+        Optionally returns a mapping from created node ids to node metadata.
         The return value is not used by the autoscaler, but may be useful for debugging.
         """
         raise NotImplementedError
@@ -103,12 +105,12 @@ class NodeProvider:
         count: int,
         resources: Dict[str, float],
     ) -> Optional[Dict[str, Any]]:
-        """Create nodes with a given resource config. 
+        """Create nodes with a given resource config.
 
         Ignore this function for now---simply forward the call to create_node()
         """
         return self.create_node(node_config, tags, count)
-    
+
     def get_command_runner(
         self,
         log_prefix: str,
@@ -122,13 +124,18 @@ class NodeProvider:
         """Returns the CommandRunner class used to perform SSH commands.
 
         Args:
-            log_prefix(str): stores "NodeUpdater: {}: ".format(<node_id>). Used to print progress in the CommandRunner.
-            node_id(str): the node ID.
-            auth_config(dict): the authentication configs from the autoscaler yaml file.
-            cluster_name(str): the name of the cluster.
-            process_runner(module): the module to use to run the commands in the CommandRunner. E.g., subprocess.
-            use_internal_ip(bool): whether the node_id belongs to an internal ip or external ip.
-            docker_config(dict): If set, the docker information of the docker container that commands should be run on.
+            log_prefix: stores "NodeUpdater: {}: ".format(<node_id>). Used
+                to print progress in the CommandRunner.
+            node_id: the node ID.
+            auth_config: the authentication configs from the autoscaler
+                yaml file.
+            cluster_name: the name of the cluster.
+            process_runner: the module to use to run the commands
+                in the CommandRunner. E.g., subprocess.
+            use_internal_ip: whether the node_id belongs to an internal ip
+                or external ip.
+            docker_config: If set, the docker information of the docker
+                container that commands should be run on.
         """
         common_args = {
             "log_prefix": log_prefix,
@@ -143,7 +150,7 @@ class NodeProvider:
             return DockerCommandRunner(docker_config, **common_args)
         else:
             return SSHCommandRunner(**common_args)
-    
+
     def terminate_node(self, node_id: str) -> Optional[Dict[str, Any]]:
         """Terminates the specified node.
 
@@ -192,7 +199,7 @@ class NodeProvider:
     def is_terminated(self, node_id: str) -> bool:
         """Return whether the specified node is terminated."""
         raise NotImplementedError
-    
+
     def set_node_tags(self, node_id: str, tags: Dict[str, str]) -> None:
         """Sets the tag values (string dict) for the specified node."""
         raise NotImplementedError
@@ -216,8 +223,7 @@ class NodeProvider:
 
         Args:
             ip_address: Address of node.
-            use_internal_ip: Whether the ip address is
-                public or private.
+            use_internal_ip: Whether the ip address is public or private.
 
         Raises:
             ValueError if not found.
