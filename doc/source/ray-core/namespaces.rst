@@ -121,7 +121,6 @@ Named actors are only accessible within their namespaces.
 
         // Job 1 creates two actors, "orange" and "purple" in the "colors" namespace.
         ray::RayConfig config;
-        config.address = "ray://localhost:10001";
         config.ray_namespace = "colors";
         ray::Init(config);
         ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("orange").Remote();
@@ -130,7 +129,6 @@ Named actors are only accessible within their namespaces.
 
         // Job 2 is now connecting to a different namespace.
         ray::RayConfig config;
-        config.address = "ray://localhost:10001";
         config.ray_namespace = "fruits";
         ray::Init(config);
         // This fails because "orange" was defined in the "colors" namespace.
@@ -142,7 +140,6 @@ Named actors are only accessible within their namespaces.
 
         // Job 3 connects to the original "colors" namespace.
         ray::RayConfig config;
-        config.address = "ray://localhost:10001";
         config.ray_namespace = "colors";
         ray::Init(config);
         // This fails because "watermelon" was in the fruits namespace.
@@ -201,7 +198,6 @@ the specified namespace, no matter what namespace of the current job is.
         // `ray start --head` has been run to launch a local cluster.
 
         ray::RayConfig config;
-        config.address = "ray://localhost:10001";
         ray::Init(config);
         // Create an actor with specified namespace.
         ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor", "actor_namespace").Remote();
@@ -272,14 +268,12 @@ will not have access to actors in other namespaces.
 
         // Job 1 connects to an anonymous namespace by default.
         ray::RayConfig config;
-        config.address = "ray://localhost:10001";
         ray::Init(config);
         ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor").Remote();
         ray::Shutdown();
 
         // Job 2 connects to a _different_ anonymous namespace by default
         ray::RayConfig config;
-        config.address = "ray://localhost:10001";
         ray::Init(config);
         // This succeeds because the second job is in its own namespace.
         ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor").Remote();
