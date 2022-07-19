@@ -132,6 +132,15 @@ class TestDatasetReader(unittest.TestCase):
         with self.assertRaises(ValueError):
             get_dataset_and_shards(config)
 
+    def test_default_ioctx(self):
+        # Test DatasetReader without passing in IOContext
+        input_config = {"format": "json", "paths": self.dset_path}
+        dataset, _ = get_dataset_and_shards(
+            {"input": "dataset", "input_config": input_config}
+        )
+        reader = DatasetReader(dataset)
+        reader.next()
+
 
 class TestUnzipIfNeeded(unittest.TestCase):
     @classmethod
