@@ -238,13 +238,13 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: nightly
+  frequency: weekly
   team: ml
   env: staging
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_4.yaml
+    cluster_compute: compute_gpu_4x4.yaml
 
   run:
     timeout: 3600
@@ -255,6 +255,15 @@
 
     type: sdk_command
     file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    cluster:
+      cluster_compute: compute_gpu_2x2.yaml
+
+    run:
+      script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
   alert: default
 
