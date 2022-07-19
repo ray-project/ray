@@ -1,24 +1,8 @@
-# Managing Deployments(Java)
+package io.ray.serve.docdemo;
 
-This section should help you:
-
-- create, query, update and configure deployments
-- configure resources of your deployments
-
-:::{tip}
-Get in touch with us if you're using or considering using [Ray Serve](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU).
-:::
-
-```{contents}
-
-```
-
-## Updating a Deployment
-
-We can update the code and the configuration of a deployment and redeploy it. The following example first deploys a deployment using class `SimpleDeployment1`. After redeployment, the class of "my_deployment" deployment will be `SimpleDeployment2`.
-
-```java
+import com.google.common.collect.ImmutableMap;
 import io.ray.serve.api.Serve;
+import io.ray.serve.deployment.Deployment;
 
 public class ManageDeployment {
 
@@ -51,21 +35,6 @@ public class ManageDeployment {
         .create()
         .deploy(true);
   }
-}
-
-```
-
-## Configuring a Deployment
-
-### Scaling Out
-
-By specifying the `numReplicas` parameter, you can change the number of deployment replicas:
-
-```java
-import io.ray.serve.api.Serve;
-import io.ray.serve.deployment.Deployment;
-
-public class ManageDeployment {
 
   public void scaleOut() {
     // Create with a single replica.
@@ -83,17 +52,6 @@ public class ManageDeployment {
     // Scale back down to 1 replica.
     deployment.options().setNumReplicas(1).create().deploy(true);
   }
-}
-```
-
-### Resource Management (CPUs, GPUs)
-
-Through the `rayActorOptions` parameter, you can set the resources of deployment, such as using one GPU:
-
-```java
-import io.ray.serve.api.Serve;
-
-public class ManageDeployment {
 
   public void manageResouce() {
     Serve.deployment()
@@ -104,7 +62,3 @@ public class ManageDeployment {
         .deploy(true);
   }
 }
-```
-
-
-
