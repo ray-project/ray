@@ -53,6 +53,7 @@ from ray.experimental.state.state_cli import (
     get_api_server_url,
     output_with_format,
     summary_state_cli_group,
+    AvailableFormat,
 )
 
 logger = logging.getLogger(__name__)
@@ -2104,7 +2105,7 @@ def logs(
                 print(f"Node ID: {node_id}")
             elif node_ip:
                 print(f"Node IP: {node_ip}")
-            print(output_with_format(logs))
+            print(output_with_format(logs, format=AvailableFormat.YAML))
 
     # If there's an unique match, print the log file.
     if match_unique:
