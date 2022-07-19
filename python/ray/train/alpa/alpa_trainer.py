@@ -151,6 +151,8 @@ class AlpaTrainer(BaseTrainer):
         #         from ae
         self.head_ip = self.head_info["node_ip_address"]
 
+        ic(self.head_ip)
+        
         # Gather host ids
         self.host_info = []
         for node in ray.nodes():
@@ -181,19 +183,34 @@ class AlpaTrainer(BaseTrainer):
 
         ic(host_info, host_ips)
 
+
+
+        # number of workers filter
+        # the number of workers can not exceeed the number of devices
+        num_workers = min(num_workers, len(host_info))
+        node_ids = [i for i in range(num_workers)]
+        node_ips = [host_ips[i] for i in range(num_workers)]
+        node_info = [host_info[i] for i in range(num_workers)]
+        
+        # filter the number of gpus per worker
+        self.host_num_devices = [ self.host_num_devices[i] for i in range(num_workers)]
+        num_devices_per_host = min(self.host_num_devices)
+        num_devices_per_host = min(num_gpus, num_devices_per_host)
+        
+        
         # num_devices_per_host = worker_group.num_gpus_per_worker
         # node_ids = [i for i in range(len(worker_group))]
-
+        
         # # filter by workergourp
         # node_ips = [ w.metadata.node_ip for w in worker_group.workers ]
         # host_ip_2_host_info_dict = dict(zip(host_ips, host_info))
         # node_info = [ host_ip_2_host_info_dict[node_ip] for node_ip in node_ips]
 
-        # self.vp_mesh = VirtualPhysicalMesh(host_ids=node_ids,
-        #                     host_info=node_info,
-        #                     head_ip=head_ip,
-        #                     num_devices_per_host=num_devices_per_host,
-        #                     parent=None)
+        self.vp_mesh = VirtualPhysicalMesh(host_ids=node_ids,
+                            host_info=node_info,
+                            head_ip=self.head_ip,
+                            num_devices_per_host=num_devices_per_host,
+                            parent=None)
 
         alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
