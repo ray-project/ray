@@ -265,6 +265,9 @@
     run:
       script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
+      wait_for_nodes:
+        num_nodes: 2
+
   alert: default
 
 
