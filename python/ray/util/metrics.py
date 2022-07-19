@@ -26,7 +26,6 @@ class Metric:
     def __init__(
         self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
     ):
-
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. Please provide a metric name.")
         self._name = name
