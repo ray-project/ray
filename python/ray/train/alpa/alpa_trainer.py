@@ -119,7 +119,7 @@ class AlpaTrainer(BaseTrainer):
         #     f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
         # )
         
-        vp = alpa.get_global_virtual_physical_mesh()
+        vp = alpa.device_mesh.get_global_virtual_physical_mesh()
         ic(vp)
         
         # logger.info(
