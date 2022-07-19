@@ -410,6 +410,8 @@ def run(
     times_vanilla = []
     losses_vanilla = []
     for run in range(1, num_runs + 1):
+        time.sleep(2)
+
         print(f"[Run {run}/{num_runs}] Running Torch Ray benchmark")
 
         time_ray, loss_ray = train_torch_ray_air(
@@ -424,7 +426,7 @@ def run(
             f"{time_ray:.2f} seconds. Observed loss = {loss_ray:.4f}"
         )
 
-        time.sleep(5)
+        time.sleep(2)
 
         print(f"[Run {run}/{num_runs}] Running Torch vanilla benchmark")
 
