@@ -2042,7 +2042,7 @@ def test_filter(shutdown_only):
         result = list_objects(
             filters=[("pid", "=", pid), ("reference_type", "=", "LOCAL_REFERENCE")]
         )
-        return len(result) == 1
+        return len(result) == 12
 
     wait_for_condition(verify)
 
