@@ -12,6 +12,11 @@ py_library(
 
 serve_tests_srcs = glob(["tests/**/*.py"])
 
+filegroup(
+    name = "test_config_files",
+    data = glob(["tests/test_config_files/**/*"]),
+)
+
 py_test(
     name = "test_api",
     size = "medium",
@@ -182,6 +187,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_gcs_failure",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 
 py_test(
     name = "test_handle",
@@ -313,6 +326,7 @@ py_test(
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
+    data = [":test_config_files"],
 )
 
 py_test(

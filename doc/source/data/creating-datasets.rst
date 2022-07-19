@@ -288,8 +288,13 @@ Each of these APIs take a path or list of paths to files or directories. Any dir
 provided will be walked in order to obtain concrete file paths, at which point all files
 will be read in parallel.
 
-Datasets uses a default parallelism of 200, truncated by the number of files being read:
-``parallelism = min(num_files, 200)``. ``parallelism`` parallel read tasks will be
+Datasets automatically selects the read ``parallelism`` according to the following procedure:
+1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
+2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
+3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
+4. The parallelism is truncated to ``min(num_files, parallelism)``.
+
+To perform the read, ``parallelism`` parallel read tasks will be
 launched, each reading one or more files and each creating a single block of data.
 When reading from remote datasources, these parallel read tasks will be spread across
 the nodes in your Ray cluster, creating the distributed collection of blocks that makes

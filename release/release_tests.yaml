@@ -94,6 +94,31 @@
 #  # It can then let the test fail, e.g. if a metric regression is observed.
 #  alert: default
 
+#######################
+# Cluster scaling tests
+#######################
+- name: cluster_tune_scale_up_down
+  group: Cluster tests
+  working_dir: cluster_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: cpt_autoscaling_1-3.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tune_scale_up_down.py
+    wait_for_nodes:
+      num_nodes: 0
+
+    type: sdk_command
+
+  alert: default
+
 
 #########################
 # AIR release tests
@@ -128,6 +153,338 @@
 
   alert: default
 
+
+- name: air_benchmark_data_bulk_ingest
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_20_nodes.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
+
+    wait_for_nodes:
+      num_nodes: 20
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+# AIR benchmarks for XGBoost CUJ
+- name: air_benchmark_xgboost_cpu_10
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: xgboost_app_config.yaml
+    cluster_compute: xgboost_compute_tpl.yaml
+
+  run:
+    timeout: 36000
+    script: python workloads/xgboost_benchmark.py
+
+    wait_for_nodes:
+      num_nodes: 10
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 1800
+
+  alert: default
+
+# Ray AIR distributed Torch benchmarks
+- name: air_benchmark_torch_mnist_cpu_4x1
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_4.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: air_benchmark_torch_mnist_gpu_4x4
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: weekly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_4x4.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    cluster:
+      cluster_compute: compute_gpu_2x2.yaml
+
+    run:
+      script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+
+      wait_for_nodes:
+        num_nodes: 2
+
+  alert: default
+
+
+- name: air_benchmark_torch_mnist_cpu_1x4
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_1.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_torch_batch_prediction_gpu_1x1_20gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_1.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/gpu_batch_prediction.py --data-size-gb 20
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+# TODO(jiaodong): This leads to CUDA OOM on release tool but succeeds on
+# workspaces, re-enabled it once inline conversions are fixed
+# - name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
+#   group: AIR tests
+#   working_dir: air_tests/air_benchmarks
+
+#   frequency: nightly
+#   team: ml
+#   env: staging
+
+#   stable: false
+
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: compute_gpu_16.yaml
+
+#   run:
+#     timeout: 10800
+#     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
+
+#     type: sdk_command
+#     file_manager: job
+
+#   alert: default
+
+
+- name: air_benchmark_torch_mnist_cpu_4x4
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_4.yaml
+
+  run:
+    timeout: 5400
+    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+# Ray AIR distributed Tensorflow benchmarks
+- name: air_benchmark_tensorflow_mnist_cpu_4x1
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_4.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_tensorflow_mnist_cpu_1x4
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_1.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_tensorflow_mnist_cpu_4x4
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  stable: false
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_4.yaml
+
+  run:
+    timeout: 5400
+    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_pytorch_training_e2e_gpu_1x1_20gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_1.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/pytorch_training_e2e.py --data-size-gb 20
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  stable: false
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_16.yaml
+
+  run:
+    timeout: 10800
+    script: python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
 
 #######################
 # XGBoost release tests
@@ -3760,8 +4117,6 @@
     test_name: chaos_dataset_shuffle_push_based_sort_1tb
     test_suite: chaos_test
 
-  stable: false
-
   frequency: nightly
   team: core
   cluster:
@@ -3783,8 +4138,6 @@
   legacy:
     test_name: chaos_dataset_shuffle_sort_1tb
     test_suite: chaos_test
-
-  stable: false
 
   frequency: nightly
   team: core
