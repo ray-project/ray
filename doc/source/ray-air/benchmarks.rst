@@ -193,7 +193,7 @@ We demonstrate that the performance is similar between the two frameworks.
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8`
     * - 4 g4dn.12xlarge node (16 workers)
       - FashionMNIST
-      - TODO
+      - 236.61 s (vs 220.97 s Pytorch)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 4 --use-gpu`
 
 
