@@ -153,6 +153,38 @@ class AlpaTrainer(BaseTrainer):
         
         ic(self.host_num_devices, self.host_info)
 
+        # from ray.worker import _global_node as ray_global_node
+        
+        
+        # Gather host ids
+        host_info = []
+        host_ips = []
+        for node in ray.nodes():
+            for key in node["Resources"]:
+                if is_ray_node_resource(key):
+                    host_ips.append(key.split('node:')[-1])
+                    host_info.append(node)
+
+        from icecream import ic 
+        ic(host_info, host_ips)
+
+        # num_devices_per_host = worker_group.num_gpus_per_worker
+        # node_ids = [i for i in range(len(worker_group))]
+
+        # # filter by workergourp
+        # node_ips = [ w.metadata.node_ip for w in worker_group.workers ]
+        # host_ip_2_host_info_dict = dict(zip(host_ips, host_info))
+        # node_info = [ host_ip_2_host_info_dict[node_ip] for node_ip in node_ips]
+
+        # self.vp_mesh = VirtualPhysicalMesh(host_ids=node_ids,
+        #                     host_info=node_info,
+        #                     head_ip=head_ip,
+        #                     num_devices_per_host=num_devices_per_host,
+        #                     parent=None)
+
+        alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
+
+
         exit()
         
         cluster = alpa.get_global_cluster()
