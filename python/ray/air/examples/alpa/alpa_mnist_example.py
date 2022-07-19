@@ -175,7 +175,7 @@ def train_mnist():
     from ray.train.alpa import AlpaTrainer
 
     trainer = AlpaTrainer(
-        train_loop=train_func,
+        train_loop_per_worker=train_func,
         train_loop_config=config,
         datasets={"train": train_dataset},
     )
