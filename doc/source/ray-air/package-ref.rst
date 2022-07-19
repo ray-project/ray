@@ -118,13 +118,6 @@ Serving
 Trainer and Predictor Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-FunctionTrainer
-###############
-
-.. autoclass:: ray.train.function_trainer.FunctionTrainer
-    :members:
-    :show-inheritance:
-
 XGBoost
 #######
 
@@ -173,6 +166,12 @@ Scikit-Learn
 .. automodule:: ray.train.sklearn
     :members:
     :show-inheritance:
+
+FunctionTrainer
+###############
+
+.. autoclass:: ray.train.function_trainer.FunctionTrainer
+    :members:
 
 .. _air-builtin-callbacks:
 
