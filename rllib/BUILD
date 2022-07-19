@@ -757,10 +757,10 @@ py_test(
 )
 
 py_test(
-    name = "test_node_failure_tolerance",
+    name = "test_node_failure_tolerance.py",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
-    srcs = ["tests/long_running_rllib_kill_node_tolerance.py"],
+    srcs = ["tests/test_node_failure_tolerance.py"],
 )
 
 # Specific Algorithms
