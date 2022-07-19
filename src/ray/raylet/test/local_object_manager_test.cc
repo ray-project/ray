@@ -1416,13 +1416,13 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
   }
 
   // There is no pinned object yet.
-  ASSERT_EQ(manager.GetPinnedBytes(), 0);
+  ASSERT_EQ(manager.GetPrimaryBytes(), 0);
 
   // Pin objects.
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   // Pinned object memory should be reported.
-  ASSERT_GT(manager.GetPinnedBytes(), 0);
+  ASSERT_GT(manager.GetPrimaryBytes(), 0);
 
   // Spill all objects.
   bool spilled = false;
@@ -1436,14 +1436,20 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
   for (size_t i = 0; i < object_ids.size(); i++) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
+
+  // Pinned object memory should be reported as nonzero while there are objects
+  // being spilled.
+  ASSERT_GT(manager.GetPrimaryBytes(), 0);
+
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < 2; i++) {
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
   ASSERT_TRUE(spilled);
 
-  // With all objects spilled, the pinned bytes would be 1.
-  ASSERT_EQ(manager.GetPinnedBytes(), 1);
+  // With all objects spilled, the pinned bytes would be 0.
+  ASSERT_EQ(manager.GetPrimaryBytes(), 0);
+  ASSERT_TRUE(manager.HasLocallySpilledObjects());
 
   // Delete all (spilled) objects.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
@@ -1455,7 +1461,8 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
   ASSERT_EQ(deleted_urls_size, object_ids.size());
 
   // With no pinned or spilled object, the pinned bytes should be 0.
-  ASSERT_EQ(manager.GetPinnedBytes(), 0);
+  ASSERT_EQ(manager.GetPrimaryBytes(), 0);
+  ASSERT_FALSE(manager.HasLocallySpilledObjects());
 
   AssertNoLeaks();
 }
@@ -1483,13 +1490,13 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
   }
 
   // There is no pinned object yet.
-  ASSERT_EQ(manager.GetPinnedBytes(), 0);
+  ASSERT_EQ(manager.GetPrimaryBytes(), 0);
 
   // Pin objects.
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   // Pinned object memory should be reported.
-  ASSERT_GT(manager.GetPinnedBytes(), 0);
+  ASSERT_GT(manager.GetPrimaryBytes(), 0);
 
   // Spill all objects.
   bool spilled = false;
@@ -1519,7 +1526,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
   manager.ProcessSpilledObjectsDeleteQueue(free_objects_batch_size);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, object_ids.size());
-  ASSERT_EQ(manager.GetPinnedBytes(), 0);
+  ASSERT_EQ(manager.GetPrimaryBytes(), 0);
   ASSERT_EQ(NumBytesPendingSpill(), 0);
 
   AssertNoLeaks();
@@ -1549,13 +1556,13 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
   }
 
   // There is no pinned object yet.
-  ASSERT_EQ(manager.GetPinnedBytes(), 0);
+  ASSERT_EQ(manager.GetPrimaryBytes(), 0);
 
   // Pin objects.
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   // Pinned object memory should be reported.
-  ASSERT_GT(manager.GetPinnedBytes(), 0);
+  ASSERT_GT(manager.GetPrimaryBytes(), 0);
 
   // Spill all objects.
   bool spilled = false;
@@ -1581,7 +1588,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
   manager.ProcessSpilledObjectsDeleteQueue(free_objects_batch_size);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, 0);
-  ASSERT_EQ(manager.GetPinnedBytes(), 0);
+  ASSERT_EQ(manager.GetPrimaryBytes(), 0);
   ASSERT_EQ(NumBytesPendingSpill(), 0);
 
   AssertNoLeaks();
