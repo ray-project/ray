@@ -7,7 +7,7 @@ from ray.train.lightgbm.utils import load_checkpoint
 
 import lightgbm
 import lightgbm_ray
-from lightgbm_ray.tune import TuneReportCheckpointCallback
+from lightgbm_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -70,7 +70,8 @@ class LightGBMTrainer(GBDTTrainer):
     # but it is explicitly set here for forward compatibility
     _dmatrix_cls: type = lightgbm_ray.RayDMatrix
     _ray_params_cls: type = lightgbm_ray.RayParams
-    _tune_callback_cls: type = TuneReportCheckpointCallback
+    _tune_callback_report_cls: type = TuneReportCallback
+    _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,
         "allow_less_than_two_cpus": True,
@@ -84,3 +85,9 @@ class LightGBMTrainer(GBDTTrainer):
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
         return load_checkpoint(checkpoint)
+
+    def _save_model(self, model: lightgbm.LGBMModel, path: str):
+        model.booster_.save_model(path)
+
+    def _model_iteration(self, model: lightgbm.LGBMModel) -> int:
+        return model.booster_.current_iteration()

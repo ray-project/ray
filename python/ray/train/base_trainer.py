@@ -139,6 +139,8 @@ class BaseTrainer(abc.ABC):
         "trainer_resources",
         "_max_cpu_fraction_per_node",
     ]
+    _handles_checkpoint_freq: bool = False
+    _handles_checkpoint_at_end: bool = False
 
     def __init__(
         self,
@@ -367,6 +369,9 @@ class BaseTrainer(abc.ABC):
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
+
+            _handles_checkpoint_freq = trainer_cls._handles_checkpoint_freq
+            _handles_checkpoint_at_end = trainer_cls._handles_checkpoint_at_end
 
             # Workaround for actor name not being logged correctly
             # if __repr__ is not directly defined in a class.
