@@ -395,7 +395,7 @@
     script: python workloads/tune_torch_benchmark.py --num-trials 4 --num-workers 4 --use-gpu
 
     wait_for_nodes:
-      num_nodes: 8
+      num_nodes: 4
 
     type: sdk_command
     file_manager: job
