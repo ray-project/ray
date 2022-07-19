@@ -113,7 +113,7 @@ def test_check_health(shutdown_only):
     assert check_health(addr)
 
 
-def test_check_health_version_check():
+def test_check_health_version_check(shutdown_only):
     with mock.patch("ray.__version__", "FOO-VERSION"):
         conn = ray.init()
         addr = conn.address_info["address"]
