@@ -234,27 +234,39 @@
 
   alert: default
 
-- name: air_benchmark_torch_mnist_gpu_4x1
+- name: air_benchmark_torch_mnist_gpu_4x4
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: nightly
+  frequency: weekly
   team: ml
   env: staging
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_4.yaml
+    cluster_compute: compute_gpu_4x4.yaml
 
   run:
     timeout: 3600
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 4 --use-gpu
+    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
 
     type: sdk_command
     file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    cluster:
+      cluster_compute: compute_gpu_2x2.yaml
+
+    run:
+      script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+
+      wait_for_nodes:
+        num_nodes: 2
 
   alert: default
 
