@@ -1058,19 +1058,21 @@ def init(
     cluster with ray.init() or ray.init(address="auto").
 
     Args:
-        address: The address of the Ray cluster to connect to. If
-            this address is not provided, then this command will start Redis,
-            a raylet, a plasma store, a plasma manager, and some workers.
-            It will also kill these processes when Python exits. If the driver
-            is running on a node in a Ray cluster, using `auto` as the value
-            tells the driver to detect the cluster, removing the need to
-            specify a specific node address. If the environment variable
-            `RAY_ADDRESS` is defined and the address is None or "auto", Ray
-            will set `address` to `RAY_ADDRESS`.
-            Addresses can be prefixed with a "ray://" to connect to a remote
-            cluster. For example, passing in the address
-            "ray://123.45.67.89:50005" will connect to the cluster at the
-            given address.
+        address: The address of the Ray cluster to connect to. The provided
+            address is resolved as follows:
+            1. Use the environment variable `RAY_ADDRESS` if defined.
+            2. If no address is provided or the provided address is "auto", use
+               the address of the latest cluster started (found in
+               /tmp/ray/ray_current_cluster) if available. If the specified
+               address is "auto" and there is no latest cluster address
+               available, this will throw a ConnectionError.
+            3. If no address is provided or the provided address is "local",
+               then start a local Ray cluster with a single Ray node.
+            4. Else, the address provided is a concrete address. Concrete
+               addresses can be prefixed with a "ray://" to connect to a remote
+               cluster. For example, passing in the address
+               "ray://123.45.67.89:50005" will connect to the cluster at the
+               given address.
         num_cpus: Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus: Number of GPUs the user wishes to assign to each

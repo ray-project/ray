@@ -290,10 +290,6 @@ def _find_address_from_flag(flag: str):
     return addresses
 
 
-def find_redis_address():
-    return _find_address_from_flag("--redis-address")
-
-
 def find_gcs_addresses():
     """Finds any local GCS processes based on grepping ps."""
     return _find_address_from_flag("--gcs-address")
@@ -305,31 +301,14 @@ def find_bootstrap_address(temp_dir: Optional[str]):
     return ray._private.utils.read_ray_address(temp_dir)
 
 
-def _find_redis_address_or_die():
-    """Finds one Redis address unambiguously, or raise an error.
-
-    Callers outside this module should use
-    get_ray_address_from_environment() or canonicalize_bootstrap_address()
-    """
-    redis_addresses = find_redis_address()
-    if len(redis_addresses) > 1:
-        raise ConnectionError(
-            f"Found multiple active Ray instances: {redis_addresses}. "
-            "Please specify the one to connect to by setting `address`."
-        )
-        sys.exit(1)
-    elif not redis_addresses:
-        raise ConnectionError(
-            "Could not find any running Ray instance. "
-            "Please specify the one to connect to by setting `address`."
-        )
-    return redis_addresses.pop()
-
-
 def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
     """
-    Attempts to find the address of Ray cluster to use, first from
-    RAY_ADDRESS environment variable, then from the local Raylet.
+    Attempts to find the address of Ray cluster to use, in this order:
+    1. Use RAY_ADDRESS if defined.
+    2. If no address is provided or the provided address is "auto", use the
+    address in /tmp/ray/ray_current_cluster if available. This will error if
+    the specified address is "auto" and there is no address found.
+    3. Otherwise, use the provided address.
 
     Returns:
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
