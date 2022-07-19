@@ -332,6 +332,8 @@ def call_ray_start(request):
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"], env=env)
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -351,6 +353,8 @@ def call_ray_start_with_external_redis(request):
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"])
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -365,6 +369,8 @@ def init_and_serve():
 def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 # Used to test both Ray Client and non-Ray Client codepaths.

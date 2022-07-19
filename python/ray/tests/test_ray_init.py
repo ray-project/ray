@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import unittest.mock
+import subprocess
 
 import grpc
 import pytest
@@ -220,29 +221,29 @@ def test_ray_init_no_local_instance(shutdown_only, address):
     reason="Flaky when run on windows CI",
 )
 @pytest.mark.parametrize("address", [None, "auto"])
-def test_ray_init_existing_instance(address):
-    cluster1, cluster2 = None, None
-    cluster1 = Cluster(initialize_head=True)
+def test_ray_init_existing_instance(call_ray_start, address):
+    ray_address = call_ray_start
+    # If no address is specified, we will default to an existing cluster.
+    res = ray.init(address=address)
+    assert res.address_info["gcs_address"] == ray_address
+    ray.shutdown()
+
+    # Start a second local Ray instance.
     try:
-        # If no address is specified, we will default to an existing cluster.
+        subprocess.check_output("ray start --head", shell=True)
+        # If there are multiple local instances, connect to the latest.
         res = ray.init(address=address)
-        assert res.address_info["gcs_address"] == cluster1.address
+        assert res.address_info["gcs_address"] != ray_address
         ray.shutdown()
 
-        cluster2 = Cluster(initialize_head=True)
-        # If there are multiple local instances, throw an error.
-        with pytest.raises(ConnectionError):
+        # If there are multiple local instances and we specify an address
+        # explicitly, it works.
+        with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": ray_address}):
             res = ray.init(address=address)
-
-        with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": cluster2.address}):
-            res = ray.init(address=address)
-            assert res.address_info["gcs_address"] == cluster2.address
+            assert res.address_info["gcs_address"] == ray_address
     finally:
         ray.shutdown()
-        if cluster1 is not None:
-            cluster1.shutdown()
-        if cluster2 is not None:
-            cluster2.shutdown()
+        subprocess.check_output("ray stop --force", shell=True)
 
 
 class Credentials(grpc.ChannelCredentials):

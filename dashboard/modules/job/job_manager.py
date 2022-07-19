@@ -176,7 +176,7 @@ class JobSupervisor:
         """Returns environment variables that should be set in the driver."""
         ray_addr = ray._private.services.find_bootstrap_address(
             ray.worker._global_node._ray_params.temp_dir
-        ).pop()
+        )
         return {
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
