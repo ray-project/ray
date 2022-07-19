@@ -4,6 +4,7 @@ import time
 import uuid
 
 import ray
+from ray._private.client_mode_hook import client_mode_wrap
 from ray.dag import DAGNode
 from ray.dag.input_node import DAGInputData
 from ray.remote_function import RemoteFunction
@@ -168,37 +169,36 @@ def run_async(
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
 
+    workflow_manager = workflow_access.get_management_actor()
+    if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
+        raise RuntimeError(f"Workflow '{workflow_id}' is already running or pending.")
+
     state = workflow_state_from_dag(dag, input_data, workflow_id)
     logger.info(f'Workflow job created. [id="{workflow_id}"].')
-
     context = workflow_context.WorkflowStepContext(workflow_id=workflow_id)
     with workflow_context.workflow_step_context(context):
         # checkpoint the workflow
-        ws = WorkflowStorage(workflow_id)
-        ws.save_workflow_user_metadata(metadata)
+        @client_mode_wrap
+        def _try_checkpoint_workflow() -> bool:
+            ws = WorkflowStorage(workflow_id)
+            ws.save_workflow_user_metadata(metadata)
+            try:
+                ws.get_entrypoint_step_id()
+                return True
+            except Exception:
+                # The workflow does not exist. We must checkpoint entry workflow.
+                ws.save_workflow_execution_state("", state)
+                return False
 
-        job_id = ray.get_runtime_context().job_id.hex()
-
-        try:
-            ws.get_entrypoint_step_id()
-            wf_exists = True
-        except Exception:
-            # The workflow does not exist. We must checkpoint entry workflow.
-            ws.save_workflow_execution_state("", state)
-            wf_exists = False
-        workflow_manager = workflow_access.get_management_actor()
-        if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
-            raise RuntimeError(
-                f"Workflow '{workflow_id}' is already running or pending."
-            )
+        wf_exists = _try_checkpoint_workflow()
         if wf_exists:
             return resume_async(workflow_id)
-        ignore_existing = ws.load_workflow_status() == WorkflowStatus.NONE
         ray.get(
             workflow_manager.submit_workflow.remote(
-                workflow_id, state, ignore_existing=ignore_existing
+                workflow_id, state, ignore_existing=False
             )
         )
+        job_id = ray.get_runtime_context().job_id.hex()
         return workflow_manager.execute_workflow.remote(job_id, context)
 
 
@@ -294,6 +294,7 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
 
 
 @PublicAPI(stability="beta")
+@client_mode_wrap
 def get_output_async(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef:
     """Get the output of a running workflow asynchronously.
 
@@ -330,6 +331,7 @@ def get_output_async(workflow_id: str, *, name: Optional[str] = None) -> ray.Obj
 
 
 @PublicAPI(stability="beta")
+@client_mode_wrap
 def list_all(
     status_filter: Optional[
         Union[Union[WorkflowStatus, str], Set[Union[WorkflowStatus, str]]]
@@ -445,6 +447,7 @@ def list_all(
 
 
 @PublicAPI(stability="beta")
+@client_mode_wrap
 def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     """Resume all resumable workflow jobs.
 
@@ -574,6 +577,7 @@ def sleep(duration: float) -> "DAGNode[Event]":
 
 
 @PublicAPI(stability="beta")
+@client_mode_wrap
 def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]:
     """Get the metadata of the workflow.
 
@@ -659,6 +663,7 @@ def cancel(workflow_id: str) -> None:
 
 
 @PublicAPI(stability="beta")
+@client_mode_wrap
 def delete(workflow_id: str) -> None:
     """Delete a workflow, its checkpoints, and other information it may have
        persisted to storage. To stop a running workflow, see
