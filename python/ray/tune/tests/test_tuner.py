@@ -6,11 +6,12 @@ import shutil
 import unittest
 from typing import Optional
 
+import ray.air
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 from ray import tune
-from ray.air.config import RunConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
@@ -101,9 +102,7 @@ class TunerTest(unittest.TestCase):
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
         # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
-            },
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
                 "train": tune.grid_search(
@@ -146,9 +145,7 @@ class TunerTest(unittest.TestCase):
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
         # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
-            },
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
                 "train": tune.grid_search(
@@ -201,9 +198,7 @@ class TunerTest(unittest.TestCase):
     def test_tuner_trainer_fail(self):
         trainer = FailingTrainer()
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
-            }
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
         }
         tuner = Tuner(
             trainable=trainer,
@@ -223,16 +218,14 @@ class TunerTest(unittest.TestCase):
         )
         # The following two should be tunable.
         config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 10}
-        scaling_config = {"num_workers": 1, "use_gpu": False}
+        scaling_config = ScalingConfig(num_workers=1, use_gpu=False)
         trainer = TorchTrainer(
             train_loop_per_worker=linear_train_func,
             train_loop_config=config,
             scaling_config=scaling_config,
         )
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
-            },
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
             "train_loop_config": {
                 "batch_size": tune.grid_search([4, 8]),
                 "epochs": tune.grid_search([5, 10]),
@@ -293,6 +286,37 @@ def test_tuner_api_kwargs(params_expected):
         tuner.fit()
 
     assert assertion(caught_kwargs)
+
+
+def test_tuner_fn_trainable_checkpoint_at_end_true():
+    tuner = Tuner(
+        lambda config, checkpoint_dir: 1,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
+        ),
+    )
+    with pytest.raises(TuneError):
+        tuner.fit()
+
+
+def test_tuner_fn_trainable_checkpoint_at_end_false():
+    tuner = Tuner(
+        lambda config, checkpoint_dir: 1,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=False)
+        ),
+    )
+    tuner.fit()
+
+
+def test_tuner_fn_trainable_checkpoint_at_end_none():
+    tuner = Tuner(
+        lambda config, checkpoint_dir: 1,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=None)
+        ),
+    )
+    tuner.fit()
 
 
 if __name__ == "__main__":

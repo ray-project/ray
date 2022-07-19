@@ -72,7 +72,7 @@
 /doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke
 
 # Cluster (docs)
-/doc/source/cluster/ @wuisawesome @DmitriGekhtman @maxpumperla
+/doc/source/cluster/ @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz
 
 # Tune (docs)
 /doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla
