@@ -154,8 +154,7 @@ def train_tf_vanilla(
         upload_file_to_all_nodes,
         create_actors_with_resources,
         run_commands_on_actors,
-        run_fn_on_actors,
-        get_ip_port,
+        get_ip_port_actors,
     )
 
     path = os.path.abspath(__file__)
@@ -171,7 +170,7 @@ def train_tf_vanilla(
         },
     )
 
-    ips_ports = run_fn_on_actors(actors=actors, fn=get_ip_port)
+    ips_ports = get_ip_port_actors(actors=actors)
     ip_port_list = [f"{ip}:{port}" for ip, port in ips_ports]
     ip_port_str = ",".join(ip_port_list)
 
