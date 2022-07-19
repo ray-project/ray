@@ -30,7 +30,6 @@ py_test_run_all_notebooks(
     size = "large",
     include = ["*.ipynb"],
     exclude = [
-        "huggingface_text_classification.ipynb",
         "torch_incremental_learning.ipynb",
         "feast_example.ipynb",  # REGRESSION
         "rl_offline_example.ipynb",  # REGRESSION
