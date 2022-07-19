@@ -127,7 +127,7 @@ class AlpaTrainer(BaseTrainer):
         #     f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
         # )
         
-        # self.scaling_config = self.scaling_config
+        self.scaling_config = scaling_config
         
         scaling_config = self._validate_scaling_config(self.scaling_config)
         self.additional_resources_per_worker = self.scaling_config.additional_resources_per_worker
