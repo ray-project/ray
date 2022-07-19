@@ -85,8 +85,8 @@ def tune_torch(num_workers: int = 4, num_trials: int = 8, use_gpu: bool = False)
 def main(num_trials, num_workers, use_gpu):
     ray.init(
         runtime_env={
-            # "working_dir": ".",  # uncomment if running on fresh cluster
-            "env_vars": {"NCCL_SOCKET_IFNAME": "ens"}
+            "working_dir": os.path.dirname(__file__),
+            "env_vars": {"NCCL_SOCKET_IFNAME": "ens"},
         }
     )
     prepare_mnist()
