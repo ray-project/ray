@@ -1,3 +1,4 @@
+import time
 import json
 import sys
 from dataclasses import dataclass
@@ -65,6 +66,7 @@ from ray.experimental.state.api import (
     list_runtime_envs,
     list_tasks,
     list_workers,
+    StateApiClient,
 )
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
@@ -385,6 +387,45 @@ def test_id_to_ip_map():
     m.pop(node_id_1)
     assert m.get_ip(node_id_1) is None
     assert m.get_node_id(node_id_1) is None
+
+
+# Without this, capsys will have a race condition
+# that causes
+# ValueError: I/O operation on closed file.
+@pytest.fixture
+def clear_loggers():
+    """Remove handlers from all loggers"""
+    yield
+    import logging
+
+    loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
+    for logger in loggers:
+        handlers = getattr(logger, "handlers", [])
+        for handler in handlers:
+            logger.removeHandler(handler)
+
+
+def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers):
+    ray.init()
+    timeout = 10
+    StateApiClient()._make_http_get_request("/api/v0/delay/5", {}, timeout, True)
+    captured = capsys.readouterr()
+    lines = captured.err.strip().split("\n")
+    # Lines are printed 1.25, 2.5, and 5 seconds.
+    # First line is the dashboard start log.
+    # INFO services.py:1477 -- View the Ray dashboard at http://127.0.0.1:8265
+    print(lines)
+
+    expected_elapsed = [1.25, 2.5, 5.0]
+    expected_lines = []
+    for elapsed in expected_elapsed:
+        expected_lines.append(
+            f"({elapsed} / 10 seconds) Waiting for the "
+            "response from the API "
+            "server address http://127.0.0.1:8265/api/v0/delay/5."
+        )
+    for expected_line in expected_lines:
+        expected_line in lines
 
 
 @pytest.mark.asyncio
@@ -1386,6 +1427,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
 
     def verify_output(cmd, args: List[str], necessary_substrings: List[str]):
         result = runner.invoke(cmd, args)
+        print(result)
         exit_code_correct = result.exit_code == 0
         substring_matched = all(
             substr in result.output for substr in necessary_substrings
@@ -1393,17 +1435,31 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         print(result.output)
         return exit_code_correct and substring_matched
 
-    wait_for_condition(lambda: verify_output(cli_list, ["actors"], ["actor_id"]))
-    wait_for_condition(lambda: verify_output(cli_list, ["workers"], ["worker_id"]))
-    wait_for_condition(lambda: verify_output(cli_list, ["nodes"], ["node_id"]))
     wait_for_condition(
-        lambda: verify_output(cli_list, ["placement-groups"], ["placement_group_id"])
+        lambda: verify_output(cli_list, ["actors"], ["Stats:", "Table:", "ACTOR_ID"])
+    )
+    wait_for_condition(
+        lambda: verify_output(cli_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
+    )
+    wait_for_condition(
+        lambda: verify_output(cli_list, ["nodes"], ["Stats:", "Table:", "NODE_ID"])
+    )
+    wait_for_condition(
+        lambda: verify_output(
+            cli_list, ["placement-groups"], ["Stats:", "Table:", "PLACEMENT_GROUP_ID"]
+        )
     )
     wait_for_condition(lambda: verify_output(cli_list, ["jobs"], ["raysubmit"]))
-    wait_for_condition(lambda: verify_output(cli_list, ["tasks"], ["task_id"]))
-    wait_for_condition(lambda: verify_output(cli_list, ["objects"], ["object_id"]))
     wait_for_condition(
-        lambda: verify_output(cli_list, ["runtime-envs"], ["runtime_env"])
+        lambda: verify_output(cli_list, ["tasks"], ["Stats:", "Table:", "TASK_ID"])
+    )
+    wait_for_condition(
+        lambda: verify_output(cli_list, ["objects"], ["Stats:", "Table:", "OBJECT_ID"])
+    )
+    wait_for_condition(
+        lambda: verify_output(
+            cli_list, ["runtime-envs"], ["Stats:", "Table:", "RUNTIME_ENV"]
+        )
     )
 
     # Test get node by id
@@ -1912,12 +1968,17 @@ async def test_cli_format_print(state_api_manager):
     )
     # If the format is not json, it will raise an exception.
     json.loads(format_list_api_output(result, format=AvailableFormat.JSON))
-    # Verify the default format is yaml
-    yaml.load(format_list_api_output(result), Loader=yaml.FullLoader)
+    # Test a table formatting.
+    output = format_list_api_output(result, format=AvailableFormat.TABLE)
+    assert "Table:" in output
+    assert "Stats:" in output
     with pytest.raises(ValueError):
         format_list_api_output(result, format="random_format")
-    with pytest.raises(NotImplementedError):
-        format_list_api_output(result, format=AvailableFormat.TABLE)
+
+    # Verify the default format.
+    output = format_list_api_output(result)
+    assert "Table:" in output
+    assert "Stats:" in output
 
 
 def test_filter(shutdown_only):
@@ -2061,11 +2122,14 @@ def test_detail(shutdown_only):
     """
     runner = CliRunner()
     result = runner.invoke(cli_list, ["actors", "--detail"])
+    print(result.output)
     assert result.exit_code == 0
     # The column for --detail should be in the output.
-    assert "serialized_runtime_env" in result.output
     assert "test_detail" in result.output
-    assert "actor_id" in result.output
+
+    # Columns are upper case in the default formatting (table).
+    assert "serialized_runtime_env".upper() in result.output
+    assert "actor_id".upper() in result.output
 
 
 def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None):
@@ -2104,7 +2168,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             "RAY_testing_asio_delay_us",
             (
                 "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000,"
-                "NodeInfoGcsService.grpc_server.GetAllNodeInfo=1000000:1000000,"
+                "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=10000000:10000000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=10000000:10000000"
             ),
         )
@@ -2142,7 +2206,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             mp.Process(
                 target=_try_state_query_expect_rate_limit,
                 args=(
-                    list_nodes,
+                    list_workers,
                     res_q,
                     start_q,
                 ),
@@ -2175,11 +2239,15 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             return started == 3
 
         wait_for_condition(_wait_to_start)
+        # Wait 1 more second to make sure the API call happens after all
+        # process has a call.
+        time.sleep(1)
 
         # Running another 1 should return error
         with pytest.raises(RayStateApiException) as e:
             print(list_objects())
-        assert "RAY_STATE_SERVER_MAX_HTTP_REQUEST" in str(
+        # TODO(rickyyx): We will use fine-grained exceptions/error code soon
+        assert "Max" in str(
             e
         ), f"Expect an exception raised due to rate limit, but have {str(e)}"
 

@@ -81,7 +81,7 @@ class TorchPredictor(DLPredictor):
                 prediction happens on GPU.
         """
         model, preprocessor = load_checkpoint(checkpoint, model)
-        return TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
+        return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
     def _array_to_tensor(
         self, numpy_array: np.ndarray, dtype: torch.dtype

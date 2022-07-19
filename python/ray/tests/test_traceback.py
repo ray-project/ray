@@ -40,9 +40,14 @@ def scrub_traceback(ex):
     ex = re.sub("\\x1b\[39m", "", ex)
     # When running bazel test with pytest 6.x, the module name becomes
     # "python.ray.tests.test_traceback" instead of just "test_traceback"
-    ex = re.sub(r"python\.ray\.tests\.test_traceback", "test_traceback", ex)
+    # Also remove the "com_github_ray_project_ray" prefix, which may appear on Windows.
+    ex = re.sub(
+        r"(com_github_ray_project_ray.)?python\.ray\.tests\.test_traceback",
+        "test_traceback",
+        ex,
+    )
     # Clean up object address.
-    ex = re.sub("object at .*>", "object at ADDRESS>", ex)
+    ex = re.sub("object at .*?>", "object at ADDRESS>", ex)
     return ex
 
 
@@ -352,16 +357,6 @@ def test_serialization_error_message(shutdown_only):
     """
     with pytest.raises(TypeError) as excinfo:
         task_with_unserializable_arg.remote(lock)
-
-    def scrub_traceback(ex):
-        ex = re.sub("object at .*> for a", "object at ADDRESS> for a", ex)
-        ex = re.sub(
-            r"com_github_ray_project_ray\.python\.ray\.tests\.test_traceback",
-            "test_traceback",
-            ex,
-        )
-        ex = re.sub(r"python\.ray\.tests\.test_traceback", "test_traceback", ex)
-        return ex
 
     assert clean_noqa(expected_output_task) == scrub_traceback(str(excinfo.value))
     """
