@@ -7,7 +7,7 @@ from ray.train.xgboost.utils import load_checkpoint
 
 import xgboost
 import xgboost_ray
-from xgboost_ray.tune import TuneReportCheckpointCallback
+from xgboost_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -64,7 +64,8 @@ class XGBoostTrainer(GBDTTrainer):
 
     _dmatrix_cls: type = xgboost_ray.RayDMatrix
     _ray_params_cls: type = xgboost_ray.RayParams
-    _tune_callback_cls: type = TuneReportCheckpointCallback
+    _tune_callback_report_cls: type = TuneReportCallback
+    _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _init_model_arg_name: str = "xgb_model"
 
     def _train(self, **kwargs):
@@ -74,3 +75,12 @@ class XGBoostTrainer(GBDTTrainer):
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
         return load_checkpoint(checkpoint)
+
+    def _save_model(self, model: xgboost.Booster, path: str):
+        model.save_model(path)
+
+    def _model_iteration(self, model: xgboost.Booster) -> int:
+        if not hasattr(model, "num_boosted_rounds"):
+            # Compatibility with XGBoost < 1.4
+            return len(model.get_dump())
+        return model.num_boosted_rounds()

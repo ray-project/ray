@@ -222,11 +222,24 @@ class CheckpointConfig:
             ``checkpoint_score_attribute`` will be kept.
             If "min", then checkpoints with lowest values of
             ``checkpoint_score_attribute`` will be kept.
+        checkpoint_frequency: Number of iterations between checkpoints. If 0
+            this will disable checkpointing.
+            Please note that most trainers will still save one checkpoint at
+            the end of training.
+            This attribute is only supported
+            by trainers that don't take in custom training loops.
+        checkpoint_at_end: If True, will save a checkpoint at the end of training.
+            This attribute is only supported by trainers that don't take in
+            custom training loops. Defaults to True for trainers that support it
+            and False for generic function trainables.
+
     """
 
     num_to_keep: Optional[int] = None
     checkpoint_score_attribute: Optional[str] = None
     checkpoint_score_order: str = MAX
+    checkpoint_frequency: int = 0
+    checkpoint_at_end: Optional[bool] = None
 
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep < 0:
@@ -238,6 +251,11 @@ class CheckpointConfig:
         if self.checkpoint_score_order not in (MAX, MIN):
             raise ValueError(
                 f"checkpoint_score_order must be either " f'"{MAX}" or "{MIN}".'
+            )
+
+        if self.checkpoint_frequency < 0:
+            raise ValueError(
+                f"checkpoint_frequency must be >=0, got {self.checkpoint_frequency}"
             )
 
     @property
