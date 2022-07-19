@@ -117,6 +117,8 @@ def shutdown_only(maybe_external_redis):
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @contextmanager
@@ -129,6 +131,8 @@ def _ray_start(**kwargs):
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture

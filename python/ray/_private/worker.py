@@ -1291,7 +1291,7 @@ def init(
     raylet_ip_address = node_ip_address
 
     redis_address, gcs_address = None, None
-    bootstrap_address = services.canonicalize_bootstrap_address(address)
+    bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
         logger.info(
             f"Connecting to existing Ray cluster at address: {bootstrap_address}"
@@ -1433,13 +1433,24 @@ def init(
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
         )
-        _global_node = ray._private.node.Node(
-            ray_params,
-            head=False,
-            shutdown_at_exit=False,
-            spawn_reaper=False,
-            connect_only=True,
-        )
+        try:
+            _global_node = ray._private.node.Node(
+                ray_params,
+                head=False,
+                shutdown_at_exit=False,
+                spawn_reaper=False,
+                connect_only=True,
+            )
+        except ConnectionError:
+            if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
+                logger.info(
+                    "Failed to connect to the default Ray cluster address at "
+                    f"{gcs_address}. This is most likely due to a previous Ray "
+                    "instance that has since crashed. To reset the default "
+                    "address to connect to, run `ray stop` or restart Ray with "
+                    "`ray start`."
+                )
+            raise
 
     connect(
         _global_node,
