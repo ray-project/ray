@@ -19,12 +19,9 @@ class NodeProvider:
     define new implementations of NodeProvider for use with the "external" node
     provider option.
 
-    NodeProviders are namespaced by the `cluster_name` parameter; they only
-    operate on nodes within that namespace.
-
-    Nodes may be in one of three states: {pending, running, terminated}. Nodes
-    appear immediately once started by `create_node`, and transition
-    immediately to terminated when `terminate_node` is called.
+    Args:
+        provider_config: The "provider" section of the autoscaler config yaml
+        cluster_name: The "cluster_name" section of the autoscaler config yaml
     """
 
     def __init__(self, provider_config: Dict[str, Any], cluster_name: str) -> None:
@@ -32,6 +29,50 @@ class NodeProvider:
         self.cluster_name = cluster_name
         self._internal_ip_cache: Dict[str, str] = {}
         self._external_ip_cache: Dict[str, str] = {}
+    
+    @staticmethod
+    def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Bootstraps the cluster config by adding env defaults if needed.
+        
+        Args:
+            cluster_config: The whole autoscaler config yaml
+        """
+        return cluster_config
+    
+    @staticmethod
+    def fillout_available_node_types_resources(
+        cluster_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Fills out missing "resources" field for available_node_types.
+        
+        Args:
+            cluster_config: The whole autoscaler config yaml
+        """
+        return cluster_config
+    
+    def prepare_for_head_node(self, cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Returns a new cluster config with custom configs for head node.
+        
+        Args:
+            cluster_config: The whole autoscaler config yaml
+        """
+        return cluster_config
+    
+    @property
+    def max_terminate_nodes(self) -> Optional[int]:
+        """The maximum number of nodes which can be terminated in one single
+        API request. By default, this is "None", which means that the node
+        provider's underlying API allows infinite requests to be terminated
+        with one request.
+
+        For example, AWS only allows 1000 nodes to be terminated
+        at once; to terminate more, we must issue multiple separate API
+        requests. If the limit is infinity, then simply set this to None.
+
+        This may be overridden. The value may be useful when overriding the
+        "terminate_nodes" method.
+        """
+        return None
 
     def is_readonly(self) -> bool:
         """Returns whether this provider is readonly.
@@ -39,6 +80,90 @@ class NodeProvider:
         Readonly node providers do not allow nodes to be created or terminated.
         """
         return False
+
+    def create_node(
+        self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
+    ) -> Optional[Dict[str, Any]]:
+        """Creates a number of nodes within the namespace.
+
+        Args:
+            node_config: the "node_config" section of specific node type (under "available_node_types" section) in the autoscaler config yaml. The node type is decided by the node launcher. 
+            tags: the tags to be set to the created nodes
+            count: the number of nodes to be created
+
+        Optionally returns a mapping from created node ids to node metadata. 
+        The return value is not used by the autoscaler, but may be useful for debugging.
+        """
+        raise NotImplementedError
+
+    def create_node_with_resources(
+        self,
+        node_config: Dict[str, Any],
+        tags: Dict[str, str],
+        count: int,
+        resources: Dict[str, float],
+    ) -> Optional[Dict[str, Any]]:
+        """Create nodes with a given resource config. 
+
+        Ignore this function for now---simply forward the call to create_node()
+        """
+        return self.create_node(node_config, tags, count)
+    
+    def get_command_runner(
+        self,
+        log_prefix: str,
+        node_id: str,
+        auth_config: Dict[str, Any],
+        cluster_name: str,
+        process_runner: ModuleType,
+        use_internal_ip: bool,
+        docker_config: Optional[Dict[str, Any]] = None,
+    ) -> CommandRunnerInterface:
+        """Returns the CommandRunner class used to perform SSH commands.
+
+        Args:
+            log_prefix(str): stores "NodeUpdater: {}: ".format(<node_id>). Used to print progress in the CommandRunner.
+            node_id(str): the node ID.
+            auth_config(dict): the authentication configs from the autoscaler yaml file.
+            cluster_name(str): the name of the cluster.
+            process_runner(module): the module to use to run the commands in the CommandRunner. E.g., subprocess.
+            use_internal_ip(bool): whether the node_id belongs to an internal ip or external ip.
+            docker_config(dict): If set, the docker information of the docker container that commands should be run on.
+        """
+        common_args = {
+            "log_prefix": log_prefix,
+            "node_id": node_id,
+            "provider": self,
+            "auth_config": auth_config,
+            "cluster_name": cluster_name,
+            "process_runner": process_runner,
+            "use_internal_ip": use_internal_ip,
+        }
+        if docker_config and docker_config["container_name"] != "":
+            return DockerCommandRunner(docker_config, **common_args)
+        else:
+            return SSHCommandRunner(**common_args)
+    
+    def terminate_node(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """Terminates the specified node.
+
+        Optionally return a mapping from deleted node ids to node
+        metadata.
+        The return value is not used by the autoscaler, but may be useful for debugging.
+        """
+        raise NotImplementedError
+
+    def terminate_nodes(self, node_ids: List[str]) -> Optional[Dict[str, Any]]:
+        """Terminates a set of nodes.
+
+        May be overridden with a batch method, which optionally may return a
+        mapping from deleted node ids to node metadata.
+        The return value is not used by the autoscaler, but may be useful for debugging.
+        """
+        for node_id in node_ids:
+            logger.info("NodeProvider: {}: Terminating node".format(node_id))
+            self.terminate_node(node_id)
+        return None
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
@@ -66,6 +191,10 @@ class NodeProvider:
 
     def is_terminated(self, node_id: str) -> bool:
         """Return whether the specified node is terminated."""
+        raise NotImplementedError
+    
+    def set_node_tags(self, node_id: str, tags: Dict[str, str]) -> None:
+        """Sets the tag values (string dict) for the specified node."""
         raise NotImplementedError
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
@@ -117,122 +246,3 @@ class NodeProvider:
             raise ValueError(f"ip {ip_address} not found. " + known_msg)
 
         return find_node_id()
-
-    def create_node(
-        self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
-    ) -> Optional[Dict[str, Any]]:
-        """Creates a number of nodes within the namespace.
-
-        Optionally returns a mapping from created node ids to node metadata.
-        """
-        raise NotImplementedError
-
-    def create_node_with_resources(
-        self,
-        node_config: Dict[str, Any],
-        tags: Dict[str, str],
-        count: int,
-        resources: Dict[str, float],
-    ) -> Optional[Dict[str, Any]]:
-        """Create nodes with a given resource config.
-
-        This is the method actually called by the autoscaler. Prefer to
-        implement this when possible directly, otherwise it delegates to the
-        create_node() implementation.
-        """
-        return self.create_node(node_config, tags, count)
-
-    def set_node_tags(self, node_id: str, tags: Dict[str, str]) -> None:
-        """Sets the tag values (string dict) for the specified node."""
-        raise NotImplementedError
-
-    def terminate_node(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """Terminates the specified node.
-
-        Optionally return a mapping from deleted node ids to node
-        metadata.
-        """
-        raise NotImplementedError
-
-    def terminate_nodes(self, node_ids: List[str]) -> Optional[Dict[str, Any]]:
-        """Terminates a set of nodes.
-
-        May be overridden with a batch method, which optionally may return a
-        mapping from deleted node ids to node metadata.
-        """
-        for node_id in node_ids:
-            logger.info("NodeProvider: {}: Terminating node".format(node_id))
-            self.terminate_node(node_id)
-        return None
-
-    @property
-    def max_terminate_nodes(self) -> Optional[int]:
-        """The maximum number of nodes which can be terminated in one single
-        API request. By default, this is "None", which means that the node
-        provider's underlying API allows infinite requests to be terminated
-        with one request.
-
-        For example, AWS only allows 1000 nodes to be terminated
-        at once; to terminate more, we must issue multiple separate API
-        requests. If the limit is infinity, then simply set this to None.
-
-        This may be overridden. The value may be useful when overriding the
-        "terminate_nodes" method.
-        """
-        return None
-
-    @staticmethod
-    def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Bootstraps the cluster config by adding env defaults if needed."""
-        return cluster_config
-
-    def get_command_runner(
-        self,
-        log_prefix: str,
-        node_id: str,
-        auth_config: Dict[str, Any],
-        cluster_name: str,
-        process_runner: ModuleType,
-        use_internal_ip: bool,
-        docker_config: Optional[Dict[str, Any]] = None,
-    ) -> CommandRunnerInterface:
-        """Returns the CommandRunner class used to perform SSH commands.
-
-        Args:
-        log_prefix(str): stores "NodeUpdater: {}: ".format(<node_id>). Used
-            to print progress in the CommandRunner.
-        node_id(str): the node ID.
-        auth_config(dict): the authentication configs from the autoscaler
-            yaml file.
-        cluster_name(str): the name of the cluster.
-        process_runner(module): the module to use to run the commands
-            in the CommandRunner. E.g., subprocess.
-        use_internal_ip(bool): whether the node_id belongs to an internal ip
-            or external ip.
-        docker_config(dict): If set, the docker information of the docker
-            container that commands should be run on.
-        """
-        common_args = {
-            "log_prefix": log_prefix,
-            "node_id": node_id,
-            "provider": self,
-            "auth_config": auth_config,
-            "cluster_name": cluster_name,
-            "process_runner": process_runner,
-            "use_internal_ip": use_internal_ip,
-        }
-        if docker_config and docker_config["container_name"] != "":
-            return DockerCommandRunner(docker_config, **common_args)
-        else:
-            return SSHCommandRunner(**common_args)
-
-    def prepare_for_head_node(self, cluster_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Returns a new cluster config with custom configs for head node."""
-        return cluster_config
-
-    @staticmethod
-    def fillout_available_node_types_resources(
-        cluster_config: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Fills out missing "resources" field for available_node_types."""
-        return cluster_config
