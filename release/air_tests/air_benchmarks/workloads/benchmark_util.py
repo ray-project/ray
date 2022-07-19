@@ -106,26 +106,26 @@ def run_fn_on_actors(
     return ray.get(futures)
 
 
-def get_ip_port():
-    ip = ray.util.get_node_ip_address()
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("localhost", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        port = s.getsockname()[1]
-    return ip, port
-
-
 def get_ip_port_actors(actors: List[ray.actor.ActorHandle]) -> List[str]:
-    # We need this utility to avoid deserialization issues with benchmark_util.py
+    # We need this wrapper to avoid deserialization issues with benchmark_util.py
+
+    def get_ip_port():
+        ip = ray.util.get_node_ip_address()
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            s.bind(("localhost", 0))
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            port = s.getsockname()[1]
+        return ip, port
+
     return run_fn_on_actors(actors=actors, fn=get_ip_port)
 
 
-def get_gpu_ids():
-    return ray.get_gpu_ids()
-
-
 def get_gpu_ids_actors(actors: List[ray.actor.ActorHandle]) -> List[List[int]]:
-    # We need this utility to avoid deserialization issues with benchmark_util.py
+    # We need this wrapper to avoid deserialization issues with benchmark_util.py
+
+    def get_gpu_ids():
+        return ray.get_gpu_ids()
+
     return run_fn_on_actors(actors=actors, fn=get_gpu_ids)
 
 
