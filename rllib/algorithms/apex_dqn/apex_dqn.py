@@ -585,7 +585,6 @@ class ApexDQN(DQN):
             replay_sample_batches.extend(wait_on_replay_actors())
 
         # add the sample batches to the learner queue
-<<<<<<< HEAD
         for item in replay_sample_batches:
             # Setting block = True prevents the learner thread,
             # the main thread, and the gpu loader threads from
@@ -594,25 +593,6 @@ class ApexDQN(DQN):
             # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
             self.learner_thread.inqueue.put(item, block=True)
         del replay_sample_batches
-=======
-        while self.replay_sample_batches:
-            try:
-                item = self.replay_sample_batches[0]
-                # the replay buffer returns none if it has not been filled to
-                # the minimum threshold yet.
-                if item:
-                    # Setting block = True prevents the learner thread,
-                    # the main thread, and the gpu loader threads from
-                    # thrashing when there are more samples than the
-                    # learner can reasonable process.
-                    # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
-                    self.learner_thread.inqueue.put(
-                        self.replay_sample_batches[0], block=True
-                    )
-                    self.replay_sample_batches.pop(0)
-            except queue.Full:
-                break
->>>>>>> af41f21be0520c8b2d7b63dc590ee8507c9f3572
 
     def update_replay_sample_priority(self) -> None:
         """Update the priorities of the sample batches with new priorities that are
