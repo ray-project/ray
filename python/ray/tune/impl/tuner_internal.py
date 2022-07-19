@@ -209,7 +209,7 @@ class TunerInternal:
                 # so we disable tune's internal bookkeeping.
                 checkpoint_at_end = False
             # If this is a user-defined trainable, just keep the value
-        elif checkpoint_at_end is None:
+        else:
             # Set default to False for function trainables and True for everything else
             if is_function_trainable(trainable):
                 checkpoint_at_end = False

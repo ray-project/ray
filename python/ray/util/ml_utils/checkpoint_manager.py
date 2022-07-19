@@ -253,6 +253,11 @@ class CheckpointConfig:
                 f"checkpoint_score_order must be either " f'"{MAX}" or "{MIN}".'
             )
 
+        if self.checkpoint_frequency < 0:
+            raise ValueError(
+                f"checkpoint_frequency must be >=0, got {self.checkpoint_frequency}"
+            )
+
     @property
     def _tune_legacy_checkpoint_score_attr(self) -> Optional[str]:
         """Same as ``checkpoint_score_attr`` in ``tune.run``.
