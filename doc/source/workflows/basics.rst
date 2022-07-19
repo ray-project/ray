@@ -207,7 +207,7 @@ When the task name duplicates, we append ``_n`` to the name by the order of exec
 Error handling
 --------------
 
-Workflows provides two ways to handle application-level exceptions: (1) automatic retry, and (2) the ability to catch and handle exceptions.
+Workflows provides two ways to handle application-level exceptions: (1) automatic retry (as in normal Ray tasks), and (2) the ability to catch and handle exceptions.
 
 The following error handling flags can be either set in the task decorator or via ``.options()``:
 
@@ -226,7 +226,7 @@ The following error handling flags can be either set in the task decorator or vi
         return "OK"
 
     # Tries up to five times before giving up.
-    r1 = faulty_function.options(**workflow.options(max_retries=5)).bind()
+    r1 = faulty_function.options(max_retries=5).bind()
     workflow.run(r1)
 
     @ray.remote
@@ -242,6 +242,7 @@ The following error handling flags can be either set in the task decorator or vi
     r2 = faulty_function.options(**workflow.options(catch_exceptions=True)).bind()
     workflow.run(handle_errors.bind(r2))
 
+
 - If ``max_retries`` is given, the task will be retried for the given number of times if an exception is raised. It will only retry for the application level error. For system errors, it's controlled by ray. By default, ``max_retries`` is set to be 3.
 - If ``catch_exceptions`` is True, the return value of the function will be converted to ``Tuple[Optional[T], Optional[Exception]]``. This can be combined with ``max_retries`` to try a given number of times before returning the result tuple.
 
@@ -249,8 +250,8 @@ The parameters can also be passed to the decorator
 
 .. code-block:: python
 
-    @workflow.options(max_retries=5, catch_exceptions=True)
-    @ray.remote
+    @workflow.options(catch_exceptions=True)
+    @ray.remote(max_retries=5)
     def faulty_function():
         pass
 

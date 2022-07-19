@@ -164,153 +164,6 @@ def test_run_or_resume_during_running(workflow_start_regular_shared):
     assert ray.get(output) == "[source1][append1][append2]"
 
 
-def test_step_failure(workflow_start_regular_shared, tmp_path):
-    (tmp_path / "test").write_text("0")
-
-    @ray.remote
-    def unstable_step():
-        v = int((tmp_path / "test").read_text())
-        (tmp_path / "test").write_text(f"{v + 1}")
-        if v < 10:
-            raise ValueError("Invalid")
-        return v
-
-    with pytest.raises(Exception):
-        workflow.run_async(
-            unstable_step.options(**workflow.options(max_retries=-2).bind())
-        )
-
-    with pytest.raises(Exception):
-        workflow.run(unstable_step.options(**workflow.options(max_retries=2)).bind())
-    assert 10 == workflow.run(
-        unstable_step.options(**workflow.options(max_retries=7)).bind()
-    )
-    (tmp_path / "test").write_text("0")
-    (ret, err) = workflow.run(
-        unstable_step.options(
-            **workflow.options(max_retries=2, catch_exceptions=True)
-        ).bind()
-    )
-    assert ret is None
-    assert isinstance(err, ValueError)
-    (ret, err) = workflow.run(
-        unstable_step.options(
-            **workflow.options(max_retries=7, catch_exceptions=True)
-        ).bind()
-    )
-    assert ret == 10
-    assert err is None
-
-
-def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
-    (tmp_path / "test").write_text("0")
-
-    @workflow.options(max_retries=10)
-    @ray.remote
-    def unstable_step():
-        v = int((tmp_path / "test").read_text())
-        (tmp_path / "test").write_text(f"{v + 1}")
-        if v < 10:
-            raise ValueError("Invalid")
-        return v
-
-    assert workflow.run(unstable_step.bind()) == 10
-
-    (tmp_path / "test").write_text("0")
-
-    @workflow.options(catch_exceptions=True)
-    @ray.remote
-    def unstable_step_exception():
-        v = int((tmp_path / "test").read_text())
-        (tmp_path / "test").write_text(f"{v + 1}")
-        if v < 10:
-            raise ValueError("Invalid")
-        return v
-
-    (ret, err) = workflow.run(unstable_step_exception.bind())
-    assert ret is None
-    assert err is not None
-
-    (tmp_path / "test").write_text("0")
-
-    @workflow.options(catch_exceptions=True, max_retries=3)
-    @ray.remote
-    def unstable_step_exception():
-        v = int((tmp_path / "test").read_text())
-        (tmp_path / "test").write_text(f"{v + 1}")
-        if v < 10:
-            raise ValueError("Invalid")
-        return v
-
-    (ret, err) = workflow.run(unstable_step_exception.bind())
-    assert ret is None
-    assert err is not None
-    assert (tmp_path / "test").read_text() == "4"
-
-
-def test_nested_catch_exception(workflow_start_regular_shared):
-    @ray.remote
-    def f2():
-        return 10
-
-    @ray.remote
-    def f1():
-        return workflow.continuation(f2.bind())
-
-    assert (10, None) == workflow.run(
-        f1.options(**workflow.options(catch_exceptions=True)).bind()
-    )
-
-
-def test_nested_catch_exception_2(workflow_start_regular_shared):
-    @ray.remote
-    def f1(n):
-        if n == 0:
-            raise ValueError()
-        else:
-            return workflow.continuation(f1.bind(n - 1))
-
-    ret, err = workflow.run(
-        f1.options(**workflow.options(catch_exceptions=True)).bind(5)
-    )
-    assert ret is None
-    assert isinstance(err, ValueError)
-
-
-def test_nested_catch_exception_3(workflow_start_regular_shared, tmp_path):
-    """Test the case where the exception is not raised by the output task of
-    a nested DAG."""
-
-    @ray.remote
-    def f3():
-        return 10
-
-    @ray.remote
-    def f3_exc():
-        raise ValueError()
-
-    @ray.remote
-    def f2(x):
-        return x
-
-    @ray.remote
-    def f1(exc):
-        if exc:
-            return workflow.continuation(f2.bind(f3_exc.bind()))
-        else:
-            return workflow.continuation(f2.bind(f3.bind()))
-
-    ret, err = workflow.run(
-        f1.options(**workflow.options(catch_exceptions=True)).bind(True)
-    )
-    assert ret is None
-    assert isinstance(err, ValueError)
-
-    assert (10, None) == workflow.run(
-        f1.options(**workflow.options(catch_exceptions=True)).bind(False)
-    )
-
-
 def test_dynamic_output(workflow_start_regular_shared):
     @ray.remote
     def exponential_fail(k, n):
@@ -362,8 +215,8 @@ def test_options_update():
 
     # Options are given in decorator first, then in the first .options()
     # and finally in the second .options()
-    @workflow.options(name="old_name", metadata={"k": "v"}, max_retries=1)
-    @ray.remote(num_cpus=2)
+    @workflow.options(name="old_name", metadata={"k": "v"})
+    @ray.remote(num_cpus=2, max_retries=1)
     def f():
         return
 
@@ -379,11 +232,11 @@ def test_options_update():
     assert options == {
         "num_cpus": 2,
         "num_returns": 2,
+        "max_retries": 1,
         "_metadata": {
             WORKFLOW_OPTIONS: {
                 "name": "new_name",
                 "metadata": {"extra_k2": "extra_v2"},
-                "max_retries": 1,
             }
         },
     }
