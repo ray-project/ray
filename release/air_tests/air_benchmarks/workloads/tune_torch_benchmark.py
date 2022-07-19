@@ -4,6 +4,7 @@ import timeit
 import click
 
 import ray
+from ray.air import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
@@ -36,12 +37,12 @@ def get_trainer(num_workers: int = 4, use_gpu: bool = False):
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config=CONFIG,
-        scaling_config={
-            "num_workers": num_workers,
-            "resources_per_worker": {"CPU": 2},
-            "trainer_resources": {"CPU": 0},
-            "use_gpu": use_gpu,
-        },
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            resources_per_worker={"CPU": 2},
+            trainer_resources={"CPU": 0},
+            use_gpu=use_gpu,
+        ),
     )
     return trainer
 
