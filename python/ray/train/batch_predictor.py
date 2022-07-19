@@ -4,7 +4,6 @@ import pandas as pd
 
 import ray
 from ray.air import Checkpoint
-from ray.air.constants import PREPROCESSOR_KEY
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 from ray.data import Preprocessor
 from ray.data.preprocessors import BatchMapper
@@ -64,14 +63,14 @@ class BatchPredictor:
         )
 
     def get_preprocessor(self) -> Preprocessor:
+        """Get the preprocessor to use prior to executing predictions."""
         if self._override_preprocessor:
             return self._override_preprocessor
 
-        checkpoint_data = self._checkpoint.to_dict()
-        preprocessor = checkpoint_data.get(PREPROCESSOR_KEY)
-        return preprocessor
+        return self._checkpoint.get_preprocessor()
 
     def set_preprocessor(self, preprocessor: Preprocessor) -> None:
+        """Set the preprocessor to use prior to executing predictions."""
         self._override_preprocessor = preprocessor
 
     def predict(

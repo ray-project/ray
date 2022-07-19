@@ -42,7 +42,8 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        bst, preprocessor = load_checkpoint(checkpoint)
+        bst, _ = load_checkpoint(checkpoint)
+        preprocessor = checkpoint.get_preprocessor()
         return cls(model=bst, preprocessor=preprocessor)
 
     def _predict_pandas(
