@@ -1,4 +1,5 @@
 import sys
+import threading
 from time import sleep
 
 import pytest
@@ -377,25 +378,68 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
 @pytest.mark.parametrize("auto_reconnect", [True, False])
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = (
-        gcs_utils.GcsClient(address=gcs_address)
-        if auto_reconnect
-        else gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = gcs_utils.GcsClient(
+        address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
     )
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
-    gcs_client.internal_kv_get(b"a", None) == b"b"
+    assert gcs_client.internal_kv_get(b"a", None) == b"b"
+
+    passed = [False]
+
+    def kv_get():
+        if not auto_reconnect:
+            with pytest.raises(Exception):
+                gcs_client.internal_kv_get(b"a", None)
+        else:
+            assert gcs_client.internal_kv_get(b"a", None) == b"b"
+        passed[0] = True
 
     ray._private.worker._global_node.kill_gcs_server()
+    t = threading.Thread(target=kv_get)
+    t.start()
+    sleep(5)
     ray._private.worker._global_node.start_gcs_server()
-    if auto_reconnect is False:
-        # This may flake: when GCS server restarted quickly, there would be no
-        # connection error when calling internal_kv_get().
-        # with pytest.raises(Exception):
-        #     gcs_client.internal_kv_get(b"a", None)
-        pass
-    else:
-        assert gcs_client.internal_kv_get(b"a", None) == b"b"
+    t.join()
+    assert passed[0]
+
+
+@pytest.mark.parametrize("auto_reconnect", [True, False])
+def test_gcs_aio_client_reconnect(
+    ray_start_regular_with_external_redis, auto_reconnect
+):
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+    gcs_client = gcs_utils.GcsClient(address=gcs_address)
+
+    gcs_client.internal_kv_put(b"a", b"b", True, None)
+    assert gcs_client.internal_kv_get(b"a", None) == b"b"
+
+    passed = [False]
+
+    async def async_kv_get():
+        gcs_aio_client = gcs_utils.GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
+        )
+        if not auto_reconnect:
+            with pytest.raises(Exception):
+                await gcs_aio_client.internal_kv_get(b"a", None)
+        else:
+            assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
+        return True
+
+    def kv_get():
+        import asyncio
+
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        passed[0] = asyncio.get_event_loop().run_until_complete(async_kv_get())
+
+    ray._private.worker._global_node.kill_gcs_server()
+    t = threading.Thread(target=kv_get)
+    t.start()
+    sleep(5)
+    ray._private.worker._global_node.start_gcs_server()
+    t.join()
+    assert passed[0]
 
 
 @pytest.mark.parametrize(
@@ -435,8 +479,6 @@ def test_actor_workloads(ray_start_regular_with_external_redis):
 
     assert ray.get(c.r.remote(10)) == 10
     ray._private.worker._global_node.start_gcs_server()
-
-    import threading
 
     def f():
         assert ray.get(cc.r.remote(10)) == 10

@@ -1,6 +1,8 @@
 import enum
 import logging
 import time
+import inspect
+import asyncio
 from functools import wraps
 from typing import List, Optional
 
@@ -129,29 +131,62 @@ def check_health(address: str, timeout=2) -> bool:
 
 
 def _auto_reconnect(f):
-    @wraps(f)
-    def wrapper(self, *args, **kwargs):
-        remaining_retry = self._nums_reconnect_retry
-        while True:
-            try:
-                return f(self, *args, **kwargs)
-            except grpc.RpcError as e:
-                if remaining_retry <= 0:
-                    raise
-                if e.code() in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.UNKNOWN):
-                    logger.debug(
-                        "Failed to send request to gcs, reconnecting. " f"Error {e}"
-                    )
-                    try:
-                        self._connect()
-                    except Exception:
-                        logger.error(f"Connecting to gcs failed. Error {e}")
-                    time.sleep(1)
-                    remaining_retry -= 1
-                    continue
-                raise
+    if inspect.iscoroutinefunction(f):
 
-    return wrapper
+        @wraps(f)
+        async def wrapper(self, *args, **kwargs):
+            remaining_retry = self._nums_reconnect_retry
+            while True:
+                try:
+                    return await f(self, *args, **kwargs)
+                except grpc.RpcError as e:
+                    if remaining_retry <= 0:
+                        raise
+                    if e.code() in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
+                    ):
+                        logger.debug(
+                            "Failed to send request to gcs, reconnecting. " f"Error {e}"
+                        )
+                        try:
+                            self._connect()
+                        except Exception:
+                            logger.error(f"Connecting to gcs failed. Error {e}")
+                        await asyncio.sleep(1)
+                        remaining_retry -= 1
+                        continue
+                    raise
+
+        return wrapper
+    else:
+
+        @wraps(f)
+        def wrapper(self, *args, **kwargs):
+            remaining_retry = self._nums_reconnect_retry
+            while True:
+                try:
+                    return f(self, *args, **kwargs)
+                except grpc.RpcError as e:
+                    if remaining_retry <= 0:
+                        raise
+                    if e.code() in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
+                    ):
+                        logger.debug(
+                            "Failed to send request to gcs, reconnecting. " f"Error {e}"
+                        )
+                        try:
+                            self._connect()
+                        except Exception:
+                            logger.error(f"Connecting to gcs failed. Error {e}")
+                        time.sleep(1)
+                        remaining_retry -= 1
+                        continue
+                    raise
+
+        return wrapper
 
 
 class GcsChannel:
@@ -327,6 +362,7 @@ class GcsAioClient:
         self,
         channel: Optional[GcsChannel] = None,
         address: Optional[str] = None,
+        nums_reconnect_retry: int = 5,
     ):
         if channel is None:
             assert isinstance(address, str)
@@ -335,6 +371,7 @@ class GcsAioClient:
         assert channel._aio is True
         self._channel = channel
         self._connect()
+        self._nums_reconnect_retry = nums_reconnect_retry
 
     @property
     def channel(self):
@@ -349,6 +386,7 @@ class GcsAioClient:
             self._channel.channel()
         )
 
+    @_auto_reconnect
     async def check_alive(
         self, node_ips: List[bytes], timeout: Optional[float] = None
     ) -> List[bool]:
@@ -361,6 +399,7 @@ class GcsAioClient:
             )
         return list(reply.raylet_alive)
 
+    @_auto_reconnect
     async def internal_kv_get(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> Optional[bytes]:
@@ -377,6 +416,7 @@ class GcsAioClient:
                 f"due to error {reply.status.message}"
             )
 
+    @_auto_reconnect
     async def internal_kv_put(
         self,
         key: bytes,
@@ -401,6 +441,7 @@ class GcsAioClient:
                 f"due to error {reply.status.message}"
             )
 
+    @_auto_reconnect
     async def internal_kv_del(
         self,
         key: bytes,
@@ -420,6 +461,7 @@ class GcsAioClient:
                 f"Failed to delete key {key!r} " f"due to error {reply.status.message}"
             )
 
+    @_auto_reconnect
     async def internal_kv_exists(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> bool:
@@ -434,6 +476,7 @@ class GcsAioClient:
                 f"due to error {reply.status.message}"
             )
 
+    @_auto_reconnect
     async def internal_kv_keys(
         self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> List[bytes]:
