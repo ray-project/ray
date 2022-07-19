@@ -201,13 +201,9 @@ class DatasetPipeline(Generic[T]):
             raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()
         if self._first_dataset is not None:
-            blocks_consumable = (
-                self._first_dataset._plan.execute()._consumable
-            )
+            blocks_consumable = self._first_dataset._plan.execute()._consumable
         else:
-            blocks_consumable = (
-                self._peek()._plan.execute()._consumable
-            )
+            blocks_consumable = self._peek()._plan.execute()._consumable
         yield from batch_blocks(
             self._iter_blocks(),
             self._stats,

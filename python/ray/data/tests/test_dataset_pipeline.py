@@ -621,6 +621,9 @@ def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_sh
         .randomize_block_order_each_window()
         .randomize_block_order_each_window()
     )
+    verify_integrity(
+        ds.repeat(10).randomize_block_order_each_window().rewindow(blocks_per_window=1)
+    )
     # Mix in-place and non-in place transforms.
     verify_integrity(
         ds.repeat(10)
@@ -648,6 +651,7 @@ def test_blocks_safe_to_consume(ray_start_regular_shared):
 
     verify_blocks(ds.repeat(1), False)
     verify_blocks(ds.repeat(1).randomize_block_order_each_window(), False)
+    verify_blocks(ds.repeat(1).randomize_block_order_each_window().repeat(2), False)
     verify_blocks(
         ds.repeat(1).randomize_block_order_each_window().map_batches(lambda x: x), True
     )
@@ -657,6 +661,14 @@ def test_blocks_safe_to_consume(ray_start_regular_shared):
     verify_blocks(ds.repeat(1).sort_each_window(), True)
     verify_blocks(ds.repeat(1).random_shuffle_each_window(), True)
     verify_blocks(ds.repeat(1).repartition_each_window(2), True)
+    verify_blocks(ds.repeat(1).rewindow(blocks_per_window=1), False)
+    verify_blocks(ds.repeat(1).rewindow(blocks_per_window=1).repeat(2), False)
+    verify_blocks(
+        ds.repeat(1).map_batches(lambda x: x).rewindow(blocks_per_window=1), True
+    )
+    verify_blocks(
+        ds.repeat(1).rewindow(blocks_per_window=1).map_batches(lambda x: x), True
+    )
 
     @ray.remote
     def consume(pipe, consumable):
