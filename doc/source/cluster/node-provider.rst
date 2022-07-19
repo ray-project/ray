@@ -58,9 +58,10 @@ Node states
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 Nodes may be in one of three states: {pending, running, terminated}. 
-    * pending: The node has been created, but haven't started the Ray runtime
-    * running: The node has active Ray runtime
-    * terminated: The node has been terminated
+
+* pending: The node has been created, but haven't started the Ray runtime
+* running: The node has active Ray runtime
+* terminated: The node has been terminated
 
 The states may be represented in any kind of format inside NodeProvider, as long as is_running(), is_terminated(), and non_terminate_nodes() reflects them correctly. 
 
