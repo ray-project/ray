@@ -731,7 +731,8 @@ py_test(
     name = "test_algorithm",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "large",
-    srcs = ["algorithms/tests/test_algorithm.py"]
+    srcs = ["algorithms/tests/test_algorithm.py"],
+    data = ["tests/data/cartpole/small.json"],
 )
 
 py_test(
@@ -845,6 +846,7 @@ py_test(
     name = "test_cql",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
+    data = ["tests/data/pendulum/small.json"],
     srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
@@ -853,7 +855,8 @@ py_test(
     name = "test_crr",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/crr/tests/test_crr.py"]
+    srcs = ["algorithms/crr/tests/test_crr.py"],
+    data = ["tests/data/pendulum/large.json"],
 )
 
 # DDPG
@@ -916,7 +919,11 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
+    data = [
+        "tests/data/cartpole/large.json",
+        "tests/data/pendulum/large.json",
+        "tests/data/cartpole/small.json",
+    ],
     srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
 
@@ -1671,7 +1678,11 @@ py_test(
     name = "test_dataset_reader",
     tags = ["team:rllib", "offline"],
     size = "medium",
-    srcs = ["offline/tests/test_dataset_reader.py"]
+    srcs = ["offline/tests/test_dataset_reader.py"],
+    data = [
+        "tests/data/pendulum/large.json",
+        "tests/data/pendulum/enormous.zip",
+    ],
 )
 
 py_test(
