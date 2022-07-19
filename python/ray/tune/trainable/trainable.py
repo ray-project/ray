@@ -512,6 +512,15 @@ class Trainable:
         return True
 
     def _maybe_load_from_cloud(self, checkpoint_path: str) -> bool:
+        if os.path.exists(checkpoint_path):
+            try:
+                TrainableUtil.find_checkpoint_dir(checkpoint_path)
+            except Exception:
+                pass
+            else:
+                # If the path exists locally, we don't have to download
+                return True
+
         if not self.uses_cloud_checkpointing:
             return False
 
