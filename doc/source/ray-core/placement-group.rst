@@ -3,38 +3,43 @@ Placement Groups
 
 .. _ray-placement-group-doc-ref:
 
-Placement groups allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling). They can be then used to schedule Ray tasks and actors packed as close as possible for locality (PACK), or spread apart (SPREAD). Placement groups are generally used for gang-scheduling actors, but also support tasks.
+Placement groups allow users to atomically reserve groups of resources across multiple nodes. The groups then can be used to schedule Ray tasks and actors packed as close as possible for locality (`PACK` and `STRICT_PACK`), or spread apart (`SPREAD` and `STRICT_SPREAD`).
 
-Java demo code in this documentation can be found here `<https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/PlacementGroupDemo.java>`__.
+See the :ref:`Java Placement Groups demo`<https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/PlacementGroupDemo.java> for more information.
 
-Here are some use cases:
+The Placement Groups guide covers these topics: 
+* :ref:`Use Cases`<use-cases>
+* :ref:`Key Concepts`<key-concepts>
+...
+* :ref:`Lifecycle`<lifecycle>
+* :ref:`Fault Tolerance`<fault-tolerance>
 
-- **Gang Scheduling**: Your application requires all tasks/actors to be scheduled and start at the same time.
-- **Maximizing data locality**: You'd like to place or schedule your actors close to your data to avoid object transfer overheads.
+Use cases
+---------
 
-Key Concepts
+- **Gang Scheduling**: All tasks or actors can be scheduled to start at the same time.
+- **Maximize data locality**: Place or schedule your actors close to your data to avoid object transfer overheads.
+
+Key concepts
 ------------
 
-A **bundle** is a collection of "resources", i.e. `{"GPU": 4}`.
+**Bundle**: A collection of "resources", for example, `{"GPU": 4}`.
 
 - A bundle must be able to fit on a single node on the Ray cluster.
 - Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
 
+**Placement group**: A collection of bundles.
 
-A **placement group** is a collection of bundles.
-
-- Each bundle is given an "index" within the placement group
+- Each bundle is given an "index" within the placement group.
 - Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
-- After the placement group is created, tasks or actors can be then scheduled according to the placement group and even on individual bundles.
+- After the placement group is created, tasks or actors can be scheduled according to the placement group and even on individual bundles.
 
-
-A **placement group strategy** is an algorithm for selecting nodes for bundle placement. Read more about :ref:`placement strategies <pgroup-strategy>`.
-
+**Placement group strategy**: An algorithm for selecting nodes for bundle placement. See :ref:`placement strategies <pgroup-strategy>` for more information.
 
 Starting a placement group
 --------------------------
 
-Ray placement group can be created via the ``ray.util.placement_group`` (Python) or ``PlacementGroups.createPlacementGroup`` (Java) API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
+A Ray placement group can be created using the ``ray.util.placement_group`` (Python) or ``PlacementGroups.createPlacementGroup`` (Java) API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
 
 .. tabbed:: Python
 
@@ -94,7 +99,7 @@ Ray placement group can be created via the ``ray.util.placement_group`` (Python)
 
 .. important:: Each bundle must be able to fit on a single node on the Ray cluster.
 
-Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, then the entire placement group will not be ready.
+Placement groups are atomically created. If a bundle cannot fit in any of the current nodes, then the entire placement group is not ready.
 
 .. tabbed:: Python
 
@@ -137,7 +142,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
         std::cout << group.GetName() << std::endl;
       }
 
-Infeasible placement groups will be pending until resources are available. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
+The Ray Autoscaler is aware of placement groups, and autoscales the cluster to ensure pending groups can be placed as needed. Infeasible placement groups remain pending until resources are available.
 
 .. _pgroup-strategy:
 
@@ -146,28 +151,20 @@ Strategy types
 
 Ray currently supports the following placement group strategies:
 
-**STRICT_PACK**
+**PACK**: All provided bundles are packed onto a single node on a best-effort basis.
 
-All bundles must be placed into a single node on the cluster.
+**STRICT_PACK**: All bundles must be placed into a single node on the cluster.
+If strict packing is not feasible, bundles can be placed on multiple `PACK` nodes.
 
-**PACK**
+**SPREAD**: Each bundle will be spread onto separate nodes on a best effort basis.
 
-All provided bundles are packed onto a single node on a best-effort basis.
-If strict packing is not feasible (i.e., some bundles do not fit on the node), bundles can be placed onto other nodes nodes.
+**STRICT_SPREAD**: Each bundle must be scheduled in a separate node.
+If strict spreading is not feasible, bundles can be placed on overlapping `SPREAD` nodes.
 
-**STRICT_SPREAD**
+Getting started
+---------------
 
-Each bundle must be scheduled in a separate node.
-
-**SPREAD**
-
-Each bundle will be spread onto separate nodes on a best effort basis.
-If strict spreading is not feasible, bundles can be placed overlapping nodes.
-
-Quick Start
------------
-
-Let's see an example of using placement group. Note that this example is done within a single node.
+This example uses placement groups within a single node.
 
 .. code-block:: python
 
@@ -190,11 +187,11 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
   When specifying bundles,
 
-  - "CPU" will correspond with `num_cpus` as used in `ray.remote`
-  - "GPU" will correspond with `num_gpus` as used in `ray.remote`
-  - Other resources will correspond with `resources` as used in `ray.remote`.
+  - "CPU" corresponds with `num_cpus` as used in `ray.remote`
+  - "GPU" corresponds with `num_gpus` as used in `ray.remote`
+  - Other resources correspond with `resources` as used in `ray.remote`.
 
-  Once the placement group reserves resources, original resources are unavailable until the placement group is removed. For example:
+Once the placement group reserves resources, original resources are unavailable until the placement group is removed.
 
   .. tabbed:: Python
 
@@ -297,9 +294,8 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
 .. note::
 
-  When using placement groups, it is recommended to verify that their placement groups are ready (by calling ``ray.get(pg.ready())``)
-  and have the proper resources. Ray assumes that the placement group will be properly created and does *not*
-  print a warning about infeasible tasks.
+  When using placement groups, it is recommended to verify their placement groups are ready (by calling ``ray.get(pg.ready())``)
+  and have the proper resources. Ray assumes that the placement group is properly created and does *not* print a warning about infeasible tasks.
 
   .. tabbed:: Python
 
@@ -358,8 +354,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         bool is_created = pg.Wait(60);
         assert(is_created);
 
-Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
-You can schedule actors/tasks on the placement group using
+Now let's define an actor that uses GPU and a task that use `extra_resource`s. You can schedule actors/tasks on the placement group using
 :ref:`options(scheduling_strategy=PlacementGroupSchedulingStrategy(...)) <scheduling-strategy-ref>`.
 
 .. tabbed:: Python
@@ -488,13 +483,13 @@ You can schedule actors/tasks on the placement group using
       }
 
 
-Now, you can guarantee all gpu actors and extra_resource tasks are located on the same node
-because they are scheduled on a placement group with the STRICT_PACK strategy.
+Now, you can guarantee all gpu actors and `extra_resource` tasks are located on the same node
+because they are scheduled on a placement group with the `STRICT_PACK` strategy.
 
 .. note::
 
-  Child actors/tasks don't share the same placement group that the parent uses.
-  If you'd like to automatically schedule child actors/tasks to the same placement group,
+  Child actors and tasks do not share the same placement group that the parent uses.
+  If you would like to automatically schedule child actors and tasks to the same placement group,
   set ``placement_group_capture_child_tasks`` to True.
 
   .. tabbed:: Python
@@ -567,7 +562,7 @@ Named Placement Groups
 
 A placement group can be given a globally unique name.
 This allows you to retrieve the placement group from any job in the Ray cluster.
-This can be useful if you cannot directly pass the placement group handle to
+This is useful if you cannot directly pass the placement group handle to
 the actor or task that needs it, or if you are trying to
 access a placement group launched by another driver.
 Note that the placement group will still be destroyed if it's lifetime isn't `detached`.
@@ -654,15 +649,15 @@ See :ref:`placement-group-lifetimes` for more details.
 
 .. _placement-group-lifetimes:
 
-Placement Group Lifetimes
+Placement Group lifetimes
 -------------------------
 
 .. tabbed:: Python
 
-    By default, the lifetimes of placement groups are not detached and will be destroyed
-    when the driver is terminated (but, if it is created from a detached actor, it is 
-    killed when the detached actor is killed). If you'd like to keep the placement group 
-    alive regardless of its job or detached actor, you should specify 
+    By default, the lifetimes of placement groups are not detached and are destroyed
+    when the driver is terminated. Note that if it is created from a detached actor, it
+    is killed when the detached actor is killed. If you'd like to keep the placement
+    group alive regardless of its job or detached actor, you should specify 
     `lifetime="detached"`. For example:
 
     .. code-block:: python
@@ -671,7 +666,7 @@ Placement Group Lifetimes
       pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached")
       ray.get(pg.ready())
 
-    The placement group's lifetime will be independent of the driver now. This means it 
+    The placement group's lifetime is independent of the driver now. This means it 
     is possible to retrieve the placement group from other drivers regardless of when 
     the current driver exits. Let's see an example:
 
@@ -689,7 +684,7 @@ Placement Group Lifetimes
 
     The lifetime argument is not implemented for Java APIs yet.
 
-Tips for Using Placement Groups
+Tips for using Placement Groups
 -------------------------------
 - Learn the :ref:`lifecycle <ray-placement-group-lifecycle-ref>` of placement groups.
 - Learn the :ref:`fault tolerance <ray-placement-group-ft-ref>` of placement groups.
@@ -702,17 +697,16 @@ Lifecycle
 
 **Creation**: When placement groups are first created, the request is sent to the GCS. The GCS sends resource reservation requests to nodes based on its scheduling strategy. Ray guarantees placement groups are placed atomically.
 
-**Autoscaling**: Placement groups are pending creation if there are no nodes that can satisfy resource requirements for a given strategy. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
+**Autoscaling**: Placement groups are pending creation if there are no nodes that can satisfy resource requirements for a given strategy. The Ray Autoscaler is aware of placement groups and autoscales the cluster to ensure pending groups can be placed as needed.
 
 **Cleanup**: Placement groups are automatically removed when the job that created the placement group is finished. The only exception is that it is created by detached actors. In this case, placement groups fate-share with the detached actors.
-
 
 Fault Tolerance
 ---------------
 
 .. _ray-placement-group-ft-ref:
 
-If nodes that contain some bundles of a placement group die, all the bundles will be rescheduled on different nodes by GCS. This means that the initial creation of placement group is "atomic", but once it is created, there could be partial placement groups.
+If nodes that contain some bundles of a placement group die, all the bundles are rescheduled on different nodes by GCS. This means that the initial creation of placement group is "atomic," but once it is created, there could be partial placement groups.
 
 Placement groups are tolerant to worker nodes failures (bundles on dead nodes are rescheduled). However, placement groups are currently unable to tolerate head node failures (GCS failures), which is a single point of failure of Ray.
 
