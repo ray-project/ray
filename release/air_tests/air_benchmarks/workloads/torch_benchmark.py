@@ -1,8 +1,6 @@
 import json
 import os
-import socket
 import time
-from contextlib import closing
 from typing import Dict, Tuple
 
 import click
@@ -129,6 +127,13 @@ def train_func(use_ray: bool, config: Dict):
         vanilla_device = torch.device(f"cuda:{gpu_id}")
         torch.cuda.set_device(vanilla_device)
 
+        print(
+            "Setting GPU ID to",
+            gpu_id,
+            "with visible devices",
+            os.environ.get("CUDA_VISIBLE_DEVICES"),
+        )
+
         def collate_fn(x):
             return tuple(x_.to(vanilla_device) for x_ in default_collate(x))
 
@@ -242,6 +247,7 @@ def train_torch_vanilla_worker(
     master_addr: str,
     master_port: int,
     use_gpu: bool = False,
+    gpu_id: int = 0,
 ):
     # This function is kicked off by the main() function and runs the vanilla
     # training script on a single worker.
@@ -255,6 +261,7 @@ def train_torch_vanilla_worker(
     )
 
     config["use_gpu"] = use_gpu
+    config["gpu_id"] = gpu_id
     train_func(use_ray=False, config=config)
 
     distributed.destroy_process_group()
@@ -266,16 +273,17 @@ def train_torch_vanilla(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-    master_port: int = 12355,
 ) -> Tuple[float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
-    import ray
     from benchmark_util import (
         upload_file_to_all_nodes,
         create_actors_with_resources,
         run_commands_on_actors,
-        run_fn_on_actors,
+        get_ip_port_actors,
+        get_gpu_ids_actors,
+        map_ips_to_gpus,
+        set_cuda_visible_devices,
     )
 
     path = os.path.abspath(__file__)
@@ -291,15 +299,30 @@ def train_torch_vanilla(
         },
     )
 
-    def get_ip_port():
-        ip = ray.util.get_node_ip_address()
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-            s.bind(("localhost", 0))
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            port = s.getsockname()[1]
-        return ip, port
+    # Get IPs and ports for all actors
+    ip_ports = get_ip_port_actors(actors=actors)
 
-    [(master_addr, master_port)] = run_fn_on_actors(actors=[actors[0]], fn=get_ip_port)
+    # Rank 0 is the master addr/port
+    master_addr, master_port = ip_ports[0]
+
+    if use_gpu:
+        # Extract IPs
+        actor_ips = [ipp[0] for ipp in ip_ports]
+
+        # Get allocated GPU IDs for all actors
+        gpu_ids = get_gpu_ids_actors(actors=actors)
+
+        # Build a map of IP to all allocated GPUs on that machine
+        ip_to_gpu_map = map_ips_to_gpus(ips=actor_ips, gpus=gpu_ids)
+
+        # Set the environment variables on the workers
+        set_cuda_visible_devices(
+            actors=actors, actor_ips=actor_ips, ip_to_gpus=ip_to_gpu_map
+        )
+
+        use_gpu_ids = [gi[0] for gi in gpu_ids]
+    else:
+        use_gpu_ids = [0] * num_workers
 
     cmds = [
         [
@@ -316,8 +339,11 @@ def train_torch_vanilla(
             master_addr,
             "--master-port",
             str(master_port),
+            "--batch-size",
+            str(config["batch_size"]),
         ]
         + (["--use-gpu"] if use_gpu else [])
+        + (["--gpu-id", str(use_gpu_ids[rank])] if use_gpu else [])
         for rank in range(num_workers)
     ]
 
@@ -345,20 +371,25 @@ def cli():
 @click.option("--num-workers", type=int, default=4)
 @click.option("--cpus-per-worker", type=int, default=8)
 @click.option("--use-gpu", is_flag=True, default=False)
-@click.option("--master-port", type=int, default=12355)
+@click.option("--batch-size", type=int, default=64)
+@click.option("--smoke-test", is_flag=True, default=False)
 def run(
     num_runs: int = 1,
     num_epochs: int = 4,
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-    master_port: int = 12355,
+    batch_size: int = 64,
+    smoke_test: bool = False,
 ):
+    # Note: smoke_test is ignored as we just adjust the batch size.
+    # The parameter is passed by the release test pipeline.
     import ray
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
 
     config = CONFIG.copy()
     config["epochs"] = num_epochs
+    config["batch_size"] = batch_size
 
     # Find interface
     for iface in os.listdir("/sys/class/net"):
@@ -383,6 +414,8 @@ def run(
     times_vanilla = []
     losses_vanilla = []
     for run in range(1, num_runs + 1):
+        time.sleep(2)
+
         print(f"[Run {run}/{num_runs}] Running Torch Ray benchmark")
 
         time_ray, loss_ray = train_torch_ray_air(
@@ -397,7 +430,7 @@ def run(
             f"{time_ray:.2f} seconds. Observed loss = {loss_ray:.4f}"
         )
 
-        time.sleep(5)
+        time.sleep(2)
 
         print(f"[Run {run}/{num_runs}] Running Torch vanilla benchmark")
 
@@ -406,7 +439,6 @@ def run(
             cpus_per_worker=cpus_per_worker,
             use_gpu=use_gpu,
             config=config,
-            master_port=master_port + run,
         )
 
         print(
@@ -456,7 +488,7 @@ def run(
 
     target_ratio = 1.15
     ratio = (times_ray_mean / times_vanilla_mean) if times_vanilla_mean != 0.0 else 1.0
-    if ratio > 1.15:
+    if ratio > target_ratio:
         raise RuntimeError(
             f"Training on Ray took an average of {times_ray_mean:.2f} seconds, "
             f"which is more than {target_ratio:.2f}x of the average vanilla training "
@@ -476,17 +508,22 @@ def run(
 @click.option("--rank", type=int, default=0)
 @click.option("--master-addr", type=str, default="")
 @click.option("--master-port", type=int, default=0)
+@click.option("--batch-size", type=int, default=64)
 @click.option("--use-gpu", is_flag=True, default=False)
+@click.option("--gpu-id", type=int, default=0)
 def worker(
     num_epochs: int = 4,
     num_workers: int = 4,
     rank: int = 0,
     master_addr: str = "",
     master_port: int = 0,
+    batch_size: int = 64,
     use_gpu: bool = False,
+    gpu_id: int = 0,
 ):
     config = CONFIG.copy()
     config["epochs"] = num_epochs
+    config["batch_size"] = batch_size
 
     # Then we kick off the training function on every worker.
     return train_torch_vanilla_worker(
@@ -496,6 +533,7 @@ def worker(
         master_addr=master_addr,
         master_port=master_port,
         use_gpu=use_gpu,
+        gpu_id=gpu_id,
     )
 
 
