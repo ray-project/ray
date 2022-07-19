@@ -133,8 +133,8 @@ class AlpaTrainer(BaseTrainer):
         
         self.resources_per_worker = self.scaling_config.resources_per_worker
         
-        num_cpus = self.scaling_config['num_cpus']
-        num_gpus = int(self.scaling_config['use_gpu'])
+        num_cpus = self.scaling_config.num_cpus
+        num_gpus = int(self.scaling_config.use_gpu)
         if 'GPU' in self.resources_per_worker: 
             num_gpus = self.resources_per_worker['GPU']
         
