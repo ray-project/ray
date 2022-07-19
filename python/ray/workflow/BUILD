@@ -5,13 +5,7 @@
 # --------------------------------------------------------------------
 load("//bazel:python.bzl", "py_test_module_list")
 
-SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": glob([
-        # TODO(mehrdadn): This should be added for all platforms once resulting errors are fixed
-        "**/conftest.py",
-    ]),
-    "//conditions:default": [],
-})
+SRCS = glob(["**/conftest.py"])
 
 LARGE_TESTS = ["tests/test_recovery.py", "tests/test_basic_workflows_2.py", "tests/test_metadata.py"]
 
