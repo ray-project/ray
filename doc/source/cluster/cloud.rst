@@ -154,7 +154,7 @@ Ray with cloud providers
 
 .. tabbed:: Custom
 
-    Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
+    Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation and `NodeProvider develop guide`_).
     You can specify the external node provider using the yaml config:
 
     .. code-block:: yaml
@@ -163,8 +163,9 @@ Ray with cloud providers
             type: external
             module: mypackage.myclass
 
-    The module needs to be in the format ``package.provider_class`` or ``package.sub_package.provider_class``.
+    The module needs to be in the format ``package.provider_class`` or ``package.sub_package.provider_class``
 
+.. _`NodeProvider develop guide`: https://docs.ray.io/en/master/cluster/node-provider.html
 
 .. _cluster-private-setup:
 
