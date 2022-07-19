@@ -43,7 +43,6 @@ from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
 from ray.experimental.state.common import MAX_LIMIT
 from ray.experimental.state.exception import DataSourceUnavailable
 
-
 logger = logging.getLogger(__name__)
 
 _STATE_MANAGER_GRPC_OPTIONS = [
