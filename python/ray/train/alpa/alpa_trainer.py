@@ -113,14 +113,19 @@ class AlpaTrainer(BaseTrainer):
         if not alpa.api.is_initialized:
             alpa.init("ray")
 
-        cluster = alpa.get_global_cluster()
-        ic("Distributed Training with Alpa using "
-            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
-        )
-        logger.info(
-             "Distributed Training with Alpa using "
-            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
-        )
+        # cluster = alpa.get_global_cluster()
+        
+        # ic("Distributed Training with Alpa using "
+        #     f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
+        # )
+        
+        vp = alpa.get_global_virtual_physical_mesh()
+        ic(vp)
+        
+        # logger.info(
+        #      "Distributed Training with Alpa using "
+        #     f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
+        # )
         
         
         from ray._private.worker import _global_node as ray_global_node
