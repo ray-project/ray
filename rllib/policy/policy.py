@@ -788,7 +788,6 @@ class Policy(metaclass=ABCMeta):
                 obtained by calling `self.get_state()`.
         """
         self.set_weights(state["weights"])
-        self.global_timestep = state["global_timestep"]
         self.restore_connectors(state)
 
     @ExperimentalAPI

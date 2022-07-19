@@ -897,7 +897,11 @@ class TorchPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Then the Policy's (NN) weights.
+
+        # Restore glbal timestep.
+        self.global_timestep = state["global_timestep"]
+
+        # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @override(Policy)
