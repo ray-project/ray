@@ -111,7 +111,13 @@ class AlpaTrainer(BaseTrainer):
         if not alpa.api.is_initialized:
             alpa.init("ray")
 
-
+        cluster = alpa.get_global_cluster()
+        logger.info(
+             "Distributed Training with Alpa using "
+            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
+        )
+        
+        
         from ray._private.worker import _global_node as ray_global_node
         # try:
         self.head_info = ray_global_node.address_info
