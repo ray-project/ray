@@ -128,11 +128,11 @@ class AlpaTrainer(BaseTrainer):
         # )
         
         self.scaling_config = scaling_config
-        
+         
         scaling_config = self._validate_scaling_config(self.scaling_config)
-        self.additional_resources_per_worker = self.scaling_config.additional_resources_per_worker
+        self.resources_per_worker = self.scaling_config.resources_per_worker
         
-        ic(scaling_config, self.additional_resources_per_worker)
+        ic(scaling_config, self.resources_per_worker)
 
         
         from ray._private.worker import _global_node as ray_global_node
