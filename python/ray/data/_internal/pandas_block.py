@@ -324,8 +324,6 @@ class PandasBlockAccessor(TableBlockAccessor):
             bounds = table[col].searchsorted(boundaries)
         last_idx = 0
         for idx in bounds:
-            # Slices need to be copied to avoid including the base table
-            # during serialization.
             partitions.append(table[last_idx:idx])
             last_idx = idx
         partitions.append(table[last_idx:])
@@ -348,7 +346,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         """
         if key is not None and not isinstance(key, str):
             raise ValueError(
-                "key must be a string or None when aggregating on Arrow blocks, but "
+                "key must be a string or None when aggregating on Pandas blocks, but "
                 f"got: {type(key)}."
             )
 
