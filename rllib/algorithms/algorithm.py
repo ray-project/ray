@@ -2118,6 +2118,16 @@ class Algorithm(Trainable):
                 "`evaluation_duration` ({}) must be an int and "
                 ">0!".format(config["evaluation_duration"])
             )
+        
+        # Offline RL config
+        if config["input"] != "sampler":
+            # Set evaluation input to sampler
+            if not config["evaluation_config"]["input"]:
+                config["evaluation_config"]["input"] = "sampler"
+            # Set postprocessing to True by default
+            config["postprocess_inputs"] = True
+            # TODO (Rohan138): If using JsonReader with num_workers > 1
+            # make sure num_files > num_workers otherwise raise Exception
 
     @staticmethod
     @ExperimentalAPI
