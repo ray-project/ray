@@ -240,7 +240,7 @@ def test_replica_spread(ray_cluster):
     # the head node.
     cluster.remove_node(worker_node)
 
-    # Check that the two replicas are spread across the two nodes.
+    # Check that the replica on the dead node can be rescheduled.
     wait_for_condition(lambda: get_num_nodes() == 1)
 
 
