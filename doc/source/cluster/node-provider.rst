@@ -74,7 +74,7 @@ Node tags are formatted as Dict[str, str], with key to be tag name and value to 
 {TAG_RAY_NODE_KIND  : NODE_KIND_WORKER, TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE}
 ``
 
-where "TAG_RAY_NODE_KIND" and "TAG_RAY_NODE_STATUS" are the tag names, and "NODE_KIND_WORKER" and "STATUS_UP_TO_DATE" are the tag values for this node. If tag-specific operations are needed, which is not common, see ray.autoscaler.tags for detail tag names and values. 
+where "TAG_RAY_NODE_KIND" and "TAG_RAY_NODE_STATUS" are the tag names, and "NODE_KIND_WORKER" and "STATUS_UP_TO_DATE" are the tag values of this node. If tag-specific operations are needed, which is not common, see ray.autoscaler.tags for detail tag names and values. 
 
 Autoscaler Assumptions
 ------------------------
@@ -84,7 +84,7 @@ Assumptions made by the autoscaler that NodeProvider should follow:
 #. NodeProviders are namespaced by the `cluster_name` parameter; they only operate on nodes within that namespace.
 #. The "nodes" are VM-like that could remotely run setup commands (such as via SSH) and receive remote file mount (such as via rsync) using a command runner. 
 #. The node creation and node setup are done in separate steps.
-#. The IP addresses of the nodes are unique. Although GCS uses ip+port to distinguish different nodes, the autoscaler uses only IPs and rely on it to collect node statistics.
+#. The IP addresses of the nodes are unique. Although GCS uses ip+port to distinguish different nodes, the autoscaler uses only IPs and relies on it to collect node statistics.
 #. External_ips are used in "Ray up" when starting the head node. Internal_ips are used for communication within the cluster.
 #. Nodes should appear immediately once started by `create_node`, and transition immediately to terminated when `terminate_node` is called. This means any APIs, that are affected by the nodes states, especially non_terminate_nodes(), should reflect the changes immediately.
 #. Node tags should be readable by node_tags() immediately after set_node_tags() returns.  
@@ -97,7 +97,7 @@ Assumptions made by the autoscaler that NodeProvider should follow:
 Autoscaler Config YAML
 ------------------------
 
-A customized NodeProvider goes with a customized autoscaler YAML. Besides the parts that is required by the launching process and the autoscaler, some parts of the autoscaler config YAML is only used by the NodeProvider. As a result, those parts can also have any kind of format that helps the implementation of NodeProvider.
+A customized NodeProvider goes with a customized autoscaler config YAML. Besides the parts that is required by the launching process and the autoscaler, some parts of the autoscaler config YAML is only used by the NodeProvider. As a result, those parts can also have any kind of format that helps the implementation of NodeProvider.
 
 The YAML file section that is only used by NodeProvider:
 
@@ -105,7 +105,7 @@ The YAML file section that is only used by NodeProvider:
 * available_node_types.*.node_config
 * auth (for command runner)
 
-The autoscaler tries to fill the fields available in the "minimal default config" (see ray.autoscaler._private.providers._get_default_config for detail), if those fields are not provided by user. After the config is filled, the NodeProvider can further modify it during the launching process, using the cluster config APIs (the first API category). 
+Autoscaler tries to fill the fields available in the "minimal default config" (see ray.autoscaler._private.providers._get_default_config for detail), if those fields are not provided by user. After the config is filled, the NodeProvider can further modify it during the launching process, using the cluster config APIs (the first API category). 
 
 Advance
 ------------------------
@@ -117,19 +117,19 @@ A general overview of how autoscaler is connected to node_provider:
 
 #. The booting process from command line includes: (see autoscaler._private.command)
 
-    1. Fills the autoscaler config 
-    2. Start the head node
-    3. A modified copy of autoscaling config is copied to the head node. 
+    1. Filling the autoscaler config 
+    2. Starting the head node
+    3. Copying the modified autoscaling config to the head node. 
 
-#. All the worker nodes are created by autoscaler (a daemon running at the head node, see autoscaler._private.autoscaler), which is not a part of the booting process.
+#. All the worker nodes are created by the autoscaler, a daemon running at the head node, which is not a part of the booting process. (See autoscaler._private.autoscaler)
 #. The autoscaler starts a new thread (node launcher) for each batches of node creation. (see autoscaler._private.node_launcher)
-#. The autoscaler starts another thread (node updater, which is different from the node creation thread) to set up the nodes. If the node is not ready to run a command, this thread keeps trying until success or raises failure after timeout. (see autoscaler._private.updater)
+#. The autoscaler starts another thread (node updater, which is different from the node creation thread) to set up the nodes. If the node is not ready to run a command, this thread keeps trying until success or raises failure after timeout. (See autoscaler._private.updater)
 #. The node termination is done by the main autoscaler thread, based on the node statistic collected from GCS or the failure raises by node updater. 
 
 Possible Hacking
 ^^^^^^^^^^^^^^^^^
 
-From the above autoscaler setup, one can see the node creation and node setup are divided into two separate steps, using two different threads. If all the node setup are done at node creation, then the node updater thread is no longer needed. This is useful for the platform that doesn't support running additional commands after the node is created. In this case, an "Empty command runner" could be use to disable node updater. 
+From the above autoscaler setup, one can see the node creation and node setup are divided into two separate steps, using two different threads. If all the node setups are done at node creation, then the node updater thread is no longer needed. This is useful for the platform that doesn't support running additional commands after the node is created. In this case, an "Empty command runner" could be use to disable node updater. 
 
 Note: file transfer command (rsync) is still needed, especially for copying the autoscaler config to the head node. Inter-node file mount is also needed if the nodes don't share a file system. 
 
