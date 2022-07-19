@@ -134,7 +134,7 @@ class Predictor(abc.ABC):
         """
         data_df = convert_batch_type_to_pandas(data)
 
-        if not hasattr(self, "preprocessor"):
+        if not hasattr(self, "_preprocessor"):
             raise NotImplementedError(
                 "Subclasses of Predictor must call Predictor.__init__(preprocessor)."
             )
