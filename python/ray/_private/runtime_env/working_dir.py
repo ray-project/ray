@@ -139,8 +139,6 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
-        if uri is None:
-            return 0
         local_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
