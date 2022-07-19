@@ -135,7 +135,7 @@ class UsageStatsToReport:
     #: The sequence number of the report.
     seq_number: int
     #: The extra tags to report when specified by an
-    #  environment variable EXTRA_USAGE_TAGS
+    #  environment variable RAY_USAGE_STATS_EXTRA_TAGS
     extra_usage_tags: Optional[Dict[str, str]]
     #: The number of alive nodes when the report is generated.
     total_num_nodes: Optional[int]
@@ -324,6 +324,10 @@ def _usage_stats_enabledness() -> UsageStatsEnabledness:
     return UsageStatsEnabledness.ENABLED_BY_DEFAULT
 
 
+def is_nightly_wheel() -> bool:
+    return ray.__commit__ != "{{RAY_COMMIT_SHA}}" and "dev" in ray.__version__
+
+
 def usage_stats_enabled() -> bool:
     return _usage_stats_enabledness() is not UsageStatsEnabledness.DISABLED_EXPLICITLY
 
@@ -356,18 +360,23 @@ def _generate_cluster_metadata():
     return metadata
 
 
-def show_usage_stats_prompt() -> None:
+def show_usage_stats_prompt(cli: bool) -> None:
     if not usage_stats_prompt_enabled():
         return
 
     from ray.autoscaler._private.cli_logger import cli_logger
 
+    prompt_print = cli_logger.print if cli else print
+
     usage_stats_enabledness = _usage_stats_enabledness()
     if usage_stats_enabledness is UsageStatsEnabledness.DISABLED_EXPLICITLY:
-        cli_logger.print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
+        prompt_print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
     elif usage_stats_enabledness is UsageStatsEnabledness.ENABLED_BY_DEFAULT:
-
-        if cli_logger.interactive:
+        if not cli:
+            prompt_print(
+                usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_FOR_RAY_INIT_MESSAGE
+            )
+        elif cli_logger.interactive:
             enabled = cli_logger.confirm(
                 False,
                 usage_constant.USAGE_STATS_CONFIRMATION_MESSAGE,
@@ -383,16 +392,20 @@ def show_usage_stats_prompt() -> None:
                     f"Failed to persist usage stats choice for future clusters: {e}"
                 )
             if enabled:
-                cli_logger.print(usage_constant.USAGE_STATS_ENABLED_MESSAGE)
+                prompt_print(usage_constant.USAGE_STATS_ENABLED_FOR_CLI_MESSAGE)
             else:
-                cli_logger.print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
+                prompt_print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
         else:
-            cli_logger.print(
-                usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE,
+            prompt_print(
+                usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_FOR_CLI_MESSAGE,
             )
     else:
         assert usage_stats_enabledness is UsageStatsEnabledness.ENABLED_EXPLICITLY
-        cli_logger.print(usage_constant.USAGE_STATS_ENABLED_MESSAGE)
+        prompt_print(
+            usage_constant.USAGE_STATS_ENABLED_FOR_CLI_MESSAGE
+            if cli
+            else usage_constant.USAGE_STATS_ENABLED_FOR_RAY_INIT_MESSAGE
+        )
 
 
 def set_usage_stats_enabled_via_config(enabled) -> None:
@@ -491,7 +504,7 @@ def _parse_extra_usage_tags() -> Dict[str, str]:
     Returns:
         Dictionary of key value pair parsed.
     """
-    extra_tags = os.getenv("RAY_EXTRA_USAGE_TAGS", None)
+    extra_tags = os.getenv("RAY_USAGE_STATS_EXTRA_TAGS", None)
     if not extra_tags:
         return None
 

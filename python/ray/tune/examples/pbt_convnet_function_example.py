@@ -68,14 +68,16 @@ def train_convnet(config):
 
 def test_best_model(analysis):
     """Test the best model given output of tune.run"""
-    best_checkpoint_path = analysis.best_checkpoint
-    best_model = ConvNet()
-    best_checkpoint = torch.load(os.path.join(best_checkpoint_path, "checkpoint.pt"))
-    best_model.load_state_dict(best_checkpoint["model_state_dict"])
-    # Note that test only runs on a small random set of the test data, thus the
-    # accuracy may be different from metrics shown in tuning process.
-    test_acc = test(best_model, get_data_loaders()[1])
-    print("best model accuracy: ", test_acc)
+    with analysis.best_checkpoint.as_directory() as best_checkpoint_path:
+        best_model = ConvNet()
+        best_checkpoint = torch.load(
+            os.path.join(best_checkpoint_path, "checkpoint.pt")
+        )
+        best_model.load_state_dict(best_checkpoint["model_state_dict"])
+        # Note that test only runs on a small random set of the test data, thus the
+        # accuracy may be different from metrics shown in tuning process.
+        test_acc = test(best_model, get_data_loaders()[1])
+        print("best model accuracy: ", test_acc)
 
 
 if __name__ == "__main__":

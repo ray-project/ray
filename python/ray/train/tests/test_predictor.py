@@ -22,7 +22,7 @@ class DummyPredictor(Predictor):
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "DummyPredictor":
         checkpoint_data = checkpoint.to_dict()
-        return DummyPredictor(**checkpoint_data)
+        return cls(**checkpoint_data)
 
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         return data * self.factor
@@ -65,6 +65,25 @@ def test_predict(convert_from_pandas_mock, convert_to_pandas_mock):
     # Ensure the proper conversion functions are called.
     convert_to_pandas_mock.assert_called_once()
     convert_from_pandas_mock.assert_called_once()
+
+
+def test_from_udf():
+    def check_truth(df, all_true=False):
+        if all_true:
+            return pd.DataFrame({"bool": [True] * len(df)})
+        return pd.DataFrame({"bool": df["a"] == df["b"]})
+
+    predictor = Predictor.from_pandas_udf(check_truth)
+
+    df = pd.DataFrame({"a": [1, 2, 3], "b": [1, 5, 6]})
+
+    output = predictor.predict(df)
+    output = output["bool"].tolist()
+    assert output == [True, False, False]
+
+    output = predictor.predict(df, all_true=True)
+    output = output["bool"].tolist()
+    assert output == [True, True, True]
 
 
 @mock.patch.object(DummyPredictor, "_predict_pandas", return_value=mock.DEFAULT)

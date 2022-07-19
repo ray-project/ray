@@ -92,10 +92,10 @@ class Connector(abc.ABC):
 
     def __init__(self, ctx: ConnectorContext):
         # This gets flipped to False for inference.
-        self.is_training = True
+        self._is_training = True
 
     def is_training(self, is_training: bool):
-        self.is_training = is_training
+        self._is_training = is_training
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
@@ -325,6 +325,8 @@ class ConnectorPipeline(abc.ABC):
             raise ValueError(f"Can not find connector {name}")
         del self.connectors[idx]
 
+        logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+
     def insert_before(self, name: str, connector: Connector):
         """Insert a new connector before connector <name>
 
@@ -340,6 +342,11 @@ class ConnectorPipeline(abc.ABC):
         if idx < 0:
             raise ValueError(f"Can not find connector {name}")
         self.connectors.insert(idx, connector)
+
+        logger.info(
+            f"Inserted {connector.__class__.__name__} before {name} "
+            f"to {self.__class__.__name__}."
+        )
 
     def insert_after(self, name: str, connector: Connector):
         """Insert a new connector after connector <name>
@@ -357,6 +364,11 @@ class ConnectorPipeline(abc.ABC):
             raise ValueError(f"Can not find connector {name}")
         self.connectors.insert(idx + 1, connector)
 
+        logger.info(
+            f"Inserted {connector.__class__.__name__} after {name} "
+            f"to {self.__class__.__name__}."
+        )
+
     def prepend(self, connector: Connector):
         """Append a new connector at the beginning of a connector pipeline.
 
@@ -365,6 +377,11 @@ class ConnectorPipeline(abc.ABC):
         """
         self.connectors.insert(0, connector)
 
+        logger.info(
+            f"Added {connector.__class__.__name__} to the beginning of "
+            f"{self.__class__.__name__}."
+        )
+
     def append(self, connector: Connector):
         """Append a new connector at the end of a connector pipeline.
 
@@ -372,6 +389,11 @@ class ConnectorPipeline(abc.ABC):
             connector: a new connector to be appended.
         """
         self.connectors.append(connector)
+
+        logger.info(
+            f"Added {connector.__class__.__name__} to the end of "
+            f"{self.__class__.__name__}."
+        )
 
     def __str__(self, indentation: int = 0):
         return "\n".join(

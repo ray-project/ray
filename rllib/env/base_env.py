@@ -79,6 +79,7 @@ class BaseEnv:
         num_envs: int = 1,
         remote_envs: bool = False,
         remote_env_batch_wait_ms: int = 0,
+        restart_failed_sub_environments: bool = False,
     ) -> "BaseEnv":
         """Converts an RLlib-supported env into a BaseEnv object.
 
@@ -451,6 +452,7 @@ def convert_to_base_env(
             num_envs=num_envs,
             remote_envs=remote_envs,
             remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+            restart_failed_sub_environments=restart_failed_sub_environments,
         )
     # `env` is not a BaseEnv yet -> Need to convert/vectorize.
     else:

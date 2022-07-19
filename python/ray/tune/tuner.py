@@ -46,7 +46,7 @@ class Tuner:
 
         from ray import tune
         from ray.data import from_pandas
-        from ray.air.config import RunConfig
+        from ray.air.config import RunConfig, ScalingConfig
         from ray.train.xgboost import XGBoostTrainer
         from ray.tune.tuner import Tuner
 
@@ -64,12 +64,12 @@ class Tuner:
         )
 
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([2, 4]),
-                "resources_per_worker": {
+            "scaling_config": ScalingConfig(
+                num_workers=tune.grid_search([2, 4]),
+                resources_per_worker={
                     "CPU": tune.grid_search([1, 2]),
                 },
-            },
+            ),
             # You can even grid search various datasets in Tune.
             # "datasets": {
             #     "train": tune.grid_search(
@@ -114,6 +114,7 @@ class Tuner:
                 BaseTrainer,
             ]
         ] = None,
+        *,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
