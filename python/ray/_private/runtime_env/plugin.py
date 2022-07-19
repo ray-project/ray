@@ -35,8 +35,8 @@ class RuntimeEnvPlugin(ABC):
     async def create(
         self,
         uri: Optional[str],
-        runtime_env: "RuntimeEnv",
-        context: RuntimeEnvContext,  # noqa: F821
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        context: RuntimeEnvContext,
         logger: logging.Logger,
     ) -> float:
         """Create and install the runtime environment.
@@ -158,12 +158,7 @@ class PluginCacheManager:
                 f"No URIs for runtime env plugin {self._plugin.name}; "
                 "will always create and never cache for this plugin."
             )
-            try:
-                await self._plugin.create(None, runtime_env, context, logger=logger)
-            except Exception as e:
-                raise ValueError(
-                    f"Failed to create runtime env plugin {self._plugin.name}"
-                )
+            await self._plugin.create(None, runtime_env, context, logger=logger)
 
         for uri in uris:
             if uri not in self._uri_cache:
