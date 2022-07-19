@@ -142,7 +142,16 @@ def get_dataset_and_shards(
     # check paths to be a str or list[str] if not None
     if paths is not None:
         if isinstance(paths, str):
-            paths = [paths]
+            inputs = Path(paths).absolute()
+            if inputs.is_dir():
+                if format == "json":
+                    paths = list(inputs.glob("*.json")) + list(inputs.glob("*.zip"))
+                else:
+                    # we don't support zip files of parquet
+                    paths = list(inputs.glob("*.parquet"))
+                paths = [str(path) for path in paths]
+            else:
+                paths = [paths]
         elif isinstance(paths, list):
             assert isinstance(paths[0], str), "Paths must be a list of path strings."
         else:

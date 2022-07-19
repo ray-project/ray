@@ -1,4 +1,5 @@
 import tempfile
+import shutil
 import os
 from pathlib import Path
 import unittest
@@ -251,6 +252,24 @@ class TestUnzipIfNeeded(unittest.TestCase):
 
             assert all([Path(fpath).exists() for fpath in unzipped_paths])
             os.chdir(cwdir)
+
+    def test_read_from_directory(self):
+        # if this test can run then the files in tmp_dir
+        # were able to be converted into a dataset
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            shutil.copyfile(
+                str(Path(self.absolute_path) / "enormous.zip"),
+                str(Path(tmp_dir) / "enormous.zip"),
+            )
+            config = {
+                "input": "dataset",
+                "input_config": {
+                    "format": "json",
+                    "paths": tmp_dir,
+                },
+            }
+            ds, ds_shards = get_dataset_and_shards(config=config)
+            assert ds == ds_shards[0] and len(ds_shards) == 1, "The files in tmp_dir weren't able to be read into a dataset"
 
 
 if __name__ == "__main__":
