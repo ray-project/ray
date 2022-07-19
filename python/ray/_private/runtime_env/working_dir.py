@@ -134,18 +134,24 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
     async def create(
         self,
-        uri: str,
+        uri: Optional[str],
         runtime_env: dict,
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: logging.Logger = default_logger,
     ) -> int:
+        if uri is None:
+            return 0
         local_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
         return get_directory_size_bytes(local_dir)
 
     def modify_context(
-        self, uris: List[str], runtime_env_dict: Dict, context: RuntimeEnvContext
+        self,
+        uris: List[str],
+        runtime_env_dict: Dict,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
     ):
         if not uris:
             return

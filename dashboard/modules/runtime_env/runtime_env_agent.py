@@ -205,8 +205,12 @@ class RuntimeEnvAgent(
             self._java_jars_plugin,
         ]
         self._uri_caches = {}
-        self._base_plugin_cache_managers = {}
-        for plugin in self._base_plugins:
+        self._plugin_cache_managers: Dict[str, PluginCacheManager] = {}
+        self._runtime_env_plugin_manager = RuntimeEnvPluginManager()
+        self._plugins = (
+            self._base_plugins + self._runtime_env_plugin_manager.get_plugins()
+        )
+        for plugin in self._plugins:
             # Set the max size for the cache.  Defaults to 10 GB.
             cache_size_env_var = f"RAY_RUNTIME_ENV_{plugin.name}_CACHE_SIZE_GB".upper()
             cache_size_bytes = int(
@@ -215,7 +219,7 @@ class RuntimeEnvAgent(
             self._uri_caches[plugin.name] = URICache(
                 plugin.delete_uri, cache_size_bytes
             )
-            self._base_plugin_cache_managers[plugin.name] = PluginCacheManager(
+            self._plugin_cache_managers[plugin.name] = PluginCacheManager(
                 plugin, self._uri_caches[plugin.name]
             )
 
@@ -224,13 +228,12 @@ class RuntimeEnvAgent(
             self.unused_uris_processor,
             self.unused_runtime_env_processor,
         )
-        self._runtime_env_plugin_manager = RuntimeEnvPluginManager()
 
         self._logger = default_logger
 
     def uris_parser(self, runtime_env):
         result = list()
-        for plugin in self._base_plugins:
+        for plugin in self._plugins:
             uris = plugin.get_uris(runtime_env)
             for uri in uris:
                 result.append((uri, UriType(plugin.name)))
@@ -274,7 +277,9 @@ class RuntimeEnvAgent(
         )
 
         async def _setup_runtime_env(
-            runtime_env, serialized_runtime_env, serialized_allocated_resource_instances
+            runtime_env: RuntimeEnv,
+            serialized_runtime_env,
+            serialized_allocated_resource_instances,
         ):
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
@@ -289,32 +294,12 @@ class RuntimeEnvAgent(
                 runtime_env, context, logger=per_job_logger
             )
 
-            for manager in self._base_plugin_cache_managers.values():
+            for manager in self._plugin_cache_managers.values():
                 await manager.create_if_needed(
                     runtime_env, context, logger=per_job_logger
                 )
 
-            def setup_plugins():
-                # Run setup function from all the plugins
-                for name, config in runtime_env.plugins():
-                    per_job_logger.debug(f"Setting up runtime env plugin {name}")
-                    plugin = self._runtime_env_plugin_manager.get_plugin(name)
-                    if plugin is None:
-                        raise RuntimeError(f"runtime env plugin {name} not found.")
-                    # TODO(architkulkarni): implement uri support
-                    plugin.validate(runtime_env)
-                    plugin.create("uri not implemented", config, context)
-                    plugin.modify_context(
-                        "uri not implemented",
-                        config,
-                        context,
-                        per_job_logger,
-                    )
-
-            loop = asyncio.get_event_loop()
-            # Plugins setup method is sync process, running in other threads
-            # is to avoid blocking asyncio loop
-            await loop.run_in_executor(None, setup_plugins)
+            # XXX(architkulkarni): Ensure we get a RuntimeError for bad plugin name
 
             return context
 

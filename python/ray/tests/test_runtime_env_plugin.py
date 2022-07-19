@@ -1,7 +1,8 @@
 import logging
 import os
 import tempfile
-from time import sleep
+import asyncio
+import time
 from typing import List
 
 import pytest
@@ -11,6 +12,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import enable_external_redis, wait_for_condition
 from ray.exceptions import RuntimeEnvSetupError
+from ray.runtime_env.runtime_env import RuntimeEnv
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.MyPlugin"
 MY_PLUGIN_NAME = "MyPlugin"
@@ -21,8 +23,8 @@ class MyPlugin(RuntimeEnvPlugin):
     env_key = "MY_PLUGIN_TEST_ENVIRONMENT_KEY"
 
     @staticmethod
-    def validate(runtime_env_dict: dict) -> str:
-        value = runtime_env_dict[MY_PLUGIN_NAME]
+    def validate(runtime_env: RuntimeEnv) -> str:
+        value = runtime_env[MY_PLUGIN_NAME]
         if value == "fail":
             raise ValueError("not allowed")
         return value
@@ -30,10 +32,13 @@ class MyPlugin(RuntimeEnvPlugin):
     def modify_context(
         self,
         uris: List[str],
-        plugin_config_dict: dict,
+        runtime_env: RuntimeEnv,
         ctx: RuntimeEnvContext,
         logger: logging.Logger,
     ) -> None:
+        # raise ValueError(f"{runtime_env}")
+        plugin_config_dict = runtime_env[MY_PLUGIN_NAME]
+        # raise ValueError(f"ctx: {ctx.serialize()}")
         ctx.env_vars[MyPlugin.env_key] = str(plugin_config_dict["env_value"])
         ctx.command_prefix.append(
             f"echo {plugin_config_dict['tmp_content']} > "
@@ -101,14 +106,20 @@ class MyPluginForHang(RuntimeEnvPlugin):
     def validate(runtime_env_dict: dict) -> str:
         return "True"
 
-    def create(self, uri: str, runtime_env: dict, ctx: RuntimeEnvContext) -> float:
+    async def create(
+        self,
+        uri: str,
+        runtime_env: dict,
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> float:
         global my_plugin_setup_times
         my_plugin_setup_times += 1
 
         # first setup
         if my_plugin_setup_times == 1:
             # sleep forever
-            sleep(3600)
+            await asyncio.sleep(3600)
 
     def modify_context(
         self,
@@ -179,19 +190,27 @@ class DummyPlugin(RuntimeEnvPlugin):
 class HangPlugin(DummyPlugin):
     name = HANG_PLUGIN_NAME
 
-    def create(
-        self, uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+    async def create(
+        self,
+        uri: str,
+        runtime_env: "RuntimeEnv",
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,  # noqa: F821
     ) -> float:
-        sleep(3600)
+        time.sleep(3600)
 
 
 class DiasbleTimeoutPlugin(DummyPlugin):
     name = DISABLE_TIMEOUT_PLUGIN_NAME
 
-    def create(
-        self, uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+    async def create(
+        self,
+        uri: str,
+        runtime_env: "RuntimeEnv",
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,  # noqa: F821
     ) -> float:
-        sleep(10)
+        time.sleep(10)
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 import logging
 import os
 from abc import ABC
-from typing import List
+from typing import List, Type, Optional, Dict
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
@@ -19,28 +19,25 @@ class RuntimeEnvPlugin(ABC):
     name: str = None
 
     @staticmethod
-    def validate(runtime_env_dict: dict) -> str:
-        """Validate user entry and returns a URI uniquely describing resource.
-
-        This method will be called at ``f.options(runtime_env=...)`` or
-        ``ray.init(runtime_env=...)`` time and it should check the runtime env
-        dictionary for any errors. For example, it can raise "TypeError:
-        expected string for "conda" field".
+    def validate(runtime_env_dict: dict) -> None:
+        """Validate user entry for this plugin.
 
         Args:
-            runtime_env_dict(dict): the entire dictionary passed in by user.
-
-        Returns:
-            uri(str): a URI uniquely describing this resource (e.g., a hash of
-              the conda spec).
+            runtime_env_dict: the user-supplied runtime environment dict.
+        Raises:
+            ValueError: if the validation fails.
         """
-        raise NotImplementedError()
+        pass
 
     def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
-        return None
+        return []
 
-    def create(
-        self, uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+    async def create(
+        self,
+        uri: Optional[str],
+        runtime_env: "RuntimeEnv",
+        context: RuntimeEnvContext,  # noqa: F821
+        logger: logging.Logger,
     ) -> float:
         """Create and install the runtime environment.
 
@@ -48,9 +45,10 @@ class RuntimeEnvPlugin(ABC):
         used as a caching mechanism.
 
         Args:
-            uri(str): a URI uniquely describing this resource.
-            runtime_env(RuntimeEnv): the runtime env protobuf.
-            ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
+            uri: A URI uniquely describing this resource.
+            runtime_env: The RuntimeEnv object.
+            context: auxiliary information supplied by Ray.
+            logger: A logger to log messages during the context modification.
 
         Returns:
             the disk space taken up by this plugin installation for this
@@ -72,9 +70,10 @@ class RuntimeEnvPlugin(ABC):
         startup, or add new environment variables.
 
         Args:
-            uris(List[str]): a URIs used by this resource.
-            runtime_env(RuntimeEnv): the runtime env protobuf.
-            ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
+            uris: The URIs used by this resource.
+            runtime_env: The RuntimeEnv object.
+            context: Auxiliary information supplied by Ray.
+            logger: A logger to log messages during the context modification.
         """
         return
 
@@ -82,8 +81,8 @@ class RuntimeEnvPlugin(ABC):
         """Delete the the runtime environment given uri.
 
         Args:
-            uri(str): a URI uniquely describing this resource.
-            ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
+            uri: a URI uniquely describing this resource.
+            ctx: auxiliary information supplied by Ray.
 
         Returns:
             the amount of space reclaimed by the deletion.
@@ -95,7 +94,7 @@ class RuntimeEnvPluginManager:
     """This manager is used to load plugins in runtime env agent."""
 
     def __init__(self):
-        self.plugins = {}
+        self.plugins: Dict[str, RuntimeEnvPlugin] = {}
         plugins_config = os.environ.get(RAY_RUNTIME_ENV_PLUGINS_ENV_VAR)
         if plugins_config:
             self.load_plugins(plugins_config.split(","))
@@ -103,7 +102,7 @@ class RuntimeEnvPluginManager:
     def load_plugins(self, plugin_classes: List[str]):
         """Load runtime env plugins"""
         for plugin_class_path in plugin_classes:
-            plugin_class = import_attr(plugin_class_path)
+            plugin_class: Type[RuntimeEnvPlugin] = import_attr(plugin_class_path)
             if not issubclass(plugin_class, RuntimeEnvPlugin):
                 default_logger.warning(
                     "Invalid runtime env plugin class %s. "
@@ -126,6 +125,9 @@ class RuntimeEnvPluginManager:
                 continue
             self.plugins[plugin_class.name] = plugin_class()
 
+    def get_plugins(self) -> List[RuntimeEnvPlugin]:
+        return list(self.plugins.values())
+
     def get_plugin(self, name: str):
         return self.plugins.get(name)
 
@@ -144,7 +146,25 @@ class PluginCacheManager:
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ):
+        self._plugin.validate(runtime_env)
+
+        if self._plugin.name not in runtime_env:
+            return
+
         uris = self._plugin.get_uris(runtime_env)
+
+        if not uris:
+            logger.debug(
+                f"No URIs for runtime env plugin {self._plugin.name}; "
+                "will always create and never cache for this plugin."
+            )
+            try:
+                await self._plugin.create(None, runtime_env, context, logger=logger)
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to create runtime env plugin {self._plugin.name}"
+                )
+
         for uri in uris:
             if uri not in self._uri_cache:
                 logger.debug(f"Cache miss for URI {uri}.")
@@ -156,4 +176,4 @@ class PluginCacheManager:
                 logger.debug(f"Cache hit for URI {uri}.")
                 self._uri_cache.mark_used(uri, logger=logger)
 
-        self._plugin.modify_context(uris, runtime_env, context)
+        self._plugin.modify_context(uris, runtime_env, context, logger)
