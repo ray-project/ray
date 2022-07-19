@@ -165,7 +165,6 @@ class AlpaTrainer(BaseTrainer):
                     host_ips.append(key.split('node:')[-1])
                     host_info.append(node)
 
-        from icecream import ic 
         ic(host_info, host_ips)
 
         # num_devices_per_host = worker_group.num_gpus_per_worker
