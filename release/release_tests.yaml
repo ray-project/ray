@@ -3849,6 +3849,30 @@
     type: sdk_command
     file_manager: sdk
 
+- name: push_based_pipelined_ingestion_1500_gb
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+  legacy:
+    test_name: pipelined_ingestion_1500_gb
+    test_suite: dataset_test
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: pipelined_ingestion_app.yaml
+    cluster_compute: pipelined_ingestion_compute.yaml
+
+  run:
+    timeout: 9600
+    script:  RAY_DATASET_PUSH_BASED_SHUFFLE=1 python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
+      --debug
+
+    wait_for_nodes:
+      num_nodes: 21
+
+    type: sdk_command
+    file_manager: sdk
+
 - name: datasets_ingest_train_infer
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
