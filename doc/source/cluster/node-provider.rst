@@ -11,6 +11,7 @@ NodeProvider Development Guide
 This section provides development guide on how to implement the NodeProvider interface to enable Ray cluster launcher and autoscaler on a customize platform. 
 
 The :ref:`APIs <APIs>` are classified into 3 main catagories:
+
 1. Cluster config
 .. parsed-literal::
 
