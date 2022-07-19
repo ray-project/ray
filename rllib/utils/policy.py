@@ -12,7 +12,6 @@ from ray.rllib.utils.typing import (
     AgentConnectorsOutput,
     PartialAlgorithmConfigDict,
     PolicyID,
-    PolicyOutputType,
     PolicyState,
     TensorStructType,
     TensorType,
@@ -148,23 +147,29 @@ def load_policies_from_checkpoint(
         )
         if id in policy_states:
             policy.set_state(policy_states[id])
+        if policy.agent_connectors:
+            policy.agent_connectors.is_training(False)
         policies[id] = policy
 
     return policies
 
 
 @PublicAPI(stability="alpha")
-def policy_inference(
+def local_policy_inference(
     policy: "Policy",
     env_id: str,
     agent_id: str,
     obs: TensorStructType,
-) -> List[PolicyOutputType]:
+) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
     policy_inference manages policy and agent/action connectors,
     so the user does not have to care about RNN state buffering or
     extra fetch dictionaries.
+    Note that connectors are intentionally run separately from
+    compute_actions_from_input_dict(), so we can have the option
+    of running per-user connectors on the client side in a
+    server-client deployment.
 
     Args:
         policy: Policy.
@@ -177,9 +182,8 @@ def policy_inference(
     """
     assert (
         policy.agent_connectors
-    ), "policy_inference only works with connected enabled policies."
+    ), "policy_inference only works with connector enabled policies."
 
-    policy.agent_connectors.is_training(False)
     # TODO(jungong) : support multiple env, multiple agent inference.
     input_dict = {SampleBatch.NEXT_OBS: obs}
     acd_list: List[AgentConnectorDataType] = [
@@ -189,10 +193,21 @@ def policy_inference(
     outputs = []
     for ac in ac_outputs:
         policy_output = policy.compute_actions_from_input_dict(ac.data.for_action)
+
         if policy.action_connectors:
             acd = ActionConnectorDataType(env_id, agent_id, policy_output)
             acd = policy.action_connectors(acd)
-        outputs.append(acd.output)
+            actions = acd.output
+        else:
+            actions = policy_output[0]
+
+        outputs.append(actions)
+
+        # Notify agent connectors with this new policy output.
+        # Necessary for state buffering agent connectors, for example.
+        policy.agent_connectors.on_policy_output(
+            ActionConnectorDataType(env_id, agent_id, policy_output)
+        )
     return outputs
 
 

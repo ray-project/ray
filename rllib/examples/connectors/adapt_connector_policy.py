@@ -9,7 +9,7 @@ from typing import Dict
 
 from ray.rllib.utils.policy import (
     load_policies_from_checkpoint,
-    policy_inference,
+    local_policy_inference,
 )
 from ray.rllib.connectors.connector import ConnectorContext
 from ray.rllib.connectors.action.lambdas import register_lambda_action_connector
@@ -105,8 +105,8 @@ def run():
     while not done:
         step += 1
 
-        # Use policy_inference() to easily run poicy with observations.
-        policy_outputs = policy_inference(policy, "env_1", "agent_1", obs)
+        # Use local_policy_inference() to easily run poicy with observations.
+        policy_outputs = local_policy_inference(policy, "env_1", "agent_1", obs)
         assert len(policy_outputs) == 1
         actions, _, _ = policy_outputs[0]
         print(f"step {step}", obs, actions)

@@ -7,7 +7,7 @@ import gym
 
 from ray.rllib.utils.policy import (
     load_policies_from_checkpoint,
-    policy_inference,
+    local_policy_inference,
 )
 
 
@@ -40,9 +40,9 @@ def run():
     while not done:
         step += 1
 
-        # Use policy_inference() to run inference, so we do not have to
+        # Use local_policy_inference() to run inference, so we do not have to
         # provide policy states or extra fetch dictionaries.
-        policy_outputs = policy_inference(policy, "env_1", "agent_1", obs)
+        policy_outputs = local_policy_inference(policy, "env_1", "agent_1", obs)
         assert len(policy_outputs) == 1
         action, _, _ = policy_outputs[0]
         print(f"step {step}", obs, action)

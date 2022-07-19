@@ -400,7 +400,10 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_config = policy_config or {}
         if (
             tf1
-            and policy_config.get("framework") in ["tf2", "tfe"]
+            and (
+                policy_config.get("framework") in ["tf2", "tfe"]
+                or policy_config.get("enable_tf1_exec_eagerly")
+            )
             # This eager check is necessary for certain all-framework tests
             # that use tf's eager_mode() context generator.
             and not tf1.executing_eagerly()
@@ -451,13 +454,8 @@ class RolloutWorker(ParallelIteratorWorker):
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
-        self.preprocessing_enabled: bool = (
-            False
-            if (
-                policy_config.get("_disable_preprocessor_api")
-                or policy_config.get("enable_connectors")
-            )
-            else True
+        self.preprocessing_enabled: bool = not policy_config.get(
+            "_disable_preprocessor_api"
         )
         self.observation_filter = observation_filter
         self.last_batch: Optional[SampleBatchType] = None
@@ -1760,17 +1758,27 @@ class RolloutWorker(ParallelIteratorWorker):
             merged_conf["num_workers"] = self.num_workers
             merged_conf["worker_index"] = self.worker_index
 
+            connectors_enabled = policy_config.get("enable_connectors", False)
+
             # Preprocessors.
             obs_space = policy_spec.observation_space
+            # Initialize preprocessor for this policy to None.
+            self.preprocessors[name] = None
             if self.preprocessing_enabled:
+                # Policies should deal with preprocessed (automatically flattened)
+                # observations if preprocessing is enabled.
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model")
                 )
-                self.preprocessors[name] = preprocessor
+                # Original observation space should be accessible at
+                # obs_space.original_space after this step.
                 if preprocessor is not None:
                     obs_space = preprocessor.observation_space
-            else:
-                self.preprocessors[name] = None
+
+                if not connectors_enabled:
+                    # If connectors are not enabled, rollout worker will handle
+                    # the running of these preprocessors.
+                    self.preprocessors[name] = preprocessor
 
             # Create the actual policy object.
             self.policy_map.create_policy(
@@ -1782,11 +1790,13 @@ class RolloutWorker(ParallelIteratorWorker):
                 merged_conf,
             )
 
-            if (
-                policy_config.get("enable_connectors", False)
-                and name in self.policy_map
-            ):
+            if connectors_enabled and name in self.policy_map:
                 create_connectors_for_policy(self.policy_map[name], policy_config)
+
+            if name in self.policy_map:
+                self.callbacks.on_create_policy(
+                    policy_id=name, policy=self.policy_map[name]
+                )
 
         if self.worker_index == 0:
             logger.info(f"Built policy map: {self.policy_map}")

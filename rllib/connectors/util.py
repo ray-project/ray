@@ -36,9 +36,11 @@ def get_agent_connectors_from_config(
             ClipRewardAgentConnector(ctx, limit=abs(config["clip_rewards"]))
         )
 
+    if not config["_disable_preprocessor_api"]:
+        connectors.append(ObsPreprocessorConnector(ctx))
+
     connectors.extend(
         [
-            ObsPreprocessorConnector(ctx),
             StateBufferConnector(ctx),
             ViewRequirementAgentConnector(ctx),
             FlattenDataAgentConnector(ctx),  # Creates batch dimension.

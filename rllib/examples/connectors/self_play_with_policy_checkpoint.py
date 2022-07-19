@@ -112,6 +112,10 @@ if __name__ == "__main__":
         },
         "num_workers": 1,
         "framework": "torch",
+        # We will be restoring a TF2 policy.
+        # So tell the RolloutWorkers to enable TF eager exec as well, even if
+        # framework is set to torch.
+        "enable_tf1_exec_eagerly": True,
     }
 
     stop = {
