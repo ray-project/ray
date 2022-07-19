@@ -52,10 +52,10 @@ def ray_start_1_cpu_1_gpu():
 
 
 @pytest.fixture
-def ray_2_node_4_gpu():
+def ray_2_node_2_gpu():
     cluster = Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=8, num_gpus=4)
+        cluster.add_node(num_cpus=4, num_gpus=2)
 
     ray.init(address=cluster.address)
 
@@ -94,14 +94,14 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
 
 # TODO: Refactor as a backend test.
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
-def test_torch_get_device_dist(ray_2_node_4_gpu, num_gpus_per_worker):
+def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
         return train.torch.get_device().index
 
     trainer = Trainer(
         TorchConfig(backend="gloo"),
-        num_workers=int(8 / num_gpus_per_worker),
+        num_workers=int(4 / num_gpus_per_worker),
         use_gpu=True,
         resources_per_worker={"GPU": num_gpus_per_worker},
     )
@@ -111,14 +111,13 @@ def test_torch_get_device_dist(ray_2_node_4_gpu, num_gpus_per_worker):
 
     count = Counter(devices)
     if num_gpus_per_worker == 0.5:
-        for i in range(4):
+        for i in range(2):
             assert count[i] == 4
     elif num_gpus_per_worker == 1:
-        for i in range(4):
+        for i in range(2):
             assert count[i] == 2
     elif num_gpus_per_worker == 2:
-        for i in range(2):
-            assert count[2 * i] == 2
+        assert count[0] == 2
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
