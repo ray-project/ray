@@ -36,9 +36,7 @@ class MyPlugin(RuntimeEnvPlugin):
         ctx: RuntimeEnvContext,
         logger: logging.Logger,
     ) -> None:
-        # raise ValueError(f"{runtime_env}")
         plugin_config_dict = runtime_env[MY_PLUGIN_NAME]
-        # raise ValueError(f"ctx: {ctx.serialize()}")
         ctx.env_vars[MyPlugin.env_key] = str(plugin_config_dict["env_value"])
         ctx.command_prefix.append(
             f"echo {plugin_config_dict['tmp_content']} > "
