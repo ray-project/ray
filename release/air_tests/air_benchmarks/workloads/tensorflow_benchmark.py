@@ -1,8 +1,6 @@
 import json
 import os
-import socket
 import time
-from contextlib import closing
 
 import click
 import numpy as np
@@ -152,12 +150,12 @@ def train_tf_vanilla(
 ) -> Tuple[float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_tf_vanilla_worker() on the worker nodes.
-    import ray
     from benchmark_util import (
         upload_file_to_all_nodes,
         create_actors_with_resources,
         run_commands_on_actors,
         run_fn_on_actors,
+        get_ip_port,
     )
 
     path = os.path.abspath(__file__)
@@ -172,14 +170,6 @@ def train_tf_vanilla(
             "GPU": int(use_gpu),
         },
     )
-
-    def get_ip_port():
-        ip = ray.util.get_node_ip_address()
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-            s.bind(("localhost", 0))
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            port = s.getsockname()[1]
-        return ip, port
 
     ips_ports = run_fn_on_actors(actors=actors, fn=get_ip_port)
     ip_port_list = [f"{ip}:{port}" for ip, port in ips_ports]

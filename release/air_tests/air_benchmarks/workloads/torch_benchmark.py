@@ -1,8 +1,6 @@
 import json
 import os
-import socket
 import time
-from contextlib import closing
 from typing import Dict, Tuple
 
 import click
@@ -129,6 +127,13 @@ def train_func(use_ray: bool, config: Dict):
         vanilla_device = torch.device(f"cuda:{gpu_id}")
         torch.cuda.set_device(vanilla_device)
 
+        print(
+            "Setting GPU ID to",
+            gpu_id,
+            "with visible devices",
+            os.environ.get("CUDA_VISIBLE_DEVICES"),
+        )
+
         def collate_fn(x):
             return tuple(x_.to(vanilla_device) for x_ in default_collate(x))
 
@@ -242,6 +247,7 @@ def train_torch_vanilla_worker(
     master_addr: str,
     master_port: int,
     use_gpu: bool = False,
+    gpu_id: int = 0,
 ):
     # This function is kicked off by the main() function and runs the vanilla
     # training script on a single worker.
@@ -255,6 +261,7 @@ def train_torch_vanilla_worker(
     )
 
     config["use_gpu"] = use_gpu
+    config["gpu_id"] = gpu_id
     train_func(use_ray=False, config=config)
 
     distributed.destroy_process_group()
@@ -270,12 +277,15 @@ def train_torch_vanilla(
 ) -> Tuple[float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
-    import ray
     from benchmark_util import (
         upload_file_to_all_nodes,
         create_actors_with_resources,
         run_commands_on_actors,
         run_fn_on_actors,
+        get_ip_port,
+        get_gpu_ids,
+        map_ips_to_gpus,
+        set_cuda_visible_devices,
     )
 
     path = os.path.abspath(__file__)
@@ -291,15 +301,30 @@ def train_torch_vanilla(
         },
     )
 
-    def get_ip_port():
-        ip = ray.util.get_node_ip_address()
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-            s.bind(("localhost", 0))
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            port = s.getsockname()[1]
-        return ip, port
+    # Get IPs and ports for all actors
+    ip_ports = run_fn_on_actors(actors=actors, fn=get_ip_port)
 
-    [(master_addr, master_port)] = run_fn_on_actors(actors=[actors[0]], fn=get_ip_port)
+    # Rank 0 is the master addr/port
+    master_addr, master_port = ip_ports[0]
+
+    if use_gpu:
+        # Extract IPs
+        actor_ips = [ipp[0] for ipp in ip_ports]
+
+        # Get allocated GPU IDs for all actors
+        gpu_ids = run_fn_on_actors(actors=actors, fn=get_gpu_ids)
+
+        # Build a map of IP to all allocated GPUs on that machine
+        ip_to_gpu_map = map_ips_to_gpus(ips=actor_ips, gpus=gpu_ids)
+
+        # Set the environment variables on the workers
+        set_cuda_visible_devices(
+            actors=actors, actor_ips=actor_ips, ip_to_gpus=ip_to_gpu_map
+        )
+
+        use_gpu_ids = [gi[0] for gi in gpu_ids]
+    else:
+        use_gpu_ids = [0] * num_workers
 
     cmds = [
         [
@@ -318,6 +343,7 @@ def train_torch_vanilla(
             str(master_port),
         ]
         + (["--use-gpu"] if use_gpu else [])
+        + (["--gpu-id", str(use_gpu_ids[rank])] if use_gpu else [])
         for rank in range(num_workers)
     ]
 
@@ -477,6 +503,7 @@ def run(
 @click.option("--master-addr", type=str, default="")
 @click.option("--master-port", type=int, default=0)
 @click.option("--use-gpu", is_flag=True, default=False)
+@click.option("--gpu-id", type=int, default=0)
 def worker(
     num_epochs: int = 4,
     num_workers: int = 4,
@@ -484,6 +511,7 @@ def worker(
     master_addr: str = "",
     master_port: int = 0,
     use_gpu: bool = False,
+    gpu_id: int = 0,
 ):
     config = CONFIG.copy()
     config["epochs"] = num_epochs
@@ -496,6 +524,7 @@ def worker(
         master_addr=master_addr,
         master_port=master_port,
         use_gpu=use_gpu,
+        gpu_id=gpu_id,
     )
 
 
