@@ -83,7 +83,7 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
                 "batch_size": tune.choice([32, 64, 128]),
-                "epochs": 1,
+                "epochs": 2,
             }
         },
         tune_config=TuneConfig(
@@ -112,7 +112,7 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
                 "batch_size": tune.choice([32, 64, 128]),
-                "epochs": 1,
+                "epochs": 2,
             }
         },
         tune_config=TuneConfig(
