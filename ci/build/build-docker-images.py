@@ -49,6 +49,7 @@ BASE_IMAGES = {
 }
 
 CUDA_FULL = {
+    "cu116": "CUDA 11.6",
     "cu113": "CUDA 11.3",
     "cu112": "CUDA 11.2",
     "cu111": "CUDA 11.1",
