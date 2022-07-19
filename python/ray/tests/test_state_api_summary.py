@@ -125,7 +125,7 @@ async def test_api_manager_summary_tasks(state_api_manager):
 
     assert data.total_tasks == 4
     assert data.total_actor_tasks == 1
-    assert data.total_actor_scheduling_tasks == 0
+    assert data.total_actor_scheduled == 0
 
     """
     Test if it can be correctly modified to a dictionary.

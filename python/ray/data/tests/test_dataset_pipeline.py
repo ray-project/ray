@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Tuple
 
 import pytest
 import pandas as pd
@@ -7,7 +8,9 @@ import numpy as np
 
 import ray
 from ray.data import dataset
+from ray.data._internal.arrow_block import ArrowRow
 from ray.data.context import DatasetContext, WARN_PREFIX, OK_PREFIX
+from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 
 from ray.tests.conftest import *  # noqa
@@ -290,10 +293,22 @@ def test_basic_pipeline(ray_start_regular_shared):
     pipe = ds.window(blocks_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
     assert pipe.count() == 10
+    pipe = ds.window(blocks_per_window=1)
+    pipe.show()
 
     pipe = ds.window(blocks_per_window=1).map(lambda x: x).map(lambda x: x)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=4)"
     assert pipe.take() == list(range(10))
+
+    pipe = (
+        ds.window(blocks_per_window=1).map(lambda x: x).flat_map(lambda x: [x, x + 1])
+    )
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=4)"
+    assert pipe.count() == 20
+
+    pipe = ds.window(blocks_per_window=1).filter(lambda x: x % 2 == 0)
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=3)"
+    assert pipe.count() == 5
 
     pipe = ds.window(blocks_per_window=999)
     assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=2)"
@@ -304,6 +319,8 @@ def test_basic_pipeline(ray_start_regular_shared):
     assert pipe.count() == 100
     pipe = ds.repeat(10)
     assert pipe.sum() == 450
+    pipe = ds.repeat(10)
+    assert len(pipe.take_all()) == 100
 
 
 def test_window(ray_start_regular_shared):
@@ -501,15 +518,40 @@ def test_split_at_indices(ray_start_regular_shared):
     )
 
 
-def test_parquet_write(ray_start_regular_shared, tmp_path):
+def _prepare_dataset_to_write(tmp_dir: str) -> Tuple[Dataset[ArrowRow], pd.DataFrame]:
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
     ds = ds.window(blocks_per_window=1)
-    path = os.path.join(tmp_path, "test_parquet_dir")
-    os.mkdir(path)
+    os.mkdir(tmp_dir)
     ds._set_uuid("data")
+    return (ds, df)
+
+
+def test_json_write(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_json_dir")
+    ds, df = _prepare_dataset_to_write(path)
+    ds.write_json(path)
+    path1 = os.path.join(path, "data_000000_000000.json")
+    path2 = os.path.join(path, "data_000001_000000.json")
+    dfds = pd.concat([pd.read_json(path1, lines=True), pd.read_json(path2, lines=True)])
+    assert df.equals(dfds)
+
+
+def test_csv_write(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_csv_dir")
+    ds, df = _prepare_dataset_to_write(path)
+    ds.write_csv(path)
+    path1 = os.path.join(path, "data_000000_000000.csv")
+    path2 = os.path.join(path, "data_000001_000000.csv")
+    dfds = pd.concat([pd.read_csv(path1), pd.read_csv(path2)])
+    assert df.equals(dfds)
+
+
+def test_parquet_write(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_parquet_dir")
+    ds, df = _prepare_dataset_to_write(path)
     ds.write_parquet(path)
     path1 = os.path.join(path, "data_000000_000000.parquet")
     path2 = os.path.join(path, "data_000001_000000.parquet")
@@ -554,6 +596,29 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
 
     pipe = ds.repeat(3)
     assert 9 == pipe.sum()
+
+
+def test_sort_each_window(ray_start_regular_shared):
+    pipe = (
+        ray.data.range(12, parallelism=12)
+        .window(blocks_per_window=3)
+        .sort_each_window()
+    )
+    assert pipe.take() == list(range(12))
+
+    pipe = (
+        ray.data.range(12, parallelism=12)
+        .window(blocks_per_window=3)
+        .sort_each_window(descending=True)
+    )
+    assert pipe.take() == [2, 1, 0, 5, 4, 3, 8, 7, 6, 11, 10, 9]
+
+    pipe = (
+        ray.data.range(12, parallelism=12)
+        .window(blocks_per_window=3)
+        .sort_each_window(key=lambda x: -x, descending=True)
+    )
+    assert pipe.take() == list(range(12))
 
 
 def test_randomize_block_order_each_window(ray_start_regular_shared):
@@ -618,11 +683,12 @@ def test_preserve_whether_base_datasets_can_be_cleared(ray_start_regular_shared)
     assert not p2._base_datasets_can_be_cleared
 
 
-def test_drop_columns(ray_start_regular_shared):
+def test_add_and_drop_columns(ray_start_regular_shared):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds = ray.data.from_pandas(df)
     pipe = ds.repeat()
-    assert pipe.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
+    pipe = pipe.add_column("col4", lambda _: 1)
+    assert pipe.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3, "col4": 1}]
 
 
 if __name__ == "__main__":
