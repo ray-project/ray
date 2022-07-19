@@ -592,8 +592,13 @@ class ApexDQN(DQN):
                 # the replay buffer returns none if it has not been filled to
                 # the minimum threshold yet.
                 if item:
+                    # Setting block = True prevents the learner thread,
+                    # the main thread, and the gpu loader threads from
+                    # thrashing when there are more samples than the
+                    # learner can reasonable process.
+                    # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
                     self.learner_thread.inqueue.put(
-                        self.replay_sample_batches[0], timeout=0.001
+                        self.replay_sample_batches[0], block=True
                     )
                     self.replay_sample_batches.pop(0)
             except queue.Full:
