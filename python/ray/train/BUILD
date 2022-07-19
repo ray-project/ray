@@ -154,6 +154,14 @@ py_test(
 )
 
 py_test(
+    name = "test_function_trainer",
+    size = "medium",
+    srcs = ["tests/test_function_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_gpu",
     size = "large",
     srcs = ["tests/test_gpu.py"],

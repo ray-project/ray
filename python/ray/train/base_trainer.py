@@ -337,12 +337,8 @@ class BaseTrainer(abc.ABC):
             raise TrainingFailedError from e
         return result
 
-    def as_trainable(self) -> Type[Trainable]:
-        """Convert self to a ``tune.Trainable`` class."""
-
-        base_config = self._param_dict
+    def _get_base_trainable(self) -> Type[Trainable]:
         trainer_cls = self.__class__
-        scaling_config = self.scaling_config
 
         def train_func(config, checkpoint_dir=None):
             # config already contains merged values.
@@ -363,7 +359,16 @@ class BaseTrainer(abc.ABC):
         # stdout messages and the results directory.
         train_func.__name__ = trainer_cls.__name__
 
-        trainable_cls = wrap_function(train_func, warn=False)
+        return wrap_function(train_func, warn=False)
+
+    def as_trainable(self) -> Type[Trainable]:
+        """Convert self to a ``tune.Trainable`` class."""
+
+        base_config = self._param_dict
+        trainer_cls = self.__class__
+        scaling_config = self.scaling_config
+
+        trainable_cls = self._get_base_trainable()
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""

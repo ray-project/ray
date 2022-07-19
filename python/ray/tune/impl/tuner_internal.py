@@ -166,6 +166,7 @@ class TunerInternal:
     def _get_tune_run_arguments(self) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
         return dict(
+            local_dir=self._run_config.local_dir,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
