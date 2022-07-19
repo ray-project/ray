@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 import ray
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
+from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
@@ -40,13 +41,6 @@ def ray_start_1_cpu_1_gpu():
     address_info = ray.init(num_cpus=1, num_gpus=1)
     yield address_info
     ray.shutdown()
-
-
-class LinearDatasetDict(LinearDataset):
-    """Modifies the LinearDataset to return a Dict instead of a Tuple."""
-
-    def __getitem__(self, index):
-        return {"x": self.x[index, None], "y": self.y[index, None]}
 
 
 # TODO: Refactor as a backend test.
@@ -99,9 +93,8 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
 
 
 # TODO: Refactor as a backend test.
-@pytest.mark.parametrize("dataset", (LinearDataset, LinearDatasetDict))
-def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
-    data_loader = DataLoader(dataset(a=1, b=2, size=10))
+def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
+    data_loader = DataLoader(LinearDataset(a=1, b=2, size=10))
 
     def train_fn():
         wrapped_data_loader = train.torch.prepare_data_loader(data_loader)
@@ -110,20 +103,12 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
         assert isinstance(wrapped_data_loader.sampler, DistributedSampler)
 
         # Make sure you can properly iterate through the DataLoader.
-        # Case where the dataset returns a tuple or list from __getitem__.
-        if isinstance(wrapped_data_loader.dataset[0], (tuple, list)):
-            for batch in wrapped_data_loader:
-                x = batch[0]
-                y = batch[1]
+        for batch in wrapped_data_loader:
+            X = batch[0]
+            y = batch[1]
 
-                # Make sure the data is on the correct device.
-                assert x.is_cuda and y.is_cuda
-        # Case where the dataset returns a dict from __getitem__.
-        elif isinstance(wrapped_data_loader.dataset[0], dict):
-            for batch in wrapped_data_loader:
-                for x, y in zip(batch["x"], batch["y"]):
-                    # Make sure the data is on the correct device.
-                    assert x.is_cuda and y.is_cuda
+            # Make sure the data is on the correct device.
+            assert X.is_cuda and y.is_cuda
 
     trainer = Trainer("torch", num_workers=2, use_gpu=True)
     trainer.start()
@@ -318,7 +303,7 @@ def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
 
@@ -335,7 +320,7 @@ def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = TorchTrainer(
         fashion_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
 
@@ -350,7 +335,7 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = HorovodTrainer(
         horovod_torch_train_func,
         train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
     result = results.metrics

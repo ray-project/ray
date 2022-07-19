@@ -121,6 +121,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             view = view.copy(deep=True)
         return view
 
+    def take(self, indices: List[int]) -> "pandas.DataFrame":
+        return self._table.take(indices)
+
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         return self._table.sample(frac=1, random_state=random_seed)
 

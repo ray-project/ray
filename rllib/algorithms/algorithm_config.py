@@ -174,6 +174,7 @@ class AlgorithmConfig:
         self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
+        self.evaluation_sample_timeout_s = 180.0
         self.evaluation_parallel_to_training = False
         self.evaluation_config = {}
         self.off_policy_estimation_methods = {}
@@ -187,7 +188,7 @@ class AlgorithmConfig:
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
-        self.metrics_episode_collection_timeout_s = 180
+        self.metrics_episode_collection_timeout_s = 60.0
         self.metrics_num_episodes_for_smoothing = 100
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
@@ -803,6 +804,7 @@ class AlgorithmConfig:
         evaluation_interval: Optional[int] = None,
         evaluation_duration: Optional[int] = None,
         evaluation_duration_unit: Optional[str] = None,
+        evaluation_sample_timeout_s: Optional[float] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
@@ -832,6 +834,11 @@ class AlgorithmConfig:
                 - For `evaluation_parallel_to_training=False`: Error.
             evaluation_duration_unit: The unit, with which to count the evaluation
                 duration. Either "episodes" (default) or "timesteps".
+            evaluation_sample_timeout_s: The timeout (in seconds) for the ray.get call
+                to the remote evaluation worker(s) `sample()` method. After this time,
+                the user will receive a warning and instructions on how to fix the
+                issue. This could be either to make sure the episode ends, increasing
+                the timeout, or switching to `evaluation_duration_unit=timesteps`.
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
                 a Algorithm.train() call using threading. Default=False.
                 E.g. evaluation_interval=2 -> For every other training iteration,
@@ -880,6 +887,8 @@ class AlgorithmConfig:
             self.evaluation_duration = evaluation_duration
         if evaluation_duration_unit is not None:
             self.evaluation_duration_unit = evaluation_duration_unit
+        if evaluation_sample_timeout_s is not None:
+            self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:
@@ -889,9 +898,7 @@ class AlgorithmConfig:
             else:
                 self.evaluation_config = evaluation_config
         if off_policy_estimation_methods is not None:
-            self.evaluation_config[
-                "off_policy_estimation_methods"
-            ] = off_policy_estimation_methods
+            self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not None:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
@@ -908,7 +915,6 @@ class AlgorithmConfig:
         input_config=None,
         actions_in_input_normalized=None,
         input_evaluation=None,
-        off_policy_estimation_methods=None,
         postprocess_inputs=None,
         shuffle_buffer_size=None,
         output=None,
@@ -982,7 +988,7 @@ class AlgorithmConfig:
             self.input_config = input_config
         if actions_in_input_normalized is not None:
             self.actions_in_input_normalized = actions_in_input_normalized
-        if input_evaluation is not None or off_policy_estimation_methods is not None:
+        if input_evaluation is not None:
             deprecation_warning(
                 old="offline_data(input_evaluation={})".format(input_evaluation),
                 new="evaluation(off_policy_estimation_methods={})".format(
@@ -1080,7 +1086,7 @@ class AlgorithmConfig:
         self,
         *,
         keep_per_episode_custom_metrics: Optional[bool] = None,
-        metrics_episode_collection_timeout_s: Optional[int] = None,
+        metrics_episode_collection_timeout_s: Optional[float] = None,
         metrics_num_episodes_for_smoothing: Optional[int] = None,
         min_time_s_per_iteration: Optional[int] = None,
         min_train_timesteps_per_iteration: Optional[int] = None,
