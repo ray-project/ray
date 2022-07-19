@@ -653,13 +653,31 @@ def _env_runner(
                     episode=episode,
                     tf_sess=p.get_session(),
                 )
-        callbacks.on_episode_start(
-            worker=worker,
-            base_env=base_env,
-            policies=worker.policy_map,
-            episode=episode,
-            env_index=env_id,
-        )
+        if worker.policy_config["in_evaluation"]:
+            if getattr(callbacks, "on_evaluate_start") is not None:
+                callbacks.on_evaluate_start(
+                    worker=worker,
+                    base_env=base_env,
+                    policies=worker.policy_map,
+                    episode=episode,
+                    env_index=env_id,
+                )
+            else:
+                callbacks.on_episode_start(
+                    worker=worker,
+                    base_env=base_env,
+                    policies=worker.policy_map,
+                    episode=episode,
+                    env_index=env_id,
+                )
+        else:
+            callbacks.on_episode_start(
+                worker=worker,
+                base_env=base_env,
+                policies=worker.policy_map,
+                episode=episode,
+                env_index=env_id,
+            )
         return episode
 
     active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(new_episode)
@@ -1015,13 +1033,31 @@ def _process_observations(
         # (no step taken yet, just a single starting observation logged).
         # We need to skip this callback in this case.
         if not episode.is_faulty and episode.length > 0:
-            callbacks.on_episode_step(
-                worker=worker,
-                base_env=base_env,
-                policies=worker.policy_map,
-                episode=episode,
-                env_index=env_id,
-            )
+            if worker.policy_config["in_evaluation"]:
+                if getattr(callbacks, "on_evaluate_step") is not None:
+                    callbacks.on_evaluate_step(
+                        worker=worker,
+                        base_env=base_env,
+                        policies=worker.policy_map,
+                        episode=episode,
+                        env_index=env_id,
+                    )
+                else:
+                    callbacks.on_episode_step(
+                        worker=worker,
+                        base_env=base_env,
+                        policies=worker.policy_map,
+                        episode=episode,
+                        env_index=env_id,
+                    )
+            else:
+                callbacks.on_episode_step(
+                    worker=worker,
+                    base_env=base_env,
+                    policies=worker.policy_map,
+                    episode=episode,
+                    env_index=env_id,
+                )
 
         # Episode is done for all agents (dones[__all__] == True)
         # or we hit the horizon.
@@ -1064,13 +1100,32 @@ def _process_observations(
                             tf_sess=p.get_session(),
                         )
                 # Call custom on_episode_end callback.
-                callbacks.on_episode_end(
-                    worker=worker,
-                    base_env=base_env,
-                    policies=worker.policy_map,
-                    episode=episode,
-                    env_index=env_id,
-                )
+                if worker.policy_config["in_evaluation"]:
+                    if getattr(callbacks, "on_evaluate_end") is not None:
+                        callbacks.on_evaluate_end(
+                            worker=worker,
+                            base_env=base_env,
+                            policies=worker.policy_map,
+                            episode=episode,
+                            env_index=env_id,
+                        )
+                    else:
+                        callbacks.on_episode_end(
+                            worker=worker,
+                            base_env=base_env,
+                            policies=worker.policy_map,
+                            episode=episode,
+                            env_index=env_id,
+                        )
+                else:
+                    callbacks.on_episode_end(
+                        worker=worker,
+                        base_env=base_env,
+                        policies=worker.policy_map,
+                        episode=episode,
+                        env_index=env_id,
+                    )
+
             # Horizon hit and we have a soft horizon (no hard env reset).
             if not episode.is_faulty and hit_horizon and soft_horizon:
                 episode.soft_reset()
