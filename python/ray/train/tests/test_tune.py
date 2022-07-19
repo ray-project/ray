@@ -8,7 +8,7 @@ import ray.train as train
 from ray import tune
 from ray.tune import TuneError
 from ray.air import Checkpoint, session
-from ray.air.config import FailureConfig, RunConfig
+from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -75,7 +75,7 @@ class TestBackend(Backend):
 def torch_fashion_mnist(num_workers, use_gpu, num_samples):
     trainer = TorchTrainer(
         fashion_mnist_train_func,
-        scaling_config=dict(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     tuner = Tuner(
         trainer,
@@ -83,7 +83,7 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
                 "batch_size": tune.choice([32, 64, 128]),
-                "epochs": 1,
+                "epochs": 2,
             }
         },
         tune_config=TuneConfig(
@@ -104,7 +104,7 @@ def test_tune_torch_fashion_mnist(ray_start_8_cpus):
 def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
-        scaling_config=dict(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     tuner = Tuner(
         trainer,
@@ -112,7 +112,7 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
                 "batch_size": tune.choice([32, 64, 128]),
-                "epochs": 1,
+                "epochs": 2,
             }
         },
         tune_config=TuneConfig(
@@ -135,7 +135,9 @@ def test_tune_error(ray_start_4_cpus):
         raise RuntimeError("Error in training function!")
 
     trainer = DataParallelTrainer(
-        train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer,
@@ -155,7 +157,9 @@ def test_tune_checkpoint(ray_start_4_cpus):
         )
 
     trainer = DataParallelTrainer(
-        train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer,
@@ -184,7 +188,9 @@ def test_reuse_checkpoint(ray_start_4_cpus):
             )
 
     trainer = DataParallelTrainer(
-        train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer,
@@ -222,7 +228,9 @@ def test_retry(ray_start_4_cpus):
             )
 
     trainer = DataParallelTrainer(
-        train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
     )
     tuner = Tuner(
         trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))

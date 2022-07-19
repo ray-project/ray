@@ -6,10 +6,11 @@ import pytest
 import ray
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.examples.tf.tensorflow_linear_dataset_example import get_dataset
 from ray.air.examples.tf.tensorflow_linear_dataset_example import (
+    get_dataset,
     train_func as tensorflow_linear_train_func,
 )
+from ray.air.config import ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.tensorflow import TensorflowPredictor, TensorflowTrainer
 
@@ -46,7 +47,7 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
 
     num_workers = num_workers
     epochs = 3
-    scaling_config = {"num_workers": num_workers}
+    scaling_config = ScalingConfig(num_workers=num_workers)
     config = {
         "lr": 1e-3,
         "batch_size": 32,
@@ -66,7 +67,7 @@ def test_tensorflow_e2e(ray_start_4_cpus):
         model = build_model().get_weights()
         session.report({}, checkpoint=Checkpoint.from_dict({MODEL_KEY: model}))
 
-    scaling_config = {"num_workers": 2}
+    scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func, scaling_config=scaling_config
     )
@@ -103,7 +104,7 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
             metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model")
         )
 
-    scaling_config = {"num_workers": 2}
+    scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func, scaling_config=scaling_config
     )
