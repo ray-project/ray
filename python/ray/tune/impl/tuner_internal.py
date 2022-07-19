@@ -3,7 +3,7 @@ import os
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
-from ray.air.config import RunConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.result_grid import ResultGrid
@@ -98,6 +98,7 @@ class TunerInternal:
 
         # Not used for restored Tuner.
         self._param_space = param_space or {}
+        self._process_scaling_config()
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if
@@ -112,6 +113,19 @@ class TunerInternal:
         trainable_ckpt = os.path.join(self._experiment_checkpoint_dir, _TRAINABLE_PKL)
         with open(trainable_ckpt, "wb") as fp:
             pickle.dump(self._trainable, fp)
+
+    def _process_scaling_config(self) -> None:
+        """Converts ``self._param_space["scaling_config"]`` to a dict.
+
+        The dict is converted back to a dataclass by the Trainer, after the
+        Tune search specification is resolved.
+        """
+        # TODO: introduce `ray.tune.sample.TuneableDataclass` and allow Tune to
+        # natively resolve specs with dataclasses.
+        scaling_config = self._param_space.get("scaling_config")
+        if not isinstance(scaling_config, ScalingConfig):
+            return
+        self._param_space["scaling_config"] = scaling_config.__dict__.copy()
 
     def _setup_create_experiment_checkpoint_dir(
         self, run_config: Optional[RunConfig]
@@ -157,29 +171,19 @@ class TunerInternal:
             callbacks=self._run_config.callbacks,
             sync_config=self._run_config.sync_config,
             stop=self._run_config.stop,
-            max_failures=(
-                self._run_config.failure_config.max_failures
-                if self._run_config.failure_config
-                else 0
-            ),
-            keep_checkpoints_num=(
-                self._run_config.checkpoint_config.num_to_keep
-                if self._run_config.checkpoint_config
-                else None
-            ),
+            max_failures=self._run_config.failure_config.max_failures,
+            keep_checkpoints_num=self._run_config.checkpoint_config.num_to_keep,
             checkpoint_score_attr=(
                 self._run_config.checkpoint_config._tune_legacy_checkpoint_score_attr
-                if self._run_config.checkpoint_config
-                else None
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
-            fail_fast=(
-                self._run_config.failure_config.fail_fast
-                if self._run_config.failure_config
-                else False
-            ),
+            fail_fast=(self._run_config.failure_config.fail_fast),
+            progress_reporter=self._run_config.progress_reporter,
             verbose=self._run_config.verbose,
+            reuse_actors=self._run_config.reuse_actors,
+            max_concurrent_trials=self._tune_config.max_concurrent_trials,
+            time_budget_s=self._tune_config.time_budget_s,
         )
 
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
@@ -193,6 +197,7 @@ class TunerInternal:
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
                 name=self._run_config.name,
+                log_to_file=self._run_config.log_to_file,
             ),
             **self._tuner_kwargs,
         }

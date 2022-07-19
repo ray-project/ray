@@ -234,6 +234,30 @@
 
   alert: default
 
+- name: air_benchmark_torch_mnist_gpu_4x1
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_4.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 4 --use-gpu
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 
 - name: air_benchmark_torch_mnist_cpu_1x4
   group: AIR tests
@@ -257,7 +281,7 @@
   alert: default
 
 
-- name: air_benchmark_torch_batch_prediction_gpu_1x1
+- name: air_benchmark_torch_batch_prediction_gpu_1x1_20gb
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -277,6 +301,32 @@
     file_manager: job
 
   alert: default
+
+
+# TODO(jiaodong): This leads to CUDA OOM on release tool but succeeds on
+# workspaces, re-enabled it once inline conversions are fixed
+# - name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
+#   group: AIR tests
+#   working_dir: air_tests/air_benchmarks
+
+#   frequency: nightly
+#   team: ml
+#   env: staging
+
+#   stable: false
+
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: compute_gpu_16.yaml
+
+#   run:
+#     timeout: 10800
+#     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
+
+#     type: sdk_command
+#     file_manager: job
+
+#   alert: default
 
 
 - name: air_benchmark_torch_mnist_cpu_4x4
@@ -379,7 +429,7 @@
   alert: default
 
 
-- name: air_benchmark_pytorch_training_e2e_gpu_1x1
+- name: air_benchmark_pytorch_training_e2e_gpu_1x1_20gb
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -394,6 +444,30 @@
   run:
     timeout: 3600
     script: python workloads/pytorch_training_e2e.py --data-size-gb 20
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  stable: false
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_16.yaml
+
+  run:
+    timeout: 10800
+    script: python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
 
     type: sdk_command
     file_manager: job
@@ -4031,8 +4105,6 @@
     test_name: chaos_dataset_shuffle_push_based_sort_1tb
     test_suite: chaos_test
 
-  stable: false
-
   frequency: nightly
   team: core
   cluster:
@@ -4054,8 +4126,6 @@
   legacy:
     test_name: chaos_dataset_shuffle_sort_1tb
     test_suite: chaos_test
-
-  stable: false
 
   frequency: nightly
   team: core
