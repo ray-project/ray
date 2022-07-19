@@ -12,40 +12,68 @@ from ray.workflow.tests import utils
 
 
 @contextmanager
-def _workflow_start(storage_url, shared, **kwargs):
+def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
+    assert use_ray_client in {"no_ray_client", "ray_client"}
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     init_kwargs["storage"] = storage_url
     if ray.is_initialized():
         ray.shutdown()
+        if use_ray_client:
+            # Kill the Ray cluster.
+            subprocess.check_call(["ray", "stop"])
     # Sometimes pytest does not cleanup all global variables.
     # we have to manually reset the workflow storage. This
     # should not be an issue for normal use cases, because global variables
     # are freed after the driver exits.
-    address_info = ray.init(**init_kwargs)
+    if use_ray_client == "ray_client":
+        parameter = (
+            "ray start --head --num-cpus=1 --min-worker-port=0 "
+            "--max-worker-port=0 --port 0 --storage=" + storage_url
+        )
+        _ = _start_cluster_and_get_address(parameter)
+        address_info = ray.init(address="ray://127.0.0.1:10001")
+    else:
+        address_info = ray.init(**init_kwargs)
     utils.clear_marks()
     ray.workflow.init()
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    if use_ray_client:
+        # Kill the Ray cluster.
+        subprocess.check_call(["ray", "stop"])
 
 
 @pytest.fixture(scope="function")
-def workflow_start_regular(storage_type, request):
+def workflow_start_regular(storage_type, use_ray_client: str, request):
     param = getattr(request, "param", {})
     with simulate_storage(storage_type) as storage_url, _workflow_start(
-        storage_url, False, **param
+        storage_url, False, use_ray_client, **param
     ) as res:
         yield res
 
 
 @pytest.fixture(scope="module")
-def workflow_start_regular_shared(storage_type, request):
+def workflow_start_regular_shared(storage_type, use_ray_client: str, request):
     param = getattr(request, "param", {})
     with simulate_storage(storage_type) as storage_url, _workflow_start(
-        storage_url, True, **param
+        storage_url, True, use_ray_client, **param
     ) as res:
         yield res
+
+
+def _start_cluster_and_get_address(parameter: str) -> str:
+    command_args = parameter.split(" ")
+    out = ray._private.utils.decode(
+        subprocess.check_output(command_args, stderr=subprocess.STDOUT)
+    )
+    # Get the redis address from the output.
+    address_prefix = "--address='"
+    address_location = out.find(address_prefix) + len(address_prefix)
+    address = out[address_location:]
+    address = address.split("'")[0]
+    return address
 
 
 @pytest.fixture(scope="function")
@@ -59,15 +87,7 @@ def workflow_start_cluster(storage_type, request):
             "ray start --head --num-cpus=1 --min-worker-port=0 "
             "--max-worker-port=0 --port 0 --storage=" + storage_url,
         )
-        command_args = parameter.split(" ")
-        out = ray._private.utils.decode(
-            subprocess.check_output(command_args, stderr=subprocess.STDOUT)
-        )
-        # Get the redis address from the output.
-        address_prefix = "--address='"
-        address_location = out.find(address_prefix) + len(address_prefix)
-        address = out[address_location:]
-        address = address.split("'")[0]
+        address = _start_cluster_and_get_address(parameter)
 
         yield address, storage_url
 
@@ -80,3 +100,7 @@ def workflow_start_cluster(storage_type, request):
 def pytest_generate_tests(metafunc):
     if "storage_type" in metafunc.fixturenames:
         metafunc.parametrize("storage_type", ["s3", "fs"], scope="session")
+    if "use_ray_client" in metafunc.fixturenames:
+        metafunc.parametrize(
+            "use_ray_client", ["no_ray_client", "ray_client"], scope="session"
+        )
