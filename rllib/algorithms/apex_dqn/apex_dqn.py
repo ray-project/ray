@@ -13,7 +13,6 @@ https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-expe
 """  # noqa: E501
 import copy
 import platform
-import queue
 import random
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Type
@@ -413,7 +412,6 @@ class ApexDQN(DQN):
         weights = self.workers.local_worker().get_weights()
         self.curr_learner_weights = ray.put(weights)
         self.curr_num_samples_collected = 0
-        self.replay_sample_batches = []
         self._num_ts_trained_since_last_target_update = 0
 
     @classmethod
@@ -563,14 +561,15 @@ class ApexDQN(DQN):
             If the timeout is None, then block on the actors indefinitely.
             """
             _replay_samples_ready = self._replay_actor_manager.get_ready()
-
+            replay_sample_batches = []
             for _replay_actor, _sample_batches in _replay_samples_ready.items():
                 for _sample_batch in _sample_batches:
-                    self.replay_sample_batches.append((_replay_actor, _sample_batch))
+                    replay_sample_batches.append((_replay_actor, _sample_batch))
+            return replay_sample_batches
 
         num_samples_collected = sum(num_samples_collected.values())
         self.curr_num_samples_collected += num_samples_collected
-        wait_on_replay_actors()
+        replay_sample_batches = wait_on_replay_actors()
         if self.curr_num_samples_collected >= self.config["train_batch_size"]:
             training_intensity = int(self.config["training_intensity"] or 1)
             num_requests_to_launch = (
@@ -583,26 +582,17 @@ class ApexDQN(DQN):
                     lambda actor, num_items: actor.sample(num_items),
                     fn_args=[self.config["train_batch_size"]],
                 )
-            wait_on_replay_actors()
+            replay_sample_batches.extend(wait_on_replay_actors())
 
         # add the sample batches to the learner queue
-        while self.replay_sample_batches:
-            try:
-                item = self.replay_sample_batches[0]
-                # the replay buffer returns none if it has not been filled to
-                # the minimum threshold yet.
-                if item:
-                    # Setting block = True prevents the learner thread,
-                    # the main thread, and the gpu loader threads from
-                    # thrashing when there are more samples than the
-                    # learner can reasonable process.
-                    # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
-                    self.learner_thread.inqueue.put(
-                        self.replay_sample_batches[0], block=True
-                    )
-                    self.replay_sample_batches.pop(0)
-            except queue.Full:
-                break
+        for item in replay_sample_batches:
+            # Setting block = True prevents the learner thread,
+            # the main thread, and the gpu loader threads from
+            # thrashing when there are more samples than the
+            # learner can reasonable process.
+            # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+            self.learner_thread.inqueue.put(item, block=True)
+        del replay_sample_batches
 
     def update_replay_sample_priority(self) -> None:
         """Update the priorities of the sample batches with new priorities that are
