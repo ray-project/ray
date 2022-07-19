@@ -404,6 +404,9 @@ def test_custom_metrics_edge_cases(metric_mock):
     with pytest.raises(ValueError):
         Histogram("hist", boundaries=[0, 1, 2])
 
+    with pytest.raises(ValueError):
+        Histogram("hist", boundaries=[-1, -0.5, -0.1])
+
 
 def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
     # https://github.com/ray-project/ray/issues/12859
