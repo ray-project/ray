@@ -607,7 +607,10 @@ class WorkerSet:
         # Valid python module (class path) -> Create using `from_config`.
         elif valid_module(config["input"]):
             input_creator = lambda ioctx: ShuffledInput(
-                from_config(config["input"], ioctx=ioctx), config["shuffle_buffer_size"]
+                from_config(
+                    config["input"], config=config["input_config"], ioctx=ioctx
+                ),
+                config["shuffle_buffer_size"],
             )
         # JSON file or list of JSON files -> Use JsonReader (shuffled).
         else:

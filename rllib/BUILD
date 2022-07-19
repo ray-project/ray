@@ -1690,6 +1690,14 @@ py_test(
 )
 
 py_test(
+    name = "test_worker_set_input_reader",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_worker_set_input_reader.py"],
+    data = ["tests/data/pendulum/small.json"],
+)
+
+py_test(
     name = "test_ope",
     tags = ["team:rllib", "offline", "torch_only", "gpu"],
     size = "large",
