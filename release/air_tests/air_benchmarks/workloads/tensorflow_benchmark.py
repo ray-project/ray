@@ -1,8 +1,6 @@
 import json
 import os
-import socket
 import time
-from contextlib import closing
 
 import click
 import numpy as np
@@ -99,6 +97,7 @@ def train_tf_ray_air(
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.tensorflow import TensorflowTrainer
+    from ray.air.config import ScalingConfig
 
     def train_loop(config):
         train_func(use_ray=True, config=config)
@@ -107,12 +106,12 @@ def train_tf_ray_air(
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
-        scaling_config={
-            "trainer_resources": {"CPU": 0},
-            "num_workers": num_workers,
-            "resources_per_worker": {"CPU": cpus_per_worker},
-            "use_gpu": use_gpu,
-        },
+        scaling_config=ScalingConfig(
+            trainer_resources={"CPU": 0},
+            num_workers=num_workers,
+            resources_per_worker={"CPU": cpus_per_worker},
+            use_gpu=use_gpu,
+        ),
     )
     result = trainer.fit()
     time_taken = time.monotonic() - start_time
@@ -151,12 +150,11 @@ def train_tf_vanilla(
 ) -> Tuple[float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_tf_vanilla_worker() on the worker nodes.
-    import ray
     from benchmark_util import (
         upload_file_to_all_nodes,
         create_actors_with_resources,
         run_commands_on_actors,
-        run_fn_on_actors,
+        get_ip_port_actors,
     )
 
     path = os.path.abspath(__file__)
@@ -172,15 +170,7 @@ def train_tf_vanilla(
         },
     )
 
-    def get_ip_port():
-        ip = ray.util.get_node_ip_address()
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-            s.bind(("localhost", 0))
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            port = s.getsockname()[1]
-        return ip, port
-
-    ips_ports = run_fn_on_actors(actors=actors, fn=get_ip_port)
+    ips_ports = get_ip_port_actors(actors=actors)
     ip_port_list = [f"{ip}:{port}" for ip, port in ips_ports]
     ip_port_str = ",".join(ip_port_list)
 

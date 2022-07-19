@@ -6,7 +6,6 @@ import signal
 import subprocess
 import sys
 import time
-import traceback
 import urllib
 import urllib.parse
 import warnings
@@ -55,6 +54,7 @@ from ray.experimental.state.state_cli import (
     get_api_server_url,
     output_with_format,
     summary_state_cli_group,
+    AvailableFormat,
 )
 
 logger = logging.getLogger(__name__)
@@ -2121,7 +2121,7 @@ def logs(
                 print(f"Node ID: {node_id}")
             elif node_ip:
                 print(f"Node IP: {node_ip}")
-            print(output_with_format(logs))
+            print(output_with_format(logs, format=AvailableFormat.YAML))
 
     # If there's an unique match, print the log file.
     if match_unique:
@@ -2340,13 +2340,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     help="Health check for a specific component. Currently supports: "
     "[ray_client_server]",
 )
-@click.option(
-    "--skip-version-check",
-    is_flag=True,
-    default=False,
-    help="Skip comparison of GCS version with local Ray version.",
-)
-def healthcheck(address, redis_password, component, skip_version_check):
+def healthcheck(address, redis_password, component):
     """
     This is NOT a public api.
 
@@ -2357,12 +2351,9 @@ def healthcheck(address, redis_password, component, skip_version_check):
 
     if not component:
         try:
-            if ray._private.gcs_utils.check_health(
-                address, skip_version_check=skip_version_check
-            ):
+            if ray._private.gcs_utils.check_health(address):
                 sys.exit(0)
         except Exception:
-            traceback.print_exc()
             pass
         sys.exit(1)
 

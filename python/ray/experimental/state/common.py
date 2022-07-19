@@ -408,8 +408,8 @@ class TaskSummaries:
     total_tasks: int
     # Total actor tasks
     total_actor_tasks: int
-    # Total actor scheduling tasks
-    total_actor_scheduling_tasks: int
+    # Total scheduling actors
+    total_actor_scheduled: int
     summary_by: str = "func_name"
 
     @classmethod
@@ -422,7 +422,7 @@ class TaskSummaries:
         summary = {}
         total_tasks = 0
         total_actor_tasks = 0
-        total_actor_scheduling_tasks = 0
+        total_actor_scheduled = 0
 
         for task in tasks:
             key = task["func_or_class_name"]
@@ -442,7 +442,7 @@ class TaskSummaries:
             if type_enum == TaskType.NORMAL_TASK:
                 total_tasks += 1
             elif type_enum == TaskType.ACTOR_CREATION_TASK:
-                total_actor_scheduling_tasks += 1
+                total_actor_scheduled += 1
             elif type_enum == TaskType.ACTOR_TASK:
                 total_actor_tasks += 1
 
@@ -450,7 +450,7 @@ class TaskSummaries:
             summary=summary,
             total_tasks=total_tasks,
             total_actor_tasks=total_actor_tasks,
-            total_actor_scheduling_tasks=total_actor_scheduling_tasks,
+            total_actor_scheduled=total_actor_scheduled,
         )
 
 
