@@ -26,6 +26,7 @@ class Metric:
     def __init__(
         self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
     ):
+
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. Please provide a metric name.")
         self._name = name
@@ -247,13 +248,14 @@ class Histogram(Metric):
                 "the Histogram class. e.g., "
                 'Histogram("name", boundaries=[1.0, 2.0])'
             )
+        for boundary in boundaries:
+            if boundary <= 0:
+                raise ValueError("boundaries arguments should be positive values")
+
         self.boundaries = boundaries
         self._metric = CythonHistogram(
             self._name, self._description, self.boundaries, self._tag_keys
         )
-        for bound in self.boundaries:
-            if bound <= 0:
-                raise ValueError("boundaries arguments should be positive values")
 
     def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Observe a given `value` and add it to the appropriate bucket.
