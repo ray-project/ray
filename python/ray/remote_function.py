@@ -2,7 +2,6 @@ import inspect
 import logging
 import os
 import uuid
-import warnings
 from functools import wraps
 
 import ray._private.signature
@@ -14,6 +13,7 @@ from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
+from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import PythonFunctionDescriptor
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -257,33 +257,7 @@ class RemoteFunction:
         if scheduling_strategy is None or not isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         ):
-            if placement_group not in ("default", None):
-                warnings.warn(
-                    "placement_group parameter is deprecated. Use "
-                    "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
-                    "instead, see the usage at "
-                    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",  # noqa: E501
-                    DeprecationWarning,
-                    stacklevel=4,
-                )
-            if placement_group_bundle_index != -1:
-                warnings.warn(
-                    "placement_group_bundle_index parameter is deprecated. Use "
-                    "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
-                    "instead, see the usage at "
-                    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",  # noqa: E501
-                    DeprecationWarning,
-                    stacklevel=4,
-                )
-            if placement_group_capture_child_tasks:
-                warnings.warn(
-                    "placement_group_capture_child_tasks parameter is deprecated. Use "
-                    "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
-                    "instead, see the usage at "
-                    "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-remote.",  # noqa: E501
-                    DeprecationWarning,
-                    stacklevel=4,
-                )
+            _warn_if_using_deprecated_placement_group(task_options, 4)
 
         resources = ray._private.utils.resources_from_ray_options(task_options)
 

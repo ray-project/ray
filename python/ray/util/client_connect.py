@@ -12,7 +12,8 @@ from ray.util.client import ray
 
 
 @Deprecated(
-    message="Use ray.init() instead. See detailed usage at "
+    message="Use ray.init(ray://<head_node_ip_address>:<ray_client_server_port>) "
+    "instead. See detailed usage at "
     "https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init"
 )
 def connect(
