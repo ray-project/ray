@@ -106,8 +106,13 @@ if spilling is occuring, and you can check this as well with the ``ray memory --
 care to ensure the cluster has enough disk space to handle the spilled blocks. Alternatively, consider using machine with more memory /
 more machines to avoid spilling.
 
-Streaming Ingest
-~~~~~~~~~~~~~~~~
+In short, use bulk ingest when:
+ * you have enough memory to fit data blocks in cluster object store;
+ * your preprocessing step is expensive per each epoch; and
+ * you want best performance when both or either the above conditions are met.
+
+Streaming Ingest (experimental)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 AIR also supports streaming ingest via the DatasetPipeline feature. Streaming ingest is preferable when you are using large datasets
 that don't fit into memory, and prefer to read *windows* of data from storage to minimize the active memory required for data ingest.
@@ -123,9 +128,15 @@ once deserialized in memory, or if individual files are larger than the window s
 If the window size is set to -1, then an infinite window size will be used. This case is equivalent to using bulk loading
 (including the performance advantages of caching preprocessed blocks), but still exposing a DatasetPipeline reader.
 
+In short, use streaming ingest when:
+ * you have large datasets that don't fit into memory;
+ * you want to process small chunks or blocks per window;
+ * you can use small windows with small data blocks minimizing or avoiding memory starvation or OOM errors; and
+ * your preprocessing step is not a bottleneck or not an expensive operation since it's re-executed on each pass over the data.
+
 .. warning::
 
-    In AIR alpha, streaming ingest only applies to preprocessor transform, not preprocessor fitting.
+    Streaming ingest only applies to preprocessor transform, not preprocessor fitting.
     This means that the preprocessor will be initially fit in bulk, after which data will be transformed
     as it is loaded in a streaming manner.
 
@@ -157,6 +168,51 @@ See the following examples for clarification:
         :start-after: __config_5__
         :end-before: __config_5_end__
 
+Shuffling Data
+~~~~~~~~~~~~~~
+
+AIR offers several options for per-epoch shuffling, including *local
+(per-shard) shuffling*  and *global (whole-dataset) shuffling*.
+
+.. tabbed:: Local Shuffling
+
+    Local shuffling is an in-iterator shuffle that fills a trainer-local in-memory shuffle
+    buffer with records and then pops random samples as batches, keeping the buffer above a
+    user-provided threshold to ensure samples are mixed throughout the entirety of the
+    trainer's shard. This local shuffle doesn't mix samples across trainer shards between
+    epochs as the global shuffle does, and will therefore be a lower-quality shuffle;
+    however, since this shuffle only involves a local in-memory buffer, it is much less
+    expensive.
+
+    For configuring the size of the in-memory shuffle buffer, it is recommended to
+    allocate as large of a buffer as the trainer's CPU memory constraints will allow;
+    note that the ceiling of the CPU memory usage on a given node will be
+    ``(# of trainers on node) * max(memory used by prefetching, memory used by shuffle
+    buffer)``, where the aggressiveness of the prefetching is controlled by the
+    ``prefetch_blocks`` argument. See
+    :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` for details.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __local_shuffling_start__
+        :end-before: __local_shuffling_end__
+
+.. tabbed:: Global Shuffling
+
+    Global shuffling provides more uniformly random (decorrelated) samples and is carried
+    out via a distributed map-reduce operation. This higher quality shuffle can often lead
+    to more precision gain per training step, but it is also an expensive distributed
+    operation and will decrease the ingest throughput. As long as the shuffled ingest
+    throughput matches or exceeds the model training (forward pass, backward pass, gradient sync)
+    throughput, this higher-quality shuffle shouldn't slow down the overall training.
+
+    If global shuffling *is* causing the ingest throughput to become the training
+    bottleneck, local shuffling may be a better option.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __global_shuffling_start__
+        :end-before: __global_shuffling_end__
 
 Ingest and Ray Tune
 -------------------
@@ -168,13 +224,13 @@ Ingest and Ray Tune
 Placement Group Behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune typically creates a placement group reserving resource for each of its trials. These placement groups only reserve resources for the Train actors, however. By default, Dataset preprocessing tasks run using "spare" CPU resources in the cluster, which enables better autoscaling and utilization of resources. It is also possible to configure the Dataset tasks to run within the Tune trial placement groups.
+Tune typically creates a placement group reserving resource for each of its trials. These placement groups only reserve resources for the Train actors, however. By default, Dataset preprocessing tasks run using "spare" CPU resources in the cluster, which enables better autoscaling and utilization of resources. It is also possible to set aside node CPUs for Dataset tasks using the ``_max_cpu_fraction_per_node`` option of DatasetConfig (Experimental).
 
 .. warning::
 
     If trial placement groups reserve all the CPUs in the cluster, then it may be that no CPUs are left for Datasets to use, and trials can hang. This can easily happen when using CPU-only trainers. For example, if you can change the above ingest example to use ``ray.init(num_cpus=2)``, such a hang will happen.
 
-Refer to the :ref:`Datasets in Tune Example <datasets_tune>` to understand each of these options and how to configure them. We recommend starting with the default of allowing tasks to run using spare cluster resources, and only changing this if you encounter resource contention or want more performance predictability.
+Refer to the :ref:`Datasets in Tune Example <datasets_tune>` to understand how to configure your Trainer. We recommend starting with the default of allowing tasks to run using spare cluster resources, and only changing this if you encounter hangs or want more performance predictability.
 
 Dataset Sharing
 ~~~~~~~~~~~~~~~

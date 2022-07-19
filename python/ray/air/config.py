@@ -1,10 +1,12 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Union, Tuple
 
 from ray.air.constants import WILDCARD_KEY
+from ray.tune.progress_reporter import ProgressReporter
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
+from ray.tune.search.sample import Domain
 
 # Move here later when ml_utils is deprecated. Doing it now causes a circular import.
 from ray.util.ml_utils.checkpoint_manager import CheckpointConfig
@@ -15,41 +17,53 @@ if TYPE_CHECKING:
     from ray.tune.stopper import Stopper
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
-ScalingConfig = Dict[str, Any]
+
+# Dict[str, List] is to support `tune.grid_search`:
+# TODO(sumanthratna/matt): Upstream this to Tune.
+SampleRange = Union[Domain, Dict[str, List]]
 
 
 @dataclass
 @PublicAPI(stability="alpha")
-class ScalingConfigDataClass:
+class ScalingConfig:
     """Configuration for scaling training.
 
     This is the schema for the scaling_config dict, and after beta, this will be the
     actual representation for Scaling config objects.
 
-    trainer_resources: Resources to allocate for the trainer. If None is provided,
-        will default to 1 CPU.
-    num_workers: The number of workers (Ray actors) to launch.
-        Each worker will reserve 1 CPU by default. The number of CPUs
-        reserved by each worker can be overridden with the
-        ``resources_per_worker`` argument.
-    use_gpu: If True, training will be done on GPUs (1 per worker).
-        Defaults to False. The number of GPUs reserved by each
-        worker can be overridden with the ``resources_per_worker``
-        argument.
-    resources_per_worker: If specified, the resources
-        defined in this Dict will be reserved for each worker. The
-        ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
-        override the number of CPU/GPUs used by each worker.
-    placement_strategy: The placement strategy to use for the
-        placement group of the Ray actors. See :ref:`Placement Group
-        Strategies <pgroup-strategy>` for the possible options.
+    Args:
+        trainer_resources: Resources to allocate for the trainer. If None is provided,
+            will default to 1 CPU.
+        num_workers: The number of workers (Ray actors) to launch.
+            Each worker will reserve 1 CPU by default. The number of CPUs
+            reserved by each worker can be overridden with the
+            ``resources_per_worker`` argument.
+        use_gpu: If True, training will be done on GPUs (1 per worker).
+            Defaults to False. The number of GPUs reserved by each
+            worker can be overridden with the ``resources_per_worker``
+            argument.
+        resources_per_worker: If specified, the resources
+            defined in this Dict will be reserved for each worker. The
+            ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
+            override the number of CPU/GPUs used by each worker.
+        placement_strategy: The placement strategy to use for the
+            placement group of the Ray actors. See :ref:`Placement Group
+            Strategies <pgroup-strategy>` for the possible options.
+        _max_cpu_fraction_per_node: (Experimental) The max fraction of CPUs per node
+            that Train will use for scheduling training actors. The remaining CPUs
+            can be used for dataset tasks. It is highly recommended that you set this
+            to less than 1.0 (e.g., 0.8) when passing datasets to trainers, to avoid
+            hangs / CPU starvation of dataset tasks. Warning: this feature is
+            experimental and is not recommended for use with autoscaling (scale-up will
+            not trigger properly).
     """
 
-    trainer_resources: Optional[Dict] = None
-    num_workers: Optional[int] = None
-    use_gpu: bool = False
-    resources_per_worker: Optional[Dict] = None
-    placement_strategy: str = "SPREAD"
+    trainer_resources: Optional[Union[Dict, SampleRange]] = None
+    num_workers: Optional[Union[int, SampleRange]] = None
+    use_gpu: Union[bool, SampleRange] = False
+    resources_per_worker: Optional[Union[Dict, SampleRange]] = None
+    placement_strategy: Union[str, SampleRange] = "SPREAD"
+    _max_cpu_fraction_per_node: Optional[Union[float, SampleRange]] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -68,7 +82,7 @@ class ScalingConfigDataClass:
                     "`resources_per_worker."
                 )
 
-    def __eq__(self, o: "ScalingConfigDataClass") -> bool:
+    def __eq__(self, o: "ScalingConfig") -> bool:
         if not isinstance(o, type(self)):
             return False
         return self.as_placement_group_factory() == o.as_placement_group_factory()
@@ -126,12 +140,20 @@ class ScalingConfigDataClass:
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
-        return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
+        if self._max_cpu_fraction_per_node is not None:
+            kwargs = {
+                "_max_cpu_fraction_per_node": self._max_cpu_fraction_per_node,
+            }
+        else:
+            kwargs = {}
+        return PlacementGroupFactory(
+            bundles, strategy=self.placement_strategy, **kwargs
+        )
 
     @classmethod
     def from_placement_group_factory(
         cls, pgf: "PlacementGroupFactory"
-    ) -> "ScalingConfigDataClass":
+    ) -> "ScalingConfig":
         """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
         if pgf.head_bundle_is_empty:
             trainer_resources = {}
@@ -144,6 +166,7 @@ class ScalingConfigDataClass:
         placement_strategy = pgf.strategy
         resources_per_worker = None
         num_workers = None
+        max_cpu_fraction_per_node = None
 
         if worker_bundles:
             first_bundle = worker_bundles[0]
@@ -156,12 +179,16 @@ class ScalingConfigDataClass:
             num_workers = len(worker_bundles)
             resources_per_worker = first_bundle
 
-        return ScalingConfigDataClass(
+        if "_max_cpu_fraction_per_node" in pgf._kwargs:
+            max_cpu_fraction_per_node = pgf._kwargs["_max_cpu_fraction_per_node"]
+
+        return ScalingConfig(
             trainer_resources=trainer_resources,
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
+            _max_cpu_fraction_per_node=max_cpu_fraction_per_node,
         )
 
 
@@ -214,7 +241,8 @@ class DatasetConfig:
 
     # Whether to enable global shuffle (per pipeline window in streaming mode). Note
     # that this is an expensive all-to-all operation, and most likely you want to use
-    # local shuffle instead. See https://docs.ray.io/en/master/data/faq.html
+    # local shuffle instead. See https://docs.ray.io/en/master/data/faq.html and
+    # https://docs.ray.io/en/master/air/check-ingest.html.
     # False by default.
     global_shuffle: Optional[bool] = None
 
@@ -385,12 +413,31 @@ class RunConfig:
         failure_config: Failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
         checkpoint_config: Checkpointing configuration.
+        progress_reporter: Progress reporter for reporting
+            intermediate experiment progress. Defaults to CLIReporter if
+            running in command-line, or JupyterNotebookReporter if running in
+            a Jupyter notebook.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results. Defaults to 2.
+        log_to_file: Log stdout and stderr to files in
+            trial directories. If this is `False` (default), no files
+            are written. If `true`, outputs are written to `trialdir/stdout`
+            and `trialdir/stderr`, respectively. If this is a single string,
+            this is interpreted as a file relative to the trialdir, to which
+            both streams are written. If this is a Sequence (e.g. a Tuple),
+            it has to have length 2 and the elements indicate the files to
+            which stdout and stderr are written, respectively.
+        reuse_actors: Whether to reuse actors between different trials
+            when possible. This can drastically speed up experiments that start
+            and stop actors often (e.g., PBT in time-multiplexing mode). This
+            requires trials to have the same resource requirements.
+            Defaults to ``True`` for function trainables (including most
+            Ray AIR trainers) and ``False`` for class and registered trainables
+            (e.g. RLlib).
+
     """
 
-    # TODO(xwjiang): Add more.
     name: Optional[str] = None
     local_dir: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
@@ -398,4 +445,17 @@ class RunConfig:
     failure_config: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
     checkpoint_config: Optional[CheckpointConfig] = None
+    progress_reporter: Optional[ProgressReporter] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
+    log_to_file: Union[bool, str, Tuple[str, str]] = False
+    reuse_actors: Optional[bool] = None
+
+    def __post_init__(self):
+        if not self.failure_config:
+            self.failure_config = FailureConfig()
+
+        if not self.sync_config:
+            self.sync_config = SyncConfig()
+
+        if not self.checkpoint_config:
+            self.checkpoint_config = CheckpointConfig()
