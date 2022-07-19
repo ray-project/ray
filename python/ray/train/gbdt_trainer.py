@@ -11,6 +11,7 @@ from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.dict import flatten_dict
 
 if TYPE_CHECKING:
     import xgboost_ray
@@ -227,9 +228,15 @@ class GBDTTrainer(BaseTrainer):
             checkpoint_at_end = True
 
         if checkpoint_at_end:
+            # We need to call tune.report to save checkpoints, so we report
+            # the last received metrics (possibly again).
+            result_dict = flatten_dict(evals_result, delimiter="-")
+            for k in list(result_dict):
+                result_dict[k] = result_dict[k][-1]
+
             with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
                 self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-                tune.report(**evals_result)
+                tune.report(**result_dict)
 
     def as_trainable(self) -> Type[Trainable]:
         trainable_cls = super().as_trainable()
