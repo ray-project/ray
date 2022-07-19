@@ -71,6 +71,8 @@ from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoin
 
 from ray.train.alpa.utils import is_ray_node_resource
 
+from icecream import ic 
+
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +114,9 @@ class AlpaTrainer(BaseTrainer):
             alpa.init("ray")
 
         cluster = alpa.get_global_cluster()
+        ic("Distributed Training with Alpa using "
+            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
+        )
         logger.info(
              "Distributed Training with Alpa using "
             f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
@@ -141,7 +146,6 @@ class AlpaTrainer(BaseTrainer):
             assert number.is_integer()
             self.host_num_devices.append(int(number))
         
-        from icecream import ic 
         ic(self.host_num_devices, self.host_info)
 
         exit()
