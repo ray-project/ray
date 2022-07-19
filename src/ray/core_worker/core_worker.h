@@ -266,6 +266,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              const ObjectID &object_id,
              bool pin_object = false);
 
+  Status ForwardToOtherWorker(const ObjectID &object_id,
+                              const std::vector<ObjectID> &contained_object_ids,
+                              const rpc::Address &borrower_address,
+                              const rpc::Address &owner_address,
+                              const size_t object_size);
+
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `SealOwned()` to
   /// finalize the object. The `CreateOwnedAndIncrementLocalRef()` and

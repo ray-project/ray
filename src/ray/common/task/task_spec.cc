@@ -206,6 +206,10 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   }
 }
 
+bool TaskSpecification::ForwardToParent() const {
+  return this->message_->parent_num_returns() >= 0;
+}
+
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
   return message_->args(arg_index).has_object_ref();
 }

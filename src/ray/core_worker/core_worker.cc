@@ -277,6 +277,17 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                     double timestamp) {
     return PushError(job_id, type, error_message, timestamp);
   };
+  auto forward_object_callback = [this](const ObjectID &object_id,
+                                        const std::vector<ObjectID> &contained_object_ids,
+                                        const rpc::Address &borrower_address,
+                                        const rpc::Address &owner_address,
+                                        const size_t object_size) {
+    return ForwardToOtherWorker(object_id,
+                                contained_object_ids,
+                                borrower_address,
+                                owner_address,
+                                object_size);
+  };
   task_manager_.reset(new TaskManager(
       memory_store_,
       reference_counter_,
@@ -308,6 +319,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
       },
       push_error_callback,
+      forward_object_callback,
       RayConfig::instance().max_lineage_bytes()));
 
   // Create an entry for the driver task in the task table. This task is
@@ -950,6 +962,44 @@ Status CoreWorker::Put(const RayObject &object,
   return PutInLocalPlasmaStore(object, object_id, pin_object);
 }
 
+Status CoreWorker::ForwardToOtherWorker(const ObjectID &object_id,
+                            const std::vector<ObjectID> &contained_object_ids,
+                            const rpc::Address &borrower_address,
+                            const rpc::Address &owner_address,
+                            const size_t object_size) {
+  // Because in the remote worker's `HandleAssignObjectOwner`,
+  // a `WaitForRefRemoved` RPC request will be sent back to
+  // the current worker. So we need to make sure ref count is > 0
+  // by invoking `AddLocalReference` first. Note that in worker.py we set
+  // skip_adding_local_ref=True to avoid double referencing the object.
+  AddLocalReference(object_id);
+  RAY_UNUSED(
+      reference_counter_->AddBorrowedObject(object_id,
+                                            ObjectID::Nil(),
+                                            owner_address,
+                                            /*foreign_owner_already_monitoring=*/true));
+
+  // Remote call `AssignObjectOwner()`.
+  rpc::AssignObjectOwnerRequest request;
+  request.set_object_id(object_id.Binary());
+  request.mutable_borrower_address()->CopyFrom(borrower_address);
+  request.set_call_site(CurrentCallSite());
+
+  for (auto &contained_object_id : contained_object_ids) {
+    request.add_contained_object_ids(contained_object_id.Binary());
+  }
+  request.set_object_size(object_size);
+  auto conn = core_worker_client_pool_->GetOrConnect(owner_address);
+  std::promise<Status> status_promise;
+  conn->AssignObjectOwner(request,
+                          [&status_promise](const Status &returned_status,
+                                            const rpc::AssignObjectOwnerReply &reply) {
+                            status_promise.set_value(returned_status);
+                          });
+  // Block until the remote call `AssignObjectOwner` returns.
+  return status_promise.get_future().get();
+}
+
 Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     const std::shared_ptr<Buffer> &metadata,
     const size_t data_size,
@@ -978,37 +1028,11 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.raylet_id()));
   } else {
-    // Because in the remote worker's `HandleAssignObjectOwner`,
-    // a `WaitForRefRemoved` RPC request will be sent back to
-    // the current worker. So we need to make sure ref count is > 0
-    // by invoking `AddLocalReference` first. Note that in worker.py we set
-    // skip_adding_local_ref=True to avoid double referencing the object.
-    AddLocalReference(*object_id);
-    RAY_UNUSED(
-        reference_counter_->AddBorrowedObject(*object_id,
-                                              ObjectID::Nil(),
-                                              real_owner_address,
-                                              /*foreign_owner_already_monitoring=*/true));
-
-    // Remote call `AssignObjectOwner()`.
-    rpc::AssignObjectOwnerRequest request;
-    request.set_object_id(object_id->Binary());
-    request.mutable_borrower_address()->CopyFrom(rpc_address_);
-    request.set_call_site(CurrentCallSite());
-
-    for (auto &contained_object_id : contained_object_ids) {
-      request.add_contained_object_ids(contained_object_id.Binary());
-    }
-    request.set_object_size(data_size + metadata->Size());
-    auto conn = core_worker_client_pool_->GetOrConnect(real_owner_address);
-    std::promise<Status> status_promise;
-    conn->AssignObjectOwner(request,
-                            [&status_promise](const Status &returned_status,
-                                              const rpc::AssignObjectOwnerReply &reply) {
-                              status_promise.set_value(returned_status);
-                            });
-    // Block until the remote call `AssignObjectOwner` returns.
-    status = status_promise.get_future().get();
+    status = ForwardToOtherWorker(*object_id,
+                                  contained_object_ids,
+                                  rpc_address_,
+                                  real_owner_address,
+                                  data_size + metadata->Size());
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
@@ -1936,8 +1960,15 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     lock.Release();
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
-    returned_refs = task_manager_->AddPendingTask(
-        rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+    // auto caller_address = rpc_address_;
+    if (task_spec.ForwardToParent()) {
+      auto parent_address = worker_context_.GetCurrentTask()->CallerAddress();
+      returned_refs = task_manager_->AddPendingTask(
+          parent_address, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+    } else {
+      returned_refs = task_manager_->AddPendingTask(
+          rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+    }
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
   return {std::move(returned_refs)};

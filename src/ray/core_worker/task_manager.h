@@ -82,6 +82,11 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
                                                const std::string &error_message,
                                                double timestamp)>;
+using ForwardObjectCallback = std::function<Status(const ObjectID &object_id,
+                                                   const std::vector<ObjectID> &contained_object_ids,
+                                                   const rpc::Address &borrower_address,
+                                                   const rpc::Address &owner_address,
+                                                   const size_t object_size)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
@@ -90,12 +95,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               PutInLocalPlasmaCallback put_in_local_plasma_callback,
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
+              ForwardObjectCallback forward_object_callback,
               int64_t max_lineage_bytes)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
         retry_task_callback_(retry_task_callback),
         push_error_callback_(push_error_callback),
+        forward_object_callback_(forward_object_callback),
         max_lineage_bytes_(max_lineage_bytes) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -370,6 +377,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   // Called to push an error to the relevant driver.
   const PushErrorCallback push_error_callback_;
+
+  // Called to forward a returned object to another worker
+  const ForwardObjectCallback forward_object_callback_;
 
   const int64_t max_lineage_bytes_;
 

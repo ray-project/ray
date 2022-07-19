@@ -64,6 +64,11 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &type,
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
+            [](const ObjectID &object_id,
+               const std::vector<ObjectID> &contained_object_ids,
+               const rpc::Address &borrower_address,
+               const rpc::Address &owner_address,
+               const size_t object_size) { return Status::OK(); },
             max_lineage_bytes) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
