@@ -155,6 +155,7 @@ class StateAPIManager:
             match = True
             for filter_column, filter_predicate, filter_value in filters:
                 filterable_columns = state_dataclass.filterable_columns()
+                filter_column = filter_column.lower()
                 if filter_column not in filterable_columns:
                     raise ValueError(
                         f"The given filter column {filter_column} is not supported. "
