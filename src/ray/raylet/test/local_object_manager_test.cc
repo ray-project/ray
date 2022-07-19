@@ -322,7 +322,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
             client_pool,
             /*max_io_workers=*/2,
             /*min_spilling_size=*/min_spilling_size,
-            /*is_external_storage_type_fs=*/false,
+            /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
             /*on_objects_freed=*/
             [&](const std::vector<ObjectID> &object_ids) {

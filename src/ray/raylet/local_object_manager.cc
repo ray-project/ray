@@ -420,7 +420,7 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
 }
 
 std::string LocalObjectManager::GetLocalSpilledObjectURL(const ObjectID &object_id) {
-  if (is_external_storage_type_fs_) {
+  if (!is_external_storage_type_fs_) {
     // If the external storage is cloud storage like S3, returns the empty string.
     // In that case, the URL is supposed to be obtained by OBOD.
     return "";
@@ -611,7 +611,8 @@ int64_t LocalObjectManager::GetPrimaryBytes() const {
 }
 
 bool LocalObjectManager::HasLocallySpilledObjects() const {
-  if (is_external_storage_type_fs_) {
+  if (!is_external_storage_type_fs_) {
+    // External storage is not local.
     return false;
   }
   // Report non-zero usage when there are spilled / spill-pending live objects, to
