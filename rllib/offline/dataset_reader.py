@@ -257,7 +257,7 @@ class DatasetReader(InputReader):
         return ret
 
     def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
-        if not self._ioctx or not self._ioctx.config.get("postprocess_inputs"):
+        if not self._ioctx.config.get("postprocess_inputs"):
             return batch
 
         if isinstance(batch, SampleBatch):
