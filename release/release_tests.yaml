@@ -366,6 +366,55 @@
   alert: default
 
 
+- name: air_benchmark_tune_torch_mnist
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_8.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
+
+    wait_for_nodes:
+      num_nodes: 8
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: air_benchmark_tune_torch_mnist_gpu
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_4_g4_12xl.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 4 --use-gpu
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
 # Ray AIR distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_cpu_4x1
   group: AIR tests
