@@ -1,47 +1,26 @@
 import asyncio
 import atexit
-import random
 import logging
+import random
 import time
 from functools import wraps
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    List,
-    Iterable,
-)
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.common import (
-    DeploymentInfo,
-    DeploymentStatus,
-    DeploymentStatusInfo,
-)
-from ray.serve.config import (
-    DeploymentConfig,
-    HTTPOptions,
-    ReplicaConfig,
-)
+from ray.serve.common import DeploymentInfo, DeploymentStatus, StatusOverview
+from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
-    MAX_CACHED_HANDLES,
     CLIENT_POLLING_INTERVAL_S,
-    ANONYMOUS_NAMESPACE_PATTERN,
+    MAX_CACHED_HANDLES,
+    SERVE_NAMESPACE,
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import (
-    DeploymentRoute,
-    DeploymentRouteList,
-    DeploymentStatusInfoList,
-)
+from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-
+from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(__file__)
 # Whether to issue warnings about using sync handles in async context
@@ -65,12 +44,10 @@ class ServeControllerClient:
         controller: ActorHandle,
         controller_name: str,
         detached: bool = False,
-        _override_controller_namespace: Optional[str] = None,
     ):
         self._controller: ServeController = controller
         self._controller_name = controller_name
         self._detached = detached
-        self._override_controller_namespace = _override_controller_namespace
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
@@ -120,6 +97,12 @@ class ServeControllerClient:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
+
+        # Shut down handles
+        for k in list(self.handle_cache):
+            self.handle_cache[k].stop_metrics_pusher()
+            del self.handle_cache[k]
+
         if ray.is_initialized() and not self._shutdown:
             ray.get(self._controller.shutdown.remote())
             self._wait_for_deployments_shutdown()
@@ -130,11 +113,7 @@ class ServeControllerClient:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = get_controller_namespace(
-                        self._detached,
-                        self._override_controller_namespace,
-                    )
-                    ray.get_actor(self._controller_name, namespace=controller_namespace)
+                    ray.get_actor(self._controller_name, namespace=SERVE_NAMESPACE)
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -155,16 +134,19 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = self.get_deployment_statuses()
-            if len(statuses) == 0:
+            deployment_statuses = self.get_serve_status().deployment_statuses
+            if len(deployment_statuses) == 0:
                 break
             else:
                 logger.debug(
-                    f"Waiting for shutdown, {len(statuses)} deployments still alive."
+                    f"Waiting for shutdown, {len(deployment_statuses)} "
+                    "deployments still alive."
                 )
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
-            live_names = list(statuses.keys())
+            live_names = [
+                deployment_status.name for deployment_status in deployment_statuses
+            ]
             raise TimeoutError(
                 f"Shutdown didn't complete after {timeout_s}s. "
                 f"Deployments still alive: {live_names}."
@@ -180,25 +162,28 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            statuses = self.get_deployment_statuses()
-            try:
-                status = statuses[name]
-            except KeyError:
+
+            status = self.get_serve_status().get_deployment_status(name)
+
+            if status is None:
                 raise RuntimeError(
                     f"Waiting for deployment {name} to be HEALTHY, "
                     "but deployment doesn't exist."
-                ) from None
+                )
 
             if status.status == DeploymentStatus.HEALTHY:
                 break
             elif status.status == DeploymentStatus.UNHEALTHY:
-                raise RuntimeError(f"Deployment {name} is UNHEALTHY: {status.message}")
+                raise RuntimeError(
+                    f"Deployment {name} is UNHEALTHY: " f"{status.message}"
+                )
             else:
                 # Guard against new unhandled statuses being added.
                 assert status.status == DeploymentStatus.UPDATING
 
             logger.debug(
-                f"Waiting for {name} to be healthy, current status: {status.status}."
+                f"Waiting for {name} to be healthy, current status: "
+                f"{status.status}."
             )
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
@@ -213,14 +198,12 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = self.get_deployment_statuses()
-            if name not in statuses:
+            curr_status = self.get_serve_status().get_deployment_status(name)
+            if curr_status is None:
                 break
-            else:
-                curr_status = statuses[name].status
-                logger.debug(
-                    f"Waiting for {name} to be deleted, current status: {curr_status}."
-                )
+            logger.debug(
+                f"Waiting for {name} to be deleted, current status: {curr_status}."
+            )
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
@@ -235,7 +218,6 @@ class ServeControllerClient:
         ray_actor_options: Optional[Dict] = None,
         config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
         version: Optional[str] = None,
-        prev_version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         url: Optional[str] = None,
         _blocking: Optional[bool] = True,
@@ -249,7 +231,6 @@ class ServeControllerClient:
             ray_actor_options=ray_actor_options,
             config=config,
             version=version,
-            prev_version=prev_version,
             route_prefix=route_prefix,
         )
 
@@ -279,7 +260,6 @@ class ServeControllerClient:
                     ray_actor_options=deployment["ray_actor_options"],
                     config=deployment["config"],
                     version=deployment["version"],
-                    prev_version=deployment["prev_version"],
                     route_prefix=deployment["route_prefix"],
                 )
             )
@@ -313,7 +293,11 @@ class ServeControllerClient:
             deployment_names_to_delete = all_deployments_names.difference(
                 new_deployments_names
             )
-            self.delete_deployments(deployment_names_to_delete)
+            self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
+
+    @_ensure_connected
+    def deploy_app(self, config: ServeApplicationSchema) -> None:
+        ray.get(self._controller.deploy_app.remote(config))
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
@@ -346,16 +330,16 @@ class ServeControllerClient:
         }
 
     @_ensure_connected
-    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        proto = DeploymentStatusInfoList.FromString(
-            ray.get(self._controller.get_deployment_statuses.remote())
+    def get_app_config(self) -> Dict:
+        """Returns the most recently requested Serve config."""
+        return ray.get(self._controller.get_app_config.remote())
+
+    @_ensure_connected
+    def get_serve_status(self) -> StatusOverview:
+        proto = StatusOverviewProto.FromString(
+            ray.get(self._controller.get_serve_status.remote())
         )
-        return {
-            deployment_status_info.name: DeploymentStatusInfo.from_proto(
-                deployment_status_info
-            )
-            for deployment_status_info in proto.deployment_status_infos
-        }
+        return StatusOverview.from_proto(proto)
 
     @_ensure_connected
     def get_handle(
@@ -368,10 +352,10 @@ class ServeControllerClient:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
         Args:
-            deployment_name (str): A registered service deployment.
-            missing_ok (bool): If true, then Serve won't check the deployment
+            deployment_name: A registered service deployment.
+            missing_ok: If true, then Serve won't check the deployment
                 is registered. False by default.
-            sync (bool): If true, then Serve will return a ServeHandle that
+            sync: If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.
 
@@ -399,18 +383,18 @@ class ServeControllerClient:
         if asyncio_loop_running and sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
             logger.warning(
                 "You are retrieving a sync handle inside an asyncio loop. "
-                "Try getting client.get_handle(.., sync=False) to get better "
-                "performance. Learn more at https://docs.ray.io/en/master/"
-                "serve/http-servehandle.html#sync-and-async-handles"
+                "Try getting Deployment.get_handle(.., sync=False) to get better "
+                "performance. Learn more at https://docs.ray.io/en/latest/serve/"
+                "handle-guide.html#sync-and-async-handles"
             )
 
         if not asyncio_loop_running and not sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
             logger.warning(
                 "You are retrieving an async handle outside an asyncio loop. "
-                "You should make sure client.get_handle is called inside a "
-                "running event loop. Or call client.get_handle(.., sync=True) "
-                "to create sync handle. Learn more at https://docs.ray.io/en/"
-                "master/serve/http-servehandle.html#sync-and-async-handles"
+                "You should make sure Deployment.get_handle is called inside a "
+                "running event loop. Or call Deployment.get_handle(.., sync=True) "
+                "to create sync handle. Learn more at https://docs.ray.io/en/latest/"
+                "serve/handle-guide.html#sync-and-async-handles"
             )
 
         if sync:
@@ -457,7 +441,6 @@ class ServeControllerClient:
         ray_actor_options: Optional[Dict] = None,
         config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
         version: Optional[str] = None,
-        prev_version: Optional[str] = None,
         route_prefix: Optional[str] = None,
     ) -> Dict:
         """
@@ -480,7 +463,7 @@ class ServeControllerClient:
         else:
             ray_actor_options["runtime_env"] = curr_job_env
 
-        replica_config = ReplicaConfig(
+        replica_config = ReplicaConfig.create(
             deployment_def,
             init_args=init_args,
             init_kwargs=init_kwargs,
@@ -495,7 +478,6 @@ class ServeControllerClient:
             raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
         deployment_config.version = version
-        deployment_config.prev_version = prev_version
 
         if (
             deployment_config.autoscaling_config is not None
@@ -547,29 +529,3 @@ class ServeControllerClient:
             f"Deployment '{name}{':'+version if version else ''}' is ready"
             f"{url_part}. {tag}"
         )
-
-
-def get_controller_namespace(
-    detached: bool, _override_controller_namespace: Optional[str] = None
-):
-    """Gets the controller's namespace.
-
-    Args:
-        detached (bool): Whether serve.start() was called with detached=True
-        _override_controller_namespace (Optional[str]): When set, this is the
-            controller's namespace
-    """
-
-    if _override_controller_namespace is not None:
-        return _override_controller_namespace
-
-    controller_namespace = ray.get_runtime_context().namespace
-
-    if not detached:
-        return controller_namespace
-
-    # Start controller in "serve" namespace if detached and currently
-    # in anonymous namespace.
-    if ANONYMOUS_NAMESPACE_PATTERN.fullmatch(controller_namespace) is not None:
-        controller_namespace = "serve"
-    return controller_namespace

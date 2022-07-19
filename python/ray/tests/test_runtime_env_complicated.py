@@ -181,10 +181,6 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs, call_ray_start)
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_task_actor_conda_env(conda_envs, shutdown_only):
     ray.init()
 
@@ -222,10 +218,6 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_job_config_conda_env(conda_envs, shutdown_only):
     for package_version in REQUEST_VERSIONS:
         runtime_env = {"conda": f"package-{package_version}"}
@@ -251,7 +243,10 @@ def test_job_eager_install(shutdown_only, runtime_env_class):
     wait_for_condition(lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
     ray.shutdown()
     # Test disable eager install
-    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": False}
+    runtime_env = {
+        "conda": {"dependencies": ["toolz"]},
+        "config": {"eager_install": False},
+    }
     ray.init(runtime_env=runtime_env_class(**runtime_env))
     with pytest.raises(RuntimeError):
         wait_for_condition(
@@ -259,7 +254,10 @@ def test_job_eager_install(shutdown_only, runtime_env_class):
         )
     ray.shutdown()
     # Test unavailable type
-    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
+    runtime_env = {
+        "conda": {"dependencies": ["toolz"]},
+        "config": {"eager_install": 123},
+    }
     with pytest.raises(TypeError):
         ray.init(runtime_env=runtime_env_class(**runtime_env))
     ray.shutdown()
@@ -301,10 +299,6 @@ def test_get_conda_env_dir(tmp_path):
         assert env_dir == str(tmp_path / "envs" / "tf2")
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.skipif(
     os.environ.get("CONDA_EXE") is None,
     reason="Requires properly set-up conda shell",
@@ -1055,4 +1049,7 @@ setup(
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -1,3 +1,8 @@
+# Skipping entire test module:
+#  - Waiting for MLDataset to be made an optional dependency
+#  - See https://github.com/oap-project/raydp/pull/241
+
+"""
 import pytest
 import ray
 import raydp
@@ -30,7 +35,7 @@ def test_raydp_roundtrip(spark):
 
 def test_raydp_to_spark(spark):
     n = 5
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     values = [r["value"] for r in ds.take(5)]
     df = ds.to_spark(spark)
     rows = [r.value for r in df.take(5)]
@@ -54,3 +59,4 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+"""

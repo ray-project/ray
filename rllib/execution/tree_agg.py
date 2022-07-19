@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 import ray
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -10,15 +10,15 @@ from ray.rllib.execution.common import (
     _get_shared_metrics,
 )
 from ray.rllib.execution.replay_ops import MixInReplay
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
-from ray.rllib.utils.typing import SampleBatchType, ModelWeights
+from ray.rllib.utils.typing import ModelWeights, SampleBatchType
 from ray.util.iter import (
+    LocalIterator,
     ParallelIterator,
     ParallelIteratorWorker,
     from_actors,
-    LocalIterator,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class Aggregator(ParallelIteratorWorker):
 
         def generator():
             it = rollout_group.gather_async(
-                num_async=config["max_sample_requests_in_flight_per_worker"]
+                num_async=config["max_requests_in_flight_per_aggregator_worker"]
             )
 
             # Update the rollout worker with our latest policy weights.

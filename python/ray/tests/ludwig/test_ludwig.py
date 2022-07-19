@@ -57,6 +57,7 @@ if not skip:
     from ray.tests.ludwig.ludwig_test_utils import set_feature
     from ray.tests.ludwig.ludwig_test_utils import train_with_backend
     from ray.tests.ludwig.ludwig_test_utils import vector_feature
+
 else:
 
     def spawn(func):
@@ -86,12 +87,13 @@ def ray_start_2_cpus():
 def run_api_experiment(config, data_parquet):
     # Sanity check that we get 4 slots over 1 host
     kwargs = get_horovod_kwargs()
-    assert kwargs.get("num_hosts") == 1
-    assert kwargs.get("num_slots") == 2
+    assert kwargs.get("num_workers") == 2
 
     # Train on Parquet
     dask_backend = RayBackend()
-    train_with_backend(dask_backend, config, dataset=data_parquet, evaluate=False)
+    assert train_with_backend(
+        dask_backend, config, dataset=data_parquet, evaluate=False
+    )
 
 
 @spawn
@@ -155,3 +157,10 @@ def test_ray_tabular_client():
             assert ray.util.client.ray.is_connected()
 
             test_ray_tabular()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

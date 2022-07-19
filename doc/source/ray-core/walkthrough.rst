@@ -58,6 +58,10 @@ Installation
 
     Now you can build your own Ray C++ application based on this project template.
 
+    .. note::
+
+      If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before you run the example application. The related issue is `here <https://github.com/ray-project/ray/issues/26031>`_.
+
 Starting Ray
 ------------
 

@@ -31,12 +31,35 @@ RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 
+# This is not a great idea if your OS is different to the one
+# used in the product clusters. However, we need this in CI as reloading
+# Ray within the python process does not work for protobuf changes.
+INSTALL_MATCHING_RAY=${BUILDKITE-false}
+
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip uninstall -q -y ray
   pip install -q -r requirements.txt
   pip install -q -U boto3 botocore
+
+  if [ "${INSTALL_MATCHING_RAY-false}" == "true" ]; then
+    # Find ray-wheels parameter and install locally
+    i=1
+    for arg in "$@"; do
+      j=$((i+1))
+      if [ "$arg" == "--ray-wheels" ]; then
+        PARSED_RAY_WHEELS="${!j}"
+      fi
+      i=$j
+    done
+
+    if [ -n "${PARSED_RAY_WHEELS}" ]; then
+      echo "Installing Ray wheels locally: ${PARSED_RAY_WHEELS}"
+      pip install -U --force-reinstall "${PARSED_RAY_WHEELS}"
+    else
+      echo "Warning: No Ray wheels found to install locally"
+    fi
+  fi
 fi
 
 if [ -z "${NO_CLONE}" ]; then

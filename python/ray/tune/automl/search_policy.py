@@ -2,11 +2,11 @@ import time
 import copy
 import logging
 
-from ray.tune.trial import Trial
-from ray.tune.suggest import SearchAlgorithm
+from ray.tune.experiment import Trial
+from ray.tune.search import SearchAlgorithm
 from ray.tune.experiment import convert_to_experiment_list
-from ray.tune.suggest.variant_generator import generate_variants
-from ray.tune.config_parser import make_parser, create_trial_from_spec
+from ray.tune.search.variant_generator import generate_variants
+from ray.tune.experiment.config_parser import make_parser, create_trial_from_spec
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class AutoMLSearcher(SearchAlgorithm):
         """Initialize AutoMLSearcher.
 
         Arguments:
-            search_space (SearchSpace): The space to search.
+            search_space: The space to search.
             reward_attr: The attribute name of the reward in the result.
         """
         # Pass experiment later to allow construction without this parameter
@@ -218,7 +218,7 @@ class AutoMLSearcher(SearchAlgorithm):
         parameter permutations
 
         Arguments:
-            trials (list): A list of Trial object, where user can fetch the
+            trials: A list of Trial object, where user can fetch the
                 result attribute, etc.
 
         Returns:

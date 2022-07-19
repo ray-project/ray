@@ -34,12 +34,18 @@ class RuntimeEnvManager {
       std::function<void(const std::string &uri, std::function<void(bool successful)>)>;
   explicit RuntimeEnvManager(DeleteFunc deleter) : deleter_(deleter) {}
 
-  /// Increase the reference of URI by job_id and runtime_env.
+  /// Increase the reference of URI by job or actor ID and runtime_env.
   ///
   /// \param[in] hex_id The id of the runtime env. It can be an actor or job id.
   /// \param[in] runtime_env_info The runtime env used by the id.
   void AddURIReference(const std::string &hex_id,
                        const rpc::RuntimeEnvInfo &runtime_env_info);
+
+  /// Increase the reference of URI by job or actor ID and runtime_env.
+  ///
+  /// \param[in] hex_id The id of the runtime env. It can be an actor or job id.
+  /// \param[in] uri The URI to increase the reference for.
+  void AddURIReference(const std::string &hex_id, const std::string &uri);
 
   /// Get the reference of URIs by id.
   ///

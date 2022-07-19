@@ -10,7 +10,7 @@ questions, feel free to ask them in the [Discussion Board](https://discuss.ray.i
 
 ## How do I deploy Ray Serve?
 
-See {doc}`deployment` for information about how to deploy Serve.
+See {doc}`deploying-serve` for information about how to deploy Serve.
 
 ## How fast is Ray Serve?
 

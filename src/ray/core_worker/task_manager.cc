@@ -201,6 +201,15 @@ bool TaskManager::IsTaskPending(const TaskID &task_id) const {
   return it->second.IsPending();
 }
 
+bool TaskManager::IsTaskWaitingForExecution(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  const auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return false;
+  }
+  return it->second.IsWaitingForExecution();
+}
+
 size_t TaskManager::NumSubmissibleTasks() const {
   absl::MutexLock lock(&mu_);
   return submissible_tasks_.size();
@@ -243,11 +252,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto nested_refs =
         VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
     if (return_object.in_plasma()) {
+      // NOTE(swang): We need to add the location of the object before marking
+      // it as local in the in-memory store so that the data locality policy
+      // will choose the right raylet for any queued dependent tasks.
+      const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
+      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
       // Mark it as in plasma with a dummy object.
       RAY_CHECK(
           in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-      const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
-      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
     } else {
       // NOTE(swang): If a direct object was promoted to plasma, then we do not
       // record the node ID that it was pinned at, which means that we will not
@@ -365,6 +377,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     } else {
       RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
     }
+    it->second.status = rpc::TaskStatus::SCHEDULED;
   }
 
   // We should not hold the lock during these calls because they may trigger
@@ -640,11 +653,29 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
 }
 
-void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
+void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return;
+  }
+  RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED);
+  it->second.status = rpc::TaskStatus::WAITING_FOR_EXECUTION;
+}
+
+void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
+                               const int64_t limit) const {
+  absl::MutexLock lock(&mu_);
+  auto total = submissible_tasks_.size();
+  auto count = 0;
   for (const auto &task_it : submissible_tasks_) {
+    if (limit != -1 && count >= limit) {
+      break;
+    }
+    count += 1;
+
     const auto &task_entry = task_it.second;
-    auto entry = reply->add_task_info_entries();
+    auto entry = reply->add_owned_task_info_entries();
     const auto &task_spec = task_entry.spec;
     const auto &task_state = task_entry.status;
     rpc::TaskType type;
@@ -669,6 +700,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
                                                 resources_map.end());
     entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   }
+  reply->set_tasks_total(total);
 }
 
 }  // namespace core

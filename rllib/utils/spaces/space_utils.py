@@ -6,6 +6,7 @@ import tree  # pip install dm_tree
 from typing import Any, List, Optional, Union
 
 
+@DeveloperAPI
 def flatten_space(space: gym.Space) -> List[gym.Space]:
     """Flattens a gym.Space into its primitive components.
 
@@ -37,6 +38,7 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
     return ret
 
 
+@DeveloperAPI
 def get_base_struct_from_space(space):
     """Returns a Tuple/Dict Space as native (equally structured) py tuple/dict.
 
@@ -67,6 +69,7 @@ def get_base_struct_from_space(space):
     return _helper_struct(space)
 
 
+@DeveloperAPI
 def get_dummy_batch_for_space(
     space: gym.Space,
     batch_size: int = 32,
@@ -88,7 +91,7 @@ def get_dummy_batch_for_space(
             or "random" for random values.
         time_size (Optional[int]): If not None, add an optional time axis
             of `time_size` size to the returned batch.
-        time_major (bool): If True AND `time_size` is not None, return batch
+        time_major: If True AND `time_size` is not None, return batch
             as shape [T x B x ...], otherwise as [B x T x ...]. If `time_size`
             if None, ignore this setting and return [B x ...].
 
@@ -144,6 +147,7 @@ def get_dummy_batch_for_space(
         )
 
 
+@DeveloperAPI
 def flatten_to_single_ndarray(input_):
     """Returns a single np.ndarray given a list/tuple of np.ndarrays.
 
@@ -173,11 +177,15 @@ def flatten_to_single_ndarray(input_):
     return input_
 
 
+@DeveloperAPI
 def unbatch(batches_struct):
     """Converts input from (nested) struct of batches to batch of structs.
 
     Input: Struct of different batches (each batch has size=3):
-        {"a": [1, 2, 3], "b": ([4, 5, 6], [7.0, 8.0, 9.0])}
+        {
+            "a": np.array([1, 2, 3]),
+            "b": (np.array([4, 5, 6]), np.array([7.0, 8.0, 9.0]))
+        }
     Output: Batch (list) of structs (each of these structs representing a
         single action):
         [
@@ -187,7 +195,7 @@ def unbatch(batches_struct):
         ]
 
     Args:
-        batches_struct (any): The struct of component batches. Each leaf item
+        batches_struct: The struct of component batches. Each leaf item
             in this struct represents the batch for a single component
             (in case struct is tuple/dict).
             Alternatively, `batches_struct` may also simply be a batch of
@@ -210,15 +218,16 @@ def unbatch(batches_struct):
     return out
 
 
+@DeveloperAPI
 def clip_action(action, action_space):
     """Clips all components in `action` according to the given Space.
 
     Only applies to Box components within the action space.
 
     Args:
-        action (Any): The action to be clipped. This could be any complex
+        action: The action to be clipped. This could be any complex
             action, e.g. a dict or tuple.
-        action_space (Any): The action space struct,
+        action_space: The action space struct,
             e.g. `{"a": Distrete(2)}` for a space: Dict({"a": Discrete(2)}).
 
     Returns:
@@ -234,6 +243,7 @@ def clip_action(action, action_space):
     return tree.map_structure(map_, action, action_space)
 
 
+@DeveloperAPI
 def unsquash_action(action, action_space_struct):
     """Unsquashes all components in `action` according to the given Space.
 
@@ -244,9 +254,9 @@ def unsquash_action(action, action_space_struct):
     components within the action space, whose dtype is float32 or float64.
 
     Args:
-        action (Any): The action to be unsquashed. This could be any complex
+        action: The action to be unsquashed. This could be any complex
             action, e.g. a dict or tuple.
-        action_space_struct (Any): The action space struct,
+        action_space_struct: The action space struct,
             e.g. `{"a": Box()}` for a space: Dict({"a": Box()}).
 
     Returns:
@@ -277,6 +287,7 @@ def unsquash_action(action, action_space_struct):
     return tree.map_structure(map_, action, action_space_struct)
 
 
+@DeveloperAPI
 def normalize_action(action, action_space_struct):
     """Normalizes all (Box) components in `action` to be in [-1.0, 1.0].
 
@@ -286,9 +297,9 @@ def normalize_action(action, action_space_struct):
     dtype is float32 or float64.
 
     Args:
-        action (Any): The action to be normalized. This could be any complex
+        action: The action to be normalized. This could be any complex
             action, e.g. a dict or tuple.
-        action_space_struct (Any): The action space struct,
+        action_space_struct: The action space struct,
             e.g. `{"a": Box()}` for a space: Dict({"a": Box()}).
 
     Returns:

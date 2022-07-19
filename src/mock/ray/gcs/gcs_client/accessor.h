@@ -178,11 +178,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
               AsyncGetAllAvailableResources,
               (const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));
-  MOCK_METHOD(Status,
-              AsyncSubscribeToResources,
-              (const ItemCallback<rpc::NodeResourceChange> &subscribe,
-               const StatusCallback &done),
-              (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,
               AsyncReportResourceUsage,

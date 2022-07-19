@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Callable, Iterator, List
 
 from ray.data.block import Block, BlockMetadata, T
 from ray.data.datasource import Datasource, ReadTask
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch.utils.data
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class SimpleTorchDatasource(Datasource[T]):
     """A datasource that let's you use Torch datasets with Ray Data.
 

@@ -7,13 +7,13 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
 from pkg_resources import packaging
+import ray
 
 try:
-    import aiohttp
     import requests
 except ImportError:
-    aiohttp = None
     requests = None
+
 
 from ray._private.runtime_env.packaging import (
     create_package,
@@ -24,13 +24,15 @@ from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.dashboard.modules.job.common import uri_to_http_components
 
-from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.util.annotations import PublicAPI
 from ray.client_builder import _split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# By default, connect to local cluster.
+DEFAULT_DASHBOARD_ADDRESS = "http://localhost:8265"
 
 
 def parse_runtime_env_args(
@@ -95,9 +97,9 @@ def get_job_submission_client_cluster_info(
     inserted.
 
     Args:
-        address (str): Address without the module prefix that is passed
+        address: Address without the module prefix that is passed
             to SubmissionClient.
-        create_cluster_if_needed (bool): Indicates whether the cluster
+        create_cluster_if_needed: Indicates whether the cluster
             of the address returned needs to be running. Ray doesn't
             start a cluster before interacting with jobs, but other
             implementations may do so.
@@ -108,18 +110,8 @@ def get_job_submission_client_cluster_info(
     """
 
     scheme = "https" if _use_tls else "http"
-
-    split = address.split(":")
-    host = split[0]
-    if len(split) == 1:
-        port = DEFAULT_DASHBOARD_PORT
-    elif len(split) == 2:
-        port = int(split[1])
-    else:
-        raise ValueError(f"Invalid address: {address}.")
-
     return ClusterInfo(
-        address=f"{scheme}://{host}:{port}",
+        address=f"{scheme}://{address}",
         cookies=cookies,
         metadata=metadata,
         headers=headers,
@@ -127,12 +119,24 @@ def get_job_submission_client_cluster_info(
 
 
 def parse_cluster_info(
-    address: str,
+    address: Optional[str] = None,
     create_cluster_if_needed: bool = False,
     cookies: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
+    if address is None:
+        if ray.is_initialized():
+            address = (
+                "http://"
+                f"{ray._private.worker.global_worker.node.address_info['webui_url']}"
+            )
+        else:
+            logger.info(
+                f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}."
+            )
+            address = DEFAULT_DASHBOARD_ADDRESS
+
     module_string, inner_address = _split_address(address)
 
     # If user passes in ray://, raise error. Dashboard submission should
@@ -183,12 +187,20 @@ def parse_cluster_info(
 class SubmissionClient:
     def __init__(
         self,
-        address: str,
-        create_cluster_if_needed=False,
+        address: Optional[str] = None,
+        create_cluster_if_needed: bool = False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
     ):
+
+        # Remove any trailing slashes
+        if address is not None and address.endswith("/"):
+            address = address.rstrip("/")
+            logger.debug(
+                "The submission address cannot contain trailing slashes. Removing "
+                f'them from the requested submission address of "{address}".'
+            )
 
         cluster_info = parse_cluster_info(
             address, create_cluster_if_needed, cookies, metadata, headers
@@ -203,13 +215,21 @@ class SubmissionClient:
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
     ):
+        self._check_connection_and_version_with_url(min_version, version_error_message)
+
+    def _check_connection_and_version_with_url(
+        self,
+        min_version: str = "1.9",
+        version_error_message: str = None,
+        url: str = "/api/version",
+    ):
         if version_error_message is None:
             version_error_message = (
                 f"Please ensure the cluster is running Ray {min_version} or higher."
             )
 
         try:
-            r = self._do_request("GET", "/api/version")
+            r = self._do_request("GET", url)
             if r.status_code == 404:
                 raise RuntimeError(version_error_message)
             r.raise_for_status()
@@ -237,7 +257,13 @@ class SubmissionClient:
         *,
         data: Optional[bytes] = None,
         json_data: Optional[dict] = None,
+        **kwargs,
     ) -> "requests.Response":
+        """Perform the actual HTTP request
+
+        Keyword arguments other than "cookies", "headers" are forwarded to the
+        `requests.request()`.
+        """
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
         return requests.request(
@@ -247,6 +273,7 @@ class SubmissionClient:
             data=data,
             json=json_data,
             headers=self._headers,
+            **kwargs,
         )
 
     def _package_exists(

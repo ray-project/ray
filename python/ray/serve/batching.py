@@ -59,8 +59,8 @@ class _BatchQueue:
         poll from the queue and call handle_batch_func on the results.
 
         Arguments:
-            max_batch_size (int): max number of elements to return in a batch.
-            timeout_s (float): time to wait before returning an incomplete
+            max_batch_size: max number of elements to return in a batch.
+            timeout_s: time to wait before returning an incomplete
                 batch.
             handle_batch_func(Optional[Callable]): callback to run in the
                 background to handle batches if provided.
@@ -178,7 +178,7 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
 
     Arguments:
         args (List[Any]): arguments to the function/method call.
-        func (Callable): the unbound function that was called.
+        func: the unbound function that was called.
     """
     if len(args) > 0:
         method = getattr(args[0], func.__name__, False)
@@ -232,9 +232,9 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     ...     return await handle_batch(s) # doctest: +SKIP
 
     Arguments:
-        max_batch_size (int): the maximum batch size that will be executed in
+        max_batch_size: the maximum batch size that will be executed in
             one call to the underlying function.
-        batch_wait_timeout_s (float): the maximum duration to wait for
+        batch_wait_timeout_s: the maximum duration to wait for
             `max_batch_size` elements before running the underlying function.
     """
     # `_func` will be None in the case when the decorator is parametrized.

@@ -1,6 +1,6 @@
 """Example of using rollout worker classes directly to implement training.
 
-Instead of using the built-in Trainer classes provided by RLlib, here we define
+Instead of using the built-in Algorithm classes provided by RLlib, here we define
 a custom Policy class and manually coordinate distributed sample
 collection and policy optimization.
 """
@@ -15,7 +15,7 @@ from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")

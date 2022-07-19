@@ -7,11 +7,12 @@ Creating Datasets
 -----------------
 
 .. autofunction:: ray.data.range
-.. autofunction:: ray.data.range_arrow
+.. autofunction:: ray.data.range_table
 .. autofunction:: ray.data.range_tensor
 .. autofunction:: ray.data.read_csv
 .. autofunction:: ray.data.read_json
 .. autofunction:: ray.data.read_parquet
+.. autofunction:: ray.data.read_parquet_bulk
 .. autofunction:: ray.data.read_numpy
 .. autofunction:: ray.data.read_text
 .. autofunction:: ray.data.read_binary_files
@@ -99,6 +100,8 @@ RandomAccessDataset API
 .. autoclass:: ray.data.random_access_dataset.RandomAccessDataset
     :members:
 
+.. _dataset-tensor-extension-api:
+
 Tensor Column Extension API
 ---------------------------
 
@@ -123,6 +126,23 @@ Custom Datasource API
 .. autoclass:: ray.data.ReadTask
     :members:
 
+Datasource Partitioning API
+---------------------------
+
+.. autoclass:: ray.data.datasource.PartitionStyle
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionScheme
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionEncoder
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionParser
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionFilter
+
 Built-in Datasources
 --------------------
 
@@ -135,6 +155,8 @@ Built-in Datasources
 .. autoclass:: ray.data.datasource.FileBasedDatasource
     :members:
 
+.. autoclass:: ray.data.datasource.ImageFolderDatasource
+
 .. autoclass:: ray.data.datasource.JSONDatasource
     :members:
 
@@ -146,7 +168,7 @@ Built-in Datasources
 
 .. autoclass:: ray.data.datasource.RangeDatasource
     :members:
-    
+
 .. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
     :members:
 

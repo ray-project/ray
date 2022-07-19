@@ -2,7 +2,7 @@ package io.ray.test;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.runtime.exception.RayTaskException;
+import io.ray.api.exception.RayTaskException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

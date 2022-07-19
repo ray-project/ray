@@ -1,3 +1,5 @@
+.. _datasets_custom_datasource:
+
 ------------------------
 Using Custom Datasources
 ------------------------

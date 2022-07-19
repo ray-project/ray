@@ -1,14 +1,12 @@
 import copy
 import functools
-import gym
 import logging
 import math
-import numpy as np
 import os
 import threading
 import time
-import tree  # pip install dm_tree
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -18,8 +16,11 @@ from typing import (
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
 )
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
@@ -29,23 +30,22 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import force_list, NullContextManager
+from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     GradInfoDict,
     ModelGradients,
     ModelWeights,
-    TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    TensorType,
 )
 
 if TYPE_CHECKING:
@@ -65,7 +65,7 @@ class TorchPolicy(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         model: Optional[TorchModelV2] = None,
         loss: Optional[
@@ -173,26 +173,15 @@ class TorchPolicy(Policy):
                 action_distribution_class = dist_class
 
         # Get devices to build the graph on.
-        worker_idx = self.config.get("worker_index", 0)
-        if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
-            num_gpus = 0
-        elif worker_idx == 0:
-            num_gpus = config["num_gpus"]
-        else:
-            num_gpus = config["num_gpus_per_worker"]
+        num_gpus = self._get_num_gpus_for_policy()
         gpu_ids = list(range(torch.cuda.device_count()))
+        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
         # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-            logger.info(
-                "TorchPolicy (worker={}) running on {}.".format(
-                    worker_idx if worker_idx > 0 else "local",
-                    "{} fake-GPUs".format(num_gpus) if config["_fake_gpus"] else "CPU",
-                )
-            )
             self.device = torch.device("cpu")
             self.devices = [self.device for _ in range(int(math.ceil(num_gpus)) or 1)]
             self.model_gpu_towers = [
@@ -210,14 +199,9 @@ class TorchPolicy(Policy):
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
-            logger.info(
-                "TorchPolicy (worker={}) running on {} GPU(s).".format(
-                    worker_idx if worker_idx > 0 else "local", num_gpus
-                )
-            )
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            if ray.worker._mode() == ray.worker.WORKER_MODE:
+            if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
             if len(gpu_ids) < num_gpus:
@@ -546,7 +530,7 @@ class TorchPolicy(Policy):
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
-        return len(self._loaded_batches[buffer_index])
+        return sum(len(b) for b in self._loaded_batches[buffer_index])
 
     @override(Policy)
     @DeveloperAPI
@@ -1182,68 +1166,6 @@ class TorchPolicy(Policy):
                 raise output[0] from output[1]
             outputs.append(results[shard_idx])
         return outputs
-
-
-# TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
-#   and for all possible hyperparams, not just lr.
-@DeveloperAPI
-class LearningRateSchedule:
-    """Mixin for TorchPolicy that adds a learning rate schedule."""
-
-    @DeveloperAPI
-    def __init__(self, lr, lr_schedule):
-        self._lr_schedule = None
-        if lr_schedule is None:
-            self.cur_lr = lr
-        else:
-            self._lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None
-            )
-            self.cur_lr = self._lr_schedule.value(0)
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super().on_global_var_update(global_vars)
-        if self._lr_schedule:
-            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
-            for opt in self._optimizers:
-                for p in opt.param_groups:
-                    p["lr"] = self.cur_lr
-
-
-@DeveloperAPI
-class EntropyCoeffSchedule:
-    """Mixin for TorchPolicy that adds entropy coeff decay."""
-
-    @DeveloperAPI
-    def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
-            self.entropy_coeff = entropy_coeff
-        else:
-            # Allows for custom schedule similar to lr_schedule format
-            if isinstance(entropy_coeff_schedule, list):
-                self._entropy_coeff_schedule = PiecewiseSchedule(
-                    entropy_coeff_schedule,
-                    outside_value=entropy_coeff_schedule[-1][-1],
-                    framework=None,
-                )
-            else:
-                # Implements previous version but enforces outside_value
-                self._entropy_coeff_schedule = PiecewiseSchedule(
-                    [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0,
-                    framework=None,
-                )
-            self.entropy_coeff = self._entropy_coeff_schedule.value(0)
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        if self._entropy_coeff_schedule is not None:
-            self.entropy_coeff = self._entropy_coeff_schedule.value(
-                global_vars["timestep"]
-            )
 
 
 @DeveloperAPI

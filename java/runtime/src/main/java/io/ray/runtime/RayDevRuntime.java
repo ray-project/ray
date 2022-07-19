@@ -1,17 +1,17 @@
 package io.ray.runtime;
 
-import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
+import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
+import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
-import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
@@ -24,12 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class RayDevRuntime extends AbstractRayRuntime {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(RayDevRuntime.class);
 
   private AtomicInteger jobCounter = new AtomicInteger(0);
 
@@ -49,6 +45,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
     taskExecutor = new LocalModeTaskExecutor(this);
     workerContext = new LocalModeWorkerContext(rayConfig.getJobId());
     objectStore = new LocalModeObjectStore(workerContext);
+    functionManager = new FunctionManager(rayConfig.codeSearchPath);
     taskSubmitter =
         new LocalModeTaskSubmitter(this, taskExecutor, (LocalModeObjectStore) objectStore);
     ((LocalModeObjectStore) objectStore)
@@ -91,19 +88,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public Object getAsyncContext() {
-    return new AsyncContext(((LocalModeWorkerContext) workerContext).getCurrentTask());
-  }
-
-  @Override
-  public void setAsyncContext(Object asyncContext) {
-    Preconditions.checkNotNull(asyncContext);
-    TaskSpec task = ((AsyncContext) asyncContext).task;
-    ((LocalModeWorkerContext) workerContext).setCurrentTask(task);
-    super.setAsyncContext(asyncContext);
-  }
-
-  @Override
   public Map<String, List<ResourceValue>> getAvailableResourceIds() {
     throw new UnsupportedOperationException("Ray doesn't support get resources ids in local mode.");
   }
@@ -133,18 +117,15 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
+  public UniqueId getCurrentNodeId() {
+    throw new UnsupportedOperationException("Ray doesn't support it in local mode.");
+  }
+
+  @Override
   public void exitActor() {}
 
   private JobId nextJobId() {
     return JobId.fromInt(jobCounter.getAndIncrement());
-  }
-
-  private static class AsyncContext {
-    private TaskSpec task;
-
-    private AsyncContext(TaskSpec task) {
-      this.task = task;
-    }
   }
 
   private static void updateSessionDir(RayConfig rayConfig) {

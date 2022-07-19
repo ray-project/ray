@@ -3,6 +3,14 @@
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
+    name = "test_checkpoint_manager",
+    size = "small",
+    srcs = ["tests/test_checkpoint_manager.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_util_lib"]
+)
+
+py_test(
     name = "test_mlflow",
     size = "medium",
     srcs = ["tests/test_mlflow.py"],

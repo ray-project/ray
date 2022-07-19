@@ -25,6 +25,7 @@ class ConfigTest(unittest.TestCase):
                     "test_name": "validation_test",
                     "test_suite": "validation_suite",
                 },
+                "python": "3.7",
                 "frequency": "nightly",
                 "team": "release",
                 "cluster": {
@@ -50,6 +51,7 @@ class ConfigTest(unittest.TestCase):
 
         # Remove some optional arguments
         del test["alert"]
+        del test["python"]
         del test["run"]["wait_for_nodes"]
         del test["cluster"]["autosuspend_mins"]
 
@@ -78,6 +80,12 @@ class ConfigTest(unittest.TestCase):
         # Faulty smoke test
         invalid_test = test.copy()
         del invalid_test["smoke_test"]["frequency"]
+        with self.assertRaises(ReleaseTestConfigError):
+            validate_release_test_collection([invalid_test])
+
+        # Faulty Python version
+        invalid_test = test.copy()
+        invalid_test["python"] = "invalid"
         with self.assertRaises(ReleaseTestConfigError):
             validate_release_test_collection([invalid_test])
 

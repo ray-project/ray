@@ -61,7 +61,7 @@ class SharedWeightsModel1(TFModelV2):
     """Example of weight sharing between two different TFModelV2s.
 
     NOTE: This will only work for tf1 (static graph). When running with
-    config.framework=tf2, use TF2SharedWeightsModel, instead!
+    config.framework_str=tf2, use TF2SharedWeightsModel, instead!
 
     Here, we share the variables defined in the 'shared' variable scope
     by entering it explicitly with tf1.AUTO_REUSE. This creates the

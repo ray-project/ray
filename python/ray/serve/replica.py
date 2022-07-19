@@ -25,6 +25,7 @@ from ray.serve.constants import (
     RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -37,26 +38,16 @@ from ray.serve.version import DeploymentVersion
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def create_replica_wrapper(
-    name: str, import_path: str = None, serialized_deployment_def: bytes = None
-):
+def _format_replica_actor_name(deployment_name: str):
+    return f"ServeReplica:{deployment_name}"
+
+
+def create_replica_wrapper(name: str):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
-
-    if (import_path is None) and (serialized_deployment_def is None):
-        raise ValueError(
-            "Either the import_name or the serialized_deployment_def must "
-            "be specified, but both were unspecified."
-        )
-    elif (import_path is not None) and (serialized_deployment_def is not None):
-        raise ValueError(
-            "Only one of either the import_name or the "
-            "serialized_deployment_def must be specified, but both were "
-            "specified."
-        )
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
@@ -64,12 +55,12 @@ def create_replica_wrapper(
             self,
             deployment_name,
             replica_tag,
-            init_args,
-            init_kwargs,
+            serialized_deployment_def: bytes,
+            serialized_init_args: bytes,
+            serialized_init_kwargs: bytes,
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
             controller_name: str,
-            controller_namespace: str,
             detached: bool,
         ):
             configure_component_logger(
@@ -78,7 +69,10 @@ def create_replica_wrapper(
                 component_id=replica_tag,
             )
 
-            if import_path is not None:
+            deployment_def = cloudpickle.loads(serialized_deployment_def)
+
+            if isinstance(deployment_def, str):
+                import_path = deployment_def
                 module_name, attr_name = parse_import_path(import_path)
                 deployment_def = getattr(import_module(module_name), attr_name)
                 # For ray or serve decorated class or function, strip to return
@@ -95,8 +89,8 @@ def create_replica_wrapper(
                     )
                     deployment_def = deployment_def.func_or_class
 
-            else:
-                deployment_def = cloudpickle.loads(serialized_deployment_def)
+            init_args = cloudpickle.loads(serialized_init_args)
+            init_kwargs = cloudpickle.loads(serialized_init_kwargs)
 
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes
@@ -120,14 +114,13 @@ def create_replica_wrapper(
                 deployment_name,
                 replica_tag,
                 controller_name,
-                controller_namespace,
                 servable_object=None,
             )
 
             assert controller_name, "Must provide a valid controller_name"
 
             controller_handle = ray.get_actor(
-                controller_name, namespace=controller_namespace
+                controller_name, namespace=SERVE_NAMESPACE
             )
 
             # This closure initializes user code and finalizes replica
@@ -152,7 +145,6 @@ def create_replica_wrapper(
                     deployment_name,
                     replica_tag,
                     controller_name,
-                    controller_namespace,
                     servable_object=_callable,
                 )
 
@@ -223,8 +215,13 @@ def create_replica_wrapper(
         async def check_health(self):
             await self.replica.check_health()
 
-    RayServeWrappedReplica.__name__ = name
-    return RayServeWrappedReplica
+    # Dynamically create a new class with custom name here so Ray picks it up
+    # correctly in actor metadata table and observability stack.
+    return type(
+        _format_replica_actor_name(name),
+        (RayServeWrappedReplica,),
+        dict(RayServeWrappedReplica.__dict__),
+    )
 
 
 class RayServeReplica:
@@ -317,11 +314,12 @@ class RayServeReplica:
         self._shutdown_wait_loop_s = deployment_config.graceful_shutdown_wait_loop_s
 
         if deployment_config.autoscaling_config:
+            process_remote_func = controller_handle.record_autoscaling_metrics.remote
             config = deployment_config.autoscaling_config
             start_metrics_pusher(
                 interval_s=config.metrics_interval_s,
                 collection_callback=self._collect_autoscaling_metrics,
-                controller_handle=controller_handle,
+                metrics_process_func=process_remote_func,
             )
 
         # NOTE(edoakes): we used to recommend that users use the "ray" logger
@@ -344,7 +342,9 @@ class RayServeReplica:
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
-        method_stat = actor_stats.get("RayServeWrappedReplica.handle_request")
+        method_stat = actor_stats.get(
+            f"{_format_replica_actor_name(self.deployment_name)}.handle_request"
+        )
         return method_stat
 
     def _collect_autoscaling_metrics(self):
@@ -512,7 +512,7 @@ class RayServeReplica:
                 )
 
         # Explicitly call the del method to trigger clean up.
-        # We set the del method to noop after succssifully calling it so the
+        # We set the del method to noop after successfully calling it so the
         # destructor is called only once.
         try:
             if hasattr(self.callable, "__del__"):

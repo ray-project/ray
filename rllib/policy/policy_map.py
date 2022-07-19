@@ -1,16 +1,22 @@
-from collections import deque
-import gym
 import os
 import pickle
 import threading
-from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING
+from collections import deque
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Type
+
+import gym
 
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.policy import create_policy_for_framework
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import PartialTrainerConfigDict, PolicyID, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
+    PartialAlgorithmConfigDict,
+    PolicyID,
+)
 from ray.tune.utils.util import merge_dicts
 
 if TYPE_CHECKING:
@@ -19,12 +25,13 @@ if TYPE_CHECKING:
 tf1, tf, tfv = try_import_tf()
 
 
+@PublicAPI
 class PolicyMap(dict):
     """Maps policy IDs to Policy objects.
 
     Thereby, keeps n policies in memory and - when capacity is reached -
     writes the least recently used to disk. This allows adding 100s of
-    policies to a Trainer for league-based setups w/o running out of memory.
+    policies to a Algorithm for league-based setups w/o running out of memory.
     """
 
     def __init__(
@@ -33,7 +40,7 @@ class PolicyMap(dict):
         num_workers: int,
         capacity: Optional[int] = None,
         path: Optional[str] = None,
-        policy_config: Optional[TrainerConfigDict] = None,
+        policy_config: Optional[AlgorithmConfigDict] = None,
         session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ):
@@ -49,7 +56,7 @@ class PolicyMap(dict):
                 when needed.
             path: The path to store the policy pickle files to. Files
                 will have the name: [policy_id].[worker idx].policy.pkl.
-            policy_config: The Trainer's base config dict.
+            policy_config: The Algorithm's base config dict.
             session_creator: An optional
                 tf1.Session creation callable.
             seed: An optional seed (used to seed tf policies).
@@ -75,7 +82,7 @@ class PolicyMap(dict):
         self.path = path or "."
         # The core config to use. Each single policy's config override is
         # added on top of this.
-        self.policy_config: TrainerConfigDict = policy_config or {}
+        self.policy_config: AlgorithmConfigDict = policy_config or {}
         # The orig classes/obs+act spaces, and config overrides of the
         # Policies.
         self.policy_specs: Dict[PolicyID, PolicySpec] = {}
@@ -91,8 +98,8 @@ class PolicyMap(dict):
         policy_cls: Type["Policy"],
         observation_space: gym.Space,
         action_space: gym.Space,
-        config_override: PartialTrainerConfigDict,
-        merged_config: TrainerConfigDict,
+        config_override: PartialAlgorithmConfigDict,
+        merged_config: AlgorithmConfigDict,
     ) -> None:
         """Creates a new policy and stores it to the cache.
 
@@ -111,45 +118,18 @@ class PolicyMap(dict):
             merged_config: The entire config (merged
                 default config + `config_override`).
         """
-        framework = merged_config.get("framework", "tf")
-        class_ = get_tf_eager_cls_if_necessary(policy_cls, merged_config)
+        _class = get_tf_eager_cls_if_necessary(policy_cls, merged_config)
 
-        # Tf.
-        if framework in ["tf2", "tf", "tfe"]:
-            var_scope = policy_id + (
-                ("_wk" + str(self.worker_index)) if self.worker_index else ""
-            )
-
-            # For tf static graph, build every policy in its own graph
-            # and create a new session for it.
-            if framework == "tf":
-                with tf1.Graph().as_default():
-                    if self.session_creator:
-                        sess = self.session_creator()
-                    else:
-                        sess = tf1.Session(
-                            config=tf1.ConfigProto(
-                                gpu_options=tf1.GPUOptions(allow_growth=True)
-                            )
-                        )
-                    with sess.as_default():
-                        # Set graph-level seed.
-                        if self.seed is not None:
-                            tf1.set_random_seed(self.seed)
-                        with tf1.variable_scope(var_scope):
-                            self[policy_id] = class_(
-                                observation_space, action_space, merged_config
-                            )
-            # For tf-eager: no graph, no session.
-            else:
-                with tf1.variable_scope(var_scope):
-                    self[policy_id] = class_(
-                        observation_space, action_space, merged_config
-                    )
-        # Non-tf: No graph, no session.
-        else:
-            class_ = policy_cls
-            self[policy_id] = class_(observation_space, action_space, merged_config)
+        self[policy_id] = create_policy_for_framework(
+            policy_id,
+            _class,
+            merged_config,
+            observation_space,
+            action_space,
+            self.worker_index,
+            self.session_creator,
+            self.seed,
+        )
 
         # Store spec (class, obs-space, act-space, and config overrides) such
         # that the map will be able to reproduce on-the-fly added policies

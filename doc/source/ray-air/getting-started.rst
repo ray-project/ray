@@ -1,9 +1,14 @@
 .. _air:
 
-Ray AI Runtime (alpha)
-======================
+Ray AI Runtime (AIR)
+====================
 
 Ray AI Runtime (AIR) is an open-source toolkit for building end-to-end ML applications. By leveraging Ray and its library ecosystem, it brings scalability and programmability to ML platforms.
+
+.. tip::
+    **Getting involved with Ray AIR.** Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved. We'll be holding office hours, development sprints, and other activities as we get closer to the Ray AIR Beta/GA release. Join us!
+
+.. image:: images/ai_runtime.jpg
 
 
 The main focuses of the Ray AI Runtime:
@@ -11,141 +16,169 @@ The main focuses of the Ray AI Runtime:
 * Ray AIR focuses on providing the compute layer for ML workloads.
 * It is designed to interoperate with other systems for storage and metadata needs.
 
+Ray AIR consists of 5 key components:
 
-Ray AIR consists of 5 key components -- Data processing (Ray Data), Model Training (Ray Train), Reinforcement Learning (Ray RLlib), Hyperparameter Tuning (Ray Tune), and Model Serving (Ray Serve).
+- Data processing (:ref:`Ray Data <datasets>`)
+- Model Training (:ref:`Ray Train <train-docs>`)
+- Reinforcement Learning (:ref:`Ray RLlib <rllib-index>`)
+- Hyperparameter Tuning (:ref:`Ray Tune <tune-main>`)
+- Model Serving (:ref:`Ray Serve <rayserve>`).
 
 Users can use these libraries interchangeably to scale different parts of standard ML workflows.
 
-
-.. tip::
-    **Getting involved with Ray AIR.** We'll be holding office hours, development sprints, and other activities as we get closer to the Ray AIR Beta/GA release. Want to join us? Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__!
+To get started, install Ray AIR via ``pip install -U "ray[air]"``
 
 
-.. contents::
-    :local:
+Quick Start
+-----------
 
+Below, we demonstrate how you can use the Ray libraries in a seamless flow
+between distributed frameworks (e.g., XGBoost, Pytorch, and Tensorflow): 
 
-Components
-----------
-
-Preprocessors
+Preprocessing
 ~~~~~~~~~~~~~
 
-.. autoclass:: ray.ml.preprocessor.Preprocessor
-    :members:
+Below, let's start by preprocessing your data with Ray AIR's ``Preprocessors``:
 
-.. automodule:: ray.ml.preprocessors
-    :members:
-    :show-inheritance:
+.. literalinclude:: examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_generic_preprocess_start__
+    :end-before: __air_generic_preprocess_end__
+
+If using Tensorflow or Pytorch, format your data for use with your training framework:
+
+.. tabbed:: XGBoost
+
+    .. code-block:: python
+        
+        # No extra preprocessing is required for XGBoost.
+        # The data is already in the correct format.
+
+.. tabbed:: Pytorch
+
+    .. literalinclude:: examples/pytorch_tabular_starter.py
+        :language: python
+        :start-after: __air_pytorch_preprocess_start__
+        :end-before: __air_pytorch_preprocess_end__
+
+.. tabbed:: Tensorflow
+
+    .. literalinclude:: examples/tf_tabular_starter.py
+        :language: python
+        :start-after: __air_tf_preprocess_start__
+        :end-before: __air_tf_preprocess_end__
+
+Training
+~~~~~~~~
+
+Train a model with a ``Trainer`` with common ML frameworks:
+
+.. tabbed:: XGBoost
+
+    .. literalinclude:: examples/xgboost_starter.py
+        :language: python
+        :start-after: __air_xgb_train_start__
+        :end-before: __air_xgb_train_end__
+
+.. tabbed:: Pytorch
+
+    .. literalinclude:: examples/pytorch_tabular_starter.py
+        :language: python
+        :start-after: __air_pytorch_train_start__
+        :end-before: __air_pytorch_train_end__
+
+.. tabbed:: Tensorflow
+
+    .. literalinclude:: examples/tf_tabular_starter.py
+        :language: python
+        :start-after: __air_tf_train_start__
+        :end-before: __air_tf_train_end__
+
+Hyperparameter Tuning
+~~~~~~~~~~~~~~~~~~~~~
+
+You can specify a hyperparameter space to search over for each trainer:
+
+.. tabbed:: XGBoost
+
+    .. literalinclude:: examples/xgboost_starter.py
+        :language: python
+        :start-after: __air_xgb_tuner_start__
+        :end-before: __air_xgb_tuner_end__
+
+.. tabbed:: Pytorch
+
+    .. literalinclude:: examples/pytorch_tabular_starter.py
+        :language: python
+        :start-after: __air_pytorch_tuner_start__
+        :end-before: __air_pytorch_tuner_end__
+
+.. tabbed:: Tensorflow
+
+    .. literalinclude:: examples/tf_tabular_starter.py
+        :language: python
+        :start-after: __air_tf_tuner_start__
+        :end-before: __air_tf_tuner_end__
+
+Then use the ``Tuner`` to run the search:
+
+.. literalinclude:: examples/pytorch_tabular_starter.py
+    :language: python
+    :start-after: __air_tune_generic_start__
+    :end-before: __air_tune_generic_end__
+
+Batch Inference
+~~~~~~~~~~~~~~~
+
+Use the trained model for scalable batch prediction with a ``BatchPredictor``.
+
+.. tabbed:: XGBoost
+
+    .. literalinclude:: examples/xgboost_starter.py
+        :language: python
+        :start-after: __air_xgb_batchpred_start__
+        :end-before: __air_xgb_batchpred_end__
+
+.. tabbed:: Pytorch
+
+    .. literalinclude:: examples/pytorch_tabular_starter.py
+        :language: python
+        :start-after: __air_pytorch_batchpred_start__
+        :end-before: __air_pytorch_batchpred_end__
+
+.. tabbed:: Tensorflow
+
+    .. literalinclude:: examples/tf_tabular_starter.py
+        :language: python
+        :start-after: __air_tf_batchpred_start__
+        :end-before: __air_tf_batchpred_end__
 
 
-Trainer
-~~~~~~~
+See the :ref:`Key Concepts <air-key-concepts>` for more that Ray AIR has to offer.
 
 
-.. autoclass:: ray.ml.trainer.Trainer
-    :members:
+Why Ray AIR?
+------------
 
-.. automodule:: ray.ml.train.integrations.xgboost
-    :members:
-    :show-inheritance:
+There are so many machine learning frameworks, platforms, and tools nowadays. What makes Ray AIR different?
 
-.. automodule:: ray.ml.train.integrations.lightgbm
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.train.integrations.tensorflow
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.train.integrations.torch
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.train.integrations.huggingface
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.train.integrations.sklearn
-    :members:
-    :show-inheritance:
-
-.. autoclass:: ray.ml.train.data_parallel_trainer.DataParallelTrainer
-    :members:
-    :show-inheritance:
-
-.. autoclass:: ray.ml.train.gbdt_trainer.GBDTTrainer
-    :members:
-    :show-inheritance:
+We believe Ray AIR provides unique value deriving from Ray.
 
 
-
-Tuner
-~~~~~
-
-.. autoclass:: ray.tune.tuner.Tuner
-    :members:
-
-.. automodule:: ray.tune.result_grid
-    :members:
-
-Predictors
-~~~~~~~~~~
-
-.. autoclass:: ray.ml.predictor.Predictor
-    :members:
-
-.. autoclass:: ray.ml.batch_predictor.BatchPredictor
-    :members:
-
-.. automodule:: ray.ml.predictors.integrations.xgboost
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.predictors.integrations.lightgbm
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.predictors.integrations.tensorflow
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.predictors.integrations.torch
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.predictors.integrations.sklearn
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.predictors.integrations.huggingface
-    :members:
-    :show-inheritance:
-
-.. _air-serve-integration:
-
-Serving
-~~~~~~~
-
-.. autoclass:: ray.serve.model_wrappers.ModelWrapperDeployment
-
-.. autoclass:: ray.serve.model_wrappers.ModelWrapper
+**Seamless development to production**: Ray AIR reduces development friction going from development to production. Unlike in other frameworks, scaling Ray applications from a laptop to large clusters doesn't require a separate way of running -- the same code scales up seamlessly.
+This means data scientists and ML practitioners spend less time fighting YAMLs and refactoring code. Smaller teams and companies that don’t have the resources to invest heavily on MLOps can now deploy ML models at a much faster rate with Ray AIR.
 
 
-Outputs
-~~~~~~~
+**Multi-cloud and Framework-interoperable**: Ray AIR is multi-cloud and framework-interoperable. The Ray compute layer and libraries freely operate with Cloud platforms and frameworks in the ecosystem, reducing lock-in to any particular choices of ML tech.
+Ex: why framework interoperability is unique to Ray--- it's easy to run Torch distributed or elastic Horovod within Ray, but not vice versa.
 
-.. automodule:: ray.ml.checkpoint
-    :members:
+**Future-proof via flexibility and scalability**: Ray's scalability and flexibility makes Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common patterns are being incorporated into libraries like Ray Serve.
 
+Next Steps
+----------
 
-.. automodule:: ray.ml.result
-    :members:
-
-
-Configs
-~~~~~~~
-
-.. automodule:: ray.ml.config
-    :members:
+- :ref:`air-key-concepts`
+- `Examples <https://github.com/ray-project/ray/tree/master/python/ray/air/examples>`__
+- :ref:`Deployment Guide <air-deployment>`
+- :ref:`API reference <air-api-ref>`
 

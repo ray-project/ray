@@ -64,7 +64,7 @@ HyperBand Implementation Details
 
 Implementation details may deviate slightly from theory but are focused on increasing usability.
 Note: ``R``, ``s_max``, and ``eta`` are parameters of HyperBand given by the paper.
-See `this post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ for context.
+See `this post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`_ for context.
 
 1. Both ``s_max`` (representing the ``number of brackets - 1``) and ``eta``, representing the downsampling rate, are fixed.
     In many practical settings, ``R``, which represents some resource unit and often the number of training iterations,
@@ -82,7 +82,7 @@ HyperBand configurations that are not very intuitive:
 The implementation takes the same configuration as the example given in the paper
 and exposes ``max_t``, which is not a parameter in the paper.
 
-2. The example in the `post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ to calculate ``n_0``
+2. The example in the `post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`_ to calculate ``n_0``
     is actually a little different than the algorithm given in the paper.
     In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
 

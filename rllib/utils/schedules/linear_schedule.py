@@ -1,6 +1,8 @@
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.schedules.polynomial_schedule import PolynomialSchedule
 
 
+@PublicAPI
 class LinearSchedule(PolynomialSchedule):
     """Linear interpolation between `initial_p` and `final_p`.
 

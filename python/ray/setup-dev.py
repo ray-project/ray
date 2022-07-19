@@ -75,7 +75,7 @@ if __name__ == "__main__":
         print("NOTE: Use '-y' to override all python files without confirmation.")
 
     do_link("rllib", force=args.yes, local_path="../../../rllib")
-    do_link("ml", force=args.yes)
+    do_link("air", force=args.yes)
     do_link("tune", force=args.yes)
     do_link("train", force=args.yes)
     do_link("autoscaler", force=args.yes)
@@ -89,9 +89,7 @@ if __name__ == "__main__":
     do_link("util", force=args.yes)
     do_link("workflow", force=args.yes)
     do_link("_private", force=args.yes)
-    do_link("node.py", force=args.yes)
     do_link("cluster_utils.py", force=args.yes)
-    do_link("ray_constants.py", force=args.yes)
     # Link package's `dashboard` directly to local (repo's) dashboard.
     # The repo's `dashboard` is a file, soft-linking to which will not work
     # on Mac.

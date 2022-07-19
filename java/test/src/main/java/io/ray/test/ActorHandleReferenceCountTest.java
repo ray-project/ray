@@ -4,13 +4,11 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.actor.NativeActorHandle;
-import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.util.SystemUtil;
 import java.lang.ref.Reference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -65,7 +63,6 @@ public class ActorHandleReferenceCountTest {
 
   public void testActorHandleReferenceCount() {
     try {
-      System.setProperty("ray.job.num-java-workers-per-process", "1");
       Ray.init();
       ActorHandle<SignalActor> signal = Ray.actor(SignalActor::new).remote();
       ActorHandle<MyActor> myActor = Ray.actor(MyActor::new).remote();
@@ -79,29 +76,6 @@ public class ActorHandleReferenceCountTest {
       signal.task(SignalActor::sendSignal).remote().get();
       Assert.assertEquals("hello", helloObj.get());
       Assert.assertTrue(TestUtils.waitForCondition(() -> !SystemUtil.isProcessAlive(pid), 10000));
-    } finally {
-      Ray.shutdown();
-    }
-  }
-
-  public void testRemoveActorHandleReferenceInMultipleThreadedActor() throws InterruptedException {
-    System.setProperty("ray.job.num-java-workers-per-process", "5");
-    try {
-      Ray.init();
-      ActorHandle<MyActor> myActor1 = Ray.actor(MyActor::new).remote();
-      int pid1 = myActor1.task(MyActor::getPid).remote().get();
-      ActorHandle<MyActor> myActor2 = Ray.actor(MyActor::new).remote();
-      int pid2 = myActor2.task(MyActor::getPid).remote().get();
-      Assert.assertEquals(pid1, pid2);
-      del(myActor1);
-      TimeUnit.SECONDS.sleep(5);
-      Assert.assertThrows(
-          RayActorException.class,
-          () -> {
-            myActor1.task(MyActor::hello).remote().get();
-          });
-      /// myActor2 shouldn't be killed.
-      Assert.assertEquals("hello", myActor2.task(MyActor::hello).remote().get());
     } finally {
       Ray.shutdown();
     }

@@ -182,6 +182,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_gcs_failure",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 
 py_test(
     name = "test_handle",
@@ -278,7 +286,7 @@ py_test(
     name = "test_logs",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"],
 )
 
@@ -332,8 +340,8 @@ py_test(
 )
 
 py_test(
-    name = "test_model_wrappers",
-    size = "small",
+    name = "test_air_integrations",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -348,7 +356,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_driver",
+    name = "test_deployment_graph_driver",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -356,7 +364,15 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_dag",
+    name = "test_deployment_graph",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deployment_graph_autoscaling",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -372,7 +388,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_ingress_deployment",
+    name = "test_deployment_graph_ingress_deployment",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -380,7 +396,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_deployment_config",
+    name = "test_deployment_graph_config",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -388,7 +404,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_handle_serde",
+    name = "test_deployment_graph_handle_serde",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -419,7 +435,7 @@ py_test(
     name = "quickstart_class",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 
@@ -427,7 +443,7 @@ py_test(
     name = "quickstart_function",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 
@@ -435,7 +451,7 @@ py_test(
     name = "tutorial_tensorflow",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 
@@ -443,7 +459,7 @@ py_test(
     name = "tutorial_pytorch",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 
@@ -451,16 +467,8 @@ py_test(
     name = "tutorial_sklearn",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
-)
-
-py_test(
-    name = "tutorial_sklearn_ray_overview",
-    size = "small",
-    main = "quick_start.py",
-    srcs = ["//doc/source/serve/doc_code:serve_doc_code"],
-    tags = ["exclusive", "team:serve"],
 )
 
 py_test(
@@ -470,7 +478,7 @@ py_test(
     main = "test_myst_doc.py",
     args = ["--path", "doc/source/serve/tutorials/rllib.md"],
     data = ["//doc/source/serve/tutorials:markdowns"],
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
 )
 
 py_test(
@@ -485,24 +493,22 @@ py_test(
     name = "conda_env",
     size = "medium",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "post_wheel_build", "team:serve"],
+    tags = ["exclusive", "post_wheel_build", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
-
-pipeline_tests_srcs = glob(["pipeline/tests/**/*.py"])
 
 py_test(
     name = "test_deployment_node",
     size = "medium",
-    srcs = pipeline_tests_srcs,
+    srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
-    name = "test_generate",
+    name = "test_deployment_graph_build",
     size = "medium",
-    srcs = pipeline_tests_srcs,
+    srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
@@ -518,7 +524,7 @@ py_test(
 py_test(
     name = "test_json_serde",
     size = "medium",
-    srcs = pipeline_tests_srcs,
+    srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )

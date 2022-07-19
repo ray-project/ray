@@ -1,32 +1,30 @@
 #!/usr/bin/env python
-import json
 import os
 import pathlib
-import click
-import time
 import sys
+import time
 from typing import Optional, Union
+
+import click
 import yaml
 
 import ray
-from ray._private.utils import import_attr
-from ray.serve.config import DeploymentMode
 from ray import serve
+from ray._private.utils import import_attr
+from ray.autoscaler._private.cli_logger import cli_logger
+from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.serve.api import build as build_app
+from ray.serve.config import DeploymentMode
 from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SERVE_NAMESPACE,
 )
+from ray.serve.deployment import deployment_to_schema
+from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
-from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
-from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.api import build as build_app
-from ray.serve.application import Application
-from ray.serve.deployment_graph import (
-    FunctionNode,
-    ClassNode,
-)
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -39,13 +37,13 @@ RAY_INIT_ADDRESS_HELP_STR = (
     "using the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard (defaults to "
-    "http://localhost:8265). Can also be specified using the "
-    "RAY_ADDRESS environment variable."
+    "Address to use to query the Ray dashboard agent (defaults to "
+    "http://localhost:52365). Can also be specified using the "
+    "RAY_AGENT_ADDRESS environment variable."
 )
 
 
-@click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
+@click.group(help="CLI for managing Serve instances on a Ray cluster.")
 def cli():
     pass
 
@@ -58,14 +56,6 @@ def cli():
     required=False,
     type=str,
     help=RAY_INIT_ADDRESS_HELP_STR,
-)
-@click.option(
-    "--namespace",
-    "-n",
-    default="serve",
-    required=False,
-    type=str,
-    help='Ray namespace to connect to. Defaults to "serve".',
 )
 @click.option(
     "--http-host",
@@ -97,7 +87,6 @@ def cli():
 )
 def start(
     address,
-    namespace,
     http_host,
     http_port,
     http_location,
@@ -105,7 +94,7 @@ def start(
 ):
     ray.init(
         address=address,
-        namespace=namespace,
+        namespace=SERVE_NAMESPACE,
     )
     serve.start(
         detached=True,
@@ -118,32 +107,6 @@ def start(
     )
 
 
-@cli.command(help="Shut down the running Serve app on the Ray cluster.")
-@click.option(
-    "--address",
-    "-a",
-    default=os.environ.get("RAY_ADDRESS", "auto"),
-    required=False,
-    type=str,
-    help=RAY_INIT_ADDRESS_HELP_STR,
-)
-@click.option(
-    "--namespace",
-    "-n",
-    default="serve",
-    required=False,
-    type=str,
-    help='Ray namespace to connect to. Defaults to "serve".',
-)
-def shutdown(address: str, namespace: str):
-    ray.init(
-        address=address,
-        namespace=namespace,
-    )
-    serve.context._connect()
-    serve.shutdown()
-
-
 @cli.command(
     short_help="Deploy a Serve app from a YAML config file.",
     help=(
@@ -154,13 +117,12 @@ def shutdown(address: str, namespace: str):
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
-    hidden=True,
 )
 @click.argument("config_file_name")
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -186,7 +148,7 @@ def deploy(config_file_name: str, address: str):
     short_help="Run a Serve app.",
     help=(
         "Runs the Serve app from the specified import path or YAML config.\n"
-        "Any import path must lead to an Application or ClassNode object. "
+        "Any import path must lead to a FunctionNode or ClassNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
@@ -279,22 +241,28 @@ def run(
         working_dir=working_dir,
     )
 
-    app_or_node = None
     if pathlib.Path(config_or_import_path).is_file():
         config_path = config_or_import_path
-        cli_logger.print(f"Deploying from config file: '{config_path}'.")
+        cli_logger.print(f'Deploying from config file: "{config_path}".')
+
         with open(config_path, "r") as config_file:
-            app_or_node = Application.from_yaml(config_file)
+            config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
+        is_config = True
     else:
         import_path = config_or_import_path
-        cli_logger.print(f"Deploying from import path: '{import_path}'.")
-        app_or_node = import_attr(import_path)
+        cli_logger.print(f'Deploying from import path: "{import_path}".')
+        node = import_attr(import_path)
+        is_config = False
 
     # Setting the runtime_env here will set defaults for the deployments.
-    ray.init(address=address, namespace="serve", runtime_env=final_runtime_env)
+    ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
+    client = serve.start(detached=True)
 
     try:
-        serve.run(app_or_node, host=host, port=port)
+        if is_config:
+            client.deploy_app(config)
+        else:
+            serve.run(node, host=host, port=port)
         cli_logger.success("Deployed successfully.")
 
         if blocking:
@@ -308,14 +276,11 @@ def run(
         sys.exit()
 
 
-@cli.command(
-    help="Get the current config of the running Serve app.",
-    hidden=True,
-)
+@cli.command(help="Get the current config of the running Serve app.")
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -342,7 +307,7 @@ def config(address: str):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -350,23 +315,22 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
-        print(json.dumps(app_status["statuses"], indent=4))
+        print(yaml.safe_dump(app_status, default_flow_style=False, sort_keys=False))
 
 
 @cli.command(
-    help="Deletes all deployments in the Serve app.",
-    hidden=True,
+    help="Deletes the Serve app.",
 )
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
-def delete(address: str, yes: bool):
+def shutdown(address: str, yes: bool):
     if not yes:
         click.confirm(
             f"\nThis will shutdown the Serve application at address "
@@ -383,14 +347,14 @@ def delete(address: str, yes: bool):
 
 
 @cli.command(
-    short_help="Writes a Pipeline's config file.",
+    short_help="Writes a Serve Deployment Graph's config file.",
     help=(
         "Imports the ClassNode or FunctionNode at IMPORT_PATH "
         "and generates a structured config for it that can be used by "
         "`serve deploy` or the REST API. "
     ),
-    hidden=True,
 )
+@click.argument("import_path")
 @click.option(
     "--app-dir",
     "-d",
@@ -408,8 +372,7 @@ def delete(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
-@click.argument("import_path")
-def build(app_dir: str, output_path: Optional[str], import_path: str):
+def build(import_path: str, app_dir: str, output_path: Optional[str]):
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
@@ -421,11 +384,48 @@ def build(app_dir: str, output_path: Optional[str], import_path: str):
 
     app = build_app(node)
 
-    if output_path is not None:
-        if not output_path.endswith(".yaml"):
-            raise ValueError("FILE_PATH must end with '.yaml'.")
+    config = ServeApplicationSchema(
+        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
+    ).dict()
+    config["import_path"] = import_path
 
-        with open(output_path, "w") as f:
-            app.to_yaml(f)
-    else:
-        print(app.to_yaml(), end="")
+    config_str = (
+        "# This file was generated using the `serve build` command "
+        f"on Ray v{ray.__version__}.\n\n"
+    )
+    config_str += yaml.dump(
+        config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
+    )
+
+    with open(output_path, "w") if output_path else sys.stdout as f:
+        f.write(config_str)
+
+
+class ServeBuildDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for `serve build` command.
+
+    Reformat config to follow this spacing:
+    ---------------------------------------
+
+    import_path: example.path
+
+    runtime_env: {}
+
+    deployments:
+
+    - name: val1
+        ...
+
+    - name: val2
+        ...
+    """
+
+    def write_line_break(self, data=None):
+        # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
+        super().write_line_break(data)
+
+        # Indents must be less than 3 to ensure that only the top 2 levels of
+        # the config file have line breaks between them. The top 2 levels include
+        # import_path, runtime_env, deployments, and all entries of deployments.
+        if len(self.indents) < 3:
+            super().write_line_break()

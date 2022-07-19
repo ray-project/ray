@@ -18,29 +18,24 @@ from unittest import mock
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
 from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
     wait_for_redis_to_start,
 )
 from ray._private.test_utils import (
+    get_and_run_node_killer,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
     teardown_tls,
-    get_and_run_node_killer,
+    enable_external_redis,
 )
-from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
-
-
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
 
 def get_default_fixure_system_config():
@@ -64,10 +59,11 @@ def get_default_fixture_ray_kwargs():
     return ray_kwargs
 
 
-@pytest.fixture
-def external_redis(request, monkeypatch):
+@contextmanager
+def _setup_redis(request):
     # Setup external Redis and env var for initialization.
     param = getattr(request, "param", {})
+
     external_redis_ports = param.get("external_redis_ports")
     if external_redis_ports is None:
         with socket.socket() as s:
@@ -88,10 +84,39 @@ def external_redis(request, monkeypatch):
         processes.append(proc)
         wait_for_redis_to_start("127.0.0.1", port, ray_constants.REDIS_DEFAULT_PASSWORD)
     address_str = ",".join(map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
-    monkeypatch.setenv("RAY_REDIS_ADDRESS", address_str)
-    yield None
+    import os
+
+    old_addr = os.environ.get("RAY_REDIS_ADDRESS")
+    os.environ["RAY_REDIS_ADDRESS"] = address_str
+    yield
+    if old_addr is not None:
+        os.environ["RAY_REDIS_ADDRESS"] = old_addr
+    else:
+        del os.environ["RAY_REDIS_ADDRESS"]
     for proc in processes:
         proc.process.terminate()
+
+
+@pytest.fixture
+def maybe_external_redis(request):
+    if enable_external_redis():
+        with _setup_redis(request):
+            yield
+    else:
+        yield
+
+
+@pytest.fixture
+def external_redis(request):
+    with _setup_redis(request):
+        yield
+
+
+@pytest.fixture
+def shutdown_only(maybe_external_redis):
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 @contextmanager
@@ -107,7 +132,7 @@ def _ray_start(**kwargs):
 
 
 @pytest.fixture
-def ray_start_with_dashboard(request):
+def ray_start_with_dashboard(request, maybe_external_redis):
     param = getattr(request, "param", {})
     if param.get("num_cpus") is None:
         param["num_cpus"] = 1
@@ -117,7 +142,7 @@ def ray_start_with_dashboard(request):
 
 # The following fixture will start ray with 0 cpu.
 @pytest.fixture
-def ray_start_no_cpu(request):
+def ray_start_no_cpu(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=0, **param) as res:
         yield res
@@ -125,7 +150,7 @@ def ray_start_no_cpu(request):
 
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
-def ray_start_regular(request):
+def ray_start_regular(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -156,14 +181,14 @@ def ray_start_shared_local_modes(request):
 
 
 @pytest.fixture
-def ray_start_2_cpus(request):
+def ray_start_2_cpus(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=2, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_10_cpus(request):
+def ray_start_10_cpus(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=10, **param) as res:
         yield res
@@ -206,14 +231,14 @@ def _ray_start_cluster(**kwargs):
 
 # This fixture will start a cluster with empty nodes.
 @pytest.fixture
-def ray_start_cluster(request):
+def ray_start_cluster(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(**param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_cluster_enabled(request):
+def ray_start_cluster_enabled(request, maybe_external_redis):
     param = getattr(request, "param", {})
     param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
@@ -221,14 +246,14 @@ def ray_start_cluster_enabled(request):
 
 
 @pytest.fixture
-def ray_start_cluster_init(request):
+def ray_start_cluster_init(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_cluster_head(request):
+def ray_start_cluster_head(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
@@ -245,14 +270,14 @@ def ray_start_cluster_head_with_external_redis(request, external_redis):
 
 
 @pytest.fixture
-def ray_start_cluster_2_nodes(request):
+def ray_start_cluster_2_nodes(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_object_store_memory(request):
+def ray_start_object_store_memory(request, maybe_external_redis):
     # Start the Ray processes.
     store_size = request.param
     system_config = get_default_fixure_system_config()
@@ -269,16 +294,24 @@ def ray_start_object_store_memory(request):
 
 @pytest.fixture
 def call_ray_start(request):
-    parameter = getattr(
-        request,
-        "param",
+    default_cmd = (
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "--max-worker-port=0 --port 0"
     )
+    parameter = getattr(request, "param", default_cmd)
+    env = None
+
+    if isinstance(parameter, dict):
+        if "env" in parameter:
+            env = {**parameter.get("env"), **os.environ}
+
+        parameter = parameter.get("cmd", default_cmd)
+
     command_args = parameter.split(" ")
+
     try:
         out = ray._private.utils.decode(
-            subprocess.check_output(command_args, stderr=subprocess.STDOUT)
+            subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
     except Exception as e:
         print(type(e), e)
@@ -294,7 +327,7 @@ def call_ray_start(request):
     # Disconnect from the Ray cluster.
     ray.shutdown()
     # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"], env=env)
 
 
 @pytest.fixture
@@ -724,6 +757,10 @@ def append_short_test_summary(rep):
 
     test_name = rep.nodeid.replace(os.sep, "::")
 
+    if os.name == "nt":
+        # ":" is not legal in filenames in windows
+        test_name.replace(":", "$")
+
     header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
 
@@ -895,3 +932,25 @@ def start_http_proxy(request):
         if proxy:
             proxy.terminate()
             proxy.wait()
+
+
+@pytest.fixture
+def set_runtime_env_plugins(request):
+    runtime_env_plugins = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGINS"] = runtime_env_plugins
+        yield runtime_env_plugins
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGINS"]
+
+
+@pytest.fixture
+def set_runtime_env_plugin_schemas(request):
+    runtime_env_plugin_schemas = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = runtime_env_plugin_schemas
+        # Clear and reload schemas.
+        RuntimeEnvPluginSchemaManager.clear()
+        yield runtime_env_plugin_schemas
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]

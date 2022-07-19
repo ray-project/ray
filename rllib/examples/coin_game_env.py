@@ -7,7 +7,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.env.coin_game_non_vectorized_env import CoinGame, AsymCoinGame
 
 parser = argparse.ArgumentParser()
@@ -71,7 +71,7 @@ def main(debug, stop_iters=2000, tf=False, asymmetric_env=False):
     }
 
     tune_analysis = tune.run(
-        PPOTrainer,
+        PPO,
         config=rllib_config,
         stop=stop,
         checkpoint_freq=0,

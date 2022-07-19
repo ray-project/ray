@@ -3,23 +3,31 @@ import tempfile
 from collections import namedtuple
 from multiprocessing import Queue
 import unittest
+from unittest.mock import (
+    Mock,
+    patch,
+)
 
 import numpy as np
 
 from ray.tune import Trainable
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import wrap_function
 from ray.tune.integration.wandb import (
-    WandbLoggerCallback,
-    _WandbLoggingProcess,
-    WandbLogger,
-    WANDB_ENV_VAR,
     WandbTrainableMixin,
     wandb_mixin,
+)
+from ray.air.callbacks.wandb import (
+    WandbLoggerCallback,
+    _WandbLoggingProcess,
+    WANDB_ENV_VAR,
+    WANDB_GROUP_ENV_VAR,
+    WANDB_PROJECT_ENV_VAR,
+    WANDB_SETUP_API_KEY_HOOK,
     _QueueItem,
 )
 from ray.tune.result import TRIAL_INFO
-from ray.tune.trial import TrialInfo
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.experiment.trial import _TrialInfo
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class Trial(
@@ -31,6 +39,7 @@ class Trial(
             "trial_name",
             "trainable_name",
             "placement_group_factory",
+            "logdir",
         ],
     )
 ):
@@ -42,9 +51,9 @@ class Trial(
 
 
 class _MockWandbLoggingProcess(_WandbLoggingProcess):
-    def __init__(self, queue, exclude, to_config, *args, **kwargs):
+    def __init__(self, logdir, queue, exclude, to_config, *args, **kwargs):
         super(_MockWandbLoggingProcess, self).__init__(
-            queue, exclude, to_config, *args, **kwargs
+            logdir, queue, exclude, to_config, *args, **kwargs
         )
 
         self.logs = Queue()
@@ -66,14 +75,6 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
     @property
     def trial_processes(self):
         return self._trial_processes
-
-
-class WandbTestLogger(WandbLogger):
-    _experiment_logger_cls = WandbTestExperimentLogger
-
-    @property
-    def trial_process(self):
-        return self._trial_experiment_logger.trial_processes[self.trial]
 
 
 class _MockWandbAPI(object):
@@ -100,14 +101,61 @@ class WandbIntegrationTest(unittest.TestCase):
         if WANDB_ENV_VAR in os.environ:
             del os.environ[WANDB_ENV_VAR]
 
+    def testWandbLoggingProcessRunInfoHook(self):
+        """
+        Test WANDB_PROCESS_RUN_INFO_HOOK in _WandbLoggingProcess is
+        correctly called by calling _WandbLoggingProcess.run() mocking
+        out calls to wandb.
+        """
+        mock_run = Mock()  # Mock W&B run
+        mock_init = Mock(return_value=mock_run)  # Mock call to wandb.init()
+        mock_finish = Mock()  # Mock call to wandb.finish()
+        mock_external_hook = Mock()  # Mock external hook method
+        mock_load_class = Mock(return_value=mock_external_hook)
+        mock_queue = Mock(get=Mock(return_value=(_QueueItem.END, None)))
+        os.environ["WANDB_PROCESS_RUN_INFO_HOOK"] = "mock_wandb_process_run_info_hook"
+
+        with patch.multiple(
+            "ray.air.callbacks.wandb.wandb", init=mock_init, finish=mock_finish
+        ), patch.multiple(
+            "ray.air.callbacks.wandb", _load_class=mock_load_class
+        ), patch.multiple(
+            "ray.air.callbacks.wandb.os", chdir=Mock()
+        ):
+            logging_process = _WandbLoggingProcess(
+                logdir="mock_logdir", queue=mock_queue, exclude=[], to_config=[]
+            )
+            logging_process.run()
+
+        mock_init.assert_called_once()
+        mock_load_class.assert_called_once_with("mock_wandb_process_run_info_hook")
+        mock_external_hook.assert_called_once_with(mock_run)
+        mock_finish.assert_called_once()
+
     def testWandbLoggerConfig(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(
-            trial_config, 0, "trial_0", "trainable", PlacementGroupFactory([{"CPU": 1}])
+            trial_config,
+            0,
+            "trial_0",
+            "trainable",
+            PlacementGroupFactory([{"CPU": 1}]),
+            "/tmp",
         )
 
         if WANDB_ENV_VAR in os.environ:
             del os.environ[WANDB_ENV_VAR]
+
+        # Read project and group name from environment variable
+        os.environ[WANDB_PROJECT_ENV_VAR] = "test_project_from_env_var"
+        os.environ[WANDB_GROUP_ENV_VAR] = "test_group_from_env_var"
+        logger = WandbTestExperimentLogger(api_key="1234")
+        logger.setup()
+        assert logger.project == "test_project_from_env_var"
+        assert logger.group == "test_group_from_env_var"
+
+        del logger
+        del os.environ[WANDB_ENV_VAR]
 
         # No API key
         with self.assertRaises(ValueError):
@@ -135,6 +183,18 @@ class WandbIntegrationTest(unittest.TestCase):
 
         del logger
         del os.environ[WANDB_ENV_VAR]
+
+        # API Key from external hook
+        os.environ[
+            WANDB_SETUP_API_KEY_HOOK
+        ] = "ray._private.test_utils.wandb_setup_api_key_hook"
+        logger = WandbTestExperimentLogger(project="test_project")
+        logger.setup()
+        self.assertEqual(os.environ[WANDB_ENV_VAR], "abcd")
+
+        del logger
+        del os.environ[WANDB_ENV_VAR]
+        del os.environ[WANDB_SETUP_API_KEY_HOOK]
 
         # API Key in env
         os.environ[WANDB_ENV_VAR] = "9012"
@@ -178,7 +238,12 @@ class WandbIntegrationTest(unittest.TestCase):
     def testWandbLoggerReporting(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(
-            trial_config, 0, "trial_0", "trainable", PlacementGroupFactory([{"CPU": 1}])
+            trial_config,
+            0,
+            "trial_0",
+            "trainable",
+            PlacementGroupFactory([{"CPU": 1}]),
+            "/tmp",
         )
 
         logger = WandbTestExperimentLogger(
@@ -210,9 +275,14 @@ class WandbIntegrationTest(unittest.TestCase):
     def testWandbMixinConfig(self):
         config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(
-            config, 0, "trial_0", "trainable", PlacementGroupFactory([{"CPU": 1}])
+            config,
+            0,
+            "trial_0",
+            "trainable",
+            PlacementGroupFactory([{"CPU": 1}]),
+            "/tmp",
         )
-        trial_info = TrialInfo(trial)
+        trial_info = _TrialInfo(trial)
 
         config[TRIAL_INFO] = trial_info
 
@@ -267,9 +337,14 @@ class WandbIntegrationTest(unittest.TestCase):
     def testWandbDecoratorConfig(self):
         config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(
-            config, 0, "trial_0", "trainable", PlacementGroupFactory([{"CPU": 1}])
+            config,
+            0,
+            "trial_0",
+            "trainable",
+            PlacementGroupFactory([{"CPU": 1}]),
+            "/tmp",
         )
-        trial_info = TrialInfo(trial)
+        trial_info = _TrialInfo(trial)
 
         @wandb_mixin
         def train_fn(config):
@@ -330,20 +405,17 @@ class WandbIntegrationTest(unittest.TestCase):
         """Test compatibility with RLlib configuration dicts"""
         # Local import to avoid tune dependency on rllib
         try:
-            from ray.rllib.agents.ppo import PPOTrainer
+            from ray.rllib.algorithms.ppo import PPO
         except ImportError:
             self.skipTest("ray[rllib] not available")
             return
 
-        class WandbPPOTrainer(_MockWandbTrainableMixin, PPOTrainer):
+        class WandbPPOTrainer(_MockWandbTrainableMixin, PPO):
             pass
 
         config = {
             "env": "CartPole-v0",
-            "wandb": {
-                "project": "test_project",
-                "api_key": "1234",
-            },
+            "wandb": {"project": "test_project", "api_key": "1234"},
         }
 
         # Test that trainer object can be initialized

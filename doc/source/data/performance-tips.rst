@@ -90,19 +90,32 @@ Parquet Column Pruning
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Current Datasets will read all Parquet columns into memory.
-If you only need a subset of the columns, make sure to specify the list of columns explicitly when
-calling ``ray.data.read_parquet()`` to avoid loading unnecessary data.
+If you only need a subset of the columns, make sure to specify the list of columns
+explicitly when calling ``ray.data.read_parquet()`` to avoid loading unnecessary
+data (projection pushdown).
+For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"]`` to read
+just two of the five columns of Iris dataset.
+
+Parquet Row Pruning
+~~~~~~~~~~~~~~~~~~~
+
+Similarly, you can pass in a filter to ``ray.data.read_parquet()`` (filter pushdown)
+which will be applied at the file scan so only rows that match the filter predicate
+will be returned.
+For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pa.dataset.field("sepal.length") > 5.0``
+to read rows with sepal.length greater than 5.0.
+This can be used in conjunction with column pruning when appropriate to get the benefits of both.
 
 Tuning Read Parallelism
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, Ray requests 0.5 CPUs per read task, which means two read tasks can concurrently execute per CPU.
+By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
 For data sources that can benefit from higher degress of I/O parallelism, you can specify a lower ``num_cpus`` value for the read function via the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
-The number of read tasks can also be increased by increasing the ``parallelism`` parameter.
-For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to create up to 1000 read tasks.
-Typically, increasing the number of read tasks only helps if you have more cluster CPUs than the default parallelism.
+By default, Datasets automatically selects the read parallelism based on the current cluster size and dataset size.
+However, the number of read tasks can also be increased manually via the ``parallelism`` parameter.
+For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
 
 Tuning Max Block Size
 ~~~~~~~~~~~~~~~~~~~~~

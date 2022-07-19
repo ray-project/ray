@@ -1,4 +1,4 @@
-base_image: "anyscale/ray:nightly-py37"
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
 env_vars: {}
 debian_packages:
   - curl
@@ -12,10 +12,9 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y ray || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install ray[default] # Needed for Ray Client to work.
-  - pip3 install -U "xgboost<1.5" xgboost_ray petastorm  # Install latest releases, pin xgboost to <1.5
+  - pip3 install -U --force-reinstall --no-deps xgboost xgboost_ray petastorm  # Avoid caching
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo mkdir -p /data || true
   - sudo chown ray:1000 /data || true

@@ -26,6 +26,7 @@
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
+#include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -36,6 +37,7 @@
 
 namespace ray {
 using raylet::ClusterTaskManager;
+using raylet::NoopLocalTaskManager;
 namespace gcs {
 
 struct GcsServerConfig {
@@ -241,6 +243,9 @@ class GcsServer {
   /// Global KV storage handler and service.
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
+  /// Runtime env handler and service.
+  std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
+  std::unique_ptr<rpc::RuntimeEnvGrpcService> runtime_env_service_;
   /// GCS PubSub handler and service.
   std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
   std::unique_ptr<rpc::InternalPubSubGrpcService> pubsub_service_;
@@ -254,6 +259,7 @@ class GcsServer {
   PeriodicalRunner periodical_runner_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;

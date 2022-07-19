@@ -58,7 +58,7 @@ import time
 
 import dask
 import dask.dataframe as dd
-from xgboost_ray import RayDMatrix, RayParams, train, predict
+from xgboost_ray import RayDMatrix, RayParams, predict, train
 
 import ray
 from ray import tune

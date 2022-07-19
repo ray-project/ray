@@ -108,6 +108,9 @@ enum class StatusCode : char {
   // This represents all other status codes
   // returned by grpc that are not defined above.
   GrpcUnknown = 27,
+  // Object store is both out of memory and
+  // out of disk.
+  OutOfDisk = 28,
 };
 
 #if defined(__clang__)
@@ -171,17 +174,16 @@ class RAY_EXPORT Status {
     return Status(StatusCode::Interrupted, msg);
   }
 
-  static Status IntentionalSystemExit() {
-    return Status(StatusCode::IntentionalSystemExit, "intentional system exit");
+  static Status IntentionalSystemExit(const std::string &msg) {
+    return Status(StatusCode::IntentionalSystemExit, msg);
   }
 
-  static Status UnexpectedSystemExit() {
-    return Status(StatusCode::UnexpectedSystemExit, "user code caused exit");
+  static Status UnexpectedSystemExit(const std::string &msg) {
+    return Status(StatusCode::UnexpectedSystemExit, msg);
   }
 
-  static Status CreationTaskError() {
-    return Status(StatusCode::CreationTaskError,
-                  "error raised in creation task, cause worker to exit");
+  static Status CreationTaskError(const std::string &msg) {
+    return Status(StatusCode::CreationTaskError, msg);
   }
 
   static Status NotFound(const std::string &msg) {
@@ -212,6 +214,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::TransientObjectStoreFull, msg);
   }
 
+  static Status OutOfDisk(const std::string &msg) {
+    return Status(StatusCode::OutOfDisk, msg);
+  }
+
   static Status GrpcUnavailable(const std::string &msg) {
     return Status(StatusCode::GrpcUnavailable, msg);
   }
@@ -226,6 +232,7 @@ class RAY_EXPORT Status {
   bool ok() const { return (state_ == NULL); }
 
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }
+  bool IsOutOfDisk() const { return code() == StatusCode::OutOfDisk; }
   bool IsKeyError() const { return code() == StatusCode::KeyError; }
   bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsIOError() const { return code() == StatusCode::IOError; }

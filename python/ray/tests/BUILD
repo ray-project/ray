@@ -44,6 +44,8 @@ py_test_module_list(
     "test_basic_5.py",
     "test_cancel.py",
     "test_gcs_fault_tolerance.py",
+    "test_gcs_utils.py",
+    "test_generators.py",
     "test_metrics_agent.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
@@ -59,7 +61,7 @@ py_test_module_list(
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
-    "test_mldataset.py",
+    "test_protobuf_compatibility.py"
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -104,7 +106,6 @@ py_test_module_list(
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
-    "test_multi_node_3.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
@@ -121,10 +122,13 @@ py_test_module_list(
     "test_runtime_env_env_vars.py",
     "test_runtime_env_packaging.py",
     "test_runtime_env_plugin.py",
+    "test_runtime_env_strong_type.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",
     "test_state_api.py",
+    "test_state_api_log.py",
+    "test_state_api_summary.py",
     "test_stress.py",
     "test_storage.py",
     "test_stress_sharded.py",
@@ -182,6 +186,17 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_gcs_ha_e2e.py",
+  ],
+  size = "small",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "ray_ha", "team:core"],
+  deps = ["//:ray_lib"],
+)
+
+
+py_test_module_list(
+  files = [
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_gcp.py",
@@ -221,10 +236,12 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_stress_failure.py",
     "test_reconstruction.py",
+    "test_reconstruction_2.py",
     "test_failure_2.py",
     "test_failure_3.py",
     "test_chaos.py",
     "test_reference_counting_2.py",
+    "test_exit_observability.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -236,6 +253,7 @@ py_test_module_list(
   files = [
     "test_basic_3.py",
     "test_output.py",
+    "test_out_of_disk_space.py",
     "test_failure_4.py",
     "test_object_spilling.py",
     "test_object_spilling_no_asan.py",
@@ -244,6 +262,7 @@ py_test_module_list(
     "test_plasma_unlimited.py",
     "test_placement_group_mini_integration.py",
     "test_scheduling_2.py",
+    "test_multi_node_3.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -369,7 +388,7 @@ py_test(
 
 py_test(
     name = "kuberay/test_autoscaling_e2e",
-    size = "medium",
+    size = "large",
     srcs = SRCS + ["kuberay/test_autoscaling_e2e.py"],
     tags = ["exclusive", "kuberay_operator", "team:serverless"],
     deps = ["//:ray_lib"],

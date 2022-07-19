@@ -1,6 +1,7 @@
-from collections import Counter
 import sys
 import time
+from collections import Counter
+
 import ray
 
 """ Run this script locally to execute a Ray program on your Ray cluster on

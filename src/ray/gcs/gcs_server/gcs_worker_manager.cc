@@ -35,9 +35,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                    worker_address.ip_address(),
                    ", exit_type = ",
                    rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
-                   request.worker_failure().has_creation_task_exception());
-  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
-      request.worker_failure().exit_type() == rpc::WorkerExitType::IDLE_EXIT) {
+                   ", exit_detail = ",
+                   request.worker_failure().exit_detail());
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_USER_EXIT ||
+      request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
     RAY_LOG(DEBUG) << message;
   } else {
     RAY_LOG(WARNING) << message
@@ -114,10 +115,21 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
     const rpc::GetAllWorkerInfoRequest &request,
     rpc::GetAllWorkerInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto limit = request.has_limit() ? request.limit() : -1;
+
   RAY_LOG(DEBUG) << "Getting all worker info.";
-  auto on_done = [reply, send_reply_callback](
+  auto on_done = [reply, send_reply_callback, limit](
                      const absl::flat_hash_map<WorkerID, WorkerTableData> &result) {
+    auto total_workers = result.size();
+    reply->set_total(total_workers);
+
+    auto count = 0;
     for (auto &data : result) {
+      if (limit != -1 && count >= limit) {
+        break;
+      }
+      count += 1;
+
       reply->add_worker_table_data()->CopyFrom(data.second);
     }
     RAY_LOG(DEBUG) << "Finished getting all worker info.";

@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, MultiAgentMountainCar
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_train_results, framework_iterator
@@ -36,9 +36,9 @@ def check_support_multiagent(alg, config):
         if fw in ["tf2", "tfe"] and alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
             continue
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
-            a = get_trainer_class(alg)(config=config, env="multi_agent_mountaincar")
+            a = get_algorithm_class(alg)(config=config, env="multi_agent_mountaincar")
         else:
-            a = get_trainer_class(alg)(config=config, env="multi_agent_cartpole")
+            a = get_algorithm_class(alg)(config=config, env="multi_agent_cartpole")
 
         results = a.train()
         check_train_results(results)
@@ -93,11 +93,13 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "APEX",
             {
                 "num_workers": 2,
-                "min_sample_timesteps_per_reporting": 100,
+                "min_sample_timesteps_per_iteration": 100,
                 "num_gpus": 0,
-                "buffer_size": 1000,
-                "min_time_s_per_reporting": 1,
-                "learning_starts": 10,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                    "learning_starts": 10,
+                },
+                "min_time_s_per_iteration": 1,
                 "target_network_update_freq": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,
@@ -110,11 +112,13 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "APEX_DDPG",
             {
                 "num_workers": 2,
-                "min_sample_timesteps_per_reporting": 100,
-                "buffer_size": 1000,
+                "min_sample_timesteps_per_iteration": 100,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                    "learning_starts": 10,
+                },
                 "num_gpus": 0,
-                "min_time_s_per_reporting": 1,
-                "learning_starts": 10,
+                "min_time_s_per_iteration": 1,
                 "target_network_update_freq": 100,
                 "use_state_preprocessor": True,
             },
@@ -124,10 +128,12 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         check_support_multiagent(
             "DDPG",
             {
-                "min_sample_timesteps_per_reporting": 1,
-                "buffer_size": 1000,
+                "min_sample_timesteps_per_iteration": 1,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                    "learning_starts": 500,
+                },
                 "use_state_preprocessor": True,
-                "learning_starts": 500,
             },
         )
 
@@ -135,8 +141,10 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         check_support_multiagent(
             "DQN",
             {
-                "min_sample_timesteps_per_reporting": 1,
-                "buffer_size": 1000,
+                "min_sample_timesteps_per_iteration": 1,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                },
             },
         )
 
@@ -145,7 +153,9 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "SAC",
             {
                 "num_workers": 0,
-                "buffer_size": 1000,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                },
                 "normalize_actions": False,
             },
         )

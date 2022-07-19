@@ -236,6 +236,19 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 
+/// A value to add to workers' OOM score adjustment, so that the OS prioritizes
+/// killing these over the raylet. 0 or positive values only (negative values
+/// require sudo permissions).
+/// NOTE(swang): Linux only.
+RAY_CONFIG(int, worker_oom_score_adjustment, 1000)
+
+/// Sets workers' nice value on posix systems, so that the OS prioritizes CPU for other
+/// processes over worker. This makes CPU available to GCS, Raylet and user processes
+/// even when workers are busy.
+/// Valid value is [0, 19] (negative values require sudo permissions).
+/// NOTE: Linux, Unix and MacOS only.
+RAY_CONFIG(int, worker_niceness, 15)
+
 /// Allow up to 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
@@ -344,11 +357,32 @@ RAY_CONFIG(bool, support_fork, false)
 /// Each reconnection ping will be retried every 1 second.
 RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
+/// The timeout for GCS connection in seconds
+RAY_CONFIG(int32_t, gcs_rpc_server_connect_timeout_s, 5)
+
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
+/// gRPC channel reconnection related configs to GCS.
+/// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
+RAY_CONFIG(int32_t, gcs_grpc_max_reconnect_backoff_ms, 2000)
+RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 100)
+RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
+
+/// Maximum bytes of request queued when RPC failed due to GCS is down.
+/// If reach the limit, the core worker will hang until GCS is reconnected.
+/// By default, the value if 5GB.
+RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024 * 5)
+
+/// The duration between two checks for grpc status.
+RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
+
 /// Feature flag to use the ray syncer for resource synchronization
 RAY_CONFIG(bool, use_ray_syncer, false)
+
+/// The queuing buffer of ray syncer. This indicates how many concurrent
+/// requests can run in flight for syncing.
+RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
@@ -448,6 +482,13 @@ RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 /// Whether or not the external storage is file system.
 /// This is configured based on object_spilling_config.
 RAY_CONFIG(bool, is_external_storage_type_fs, true)
+
+/// Control the capacity threshold for ray local file system (for object store).
+/// Once we are over the capacity, all subsequent object creation will fail.
+RAY_CONFIG(float, local_fs_capacity_threshold, 0.95);
+
+/// Control the frequency of checking the disk usage.
+RAY_CONFIG(uint64_t, local_fs_monitor_interval_ms, 100);
 
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
@@ -570,6 +611,10 @@ RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
+
+/// The namespace for the storage.
+/// This fields is used to isolate data stored in DB.
+RAY_CONFIG(std::string, external_storage_namespace, "default")
 
 /// Whether or not use TLS.
 RAY_CONFIG(bool, USE_TLS, false)

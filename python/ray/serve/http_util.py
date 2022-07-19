@@ -66,7 +66,7 @@ class Response:
         """Construct a HTTP Response based on input type.
 
         Args:
-            content (optional): Any JSON serializable object.
+            content: Any JSON serializable object.
             status_code (int, optional): Default status code is 200.
         """
         self.status_code = status_code

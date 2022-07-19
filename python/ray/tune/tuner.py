@@ -2,8 +2,8 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray
 
-from ray.ml.config import RunConfig
-from ray.ml.trainer import Trainer
+from ray.air.config import RunConfig
+from ray.train.trainer import BaseTrainer
 from ray.tune import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -36,7 +36,7 @@ class Tuner:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.ml.config.RunConfig for more info.
+            if applicable. Refer to ray.air.config.RunConfig for more info.
 
     Usage pattern:
 
@@ -46,8 +46,8 @@ class Tuner:
 
         from ray import tune
         from ray.data import from_pandas
-        from ray.ml.config import RunConfig
-        from ray.ml.train.integrations.xgboost import XGBoostTrainer
+        from ray.air.config import RunConfig, ScalingConfig
+        from ray.train.xgboost import XGBoostTrainer
         from ray.tune.tuner import Tuner
 
         def get_dataset():
@@ -64,12 +64,12 @@ class Tuner:
         )
 
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([2, 4]),
-                "resources_per_worker": {
+            "scaling_config": ScalingConfig(
+                num_workers=tune.grid_search([2, 4]),
+                resources_per_worker={
                     "CPU": tune.grid_search([1, 2]),
                 },
-            },
+            ),
             # You can even grid search various datasets in Tune.
             # "datasets": {
             #     "train": tune.grid_search(
@@ -111,9 +111,10 @@ class Tuner:
                 str,
                 Callable,
                 Type[Trainable],
-                Trainer,
+                BaseTrainer,
             ]
         ] = None,
+        *,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,

@@ -3,6 +3,8 @@ import tempfile
 from typing import Optional
 
 import pytest
+
+from ray._private.test_utils import simulate_storage
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore, RayLocalKVStore, RayS3KVStore
@@ -80,18 +82,36 @@ def test_external_kv_local_disk():
     _test_operations(kv_store)
 
 
-@pytest.mark.skip(reason="Need to figure out credentials for testing")
 def test_external_kv_aws_s3():
-    kv_store = RayS3KVStore(
-        "namespace",
-        bucket="jiao-test",
-        s3_path="/checkpoint",
-        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", None),
-        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", None),
-        aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None),
-    )
+    with simulate_storage("s3", "serve-test") as uri:
+        from urllib.parse import parse_qs, urlparse
 
-    _test_operations(kv_store)
+        o = urlparse(uri)
+        qs = parse_qs(o.query)
+        region_name = qs["region"][0]
+        endpoint_url = qs["endpoint_override"][0]
+
+        import boto3
+
+        s3 = boto3.client(
+            "s3",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
+        )
+        s3.create_bucket(
+            Bucket="serve-test",
+            CreateBucketConfiguration={"LocationConstraint": "us-west-2"},
+        )
+
+        kv_store = RayS3KVStore(
+            "namespace",
+            bucket="serve-test",
+            prefix="checkpoint",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
+        )
+
+        _test_operations(kv_store)
 
 
 @pytest.mark.skip(reason="Need to figure out credentials for testing")

@@ -1,30 +1,30 @@
 import asyncio
-from asyncio.tasks import FIRST_COMPLETED
 import copy
-import os
 import json
 import logging
+import os
+import random
+import string
+import subprocess
 import time
 import traceback
-import random
-import subprocess
-import string
+from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
-from typing import Any, Dict, Iterator, Tuple, Optional
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 import ray
-from ray.exceptions import RuntimeEnvSetupError
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
+from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
-from ray.job_submission import JobStatus
 from ray.dashboard.modules.job.common import (
-    JobInfo,
-    JobInfoStorageClient,
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
+    JobInfo,
+    JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.utils import file_tail_iterator
-from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+from ray.exceptions import RuntimeEnvSetupError
+from ray.job_submission import JobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class JobLogStorageClient:
             /tmp/ray/session_date/logs/job-driver-{job_id}.log
         """
         return os.path.join(
-            ray.worker._global_node.get_logs_dir_path(),
+            ray._private.worker._global_node.get_logs_dir_path(),
             self.JOB_LOGS_PATH.format(job_id=job_id),
         )
 
@@ -415,10 +415,16 @@ class JobManager:
         runtime_env = (
             copy.deepcopy(user_runtime_env) if user_runtime_env is not None else {}
         )
+
+        # NOTE(edoakes): Can't use .get(, {}) here because we need to handle the case
+        # where env_vars is explicitly set to `None`.
+        env_vars = runtime_env.get("env_vars")
+        if env_vars is None:
+            env_vars = {}
+
         # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
         # driver can use GPUs if it wants to. This will be removed from
         # the driver's runtime_env so it isn't inherited by tasks & actors.
-        env_vars = runtime_env.get("env_vars", {})
         env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
         runtime_env["env_vars"] = env_vars
         return runtime_env

@@ -482,8 +482,8 @@ Status PlasmaClient::Impl::GetBuffers(
 
   // If we get here, then the objects aren't all currently in use by this
   // client, so we need to send a request to the plasma store.
-  RAY_RETURN_NOT_OK(
-      SendGetRequest(store_conn_, object_ids, num_objects, timeout_ms, is_from_worker));
+  RAY_RETURN_NOT_OK(SendGetRequest(
+      store_conn_, &object_ids[0], num_objects, timeout_ms, is_from_worker));
   std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
   std::vector<ObjectID> received_object_ids(num_objects);
@@ -560,12 +560,8 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
   };
   const size_t num_objects = object_ids.size();
   *out = std::vector<ObjectBuffer>(num_objects);
-  return GetBuffers(object_ids.data(),
-                    num_objects,
-                    timeout_ms,
-                    wrap_buffer,
-                    out->data(),
-                    is_from_worker);
+  return GetBuffers(
+      &object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0], is_from_worker);
 }
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {

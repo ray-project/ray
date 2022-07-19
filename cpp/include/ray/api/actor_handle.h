@@ -51,9 +51,17 @@ class ActorHandle {
 
   template <typename R>
   ray::internal::ActorTaskCaller<PyActorMethod<R>> Task(PyActorMethod<R> func) {
-    static_assert(IsXlang, "Actor function type is not match with actor class");
+    static_assert(IsXlang, "Actor function type does not match actor class");
     ray::internal::RemoteFunctionHolder remote_func_holder(
         "", func.function_name, "", ray::internal::LangType::PYTHON);
+    return {ray::internal::GetRayRuntime().get(), id_, std::move(remote_func_holder)};
+  }
+
+  template <typename R>
+  ray::internal::ActorTaskCaller<JavaActorMethod<R>> Task(JavaActorMethod<R> func) {
+    static_assert(IsXlang, "Actor function type does not match actor class");
+    ray::internal::RemoteFunctionHolder remote_func_holder(
+        "", func.function_name, "", ray::internal::LangType::JAVA);
     return {ray::internal::GetRayRuntime().get(), id_, std::move(remote_func_holder)};
   }
 

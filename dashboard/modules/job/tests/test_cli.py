@@ -91,8 +91,8 @@ def _job_cli_group_test_address(mock_sdk_client, cmd, *args):
         assert mock_sdk_client.called_with("env_addr")
     # Test passing no address.
     result = runner.invoke(job_cli_group, [cmd, *args])
-    assert result.exit_code == 1
-    assert "Address must be specified" in str(result.exception)
+    assert result.exit_code == 0
+    assert mock_sdk_client.called_with(None)
 
 
 class TestList:

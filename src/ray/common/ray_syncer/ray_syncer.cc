@@ -131,7 +131,9 @@ ClientSyncConnection::ClientSyncConnection(
     std::shared_ptr<grpc::Channel> channel)
     : NodeSyncConnection(io_context, node_id, std::move(message_processor)),
       stub_(ray::rpc::syncer::RaySyncer::NewStub(channel)) {
-  StartLongPolling();
+  for (int64_t i = 0; i < RayConfig::instance().ray_syncer_polling_buffer(); ++i) {
+    StartLongPolling();
+  }
 }
 
 void ClientSyncConnection::StartLongPolling() {
@@ -139,19 +141,18 @@ void ClientSyncConnection::StartLongPolling() {
   //    1. there is a new version of message
   //    2. and it has passed X ms since last update.
   auto client_context = std::make_shared<grpc::ClientContext>();
+  auto in_message = std::make_shared<ray::rpc::syncer::RaySyncMessages>();
   stub_->async()->LongPolling(
       client_context.get(),
       &dummy_,
-      &in_message_,
-      [this, client_context](grpc::Status status) {
+      in_message.get(),
+      [this, client_context, in_message](grpc::Status status) mutable {
         if (status.ok()) {
-          RAY_CHECK(in_message_.GetArena() == nullptr);
           io_context_.dispatch(
-              [this, messages = std::move(in_message_)]() mutable {
+              [this, messages = std::move(*in_message)]() mutable {
                 ReceiveUpdate(std::move(messages));
               },
               "LongPollingCallback");
-          in_message_.Clear();
           // Start the next polling.
           StartLongPolling();
         }
@@ -204,26 +205,25 @@ ServerSyncConnection::ServerSyncConnection(
 ServerSyncConnection::~ServerSyncConnection() {
   // If there is a pending request, we need to cancel it. Otherwise, rpc will
   // hang there forever.
-  if (unary_reactor_ != nullptr) {
-    unary_reactor_->Finish(grpc::Status::CANCELLED);
+  while (!unary_reactors_.empty()) {
+    unary_reactors_.back()->Finish(grpc::Status::CANCELLED);
+    unary_reactors_.pop_back();
   }
 }
 
 void ServerSyncConnection::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                                     RaySyncMessages *response) {
-  RAY_CHECK(response_ == nullptr);
-  RAY_CHECK(unary_reactor_ == nullptr);
-
-  unary_reactor_ = reactor;
-  response_ = response;
+  unary_reactors_.push_back(reactor);
+  responses_.push_back(response);
 }
 
 void ServerSyncConnection::DoSend() {
   // There is no receive request
-  if (unary_reactor_ == nullptr || sending_buffer_.empty()) {
+  if (unary_reactors_.empty() || sending_buffer_.empty()) {
     return;
   }
-  RAY_CHECK(unary_reactor_ != nullptr && response_ != nullptr);
+
+  RAY_CHECK(!responses_.empty());
 
   size_t message_bytes = 0;
   auto iter = sending_buffer_.begin();
@@ -231,14 +231,14 @@ void ServerSyncConnection::DoSend() {
          iter != sending_buffer_.end()) {
     message_bytes += iter->second->sync_message().size();
     // TODO (iycheng): Use arena allocator for optimization
-    response_->add_sync_messages()->CopyFrom(*iter->second);
+    responses_.back()->add_sync_messages()->CopyFrom(*iter->second);
     sending_buffer_.erase(iter++);
   }
 
-  if (response_->sync_messages_size() != 0) {
-    unary_reactor_->Finish(grpc::Status::OK);
-    unary_reactor_ = nullptr;
-    response_ = nullptr;
+  if (responses_.back()->sync_messages_size() != 0) {
+    unary_reactors_.back()->Finish(grpc::Status::OK);
+    responses_.pop_back();
+    unary_reactors_.pop_back();
   }
 }
 

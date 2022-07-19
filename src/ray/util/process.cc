@@ -203,9 +203,9 @@ class ProcessFD {
       if (decouple) {
         int s;
         (void)waitpid(pid, &s, 0);  // can't do much if this fails, so ignore return value
+        int r = read(pipefds[0], &pid, sizeof(pid));
+        (void)r;  // can't do much if this fails, so ignore return value
       }
-      int r = read(pipefds[0], &pid, sizeof(pid));
-      (void)r;  // can't do much if this fails, so ignore return value
     }
     // Use pipe to track process lifetime. (The pipe closes when process terminates.)
     fd = pipefds[0];
@@ -602,7 +602,7 @@ pid_t GetPID() {
 bool IsParentProcessAlive() { return GetParentPID() != 1; }
 
 bool IsProcessAlive(pid_t pid) {
-#ifdef _WIN32
+#if defined _WIN32
   if (HANDLE handle =
           OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, static_cast<DWORD>(pid))) {
     DWORD exit_code;

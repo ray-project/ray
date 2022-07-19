@@ -97,7 +97,7 @@ struct Mocker {
       int max_restarts = 0,
       bool detached = false,
       const std::string &name = "",
-      const std::string &ray_namespace = "") {
+      const std::string &ray_namespace = "test") {
     rpc::Address owner_address;
     owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
@@ -160,6 +160,7 @@ struct Mocker {
                                   bundles,
                                   strategy,
                                   /* is_detached */ false,
+                                  /* max_cpu_fraction_per_node */ 1.0,
                                   job_id,
                                   actor_id,
                                   /* is_creator_detached */ false);
@@ -239,12 +240,9 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
-      const JobID &job_id,
-      const std::string &ray_namespace,
-      uint32_t num_java_worker_per_process) {
+      const JobID &job_id, const std::string &ray_namespace) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
-    job_config_data->set_num_java_workers_per_process(num_java_worker_per_process);
 
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());

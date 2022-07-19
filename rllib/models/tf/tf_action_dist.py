@@ -46,6 +46,7 @@ class TFActionDistribution(ActionDistribution):
         return self.sampled_action_logp_op
 
 
+@DeveloperAPI
 class Categorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
@@ -259,7 +260,7 @@ class GumbelSoftmax(TFActionDistribution):
         """Initializes a GumbelSoftmax distribution.
 
         Args:
-            temperature (float): Temperature parameter. For low temperatures,
+            temperature: Temperature parameter. For low temperatures,
                 the expected value approaches a categorical random variable.
                 For high temperatures, the expected value approaches a uniform
                 distribution.
@@ -397,9 +398,9 @@ class SquashedGaussian(TFActionDistribution):
         """Parameterizes the distribution via `inputs`.
 
         Args:
-            low (float): The lowest possible sampling value
+            low: The lowest possible sampling value
                 (excluding this value).
-            high (float): The highest possible sampling value
+            high: The highest possible sampling value
                 (excluding this value).
         """
         assert tfp is not None
@@ -570,7 +571,9 @@ class MultiActionDistribution(TFActionDistribution):
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self, inputs, model, *, child_distributions, input_lens, action_space):
+    def __init__(
+        self, inputs, model, *, child_distributions, input_lens, action_space, **kwargs
+    ):
         ActionDistribution.__init__(self, inputs, model)
 
         self.action_space_struct = get_base_struct_from_space(action_space)
@@ -578,7 +581,9 @@ class MultiActionDistribution(TFActionDistribution):
         self.input_lens = np.array(input_lens, dtype=np.int32)
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         self.flat_child_distributions = tree.map_structure(
-            lambda dist, input_: dist(input_, model), child_distributions, split_inputs
+            lambda dist, input_: dist(input_, model, **kwargs),
+            child_distributions,
+            split_inputs,
         )
 
     @override(ActionDistribution)

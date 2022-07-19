@@ -4,21 +4,35 @@
 Saving Datasets
 ===============
 
-Datasets can be written to local or remote storage using ``.write_csv()``, ``.write_json()``, and ``.write_parquet()``.
+Datasets can be written to local or remote storage in the desired data format.
+The supported formats include Parquet, CSV, JSON, NumPy. To control the number
+of output files, you may use :meth:`ds.repartition() <ray.data.Dataset.repartition>`
+to repartition the Dataset before writing out.
 
-.. code-block:: python
+.. tabbed:: Parquet
 
-    # Write to csv files in /tmp/output.
-    ray.data.range(10000).write_csv("/tmp/output")
-    # -> /tmp/output/data0.csv, /tmp/output/data1.csv, ...
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_parquet_begin__
+    :end-before: __write_parquet_end__
 
-    # Use repartition to control the number of output files:
-    ray.data.range(10000).repartition(1).write_csv("/tmp/output2")
-    # -> /tmp/output2/data0.csv
+.. tabbed:: CSV
 
-You can also convert a ``Dataset`` to Ray-compatible distributed DataFrames:
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_csv_begin__
+    :end-before: __write_csv_end__
 
-.. code-block:: python
+.. tabbed:: JSON
 
-    # Convert a Ray Dataset into a Dask-on-Ray DataFrame.
-    dask_df = ds.to_dask()
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_json_begin__
+    :end-before: __write_json_end__
+
+.. tabbed:: NumPy 
+
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_numpy_begin__
+    :end-before: __write_numpy_end__

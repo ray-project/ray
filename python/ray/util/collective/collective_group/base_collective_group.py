@@ -17,9 +17,9 @@ class BaseGroup(metaclass=ABCMeta):
         """Init the process group with basic information.
 
         Args:
-            world_size (int): The total number of processes in the group.
-            rank (int): The rank of the current process.
-            group_name (str): The group name.
+            world_size: The total number of processes in the group.
+            rank: The rank of the current process.
+            group_name: The group name.
         """
         self._world_size = world_size
         self._rank = rank

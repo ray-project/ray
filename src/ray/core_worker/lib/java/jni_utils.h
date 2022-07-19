@@ -115,14 +115,17 @@ extern jclass java_ray_pending_calls_limit_exceeded_exception_class;
 /// RayIntentionalSystemExitException class
 extern jclass java_ray_intentional_system_exit_exception_class;
 
-/// RayActorCreationTaskException class
+/// RayActorException class
 extern jclass java_ray_actor_exception_class;
+
+/// RayExceptionSerializer class
+extern jclass java_ray_exception_serializer_class;
 
 /// RayTimeoutException class
 extern jclass java_ray_timeout_exception_class;
 
-/// toBytes method of RayException
-extern jmethodID java_ray_exception_to_bytes;
+/// RayExceptionSerializer to bytes
+extern jmethodID java_ray_exception_serializer_to_bytes;
 
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
@@ -198,12 +201,16 @@ extern jfieldID java_actor_creation_options_bundle_index;
 extern jfieldID java_actor_creation_options_concurrency_groups;
 /// serializedRuntimeEnv field of ActorCreatrionOptions class
 extern jfieldID java_actor_creation_options_serialized_runtime_env;
+/// namespace field of ActorCreatrionOptions class
+extern jfieldID java_actor_creation_options_namespace;
 /// maxPendingCalls field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_pending_calls;
 /// ActorLifetime enum class
 extern jclass java_actor_lifetime_class;
-/// Enum DETACHED of ActorLifetime class
-extern jobject STATUS_DETACHED;
+/// ordinal method of ActorLifetime class
+extern jmethodID java_actor_lifetime_ordinal;
+/// ordinal value of Enum DETACHED of ActorLifetime class
+extern int DETACHED_LIFETIME_ORDINAL_VALUE;
 /// ConcurrencyGroupImpl class
 extern jclass java_concurrency_group_impl_class;
 /// getFunctionDescriptors method of ConcurrencyGroupImpl class
@@ -255,8 +262,6 @@ extern jmethodID java_task_executor_execute;
 
 /// NativeTaskExecutor class
 extern jclass java_native_task_executor_class;
-/// onWorkerShutdown method of NativeTaskExecutor class
-extern jmethodID java_native_task_executor_on_worker_shutdown;
 
 /// PlacementGroup class
 extern jclass java_placement_group_class;
@@ -644,6 +649,13 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
         typed_descriptor->FunctionName(),
         typed_descriptor->FunctionHash()};
     return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  } else if (function_descriptor->Type() ==
+             ray::FunctionDescriptorType::kCppFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {typed_descriptor->FunctionName(),
+                                                         typed_descriptor->Caller(),
+                                                         typed_descriptor->ClassName()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
   }
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
@@ -673,7 +685,9 @@ inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject jav
 inline std::shared_ptr<LocalMemoryBuffer> SerializeActorCreationException(
     JNIEnv *env, jthrowable creation_exception) {
   jbyteArray exception_jbyte_array = static_cast<jbyteArray>(
-      env->CallObjectMethod(creation_exception, java_ray_exception_to_bytes));
+      env->CallStaticObjectMethod(java_ray_exception_serializer_class,
+                                  java_ray_exception_serializer_to_bytes,
+                                  creation_exception));
   int len = env->GetArrayLength(exception_jbyte_array);
   auto buf = std::make_shared<LocalMemoryBuffer>(len);
   env->GetByteArrayRegion(

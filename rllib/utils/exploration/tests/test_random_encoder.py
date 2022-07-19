@@ -3,8 +3,9 @@ import unittest
 
 import pytest
 import ray
-from ray.rllib.agents import ppo, sac
-from ray.rllib.agents.callbacks import RE3UpdateCallbacks
+import ray.rllib.algorithms.ppo as ppo
+import ray.rllib.algorithms.sac as sac
+from ray.rllib.algorithms.callbacks import RE3UpdateCallbacks
 
 
 class TestRE3(unittest.TestCase):
@@ -24,12 +25,12 @@ class TestRE3(unittest.TestCase):
         Both the on-policy and off-policy setups are validated.
         """
         if rl_algorithm == "PPO":
-            config = ppo.DEFAULT_CONFIG.copy()
-            trainer_cls = ppo.PPOTrainer
+            config = ppo.PPOConfig().to_dict()
+            algo_cls = ppo.PPO
             beta_schedule = "constant"
         elif rl_algorithm == "SAC":
-            config = sac.DEFAULT_CONFIG.copy()
-            trainer_cls = sac.SACTrainer
+            config = sac.SACConfig().to_dict()
+            algo_cls = sac.SAC
             beta_schedule = "linear_decay"
 
         class RE3Callbacks(RE3UpdateCallbacks, config["callbacks"]):
@@ -46,17 +47,17 @@ class TestRE3(unittest.TestCase):
             },
         }
 
-        num_iterations = 30
-        trainer = trainer_cls(config=config)
+        num_iterations = 60
+        algo = algo_cls(config=config)
         learnt = False
         for i in range(num_iterations):
-            result = trainer.train()
+            result = algo.train()
             print(result)
             if result["episode_reward_max"] > -900.0:
                 print("Reached goal after {} iters!".format(i))
                 learnt = True
                 break
-        trainer.stop()
+        algo.stop()
         self.assertTrue(learnt)
 
     def test_re3_ppo(self):

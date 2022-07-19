@@ -1,24 +1,27 @@
-import gym
-from gym.spaces import Discrete, MultiDiscrete
-import numpy as np
 import os
-import tree  # pip install dm_tree
-from typing import Dict, List, Optional, TYPE_CHECKING
 import warnings
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Discrete, MultiDiscrete
+
+import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import Deprecated, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
-    TensorType,
     TensorStructType,
+    TensorType,
 )
 
 if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy
+    from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
 torch, nn = try_import_torch()
 
@@ -28,6 +31,7 @@ FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
 
 
+@PublicAPI
 def apply_grad_clipping(
     policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
 ) -> Dict[str, TensorType]:
@@ -49,12 +53,15 @@ def apply_grad_clipping(
             # clip_grad_norm_. Would fail otherwise.
             params = list(filter(lambda p: p.grad is not None, param_group["params"]))
             if params:
-                grad_gnorm = nn.utils.clip_grad_norm_(
-                    params, policy.config["grad_clip"]
-                )
-                if isinstance(grad_gnorm, torch.Tensor):
-                    grad_gnorm = grad_gnorm.cpu().numpy()
-                info["grad_gnorm"] = grad_gnorm
+                # PyTorch clips gradients inplace and returns the norm before clipping
+                # We therefore need to compute grad_gnorm further down (fixes #4965)
+                clip_value = policy.config["grad_clip"]
+                global_norm = nn.utils.clip_grad_norm_(params, clip_value)
+
+                if isinstance(global_norm, torch.Tensor):
+                    global_norm = global_norm.cpu().numpy()
+
+                info["grad_gnorm"] = min(global_norm, clip_value)
     return info
 
 
@@ -68,7 +75,10 @@ def atanh(x: TensorType) -> TensorType:
     )
 
 
-def concat_multi_gpu_td_errors(policy: "TorchPolicy") -> Dict[str, TensorType]:
+@PublicAPI
+def concat_multi_gpu_td_errors(
+    policy: Union["TorchPolicy", "TorchPolicyV2"]
+) -> Dict[str, TensorType]:
     """Concatenates multi-GPU (per-tower) TD error tensors given TorchPolicy.
 
     TD-errors are extracted from the TorchPolicy via its tower_stats property.
@@ -99,7 +109,7 @@ def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
     """Converts values in `stats` to non-Tensor numpy or python types.
 
     Args:
-        stats (any): Any (possibly nested) struct, the values in which will be
+        stats: Any (possibly nested) struct, the values in which will be
             converted and returned as a new struct with all torch tensors
             being converted to numpy types.
 
@@ -122,10 +132,11 @@ def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
     return tree.map_structure(mapping, stats)
 
 
+@PublicAPI
 def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
     """Converts any struct to torch.Tensors.
 
-    x (any): Any (possibly nested) struct, the values in which will be
+    x: Any (possibly nested) struct, the values in which will be
         converted and returned as a new struct with all leaves converted
         to torch tensors.
 
@@ -167,6 +178,7 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
     return tree.map_structure(mapping, x)
 
 
+@PublicAPI
 def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     """Computes the explained variance for a pair of labels and predictions.
 
@@ -186,6 +198,7 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     return torch.max(min_, 1 - (diff_var / y_var))[0]
 
 
+@PublicAPI
 def flatten_inputs_to_1d_tensor(
     inputs: TensorStructType,
     spaces_struct: Optional[SpaceStruct] = None,
@@ -284,6 +297,51 @@ def flatten_inputs_to_1d_tensor(
     return merged
 
 
+@PublicAPI
+def get_device(config):
+    """Returns a torch device edepending on a config and current worker index."""
+
+    # Figure out the number of GPUs to use on the local side (index=0) or on
+    # the remote workers (index > 0).
+    worker_idx = config.get("worker_index", 0)
+    if (
+        not config["_fake_gpus"]
+        and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+    ):
+        num_gpus = 0
+    elif worker_idx == 0:
+        num_gpus = config["num_gpus"]
+    else:
+        num_gpus = config["num_gpus_per_worker"]
+    # All GPU IDs, if any.
+    gpu_ids = list(range(torch.cuda.device_count()))
+
+    # Place on one or more CPU(s) when either:
+    # - Fake GPU mode.
+    # - num_gpus=0 (either set by user or we are in local_mode=True).
+    # - No GPUs available.
+    if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
+        return torch.device("cpu")
+    # Place on one or more actual GPU(s), when:
+    # - num_gpus > 0 (set by user) AND
+    # - local_mode=False AND
+    # - actual GPUs available AND
+    # - non-fake GPU mode.
+    else:
+        # We are a remote worker (WORKER_MODE=1):
+        # GPUs should be assigned to us by ray.
+        if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
+            gpu_ids = ray.get_gpu_ids()
+
+        if len(gpu_ids) < num_gpus:
+            raise ValueError(
+                "TorchPolicy was not able to find enough GPU IDs! Found "
+                f"{gpu_ids}, but num_gpus={num_gpus}."
+            )
+        return torch.device("cuda")
+
+
+@PublicAPI
 def global_norm(tensors: List[TensorType]) -> TensorType:
     """Returns the global L2 norm over a list of tensors.
 
@@ -302,6 +360,7 @@ def global_norm(tensors: List[TensorType]) -> TensorType:
     return torch.pow(sum(torch.pow(l2, 2.0) for l2 in single_l2s), 0.5)
 
 
+@PublicAPI
 def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     """Computes the huber loss for a given term and delta parameter.
 
@@ -326,6 +385,7 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     )
 
 
+@PublicAPI
 def l2_loss(x: TensorType) -> TensorType:
     """Computes half the L2 norm over a tensor's values without the sqrt.
 
@@ -340,6 +400,7 @@ def l2_loss(x: TensorType) -> TensorType:
     return 0.5 * torch.sum(torch.pow(x, 2.0))
 
 
+@PublicAPI
 def minimize_and_clip(
     optimizer: "torch.optim.Optimizer", clip_val: float = 10.0
 ) -> None:
@@ -360,6 +421,7 @@ def minimize_and_clip(
                 torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
+@PublicAPI
 def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     """Returns a one-hot tensor, given and int tensor and a space.
 
@@ -408,6 +470,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
+@PublicAPI
 def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorType:
     """Same as torch.mean() but ignores -inf values.
 
@@ -423,6 +486,7 @@ def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorT
     return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
 
+@PublicAPI
 def sequence_mask(
     lengths: TensorType,
     maxlen: Optional[int] = None,
@@ -464,6 +528,7 @@ def sequence_mask(
     return mask
 
 
+@PublicAPI
 def set_torch_seed(seed: Optional[int] = None) -> None:
     """Sets the torch random seed to the given value.
 
@@ -483,6 +548,7 @@ def set_torch_seed(seed: Optional[int] = None) -> None:
         torch.backends.cudnn.deterministic = True
 
 
+@PublicAPI
 def softmax_cross_entropy_with_logits(
     logits: TensorType,
     labels: TensorType,
@@ -499,6 +565,7 @@ def softmax_cross_entropy_with_logits(
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
 
 
+@PublicAPI
 class Swish(nn.Module):
     def __init__(self):
         super().__init__()
