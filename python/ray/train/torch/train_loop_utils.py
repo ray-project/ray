@@ -463,11 +463,48 @@ class _TorchAccelerator(Accelerator):
         return data_loader
 
     def get_device(self) -> torch.device:
-        """Gets the correct torch device to use for training."""
+        """Gets the correct torch device to use for training.
+
+        Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+        superset of the `ray.get_gpu_ids()`.
+
+        Example:
+            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
+            >>> # ray.get_gpu_ids() == [3]
+            >>> # torch.cuda.is_available() == True
+            >>> # get_device() == torch.device("cuda:0")
+
+            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
+            >>> # ray.get_gpu_ids() == [4]
+            >>> # torch.cuda.is_available() == True
+            >>> # get_device() == torch.device("cuda:4")
+
+            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
+            >>> # ray.get_gpu_ids() == [4,5]
+            >>> # torch.cuda.is_available() == True
+            >>> # get_device() == torch.device("cuda:4")
+        """
         if torch.cuda.is_available():
+            # GPU IDs are assigned by Ray after you specify "use_gpu"
             gpu_ids = ray.get_gpu_ids()
+
             if len(gpu_ids) > 0:
-                device_id = gpu_ids[0]
+                # By default, there should only be one GPU ID if `use_gpu=True`.
+                # If there are multiple GPUs, use the first one.
+                # If using fractional GPUs, these IDs are not guaranteed
+                # to be unique across different processes.
+                gpu_id = gpu_ids[0]
+
+                cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+                if cuda_visible_str and cuda_visible_str != "NoDevFiles":
+                    cuda_visible_list = [
+                        int(dev) for dev in cuda_visible_str.split(",")
+                    ]
+                    device_id = cuda_visible_list.index(gpu_id)
+                else:
+                    raise RuntimeError(
+                        f"CUDA_VISIBLE_DEVICES set incorrectly: {cuda_visible_str}"
+                    )
             else:
                 # If called on the driver or outside of Ray Train, return the
                 # 0th device.
