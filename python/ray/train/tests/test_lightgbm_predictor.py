@@ -62,7 +62,7 @@ def test_predict(batch_type):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_feature_columns():
@@ -73,7 +73,7 @@ def test_predict_feature_columns():
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_feature_columns_pandas():
@@ -90,7 +90,7 @@ def test_predict_feature_columns_pandas():
     predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_no_preprocessor_no_training():

@@ -3,6 +3,7 @@ from unittest import mock
 
 import pandas as pd
 import pytest
+from ray.air.util.data_batch_conversion import DataType
 
 import ray
 from ray.air.checkpoint import Checkpoint
@@ -53,16 +54,32 @@ def test_from_checkpoint():
     assert DummyPredictor.from_checkpoint(checkpoint).factor == 2.0
 
 
-def test_predict():
+@mock.patch("ray.train.predictor.convert_pandas_to_batch_type")
+@mock.patch("ray.train.predictor.convert_batch_type_to_pandas")
+def test_predict(convert_to_pandas_mock, convert_from_pandas_mock):
+
+    input = pd.DataFrame({"x": [1, 2, 3]})
+    expected_output = input * 4.0
+
+    convert_to_pandas_mock.return_value = input
+    convert_from_pandas_mock.return_value = expected_output
+
     checkpoint = Checkpoint.from_dict(
         {"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}
     )
     predictor = DummyPredictor.from_checkpoint(checkpoint)
 
-    input = pd.DataFrame({"x": [1, 2, 3]})
-    expected_output = input * 4.0
     actual_output = predictor.predict(input)
     assert actual_output.equals(expected_output)
+
+    # Ensure the proper conversion functions are called.
+    convert_to_pandas_mock.assert_called_once_with(input)
+    convert_from_pandas_mock.assert_called_once()
+
+    pd.testing.assert_frame_equal(
+        convert_from_pandas_mock.call_args[0][0], expected_output
+    )
+    assert convert_from_pandas_mock.call_args[1]["type"] == DataType.PANDAS
 
 
 def test_from_udf():
