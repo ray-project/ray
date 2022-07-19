@@ -182,7 +182,7 @@ def _warn_if_using_deprecated_placement_group(
     placement_group = options["placement_group"]
     placement_group_bundle_index = options["placement_group_bundle_index"]
     placement_group_capture_child_tasks = options["placement_group_capture_child_tasks"]
-    if placement_group not in ("default", None):
+    if placement_group != "default":
         warnings.warn(
             "placement_group parameter is deprecated. Use "
             "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
