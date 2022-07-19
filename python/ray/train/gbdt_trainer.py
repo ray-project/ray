@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def _convert_scaling_config_to_ray_params(
-    scaling_config: ScalingConfigDataClass,
+    scaling_config: ScalingConfig,
     ray_params_cls: Type["xgboost_ray.RayParams"],
     default_ray_params: Optional[Dict[str, Any]] = None,
 ) -> "xgboost_ray.RayParams":
@@ -140,9 +140,7 @@ class GBDTTrainer(BaseTrainer):
 
     @property
     def _ray_params(self) -> "xgboost_ray.RayParams":
-        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config_dataclass = self._validate_scaling_config(self.scaling_config)
         return _convert_scaling_config_to_ray_params(
             scaling_config_dataclass, self._ray_params_cls, self._default_ray_params
         )
@@ -219,14 +217,17 @@ class GBDTTrainer(BaseTrainer):
 
             @classmethod
             def default_resource_request(cls, config):
+                # `config["scaling_config"] is a dataclass when passed via the
+                # `scaling_config` argument in `Trainer` and is a dict when passed
+                # via the `scaling_config` key of `param_spec`.
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = (
-                    trainer_cls._validate_and_get_scaling_config_data_class(
-                        updated_scaling_config
-                    )
+                if isinstance(updated_scaling_config, dict):
+                    updated_scaling_config = ScalingConfig(**updated_scaling_config)
+                validated_scaling_config = trainer_cls._validate_scaling_config(
+                    updated_scaling_config
                 )
                 return _convert_scaling_config_to_ray_params(
-                    scaling_config_dataclass, ray_params_cls, default_ray_params
+                    validated_scaling_config, ray_params_cls, default_ray_params
                 ).get_tune_resources()
 
         return GBDTTrainable
