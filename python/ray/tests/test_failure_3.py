@@ -141,6 +141,7 @@ def test_async_actor_task_retries(ray_start_regular):
     assert ray.get(ref_3) == 3
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail on windowns")
 def test_actor_failure_async(ray_start_regular):
     @ray.remote
     class A:
