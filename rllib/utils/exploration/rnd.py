@@ -398,7 +398,7 @@ class RND(Exploration):
 
             # We do not train the target network.
             self._optimizer_var_list = ray.experimental.tf_utils.TensorFlowVariables(
-                [], self._sess, self.model._distill_predictor_net.base_model.variables
+                [], None, self.model._distill_predictor_net.base_model.variables
             )
             self._optimizer = tf1.train.AdamOptimizer(learning_rate=self.lr)
 
