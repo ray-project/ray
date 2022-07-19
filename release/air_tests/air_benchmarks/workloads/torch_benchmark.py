@@ -273,7 +273,6 @@ def train_torch_vanilla(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-    master_port: int = 12355,
 ) -> Tuple[float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
@@ -340,6 +339,8 @@ def train_torch_vanilla(
             master_addr,
             "--master-port",
             str(master_port),
+            "--batch-size",
+            str(config["batch_size"]),
         ]
         + (["--use-gpu"] if use_gpu else [])
         + (["--gpu-id", str(use_gpu_ids[rank])] if use_gpu else [])
@@ -370,20 +371,21 @@ def cli():
 @click.option("--num-workers", type=int, default=4)
 @click.option("--cpus-per-worker", type=int, default=8)
 @click.option("--use-gpu", is_flag=True, default=False)
-@click.option("--master-port", type=int, default=12355)
+@click.option("--batch-size", type=int, default=64)
 def run(
     num_runs: int = 1,
     num_epochs: int = 4,
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-    master_port: int = 12355,
+    batch_size: int = 64,
 ):
     import ray
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
 
     config = CONFIG.copy()
     config["epochs"] = num_epochs
+    config["batch_size"] = batch_size
 
     # Find interface
     for iface in os.listdir("/sys/class/net"):
@@ -431,7 +433,6 @@ def run(
             cpus_per_worker=cpus_per_worker,
             use_gpu=use_gpu,
             config=config,
-            master_port=master_port + run,
         )
 
         print(
@@ -501,6 +502,7 @@ def run(
 @click.option("--rank", type=int, default=0)
 @click.option("--master-addr", type=str, default="")
 @click.option("--master-port", type=int, default=0)
+@click.option("--batch-size", type=int, default=64)
 @click.option("--use-gpu", is_flag=True, default=False)
 @click.option("--gpu-id", type=int, default=0)
 def worker(
@@ -509,11 +511,13 @@ def worker(
     rank: int = 0,
     master_addr: str = "",
     master_port: int = 0,
+    batch_size: int = 64,
     use_gpu: bool = False,
     gpu_id: int = 0,
 ):
     config = CONFIG.copy()
     config["epochs"] = num_epochs
+    config["batch_size"] = batch_size
 
     # Then we kick off the training function on every worker.
     return train_torch_vanilla_worker(
