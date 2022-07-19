@@ -74,6 +74,9 @@ class LearnerThread(threading.Thread):
                 self.outqueue.put(
                     (replay_actor, prio_dict, ma_batch.count, ma_batch.agent_steps())
                 )
-            self.learner_queue_size.push(self.inqueue.qsize())
-            self.weights_updated = True
-            self.overall_timer.push_units_processed(ma_batch and ma_batch.count or 0)
+                self.learner_queue_size.push(self.inqueue.qsize())
+                self.weights_updated = True
+                self.overall_timer.push_units_processed(
+                    ma_batch and ma_batch.count or 0
+                )
+                del ma_batch
