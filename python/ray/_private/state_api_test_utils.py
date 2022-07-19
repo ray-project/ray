@@ -1,15 +1,15 @@
 import asyncio
 from collections import defaultdict
+import concurrent.futures
 from dataclasses import dataclass, field
 import logging
+import numpy as np
+import pprint
 import time
-import concurrent.futures
 import traceback
 from typing import Callable, Dict, List
 import ray
 from ray.actor import ActorHandle
-import pprint
-import numpy as np
 
 
 @dataclass
@@ -42,7 +42,21 @@ STATE_LIST_LIMIT = int(1e6)  # 1m
 STATE_LIST_TIMEOUT = 600  # 10min
 
 
-def invoke_state_api(verify_cb, state_api_fn, state_stats=GLOBAL_STATE_STATS, **kwargs):
+def invoke_state_api(
+    verify_cb: Callable,
+    state_api_fn: Callable,
+    state_stats: StateAPIStats = GLOBAL_STATE_STATS,
+    **kwargs,
+):
+    """Invoke a State API
+
+    Args:
+        - verify_cb: Callback that takes in the response from `state_api_fn` and
+            returns a boolean, indicating the correctness of the results.
+        - state_api_fn: Function of the state API
+        - state_stats: Stats
+        - kwargs: Keyword arguments to be forwarded to the `state_api_fn`
+    """
     if "timeout" not in kwargs:
         kwargs["timeout"] = STATE_LIST_TIMEOUT
 
@@ -72,7 +86,20 @@ def invoke_state_api(verify_cb, state_api_fn, state_stats=GLOBAL_STATE_STATS, **
     return res
 
 
-def aggregate_perf_results(state_stats=GLOBAL_STATE_STATS):
+def aggregate_perf_results(state_stats: StateAPIStats = GLOBAL_STATE_STATS):
+    """Aggregate stats of state API calls
+
+    Return:
+        This returns a dict of below fields:
+            - max_{api_name}_latency_sec:
+                Max latency of call to {api_name}
+            - max_{api_name}_result_size:
+                The size of the result (or the number of bytes for get_log API)
+            - p99/p95/p50_{api_name}_latency_sec:
+                The percentile latency stats
+            - avg_state_api_latency_sec:
+                The average latency of all the state apis tracked
+    """
     perf_result = {}
     for api_name, metrics in state_stats.calls.items():
         # Per api aggregation
@@ -121,6 +148,17 @@ class StateAPIGeneratorActor:
         print_interval_s: float = 20.0,
         wait_after_stop: bool = True,
     ) -> None:
+        """An actor that periodically issues state API
+
+        Args:
+            - apis: List of StateAPICallSpec
+            - call_interval_s: State apis in the `apis` will be issued
+                every `call_interval_s` seconds.
+            - print_interval_s: How frequent state api stats will be dumped.
+            - wait_after_stop: When true, call to `ray.get(actor.stop.remote())`
+                will wait for all pending state APIs to return.
+                Setting it to `False` might miss some long-running state apis calls.
+        """
         # Configs
         self._apis = apis
         self._call_interval_s = call_interval_s
@@ -168,6 +206,8 @@ class StateAPIGeneratorActor:
 
     async def _run_stats_reporter(self):
         while not self._stopped:
+            # Keep the reporter running until all pending apis finish and the bool
+            # `self._stopped` is then True
             self._logger.info(pprint.pprint(aggregate_perf_results(self._stats)))
             try:
                 await asyncio.sleep(self._print_interval_s)
@@ -194,7 +234,6 @@ class StateAPIGeneratorActor:
     async def _run_result_waiter(self):
         try:
             while not self._stopping:
-                # Ignore the queue futures if it is no longer running
                 fut = await self._fut_queue.get()
                 await fut
         except asyncio.CancelledError:
@@ -207,6 +246,8 @@ class StateAPIGeneratorActor:
                 if self._wait_after_cancel:
                     await fut
                 else:
+                    # Ignore the queue futures if we are not
+                    # waiting on them after stop() called
                     fut.cancel()
             return
 
@@ -217,15 +258,12 @@ class StateAPIGeneratorActor:
         pass
 
     def stop(self):
-        self._stop()
-
-    def _stop(self):
         self._stopping = True
         self._logger.debug(f"calling stop, canceling {len(self._tasks)} tasks")
         for task in self._tasks:
             task.cancel()
 
-        # This will block the _stop() function until all futures are cancelled
+        # This will block the stop() function until all futures are cancelled
         # if _wait_after_cancel=True. When _wait_after_cancel=False, it will still
         # wait for any in-progress futures.
         # See: https://docs.python.org/3.8/library/concurrent.futures.html

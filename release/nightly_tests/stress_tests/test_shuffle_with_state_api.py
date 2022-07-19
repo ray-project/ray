@@ -1,5 +1,8 @@
 import click
 import json
+import os
+import time
+
 import ray
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
@@ -7,8 +10,6 @@ from ray._private.state_api_test_utils import (
 )
 import ray._private.test_utils as test_utils
 from ray._private.worker import RayContext
-import time
-import os
 
 from ray.experimental.state.api import (
     list_actors,
