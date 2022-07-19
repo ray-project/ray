@@ -335,13 +335,12 @@ def test_tune_torch_get_device_gpu(ray_2_node_4_gpu, num_gpus_per_worker):
     trainer = TorchTrainer(
         train_func,
         torch_config=TorchConfig(backend="gloo"),
-        scaling_config={
-            "num_workers": 2,
-            "use_gpu": True,
-            "resources_per_worker": {"GPU": num_gpus_per_worker},
-        },
+        scaling_config=ScalingConfig(
+            num_workers=2,
+            use_gpu=True,
+            resources_per_worker={"GPU": num_gpus_per_worker},
+        ),
     )
-
     tuner = Tuner(
         trainer,
         param_space={
