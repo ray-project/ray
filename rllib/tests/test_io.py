@@ -294,7 +294,7 @@ class AgentIOTest(unittest.TestCase):
                 "input_config": {"input_files": self.test_dir + "torch"},
                 "off_policy_estimation_methods": {},
                 "framework": "torch",
-                "shuffle_buffer_size": 123
+                "shuffle_buffer_size": 123,
             },
         )
         input_reader = algorithm.workers.local_worker().input_reader
