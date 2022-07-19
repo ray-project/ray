@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pytest
 import torch
 
@@ -35,6 +34,18 @@ class DummyModelMultiOutput(torch.nn.Module):
         return [input_tensor, input_tensor]
 
 
+class DummyModelDictOutput(torch.nn.Module):
+    def forward(self, input_tensor):
+        tensors = {"x": input_tensor, "y": input_tensor}
+        return tensors
+
+
+class DummyModelListDictOutput(torch.nn.Module):
+    def forward(self, input_tensor):
+        tensors = {"x": input_tensor, "y": input_tensor}
+        return [tensors, tensors]
+
+
 @pytest.fixture
 def model():
     return DummyModelSingleTensor()
@@ -57,7 +68,6 @@ def test_init(model, preprocessor):
     assert checkpoint_predictor.preprocessor == predictor.preprocessor
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_model_not_training(model, use_gpu):
     predictor = TorchPredictor(model=model, use_gpu=use_gpu)
 
@@ -67,7 +77,6 @@ def test_predict_model_not_training(model, use_gpu):
     assert not predictor.model.training
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
 def test_predict(batch_type):
     predictor = TorchPredictor(model=DummyModelMultiInput())
 
@@ -80,7 +89,6 @@ def test_predict(batch_type):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array(model, use_gpu):
     predictor = TorchPredictor(model=model, use_gpu=use_gpu)
 
@@ -91,7 +99,6 @@ def test_predict_array(model, use_gpu):
     assert predictions.flatten().tolist() == [2, 4, 6]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
     predictor = TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
@@ -102,7 +109,6 @@ def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
     assert predictions.flatten().tolist() == [4, 8, 12]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_dataframe(use_gpu):
     predictor = TorchPredictor(model=DummyModelMultiInput(), use_gpu=use_gpu)
 
@@ -113,7 +119,6 @@ def test_predict_dataframe(use_gpu):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_multi_output(use_gpu):
     predictor = TorchPredictor(model=DummyModelMultiOutput(), use_gpu=use_gpu)
 
@@ -128,7 +133,36 @@ def test_predict_multi_output(use_gpu):
         assert v.flatten().tolist() == [1, 2, 3]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
+def test_predict_dict_output():
+    predictor = TorchPredictor(model=DummyModelDictOutput())
+
+    data_batch = np.array([1, 2, 3])
+    predictions = predictor.predict(data_batch)
+
+    assert len(predictions) == 2
+    assert "x" in predictions
+    assert predictions["x"].flatten().tolist() == [1, 2, 3]
+    assert "y" in predictions
+    assert predictions["y"].flatten().tolist() == [1, 2, 3]
+
+
+def test_predict_list_of_dict_output():
+    predictor = TorchPredictor(model=DummyModelListDictOutput())
+
+    data_batch = np.array([1, 2, 3])
+    predictions = predictor.predict(data_batch)
+
+    assert "x" in predictions
+    assert len(predictions["x"]) == 2
+    for output in predictions["x"]:
+        assert output.flatten().tolist() == [1, 2, 3]
+
+    assert "y" in predictions
+    assert len(predictions["y"]) == 2
+    for output in predictions["y"]:
+        assert output.flatten().tolist() == [1, 2, 3]
+
+
 @pytest.mark.parametrize(
     ("input_dtype", "expected_output_dtype"),
     (
@@ -149,7 +183,6 @@ def test_predict_array_with_different_dtypes(
     assert predictions.dtype == expected_output_dtype
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array_no_training(model, use_gpu):
     checkpoint = to_air_checkpoint(model)
     predictor = TorchPredictor.from_checkpoint(checkpoint, use_gpu=use_gpu)
@@ -161,7 +194,6 @@ def test_predict_array_no_training(model, use_gpu):
     assert predictions.flatten().tolist() == [2, 4, 6]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
 def test_array_real_model(use_gpu):
     model = torch.nn.Linear(2, 1)
     predictor = TorchPredictor(model=model, use_gpu=use_gpu)

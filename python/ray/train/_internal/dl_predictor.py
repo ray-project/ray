@@ -80,7 +80,7 @@ class DLPredictor(Predictor):
         # Handle model multi-output. For example if model outputs 2 images.
         if isinstance(output, dict):
             return pd.DataFrame(
-                {k: TensorArray(self._tensor_to_array(v)) for k, v in output}
+                {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
             )
         elif isinstance(output, list) or isinstance(output, tuple):
             tensor_name = "output_"
@@ -92,6 +92,5 @@ class DLPredictor(Predictor):
             return pd.DataFrame(output_dict)
         else:
             return pd.DataFrame(
-                {"predictions": TensorArray(self._tensor_to_array(output))},
-                columns=["predictions"],
+                {"predictions": TensorArray(self._tensor_to_array(output))}
             )

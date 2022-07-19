@@ -108,6 +108,14 @@ class TorchPredictor(DLPredictor):
     ]:
         with torch.no_grad():
             output = self.model(tensor)
+
+        if isinstance(output, list) and isinstance(output[0], dict):
+            # Handle List of Dicts. For example
+            # https://pytorch.org/vision/main/models/generated/torchvision.models.detection\
+            # .ssd300_vgg16.html#torchvision.models.detection.ssd300_vgg16
+
+            # Convert to dict of tensors.
+            output = {k: torch.stack([d[k] for d in output]) for k in output[0]}
         return output
 
     def predict(
