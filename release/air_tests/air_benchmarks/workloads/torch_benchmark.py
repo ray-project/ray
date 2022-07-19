@@ -372,6 +372,7 @@ def cli():
 @click.option("--cpus-per-worker", type=int, default=8)
 @click.option("--use-gpu", is_flag=True, default=False)
 @click.option("--batch-size", type=int, default=64)
+@click.option("--smoke-test", is_flag=True, default=False)
 def run(
     num_runs: int = 1,
     num_epochs: int = 4,
@@ -379,7 +380,10 @@ def run(
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
     batch_size: int = 64,
+    smoke_test: bool = False,
 ):
+    # Note: smoke_test is ignored as we just adjust the batch size.
+    # The parameter is passed by the release test pipeline.
     import ray
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
 
