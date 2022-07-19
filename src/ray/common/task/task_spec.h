@@ -89,7 +89,8 @@ struct hash<ray::rpc::SchedulingStrategy> {
       hash ^= std::hash<std::string>()(
           scheduling_strategy.node_affinity_scheduling_strategy().node_id());
       // soft returns a bool
-      hash ^= static_cast<size_t>(scheduling_strategy.node_affinity_scheduling_strategy().soft());
+      hash ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().soft());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
       hash ^= std::hash<std::string>()(
@@ -97,8 +98,9 @@ struct hash<ray::rpc::SchedulingStrategy> {
       hash ^= scheduling_strategy.placement_group_scheduling_strategy()
                   .placement_group_bundle_index();
       // placement_group_capture_child_tasks returns a bool
-      hash ^= static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
-                  .placement_group_capture_child_tasks());
+      hash ^=
+          static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
+                                  .placement_group_capture_child_tasks());
     }
     return hash;
   }
