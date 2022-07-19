@@ -118,6 +118,13 @@ Serving
 Trainer and Predictor Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+FunctionTrainer
+###############
+
+.. autoclass:: ray.train.function_trainer.FunctionTrainer
+    :members:
+    :show-inheritance:
+
 XGBoost
 #######
 
