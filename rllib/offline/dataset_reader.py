@@ -2,7 +2,7 @@ import logging
 import math
 from pathlib import Path
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import zipfile
 
 import ray.data
@@ -205,13 +205,13 @@ class DatasetReader(InputReader):
     """
 
     @PublicAPI
-    def __init__(self, ioctx: IOContext, ds: ray.data.Dataset):
+    def __init__(self, ds: ray.data.Dataset, ioctx: Optional[IOContext] = None):
         """Initializes a DatasetReader instance.
 
         Args:
             ds: Ray dataset to sample from.
         """
-        self._ioctx = ioctx
+        self._ioctx = ioctx or IOContext()
         self._default_policy = self.policy_map = None
         self._dataset = ds
         self.count = None if not self._dataset else self._dataset.count()
