@@ -141,7 +141,6 @@ class BatchPredictor:
             Dataset containing scoring results.
 
         """
-<<<<<<< HEAD
         if num_gpus_per_worker is None:
             num_gpus_per_worker = 0
         if num_cpus_per_worker is None:
@@ -151,8 +150,7 @@ class BatchPredictor:
                 num_cpus_per_worker = 0
             else:
                 num_cpus_per_worker = 1
-=======
->>>>>>> b0eb051282438698947f01aaa7defe889174cb94
+
         predictor_cls = self._predictor_cls
         checkpoint_ref = self._checkpoint_ref
         predictor_kwargs = self._predictor_kwargs
