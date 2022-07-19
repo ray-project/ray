@@ -21,7 +21,17 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
     ray_address = f"{head_ip}:6379"
     while True:
         try:
-            subprocess.check_call(["ray", "health-check", "--address", ray_address])
+            # Autoscaler Ray version might not exactly match GCS version, so skip the
+            # version check when checking GCS status.
+            subprocess.check_call(
+                [
+                    "ray",
+                    "health-check",
+                    "--address",
+                    ray_address,
+                    "--skip-version-check",
+                ]
+            )
             # Logging is not ready yet. Print to stdout for now.
             print("The Ray head is ready. Starting the autoscaler.")
             break
