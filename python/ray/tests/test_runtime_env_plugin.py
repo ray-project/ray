@@ -256,6 +256,7 @@ PRIORITY_TEST_ENV_VAR_NAME = "PriorityTestEnv"
 
 class PriorityTestPlugin1(RuntimeEnvPlugin):
     name = PRIORITY_TEST_PLUGIN1_NAME
+    priority = 11
     env_value = " world"
 
     @staticmethod
@@ -277,6 +278,7 @@ class PriorityTestPlugin1(RuntimeEnvPlugin):
 
 class PriorityTestPlugin2(RuntimeEnvPlugin):
     name = PRIORITY_TEST_PLUGIN2_NAME
+    priority = 10
     env_value = "hello"
 
     @staticmethod
@@ -296,6 +298,16 @@ class PriorityTestPlugin2(RuntimeEnvPlugin):
                 f"{ctx.env_vars[PRIORITY_TEST_ENV_VAR_NAME]}."
             )
         ctx.env_vars[PRIORITY_TEST_ENV_VAR_NAME] = PriorityTestPlugin2.env_value
+
+
+priority_test_plugin_config_without_priority = [
+    {
+        "class": PRIORITY_TEST_PLUGIN1_CLASS_PATH,
+    },
+    {
+        "class": PRIORITY_TEST_PLUGIN2_CLASS_PATH,
+    },
+]
 
 
 priority_test_plugin_config = [
@@ -326,6 +338,7 @@ priority_test_plugin_bad_config = [
 @pytest.mark.parametrize(
     "set_runtime_env_plugins",
     [
+        json.dumps(priority_test_plugin_config_without_priority),
         json.dumps(priority_test_plugin_config),
         json.dumps(priority_test_plugin_bad_config),
     ],

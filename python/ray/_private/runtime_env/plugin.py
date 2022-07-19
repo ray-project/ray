@@ -25,6 +25,7 @@ class RuntimeEnvPlugin(ABC):
     """Abstract base class for runtime environment plugins."""
 
     name: str = None
+    priority: int = RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY
 
     @staticmethod
     def validate(runtime_env_dict: dict) -> str:
@@ -149,23 +150,26 @@ class RuntimeEnvPluginManager:
                     f"The name of runtime env plugin {plugin_class} conflicts "
                     f"with {self.plugins[plugin_class.name]}.",
                 )
+
             # The priority should be an integer between 0 and 100.
             # The default priority is 10. A smaller number indicates a
             # higher priority and the plugin will be set up first.
-            priority = RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY
             if RAY_RUNTIME_ENV_PRIORITY_FIELD_NAME in plugin_config:
                 priority = plugin_config[RAY_RUNTIME_ENV_PRIORITY_FIELD_NAME]
-                if (
-                    not isinstance(priority, int)
-                    or priority < RAY_RUNTIME_ENV_PLUGIN_MIN_PRIORITY
-                    or priority > RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY
-                ):
-                    raise RuntimeError(
-                        f"Invalid runtime env priority {priority}, "
-                        "it should be an integer between "
-                        f"{RAY_RUNTIME_ENV_PLUGIN_MIN_PRIORITY} "
-                        f"and {RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY}."
-                    )
+            else:
+                priority = plugin_class.priority
+            if (
+                not isinstance(priority, int)
+                or priority < RAY_RUNTIME_ENV_PLUGIN_MIN_PRIORITY
+                or priority > RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY
+            ):
+                raise RuntimeError(
+                    f"Invalid runtime env priority {priority}, "
+                    "it should be an integer between "
+                    f"{RAY_RUNTIME_ENV_PLUGIN_MIN_PRIORITY} "
+                    f"and {RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY}."
+                )
+
             self.plugins[plugin_class.name] = RuntimeEnvPluginManager.Context(
                 plugin_class(), priority
             )
