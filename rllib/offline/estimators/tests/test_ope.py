@@ -167,7 +167,7 @@ class TestOPE(unittest.TestCase):
         print("\n\n\n")
 
     def test_fqe_model(self):
-        # Test FQEorchModel for:
+        # Test FQETorchModel for:
         # (1) Check that it does not modify the underlying batch during training
         # (2) Check that the stoppign criteria from FQE are working correctly
         # (3) Check that using fqe._compute_action_probs equals brute force
