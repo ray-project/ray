@@ -91,8 +91,8 @@ def test_component_activities_hook(set_ray_cluster_activity_hook, call_ray_start
         external_activity_response = RayActivityResponse(**data["external_component"])
         assert external_activity_response.is_active == "ERROR"
         assert (
-            external_activity_response.reason
-            == "Exception('Error in external cluster activity hook')"
+            "'Error in external cluster activity hook'"
+            in external_activity_response.reason
         )
     elif external_hook[-1] == "3":
         external_activity_response = RayActivityResponse(**data["external_component"])
