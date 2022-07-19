@@ -362,7 +362,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
-      node_high_memory_throttler_(RayConfig::instance().node_high_memory_monitor_min_interval_s() * 1e9),
+      node_high_memory_throttler_(RayConfig::instance().node_high_memory_monitor_min_interval_ms() * 1e6),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
@@ -591,36 +591,41 @@ ray::Status NodeManager::RegisterGcs() {
   return ray::Status::OK();
 }
 
-void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
+void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force) {
+  if (force) {
+    worker->GetProcess().Kill();
+  } else {
 #ifdef _WIN32
 // TODO(mehrdadn): implement graceful process termination mechanism
 #else
-  // If we're just cleaning up a single worker, allow it some time to clean
-  // up its state before force killing. The client socket will be closed
-  // and the worker struct will be freed after the timeout.
-  kill(worker->GetProcess().GetId(), SIGTERM);
+    // If we're just cleaning up a single worker, allow it some time to clean
+    // up its state before force killing. The client socket will be closed
+    // and the worker struct will be freed after the timeout.
+    kill(worker->GetProcess().GetId(), SIGTERM);
 #endif
 
-  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-  auto retry_duration = boost::posix_time::milliseconds(
-      RayConfig::instance().kill_worker_timeout_milliseconds());
-  retry_timer->expires_from_now(retry_duration);
-  retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
-    RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
-    // Force kill worker
-    worker->GetProcess().Kill();
-  });
+    auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+    auto retry_duration = boost::posix_time::milliseconds(
+        RayConfig::instance().kill_worker_timeout_milliseconds());
+    retry_timer->expires_from_now(retry_duration);
+    retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
+      RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
+      // Force kill worker
+      worker->GetProcess().Kill();
+    });
+  }
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
-                                const std::string &disconnect_detail) {
+                                const std::string &disconnect_detail,
+                                bool force) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
   DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   worker->MarkDead();
-  KillWorker(worker);
+  KillWorker(worker, force);
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
@@ -2765,6 +2770,21 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
   TriggerGlobalGC();
 }
 
+bool IsHighMemoryUsage() {
+  auto [available_memory_bytes, total_memory_bytes]
+          = GetSystemAvailableMemoryBytes();
+  auto used = total_memory_bytes - available_memory_bytes;
+  auto usage_pct = static_cast<float>(used) / total_memory_bytes;
+  bool node_high_memory_usage = usage_pct
+      > RayConfig::instance().node_high_memory_usage_fraction();
+  if (node_high_memory_usage) {
+    RAY_LOG(INFO) << "node high memory usage "
+        << static_cast<float>(used) / total_memory_bytes
+        << " exceeding threshold " << RayConfig::instance().node_high_memory_usage_fraction();
+  }
+  return node_high_memory_usage;
+}
+
 bool NodeManager::TryLocalGC() {
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =
@@ -2790,22 +2810,30 @@ bool NodeManager::TryLocalGC() {
     should_local_gc_ = false;
   }
 
-  if (RayConfig::instance().node_high_memory_monitor_min_interval_s() > 0) {
+  if (RayConfig::instance().node_high_memory_monitor_min_interval_ms() > 0) {
     if (node_high_memory_throttler_.AbleToRun()) {
       node_high_memory_throttler_.RunNow();
-      auto [available_memory_bytes, total_memory_bytes]
-          = GetSystemAvailableMemoryBytes();
-      auto used = total_memory_bytes - available_memory_bytes;
-      bool node_high_memory_usage = static_cast<float>(used) / total_memory_bytes
-          > RayConfig::instance().node_high_memory_usage_fraction();
-      if (node_high_memory_usage) {
-        auto worker = worker_pool_.GetNewestWorker();
-        if (worker != nullptr) {
+      std::list<std::shared_ptr<WorkerInterface>> updated_high_memory_eviction_targets_;
+      bool has_targets = high_memory_eviction_targets_.size() > 0;
+      for (const auto &worker : high_memory_eviction_targets_) {
+        if (worker->GetProcess().IsAlive()) {
+          updated_high_memory_eviction_targets_.push_back(worker);
+        }
+      }
+      if (has_targets && updated_high_memory_eviction_targets_.size() == 0) {
+        std::chrono::duration<double> duration = std::chrono::high_resolution_clock::now()
+            - high_memory_eviction_start_time_;
+        RAY_LOG(INFO) << "Memory pressure worker eviction took " << duration.count() << "s";
+      }
+      high_memory_eviction_targets_ = updated_high_memory_eviction_targets_;
+      if (high_memory_eviction_targets_.empty() && IsHighMemoryUsage()) {
+        high_memory_eviction_targets_ = worker_pool_.GetNewestWorker();
+        high_memory_eviction_start_time_ = std::chrono::high_resolution_clock::now();
+        for (const auto &worker : high_memory_eviction_targets_) {
           DestroyWorker(worker,
-              rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-              absl::StrCat("Worker ",
-                  worker->GetActorId(),
-                  " exits due to memory pressure "));
+              rpc::WorkerExitType::SYSTEM_ERROR,
+              absl::StrCat("Ray OOM killer terminating worker to prevent system OOM"),
+              true /* force */);
         }
       }
     }

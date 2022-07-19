@@ -1154,23 +1154,25 @@ void WorkerPool::CollectWorkerStats() {
   }
 }
 
-const std::shared_ptr<WorkerInterface> WorkerPool::GetNewestWorker(
+const std::list<std::shared_ptr<WorkerInterface>> WorkerPool::GetNewestWorker(
     bool filter_dead_workers, bool filter_io_workers) const {
-  std::shared_ptr<WorkerInterface> result = nullptr;
+  std::list<std::shared_ptr<WorkerInterface>> result;
+
+  std::shared_ptr<WorkerInterface> latest_worker = nullptr;
   auto newest_worker_start_time = std::chrono::high_resolution_clock::time_point();
   for (const auto &entry : states_by_lang_) {
     auto state = entry.second;
     for (const auto &worker : state.registered_workers) {
-      auto proc_startup_token = worker->GetStartupToken();
-      auto it = state.worker_processes.find(proc_startup_token);
-      if (it != state.worker_processes.end()) {
-        if (it->second.start_time > newest_worker_start_time) {
-          RAY_LOG(DEBUG) << "setting worker to be killed " << worker->GetActorId();
-          newest_worker_start_time = it->second.start_time;
-          result = worker;
-        }
+      if (worker->GetAssignedTaskTime() > newest_worker_start_time) {
+        newest_worker_start_time = worker->GetAssignedTaskTime();
+        latest_worker = worker;
+
       }
     }
+  }
+  if (latest_worker != nullptr) {
+    RAY_LOG(DEBUG) << "Adding worker to be killed " << latest_worker->GetAssignedTaskId() << "pid " << latest_worker->GetProcess().GetId() << " alive"  << latest_worker->GetProcess().IsAlive();
+    result.push_back(latest_worker);
   }
   return result;
 }

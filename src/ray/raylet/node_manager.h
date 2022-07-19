@@ -365,8 +365,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Kill a worker.
   ///
   /// \param worker The worker to kill.
+  /// \param force true to kill immediately, false to give time for the worker to
+  /// clean up and exit gracefully.
   /// \return Void.
-  void KillWorker(std::shared_ptr<WorkerInterface> worker);
+  void KillWorker(std::shared_ptr<WorkerInterface> worker, bool force = false);
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
@@ -374,10 +376,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param worker The worker to destroy.
   /// \param disconnect_type The reason why this worker process is disconnected.
   /// \param disconnect_detail The detailed reason for a given exit.
+  /// \param force true to destroy immediately, false to give time for the worker to
+  /// clean up and exit gracefully.
   /// \return Void.
   void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                      rpc::WorkerExitType disconnect_type,
-                     const std::string &disconnect_detail);
+                     const std::string &disconnect_detail,
+                     bool force = false);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -766,6 +771,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Throttler for node high memory usage
   Throttler node_high_memory_throttler_;
+
+  std::list<std::shared_ptr<WorkerInterface>> high_memory_eviction_targets_;
+  std::chrono::high_resolution_clock::time_point high_memory_eviction_start_time_;
 
   /// Seconds to initialize a local gc
   const uint64_t local_gc_interval_ns_;

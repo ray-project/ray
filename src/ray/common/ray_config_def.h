@@ -74,7 +74,7 @@ RAY_CONFIG(float, node_high_memory_usage_fraction, 0.9)
 
 /// The interval between runs of the high memory usage monitor.
 /// Disabled when this value is 0.
-RAY_CONFIG(uint64_t, node_high_memory_monitor_min_interval_s, 0)
+RAY_CONFIG(uint64_t, node_high_memory_monitor_min_interval_ms, 0)
 
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
@@ -438,7 +438,7 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
 /// The interval of periodic worker stats collecton. Value of 0 means collection is disabled.
-RAY_CONFIG(uint64_t, collect_worker_stats_ms, 1000)
+RAY_CONFIG(uint64_t, collect_worker_stats_ms, 0)
 
 /// The soft limit of the number of workers.
 /// -1 means using num_cpus instead.

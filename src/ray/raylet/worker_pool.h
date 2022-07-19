@@ -406,7 +406,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Finds the newest worker.
   ///
   /// \return the newest or null if there is no worker
-  const std::shared_ptr<WorkerInterface> GetNewestWorker(
+  const std::list<std::shared_ptr<WorkerInterface>> GetNewestWorker(
       bool filter_dead_workers = false, bool filter_io_workers = false) const;
 
  protected:
