@@ -41,7 +41,6 @@ class TensorflowPredictor(DLPredictor):
     ):
         self.model_definition = model_definition
         self.model_weights = model_weights
-        self.preprocessor = preprocessor
 
         self.use_gpu = use_gpu
         # TensorFlow model objects cannot be pickled, therefore we use
@@ -73,6 +72,7 @@ class TensorflowPredictor(DLPredictor):
 
         if model_weights is not None:
             self._model.set_weights(model_weights)
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
@@ -94,7 +94,8 @@ class TensorflowPredictor(DLPredictor):
         """
         # Cannot use TensorFlow load_checkpoint here
         # due to instantiated models not being pickleable
-        model_weights, preprocessor = _load_checkpoint(checkpoint, "TensorflowTrainer")
+        model_weights, _ = _load_checkpoint(checkpoint, "TensorflowTrainer")
+        preprocessor = checkpoint.get_preprocessor()
         return cls(
             model_definition=model_definition,
             model_weights=model_weights,

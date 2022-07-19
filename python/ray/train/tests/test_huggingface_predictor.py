@@ -67,7 +67,7 @@ def test_predict(tmpdir, ray_start_runtime_env, batch_type):
 
         assert len(predictions) == 3
         if preprocessor:
-            assert hasattr(predictor.preprocessor, "_batch_transformed")
+            assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
     ray.get(test.remote(use_preprocessor=True))
     ray.get(test.remote(use_preprocessor=False))

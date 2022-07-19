@@ -37,7 +37,6 @@ class TorchPredictor(DLPredictor):
     ):
         self.model = model
         self.model.eval()
-        self.preprocessor = preprocessor
 
         # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
         self.use_gpu = use_gpu
@@ -58,6 +57,8 @@ class TorchPredictor(DLPredictor):
                 "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
                 "enable GPU prediction."
             )
+
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
@@ -80,7 +81,8 @@ class TorchPredictor(DLPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """
-        model, preprocessor = load_checkpoint(checkpoint, model)
+        model, _ = load_checkpoint(checkpoint, model)
+        preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
     def _array_to_tensor(

@@ -28,7 +28,7 @@ class LightGBMPredictor(Predictor):
         self, model: lightgbm.Booster, preprocessor: Optional["Preprocessor"] = None
     ):
         self.model = model
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "LightGBMPredictor":
@@ -42,7 +42,8 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        bst, preprocessor = load_checkpoint(checkpoint)
+        bst, _ = load_checkpoint(checkpoint)
+        preprocessor = checkpoint.get_preprocessor()
         return cls(model=bst, preprocessor=preprocessor)
 
     def _predict_pandas(

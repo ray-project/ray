@@ -51,7 +51,10 @@ def test_init():
         checkpoint_predictor = XGBoostPredictor.from_checkpoint(checkpoint)
 
     assert get_num_trees(checkpoint_predictor.model) == get_num_trees(predictor.model)
-    assert checkpoint_predictor.preprocessor.attr == predictor.preprocessor.attr
+    assert (
+        checkpoint_predictor.get_preprocessor().attr
+        == predictor.get_preprocessor().attr
+    )
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
@@ -64,7 +67,7 @@ def test_predict(batch_type):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_feature_columns():
@@ -75,7 +78,7 @@ def test_predict_feature_columns():
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_feature_columns_pandas():
@@ -92,7 +95,7 @@ def test_predict_feature_columns_pandas():
     predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_no_preprocessor_no_training():

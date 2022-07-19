@@ -31,7 +31,7 @@ class RLPredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
     ):
         self.policy = policy
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
@@ -52,7 +52,8 @@ class RLPredictor(Predictor):
                 it is parsed from the saved trainer configuration instead.
 
         """
-        policy, preprocessor = load_checkpoint(checkpoint, env)
+        policy, _ = load_checkpoint(checkpoint, env)
+        preprocessor = checkpoint.get_preprocessor()
         return cls(policy=policy, preprocessor=preprocessor)
 
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
