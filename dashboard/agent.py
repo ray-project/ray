@@ -15,7 +15,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
-from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
+from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc, gcs_pb2
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_initialized,
@@ -265,10 +265,12 @@ class DashboardAgent:
 
         await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
-                agent_pid=os.getpid(),
-                agent_grpc_port=self.grpc_port,
-                agent_http_port=http_port,
-                agent_ip_address=self.ip,
+                agent_info=gcs_pb2.AgentInfo(
+                    pid=os.getpid(),
+                    grpc_port=self.grpc_port,
+                    http_port=http_port,
+                    ip_address=self.ip,
+                )
             )
         )
 

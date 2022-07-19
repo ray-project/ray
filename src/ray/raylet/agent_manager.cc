@@ -29,30 +29,23 @@ namespace raylet {
 void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
                                        rpc::RegisterAgentReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  auto agent_ip_address = request.agent_ip_address();
-  auto agent_grpc_port = request.agent_grpc_port();
-  auto agent_http_port = request.agent_http_port();
-  auto agent_pid = request.agent_pid();
+  agent_info_.CopyFrom(request.agent_info());
   // TODO(SongGuyang): We should remove this after we find better port resolution.
-  // Note: `agent_grpc_port` should be 0 if the grpc port of agent is in conflict.
-  if (agent_grpc_port != 0) {
-    runtime_env_agent_client_ =
-        runtime_env_agent_client_factory_(agent_ip_address, agent_grpc_port);
-    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address
-                  << ", port: " << agent_grpc_port << ", pid: " << agent_pid;
+  // Note: `agent_info_.grpc_port()` should be 0 if the grpc port of agent is in conflict.
+  if (agent_info_.grpc_port() != 0) {
+    runtime_env_agent_client_ = runtime_env_agent_client_factory_(
+        agent_info_.ip_address(), agent_info_.grpc_port());
+    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_info_.ip_address()
+                  << ", port: " << agent_info_.grpc_port()
+                  << ", pid: " << agent_info_.pid();
   } else {
     RAY_LOG(WARNING) << "The GRPC port of the Ray agent is invalid (0), ip: "
-                     << agent_ip_address << ", pid: " << agent_pid
+                     << agent_info_.ip_address() << ", pid: " << agent_info_.pid()
                      << ". The agent client in the raylet has been disabled.";
     disable_agent_client_ = true;
   }
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
-
-  agent_info_.set_ip_address(agent_ip_address);
-  agent_info_.set_grpc_port(agent_grpc_port);
-  agent_info_.set_http_port(agent_http_port);
-  agent_info_.set_pid(agent_pid);
 }
 
 void AgentManager::StartAgent() {
@@ -113,7 +106,7 @@ void AgentManager::StartAgent() {
     timer->cancel();
     RAY_LOG(WARNING) << "Agent process with pid " << agent_process_->GetId()
                      << " exit, return value " << exit_code << ". ip "
-                     << agent_ip_address_ << ". pid " << agent_info_.pid();
+                     << agent_info_.ip_address() << ". pid " << agent_info_.pid();
 
     RAY_LOG(ERROR)
         << "The raylet exited immediately because the Ray agent failed. "

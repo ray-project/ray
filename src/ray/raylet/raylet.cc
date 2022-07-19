@@ -109,15 +109,18 @@ void Raylet::Stop() {
 
 void Raylet::TryToGetAgentInfoAndRegisterGcs() {
   rpc::AgentInfo agent_info;
-  auto status = node_manager_.SyncGetAgentInfo(&agent_info);
+  auto status = node_manager_.TryToGetAgentInfo(&agent_info);
   if (status.ok()) {
-      self_node_info_.mutable_agent_info()->CopyFrom(agent_info);
-      RAY_CHECK_OK(RegisterGcs());
+    self_node_info_.mutable_agent_info()->CopyFrom(agent_info);
+    RAY_CHECK_OK(RegisterGcs());
   } else {
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    main_service_.post([this](){
-      TryToGetAgentInfoAndRegisterGcs();
-    }, "Raylet.TryToGetAgentInfoAndRegisterGcs");
+    // Because current function and `AgentManager::HandleRegisterAgent`
+    // will be invoke in same thread, so we need post current function
+    // into main_service_ after interval milliseconds.
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().raylet_get_agent_info_interval_ms()));
+    main_service_.post([this]() { TryToGetAgentInfoAndRegisterGcs(); },
+                       "Raylet.TryToGetAgentInfoAndRegisterGcs");
   }
 }
 

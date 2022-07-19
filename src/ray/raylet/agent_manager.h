@@ -89,10 +89,13 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   virtual void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                           DeleteRuntimeEnvIfPossibleCallback callback);
 
-  /// Get the information of the agent process when the agent finished register.
+  /// Try to Get the information about the agent process,
+  /// if successful will return `ray::Status::OK`, otherwise will return
+  /// `ray::Status::Invalid`
   ///
-  /// \return The information of the agent process.
-  const ray::Status SyncGetAgentInfo(rpc::AgentInfo *agent_info) const {
+  /// \param[out] agent_info The information of the agent process.
+  /// \return Status.
+  const ray::Status TryToGetAgentInfo(rpc::AgentInfo *agent_info) const {
     if (IsAgentRegistered()) {
       *agent_info = agent_info_;
       return ray::Status::OK();
@@ -113,12 +116,9 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   Options options_;
   std::unique_ptr<Process> agent_process_;
   rpc::AgentInfo agent_info_;
-  /// promise to get agent info, after the agent finished register.
-  std::promise<rpc::AgentInfo> agent_info_promise_;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;
-  std::string agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
