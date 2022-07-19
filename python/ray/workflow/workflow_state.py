@@ -83,6 +83,7 @@ class WorkflowExecutionState:
     task_execution_metadata: Dict[TaskID, TaskExecutionMetadata] = field(
         default_factory=dict
     )
+    task_retries: Dict[TaskID, int] = field(default_factory=lambda: defaultdict(int))
 
     # ------------------------------ object management ------------------------------ #
 

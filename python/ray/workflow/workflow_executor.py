@@ -223,12 +223,9 @@ class WorkflowExecutor:
 
     def _iter_callstack(self, task_id: TaskID) -> Iterator[Tuple[TaskID, Task]]:
         state = self._state
-        while task_id in state.task_context:
+        while task_id in state.task_context and task_id in state.tasks:
+            yield task_id, state.tasks[task_id]
             task_id = state.task_context[task_id].creator_task_id
-            if task_id in state.tasks:
-                yield task_id, state.tasks[task_id]
-            else:
-                break
 
     async def _handle_ready_task(
         self, fut: asyncio.Future, workflow_id: str, wf_store: "WorkflowStorage"
@@ -269,6 +266,18 @@ class WorkflowExecutor:
                 f"[{workflow_id}@{task_id}]"
             )
 
+            # ---------------------- retry the task ----------------------
+            state.task_retries[task_id] += 1
+            total_retries = state.tasks[task_id].options.max_retries
+            if state.task_retries[task_id] <= total_retries:
+                logger.info(
+                    f"Retry [{workflow_id}@{task_id}] "
+                    f"({state.task_retries[task_id]}/{total_retries})"
+                )
+                state.construct_scheduling_plan(task_id)
+                return
+
+            # ----------- retry used up, handle the task error -----------
             # on error, the error is caught by this task
             exception_catching_task_id = None
             # lookup a creator task that catches the exception
@@ -309,6 +318,7 @@ class WorkflowExecutor:
         output_ref: WorkflowRef,
     ) -> None:
         state = self._state
+        state.task_retries.pop(task_id, None)
         if metadata.is_output_workflow:  # The task returns a continuation
             sub_workflow_state: WorkflowExecutionState = await output_ref.ref
             # init the context just for "sub_workflow_state"
