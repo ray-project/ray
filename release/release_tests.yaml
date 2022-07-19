@@ -2495,7 +2495,7 @@
     cluster_compute: 1gpu_4cpus.yaml
 
   run:
-    timeout: 8000
+    timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=a2c
     type: sdk_command
     file_manager: job
