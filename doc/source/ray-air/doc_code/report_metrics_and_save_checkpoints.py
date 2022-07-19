@@ -6,6 +6,7 @@
 import tensorflow as tf
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
+from ray.air.config import ScalingConfig
 from ray.train.tensorflow import TensorflowTrainer
 
 
@@ -36,7 +37,7 @@ def train_func():
     )
 
 
-scaling_config = {"num_workers": 2}
+scaling_config = ScalingConfig(num_workers=2)
 trainer = TensorflowTrainer(
     train_loop_per_worker=train_func, scaling_config=scaling_config
 )
