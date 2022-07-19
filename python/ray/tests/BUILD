@@ -71,7 +71,7 @@ py_test_module_list(
     "test_protobuf_compatibility.py"
   ],
   size = "medium",
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -80,7 +80,7 @@ py_test(
   srcs = ["test_joblib.py"],
   data = ["mnist_784_100_samples.pkl"],
   size = "medium",
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
