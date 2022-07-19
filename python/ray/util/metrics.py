@@ -251,6 +251,9 @@ class Histogram(Metric):
         self._metric = CythonHistogram(
             self._name, self._description, self.boundaries, self._tag_keys
         )
+        for bound in self.boundaries:
+            if bound <= 0:
+                raise ValueError("boundaries arguments should be positive values")
 
     def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Observe a given `value` and add it to the appropriate bucket.
