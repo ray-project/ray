@@ -2540,7 +2540,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_16cpus.yaml
+    cluster_compute: 2gpus_32cpus.yaml
 
   run:
     timeout: 18000
@@ -2564,7 +2564,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpu_32cpus.yaml
+    cluster_compute: 2gpus_32cpus.yaml
 
   run:
     timeout: 18000
@@ -2588,7 +2588,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 1gpus_32cpus.yaml
+    cluster_compute: 2gpus_32cpus.yaml
 
   run:
     timeout: 18000
