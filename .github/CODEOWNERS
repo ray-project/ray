@@ -40,11 +40,11 @@
 #!/python/ray/rllib/ @ray-project/ray-core-python
 
 # Java worker.
-/java/dependencies.bzl @jovany-wang @kfstorm @raulchen @ericl @iycheng
-/java/pom.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
-/java/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
-/java/*/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
-/java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng
+/java/dependencies.bzl @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/pom.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/*/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
 
 # C++ worker
 /cpp/include/ray @SongGuyang @raulchen @mwtian
@@ -72,7 +72,7 @@
 /doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke
 
 # Cluster (docs)
-/doc/source/cluster/ @wuisawesome @DmitriGekhtman @maxpumperla
+/doc/source/cluster/ @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz
 
 # Tune (docs)
 /doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla

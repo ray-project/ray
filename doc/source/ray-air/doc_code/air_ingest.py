@@ -6,6 +6,7 @@
 import ray
 from ray.data.preprocessors import Chain, BatchMapper
 from ray.air.util.check_ingest import DummyTrainer
+from ray.air.config import ScalingConfig
 
 # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
 # into 100 blocks (parallelism=100).
@@ -22,7 +23,7 @@ preprocessor = Chain(
 # Setup the dummy trainer that prints ingest stats.
 # Run and print ingest stats.
 trainer = DummyTrainer(
-    scaling_config={"num_workers": 1, "use_gpu": False},
+    scaling_config=ScalingConfig(num_workers=1, use_gpu=False),
     datasets={"train": dataset},
     preprocessor=preprocessor,
     num_epochs=1,  # Stop after this number of epochs is read.
@@ -35,7 +36,7 @@ trainer.fit()
 # __config_1__
 import ray
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import ScalingConfig, DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
 valid_ds = ray.data.range_tensor(100)
@@ -43,7 +44,7 @@ test_ds = ray.data.range_tensor(100)
 
 my_trainer = TorchTrainer(
     lambda: None,  # No-op training loop.
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={
         "train": train_ds,
         "valid": valid_ds,
@@ -63,14 +64,14 @@ print(my_trainer.get_dataset_config())
 # __config_2__
 import ray
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import ScalingConfig, DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
 side_ds = ray.data.range_tensor(10)
 
 my_trainer = TorchTrainer(
     lambda: None,  # No-op training loop.
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={
         "train": train_ds,
         "side": side_ds,
@@ -89,7 +90,7 @@ import ray
 from ray.air import session
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import ScalingConfig
 
 
 def train_loop_per_worker():
@@ -107,7 +108,7 @@ def train_loop_per_worker():
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
-    scaling_config={"num_workers": 1},
+    scaling_config=ScalingConfig(num_workers=1),
     datasets={
         "train": ray.data.range_tensor(1000),
     },
@@ -120,7 +121,7 @@ import ray
 from ray.air import session
 from ray.data import DatasetPipeline
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import ScalingConfig, DatasetConfig
 
 
 def train_loop_per_worker():
@@ -141,7 +142,7 @@ N = 200
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
-    scaling_config={"num_workers": 1},
+    scaling_config=ScalingConfig(num_workers=1),
     datasets={
         "train": ray.data.range_tensor(1000),
     },
@@ -151,3 +152,74 @@ my_trainer = TorchTrainer(
 )
 my_trainer.fit()
 # __config_5_end__
+
+# __global_shuffling_start__
+import ray
+from ray import train
+from ray.data import Dataset
+from ray.train.torch import TorchTrainer
+from ray.air.config import DatasetConfig, ScalingConfig
+
+
+def train_loop_per_worker():
+    data_shard: Dataset = train.get_dataset_shard("train")
+
+    # Iterate over 10 epochs of data.
+    for epoch in range(10):
+        for batch in data_shard.iter_batches():
+            print("Do some training on batch", batch)
+
+    # View the stats for performance debugging.
+    print(data_shard.stats())
+
+
+my_trainer = TorchTrainer(
+    train_loop_per_worker,
+    scaling_config=ScalingConfig(num_workers=2),
+    datasets={"train": ray.data.range_tensor(1000)},
+    dataset_config={
+        "train": DatasetConfig(global_shuffle=True),
+    },
+)
+print(my_trainer.get_dataset_config())
+# -> {'train': DatasetConfig(fit=True, split=True, global_shuffle=True, ...)}
+my_trainer.fit()
+# __global_shuffling_end__
+
+# __local_shuffling_start__
+import ray
+from ray import train
+from ray.data import Dataset
+from ray.train.torch import TorchTrainer
+from ray.air.config import DatasetConfig, ScalingConfig
+
+
+def train_loop_per_worker():
+    data_shard: Dataset = train.get_dataset_shard("train")
+
+    # Iterate over 10 epochs of data.
+    for epoch in range(10):
+        for batch in data_shard.iter_batches(
+            batch_size=10_000,
+            local_shuffle_buffer_size=100_000,
+        ):
+            print("Do some training on batch", batch)
+
+    # View the stats for performance debugging.
+    print(data_shard.stats())
+
+
+my_trainer = TorchTrainer(
+    train_loop_per_worker,
+    scaling_config=ScalingConfig(num_workers=2),
+    datasets={"train": ray.data.range_tensor(1000)},
+    dataset_config={
+        # global_shuffle is disabled by default, but we're emphasizing here that you
+        # would NOT want to use both global and local shuffling together.
+        "train": DatasetConfig(global_shuffle=False),
+    },
+)
+print(my_trainer.get_dataset_config())
+# -> {'train': DatasetConfig(fit=True, split=True, global_shuffle=False, ...)}
+my_trainer.fit()
+# __local_shuffling_end__

@@ -5,10 +5,8 @@ import time
 from typing import List, Tuple
 
 import ray
+from ray.experimental.raysort import constants, logging_utils
 from ray.util.metrics import Gauge, Histogram
-
-from ray.experimental.raysort import constants
-from ray.experimental.raysort import logging_utils
 
 HISTOGRAM_BOUNDARIES = list(range(50, 200, 50))
 

@@ -7,11 +7,13 @@ from ray.air.checkpoint import Checkpoint
 
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.horovod.config import HorovodConfig
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 class HorovodTrainer(DataParallelTrainer):
     """A Trainer for data parallel Horovod training.
 
@@ -68,6 +70,9 @@ class HorovodTrainer(DataParallelTrainer):
             # Returns the rank of the worker on the current node.
             session.get_local_rank()
 
+    Any returns from the ``train_loop_per_worker`` will be discarded and not
+    used or persisted anywhere.
+
     You could use ``TensorflowPredictor`` or ``TorchPredictor`` in conjunction with
     HorovodTrainer. You must save the model under the "model" kwarg in the
     ``Checkpoint`` passed to ``session.report()``, so that it can be used by
@@ -85,6 +90,7 @@ class HorovodTrainer(DataParallelTrainer):
         import torch.nn as nn
         from ray.air import session, Checkpoint
         from ray.train.horovod import HorovodTrainer
+        from ray.air.config import ScalingConfig
 
         input_size = 1
         layer_size = 15
@@ -140,12 +146,12 @@ class HorovodTrainer(DataParallelTrainer):
                     ),
                 )
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        scaling_config = {"num_workers": 3}
+        scaling_config = ScalingConfig(num_workers=3)
         # If using GPUs, use the below scaling config instead.
-        # scaling_config = {"num_workers": 3, "use_gpu": True}
+        # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
         trainer = HorovodTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": 3},
+            scaling_config=scaling_config,
             datasets={"train": train_dataset},
         )
         result = trainer.fit()
