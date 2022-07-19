@@ -80,4 +80,7 @@ class XGBoostTrainer(GBDTTrainer):
         model.save_model(path)
 
     def _model_iteration(self, model: xgboost.Booster) -> int:
+        if not hasattr(model, "num_boosted_rounds"):
+            # Compatibility with XGBoost < 1.4
+            return len(model.get_dump())
         return model.num_boosted_rounds()

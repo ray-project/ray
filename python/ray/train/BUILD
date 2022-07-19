@@ -227,7 +227,7 @@ py_test(
 
 py_test(
     name = "test_rl_trainer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_rl_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
