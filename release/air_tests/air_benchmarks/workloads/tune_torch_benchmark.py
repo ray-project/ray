@@ -10,7 +10,7 @@ from ray.air import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
-CONFIG = {"lr": 1e-3, "batch_size": 64, "epochs": 10}
+CONFIG = {"lr": 1e-3, "batch_size": 64, "epochs": 20}
 
 
 def prepare_mnist():
