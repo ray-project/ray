@@ -1058,7 +1058,7 @@ class Dataset(Generic[T]):
 
         block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
-        consumable = blocks._consumable
+        owned_by_consumer = blocks._owned_by_consumer
 
         if locality_hints is None:
             ds = equalize(
@@ -1068,7 +1068,7 @@ class Dataset(Generic[T]):
                             BlockList(
                                 list(blocks),
                                 [metadata_mapping[b] for b in blocks],
-                                consumable,
+                                owned_by_consumer,
                             ),
                             stats,
                         ),

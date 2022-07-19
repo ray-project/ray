@@ -639,15 +639,15 @@ def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_sh
     )
 
 
-def test_blocks_safe_to_consume(ray_start_regular_shared):
+def test_if_blocks_owned_by_consumer(ray_start_regular_shared):
     ds = ray.data.from_items([1, 2, 3, 4, 5, 6], parallelism=3)
-    assert not ds._plan.execute()._consumable
-    assert not ds.randomize_block_order()._plan.execute()._consumable
-    assert not ds.map_batches(lambda x: x)._plan.execute()._consumable
+    assert not ds._plan.execute()._owned_by_consumer
+    assert not ds.randomize_block_order()._plan.execute()._owned_by_consumer
+    assert not ds.map_batches(lambda x: x)._plan.execute()._owned_by_consumer
 
-    def verify_blocks(pipe, consumable):
+    def verify_blocks(pipe, owned_by_consumer):
         for ds in pipe.iter_datasets():
-            assert ds._plan.execute()._consumable == consumable
+            assert ds._plan.execute()._owned_by_consumer == owned_by_consumer
 
     verify_blocks(ds.repeat(1), False)
     verify_blocks(ds.repeat(1).randomize_block_order_each_window(), False)
@@ -671,8 +671,8 @@ def test_blocks_safe_to_consume(ray_start_regular_shared):
     )
 
     @ray.remote
-    def consume(pipe, consumable):
-        verify_blocks(pipe, consumable)
+    def consume(pipe, owned_by_consumer):
+        verify_blocks(pipe, owned_by_consumer)
 
     splits = ds.repeat(1).split(2)
     ray.get([consume.remote(splits[0], False), consume.remote(splits[1], False)])

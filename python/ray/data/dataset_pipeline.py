@@ -201,14 +201,16 @@ class DatasetPipeline(Generic[T]):
             raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()
         if self._first_dataset is not None:
-            blocks_consumable = self._first_dataset._plan.execute()._consumable
+            blocks_owned_by_consumer = (
+                self._first_dataset._plan.execute()._owned_by_consumer
+            )
         else:
-            blocks_consumable = self._peek()._plan.execute()._consumable
+            blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
         yield from batch_blocks(
             self._iter_blocks(),
             self._stats,
             prefetch_blocks=prefetch_blocks,
-            clear_block_after_read=blocks_consumable,
+            clear_block_after_read=blocks_owned_by_consumer,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
