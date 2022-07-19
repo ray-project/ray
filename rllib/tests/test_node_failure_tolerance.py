@@ -113,7 +113,7 @@ class NodeFailureTests(unittest.TestCase):
         self.cluster.add_node(
             redis_port=None,
             num_redis_shards=None,
-            num_cpus=1,
+            num_cpus=2,
             num_gpus=0,
             object_store_memory=object_store_memory,
             redis_max_memory=redis_max_memory,
@@ -133,7 +133,8 @@ class NodeFailureTests(unittest.TestCase):
             PPOConfig()
             .rollouts(
                 num_rollout_workers=6,
-                ignore_worker_failures=True,
+                ignore_worker_failures=False,
+                recreate_failed_workers=True,
                 num_failing_workers_tolerance=0,
             )
             .training()
@@ -154,11 +155,18 @@ class NodeFailureTests(unittest.TestCase):
 
         def _add_node_after_n_s():
             time.sleep(60)
-            self.cluster.add_node()
+            self.cluster.add_node(
+                redis_port=None,
+                num_redis_shards=None,
+                num_cpus=2,
+                num_gpus=0,
+                object_store_memory=object_store_memory,
+                redis_max_memory=redis_max_memory,
+                dashboard_host="0.0.0.0",
+            )
 
         # kill one node after n seconds
-        t = threading.Thread(target=_add_node_after_n_s)
-        t.start()
+        threading.Thread(target=_add_node_after_n_s).start()
 
         previous_time = time.time()
 

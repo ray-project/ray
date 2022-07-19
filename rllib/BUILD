@@ -757,8 +757,8 @@ py_test(
 )
 
 py_test(
-    name = "test_node_failure_tolerance.py",
-    tags = ["team:rllib", "tests_dir"],
+    name = "test_node_failure_tolerance",
+    tags = ["team:rllib", "tests_dir", "tests_dir_N"],
     size = "medium",
     srcs = ["tests/test_node_failure_tolerance.py"],
 )
