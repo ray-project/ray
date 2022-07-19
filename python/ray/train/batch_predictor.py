@@ -62,12 +62,14 @@ class BatchPredictor:
         )
 
     def get_preprocessor(self) -> Preprocessor:
+        """Get the preprocessor to use prior to executing predictions."""
         if self._override_preprocessor:
             return self._override_preprocessor
 
         return self._checkpoint.get_preprocessor()
 
     def set_preprocessor(self, preprocessor: Preprocessor) -> None:
+        """Set the preprocessor to use prior to executing predictions."""
         self._override_preprocessor = preprocessor
 
     def predict(

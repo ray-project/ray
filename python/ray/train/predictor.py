@@ -71,14 +71,11 @@ class Predictor(abc.ABC):
            :ref:`AIR Checkpoint <air-checkpoint-ref>`.
         3. Optionally ``_predict_arrow`` for better performance when working with
            tensor data to avoid extra copies from Pandas conversions.
-
-    Attributes:
-        preprocessor: The preprocessor to use prior to execution predictions.
     """
 
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
-        self.preprocessor: Optional[Preprocessor] = preprocessor
+        self._preprocessor: Optional[Preprocessor] = preprocessor
 
     @classmethod
     @abc.abstractmethod
@@ -116,10 +113,12 @@ class Predictor(abc.ABC):
         return PandasUDFPredictor.from_checkpoint(Checkpoint.from_dict({"dummy": 1}))
 
     def get_preprocessor(self) -> Optional[Preprocessor]:
-        return self.preprocessor
+        """Get the preprocessor to use prior to executing predictions."""
+        return self._preprocessor
 
     def set_preprocessor(self, preprocessor: Optional[Preprocessor]) -> None:
-        self.preprocessor = preprocessor
+        """Set the preprocessor to use prior to executing predictions."""
+        self._preprocessor = preprocessor
 
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
@@ -140,8 +139,8 @@ class Predictor(abc.ABC):
                 "Subclasses of Predictor must call Predictor.__init__(preprocessor)."
             )
 
-        if self.preprocessor:
-            data_df = self.preprocessor.transform_batch(data_df)
+        if self._preprocessor:
+            data_df = self._preprocessor.transform_batch(data_df)
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
         return convert_pandas_to_batch_type(
