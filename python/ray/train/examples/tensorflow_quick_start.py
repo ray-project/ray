@@ -79,11 +79,12 @@ if __name__ == "__main__":
     # __tf_trainer_begin__
 
     from ray.train.tensorflow import TensorflowTrainer
+    from ray.air.config import ScalingConfig
 
     # For GPU Training, set `use_gpu` to True.
     use_gpu = False
 
-    trainer = TensorflowTrainer(train_func_distributed, scaling_config={"num_workers":4, "use_gpu":use_gpu})
+    trainer = TensorflowTrainer(train_func_distributed, scaling_config=ScalingConfig(num_workers=4, use_gpu=use_gpu))
 
     trainer.fit()
 
