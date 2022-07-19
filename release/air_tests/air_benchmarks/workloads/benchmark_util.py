@@ -115,8 +115,18 @@ def get_ip_port():
     return ip, port
 
 
+def get_ip_port_actors(actors: List[ray.actor.ActorHandle]) -> List[str]:
+    # We need this utility to avoid deserialization issues with benchmark_util.py
+    return run_fn_on_actors(actors=actors, fn=get_ip_port)
+
+
 def get_gpu_ids():
     return ray.get_gpu_ids()
+
+
+def get_gpu_ids_actors(actors: List[ray.actor.ActorHandle]) -> List[List[int]]:
+    # We need this utility to avoid deserialization issues with benchmark_util.py
+    return run_fn_on_actors(actors=actors, fn=get_gpu_ids)
 
 
 def map_ips_to_gpus(ips: List[str], gpus: List[List[int]]):

@@ -281,9 +281,8 @@ def train_torch_vanilla(
         upload_file_to_all_nodes,
         create_actors_with_resources,
         run_commands_on_actors,
-        run_fn_on_actors,
-        get_ip_port,
-        get_gpu_ids,
+        get_ip_port_actors,
+        get_gpu_ids_actors,
         map_ips_to_gpus,
         set_cuda_visible_devices,
     )
@@ -302,7 +301,7 @@ def train_torch_vanilla(
     )
 
     # Get IPs and ports for all actors
-    ip_ports = run_fn_on_actors(actors=actors, fn=get_ip_port)
+    ip_ports = get_ip_port_actors(actors=actors)
 
     # Rank 0 is the master addr/port
     master_addr, master_port = ip_ports[0]
@@ -312,7 +311,7 @@ def train_torch_vanilla(
         actor_ips = [ipp[0] for ipp in ip_ports]
 
         # Get allocated GPU IDs for all actors
-        gpu_ids = run_fn_on_actors(actors=actors, fn=get_gpu_ids)
+        gpu_ids = get_gpu_ids_actors(actors=actors)
 
         # Build a map of IP to all allocated GPUs on that machine
         ip_to_gpu_map = map_ips_to_gpus(ips=actor_ips, gpus=gpu_ids)
