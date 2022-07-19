@@ -285,6 +285,22 @@ class AgentIOTest(unittest.TestCase):
                 self.assertEqual(result["timesteps_total"], 250)
                 self.assertTrue(np.isnan(result["episode_reward_mean"]))
 
+    def test_module_input_shuffle(self):
+        self.write_outputs(self.test_dir, "torch")
+        algorithm = PG(
+            env="CartPole-v0",
+            config={
+                "input": "ray.rllib.examples.custom_input_api.CustomJsonReader",
+                "input_config": {"input_files": self.test_dir + "torch"},
+                "off_policy_estimation_methods": {},
+                "framework": "torch",
+                "shuffle_buffer_size": 123
+            },
+        )
+        input_reader = algorithm.workers.local_worker().input_reader
+        assert isinstance(input_reader, ShuffledInput)
+        assert input_reader.n == 123
+
     def test_multiple_output_workers(self):
         ray.shutdown()
         ray.init(num_cpus=4, ignore_reinit_error=True)
