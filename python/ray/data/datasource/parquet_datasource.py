@@ -15,7 +15,7 @@ from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesys
 from ray.data.datasource.file_meta_provider import (
     DefaultParquetMetadataProvider,
     ParquetMetadataProvider,
-    _handle_read_s3_files_error,
+    _handle_read_os_error,
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.types import ObjectRef
@@ -167,7 +167,7 @@ class _ParquetDatasourceReader(Reader):
                 paths, **dataset_kwargs, filesystem=filesystem, use_legacy_dataset=False
             )
         except OSError as e:
-            _handle_read_s3_files_error(e, paths)
+            _handle_read_os_error(e, paths)
         if schema is None:
             schema = pq_ds.schema
         if columns:
@@ -190,7 +190,11 @@ class _ParquetDatasourceReader(Reader):
                 inferred_schema = schema
         else:
             inferred_schema = schema
-        self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+
+        try:
+            self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+        except OSError as e:
+            _handle_read_os_error(e, paths)
         self._pq_ds = pq_ds
         self._meta_provider = meta_provider
         self._inferred_schema = inferred_schema
