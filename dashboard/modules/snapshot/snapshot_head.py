@@ -9,7 +9,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp.web
-from pydantic import BaseModel, Extra, Field
+from pydantic import BaseModel, Extra, Field, validator
 
 import ray
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
@@ -62,6 +62,15 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
             "This is in the format of seconds since unix epoch."
         ),
     )
+
+    @validator("reason", always=True)
+    def reason_required(cls, v, values, **kwargs):
+        if "is_active" in values and values["is_active"] != RayActivityStatus.INACTIVE:
+            if v is None:
+                raise ValueError(
+                    'Reason is required if is_active is "active" or "error"'
+                )
+        return v
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
