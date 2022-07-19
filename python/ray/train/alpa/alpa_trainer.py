@@ -129,7 +129,8 @@ class AlpaTrainer(BaseTrainer):
         
         self.scaling_config = scaling_config
          
-        scaling_config = self._validate_scaling_config(self.scaling_config)
+        # scaling_config = self._validate_scaling_config(self.scaling_config)
+        
         self.resources_per_worker = self.scaling_config.resources_per_worker
         
         ic(scaling_config, self.resources_per_worker)
