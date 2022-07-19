@@ -1,7 +1,16 @@
-from collections import defaultdict, namedtuple
 import click
 import ray
 from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME
+from ray._private.state_api_test_utils import (
+    TEST_LOG_FILE_SIZE,
+    TEST_MAX_ACTORS,
+    TEST_MAX_OBJECTS,
+    TEST_MAX_TASKS,
+    StateAPIMetric,
+    aggregate_perf_results,
+    invoke_state_api,
+    GLOBAL_STATE_STATS,
+)
 import ray._private.test_utils as test_utils
 import tqdm
 import asyncio
@@ -14,16 +23,6 @@ from ray.experimental.state.api import (
     list_objects,
     list_tasks,
 )
-
-TEST_MAX_ACTORS = int(1e4)  # 10k
-TEST_MAX_TASKS = int(1e4)  # 10k
-TEST_MAX_OBJECTS = int(1e5)  # 100k
-TEST_LOG_FILE_SIZE = 4 * 1024 * 1024  # 4GB
-STATE_LIST_LIMIT = int(1e6)  # 1m
-STATE_LIST_TIMEOUT = 600  # 10min
-
-StateAPIMetric = namedtuple("StateAPIMetric", ["latency_sec", "result_size"])
-global_state_perf = defaultdict(list)
 
 
 # We set num_cpus to zero because this actor will mostly just block on I/O.
@@ -50,7 +49,6 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api(
         lambda res: len(res) == 0,
         list_tasks,
-        limit=STATE_LIST_LIMIT,
         filters=[("name", "=", "pi4_sample()")],
     )
 
@@ -80,7 +78,6 @@ def test_many_tasks(num_tasks: int):
         lambda res: len(res) == num_tasks,
         list_tasks,
         filters=[("name", "=", "pi4_sample()")],
-        limit=STATE_LIST_LIMIT,
     )
 
     print("Waiting for tasks to finish...")
@@ -96,7 +93,6 @@ def test_many_tasks(num_tasks: int):
         lambda res: len(res) == 0,
         list_tasks,
         filters=[("name", "=", "pi4_sample()")],
-        limit=STATE_LIST_LIMIT,
     )
 
     del signal
@@ -120,7 +116,6 @@ def test_many_actors(num_actors: int):
         lambda res: len(res) == 0,
         list_actors,
         filters=[("class_name", "=", actor_class_name)],
-        limit=STATE_LIST_LIMIT,
     )
 
     actors = [
@@ -135,7 +130,6 @@ def test_many_actors(num_actors: int):
         lambda res: len(res) == num_actors,
         list_actors,
         filters=[("class_name", "=", actor_class_name)],
-        limit=STATE_LIST_LIMIT,
     )
 
     exiting_actors = [actor.exit.remote() for actor in actors]
@@ -146,13 +140,11 @@ def test_many_actors(num_actors: int):
         lambda res: len(res) == 0,
         list_actors,
         filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
-        limit=STATE_LIST_LIMIT,
     )
     invoke_state_api(
         lambda res: len(res) == num_actors,
         list_actors,
         filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
-        limit=STATE_LIST_LIMIT,
     )
 
 
@@ -211,8 +203,6 @@ def test_many_objects(num_objects, num_actors):
             ("reference_type", "=", "LOCAL_REFERENCE"),
             ("type", "=", "Worker"),
         ],
-        limit=STATE_LIST_LIMIT,
-        timeout=STATE_LIST_TIMEOUT,
     )
 
     exiting_actors = [actor.exit.remote() for actor in actors]
@@ -264,21 +254,7 @@ def test_large_log_file(log_file_size_byte: int):
 
     time_taken = t_end - t_start
     metric = StateAPIMetric(time_taken, log_file_size_byte)
-    global_state_perf["get_log"].append(metric)
-
-
-def invoke_state_api(verify_cb, state_api_fn, **kwargs):
-    global global_state_perf
-
-    t_start = time.perf_counter()
-    res = state_api_fn(**kwargs)
-    t_end = time.perf_counter()
-
-    time_taken = t_end - t_start
-    metric = StateAPIMetric(time_taken, len(res))
-    global_state_perf[state_api_fn.__name__] += [metric]
-    print(f"Calling state api: {state_api_fn.__name__}, metric={metric}")
-    assert verify_cb(res), f"Calling State API failed. len(res)=({len(res)})"
+    GLOBAL_STATE_STATS.calls["get_log"].append(metric)
 
 
 def no_resource_leaks():
@@ -382,47 +358,23 @@ def test(
 
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
 
-        def by_latency(metric):
-            return metric.latency_sec
+        state_perf_result = aggregate_perf_results()
 
-        slowest_task_metric = max(
-            global_state_perf[list_tasks.__name__], key=by_latency
-        )
-        slowest_actors_metric = max(
-            global_state_perf[list_actors.__name__], key=by_latency
-        )
-        slowest_objects_metric = max(
-            global_state_perf[list_objects.__name__], key=by_latency
-        )
-
-        all_state_api_latency = sum(
-            metric.latency_sec
-            for metric_samples in global_state_perf.values()
-            for metric in metric_samples
-        )
         results = {
-            "max_list_tasks_latency_sec": slowest_task_metric.latency_sec,
-            "max_list_tasks_latency_result_size": slowest_task_metric.result_size,
-            "max_list_actors_latency_sec": slowest_actors_metric.latency_sec,
-            "max_list_actors_latency_result_size": slowest_actors_metric.result_size,
-            "max_list_objects_latency_sec": slowest_objects_metric.latency_sec,
-            "max_list_objects_latency_result_size": slowest_objects_metric.result_size,
-            "get_log_latency_sec": global_state_perf[get_log.__name__][0].latency_sec,
-            "get_log_latency_log_size_bytes": global_state_perf[get_log.__name__][
-                0
-            ].result_size,
             "time": end_time - start_time,
             "success": "1",
             "_peak_memory": round(used_gb, 2),
             "_peak_process_memory": usage,
             "perf_metrics": [
                 {
-                    "perf_metric_name": "all_state_api_latency",
-                    "perf_metric_value": all_state_api_latency,
+                    "perf_metric_name": "avg_state_api_latency_sec",
+                    "perf_metric_value": state_perf_result["avg_state_api_latency_sec"],
                     "perf_metric_type": "LATENCY",
                 }
             ],
         }
+
+        results.update(state_perf_result)
         json.dump(results, out_file)
         print(json.dumps(results, indent=2))
 
