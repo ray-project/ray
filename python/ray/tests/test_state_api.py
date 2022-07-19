@@ -2168,7 +2168,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             "RAY_testing_asio_delay_us",
             (
                 "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000,"
-                "NodeInfoGcsService.grpc_server.GetAllNodeInfo=1000000:1000000,"
+                "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=10000000:10000000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=10000000:10000000"
             ),
         )
@@ -2206,7 +2206,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             mp.Process(
                 target=_try_state_query_expect_rate_limit,
                 args=(
-                    list_nodes,
+                    list_workers,
                     res_q,
                     start_q,
                 ),
@@ -2241,7 +2241,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         wait_for_condition(_wait_to_start)
         # Wait 1 more second to make sure the API call happens after all
         # process has a call.
-        time.sleep(3)
+        time.sleep(1)
 
         # Running another 1 should return error
         with pytest.raises(RayStateApiException) as e:
