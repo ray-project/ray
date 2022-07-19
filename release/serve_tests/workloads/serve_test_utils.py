@@ -296,8 +296,8 @@ def run_wrk_on_all_nodes(
         return
 
     for i, decoded_output in enumerate(ray.get(rst_ray_refs)):
-        if(debug):
-            print(f"decoded_output {i}": decoded_output)
+        if debug:
+            print(f"decoded_output {i}: {decoded_output}")
         all_wrk_stdout.append(decoded_output)
         parsed_metrics = parse_wrk_decoded_stdout(decoded_output)
 
