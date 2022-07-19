@@ -171,7 +171,7 @@ class Trainable:
         self.sync_function_tpl = sync_function_tpl or self._sync_function_tpl
         self.storage_client = None
 
-        if self.uses_cloud_checkpointing and self.sync_function_tpl:
+        if self.uses_cloud_checkpointing or self.sync_function_tpl:
             # Keep this only for custom sync functions and
             # backwards compatibility.
             # Todo (krfricke): We should find a way to register custom
