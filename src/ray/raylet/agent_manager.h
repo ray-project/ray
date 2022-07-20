@@ -89,21 +89,12 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   virtual void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                           DeleteRuntimeEnvIfPossibleCallback callback);
 
-  /// Try to Get the information about the agent process,
-  /// if successful will return `ray::Status::OK`, otherwise will return
-  /// `ray::Status::Invalid`
+  /// Try to Get the information about the agent process.
   ///
   /// \param[out] agent_info The information of the agent process.
-  /// \return Status.
-  const ray::Status TryToGetAgentInfo(rpc::AgentInfo *agent_info) const {
-    if (IsAgentRegistered()) {
-      *agent_info = reported_agent_info_;
-      return ray::Status::OK();
-    } else {
-      std::string err_msg = "The agent has not finished register yet.";
-      return ray::Status::Invalid(err_msg);
-    }
-  }
+  /// \return Status, if successful will return `ray::Status::OK`,
+  /// otherwise will return `ray::Status::Invalid`.
+  const ray::Status TryToGetAgentInfo(rpc::AgentInfo *agent_info) const;
 
  private:
   void StartAgent();
@@ -112,8 +103,9 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
  private:
   Options options_;
-  /// This is mainly to distinguish the initial value of `reported_agent_info_.id()`,
-  /// it is 0.
+  /// we need to make sure `agent_id_` and `reported_agent_info_.id()` are not equal
+  /// until the agent process is finished registering, the initial value of
+  /// `reported_agent_info_.id()` is 0, so I set the initial value of `agent_id_` is -1
   int agent_id_ = -1;
   rpc::AgentInfo reported_agent_info_;
   /// Whether or not we intend to start the agent.  This is false if we

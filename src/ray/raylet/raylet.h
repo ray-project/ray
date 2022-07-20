@@ -68,16 +68,13 @@ class Raylet {
   NodeID GetNodeId() const { return self_node_id_; }
 
  private:
-  /// Register GCS client.
+  /// Try to get agent info, after its success, register the current node to GCS.
   ray::Status RegisterGcs();
 
   /// Accept a client connection.
   void DoAccept();
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
-
-  /// Try to get agent info, after its success, register the current node to GCS.
-  void TryToGetAgentInfoAndRegisterGcs();
 
   friend class TestObjectManagerIntegration;
 

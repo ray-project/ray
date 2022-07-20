@@ -308,5 +308,15 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
       });
 }
 
+const ray::Status AgentManager::TryToGetAgentInfo(rpc::AgentInfo *agent_info) const {
+  if (IsAgentRegistered()) {
+    *agent_info = reported_agent_info_;
+    return ray::Status::OK();
+  } else {
+    std::string err_msg = "The agent has not finished register yet.";
+    return ray::Status::Invalid(err_msg);
+  }
+}
+
 }  // namespace raylet
 }  // namespace ray

@@ -96,7 +96,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
 Raylet::~Raylet() {}
 
 void Raylet::Start() {
-  TryToGetAgentInfoAndRegisterGcs();
+  RAY_CHECK_OK(RegisterGcs());
   // Start listening for clients.
   DoAccept();
 }
@@ -107,24 +107,22 @@ void Raylet::Stop() {
   acceptor_.close();
 }
 
-void Raylet::TryToGetAgentInfoAndRegisterGcs() {
+ray::Status Raylet::RegisterGcs() {
   rpc::AgentInfo agent_info;
   auto status = node_manager_.TryToGetAgentInfo(&agent_info);
   if (status.ok()) {
     self_node_info_.mutable_agent_info()->CopyFrom(agent_info);
-    RAY_CHECK_OK(RegisterGcs());
   } else {
     // Because current function and `AgentManager::HandleRegisterAgent`
     // will be invoke in same thread, so we need post current function
     // into main_service_ after interval milliseconds.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().raylet_get_agent_info_interval_ms()));
-    main_service_.post([this]() { TryToGetAgentInfoAndRegisterGcs(); },
+    main_service_.post([this]() { RAY_CHECK_OK(RegisterGcs()); },
                        "Raylet.TryToGetAgentInfoAndRegisterGcs");
+    return Status::OK();
   }
-}
 
-ray::Status Raylet::RegisterGcs() {
   auto register_callback = [this](const Status &status) {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Raylet of id, " << self_node_id_

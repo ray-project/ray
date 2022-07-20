@@ -17,7 +17,7 @@ option cc_enable_arenas = true;
 
 package ray.rpc;
 
-import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/common.proto";
 
 enum AgentRpcStatus {
   // OK.

@@ -15,7 +15,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
-from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc, gcs_pb2
+from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc, common_pb2
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_initialized,
@@ -265,10 +265,9 @@ class DashboardAgent:
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
             self.aiogrpc_raylet_channel
         )
-        logger.info(f"hejialing test: {self.agent_id}, {os.getpid()}")
         await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
-                agent_info=gcs_pb2.AgentInfo(
+                agent_info=common_pb2.AgentInfo(
                     id=self.agent_id,
                     pid=os.getpid(),
                     grpc_port=self.grpc_port,
