@@ -389,6 +389,9 @@ class StandardAutoscaler:
         if not self.provider.is_readonly():
             self.terminate_nodes_to_enforce_config_constraints(now)
 
+        # Handle unhealthy nodes, unless we've explicitly disabled this behavior or
+        # the provider is read-only.
+        if self.worker_liveness_check and not self.provider.is_readonly():
             if self.disable_node_updaters:
                 self.terminate_unhealthy_nodes(now)
             else:
@@ -559,8 +562,9 @@ class StandardAutoscaler:
         if not self.nodes_to_terminate:
             return
 
-        # Do Ray-internal preparation for termination
-        self.drain_nodes_via_gcs(self.nodes_to_terminate)
+        # Do Ray-internal preparation for termination, unless this behavior is explicitly disabled.
+        if self.worker_rpc_drain:
+            self.drain_nodes_via_gcs(self.nodes_to_terminate)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
