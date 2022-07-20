@@ -178,7 +178,10 @@ class EpisodeV2:
         # Add initial obs to Trajectory.
         assert agent_id not in self._agent_collectors
         self._agent_collectors[agent_id] = _AgentCollector(
-            policy.view_requirements, policy
+            policy.view_requirements,
+            max_seq_len=policy.config["model"]["max_seq_len"], 
+            is_policy_recurrent=policy.is_recurrent(),
+            disable_action_flattening=policy.config["_disable_action_flattening"],
         )
         self._agent_collectors[agent_id].add_init_obs(
             episode_id=self.episode_id,

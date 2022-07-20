@@ -56,8 +56,16 @@ class _AgentCollector:
 
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
-    def __init__(self, view_reqs, policy):
-        self.policy = policy
+    def __init__(self, 
+        view_reqs, 
+        *,
+        max_seq_len, 
+        is_policy_recurrent,
+        disable_action_flattening
+    ):
+        self.max_seq_len = max_seq_len
+        self.disable_action_flattening = disable_action_flattening
+        self.is_policy_recurrent = is_policy_recurrent
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
         # or internal state inputs.
@@ -180,7 +188,7 @@ class _AgentCollector:
                 or k.startswith("state_out_")
                 or (
                     k == SampleBatch.ACTIONS
-                    and not self.policy.config.get("_disable_action_flattening")
+                    and not self.disable_action_flattening
                 )
             ):
                 self.buffers[k][0].append(v)
@@ -242,14 +250,11 @@ class _AgentCollector:
             #  Range of 3 consecutive items repeats every 10 timesteps.
 
             if view_req.shift_arr is not None:
-                # testing that it should always come here. what would happen?
                 data_2 = []
                 for d in np_data[data_col]:
                     shifted_data = []
                     # TODO: @kourosh I don't think this obs_shift is actually needed.
                     # Keep it here for now for consistency with the old behavior.
-
-                    # if view_req.batch_repeat_value > 1:
                     count = int(
                         math.ceil(
                             (len(d) - self.shift_before) / view_req.batch_repeat_value
@@ -262,8 +267,6 @@ class _AgentCollector:
                             + view_req.shift_arr
                             + (i * view_req.batch_repeat_value)
                         )
-
-                        # mask = inds > len(d) - 1
 
                         # handle the case where the inds are out of bounds
                         element_at_t = []
@@ -279,7 +282,6 @@ class _AgentCollector:
                                 )
                         element_at_t = np.stack(element_at_t)
 
-                        # element_at_t = d[inds]
                         if element_at_t.shape[0] == 1:
                             # squeeze to remove the T dimension if it is 1.
                             element_at_t = element_at_t.squeeze(0)
@@ -287,25 +289,6 @@ class _AgentCollector:
 
                     shifted_data_np = np.stack(shifted_data, 0)
                     data_2.append(shifted_data_np)
-                    # else:
-                    #     for i in range(d.shape[0] - self.shift_before):
-                    #         print(f'view_col = {view_col}, len(d) = {len(d)}')
-
-                    #         index = (
-                    #             self.shift_before
-                    #             + obs_shift
-                    #             + view_req.shift_arr
-                    #             + i
-                    #         )
-                    #         print(f'index = {index}, at i = {i}')
-                    #         element_at_t = d[index]
-                    #         if element_at_t.shape[0] == 1:
-                    #             # squeeze to remove the T dimension if it is 1.
-                    #             element_at_t = element_at_t.squeeze(0)
-                    #         shifted_data.append(element_at_t)
-
-                    #     shifted_data_np = np.stack(shifted_data, 0)
-                    #     data_2.append(shifted_data_np)
 
             if view_req.shift_from is not None:
                 # Batch repeat value > 1: Only repeat the shift_from/to range
@@ -447,9 +430,9 @@ class _AgentCollector:
         batch = SampleBatch(batch_data)
 
         # Adjust the seq-lens array depending on the incoming agent sequences.
-        if self.policy.is_recurrent():
+        if self.is_policy_recurrent:
             seq_lens = []
-            max_seq_len = self.policy.config["model"]["max_seq_len"]
+            max_seq_len = self.max_seq_len
             count = batch.count
             while count > 0:
                 seq_lens.append(min(count, max_seq_len))
@@ -508,7 +491,7 @@ class _AgentCollector:
                 or col.startswith("state_out_")
                 or (
                     col == SampleBatch.ACTIONS
-                    and not self.policy.config.get("_disable_action_flattening")
+                    and not self.disable_action_flattening
                 )
             ):
                 self.buffers[col] = [[data for _ in range(shift)]]
@@ -718,7 +701,10 @@ class SimpleListCollector(SampleCollector):
         assert agent_key not in self.agent_collectors
         # TODO: determine exact shift-before based on the view-req shifts.
         self.agent_collectors[agent_key] = _AgentCollector(
-            policy.view_requirements, policy
+            policy.view_requirements,
+            max_seq_len=policy.config["model"]["max_seq_len"], 
+            is_policy_recurrent=policy.is_recurrent(),
+            disable_action_flattening=policy.config["_disable_action_flattening"],
         )
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
