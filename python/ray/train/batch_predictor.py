@@ -198,8 +198,7 @@ class BatchPredictor:
                 # Set the in-predictor preprocessing to a no-op when using a separate
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
                 override_prep = BatchMapper(lambda x: x)
-                prep_fn = preprocessor.transform_batch
-                data = data.map_batches(prep_fn, batch_format="pandas")
+                data = preprocessor.transform(data)
 
         prediction_results = data.map_batches(
             ScoringWrapper,
