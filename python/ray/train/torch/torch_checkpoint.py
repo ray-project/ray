@@ -49,14 +49,12 @@ class TorchCheckpoint(Checkpoint):
             >>>
             >>> predictor = TorchPredictor.from_checkpoint(checkpoint)
         """
-        checkpoint = cls.from_dict(
-            {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model}
-        )
+        checkpoint = cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model})
         return checkpoint
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
-        
+
         Args:
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
@@ -65,4 +63,3 @@ class TorchCheckpoint(Checkpoint):
         saved_model, preprocessor = _load_checkpoint(self, "TorchTrainer")
         model = load_torch_model(saved_model=saved_model, model_definition=model)
         return model
-
