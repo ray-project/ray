@@ -325,7 +325,7 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
     if len(gcs_addrs) > 1 and bootstrap_addr is not None:
         logger.warning(
             f"Found multiple active Ray instances: {gcs_addrs}. "
-            "Connecting to latest cluster at {bootstrap_addr}. "
+            f"Connecting to latest cluster at {bootstrap_addr}. "
             "You can override this by setting the `--address` flag "
             "or `RAY_ADDRESS` environment variable."
         )
@@ -1459,16 +1459,7 @@ def start_dashboard(
             else:
                 raise Exception(err_msg)
 
-        if not minimal:
-            logger.info(
-                "View the Ray dashboard at %s%shttp://%s%s%s",
-                colorama.Style.BRIGHT,
-                colorama.Fore.GREEN,
-                dashboard_url,
-                colorama.Fore.RESET,
-                colorama.Style.NORMAL,
-            )
-        else:
+        if minimal:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""

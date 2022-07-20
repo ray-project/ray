@@ -165,7 +165,7 @@ while True:
     p4 = run_string_as_driver_nonblocking(blocking_noaddr_script)
 
     wait_for_condition(
-        lambda: len(ray._private.services.find_bootstrap_address()) == 4,
+        lambda: len(ray._private.services.find_gcs_addresses()) == 4,
         retry_interval_ms=1000,
     )
 
@@ -185,14 +185,14 @@ while True:
         """
 import ray
 ray.client().connect()
-assert len(ray._private.services.find_bootstrap_address()) == 1
+assert len(ray._private.services.find_gcs_addresses()) == 1
     """
     )
     # ray.client("local").connect() should always create a new cluster even if
     # there's one running.
     p1 = run_string_as_driver_nonblocking(blocking_local_script)
     wait_for_condition(
-        lambda: len(ray._private.services.find_bootstrap_address()) == 2,
+        lambda: len(ray._private.services.find_gcs_addresses()) == 2,
         retry_interval_ms=1000,
     )
     p1.kill()
