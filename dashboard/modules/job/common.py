@@ -77,8 +77,10 @@ class JobInfo:
     def __post_init__(self):
         if self.message is None:
             if self.status == JobStatus.PENDING:
-                self.message = ("Job has not started yet, likely waiting "
-                                "for the runtime_env to be set up.")
+                self.message = (
+                    "Job has not started yet, likely waiting "
+                    "for the runtime_env to be set up."
+                )
             elif self.status == JobStatus.RUNNING:
                 self.message = "Job is currently running."
             elif self.status == JobStatus.STOPPED:
@@ -117,10 +119,7 @@ class JobInfoStorageClient:
         else:
             return pickle.loads(pickled_info)
 
-    def put_status(self,
-                   job_id: str,
-                   status: JobStatus,
-                   message: Optional[str] = None):
+    def put_status(self, job_id: str, status: JobStatus, message: Optional[str] = None):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 
         old_info = self.get_info(job_id)
@@ -131,9 +130,8 @@ class JobInfoStorageClient:
             new_info = replace(old_info, status=status, message=message)
         else:
             new_info = JobInfo(
-                entrypoint="Entrypoint not found.",
-                status=status,
-                message=message)
+                entrypoint="Entrypoint not found.", status=status, message=message
+            )
 
         if status.is_terminal():
             new_info.end_time = int(time.time() * 1000)
@@ -149,7 +147,8 @@ class JobInfoStorageClient:
 
     def get_all_jobs(self) -> Dict[str, JobInfo]:
         raw_job_ids_with_prefixes = _internal_kv_list(
-            self.JOB_DATA_KEY_PREFIX, namespace=ray_constants.KV_NAMESPACE_JOB)
+            self.JOB_DATA_KEY_PREFIX, namespace=ray_constants.KV_NAMESPACE_JOB
+        )
         job_ids_with_prefixes = [
             job_id.decode() for job_id in raw_job_ids_with_prefixes
         ]
@@ -158,15 +157,14 @@ class JobInfoStorageClient:
             assert job_id_with_prefix.startswith(
                 self.JOB_DATA_KEY_PREFIX
             ), "Unexpected format for internal_kv key for Job submission"
-            job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX):])
+            job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
         return {job_id: self.get_info(job_id) for job_id in job_ids}
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
     suffix = Path(package_uri).suffix
     if suffix not in {".zip", ".whl"}:
-        raise ValueError(
-            f"package_uri ({package_uri}) does not end in .zip or .whl")
+        raise ValueError(f"package_uri ({package_uri}) does not end in .zip or .whl")
     # We need to strip the <protocol>:// prefix to make it possible to pass
     # the package_uri over HTTP.
     protocol, package_name = parse_uri(package_uri)
@@ -177,8 +175,7 @@ def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
     return f"{protocol}://{package_name}"
 
 
-def validate_request_type(json_data: Dict[str, Any],
-                          request_type: dataclass) -> Any:
+def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) -> Any:
     return request_type(**json_data)
 
 
@@ -197,8 +194,7 @@ class JobSubmitRequest:
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
-            raise TypeError(
-                f"entrypoint must be a string, got {type(self.entrypoint)}")
+            raise TypeError(f"entrypoint must be a string, got {type(self.entrypoint)}")
 
         if self.job_id is not None and not isinstance(self.job_id, str):
             raise TypeError(
@@ -214,21 +210,21 @@ class JobSubmitRequest:
                 for k in self.runtime_env.keys():
                     if not isinstance(k, str):
                         raise TypeError(
-                            f"runtime_env keys must be strings, got {type(k)}")
+                            f"runtime_env keys must be strings, got {type(k)}"
+                        )
 
         if self.metadata is not None:
             if not isinstance(self.metadata, dict):
-                raise TypeError(
-                    f"metadata must be a dict, got {type(self.metadata)}")
+                raise TypeError(f"metadata must be a dict, got {type(self.metadata)}")
             else:
                 for k in self.metadata.keys():
                     if not isinstance(k, str):
-                        raise TypeError(
-                            f"metadata keys must be strings, got {type(k)}")
+                        raise TypeError(f"metadata keys must be strings, got {type(k)}")
                 for v in self.metadata.values():
                     if not isinstance(v, str):
                         raise TypeError(
-                            f"metadata values must be strings, got {type(v)}")
+                            f"metadata values must be strings, got {type(v)}"
+                        )
 
 
 @dataclass
@@ -252,9 +248,11 @@ class DriverInfo(BaseModel):
 
     id: str = Field(..., description="The id of the driver")
     node_ip_address: str = Field(
-        ..., description="The ip address of the node the driver is running on")
+        ..., description="The ip address of the node the driver is running on"
+    )
     pid: str = Field(
-        ..., description="The pid of the worker process the driver is using.")
+        ..., description="The pid of the worker process the driver is using."
+    )
     # TODO(aguo): Add node_id as a field.
 
 
@@ -272,9 +270,10 @@ class JobDetails(BaseModel):
     Job data with extra details about its driver and its submission.
     """
 
-    type: JobType = Field(..., description='The type of job.')
+    type: JobType = Field(..., description="The type of job.")
     entrypoint: Optional[str] = Field(
-        None, description="The entrypoint command for this job.")
+        None, description="The entrypoint command for this job."
+    )
     job_id: Optional[str] = Field(
         None,
         description="The job id. An id that is created for every job that is "
@@ -283,8 +282,7 @@ class JobDetails(BaseModel):
     )
     submission_id: Optional[str] = Field(
         None,
-        description=
-        "A submission id is an id created for every submission job. It can "
+        description="A submission id is an id created for every submission job. It can "
         "be used to fetch data about jobs using the job submission apis.",
     )
     driver_info: Optional[DriverInfo] = Field(
@@ -297,16 +295,16 @@ class JobDetails(BaseModel):
     # The following fields are copied from JobInfo.
     # TODO(aguo): Inherit from JobInfo once it's migrated to pydantic.
     status: JobStatus = Field(..., description="The status of the job.")
-    entrypoint: str = Field(
-        ..., description="The entrypoint command for this job.")
+    entrypoint: str = Field(..., description="The entrypoint command for this job.")
     message: Optional[str] = Field(
-        None, description="A message describing the status in more detail.")
+        None, description="A message describing the status in more detail."
+    )
     error_type: Optional[str] = Field(
-        None, description="Internal error, user script error")
+        None, description="Internal error, user script error"
+    )
     start_time: Optional[int] = Field(
         None,
-        description="The time when the job was started. "
-        "A Unix timestamp in ms.",
+        description="The time when the job was started. " "A Unix timestamp in ms.",
     )
     end_time: Optional[int] = Field(
         None,
@@ -314,6 +312,8 @@ class JobDetails(BaseModel):
         "A Unix timestamp in ms.",
     )
     metadata: Optional[Dict[str, str]] = Field(
-        None, description="Arbitrary user-provided metadata for the job.")
+        None, description="Arbitrary user-provided metadata for the job."
+    )
     runtime_env: Optional[Dict[str, Any]] = Field(
-        None, description="The runtime environment for the job.")
+        None, description="The runtime environment for the job."
+    )
