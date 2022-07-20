@@ -1296,7 +1296,7 @@ def init(
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
         logger.info(
-            f"Connecting to existing Ray cluster at address: {bootstrap_address}"
+            f"Connecting to existing Ray cluster at address: {bootstrap_address}..."
         )
         gcs_address = bootstrap_address
 
@@ -1380,9 +1380,6 @@ def init(
         # isn't called.
         _global_node = ray._private.node.Node(
             head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
-        )
-        logger.info(
-            f"Started a new local Ray instance at address: {_global_node.address}"
         )
     else:
         # In this case, we are connecting to an existing cluster.
