@@ -261,8 +261,8 @@ class AlpaTrainer(BaseTrainer):
                 updated_scaling_config_dict = updated_scaling_config.__dict__
                 updated_scaling_config_dict['ips'] = self.host_ips
                 ic(updated_scaling_config_dict)
-                ic(ScalingConfigWithIPs(**updated_scaling_config))
-                if isinstance(updated_scaling_config, dict):
+                # ic(ScalingConfigWithIPs(**updated_scaling_config_dict))
+                if isinstance(updated_scaling_config_dict, dict):
                     updated_scaling_config = ScalingConfigWithIPs(**updated_scaling_config_dict)
                 # validated_scaling_config = trainer_cls._validate_scaling_config(
                 #     updated_scaling_config
