@@ -13,15 +13,18 @@ and removing Ray pods as needed.
 
 ## Learn More
 
-These guides present all the information you need to start running Ray workloads on Kubernetes.
+The Ray docs present all the information you need to start running Ray workloads on Kubernetes.
 
-Quickstart.
+.. panels::
+    :container: text-center
+    :column: col-lg-6 px-2 py-2
+    :card:
 
-Learn how to start a Ray cluster and deploy Ray applications.
+    **Quick start**
+    ^^^
 
-Configuration guide.
+    Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
 
-A discussion of the key aspects. Ray cluster configuration.
 
 ## The KubeRay project
 
