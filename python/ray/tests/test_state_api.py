@@ -2031,7 +2031,7 @@ def test_filter(shutdown_only):
     wait_for_condition(verify)
 
     """
-    Test filter with different types (integer).
+    Test filter with different types (integer/bool).
     """
     obj_1 = ray.put(123)  # noqa
     ray.get(a.put.remote())
@@ -2043,6 +2043,24 @@ def test_filter(shutdown_only):
             filters=[("pid", "=", pid), ("reference_type", "=", "LOCAL_REFERENCE")]
         )
         return len(result) == 1
+
+    wait_for_condition(verify)
+
+    def verify():
+        workers = list_workers()
+        live_workers = list_workers(filters=[("is_alive", "=", "true")])
+        non_alive_workers = list_workers(filters=[("is_alive", "!=", "true")])
+        assert len(live_workers) + len(non_alive_workers) == len(workers)
+
+        live_workers = list_workers(filters=[("is_alive", "=", "1")])
+        non_alive_workers = list_workers(filters=[("is_alive", "!=", "1")])
+        assert len(live_workers) + len(non_alive_workers) == len(workers)
+
+        live_workers = list_workers(filters=[("is_alive", "=", "True")])
+        non_alive_workers = list_workers(filters=[("is_alive", "!=", "True")])
+        assert len(live_workers) + len(non_alive_workers) == len(workers)
+
+        return True
 
     wait_for_condition(verify)
 
