@@ -44,7 +44,7 @@ from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 from ray import train
 from ray.air import session
 from ray.air.config import ScalingConfig
-from ray.train.torch import TorchTrainer, to_air_checkpoint
+from ray.train.torch import TorchCheckpoint, TorchTrainer
 
 
 def create_model(input_features):
@@ -94,7 +94,7 @@ def train_loop_per_worker(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
+        session.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
 
 
 num_features = len(train_dataset.schema().names) - 1

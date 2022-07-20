@@ -351,6 +351,16 @@ class Checkpoint:
         """
         return cls(local_path=path)
 
+    @classmethod
+    def copy_from(cls, other: "Checkpoint") -> "Checkpoint":
+        """Create a checkpoint from a generic :py:class:`Checkpoint`."""
+        return cls(
+            local_path=other._local_path,
+            data_dict=other._data_dict,
+            uri=other._uri,
+            obj_ref=other._obj_ref,
+        )
+
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
         if self._obj_ref:
