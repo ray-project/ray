@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+import dataclasses
 import gym
 from typing import Dict, List, Optional, Union
 import numpy as np
@@ -12,7 +12,7 @@ from ray.rllib.utils.serialization import (
 
 torch, _ = try_import_torch()
 
-import dataclasses
+
 @PublicAPI
 @dataclasses.dataclass
 class ViewRequirement:
@@ -32,6 +32,7 @@ class ViewRequirement:
         >>> print(req) # doctest: +SKIP
         {"obs": ViewRequirement(shift=0)}
     """
+
     data_col: Optional[str] = None
     space: gym.Space = None
     shift: Union[int, str, List[int]] = 0
@@ -114,8 +115,9 @@ class ViewRequirement:
         shift = self.shift
         self.shfit_arr = None
         if self.shift_from:
-            self.shift_arr = np.arange(self.shift_from, 
-                                self.shift_to+1, self.shift_step)
+            self.shift_arr = np.arange(
+                self.shift_from, self.shift_to + 1, self.shift_step
+            )
         else:
             if isinstance(shift, int):
                 self.shift_arr = np.array([shift])

@@ -16,6 +16,7 @@ from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
+from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import (
     AgentID,
     EpisodeID,
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-from ray.rllib.utils.test_utils import check
 
 def _to_float_np_array(v: List[Any]) -> np.ndarray:
     if torch and torch.is_tensor(v[0]):
@@ -246,21 +246,20 @@ class _AgentCollector:
                 data_2 = []
                 for d in np_data[data_col]:
                     shifted_data = []
-                    # TODO: @kourosh I don't think this obs_shift is actually needed. 
+                    # TODO: @kourosh I don't think this obs_shift is actually needed.
                     # Keep it here for now for consistency with the old behavior.
 
                     # if view_req.batch_repeat_value > 1:
                     count = int(
                         math.ceil(
-                            (len(d) - self.shift_before)
-                            / view_req.batch_repeat_value
+                            (len(d) - self.shift_before) / view_req.batch_repeat_value
                         )
                     )
                     for i in range(count):
                         inds = (
                             self.shift_before
-                            + obs_shift 
-                            + view_req.shift_arr 
+                            + obs_shift
+                            + view_req.shift_arr
                             + (i * view_req.batch_repeat_value)
                         )
 
@@ -279,13 +278,13 @@ class _AgentCollector:
                                     )
                                 )
                         element_at_t = np.stack(element_at_t)
-                    
+
                         # element_at_t = d[inds]
                         if element_at_t.shape[0] == 1:
                             # squeeze to remove the T dimension if it is 1.
                             element_at_t = element_at_t.squeeze(0)
                         shifted_data.append(element_at_t)
-                    
+
                     shifted_data_np = np.stack(shifted_data, 0)
                     data_2.append(shifted_data_np)
                     # else:
@@ -294,8 +293,8 @@ class _AgentCollector:
 
                     #         index = (
                     #             self.shift_before
-                    #             + obs_shift 
-                    #             + view_req.shift_arr 
+                    #             + obs_shift
+                    #             + view_req.shift_arr
                     #             + i
                     #         )
                     #         print(f'index = {index}, at i = {i}')
@@ -400,7 +399,8 @@ class _AgentCollector:
                         for d in np_data[data_col]
                     ]
                 # Shift is exactly 0: Use trajectory as is.
-                # TODO @kourosh removing this since the last else statement is already # capturing this
+                # TODO @kourosh removing this since the last else statement is already
+                # capturing this
                 # elif shift == 0:
                 #     data = [d[self.shift_before :] for d in np_data[data_col]]
                 # Shift is positive: We still need to 0-pad at the end.
@@ -426,9 +426,10 @@ class _AgentCollector:
                 # 0-padded "before" area of our buffers.
                 else:
                     data = [
-                        d[self.shift_before + shift : len(d) + shift] for d in np_data[data_col]
+                        d[self.shift_before + shift : len(d) + shift]
+                        for d in np_data[data_col]
                     ]
-            
+
             # if view_col == 'state_in_0':
             #     breakpoint()
             check(data, data_2)

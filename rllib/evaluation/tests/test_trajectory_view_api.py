@@ -147,11 +147,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
 
-            self.assertEqual(sample_batch.count, 200, 'ppo rollout count != 200')
+            self.assertEqual(sample_batch.count, 200, "ppo rollout count != 200")
             self.assertEqual(sum(sample_batch["seq_lens"]), sample_batch.count)
             self.assertEqual(
-                len(sample_batch["seq_lens"]),
-                sample_batch["state_in_0"].shape[0]
+                len(sample_batch["seq_lens"]), sample_batch["state_in_0"].shape[0]
             )
 
             # check if non-zero state_ins are pointing to the correct state_outs
@@ -160,11 +159,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 state_in = sample_batch["state_in_0"][i]
                 if np.any(state_in != 0):
                     # non-zero state-in should be one of th state_outs.
-                    state_out_ind = seq_counters[i-1] - 1
-                    check(
-                        sample_batch["state_out_0"][state_out_ind],
-                        state_in
-                    )
+                    state_out_ind = seq_counters[i - 1] - 1
+                    check(sample_batch["state_out_0"][state_out_ind], state_in)
             algo.stop()
 
     def test_traj_view_attention_net(self):
