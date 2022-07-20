@@ -760,7 +760,7 @@ py_test(
 py_test(
     name = "test_node_failure",
     tags = ["team:rllib", "tests_dir", "tests_dir_N"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_node_failure.py"],
 )
 
