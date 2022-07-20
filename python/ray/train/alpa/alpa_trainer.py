@@ -268,6 +268,7 @@ class AlpaTrainer(BaseTrainer):
                 #     updated_scaling_config
                 # )
                 ic(updated_scaling_config)
+                ic(updated_scaling_config.as_placement_group_factory())
                 return updated_scaling_config.as_placement_group_factory()
             
         return TrainTrainable
