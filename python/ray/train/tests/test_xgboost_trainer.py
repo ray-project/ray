@@ -91,6 +91,48 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     assert get_num_trees(model) == 10
 
 
+@pytest.mark.parametrize(
+    "freq_end_expected",
+    [
+        (4, True, 7),  # 4, 8, 12, 16, 20, 24, 25
+        (4, False, 6),  # 4, 8, 12, 16, 20, 24
+        (5, True, 5),  # 5, 10, 15, 20, 25
+        (0, True, 1),
+        (0, False, 0),
+    ],
+)
+def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
+    freq, end, expected = freq_end_expected
+
+    train_dataset = ray.data.from_pandas(train_df)
+    valid_dataset = ray.data.from_pandas(test_df)
+    trainer = XGBoostTrainer(
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(
+                checkpoint_frequency=freq, checkpoint_at_end=end
+            )
+        ),
+        scaling_config=scale_config,
+        label_column="target",
+        params=params,
+        num_boost_round=25,
+        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
+    )
+    result = trainer.fit()
+
+    # Assert number of checkpoints
+    assert len(result.best_checkpoints) == expected, str(
+        [
+            (metrics["training_iteration"], _cp._local_path)
+            for _cp, metrics in result.best_checkpoints
+        ]
+    )
+
+    # Assert checkpoint numbers are increasing
+    cp_paths = [cp._local_path for cp, _ in result.best_checkpoints]
+    assert cp_paths == sorted(cp_paths), str(cp_paths)
+
+
 def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)

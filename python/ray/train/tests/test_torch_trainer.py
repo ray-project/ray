@@ -8,6 +8,7 @@ from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.torch import TorchPredictor, TorchTrainer
+from ray.tune import TuneError
 from ray.air.config import ScalingConfig
 
 
@@ -95,9 +96,22 @@ def test_torch_e2e_state_dict(ray_start_4_cpus):
     assert predictions.count() == 3
 
 
+def test_checkpoint_freq(ray_start_4_cpus):
+    # checkpoint_freq is not supported so raise an error
+    trainer = TorchTrainer(
+        train_loop_per_worker=lambda config: None,
+        scaling_config=ray.air.ScalingConfig(num_workers=1),
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(
+                checkpoint_frequency=2,
+            ),
+        ),
+    )
+    with pytest.raises(TuneError):
+        trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
