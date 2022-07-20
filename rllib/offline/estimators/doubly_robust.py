@@ -65,7 +65,7 @@ class DoublyRobust(OffPolicyEstimator):
 
         super().__init__(policy, gamma)
         q_model_config = q_model_config or {}
-        model_cls = q_model_config.get("type", FQETorchModel)
+        model_cls = q_model_config.pop("type", FQETorchModel)
 
         self.model = model_cls(
             policy=policy,
