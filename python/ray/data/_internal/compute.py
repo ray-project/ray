@@ -184,6 +184,8 @@ class ActorPoolStrategy(ComputeStrategy):
         self.min_size = min_size
         self.max_size = max_size or float("inf")
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
+        self.num_workers = 0
+        self.ready_to_total_workers_ratio = 0.8
 
     def _apply(
         self,
@@ -265,7 +267,7 @@ class ActorPoolStrategy(ComputeStrategy):
                     block, block_fn, input_files, self.fn, *fn_args, **fn_kwargs
                 )
 
-        if not remote_args:
+        if "num_cpus" not in remote_args:
             remote_args["num_cpus"] = 1
 
         if "scheduling_strategy" not in remote_args:
@@ -295,7 +297,8 @@ class ActorPoolStrategy(ComputeStrategy):
                 if not ready:
                     if (
                         len(workers) < self.max_size
-                        and len(ready_workers) / len(workers) > 0.8
+                        and len(ready_workers) / len(workers)
+                        > self.ready_to_total_workers_ratio
                     ):
                         w = BlockWorker.remote(
                             *fn_constructor_args, **fn_constructor_kwargs
@@ -351,6 +354,7 @@ class ActorPoolStrategy(ComputeStrategy):
                     tasks_in_flight[worker] += 1
 
             map_bar.close()
+            self.num_workers += len(workers)
             new_blocks, new_metadata = [], []
             # Put blocks in input order.
             results.sort(key=block_indices.get)

@@ -115,6 +115,14 @@ py_test(
 )
 
 py_test(
+    name = "gotchas",
+    size = "small",
+    main = "source/ray-core/doc_code/gotchas.py",
+    srcs = ["source/ray-core/doc_code/gotchas.py"],
+    tags = ["team:core"]
+)
+
+py_test(
     name = "doc_code_torch_example",
     size = "small",
     main = "source/ray-core/doc_code/torch_example.py",

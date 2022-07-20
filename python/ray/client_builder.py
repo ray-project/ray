@@ -18,6 +18,7 @@ from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
 from ray.util.annotations import Deprecated, PublicAPI
+from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,20 @@ class ClientContext(BaseContext):
             # This is only a driver connected to an existing cluster.
             ray.shutdown()
 
+    def _repr_html_(self):
+        if self.dashboard_url:
+            dashboard_row = Template("context_dashrow.html.j2").render(
+                dashboard_url="http://" + self.dashboard_url
+            )
+        else:
+            dashboard_row = None
+
+        return Template("context.html.j2").render(
+            python_version=self.python_version,
+            ray_version=self.ray_version,
+            dashboard_row=dashboard_row,
+        )
+
 
 @Deprecated
 class ClientBuilder:
@@ -98,6 +113,7 @@ class ClientBuilder:
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
         self._credentials = None
+        self._metadata = None
         # Set to False if ClientBuilder is being constructed by internal
         # methods
         self._deprecation_warn_enabled = True
@@ -164,6 +180,7 @@ class ClientBuilder:
             job_config=self._job_config,
             _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs,
+            metadata=self._metadata,
         )
         get_dashboard_url = ray.remote(ray._private.worker.get_dashboard_url)
         dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
@@ -213,6 +230,10 @@ class ClientBuilder:
         if "_credentials" in kwargs.keys():
             self._credentials = kwargs["_credentials"]
             del kwargs["_credentials"]
+
+        if "_metadata" in kwargs.keys():
+            self._metadata = kwargs["_metadata"]
+            del kwargs["_metadata"]
 
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)

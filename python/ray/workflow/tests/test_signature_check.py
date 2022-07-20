@@ -14,22 +14,23 @@ def test_signature_check(workflow_start_regular):
     with pytest.raises(TypeError):
         signature_check(1, 2)
 
+    # TODO(suquark): Ray DAG does not check the inputs. Fix it in Ray DAG.
     with pytest.raises(TypeError):
-        workflow.create(signature_check.bind(1))
+        workflow.run(signature_check.bind(1))
 
     with pytest.raises(TypeError):
-        workflow.create(signature_check.bind(1, c=2))
+        workflow.run(signature_check.bind(1, c=2))
 
     with pytest.raises(TypeError):
-        workflow.create(signature_check.bind(1, 2, d=3))
+        workflow.run(signature_check.bind(1, 2, d=3))
 
     with pytest.raises(TypeError):
-        workflow.create(signature_check.bind(1, 2, 3, 4))
+        workflow.run(signature_check.bind(1, 2, 3, 4))
 
-    workflow.create(signature_check.bind(1, 2, 3))
-    workflow.create(signature_check.bind(1, 2, c=3))
-    workflow.create(signature_check.bind(1, b=2, c=3))
-    workflow.create(signature_check.bind(a=1, b=2, c=3))
+    workflow.run(signature_check.bind(1, 2, 3))
+    workflow.run(signature_check.bind(1, 2, c=3))
+    workflow.run(signature_check.bind(1, b=2, c=3))
+    workflow.run(signature_check.bind(a=1, b=2, c=3))
 
 
 if __name__ == "__main__":

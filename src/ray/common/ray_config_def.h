@@ -479,8 +479,9 @@ RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 /// In unlimited allocation mode, this is the time delay prior to fallback allocating.
 RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
-/// Whether or not the external storage is file system.
-/// This is configured based on object_spilling_config.
+/// Whether or not the external storage is the local file system.
+/// Note that this value should be overridden based on the storage type
+/// specified by object_spilling_config.
 RAY_CONFIG(bool, is_external_storage_type_fs, true)
 
 /// Control the capacity threshold for ray local file system (for object store).
@@ -611,6 +612,10 @@ RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
+
+/// The namespace for the storage.
+/// This fields is used to isolate data stored in DB.
+RAY_CONFIG(std::string, external_storage_namespace, "default")
 
 /// Whether or not use TLS.
 RAY_CONFIG(bool, USE_TLS, false)

@@ -23,7 +23,6 @@ class Simplex(gym.Space):
 
     def __init__(self, shape, concentration=None, dtype=np.float32):
         assert type(shape) in [tuple, list]
-        assert len(shape) == 2, ""
 
         super().__init__(shape, dtype)
         self.dim = self.shape[-1]

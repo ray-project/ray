@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 
 import ray
 from ray import train
+from ray.air import session
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import PYTORCH_PROFILER_KEY
 from torch.optim import Optimizer
@@ -282,7 +283,11 @@ class _TorchAccelerator(Accelerator):
         """
         ddp_kwargs = ddp_kwargs or {}
 
-        rank = train.local_rank()
+        # Backwards compatibility
+        try:
+            rank = session.get_local_rank()
+        except Exception:
+            rank = train.local_rank()
 
         device = self.get_device()
 
@@ -327,7 +332,13 @@ class _TorchAccelerator(Accelerator):
             # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
             model.__getstate__ = types.MethodType(model_get_state, model)
 
-        if wrap_ddp and train.world_size() > 1:
+        # Backwards compatibility
+        try:
+            world_size = session.get_world_size()
+        except Exception:
+            world_size = train.world_size()
+
+        if wrap_ddp and world_size > 1:
             logger.info("Wrapping provided model in DDP.")
             if torch.cuda.is_available():
                 model = DistributedDataParallel(
@@ -365,13 +376,21 @@ class _TorchAccelerator(Accelerator):
                 if ``move_to_device`` is False.
         """
 
+        # Backwards compatibility
+        try:
+            world_size = session.get_world_size()
+            world_rank = session.get_world_rank()
+        except Exception:
+            world_size = train.world_size()
+            world_rank = train.world_rank()
+
         # Only add Distributed Sampler if the following conditions hold:
         # 1. More than one training worker is being used.
         # 2. A DistributedSampler has not already been added by the user.
         # 3. The dataset is not an IterableDataset. Samplers do not worker with
         # IterableDatasets.
         if (
-            train.world_size() > 1
+            world_size > 1
             and not isinstance(data_loader.sampler, DistributedSampler)
             and not (
                 hasattr(data_loader, "dataset")
@@ -413,7 +432,7 @@ class _TorchAccelerator(Accelerator):
                 using_default_sampler = isinstance(
                     loader.sampler, (SequentialSampler, RandomSampler)
                 )
-                if not using_default_sampler and train.world_rank() == 0:
+                if not using_default_sampler and world_rank == 0:
                     logger.warn(
                         f"The {loader.sampler.__class__.__name__} will be overwritten "
                         "with a DistributedSampler. You can disable this by setting "
@@ -444,11 +463,48 @@ class _TorchAccelerator(Accelerator):
         return data_loader
 
     def get_device(self) -> torch.device:
-        """Gets the correct torch device to use for training."""
+        """Gets the correct torch device to use for training.
+
+        Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+        superset of the `ray.get_gpu_ids()`.
+
+        Example:
+            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
+            >>> # ray.get_gpu_ids() == [3]
+            >>> # torch.cuda.is_available() == True
+            >>> # get_device() == torch.device("cuda:0")
+
+            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
+            >>> # ray.get_gpu_ids() == [4]
+            >>> # torch.cuda.is_available() == True
+            >>> # get_device() == torch.device("cuda:4")
+
+            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
+            >>> # ray.get_gpu_ids() == [4,5]
+            >>> # torch.cuda.is_available() == True
+            >>> # get_device() == torch.device("cuda:4")
+        """
         if torch.cuda.is_available():
+            # GPU IDs are assigned by Ray after you specify "use_gpu"
             gpu_ids = ray.get_gpu_ids()
+
             if len(gpu_ids) > 0:
-                device_id = gpu_ids[0]
+                # By default, there should only be one GPU ID if `use_gpu=True`.
+                # If there are multiple GPUs, use the first one.
+                # If using fractional GPUs, these IDs are not guaranteed
+                # to be unique across different processes.
+                gpu_id = gpu_ids[0]
+
+                cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+                if cuda_visible_str and cuda_visible_str != "NoDevFiles":
+                    cuda_visible_list = [
+                        int(dev) for dev in cuda_visible_str.split(",")
+                    ]
+                    device_id = cuda_visible_list.index(gpu_id)
+                else:
+                    raise RuntimeError(
+                        f"CUDA_VISIBLE_DEVICES set incorrectly: {cuda_visible_str}"
+                    )
             else:
                 # If called on the driver or outside of Ray Train, return the
                 # 0th device.

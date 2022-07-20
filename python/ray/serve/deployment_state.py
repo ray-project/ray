@@ -43,7 +43,6 @@ from ray.serve.utils import (
     msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
-from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -71,11 +70,12 @@ class ReplicaHealthCheckResponse(Enum):
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
-SLOW_STARTUP_WARNING_S = 30
-SLOW_STARTUP_WARNING_PERIOD_S = 30
+SLOW_STARTUP_WARNING_S = int(os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30))
+SLOW_STARTUP_WARNING_PERIOD_S = int(
+    os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
+)
 
 ALL_REPLICA_STATES = list(ReplicaState)
-USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
 _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
 
 
@@ -144,7 +144,6 @@ class ActorReplicaWrapper:
         deployment_name: str,
     ):
         self._actor_name = actor_name
-        self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
 
@@ -167,7 +166,6 @@ class ActorReplicaWrapper:
         # NOTE: storing these is necessary to keep the actor and PG alive in
         # the non-detached case.
         self._actor_handle: ActorHandle = None
-        self._placement_group: PlacementGroup = None
 
         # Populated after replica is allocated.
         self._node_id: str = None
@@ -184,6 +182,10 @@ class ActorReplicaWrapper:
     @property
     def deployment_name(self) -> str:
         return self._deployment_name
+
+    @property
+    def is_cross_language(self) -> bool:
+        return self._is_cross_language
 
     @property
     def actor_handle(self) -> Optional[ActorHandle]:
@@ -214,38 +216,6 @@ class ActorReplicaWrapper:
         ready, _ = ray.wait([obj_ref], timeout=0)
         return len(ready) == 1
 
-    def create_placement_group(
-        self, placement_group_name: str, actor_resources: dict
-    ) -> PlacementGroup:
-        # Only need one placement group per actor
-        if self._placement_group:
-            return self._placement_group
-
-        logger.debug(
-            "Creating placement group '{}' for deployment '{}'".format(
-                placement_group_name, self.deployment_name
-            )
-        )
-
-        self._placement_group = ray.util.placement_group(
-            [actor_resources],
-            lifetime="detached" if self._detached else None,
-            name=placement_group_name,
-        )
-
-        return self._placement_group
-
-    def get_placement_group(self, placement_group_name) -> Optional[PlacementGroup]:
-        if not self._placement_group:
-            try:
-                self._placement_group = ray.util.get_placement_group(
-                    placement_group_name
-                )
-            except ValueError:
-                self._placement_group = None
-
-        return self._placement_group
-
     def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
         """
         Start a new actor for current DeploymentReplica instance.
@@ -264,16 +234,6 @@ class ActorReplicaWrapper:
         )
 
         self._actor_resources = deployment_info.replica_config.resource_dict
-        # it is currently not possible to create a placement group
-        # with no resources (https://github.com/ray-project/ray/issues/20401)
-        has_resources_assigned = all(
-            (r is not None and r > 0 for r in self._actor_resources.values())
-        )
-        if USE_PLACEMENT_GROUP and has_resources_assigned:
-            self._placement_group = self.create_placement_group(
-                self._placement_group_name, self._actor_resources
-            )
-
         logger.debug(
             f"Starting replica {self.replica_tag} for deployment "
             f"{self.deployment_name}."
@@ -298,7 +258,7 @@ class ActorReplicaWrapper:
         ):
             self._is_cross_language = True
             actor_def = ray.cross_language.java_actor_class(
-                "io.ray.serve.RayServeWrappedReplica"
+                "io.ray.serve.replica.RayServeWrappedReplica"
             )
             init_args = (
                 # String deploymentName,
@@ -308,7 +268,13 @@ class ActorReplicaWrapper:
                 # String deploymentDef
                 deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
-                msgpack_serialize(deployment_info.replica_config.init_args),
+                msgpack_serialize(
+                    cloudpickle.loads(
+                        deployment_info.replica_config.serialized_init_args
+                    )
+                )
+                if deployment_info.deployment_config.is_cross_language
+                else deployment_info.replica_config.serialized_init_args,
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
                 # byte[] deploymentVersionBytes,
@@ -321,8 +287,10 @@ class ActorReplicaWrapper:
             name=self._actor_name,
             namespace=SERVE_NAMESPACE,
             lifetime="detached" if self._detached else None,
-            placement_group=self._placement_group,
-            placement_group_capture_child_tasks=False,
+            # Spread replicas to avoid correlated failures on a single node.
+            # This is a soft spread, so if there is only space on a single node
+            # the replicas will be placed there.
+            scheduling_strategy="SPREAD",
             **deployment_info.replica_config.ray_actor_options,
         ).remote(*init_args)
 
@@ -330,16 +298,20 @@ class ActorReplicaWrapper:
         # See https://github.com/ray-project/ray/issues/21474
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
-
-        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-        self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            deployment_info.deployment_config.user_config,
-            # Ensure that `is_allocated` will execute before `reconfigure`,
-            # because `reconfigure` runs user code that could block the replica
-            # asyncio loop. If that happens before `is_allocated` is executed,
-            # the `is_allocated` call won't be able to run.
-            self._allocated_obj_ref,
-        )
+            self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+                deployment_info.deployment_config.user_config
+            )
+        else:
+            self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+                deployment_info.deployment_config.user_config,
+                # Ensure that `is_allocated` will execute before `reconfigure`,
+                # because `reconfigure` runs user code that could block the replica
+                # asyncio loop. If that happens before `is_allocated` is executed,
+                # the `is_allocated` call won't be able to run.
+                self._allocated_obj_ref,
+            )
 
     def update_user_config(self, user_config: Any):
         """
@@ -358,15 +330,16 @@ class ActorReplicaWrapper:
             f"{self.deployment_name}."
         )
         self._actor_handle = self.actor_handle
-        if USE_PLACEMENT_GROUP:
-            self._placement_group = self.get_placement_group(self._placement_group_name)
 
         # Re-fetch initialization proof
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
-        self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+        if self._is_cross_language:
+            self._ready_obj_ref = self._actor_handle.check_health.remote()
+        else:
+            self._ready_obj_ref = self._actor_handle.get_metadata.remote()
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[DeploymentVersion]]:
         """
@@ -581,20 +554,6 @@ class ActorReplicaWrapper:
         except ValueError:
             pass
 
-    def cleanup(self):
-        """Clean up any remaining resources after the actor has exited.
-
-        Currently, this just removes the placement group.
-        """
-        if not USE_PLACEMENT_GROUP:
-            return
-
-        try:
-            if self._placement_group is not None:
-                ray.util.remove_placement_group(self._placement_group)
-        except ValueError:
-            pass
-
 
 class DeploymentReplica(VersionedReplica):
     """Manages state transitions for deployment replicas.
@@ -630,6 +589,7 @@ class DeploymentReplica(VersionedReplica):
             replica_tag=self._replica_tag,
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
+            is_cross_language=self._actor.is_cross_language,
         )
 
     @property
@@ -714,8 +674,6 @@ class DeploymentReplica(VersionedReplica):
     def check_stopped(self) -> bool:
         """Check if the replica has finished stopping."""
         if self._actor.check_stopped():
-            # Clean up any associated resources (e.g., placement group).
-            self._actor.cleanup()
             return True
 
         timeout_passed = time.time() > self._shutdown_deadline
@@ -1496,7 +1454,7 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = slow_start_replicas[0][0].resource_requirements()
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_allocation)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
@@ -1506,16 +1464,36 @@ class DeploymentState:
                     f"Resources required for each replica: {required}, "
                     f"resources available: {available}."
                 )
+                logger.warning(message)
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
+                # If status is UNHEALTHY, leave the status and message as is.
+                # The issue that caused the deployment to be unhealthy should be
+                # prioritized over this resource availability issue.
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             if len(pending_initialization) > 0:
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
                     f"may be caused by a slow __init__ or reconfigure method."
                 )
+                logger.warning(message)
+                # If status is UNHEALTHY, leave the status and message as is.
+                # The issue that caused the deployment to be unhealthy should be
+                # prioritized over this resource availability issue.
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             self._prev_startup_warning = time.time()
 
