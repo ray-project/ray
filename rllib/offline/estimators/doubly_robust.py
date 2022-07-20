@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
@@ -47,7 +47,7 @@ class DoublyRobust(OffPolicyEstimator):
         self,
         policy: Policy,
         gamma: float,
-        q_model_config: Dict = None,
+        q_model_config: Optional[Dict] = None,
     ):
         """Initializes a Doubly Robust OPE Estimator.
 

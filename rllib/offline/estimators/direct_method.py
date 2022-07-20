@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy import Policy
@@ -36,7 +36,7 @@ class DirectMethod(OffPolicyEstimator):
         self,
         policy: Policy,
         gamma: float,
-        q_model_config: Dict = None,
+        q_model_config: Optional[Dict] = None,
     ):
         """Initializes a Direct Method OPE Estimator.
 
