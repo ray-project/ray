@@ -12,9 +12,9 @@
 # ==== Ray core ====
 
 # API compatibility
-/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
-/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
-/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
+/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119
+/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119
+/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119
 /dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
 /python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
 
@@ -47,10 +47,10 @@
 /java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
 
 # C++ worker
-/cpp/include/ray @SongGuyang @raulchen @mwtian
+/cpp/include/ray @SongGuyang @raulchen
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
+/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017
 
 # Runtime Env
 # TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
@@ -91,8 +91,8 @@
 /python/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
 
 # Ray symbol export
-/src/ray/ray_version_script.lds @mwtian @iycheng @ericl @scv119
-/src/ray/ray_exported_symbols.lds @mwtian @iycheng @ericl @scv119
+/src/ray/ray_version_script.lds @iycheng @ericl @scv119
+/src/ray/ray_exported_symbols.lds @iycheng @ericl @scv119
 
 # Ray usage stats
 /python/ray/_private/usage/ @ericl @richardliaw @rkooo567 @jjyao
