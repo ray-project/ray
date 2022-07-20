@@ -42,8 +42,8 @@ class TensorflowCheckpoint(Checkpoint):
             >>> from ray.train.tensorflow import TensorflowCheckpoint
             >>> import tensorflow as tf
             >>>
-            >>> model = tf.keras.applications.resnet.ResNet101()
-            >>> checkpoint = TensorflowCheckpoint.from_model(model)
+            >>> model = tf.keras.applications.resnet.ResNet101()  # doctest: +SKIP
+            >>> checkpoint = TensorflowCheckpoint.from_model(model)  # doctest: +SKIP
         """
         checkpoint = cls.from_dict(
             {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model.get_weights()}
