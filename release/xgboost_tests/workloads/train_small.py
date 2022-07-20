@@ -13,36 +13,48 @@ import time
 import ray
 from xgboost_ray import RayParams
 
-from _train import train_ray
+from ray.util.xgboost.release_test_util import train_ray
 
 if __name__ == "__main__":
-    ray.init(address="auto")
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "train_small")
+    if addr.startswith("anyscale://"):
+        ray.init(address=addr, job_name=job_name)
+    else:
+        ray.init(address="auto")
 
+    output = os.environ["TEST_OUTPUT_JSON"]
     ray_params = RayParams(
         elastic_training=False,
         max_actor_restarts=2,
         num_actors=4,
         cpus_per_actor=4,
-        gpus_per_actor=0)
+        gpus_per_actor=0,
+    )
 
     start = time.time()
-    train_ray(
-        path="/data/classification.parquet",
-        num_workers=4,
-        num_boost_rounds=100,
-        num_files=25,
-        regression=False,
-        use_gpu=False,
-        ray_params=ray_params,
-        xgboost_params=None,
-    )
+
+    @ray.remote(num_cpus=0)
+    def train():
+        os.environ["TEST_OUTPUT_JSON"] = output
+        train_ray(
+            path="/data/classification.parquet",
+            num_workers=None,
+            num_boost_rounds=100,
+            num_files=25,
+            regression=False,
+            use_gpu=False,
+            ray_params=ray_params,
+            xgboost_params=None,
+        )
+
+    ray.get(train.remote())
     taken = time.time() - start
 
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/train_small.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/train_small.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

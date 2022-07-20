@@ -14,17 +14,24 @@ chmod +x /usr/bin/nproc
 NODE_VERSION="14"
 PYTHONS=("cp36-cp36m"
          "cp37-cp37m"
-         "cp38-cp38")
+         "cp38-cp38"
+         "cp39-cp39"
+         "cp310-cp310")
 
-# The minimum supported numpy version is 1.14, see
-# https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
-                "1.14.5")
+                "1.14.5"
+                "1.19.3"
+                "1.22.0")
 
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
+yum install libasan-4.8.5-44.el7.x86_64 -y
+yum install libubsan-7.3.1-5.10.el7.x86_64 -y
+yum install devtoolset-8-libasan-devel.x86_64 -y
+
+
 
 java -version
 java_bin=$(readlink -f "$(command -v java)")
@@ -32,7 +39,7 @@ echo "java_bin path $java_bin"
 java_home=${java_bin%jre/bin/java}
 export JAVA_HOME="$java_home"
 
-/ray/ci/travis/install-bazel.sh
+/ray/ci/env/install-bazel.sh
 # Put bazel into the PATH if building Bazel from source
 # export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
 
@@ -55,7 +62,7 @@ nvm use "$NODE_VERSION"
 
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
-pushd python/ray/new_dashboard/client
+pushd python/ray/dashboard/client
   npm ci
   npm run build
 popd
@@ -70,12 +77,12 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory, the
   # dashboard directory and jars directory.
-  git clean -f -f -x -d -e .whl -e python/ray/new_dashboard/client -e dashboard/client -e python/ray/jars
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.15
+    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.26
     # Set the commit SHA in __init__.py.
     if [ -n "$TRAVIS_COMMIT" ]; then
       sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
@@ -84,8 +91,12 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
       exit 1
     fi
 
+    # build ray wheel
     PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
     /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
+    # build ray-cpp wheel
+    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
+    RAY_INSTALL_CPP=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
   popd

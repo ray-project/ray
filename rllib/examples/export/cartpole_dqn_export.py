@@ -3,7 +3,7 @@
 import os
 import ray
 
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -12,7 +12,7 @@ ray.init(num_cpus=10)
 
 
 def train_and_export(algo_name, num_steps, model_dir, ckpt_dir, prefix):
-    cls = get_trainer_class(algo_name)
+    cls = get_algorithm_class(algo_name)
     alg = cls(config={}, env="CartPole-v0")
     for _ in range(num_steps):
         alg.train()
@@ -24,15 +24,15 @@ def train_and_export(algo_name, num_steps, model_dir, ckpt_dir, prefix):
 
 
 def restore_saved_model(export_dir):
-    signature_key = \
+    signature_key = (
         tf1.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    )
     g = tf1.Graph()
     with g.as_default():
         with tf1.Session(graph=g) as sess:
-            meta_graph_def = \
-                tf1.saved_model.load(sess,
-                                     [tf1.saved_model.tag_constants.SERVING],
-                                     export_dir)
+            meta_graph_def = tf1.saved_model.load(
+                sess, [tf1.saved_model.tag_constants.SERVING], export_dir
+            )
             print("Model restored!")
             print("Signature Def Information:")
             print(meta_graph_def.signature_def[signature_key])
@@ -54,10 +54,8 @@ def restore_checkpoint(export_dir, prefix):
 
 if __name__ == "__main__":
     algo = "DQN"
-    model_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
-                             "model_export_dir")
-    ckpt_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
-                            "ckpt_export_dir")
+    model_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "model_export_dir")
+    ckpt_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "ckpt_export_dir")
     prefix = "model.ckpt"
     num_steps = 3
     train_and_export(algo, num_steps, model_dir, ckpt_dir, prefix)

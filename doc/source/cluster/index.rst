@@ -1,35 +1,85 @@
+.. include:: /_includes/clusters/announcement.rst
+
+.. include:: we_are_hiring.rst
+
 .. _cluster-index:
 
-Ray Cluster Overview
-====================
+Ray Clusters Overview
+=====================
 
 What is a Ray cluster?
-------------------------
+----------------------
 
-One of Ray's strengths is the ability to leverage multiple machines in the same program. Ray can, of course, be run on a single machine (and is done so often), but the real power is using Ray on a cluster of machines.
+One of Ray's strengths is the ability to leverage multiple machines for
+distributed execution. Ray can, of course, be run on a single machine (and is
+done so often), but the real power is using Ray on a cluster of machines.
 
-A Ray cluster consists of a **head node** and a set of **worker nodes**. The head node needs to be started first, and the worker nodes are given the address of the head node to form the cluster:
+Ray can automatically interact with the cloud provider to request or release
+instances. You can specify :ref:`a configuration <cluster-config>` to launch
+clusters on :ref:`AWS, GCP, Azure (community-maintained), Aliyun (community-maintained), on-premise, or even on
+your custom node provider <cluster-cloud>`. Ray can also be run on :ref:`Kubernetes <ray-k8s-deploy>` infrastructure.
+Your cluster can have a fixed size
+or :ref:`automatically scale up and down<cluster-autoscaler>` depending on the
+demands of your application.
 
-.. image:: ray-cluster.jpg
-    :align: center
-    :width: 600px
+Where to go from here?
+----------------------
 
-You can use the Ray Cluster Launcher to provision machines and launch a multi-node Ray cluster. You can use the cluster launcher :ref:`on AWS, GCP, Azure, Kubernetes, on-premise, and Staroid or even on your custom node provider <cluster-cloud>`. Ray clusters can also make use of the Ray Autoscaler, which allows Ray to interact with a cloud provider to request or release instances following :ref:`a specification <cluster-config>` and according to application workload.
+.. panels::
+    :container: text-center
+    :column: col-lg-6 px-2 py-2
+    :card:
 
-How does it work?
------------------
+    **Quick Start** 
+    ^^^
 
-The Ray Cluster Launcher will automatically enable a load-based autoscaler. The autoscaler resource demand scheduler will look at the pending tasks, actors, and placement groups resource demands from the cluster, and try to add the minimum list of nodes that can fulfill these demands. When worker nodes are idle for more than :ref:`idle_timeout_minutes <cluster-configuration-idle-timeout-minutes>`, they will be removed (the head node is never removed unless the cluster is torn down).
+    In this quick start tutorial you will take a sample application designed to
+    run on a laptop and scale it up in the cloud.
 
-Autoscaler uses a simple binpacking algorithm to binpack the user demands into the available cluster resources. The remaining unfulfilled demands are placed on the smallest list of nodes that satisfies the demand while maximizing utilization (starting from the smallest node).
+    +++
+    .. link-button:: ref-cluster-quick-start
+        :type: ref
+        :text: Ray Clusters Quick Start
+        :classes: btn-outline-info btn-block
+    ---
 
-**Here is "A Glimpse into the Ray Autoscaler" and how to debug/monitor your cluster:**
+    **Key Concepts**
+    ^^^
 
-2021-19-01 by Ameer Haj-Ali, Anyscale, Inc.
+    Understand the key concepts behind Ray Clusters. Learn about the main
+    concepts and the different ways to interact with a cluster.
 
-.. youtube:: BJ06eJasdu4
+    +++
+    .. link-button:: cluster-key-concepts
+        :type: ref
+        :text: Learn Key Concepts
+        :classes: btn-outline-info btn-block
+    ---
 
-Next steps
-----------
+    **Deployment Guide**
+    ^^^
 
-To get started with Ray Clusters, we recommend that you check out the :ref:`Ray Cluster quick start <ref-cluster-quick-start>`. For more advanced examples of use, you can also refer to the :ref:`full specification for Ray Cluster configuration <cluster-config>`.
+    Learn how to set up a distributed Ray cluster and run your workloads on it.
+
+    +++
+    .. link-button:: ref-deployment-guide
+        :type: ref
+        :text: Deploy on a Ray Cluster
+        :classes: btn-outline-info btn-block
+    ---
+
+    **API**
+    ^^^
+
+    Get more in-depth information about the various APIs to interact with Ray
+    Clusters, including the :ref:`Ray cluster config YAML and CLI<cluster-config>`,
+    the :ref:`Ray Client API<ray-client>` and the
+    :ref:`Ray job submission API<ray-job-submission-api-ref>`.
+
+    +++
+    .. link-button:: ref-cluster-api
+        :type: ref
+        :text: Read the API Reference
+        :classes: btn-outline-info btn-block
+
+.. include:: /_includes/clusters/announcement_bottom.rst

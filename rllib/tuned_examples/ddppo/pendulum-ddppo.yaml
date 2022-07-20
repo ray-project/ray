@@ -1,0 +1,20 @@
+pendulum-ddppo:
+    env: Pendulum-v1
+    run: DDPPO
+    stop:
+        episode_reward_mean: -300
+        timesteps_total: 1500000
+    config:
+        framework: torch
+        rollout_fragment_length: 250
+        num_gpus_per_worker: 0
+        num_workers: 4
+        num_envs_per_worker: 10
+        observation_filter: MeanStdFilter
+        gamma: 0.95
+        sgd_minibatch_size: 50
+        num_sgd_iter: 5
+        clip_param: 0.3
+        vf_clip_param: 10.0
+        lambda: 0.1
+        lr: 0.00015

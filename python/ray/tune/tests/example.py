@@ -13,9 +13,26 @@
 # __quick_start_begin__
 from ray import tune
 
+# 1. Define an objective function.
+def objective(config):
+    score = config["a"] ** 2 + config["b"]
+    return {"score": score}
 
+
+# 2. Define a search space.
+search_space = {
+    "a": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
+    "b": tune.choice([1, 2, 3]),
+}
+
+# 3. Start a Tune run and print the best result.
+analysis = tune.run(objective, config=search_space)
+print(analysis.get_best_config(metric="score", mode="min"))
+# __quick_start_end__
+
+# __ml_quick_start_begin__
 def objective(step, alpha, beta):
-    return (0.1 + alpha * step / 100)**(-1) + beta * 0.1
+    return (0.1 + alpha * step / 100) ** (-1) + beta * 0.1
 
 
 def training_function(config):
@@ -32,12 +49,12 @@ analysis = tune.run(
     training_function,
     config={
         "alpha": tune.grid_search([0.001, 0.01, 0.1]),
-        "beta": tune.choice([1, 2, 3])
-    })
+        "beta": tune.choice([1, 2, 3]),
+    },
+)
 
-print("Best config: ", analysis.get_best_config(
-    metric="mean_loss", mode="min"))
+print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
 
 # Get a dataframe for analyzing trial results.
 df = analysis.results_df
-# __quick_start_end__
+# __ml_quick_start_end__

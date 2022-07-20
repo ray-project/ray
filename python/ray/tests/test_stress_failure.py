@@ -1,33 +1,35 @@
-import numpy as np
-import pytest
 import sys
 import time
 
+import numpy as np
+import pytest
+
 import ray
-from ray.cluster_utils import Cluster
-import ray.ray_constants as ray_constants
-from ray.test_utils import get_error_message
+import ray._private.ray_constants as ray_constants
+from ray._private.test_utils import get_error_message
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.fixture(params=[1, 4])
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = int(0.5 * 10**9)
+    plasma_store_memory = int(0.5 * 10 ** 9)
 
     cluster = Cluster(
         initialize_head=True,
         head_node_args={
             "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
-            "redis_max_memory": 10**8,
-            "_system_config": {
-                "object_timeout_milliseconds": 200
-            }
-        })
+            "redis_max_memory": 10 ** 8,
+            "_system_config": {"object_timeout_milliseconds": 200},
+        },
+    )
     for i in range(num_nodes - 1):
         cluster.add_node(
-            num_cpus=1, object_store_memory=plasma_store_memory // num_nodes)
+            num_cpus=1, object_store_memory=plasma_store_memory // num_nodes
+        )
     ray.init(address=cluster.address)
 
     yield plasma_store_memory, num_nodes, cluster
@@ -72,7 +74,7 @@ def test_simple(ray_start_reconstruction):
     num_chunks = 4 * num_nodes
     chunk = num_objects // num_chunks
     for i in range(num_chunks):
-        values = ray.get(args[i * chunk:(i + 1) * chunk])
+        values = ray.get(args[i * chunk : (i + 1) * chunk])
         del values
 
     assert cluster.remaining_processes_alive()
@@ -134,7 +136,7 @@ def test_recursive(ray_start_reconstruction):
     num_chunks = 4 * num_nodes
     chunk = num_objects // num_chunks
     for i in range(num_chunks):
-        values = ray.get(args[i * chunk:(i + 1) * chunk])
+        values = ray.get(args[i * chunk : (i + 1) * chunk])
         del values
 
     assert cluster.remaining_processes_alive()
@@ -173,7 +175,7 @@ def test_multiple_recursive(ray_start_reconstruction):
         arg = no_dependency_task.remote(size)
         args.append(arg)
     for i in range(num_objects):
-        args.append(multiple_dependency.remote(i, *args[i:i + num_args]))
+        args.append(multiple_dependency.remote(i, *args[i : i + num_args]))
 
     # Get each value to force each task to finish. After some number of
     # gets, old values should be evicted.
@@ -271,15 +273,13 @@ def test_nondeterministic_task(ray_start_reconstruction, error_pubsub):
 
     errors = wait_for_errors(p, error_check)
     # Make sure all the errors have the correct type.
-    assert all(error.type == ray_constants.HASH_MISMATCH_PUSH_ERROR
-               for error in errors)
+    assert all(error.type == ray_constants.HASH_MISMATCH_PUSH_ERROR for error in errors)
 
     assert cluster.remaining_processes_alive()
 
 
 @pytest.mark.skip(reason="Failing with new GCS API on Linux.")
-@pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**9], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10 ** 9], indirect=True)
 def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
     p = error_pubsub
     plasma_store_memory = ray_start_object_store_memory
@@ -322,9 +322,11 @@ def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
         return len(errors) > 1
 
     errors = wait_for_errors(p, error_check)
-    assert all(error.type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
-               or "ray.exceptions.ObjectLostError" in error.error_messages
-               for error in errors)
+    assert all(
+        error.type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+        or "ray.exceptions.ObjectLostError" in error.error_messages
+        for error in errors
+    )
 
 
 # NOTE(swang): This test tries to launch 1000 workers and breaks.
@@ -351,5 +353,10 @@ def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
 #     ray.shutdown()
 
 if __name__ == "__main__":
+    import os
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

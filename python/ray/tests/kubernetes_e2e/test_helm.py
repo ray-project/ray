@@ -13,11 +13,9 @@ from test_k8s_operator_basic import wait_for_pods
 
 
 def helm(namespace, command, release, **options):
-    options.update({
-        "image": IMAGE,
-        "operatorImage": IMAGE,
-        "operatorNamespace": f"{NAMESPACE}2"
-    })
+    options.update(
+        {"image": IMAGE, "operatorImage": IMAGE, "operatorNamespace": f"{NAMESPACE}2"}
+    )
     cmd = ["helm"]
     if namespace:
         cmd.append(f"-n {namespace}")
@@ -34,10 +32,18 @@ def helm(namespace, command, release, **options):
     final_cmd = " ".join(cmd)
     try:
         subprocess.check_output(
-            final_cmd, shell=True, stderr=subprocess.STDOUT).decode()
+            final_cmd, shell=True, stderr=subprocess.STDOUT
+        ).decode()
     except subprocess.CalledProcessError as e:
-        assert False, "returncode: {}, stdout: {}".format(
-            e.returncode, e.stdout)
+        assert False, "returncode: {}, stdout: {}".format(e.returncode, e.stdout)
+
+
+def delete_rayclusters(namespace):
+    cmd = f"kubectl -n {namespace} delete rayclusters --all"
+    try:
+        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
+    except subprocess.CalledProcessError as e:
+        assert False, "returncode: {}, stdout: {}".format(e.returncode, e.stdout)
 
 
 class HelmTest(unittest.TestCase):
@@ -47,36 +53,45 @@ class HelmTest(unittest.TestCase):
 
         # Basic install: operator and default cluster.
         print("\n>>>Testing default Helm install.")
+        print(">>>Installing...")
         helm(NAMESPACE, "install", "example-cluster")
         wait_for_pods(3, namespace=NAMESPACE)
         wait_for_pods(1, namespace=f"{NAMESPACE}2")
-        helm(NAMESPACE, "uninstall", "example-cluster")
+        print(">>>Uninstalling...")
+        delete_rayclusters(namespace=NAMESPACE)
         wait_for_pods(0, namespace=NAMESPACE)
+        helm(NAMESPACE, "uninstall", "example-cluster")
         wait_for_pods(0, namespace=f"{NAMESPACE}2")
 
         # Install operator and two clusters in separate releases.
         print(">>>Testing installation of multiple Ray clusters.")
+        print(">>>Installing...")
         helm(NAMESPACE, "install", "ray-operator", operatorOnly="true")
         wait_for_pods(1, namespace=f"{NAMESPACE}2")
         helm(NAMESPACE, "install", "example-cluster", clusterOnly="true")
         wait_for_pods(3, namespace=f"{NAMESPACE}")
         helm(
-            NAMESPACE, "install", "example-cluster2", **{
-                "clusterOnly": "true",
-                "podTypes.rayWorkerType.minWorkers": "0"
-            })
+            NAMESPACE,
+            "install",
+            "example-cluster2",
+            **{"clusterOnly": "true", "podTypes.rayWorkerType.minWorkers": "0"},
+        )
         wait_for_pods(4, namespace=f"{NAMESPACE}")
-        helm(NAMESPACE, "uninstall", "ray-operator")
+        print(">>>Uninstalling...")
         helm(NAMESPACE, "uninstall", "example-cluster")
         helm(NAMESPACE, "uninstall", "example-cluster2")
         wait_for_pods(0, namespace=NAMESPACE)
+        helm(NAMESPACE, "uninstall", "ray-operator")
         wait_for_pods(0, namespace=f"{NAMESPACE}2")
 
         # namespacedOperator
         print(">>>Testing installation of namespaced Ray operator.")
-        helm(
-            NAMESPACE, "install", "example-cluster", namespacedOperator="true")
+        print(">>>Installing...")
+        helm(NAMESPACE, "install", "example-cluster", namespacedOperator="true")
         wait_for_pods(4, namespace=f"{NAMESPACE}")
+        print(">>>Uninstalling...")
+        delete_rayclusters(namespace=NAMESPACE)
+        wait_for_pods(1, namespace=NAMESPACE)
         helm(NAMESPACE, "uninstall", "example-cluster")
         wait_for_pods(0, namespace=NAMESPACE)
 

@@ -12,10 +12,9 @@ class SkipConnection(nn.Module):
     input as hidden state input to a given fan_in_layer.
     """
 
-    def __init__(self,
-                 layer: nn.Module,
-                 fan_in_layer: Optional[nn.Module] = None,
-                 **kwargs):
+    def __init__(
+        self, layer: nn.Module, fan_in_layer: Optional[nn.Module] = None, **kwargs
+    ):
         """Initializes a SkipConnection nn Module object.
 
         Args:

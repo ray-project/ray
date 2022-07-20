@@ -7,6 +7,7 @@ load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
+    deps = [":runtime_env_common_proto"],
     visibility = ["//java:__subpackages__"],
 )
 
@@ -24,7 +25,36 @@ proto_library(
     name = "gcs_proto",
     srcs = ["gcs.proto"],
     visibility = ["//java:__subpackages__"],
-    deps = [":common_proto"],
+    deps = [
+        ":common_proto",
+        ":runtime_env_common_proto",
+    ],
+)
+
+proto_library(
+    name = "runtime_env_common_proto",
+    srcs = ["runtime_env_common.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+proto_library(
+    name = "ray_syncer_proto",
+    srcs = ["ray_syncer.proto"],
+)
+
+cc_proto_library(
+    name = "ray_syncer_cc_proto",
+    deps = [":ray_syncer_proto"],
+)
+
+cc_proto_library(
+    name = "runtime_env_common_cc_proto",
+    deps = [":runtime_env_common_proto"],
+)
+
+python_grpc_compile(
+    name = "runtime_env_common_py_proto",
+    deps = [":runtime_env_common_proto"],
 )
 
 cc_proto_library(
@@ -35,6 +65,33 @@ cc_proto_library(
 python_grpc_compile(
     name = "gcs_py_proto",
     deps = [":gcs_proto"],
+)
+
+# Function and class dependencies.
+proto_library(
+    name = "dependency_proto",
+    srcs = ["dependency.proto"],
+)
+
+python_grpc_compile(
+    name = "dependency_py_proto",
+    deps = [":dependency_proto"],
+)
+
+# Text logging.
+proto_library(
+    name = "logging_proto",
+    srcs = ["logging.proto"],
+)
+
+cc_proto_library(
+    name = "logging_cc_proto",
+    deps = [":logging_proto"],
+)
+
+python_grpc_compile(
+    name = "logging_py_proto",
+    deps = [":logging_proto"],
 )
 
 proto_library(
@@ -81,6 +138,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":gcs_proto",
+        ":pubsub_proto",
     ],
 )
 
@@ -92,6 +150,25 @@ cc_proto_library(
 python_grpc_compile(
     name = "gcs_service_py_proto",
     deps = [":gcs_service_proto"],
+)
+
+proto_library(
+    name = "test_service_proto",
+    srcs = ["test_service.proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "test_service_cc_proto",
+    deps = [":test_service_proto"],
+)
+
+python_grpc_compile(
+    name = "test_service_py_proto",
+    deps = [":test_service_proto"],
 )
 
 proto_library(
@@ -108,7 +185,11 @@ cc_proto_library(
 proto_library(
     name = "core_worker_proto",
     srcs = ["core_worker.proto"],
-    deps = [":common_proto", ":pubsub_proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_service_proto",
+        ":pubsub_proto",
+    ],
 )
 
 python_grpc_compile(
@@ -138,6 +219,11 @@ proto_library(
 
 cc_proto_library(
     name = "event_cc_proto",
+    deps = [":event_proto"],
+)
+
+python_grpc_compile(
+    name = "event_py_proto",
     deps = [":event_proto"],
 )
 
@@ -186,10 +272,48 @@ python_grpc_compile(
 proto_library(
     name = "pubsub_proto",
     srcs = ["pubsub.proto"],
-    deps = [":common_proto"],
+    deps = [
+        ":common_proto",
+        ":dependency_proto",
+        ":gcs_proto",
+        ":logging_proto",
+        ":reporter_proto",
+    ],
 )
 
 cc_proto_library(
     name = "pubsub_cc_proto",
     deps = [":pubsub_proto"],
+)
+
+# runtime env agent gRPC lib.
+proto_library(
+    name = "runtime_env_agent_proto",
+    srcs = ["runtime_env_agent.proto"],
+    deps = [
+        ":common_proto",
+        ":agent_manager_proto",
+        ":runtime_env_common_proto",
+    ],
+)
+
+python_grpc_compile(
+    name = "runtime_env_agent_py_proto",
+    deps = [":runtime_env_agent_proto"],
+)
+
+cc_proto_library(
+    name = "runtime_env_agent_cc_proto",
+    deps = [":runtime_env_agent_proto"],
+)
+
+proto_library(
+    name = "serve_proto",
+    srcs = ["serve.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+python_grpc_compile(
+    name = "serve_py_proto",
+    deps = [":serve_proto"],
 )

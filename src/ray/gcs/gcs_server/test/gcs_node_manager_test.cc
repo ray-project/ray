@@ -14,25 +14,35 @@
 
 #include <memory>
 
+// clang-format off
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "mock/ray/pubsub/publisher.h"
+// clang-format on
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
-    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+        [this](const rpc::Address &) { return raylet_client_; });
+    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+        std::make_unique<ray::pubsub::MockPublisher>());
   }
 
  protected:
-  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
-  std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
-  gcs::GcsNodeManager node_manager(gcs_pub_sub_, gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(gcs_publisher_, gcs_table_storage_, client_pool_);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -45,7 +55,7 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
-  gcs::GcsNodeManager node_manager(gcs_pub_sub_, gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(gcs_publisher_, gcs_table_storage_, client_pool_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;

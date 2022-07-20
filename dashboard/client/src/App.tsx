@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import { Provider } from "react-redux";
 import { HashRouter, Route, Switch } from "react-router-dom";
 import Dashboard from "./pages/dashboard/Dashboard";
+import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import { getNodeList } from "./service/node";
 import { store } from "./store";
@@ -27,6 +28,7 @@ const RAY_DASHBOARD_THEME_KEY = "ray-dashboard-theme";
 // a global map for relations
 export const GlobalContext = React.createContext({
   nodeMap: {} as { [key: string]: string },
+  nodeMapByIp: {} as { [key: string]: string },
   ipLogMap: {} as { [key: string]: string },
   namespaceMap: {} as { [key: string]: string[] },
 });
@@ -40,9 +42,10 @@ const App = () => {
   const [theme, _setTheme] = useState(getDefaultTheme());
   const [context, setContext] = useState<{
     nodeMap: { [key: string]: string };
+    nodeMapByIp: { [key: string]: string };
     ipLogMap: { [key: string]: string };
     namespaceMap: { [key: string]: string[] };
-  }>({ nodeMap: {}, ipLogMap: {}, namespaceMap: {} });
+  }>({ nodeMap: {}, nodeMapByIp: {}, ipLogMap: {}, namespaceMap: {} });
   const getTheme = (name: string) => {
     switch (name) {
       case "dark":
@@ -60,12 +63,14 @@ const App = () => {
     getNodeList().then((res) => {
       if (res?.data?.data?.summary) {
         const nodeMap = {} as { [key: string]: string };
+        const nodeMapByIp = {} as { [key: string]: string };
         const ipLogMap = {} as { [key: string]: string };
         res.data.data.summary.forEach(({ hostname, raylet, ip, logUrl }) => {
           nodeMap[hostname] = raylet.nodeId;
+          nodeMapByIp[ip] = raylet.nodeId;
           ipLogMap[ip] = logUrl;
         });
-        setContext({ nodeMap, ipLogMap, namespaceMap: {} });
+        setContext({ nodeMap, nodeMapByIp, ipLogMap, namespaceMap: {} });
       }
     });
   }, []);
@@ -86,6 +91,7 @@ const App = () => {
                       <Route component={Job} exact path="/job" />
                       <Route component={Node} exact path="/node" />
                       <Route component={Actors} exact path="/actors" />
+                      <Route component={Events} exact path="/events" />
                       <Route
                         render={(props) => (
                           <Logs {...props} theme={theme as "light" | "dark"} />

@@ -13,10 +13,10 @@
 // limitations under the License.
 
 #pragma once
+#include <gtest/gtest_prod.h>
+
 #include <boost/asio.hpp>
 #include <boost/asio/ip/host_name.hpp>
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/ptree.hpp>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
@@ -24,6 +24,9 @@
 #include <memory>
 #include <sstream>
 #include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 #include "spdlog/sinks/basic_file_sink.h"
@@ -31,17 +34,28 @@
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
 
+using json = nlohmann::json;
+
 namespace ray {
 
-#define RAY_EVENT(event_type, label) \
-  ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type, label)
+#define RAY_EVENT(event_type, label)                                            \
+  if (ray::RayEvent::IsLevelEnabled(                                            \
+          ::ray::rpc::Event_Severity::Event_Severity_##event_type) ||           \
+      ray::RayLog::IsLevelEnabled(ray::RayEvent::EventLevelToLogLevel(          \
+          ::ray::rpc::Event_Severity::Event_Severity_##event_type)))            \
+  ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type,      \
+                  ray::RayEvent::EventLevelToLogLevel(                          \
+                      ::ray::rpc::Event_Severity::Event_Severity_##event_type), \
+                  label,                                                        \
+                  __FILE__,                                                     \
+                  __LINE__)
 
 // interface of event reporter
 class BaseEventReporter {
  public:
   virtual void Init() = 0;
 
-  virtual void Report(const rpc::Event &event) = 0;
+  virtual void Report(const rpc::Event &event, const json &custom_fields) = 0;
 
   virtual void Close() = 0;
 
@@ -50,18 +64,22 @@ class BaseEventReporter {
 // responsible for writing event to specific file
 class LogEventReporter : public BaseEventReporter {
  public:
-  LogEventReporter(rpc::Event_SourceType source_type, std::string &log_dir,
-                   bool force_flush = true, int rotate_max_file_size = 100,
+  LogEventReporter(rpc::Event_SourceType source_type,
+                   const std::string &log_dir,
+                   bool force_flush = true,
+                   int rotate_max_file_size = 100,
                    int rotate_max_file_num = 20);
 
   virtual ~LogEventReporter();
 
  private:
-  virtual std::string EventToString(const rpc::Event &event);
+  virtual std::string replaceLineFeed(std::string message);
+
+  virtual std::string EventToString(const rpc::Event &event, const json &custom_fields);
 
   virtual void Init() override {}
 
-  virtual void Report(const rpc::Event &event) override;
+  virtual void Report(const rpc::Event &event, const json &custom_fields) override;
 
   virtual void Close() override {}
 
@@ -87,7 +105,11 @@ class EventManager final {
 
   bool IsEmpty();
 
-  void Publish(const rpc::Event &event);
+  // We added `const json &custom_fields` here because we need to support typed custom
+  // fields.
+  // TODO(SongGuyang): Remove the protobuf `rpc::Event` and use an internal struct
+  // instead.
+  void Publish(const rpc::Event &event, const json &custom_fields);
 
   // NOTE(ruoqiu) AddReporters, ClearPeporters (along with the Pushlish function) would
   // not be thread-safe. But we assume default initialization and shutdown are placed in
@@ -98,14 +120,14 @@ class EventManager final {
   void ClearReporters();
 
  private:
-  EventManager() = default;
+  EventManager();
 
   EventManager(const EventManager &manager) = delete;
 
   const EventManager &operator=(const EventManager &manager) = delete;
 
  private:
-  std::unordered_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
+  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
 };
 
 // store the event context. Different workers of a process in core_worker have different
@@ -114,15 +136,27 @@ class RayEventContext final {
  public:
   static RayEventContext &Instance();
 
-  void SetEventContext(rpc::Event_SourceType source_type,
-                       const std::unordered_map<std::string, std::string> &custom_fields =
-                           std::unordered_map<std::string, std::string>());
+  RayEventContext() {}
 
-  void SetCustomFields(const std::string &key, const std::string &value);
+  void SetEventContext(
+      rpc::Event_SourceType source_type,
+      const absl::flat_hash_map<std::string, std::string> &custom_fields =
+          absl::flat_hash_map<std::string, std::string>());
 
-  void SetCustomFields(const std::unordered_map<std::string, std::string> &custom_fields);
-
+  // Only for test, isn't thread-safe with SetEventContext.
   void ResetEventContext();
+
+  // If the key already exists, replace the value. Otherwise, insert a new item.
+  void UpdateCustomField(const std::string &key, const std::string &value);
+
+  // Update the `custom_fields` into the existing items.
+  // If the key already exists, replace the value. Otherwise, insert a new item.
+  void UpdateCustomFields(
+      const absl::flat_hash_map<std::string, std::string> &custom_fields);
+
+  inline void SetSourceType(rpc::Event_SourceType source_type) {
+    source_type_ = source_type;
+  }
 
   inline const rpc::Event_SourceType &GetSourceType() const { return source_type_; }
 
@@ -130,24 +164,35 @@ class RayEventContext final {
 
   inline int32_t GetSourcePid() const { return source_pid_; }
 
-  inline const std::unordered_map<std::string, std::string> &GetCustomFields() const {
+  inline const absl::flat_hash_map<std::string, std::string> &GetCustomFields() const {
     return custom_fields_;
   }
 
+  inline bool GetInitialzed() const {
+    return source_type_ != rpc::Event_SourceType::Event_SourceType_COMMON;
+  }
+
  private:
-  RayEventContext() {}
+  static RayEventContext &GlobalInstance();
 
   RayEventContext(const RayEventContext &event_context) = delete;
 
   const RayEventContext &operator=(const RayEventContext &event_context) = delete;
 
- private:
   rpc::Event_SourceType source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
   std::string source_hostname_ = boost::asio::ip::host_name();
   int32_t source_pid_ = getpid();
-  std::unordered_map<std::string, std::string> custom_fields_;
+  absl::flat_hash_map<std::string, std::string> custom_fields_;
 
   static thread_local std::unique_ptr<RayEventContext> context_;
+
+  // This is a global context copied from the first context created by `SetEventContext`.
+  // We make this global context in order to get a basic context in other private threads.
+  static std::unique_ptr<RayEventContext> global_context_;
+  static std::atomic<bool> global_context_finished_setting_;
+  static std::atomic<int> global_context_started_setting_;
+
+  friend class RayEvent;
 };
 
 // when the RayEvent is deconstructed, the context information is obtained from the
@@ -155,8 +200,18 @@ class RayEventContext final {
 // for sending
 class RayEvent {
  public:
-  RayEvent(rpc::Event_Severity severity, const std::string &label)
-      : severity_(severity), label_(label) {}
+  // We require file_name to be a string which has static storage before RayEvent
+  // deconstructed. Otherwise we might have memory issues.
+  RayEvent(rpc::Event_Severity severity,
+           RayLogLevel log_severity,
+           const std::string &label,
+           const char *file_name,
+           int line_number)
+      : severity_(severity),
+        log_severity_(log_severity),
+        label_(label),
+        file_name_(file_name),
+        line_number_(line_number) {}
 
   template <typename T>
   RayEvent &operator<<(const T &t) {
@@ -164,8 +219,28 @@ class RayEvent {
     return *this;
   }
 
-  static void ReportEvent(const std::string &severity, const std::string &label,
-                          const std::string &message);
+  /// Set custom field to current event.
+  /// All the supported value type: `bool`, `int`, `unsigned int`, `float`, `double`,
+  /// `std::string` and `nlohmann::json`.
+  template <typename T>
+  RayEvent &WithField(const std::string &key, const T &value) {
+    custom_fields_[key] = value;
+    return *this;
+  }
+
+  static void ReportEvent(const std::string &severity,
+                          const std::string &label,
+                          const std::string &message,
+                          const char *file_name,
+                          int line_number);
+
+  /// Return whether or not the event level is enabled in current setting.
+  ///
+  /// \param event_level The input event level.
+  /// \return True if input event level is not lower than the threshold.
+  static bool IsLevelEnabled(rpc::Event_Severity event_level);
+
+  static RayLogLevel EventLevelToLogLevel(const rpc::Event_Severity &severity);
 
   ~RayEvent();
 
@@ -178,10 +253,36 @@ class RayEvent {
 
   const RayEvent &operator=(const RayEvent &event) = delete;
 
+  // Only for test
+  static void SetLevel(const std::string &event_level);
+
+  FRIEND_TEST(EventTest, TestLogLevel);
+
+  FRIEND_TEST(EventTest, TestLogEvent);
+
  private:
   rpc::Event_Severity severity_;
+  RayLogLevel log_severity_;
   std::string label_;
+  const char *file_name_;
+  int line_number_;
+  json custom_fields_;
   std::ostringstream osstream_;
 };
+
+/// Ray Event initialization.
+///
+/// This function should be called when the main thread starts.
+/// Redundant calls in other thread don't take effect.
+/// \param source_type The type of current process.
+/// \param custom_fields The global custom fields.
+/// \param log_dir The log directory to generate event subdirectory.
+/// \param event_level The input event level. It should be one of "info","warning",
+/// "error" and "fatal". You can also use capital letters for the options above.
+/// \return void.
+void RayEventInit(rpc::Event_SourceType source_type,
+                  const absl::flat_hash_map<std::string, std::string> &custom_fields,
+                  const std::string &log_dir,
+                  const std::string &event_level = "warning");
 
 }  // namespace ray

@@ -6,12 +6,14 @@ import os
 import re
 import yaml
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils import force_list, merge_dicts
 
 
+@DeveloperAPI
 def from_config(cls, config=None, **kwargs):
-    """
-    Uses the given config to create an object.
+    """Uses the given config to create an object.
+
     If `config` is a dict, an optional "type" key can be used as a
     "constructor hint" to specify a certain class of the object.
     If `config` is not a dict, `config`'s value is used directly as this
@@ -36,12 +38,12 @@ def from_config(cls, config=None, **kwargs):
         module+class (e.g. "ray.rllib. [...] .[some class name]")
 
     Args:
-        cls (class): The class to build an instance for (from `config`).
-        config (Optional[dict,str]): The config dict or type-string or
+        cls: The class to build an instance for (from `config`).
+        config (Optional[dict, str]): The config dict or type-string or
             filename.
 
     Keyword Args:
-        kwargs (any): Optional possibility to pass the constructor arguments in
+        kwargs: Optional possibility to pass the constructor arguments in
             here and use `config` as the type-only info. Then we can call
             this like: from_config([type]?, [**kwargs for constructor])
             If `config` is already a dict, then `kwargs` will be merged
@@ -94,17 +96,18 @@ def from_config(cls, config=None, **kwargs):
     if type_ is None:
         # We have a default constructor that was defined directly by cls
         # (not by its children).
-        if cls is not None and hasattr(cls, "__default_constructor__") and \
-                cls.__default_constructor__ is not None and \
-                ctor_args == [] and \
-                (
-                        not hasattr(cls.__bases__[0],
-                                    "__default_constructor__")
-                        or
-                        cls.__bases__[0].__default_constructor__ is None or
-                        cls.__bases__[0].__default_constructor__ is not
-                        cls.__default_constructor__
-                ):
+        if (
+            cls is not None
+            and hasattr(cls, "__default_constructor__")
+            and cls.__default_constructor__ is not None
+            and ctor_args == []
+            and (
+                not hasattr(cls.__bases__[0], "__default_constructor__")
+                or cls.__bases__[0].__default_constructor__ is None
+                or cls.__bases__[0].__default_constructor__
+                is not cls.__default_constructor__
+            )
+        ):
             constructor = cls.__default_constructor__
             # Default constructor's keywords into ctor_kwargs.
             if isinstance(constructor, partial):
@@ -116,7 +119,7 @@ def from_config(cls, config=None, **kwargs):
             constructor = cls
     # Try the __type_registry__ of this class.
     else:
-        constructor = lookup_type(cls, type_)
+        constructor = _lookup_type(cls, type_)
 
         # Found in cls.__type_registry__.
         if constructor is not None:
@@ -143,17 +146,28 @@ def from_config(cls, config=None, **kwargs):
             else:
                 return obj
 
-            # Test for absolute module.class specifier.
+            # Test for absolute module.class path specifier.
             if type_.find(".") != -1:
                 module_name, function_name = type_.rsplit(".", 1)
                 try:
                     module = importlib.import_module(module_name)
                     constructor = getattr(module, function_name)
-                except (ModuleNotFoundError, ImportError):
+                # Module not found.
+                except (ModuleNotFoundError, ImportError, AttributeError):
                     pass
+
             # If constructor still not found, try attaching cls' module,
             # then look for type_ in there.
             if constructor is None:
+                if isinstance(cls, str):
+                    # Module found, but doesn't have the specified
+                    # c'tor/function.
+                    raise ValueError(
+                        f"Full classpath specifier ({type_}) must be a valid "
+                        "full [module].[class] string! E.g.: "
+                        "`my.cool.module.MyCoolClass`."
+                    )
+
                 try:
                     module = importlib.import_module(cls.__module__)
                     constructor = getattr(module, type_)
@@ -161,21 +175,22 @@ def from_config(cls, config=None, **kwargs):
                     # Try the package as well.
                     try:
                         package_name = importlib.import_module(
-                            cls.__module__).__package__
+                            cls.__module__
+                        ).__package__
                         module = __import__(package_name, fromlist=[type_])
                         constructor = getattr(module, type_)
                     except (ModuleNotFoundError, ImportError, AttributeError):
                         pass
+
             if constructor is None:
                 raise ValueError(
-                    "String specifier ({}) in `from_config` must be a "
-                    "filename, a module+class, a class within '{}', or a key "
-                    "into {}.__type_registry__!".format(
-                        type_, cls.__module__, cls.__name__))
+                    f"String specifier ({type_}) must be a valid filename, "
+                    f"a [module].[class], a class within '{cls.__module__}', "
+                    f"or a key into {cls.__name__}.__type_registry__!"
+                )
 
     if not constructor:
-        raise TypeError(
-            "Invalid type '{}'. Cannot create `from_config`.".format(type_))
+        raise TypeError("Invalid type '{}'. Cannot create `from_config`.".format(type_))
 
     # Create object with inferred constructor.
     try:
@@ -188,18 +203,20 @@ def from_config(cls, config=None, **kwargs):
     # No sanity check for fake (lambda)-"constructors".
     if type(constructor).__name__ != "function":
         assert isinstance(
-            object_, constructor.func
-            if isinstance(constructor, partial) else constructor)
+            object_,
+            constructor.func if isinstance(constructor, partial) else constructor,
+        )
 
     return object_
 
 
+@DeveloperAPI
 def from_file(cls, filename, *args, **kwargs):
     """
     Create object from config saved in filename. Expects json or yaml file.
 
     Args:
-        filename (str): File containing the config (json or yaml).
+        filename: File containing the config (json or yaml).
 
     Returns:
         any: The object generated from the file.
@@ -219,15 +236,23 @@ def from_file(cls, filename, *args, **kwargs):
     return from_config(cls, config=config, **kwargs)
 
 
-def lookup_type(cls, type_):
-    if cls is not None and hasattr(cls, "__type_registry__") and \
-            isinstance(cls.__type_registry__, dict) and (
-            type_ in cls.__type_registry__ or (
-            isinstance(type_, str) and
-            re.sub("[\\W_]", "", type_.lower()) in cls.__type_registry__)):
+def _lookup_type(cls, type_):
+    if (
+        cls is not None
+        and hasattr(cls, "__type_registry__")
+        and isinstance(cls.__type_registry__, dict)
+        and (
+            type_ in cls.__type_registry__
+            or (
+                isinstance(type_, str)
+                and re.sub("[\\W_]", "", type_.lower()) in cls.__type_registry__
+            )
+        )
+    ):
         available_class_for_type = cls.__type_registry__.get(type_)
         if available_class_for_type is None:
-            available_class_for_type = \
-                cls.__type_registry__[re.sub("[\\W_]", "", type_.lower())]
+            available_class_for_type = cls.__type_registry__[
+                re.sub("[\\W_]", "", type_.lower())
+            ]
         return available_class_for_type
     return None

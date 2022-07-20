@@ -1,62 +1,80 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
 #include <ray/api/actor_task_caller.h>
 #include <ray/api/ray_runtime_holder.h>
 
-#include "ray/core.h"
-
 namespace ray {
-namespace api {
-
-template <typename ActorType, typename ReturnType, typename... Args>
-using ActorFunc = ReturnType (ActorType::*)(Args...);
 
 /// A handle to an actor which can be used to invoke a remote actor method, with the
 /// `Call` method.
 /// \param ActorType The type of the concrete actor class.
 /// Note, the `Call` method is defined in actor_call.generated.h.
-template <typename ActorType>
+template <typename ActorType, bool IsXlang = false>
 class ActorHandle {
  public:
-  ActorHandle();
+  ActorHandle() = default;
 
-  ActorHandle(const ActorID &id);
+  ActorHandle(const std::string &id) { id_ = id; }
 
   /// Get a untyped ID of the actor
-  const ActorID &ID() const;
+  const std::string &ID() const { return id_; }
 
   /// Include the `Call` methods for calling remote functions.
   template <typename F>
-  ActorTaskCaller<F> Task(F actor_func);
+  ray::internal::ActorTaskCaller<F> Task(F actor_func) {
+    static_assert(!IsXlang && !ray::internal::is_python_v<F>,
+                  "Actor method is not a member function of actor class.");
+    static_assert(std::is_member_function_pointer_v<F>,
+                  "Actor method is not a member function of actor class.");
+    using Self = boost::callable_traits::class_of_t<F>;
+    static_assert(
+        std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
+        "Class types must be same.");
+    ray::internal::RemoteFunctionHolder remote_func_holder(actor_func);
+    return ray::internal::ActorTaskCaller<F>(
+        internal::GetRayRuntime().get(), id_, std::move(remote_func_holder));
+  }
+
+  template <typename R>
+  ray::internal::ActorTaskCaller<PyActorMethod<R>> Task(PyActorMethod<R> func) {
+    static_assert(IsXlang, "Actor function type does not match actor class");
+    ray::internal::RemoteFunctionHolder remote_func_holder(
+        "", func.function_name, "", ray::internal::LangType::PYTHON);
+    return {ray::internal::GetRayRuntime().get(), id_, std::move(remote_func_holder)};
+  }
+
+  template <typename R>
+  ray::internal::ActorTaskCaller<JavaActorMethod<R>> Task(JavaActorMethod<R> func) {
+    static_assert(IsXlang, "Actor function type does not match actor class");
+    ray::internal::RemoteFunctionHolder remote_func_holder(
+        "", func.function_name, "", ray::internal::LangType::JAVA);
+    return {ray::internal::GetRayRuntime().get(), id_, std::move(remote_func_holder)};
+  }
+
+  void Kill() { ray::internal::GetRayRuntime()->KillActor(id_, true); }
+  void Kill(bool no_restart) {
+    ray::internal::GetRayRuntime()->KillActor(id_, no_restart);
+  }
 
   /// Make ActorHandle serializable
   MSGPACK_DEFINE(id_);
 
  private:
-  ActorID id_;
+  std::string id_;
 };
 
-// ---------- implementation ----------
-template <typename ActorType>
-ActorHandle<ActorType>::ActorHandle() {}
-
-template <typename ActorType>
-ActorHandle<ActorType>::ActorHandle(const ActorID &id) {
-  id_ = id;
-}
-
-template <typename ActorType>
-const ActorID &ActorHandle<ActorType>::ID() const {
-  return id_;
-}
-
-template <typename ActorType>
-template <typename F>
-ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
-  RemoteFunctionHolder remote_func_holder(actor_func);
-  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, remote_func_holder);
-}
-
-}  // namespace api
 }  // namespace ray

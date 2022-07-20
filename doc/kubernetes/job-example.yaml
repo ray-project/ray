@@ -9,7 +9,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: ray
-          image: rayproject/ray:1.3.0
+          image: rayproject/ray:latest
           imagePullPolicy: Always
           command: [ "/bin/bash", "-c", "--" ]
           args:

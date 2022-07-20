@@ -63,7 +63,8 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
 /// \param[in] expected_count The expected count.
 /// \param[in] timeout_ms Timeout in milliseconds to wait for for.
 /// \return Whether the expected count is met.
-void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
+void WaitForExpectedCount(std::atomic<int> &current_count,
+                          int expected_count,
                           int timeout_ms = 60000);
 
 /// Used to kill process whose pid is stored in `socket_name.id` file.
@@ -89,8 +90,6 @@ std::shared_ptr<RayObject> GenerateRandomObject(
 extern std::string TEST_REDIS_SERVER_EXEC_PATH;
 /// Path to redis client executable binary.
 extern std::string TEST_REDIS_CLIENT_EXEC_PATH;
-/// Path to redis module library.
-extern std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
 extern std::vector<int> TEST_REDIS_SERVER_PORTS;
 
@@ -117,10 +116,11 @@ class TestSetupUtil {
   static void ShutDownRedisServers();
   static void FlushAllRedisServers();
 
-  static std::string StartGcsServer(const std::string &redis_address);
+  static std::string StartGcsServer(int port);
   static void StopGcsServer(const std::string &gcs_server_socket_name);
-  static std::string StartRaylet(const std::string &node_ip_address, const int &port,
-                                 const std::string &redis_address,
+  static std::string StartRaylet(const std::string &node_ip_address,
+                                 const int &port,
+                                 const std::string &bootstrap_address,
                                  const std::string &resource,
                                  std::string *store_socket_name);
   static void StopRaylet(const std::string &raylet_socket_name);

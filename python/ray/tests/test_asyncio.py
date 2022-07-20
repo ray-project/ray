@@ -1,13 +1,19 @@
 # coding: utf-8
 import asyncio
+import os
 import sys
 import threading
+import time
 
 import pytest
 
 import ray
-from ray.test_utils import SignalActor, kill_actor_and_wait_for_failure, \
-    wait_for_condition
+from ray._private.test_utils import (
+    SignalActor,
+    kill_actor_and_wait_for_failure,
+    wait_for_condition,
+    wait_for_pid_to_exit,
+)
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -46,9 +52,7 @@ def test_asyncio_actor_same_thread(ray_start_regular_shared):
             return threading.current_thread().ident
 
     a = Actor.remote()
-    sync_id, async_id = ray.get(
-        [a.sync_thread_id.remote(),
-         a.async_thread_id.remote()])
+    sync_id, async_id = ray.get([a.sync_thread_id.remote(), a.async_thread_id.remote()])
     assert sync_id == async_id
 
 
@@ -102,8 +106,9 @@ def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
             return sorted(self.batch)
 
     batch_size = sys.getrecursionlimit() * 4
-    actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size *
-                                            2).remote(batch_size)
+    actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size * 2).remote(
+        batch_size
+    )
     result = ray.get([actor.add.remote(i) for i in range(batch_size)])
     assert result[0] == list(range(batch_size))
     assert result[-1] == list(range(batch_size))
@@ -213,13 +218,14 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
             ray.actor.exit_actor()
 
         async def ping(self):
-            return "pong"
+            return os.getpid()
 
         async def loop_forever(self):
             while True:
                 await asyncio.sleep(5)
 
     a = Actor.options(max_task_retries=0).remote()
+    pid = ray.get(a.ping.remote())
     a.loop_forever.remote()
     # Make sure exit_actor exits immediately, not once all tasks completed.
     with pytest.raises(ray.exceptions.RayError):
@@ -234,11 +240,36 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     @ray.remote
     def check_actor_gone_now():
         def cond():
-            return ray.state.actors()[a._ray_actor_id.hex()]["State"] != 2
+            return ray._private.state.actors()[a._ray_actor_id.hex()]["State"] != 2
 
         wait_for_condition(cond)
 
     ray.get(check_actor_gone_now.remote())
+
+    # Make sure there is no process leak
+    wait_for_pid_to_exit(pid)
+
+
+def test_asyncio_exit_actor_with_concurrency_group(ray_start_regular_shared):
+    @ray.remote(concurrency_groups={"async": 2})
+    class Actor:
+        async def getpid(self):
+            return os.getpid()
+
+        async def exit(self):
+            ray.actor.exit_actor()
+
+        @ray.method(concurrency_group="async")
+        async def loop_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
+    a = Actor.remote()
+    a.loop_forever.remote()
+    pid = ray.get(a.getpid.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote())
+    wait_for_pid_to_exit(pid)
 
 
 def test_async_callback(ray_start_regular_shared):
@@ -282,8 +313,10 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
         num_exceptions += 1
 
     # Test we report unhandled exceptions.
-    ray.worker._unhandled_error_handler = interceptor
+    ray._private.worker._unhandled_error_handler = interceptor
     x1 = f.remote()
+    # NOTE: Unhandled exception is from waiting for the value of x1's ObjectID
+    # in x1's destructor, and receiving an exception from f() instead.
     del x1
     wait_for_condition(lambda: num_exceptions == 1)
 
@@ -296,6 +329,29 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     assert num_exceptions == 1, num_exceptions
 
 
+# This case tests that the asyncio actor shouldn't create thread
+# pool with max_concurrency threads. Otherwise it will allocate
+# too many resources for threads to lead worker crash.
+def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def sync_thread_id(self):
+            time.sleep(2)
+            return threading.current_thread().ident
+
+        async def async_thread_id(self):
+            time.sleep(2)
+            return threading.current_thread().ident
+
+    a = Actor.options(max_concurrency=100000).remote()
+    sync_id, async_id = ray.get([a.sync_thread_id.remote(), a.async_thread_id.remote()])
+    assert sync_id == async_id
+
+
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

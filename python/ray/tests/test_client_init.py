@@ -10,7 +10,8 @@ from unittest.mock import patch
 import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
-from ray.util.client import RayAPIStub, CURRENT_PROTOCOL_VERSION
+from ray.util.client import _ClientContext, CURRENT_PROTOCOL_VERSION
+from ray.cluster_utils import cluster_not_supported
 
 import ray
 
@@ -40,14 +41,7 @@ class C:
         return self.val
 
 
-@pytest.fixture
-def init_and_serve():
-    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
-    yield server_handle
-    ray_client_server.shutdown_with_server(server_handle.grpc_server)
-    time.sleep(2)
-
-
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.fixture
 def init_and_serve_lazy():
     cluster = ray.cluster_utils.Cluster()
@@ -68,10 +62,17 @@ def test_validate_port():
     """Check that ports outside of 1024-65535 are rejected."""
     for port in [1000, 1023, 65536, 700000]:
         with pytest.raises(subprocess.CalledProcessError) as excinfo:
-            subprocess.check_output([
-                "ray", "start", "--head", "--num-cpus", "8",
-                "--ray-client-server-port", f"{port}"
-            ])
+            subprocess.check_output(
+                [
+                    "ray",
+                    "start",
+                    "--head",
+                    "--num-cpus",
+                    "8",
+                    "--ray-client-server-port",
+                    f"{port}",
+                ]
+            )
             assert "ValueError" in str(excinfo.traceback)
             assert "65535" in str(excinfo.traceback)
 
@@ -84,6 +85,7 @@ def test_basic_preregister(init_and_serve):
     sessions.
     """
     from ray.util.client import ray
+
     for _ in range(2):
         ray.connect("localhost:50051")
         val = ray.get(hello_world.remote())
@@ -101,6 +103,7 @@ def test_basic_preregister(init_and_serve):
 
 def test_idempotent_disconnect(init_and_serve):
     from ray.util.client import ray
+
     ray.disconnect()
     ray.disconnect()
     ray.connect("localhost:50051")
@@ -115,11 +118,11 @@ def test_num_clients(init_and_serve_lazy):
     def get_job_id(api):
         return api.get_runtime_context().worker.current_job_id
 
-    api1 = RayAPIStub()
+    api1 = _ClientContext()
     info1 = api1.connect("localhost:50051")
     job_id_1 = get_job_id(api1)
     assert info1["num_clients"] == 1, info1
-    api2 = RayAPIStub()
+    api2 = _ClientContext()
     info2 = api2.connect("localhost:50051")
     job_id_2 = get_job_id(api2)
     assert info2["num_clients"] == 2, info2
@@ -131,7 +134,7 @@ def test_num_clients(init_and_serve_lazy):
     api2.disconnect()
     time.sleep(1)
 
-    api3 = RayAPIStub()
+    api3 = _ClientContext()
     info3 = api3.connect("localhost:50051")
     job_id_3 = get_job_id(api3)
     assert info3["num_clients"] == 1, info3
@@ -147,10 +150,11 @@ def test_num_clients(init_and_serve_lazy):
 
 def test_python_version(init_and_serve):
     server_handle = init_and_serve
-    ray = RayAPIStub()
+    ray = _ClientContext()
     info1 = ray.connect("localhost:50051")
     assert info1["python_version"] == ".".join(
-        [str(x) for x in list(sys.version_info)[:3]])
+        [str(x) for x in list(sys.version_info)[:3]]
+    )
     ray.disconnect()
     time.sleep(1)
 
@@ -164,14 +168,13 @@ def test_python_version(init_and_serve):
         )
 
     # inject mock connection function
-    server_handle.data_servicer._build_connection_response = \
-        mock_connection_response
+    server_handle.data_servicer._build_connection_response = mock_connection_response
 
-    ray = RayAPIStub()
+    ray = _ClientContext()
     with pytest.raises(RuntimeError):
         _ = ray.connect("localhost:50051")
 
-    ray = RayAPIStub()
+    ray = _ClientContext()
     info3 = ray.connect("localhost:50051", ignore_version=True)
     assert info3["num_clients"] == 1, info3
     ray.disconnect()
@@ -179,7 +182,7 @@ def test_python_version(init_and_serve):
 
 def test_protocol_version(init_and_serve):
     server_handle = init_and_serve
-    ray = RayAPIStub()
+    ray = _ClientContext()
     info1 = ray.connect("localhost:50051")
     local_py_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
     assert info1["protocol_version"] == CURRENT_PROTOCOL_VERSION, info1
@@ -196,14 +199,13 @@ def test_protocol_version(init_and_serve):
         )
 
     # inject mock connection function
-    server_handle.data_servicer._build_connection_response = \
-        mock_connection_response
+    server_handle.data_servicer._build_connection_response = mock_connection_response
 
-    ray = RayAPIStub()
+    ray = _ClientContext()
     with pytest.raises(RuntimeError):
         _ = ray.connect("localhost:50051")
 
-    ray = RayAPIStub()
+    ray = _ClientContext()
     info3 = ray.connect("localhost:50051", ignore_version=True)
     assert info3["num_clients"] == 1, info3
     ray.disconnect()
@@ -217,16 +219,21 @@ def test_max_clients(init_and_serve):
         return api.get_runtime_context().worker.current_job_id
 
     for i in range(3):
-        api1 = RayAPIStub()
+        api1 = _ClientContext()
         info1 = api1.connect("localhost:50051")
 
         assert info1["num_clients"] == i + 1, info1
 
     with pytest.raises(ConnectionError):
-        api = RayAPIStub()
+        api = _ClientContext()
         _ = api.connect("localhost:50051")
 
 
 if __name__ == "__main__":
+    import os
     import pytest
-    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

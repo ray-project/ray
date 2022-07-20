@@ -1,7 +1,7 @@
 """Simple example of how to restore only one of n agents from a trained
-multi-agent Trainer using Ray tune.
+multi-agent Algorithm using Ray tune.
 
-The trick/workaround is to use an intermediate trainer that loads the
+The trick/workaround is to use an intermediate algorithm that loads the
 trained checkpoint into all policies and then reverts those policies
 that we don't want to restore, then saves a new checkpoint, from which
 tune can pick up training.
@@ -16,7 +16,7 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -33,27 +33,23 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=200,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=200, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=100000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=150.0,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -72,7 +68,7 @@ if __name__ == "__main__":
     }
     policy_ids = list(policies.keys())
 
-    def policy_mapping_fn(agent_id):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         pol_id = random.choice(policy_ids)
         return pol_id
 
@@ -102,27 +98,28 @@ if __name__ == "__main__":
     )
     print("Pre-training done.")
 
-    best_checkpoint = results.get_best_checkpoint(
-        results.trials[0], mode="max")
+    best_checkpoint = results.get_best_checkpoint(results.trials[0], mode="max")
     print(f".. best checkpoint was: {best_checkpoint}")
 
-    # Create a new dummy Trainer to "fix" our checkpoint.
-    new_trainer = PPOTrainer(config=config)
+    # Create a new dummy Algorithm to "fix" our checkpoint.
+    new_algo = PPO(config=config)
     # Get untrained weights for all policies.
-    untrained_weights = new_trainer.get_weights()
+    untrained_weights = new_algo.get_weights()
     # Restore all policies from checkpoint.
-    new_trainer.restore(best_checkpoint)
+    new_algo.restore(best_checkpoint)
     # Set back all weights (except for 1st agent) to original
     # untrained weights.
-    new_trainer.set_weights(
-        {pid: w
-         for pid, w in untrained_weights.items() if pid != "policy_0"})
+    new_algo.set_weights(
+        {pid: w for pid, w in untrained_weights.items() if pid != "policy_0"}
+    )
     # Create the checkpoint from which tune can pick up the
     # experiment.
-    new_checkpoint = new_trainer.save()
-    new_trainer.stop()
-    print(".. checkpoint to restore from (all policies reset, "
-          f"except policy_0): {new_checkpoint}")
+    new_checkpoint = new_algo.save()
+    new_algo.stop()
+    print(
+        ".. checkpoint to restore from (all policies reset, "
+        f"except policy_0): {new_checkpoint}"
+    )
 
     print("Starting new tune.run")
 

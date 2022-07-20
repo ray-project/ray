@@ -1,2 +1,3 @@
-include ray/python/ray/autoscaler/ray-schema.json
-include ray/python/ray/py.typed
+include ray/autoscaler/ray-schema.json
+include ray/py.typed
+recursive-include ray *.pyi

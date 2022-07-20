@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 @pytest.fixture
@@ -103,10 +103,14 @@ def test_wait_mixup(init):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "object_store_memory": 100 * 1024 * 1024,
-    }],
-    indirect=True)
+    "ray_start_regular_shared",
+    [
+        {
+            "object_store_memory": 100 * 1024 * 1024,
+        }
+    ],
+    indirect=True,
+)
 async def test_garbage_collection(ray_start_regular_shared):
     # This is a regression test for
     # https://github.com/ray-project/ray/issues/9134
@@ -156,4 +160,9 @@ def test_concurrent_future_many(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

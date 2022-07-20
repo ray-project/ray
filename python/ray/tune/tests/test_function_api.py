@@ -10,10 +10,11 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.logger import NoopLogger
-from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.function_runner import with_parameters, wrap_function, \
-    FuncCheckpointUtil
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.trainable.util import TrainableUtil
+from ray.tune.trainable import with_parameters, wrap_function, FuncCheckpointUtil
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.schedulers import ResourceChangingScheduler
 
 
 def creator_generator(logdir):
@@ -41,15 +42,15 @@ class FuncCheckpointUtilTest(unittest.TestCase):
     def testConvertTempToPermanent(self):
         checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(self.logdir)
         new_checkpoint_dir = FuncCheckpointUtil.create_perm_checkpoint(
-            checkpoint_dir, self.logdir, step=4)
+            checkpoint_dir, self.logdir, step=4
+        )
         assert new_checkpoint_dir == TrainableUtil.find_checkpoint_dir(
-            new_checkpoint_dir)
+            new_checkpoint_dir
+        )
         assert os.path.exists(new_checkpoint_dir)
-        assert not FuncCheckpointUtil.is_temp_checkpoint_dir(
-            new_checkpoint_dir)
+        assert not FuncCheckpointUtil.is_temp_checkpoint_dir(new_checkpoint_dir)
 
-        tmp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
-            self.logdir)
+        tmp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(self.logdir)
         assert tmp_checkpoint_dir != new_checkpoint_dir
 
 
@@ -66,14 +67,14 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         def train(config, checkpoint_dir=None):
             if checkpoint_dir:
-                count = sum("checkpoint-" in path
-                            for path in os.listdir(checkpoint_dir))
+                count = sum(
+                    "checkpoint-" in path for path in os.listdir(checkpoint_dir)
+                )
                 assert count == 1, os.listdir(checkpoint_dir)
 
             for step in range(20):
                 with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                    path = os.path.join(checkpoint_dir,
-                                        "checkpoint-{}".format(step))
+                    path = os.path.join(checkpoint_dir, "checkpoint-{}".format(step))
                     open(path, "a").close()
                 tune.report(test=step)
 
@@ -94,14 +95,14 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         def train(config, checkpoint_dir=None):
             if checkpoint_dir:
-                count = sum("checkpoint-" in path
-                            for path in os.listdir(checkpoint_dir))
+                count = sum(
+                    "checkpoint-" in path for path in os.listdir(checkpoint_dir)
+                )
                 assert count == 1, os.listdir(checkpoint_dir)
 
             for step in range(20):
                 with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                    path = os.path.join(checkpoint_dir,
-                                        "checkpoint-{}".format(step))
+                    path = os.path.join(checkpoint_dir, "checkpoint-{}".format(step))
                     open(path, "a").close()
                 tune.report(test=step)
 
@@ -122,14 +123,14 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         def train(config, checkpoint_dir=None):
             if checkpoint_dir:
-                count = sum("checkpoint-" in path
-                            for path in os.listdir(checkpoint_dir))
+                count = sum(
+                    "checkpoint-" in path for path in os.listdir(checkpoint_dir)
+                )
                 assert count == 1, os.listdir(checkpoint_dir)
 
             for step in range(20):
                 with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                    path = os.path.join(checkpoint_dir,
-                                        "checkpoint-{}".format(step))
+                    path = os.path.join(checkpoint_dir, "checkpoint-{}".format(step))
                     open(path, "a").close()
                 tune.report(test=step)
 
@@ -271,8 +272,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
             for step in range(10):
                 with tune.checkpoint_dir(step=step) as checkpoint_dir:
                     print(checkpoint_dir)
-                    path = os.path.join(checkpoint_dir,
-                                        "checkpoint-{}".format(step))
+                    path = os.path.join(checkpoint_dir, "checkpoint-{}".format(step))
                     open(path, "w").close()
                 tune.report(test=step)
 
@@ -321,7 +321,7 @@ class FunctionApiTest(unittest.TestCase):
                     f.write("hello")
 
         [trial] = tune.run(train).trials
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
+        assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log"))
 
     def testCheckpointFunctionAtEndContext(self):
         def train(config, checkpoint_dir=False):
@@ -333,7 +333,7 @@ class FunctionApiTest(unittest.TestCase):
                     f.write("hello")
 
         [trial] = tune.run(train).trials
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
+        assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log"))
 
     def testVariousCheckpointFunctionAtEnd(self):
         def train(config, checkpoint_dir=False):
@@ -349,8 +349,7 @@ class FunctionApiTest(unittest.TestCase):
                     f.write("goodbye")
 
         [trial] = tune.run(train, keep_checkpoints_num=3).trials
-        assert os.path.exists(
-            os.path.join(trial.checkpoint.value, "ckpt.log2"))
+        assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log2"))
 
     def testReuseCheckpoint(self):
         def train(config, checkpoint_dir=None):
@@ -368,12 +367,10 @@ class FunctionApiTest(unittest.TestCase):
 
         [trial] = tune.run(
             train,
-            config={
-                "max_iter": 5
-            },
+            config={"max_iter": 5},
         ).trials
-        last_ckpt = trial.checkpoint.value
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
+        last_ckpt = trial.checkpoint.dir_or_data
+        assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log"))
         analysis = tune.run(train, config={"max_iter": 10}, restore=last_ckpt)
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 5
@@ -396,7 +393,7 @@ class FunctionApiTest(unittest.TestCase):
                 tune.report(test=i, training_iteration=i)
 
         analysis = tune.run(train, max_failures=3)
-        last_ckpt = analysis.trials[0].checkpoint.value
+        last_ckpt = analysis.trials[0].checkpoint.dir_or_data
         assert os.path.exists(os.path.join(last_ckpt, "ckpt.log"))
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10
@@ -448,7 +445,8 @@ class FunctionApiTest(unittest.TestCase):
             tune.report(metric=len(data.data), hundred=data.data[100])
 
         trial_1, trial_2 = tune.run(
-            with_parameters(train, data=data), num_samples=2).trials
+            with_parameters(train, data=data), num_samples=2
+        ).trials
 
         self.assertEqual(data.data[101], 0)
         self.assertEqual(trial_1.last_result["metric"], 500_000)
@@ -463,7 +461,8 @@ class FunctionApiTest(unittest.TestCase):
             tune.report(metric=len(data.data), cp=checkpoint_dir)
 
         trial_1, trial_2 = tune.run(
-            with_parameters(train, data=data), num_samples=2).trials
+            with_parameters(train, data=data), num_samples=2
+        ).trials
 
         self.assertEqual(data.data[101], 0)
         self.assertEqual(trial_1.last_result["metric"], 500_000)
@@ -476,6 +475,7 @@ class FunctionApiTest(unittest.TestCase):
         class Data:
             def __init__(self):
                 import numpy as np
+
                 self.data = np.random.rand((2 * 1024 * 1024))
 
         def train(config, data=None):
@@ -484,17 +484,75 @@ class FunctionApiTest(unittest.TestCase):
         trainable = tune.with_parameters(train, data=Data())
         # ray.cloudpickle will crash for some reason
         import cloudpickle as cp
+
         dumped = cp.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024
+
+    def testNewResources(self):
+        sched = ResourceChangingScheduler(
+            resources_allocation_function=(
+                lambda a, b, c, d: PlacementGroupFactory([{"CPU": 2}])
+            )
+        )
+
+        def train(config, checkpoint_dir=None):
+            tune.report(metric=1, resources=tune.get_trial_resources())
+
+        analysis = tune.run(
+            train,
+            scheduler=sched,
+            stop={"training_iteration": 2},
+            resources_per_trial=PlacementGroupFactory([{"CPU": 1}]),
+            num_samples=1,
+        )
+
+        results_list = list(analysis.results.values())
+        assert results_list[0]["resources"].head_cpus == 2.0
+
+    def testWithParametersTwoRuns1(self):
+        # Makes sure two runs in the same script but different ray sessions
+        # pass (https://github.com/ray-project/ray/issues/16609)
+        def train_fn(config, extra=4):
+            tune.report(metric=extra)
+
+        trainable = tune.with_parameters(train_fn, extra=8)
+        out = tune.run(trainable, metric="metric", mode="max")
+        self.assertEqual(out.best_result["metric"], 8)
+
+        self.tearDown()
+        self.setUp()
+
+        def train_fn_2(config, extra=5):
+            tune.report(metric=extra)
+
+        trainable = tune.with_parameters(train_fn_2, extra=9)
+        out = tune.run(trainable, metric="metric", mode="max")
+        self.assertEqual(out.best_result["metric"], 9)
+
+    def testWithParametersTwoRuns2(self):
+        # Makes sure two runs in the same script
+        # pass (https://github.com/ray-project/ray/issues/16609)
+        def train_fn(config, extra=4):
+            tune.report(metric=extra)
+
+        def train_fn_2(config, extra=5):
+            tune.report(metric=extra)
+
+        trainable1 = tune.with_parameters(train_fn, extra=8)
+        trainable2 = tune.with_parameters(train_fn_2, extra=9)
+
+        out1 = tune.run(trainable1, metric="metric", mode="max")
+        out2 = tune.run(trainable2, metric="metric", mode="max")
+        self.assertEqual(out1.best_result["metric"], 8)
+        self.assertEqual(out2.best_result["metric"], 9)
 
     def testReturnAnonymous(self):
         def train(config):
             return config["a"]
 
         trial_1, trial_2 = tune.run(
-            train, config={
-                "a": tune.grid_search([4, 8])
-            }).trials
+            train, config={"a": tune.grid_search([4, 8])}
+        ).trials
 
         self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4)
         self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8)
@@ -504,9 +562,8 @@ class FunctionApiTest(unittest.TestCase):
             return {"m": config["a"]}
 
         trial_1, trial_2 = tune.run(
-            train, config={
-                "a": tune.grid_search([4, 8])
-            }).trials
+            train, config={"a": tune.grid_search([4, 8])}
+        ).trials
 
         self.assertEqual(trial_1.last_result["m"], 4)
         self.assertEqual(trial_2.last_result["m"], 8)
@@ -517,9 +574,8 @@ class FunctionApiTest(unittest.TestCase):
                 yield config["a"] + i
 
         trial_1, trial_2 = tune.run(
-            train, config={
-                "a": tune.grid_search([4, 8])
-            }).trials
+            train, config={"a": tune.grid_search([4, 8])}
+        ).trials
 
         self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4 + 9)
         self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8 + 9)
@@ -530,9 +586,8 @@ class FunctionApiTest(unittest.TestCase):
                 yield {"m": config["a"] + i}
 
         trial_1, trial_2 = tune.run(
-            train, config={
-                "a": tune.grid_search([4, 8])
-            }).trials
+            train, config={"a": tune.grid_search([4, 8])}
+        ).trials
 
         self.assertEqual(trial_1.last_result["m"], 4 + 9)
         self.assertEqual(trial_2.last_result["m"], 8 + 9)
@@ -540,4 +595,5 @@ class FunctionApiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -7,7 +7,19 @@ from typing import Dict
 import pytest
 
 import ray
-from ray.serve.long_poll import (LongPollClient, LongPollHost, UpdatedObject)
+from ray.serve.common import EndpointTag, EndpointInfo, RunningReplicaInfo
+from ray.serve.long_poll import (
+    LongPollClient,
+    LongPollHost,
+    UpdatedObject,
+    LongPollNamespace,
+)
+from ray.serve.generated.serve_pb2 import (
+    LongPollRequest,
+    LongPollResult,
+    EndpointSet,
+    ActorNameList,
+)
 
 
 def test_host_standalone(serve_instance):
@@ -35,6 +47,20 @@ def test_host_standalone(serve_instance):
     result = ray.get(object_ref)
     assert len(result) == 1
     assert "key_2" in result
+
+
+def test_long_poll_wait_for_keys(serve_instance):
+    # Variation of the basic case, but the keys are requests before any values
+    # are set.
+    host = ray.remote(LongPollHost).remote()
+    object_ref = host.listen_for_change.remote({"key_1": -1, "key_2": -1})
+    ray.get(host.notify_changed.remote("key_1", 999))
+    ray.get(host.notify_changed.remote("key_2", 999))
+
+    # We should be able to get the one of the result immediately
+    result: Dict[str, UpdatedObject] = ray.get(object_ref)
+    assert set(result.keys()).issubset({"key_1", "key_2"})
+    assert {v.object_snapshot for v in result.values()} == {999}
 
 
 def test_long_poll_restarts(serve_instance):
@@ -77,7 +103,8 @@ def test_long_poll_restarts(serve_instance):
     assert new_timer.object_snapshot != timer.object_snapshot
 
 
-def test_client(serve_instance):
+@pytest.mark.asyncio
+async def test_client(serve_instance):
     host = ray.remote(LongPollHost).remote()
 
     # Write two values
@@ -92,10 +119,14 @@ def test_client(serve_instance):
     def key_2_callback(result):
         callback_results["key_2"] = result
 
-    client = LongPollClient(host, {
-        "key_1": key_1_callback,
-        "key_2": key_2_callback,
-    })
+    client = LongPollClient(
+        host,
+        {
+            "key_1": key_1_callback,
+            "key_2": key_2_callback,
+        },
+        call_in_event_loop=asyncio.get_event_loop(),
+    )
 
     while len(client.object_snapshots) == 0:
         time.sleep(0.1)
@@ -110,7 +141,7 @@ def test_client(serve_instance):
         values.add(client.object_snapshots["key_2"])
         if 1999 in values:
             break
-        time.sleep(1)
+        await asyncio.sleep(1)
     assert 1999 in values
 
     assert callback_results == {"key_1": 100, "key_2": 1999}
@@ -127,12 +158,70 @@ async def test_client_threadsafe(serve_instance):
         e.set()
 
     _ = LongPollClient(
-        host, {
+        host,
+        {
             "key_1": key_1_callback,
         },
-        call_in_event_loop=asyncio.get_event_loop())
+        call_in_event_loop=asyncio.get_event_loop(),
+    )
 
     await e.wait()
+
+
+def test_listen_for_change_java(serve_instance):
+    host = ray.remote(LongPollHost).remote()
+    ray.get(host.notify_changed.remote("key_1", 999))
+    request_1 = {"keys_to_snapshot_ids": {"key_1": -1}}
+    object_ref = host.listen_for_change_java.remote(
+        LongPollRequest(**request_1).SerializeToString()
+    )
+    result_1: bytes = ray.get(object_ref)
+    poll_result_1 = LongPollResult.FromString(result_1)
+    assert set(poll_result_1.updated_objects.keys()) == {"key_1"}
+    assert poll_result_1.updated_objects["key_1"].object_snapshot.decode() == "999"
+    request_2 = {"keys_to_snapshot_ids": {"ROUTE_TABLE": -1}}
+    endpoints: Dict[EndpointTag, EndpointInfo] = dict()
+    endpoints["deployment_name"] = EndpointInfo(route="/test/xlang/poll")
+    endpoints["deployment_name1"] = EndpointInfo(route="/test/xlang/poll1")
+    ray.get(host.notify_changed.remote(LongPollNamespace.ROUTE_TABLE, endpoints))
+    object_ref_2 = host.listen_for_change_java.remote(
+        LongPollRequest(**request_2).SerializeToString()
+    )
+    result_2: bytes = ray.get(object_ref_2)
+    poll_result_2 = LongPollResult.FromString(result_2)
+    assert set(poll_result_2.updated_objects.keys()) == {"ROUTE_TABLE"}
+    endpoint_set = EndpointSet.FromString(
+        poll_result_2.updated_objects["ROUTE_TABLE"].object_snapshot
+    )
+    assert set(endpoint_set.endpoints.keys()) == {"deployment_name", "deployment_name1"}
+    assert endpoint_set.endpoints["deployment_name"].route == "/test/xlang/poll"
+
+    request_3 = {"keys_to_snapshot_ids": {"(RUNNING_REPLICAS,deployment_name)": -1}}
+    replicas = [
+        RunningReplicaInfo(
+            deployment_name="deployment_name",
+            replica_tag=str(i),
+            actor_handle=host,
+            max_concurrent_queries=1,
+        )
+        for i in range(2)
+    ]
+    ray.get(
+        host.notify_changed.remote(
+            (LongPollNamespace.RUNNING_REPLICAS, "deployment_name"), replicas
+        )
+    )
+    object_ref_3 = host.listen_for_change_java.remote(
+        LongPollRequest(**request_3).SerializeToString()
+    )
+    result_3: bytes = ray.get(object_ref_3)
+    poll_result_3 = LongPollResult.FromString(result_3)
+    replica_name_list = ActorNameList.FromString(
+        poll_result_3.updated_objects[
+            "(RUNNING_REPLICAS,deployment_name)"
+        ].object_snapshot
+    )
+    assert replica_name_list.names == ["SERVE_REPLICA::0", "SERVE_REPLICA::1"]
 
 
 if __name__ == "__main__":

@@ -1,12 +1,12 @@
-import numpy as np
-import gym
 from gym.envs.classic_control.cartpole import CartPoleEnv
+from gym.utils import EzPickle
+import numpy as np
+
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 
 
-class CartPoleMassEnv(CartPoleEnv, gym.utils.EzPickle, TaskSettableEnv):
-    """CartPoleMassEnv varies the weights of the cart and the pole.
-    """
+class CartPoleMassEnv(CartPoleEnv, EzPickle, TaskSettableEnv):
+    """CartPoleMassEnv varies the weights of the cart and the pole."""
 
     def sample_tasks(self, n_tasks):
         # Sample new cart- and pole masses (random floats between 0.5 and 2.0

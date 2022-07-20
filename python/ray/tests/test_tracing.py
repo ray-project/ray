@@ -4,9 +4,10 @@ import json
 import os
 import pytest
 import shutil
+from unittest.mock import patch
 
 import ray
-from ray.test_utils import check_call_ray
+from ray._private.test_utils import check_call_ray
 from ray.util.tracing.setup_local_tmp_tracing import spans_dir
 
 setup_tracing_path = "ray.util.tracing.setup_local_tmp_tracing:setup_tracing"
@@ -30,10 +31,27 @@ def cleanup_dirs():
 @pytest.fixture()
 def ray_start_cli_tracing(scope="function"):
     """Start ray with tracing-startup-hook, and clean up at end of test."""
-    check_call_ray(["stop", "--force"], )
     check_call_ray(
-        ["start", "--head", "--tracing-startup-hook", setup_tracing_path], )
+        ["stop", "--force"],
+    )
+    check_call_ray(
+        ["start", "--head", "--tracing-startup-hook", setup_tracing_path],
+    )
     ray.init(address="auto")
+    yield
+    ray.shutdown()
+    check_call_ray(["stop", "--force"])
+
+
+@pytest.fixture()
+def ray_start_cli_predefined_actor_tracing(scope="function"):
+    """Start ray with tracing-startup-hook, and clean up at end of test."""
+    check_call_ray(
+        ["stop", "--force"],
+    )
+    check_call_ray(
+        ["start", "--head", "--tracing-startup-hook", setup_tracing_path],
+    )
     yield
     ray.shutdown()
     check_call_ray(["stop", "--force"])
@@ -59,9 +77,12 @@ def get_span_list():
 
 def get_span_dict(span_list):
     """Given a list of span names, return dictionary of span names."""
+    strip_prefix = "python.ray.tests."
     span_names = {}
     for span in span_list:
         span_name = span["name"]
+        if span_name.startswith(strip_prefix):
+            span_name = span_name[len(strip_prefix) :]
         if span_name in span_names:
             span_names[span_name] += 1
         else:
@@ -85,13 +106,13 @@ def task_helper():
     # The spans could show up in a different order, so just check that
     # all spans are as expected
     span_names = get_span_dict(span_list)
-    return span_names == {
+    assert span_names == {
         "test_tracing.f ray.remote": 1,
         "test_tracing.f ray.remote_worker": 1,
     }
 
 
-def sync_actor_helper():
+def sync_actor_helper(connect_to_cluster: bool = False):
     """Run a Ray sync actor and check the spans produced."""
 
     @ray.remote
@@ -102,6 +123,9 @@ def sync_actor_helper():
         def increment(self):
             self.value += 1
             return self.value
+
+    if connect_to_cluster:
+        ray.init(address="auto")
 
     # Create an actor from this class.
     counter = Counter.remote()
@@ -145,36 +169,36 @@ def async_actor_helper():
         "async_actor_helper.<locals>.AsyncActor.__init__ ray.remote": 1,
         "async_actor_helper.<locals>.AsyncActor.run_concurrent ray.remote": 4,
         "AsyncActor.__init__ ray.remote_worker": 1,
-        "AsyncActor.run_concurrent ray.remote_worker": 4
+        "AsyncActor.run_concurrent ray.remote_worker": 4,
     }
 
 
 def test_tracing_task_init_workflow(cleanup_dirs, ray_start_init_tracing):
-    assert task_helper()
+    task_helper()
 
 
 def test_tracing_task_start_workflow(cleanup_dirs, ray_start_cli_tracing):
-    assert task_helper()
+    task_helper()
 
 
-def test_tracing_sync_actor_init_workflow(cleanup_dirs,
-                                          ray_start_init_tracing):
+def test_tracing_sync_actor_init_workflow(cleanup_dirs, ray_start_init_tracing):
     assert sync_actor_helper()
 
 
-def test_tracing_sync_actor_start_workflow(cleanup_dirs,
-                                           ray_start_cli_tracing):
+def test_tracing_sync_actor_start_workflow(cleanup_dirs, ray_start_cli_tracing):
     assert sync_actor_helper()
 
 
-def test_tracing_async_actor_init_workflow(cleanup_dirs,
-                                           ray_start_init_tracing):
+def test_tracing_async_actor_init_workflow(cleanup_dirs, ray_start_init_tracing):
     assert async_actor_helper()
 
 
-def test_tracing_async_actor_start_workflow(cleanup_dirs,
-                                            ray_start_cli_tracing):
+def test_tracing_async_actor_start_workflow(cleanup_dirs, ray_start_cli_tracing):
     assert async_actor_helper()
+
+
+def test_tracing_predefined_actor(cleanup_dirs, ray_start_cli_predefined_actor_tracing):
+    assert sync_actor_helper(connect_to_cluster=True)
 
 
 def test_wrapping(ray_start_init_tracing):
@@ -183,7 +207,28 @@ def test_wrapping(ray_start_init_tracing):
         pass
 
 
+def test_deserialization_works_without_opentelemetry(ray_start_regular):
+    """
+    Test that if a function is serialized with opentelemetry, it can be
+    deserialized in a context without opentelemetry
+    """
+
+    @ray.remote
+    def f():
+        return 30
+
+    fn_bytes = ray.cloudpickle.dumps(f)
+    with patch.dict("sys.modules", opentelemetry=None):
+        # Ensure that opentelemetry cannot be imported
+        with pytest.raises(ModuleNotFoundError):
+            import opentelemetry.trace  # noqa: F401
+        ray.cloudpickle.loads(fn_bytes)
+
+
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -1,0 +1,36 @@
+a3c-pongdeterministic-v4:
+    env: PongDeterministic-v4
+    run: A3C
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 18.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 3600
+    # TODO(sven, jungong): fix A3C on torch and re-enable.
+    frameworks: [ "tf", "tf2" ]
+    config:
+        num_gpus: 0
+        num_workers: 16
+        rollout_fragment_length: 20
+        vf_loss_coeff: 0.5
+        entropy_coeff: 0.01
+        gamma: 0.99
+        grad_clip: 40.0
+        lambda: 1.0
+        lr: 0.0001
+        observation_filter: NoFilter
+        preprocessor_pref: rllib
+        model:
+            use_lstm: true
+            conv_activation: elu
+            dim: 42
+            grayscale: true
+            zero_mean: false
+            # Reduced channel depth and kernel size from default.
+            conv_filters: [
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+            ]

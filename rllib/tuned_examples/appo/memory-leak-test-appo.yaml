@@ -1,0 +1,14 @@
+memory-leak-test-appo:
+    env:
+        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnv
+    run: APPO
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        # Switch off np.random, which is known to have memory leaks.
+        env_config:
+            config:
+                static_samples: true
+        num_workers: 4
+        num_envs_per_worker: 5
+        rollout_fragment_length: 20

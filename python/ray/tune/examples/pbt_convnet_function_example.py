@@ -6,18 +6,19 @@ import os
 import numpy as np
 import torch
 import torch.optim as optim
-from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
-    get_data_loaders
+from ray.tune.examples.mnist_pytorch import train, test, ConvNet, get_data_loaders
 
 from ray import tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.trial import ExportFormat
+from ray.tune.experiment.trial import ExportFormat
 
 # __tutorial_imports_end__
 
 
 # __train_begin__
-def train_convnet(config, checkpoint_dir=None):
+def train_convnet(config):
     # Create our data loaders, model, and optmizer.
     step = 0
     train_loader, test_loader = get_data_loaders()
@@ -25,35 +26,41 @@ def train_convnet(config, checkpoint_dir=None):
     optimizer = optim.SGD(
         model.parameters(),
         lr=config.get("lr", 0.01),
-        momentum=config.get("momentum", 0.9))
+        momentum=config.get("momentum", 0.9),
+    )
 
-    # If checkpoint_dir is not None, then we are resuming from a checkpoint.
+    # If `session.get_checkpoint()` is not None, then we are resuming from a checkpoint.
     # Load model state and iteration step from checkpoint.
-    if checkpoint_dir:
+    if session.get_checkpoint():
         print("Loading from checkpoint.")
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        checkpoint = torch.load(path)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        step = checkpoint["step"]
+        loaded_checkpoint = session.get_checkpoint()
+        with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
+            path = os.path.join(loaded_checkpoint_dir, "checkpoint.pt")
+            checkpoint = torch.load(path)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            step = checkpoint["step"]
 
     while True:
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
+        checkpoint = None
         if step % 5 == 0:
             # Every 5 steps, checkpoint our current state.
             # First get the checkpoint directory from tune.
-            with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                # Then create a checkpoint file in this directory.
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                # Save state to checkpoint file.
-                # No need to save optimizer for SGD.
-                torch.save({
+            # Need to create a directory under current working directory
+            # to construct an AIR Checkpoint object from.
+            os.makedirs("my_model", exist_ok=True)
+            torch.save(
+                {
                     "step": step,
                     "model_state_dict": model.state_dict(),
-                    "mean_accuracy": acc
-                }, path)
+                },
+                "my_model/checkpoint.pt",
+            )
+            checkpoint = Checkpoint.from_directory("my_model")
+
         step += 1
-        tune.report(mean_accuracy=acc)
+        session.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
 
 # __train_end__
@@ -61,33 +68,36 @@ def train_convnet(config, checkpoint_dir=None):
 
 def test_best_model(analysis):
     """Test the best model given output of tune.run"""
-    best_checkpoint_path = analysis.best_checkpoint
-    best_model = ConvNet()
-    best_checkpoint = torch.load(
-        os.path.join(best_checkpoint_path, "checkpoint"))
-    best_model.load_state_dict(best_checkpoint["model_state_dict"])
-    # Note that test only runs on a small random set of the test data, thus the
-    # accuracy may be different from metrics shown in tuning process.
-    test_acc = test(best_model, get_data_loaders()[1])
-    print("best model accuracy: ", test_acc)
+    with analysis.best_checkpoint.as_directory() as best_checkpoint_path:
+        best_model = ConvNet()
+        best_checkpoint = torch.load(
+            os.path.join(best_checkpoint_path, "checkpoint.pt")
+        )
+        best_model.load_state_dict(best_checkpoint["model_state_dict"])
+        # Note that test only runs on a small random set of the test data, thus the
+        # accuracy may be different from metrics shown in tuning process.
+        test_acc = test(best_model, get_data_loaders()[1])
+        print("best model accuracy: ", test_acc)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address:
         import ray
-        ray.util.connect(args.server_address)
+
+        ray.init(f"ray://{args.server_address}")
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
@@ -98,7 +108,8 @@ if __name__ == "__main__":
             "lr": lambda: np.random.uniform(0.0001, 1),
             # allow perturbations within this set of categorical values
             "momentum": [0.8, 0.9, 0.99],
-        })
+        },
+    )
 
     # __pbt_end__
 
@@ -133,12 +144,18 @@ if __name__ == "__main__":
         config={
             "lr": tune.uniform(0.001, 1),
             "momentum": tune.uniform(0.001, 1),
-        })
+        },
+    )
     # __tune_end__
 
     if args.server_address:
         # If using Ray Client, we want to make sure checkpoint access
         # happens on the server. So we wrap `test_best_model` in a Ray task.
-        ray.get(ray.remote(test_best_model).remote(analysis))
+        # We have to make sure it gets executed on the same node that
+        # ``tune.run`` is called on.
+        from ray.util.ml_utils.node import force_on_current_node
+
+        remote_fn = force_on_current_node(ray.remote(test_best_model))
+        ray.get(remote_fn.remote(analysis))
     else:
         test_best_model(analysis)

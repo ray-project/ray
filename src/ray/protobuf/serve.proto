@@ -1,0 +1,210 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.serve;
+
+option java_package = "io.ray.serve.generated";
+
+option java_outer_classname = "ServeProtos";
+
+option java_multiple_files = true;
+
+// Configuration options for Serve's replica autoscaler.
+message AutoscalingConfig {
+  // Minimal number of replicas, must be a non-negative integer.
+  uint32 min_replicas = 1;
+  // Maximal number of replicas, must be a non-negative integer and greater or equals
+  // to min_replicas.
+  uint32 max_replicas = 2;
+  // Target number of in flight requests per replicas. This is the primary configuration
+  // knob for replica autoscaler. Lower the number, the more rapidly will the replicas
+  // being scaled up. Must be a non-negative integer.
+  uint32 target_num_ongoing_requests_per_replica = 3;
+
+  // The frequency of how long does each replica sending metrics to autoscaler.
+  double metrics_interval_s = 4;
+
+  // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
+  double look_back_period_s = 5;
+
+  // The multiplicative "gain" factor to limit scaling decisions.
+  double smoothing_factor = 6;
+
+  // How long to wait before scaling down replicas.
+  double downscale_delay_s = 7;
+
+  // How long to wait before scaling up replicas.
+  double upscale_delay_s = 8;
+}
+
+// Configuration options for a deployment, to be set by the user.
+message DeploymentConfig {
+  // The number of processes to start up that will handle requests to this deployment.
+  // Defaults to 1.
+  int32 num_replicas = 1;
+
+  // The maximum number of queries that will be sent to a replica of this deployment
+  // without receiving a response. Defaults to 100.
+  int32 max_concurrent_queries = 2;
+
+  // Arguments to pass to the reconfigure method of the deployment. The reconfigure method
+  // is called if user_config is not None.
+  bytes user_config = 3;
+
+  // Duration that deployment replicas will wait until there is no more work to be done
+  // before shutting down.
+  double graceful_shutdown_wait_loop_s = 4;
+
+  // Controller waits for this duration to forcefully kill the replica for shutdown.
+  double graceful_shutdown_timeout_s = 5;
+
+  // Frequency at which the controller health checks replicas.
+  double health_check_period_s = 6;
+
+  // Timeout after which a replica is marked unhealthy without a response.
+  double health_check_timeout_s = 7;
+
+  // Is the construction of deployment is cross language?
+  bool is_cross_language = 8;
+
+  // The deployment's programming language.
+  DeploymentLanguage deployment_language = 9;
+
+  // The deployment's autoscaling configuration.
+  AutoscalingConfig autoscaling_config = 10;
+
+  string version = 11;
+}
+
+// Deployment language.
+enum DeploymentLanguage {
+  PYTHON = 0;
+  JAVA = 1;
+}
+
+message RequestMetadata {
+  string request_id = 1;
+
+  string endpoint = 2;
+
+  string call_method = 3;
+
+  map<string, string> context = 4;
+}
+
+message RequestWrapper {
+  bytes body = 1;
+}
+
+message UpdatedObject {
+  bytes object_snapshot = 1;
+  int32 snapshot_id = 2;
+}
+
+message LongPollRequest {
+  map<string, int32> keys_to_snapshot_ids = 1;
+}
+
+message LongPollResult {
+  map<string, UpdatedObject> updated_objects = 1;
+}
+
+message EndpointInfo {
+  string endpoint_name = 1;
+  string route = 2;
+  map<string, string> config = 3;
+}
+
+message EndpointSet {
+  map<string, EndpointInfo> endpoints = 1;
+}
+
+// Now Actor handle can be transfered across language through ray call, but the list of
+// Actor handles can't. So we use this message wrapped a Actor name list to pass actor
+// list across language. When Actor handle list supports across language, this message can
+// be replaced.
+message ActorNameList {
+  repeated string names = 1;
+}
+
+message DeploymentVersion {
+  string code_version = 1;
+  bytes user_config = 2;
+}
+
+message ReplicaConfig {
+  string deployment_def_name = 1;
+  bytes deployment_def = 2;
+  bytes init_args = 3;
+  bytes init_kwargs = 4;
+  string ray_actor_options = 5;
+}
+
+message DeploymentInfo {
+  string name = 1;
+  DeploymentConfig deployment_config = 2;
+  ReplicaConfig replica_config = 3;
+  int64 start_time_ms = 4;
+  string actor_name = 5;
+  string version = 6;
+  int64 end_time_ms = 7;
+}
+
+// Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
+message DeploymentRoute {
+  DeploymentInfo deployment_info = 1;
+  string route = 2;
+}
+
+// Wrap a list for DeploymentRoute.
+message DeploymentRouteList {
+  repeated DeploymentRoute deployment_routes = 1;
+}
+
+enum DeploymentStatus {
+  UPDATING = 0;
+  HEALTHY = 1;
+  UNHEALTHY = 2;
+}
+
+message DeploymentStatusInfo {
+  string name = 1;
+  DeploymentStatus status = 2;
+  string message = 3;
+}
+
+// Wrap a list for DeploymentStatusInfo.
+message DeploymentStatusInfoList {
+  repeated DeploymentStatusInfo deployment_status_infos = 1;
+}
+
+enum ApplicationStatus {
+  DEPLOYING = 0;
+  RUNNING = 1;
+  DEPLOY_FAILED = 2;
+}
+
+message ApplicationStatusInfo {
+  ApplicationStatus status = 1;
+  string message = 2;
+  double deployment_timestamp = 3;
+}
+
+message StatusOverview {
+  ApplicationStatusInfo app_status = 1;
+  DeploymentStatusInfoList deployment_statuses = 2;
+}

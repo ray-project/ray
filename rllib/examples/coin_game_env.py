@@ -7,9 +7,8 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.examples.env.coin_game_non_vectorized_env import \
-    CoinGame, AsymCoinGame
+from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.examples.env.coin_game_non_vectorized_env import CoinGame, AsymCoinGame
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--tf", action="store_true")
@@ -39,13 +38,19 @@ def main(debug, stop_iters=2000, tf=False, asymmetric_env=False):
         "multiagent": {
             "policies": {
                 env_config["players_ids"][0]: (
-                    None, AsymCoinGame(env_config).OBSERVATION_SPACE,
-                    AsymCoinGame.ACTION_SPACE, {}),
+                    None,
+                    AsymCoinGame(env_config).OBSERVATION_SPACE,
+                    AsymCoinGame.ACTION_SPACE,
+                    {},
+                ),
                 env_config["players_ids"][1]: (
-                    None, AsymCoinGame(env_config).OBSERVATION_SPACE,
-                    AsymCoinGame.ACTION_SPACE, {}),
+                    None,
+                    AsymCoinGame(env_config).OBSERVATION_SPACE,
+                    AsymCoinGame.ACTION_SPACE,
+                    {},
+                ),
             },
-            "policy_mapping_fn": lambda agent_id: agent_id,
+            "policy_mapping_fn": lambda agent_id, **kwargs: agent_id,
         },
         # Size of batches collected from each worker.
         "rollout_fragment_length": 20,
@@ -54,9 +59,10 @@ def main(debug, stop_iters=2000, tf=False, asymmetric_env=False):
         "train_batch_size": 512,
         "model": {
             "dim": env_config["grid_size"],
-            "conv_filters": [[16, [3, 3], 1],
-                             [32, [3, 3],
-                              1]]  # [Channel, [Kernel, Kernel], Stride]]
+            "conv_filters": [
+                [16, [3, 3], 1],
+                [32, [3, 3], 1],
+            ],  # [Channel, [Kernel, Kernel], Stride]]
         },
         "lr": 5e-3,
         "seed": tune.grid_search(seeds),
@@ -65,12 +71,13 @@ def main(debug, stop_iters=2000, tf=False, asymmetric_env=False):
     }
 
     tune_analysis = tune.run(
-        PPOTrainer,
+        PPO,
         config=rllib_config,
         stop=stop,
         checkpoint_freq=0,
         checkpoint_at_end=True,
-        name="PPO_AsymCG")
+        name="PPO_AsymCG",
+    )
     ray.shutdown()
     return tune_analysis
 

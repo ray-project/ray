@@ -24,11 +24,11 @@ extern "C" {
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativePut
- * Signature: (Lio/ray/runtime/object/NativeRayObject;)[B
+ * Signature: (Lio/ray/runtime/object/NativeRayObject;[B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *, jclass, jobject);
+Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2_3B(
+    JNIEnv *, jclass, jobject, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
@@ -68,21 +68,21 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeAddLocalReference
- * Signature: ([B[B)V
+ * Signature: ([B)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, jclass,
-                                                                     jbyteArray,
+Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *,
+                                                                     jclass,
                                                                      jbyteArray);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeRemoveLocalReference
- * Signature: ([B[B)V
+ * Signature: ([B)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *, jclass,
-                                                                        jbyteArray,
+Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *,
+                                                                        jclass,
                                                                         jbyteArray);
 
 /*
@@ -100,18 +100,19 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv 
  * Signature: ([B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *, jclass,
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *,
+                                                                   jclass,
                                                                    jbyteArray);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
- * Method:    nativePromoteAndGetOwnershipInfo
+ * Method:    nativeGetOwnershipInfo
  * Signature: ([B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(JNIEnv *,
-                                                                              jclass,
-                                                                              jbyteArray);
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *,
+                                                                    jclass,
+                                                                    jbyteArray);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore

@@ -1,20 +1,24 @@
 from collections import deque
-import cv2
 import gym
 from gym import spaces
 import numpy as np
 
-cv2.ocl.setUseOpenCL(False)
+from ray.rllib.utils.annotations import Deprecated, PublicAPI
+from ray.rllib.utils.images import rgb2gray, resize
 
 
+@PublicAPI
 def is_atari(env):
-    if (hasattr(env.observation_space, "shape")
-            and env.observation_space.shape is not None
-            and len(env.observation_space.shape) <= 2):
+    if (
+        hasattr(env.observation_space, "shape")
+        and env.observation_space.shape is not None
+        and len(env.observation_space.shape) <= 2
+    ):
         return False
     return hasattr(env, "unwrapped") and hasattr(env.unwrapped, "ale")
 
 
+@PublicAPI
 def get_wrapper_by_cls(env, cls):
     """Returns the gym env wrapper of the given class, or None."""
     currentenv = env
@@ -27,6 +31,7 @@ def get_wrapper_by_cls(env, cls):
             return None
 
 
+@PublicAPI
 class MonitorEnv(gym.Wrapper):
     def __init__(self, env=None):
         """Record episodes stats prior to EpisodicLifeEnv, etc."""
@@ -77,6 +82,7 @@ class MonitorEnv(gym.Wrapper):
         self._num_returned = len(self._episode_rewards)
 
 
+@PublicAPI
 class NoopResetEnv(gym.Wrapper):
     def __init__(self, env, noop_max=30):
         """Sample initial states by taking random number of no-ops on reset.
@@ -89,12 +95,18 @@ class NoopResetEnv(gym.Wrapper):
         assert env.unwrapped.get_action_meanings()[0] == "NOOP"
 
     def reset(self, **kwargs):
-        """ Do no-op action for a number of steps in [1, noop_max]."""
+        """Do no-op action for a number of steps in [1, noop_max]."""
         self.env.reset(**kwargs)
         if self.override_num_noops is not None:
             noops = self.override_num_noops
         else:
-            noops = self.unwrapped.np_random.randint(1, self.noop_max + 1)
+            # This environment now uses the pcg64 random number generator which
+            # does not have randint as an attribute only has integers.
+            try:
+                noops = self.unwrapped.np_random.integers(1, self.noop_max + 1)
+            # Also still support older versions.
+            except AttributeError:
+                noops = self.unwrapped.np_random.randint(1, self.noop_max + 1)
         assert noops > 0
         obs = None
         for _ in range(noops):
@@ -107,6 +119,7 @@ class NoopResetEnv(gym.Wrapper):
         return self.env.step(ac)
 
 
+@PublicAPI
 class ClipRewardEnv(gym.RewardWrapper):
     def __init__(self, env):
         gym.RewardWrapper.__init__(self, env)
@@ -116,6 +129,7 @@ class ClipRewardEnv(gym.RewardWrapper):
         return np.sign(reward)
 
 
+@PublicAPI
 class FireResetEnv(gym.Wrapper):
     def __init__(self, env):
         """Take action on reset.
@@ -139,6 +153,7 @@ class FireResetEnv(gym.Wrapper):
         return self.env.step(ac)
 
 
+@PublicAPI
 class EpisodicLifeEnv(gym.Wrapper):
     def __init__(self, env):
         """Make end-of-life == end-of-episode, but only reset on true game over.
@@ -176,13 +191,13 @@ class EpisodicLifeEnv(gym.Wrapper):
         return obs
 
 
+@PublicAPI
 class MaxAndSkipEnv(gym.Wrapper):
     def __init__(self, env, skip=4):
         """Return only every `skip`-th frame"""
         gym.Wrapper.__init__(self, env)
         # most recent raw observations (for max pooling across time steps)
-        self._obs_buffer = np.zeros(
-            (2, ) + env.observation_space.shape, dtype=np.uint8)
+        self._obs_buffer = np.zeros((2,) + env.observation_space.shape, dtype=np.uint8)
         self._skip = skip
 
     def step(self, action):
@@ -208,6 +223,7 @@ class MaxAndSkipEnv(gym.Wrapper):
         return self.env.reset(**kwargs)
 
 
+@PublicAPI
 class WarpFrame(gym.ObservationWrapper):
     def __init__(self, env, dim):
         """Warp frames to the specified size (dim x dim)."""
@@ -215,19 +231,16 @@ class WarpFrame(gym.ObservationWrapper):
         self.width = dim
         self.height = dim
         self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=(self.height, self.width, 1),
-            dtype=np.uint8)
+            low=0, high=255, shape=(self.height, self.width, 1), dtype=np.uint8
+        )
 
     def observation(self, frame):
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        frame = cv2.resize(
-            frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        frame = rgb2gray(frame)
+        frame = resize(frame, height=self.height, width=self.width)
         return frame[:, :, None]
 
 
-# TODO: (sven) Deprecated class. Remove once traj. view is the norm.
+@Deprecated(error=False)
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""
@@ -239,7 +252,8 @@ class FrameStack(gym.Wrapper):
             low=0,
             high=255,
             shape=(shp[0], shp[1], shp[2] * k),
-            dtype=env.observation_space.dtype)
+            dtype=env.observation_space.dtype,
+        )
 
     def reset(self):
         ob = self.env.reset()
@@ -257,6 +271,7 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
+@PublicAPI
 class FrameStackTrajectoryView(gym.ObservationWrapper):
     def __init__(self, env):
         """No stacking. Trajectory View API takes care of this."""
@@ -264,20 +279,20 @@ class FrameStackTrajectoryView(gym.ObservationWrapper):
         shp = env.observation_space.shape
         assert shp[2] == 1
         self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=(shp[0], shp[1]),
-            dtype=env.observation_space.dtype)
+            low=0, high=255, shape=(shp[0], shp[1]), dtype=env.observation_space.dtype
+        )
 
     def observation(self, observation):
         return np.squeeze(observation, axis=-1)
 
 
+@PublicAPI
 class ScaledFloatFrame(gym.ObservationWrapper):
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
         self.observation_space = gym.spaces.Box(
-            low=0, high=1, shape=env.observation_space.shape, dtype=np.float32)
+            low=0, high=1, shape=env.observation_space.shape, dtype=np.float32
+        )
 
     def observation(self, observation):
         # careful! This undoes the memory optimization, use
@@ -285,19 +300,16 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         return np.array(observation).astype(np.float32) / 255.0
 
 
-def wrap_deepmind(
-        env,
-        dim=84,
-        # TODO: (sven) Remove once traj. view is norm.
-        framestack=True,
-        framestack_via_traj_view_api=False):
+@PublicAPI
+def wrap_deepmind(env, dim=84, framestack=True):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
 
     Args:
-        dim (int): Dimension to resize observations to (dim x dim).
-        framestack (bool): Whether to framestack observations.
+        env: The env object to wrap.
+        dim: Dimension to resize observations to (dim x dim).
+        framestack: Whether to framestack observations.
     """
     env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
@@ -309,12 +321,7 @@ def wrap_deepmind(
     env = WarpFrame(env, dim)
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
-    # New way of frame stacking via the trajectory view API (model config key:
-    # `num_framestacks=[int]`.
-    if framestack_via_traj_view_api:
-        env = FrameStackTrajectoryView(env)
-    # Old way (w/o traj. view API) via model config key: `framestack=True`.
-    # TODO: (sven) Remove once traj. view is norm.
-    elif framestack is True:
+    # 4x image framestacking.
+    if framestack is True:
         env = FrameStack(env, 4)
     return env

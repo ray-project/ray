@@ -7,8 +7,7 @@ class FastImageEnv(gym.Env):
     def __init__(self, config):
         self.zeros = np.zeros((84, 84, 4))
         self.action_space = Discrete(2)
-        self.observation_space = Box(
-            0.0, 1.0, shape=(84, 84, 4), dtype=np.float32)
+        self.observation_space = Box(0.0, 1.0, shape=(84, 84, 4), dtype=np.float32)
         self.i = 0
 
     def reset(self):

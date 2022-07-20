@@ -1,12 +1,17 @@
 import gym
-import numpy as np
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.serialization import (
+    gym_space_to_dict,
+    gym_space_from_dict,
+)
 
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class ViewRequirement:
     """Single view requirement (for one column in an SampleBatch/input_dict).
 
@@ -18,20 +23,23 @@ class ViewRequirement:
     options to build the view.
 
     Examples:
+        >>> from ray.rllib.models.modelv2 import ModelV2
         >>> # The default ViewRequirement for a Model is:
-        >>> req = [ModelV2].view_requirements
-        >>> print(req)
+        >>> req = ModelV2(...).view_requirements # doctest: +SKIP
+        >>> print(req) # doctest: +SKIP
         {"obs": ViewRequirement(shift=0)}
     """
 
-    def __init__(self,
-                 data_col: Optional[str] = None,
-                 space: gym.Space = None,
-                 shift: Union[int, str, List[int]] = 0,
-                 index: Optional[int] = None,
-                 batch_repeat_value: int = 1,
-                 used_for_compute_actions: bool = True,
-                 used_for_training: bool = True):
+    def __init__(
+        self,
+        data_col: Optional[str] = None,
+        space: gym.Space = None,
+        shift: Union[int, str, List[int]] = 0,
+        index: Optional[int] = None,
+        batch_repeat_value: int = 1,
+        used_for_compute_actions: bool = True,
+        used_for_training: bool = True,
+    ):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -56,20 +64,21 @@ class ViewRequirement:
                 used e.g. for the location of a requested inference dict within
                 the trajectory. Negative values refer to counting from the end
                 of a trajectory.
-            used_for_compute_actions (bool): Whether the data will be used for
+            used_for_compute_actions: Whether the data will be used for
                 creating input_dicts for `Policy.compute_actions()` calls (or
                 `Policy.compute_actions_from_input_dict()`).
-            used_for_training (bool): Whether the data will be used for
+            used_for_training: Whether the data will be used for
                 training. If False, the column will not be copied into the
                 final train batch.
         """
         self.data_col = data_col
-        self.space = space if space is not None else gym.spaces.Box(
-            float("-inf"), float("inf"), shape=())
+        self.space = (
+            space
+            if space is not None
+            else gym.spaces.Box(float("-inf"), float("inf"), shape=())
+        )
 
         self.shift = shift
-        if isinstance(self.shift, (list, tuple)):
-            self.shift = np.array(self.shift)
 
         # Special case: Providing a (probably larger) range of indices, e.g.
         # "-100:0" (past 100 timesteps plus current one).
@@ -84,3 +93,40 @@ class ViewRequirement:
 
         self.used_for_compute_actions = used_for_compute_actions
         self.used_for_training = used_for_training
+
+    def __str__(self):
+        """For easier inspection of view requirements."""
+        return "|".join(
+            [
+                str(v)
+                for v in [
+                    self.data_col,
+                    self.space,
+                    self.shift,
+                    self.shift_from,
+                    self.shift_to,
+                    self.index,
+                    self.batch_repeat_value,
+                    self.used_for_training,
+                    self.used_for_compute_actions,
+                ]
+            ]
+        )
+
+    def to_dict(self) -> Dict:
+        """Return a dict for this ViewRequirement that can be JSON serialized."""
+        return {
+            "data_col": self.data_col,
+            "space": gym_space_to_dict(self.space),
+            "shift": self.shift,
+            "index": self.index,
+            "batch_repeat_value": self.batch_repeat_value,
+            "used_for_training": self.used_for_training,
+            "used_for_compute_actions": self.used_for_compute_actions,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict):
+        """Construct a ViewRequirement instance from JSON deserialized dict."""
+        d["space"] = gym_space_from_dict(d["space"])
+        return cls(**d)

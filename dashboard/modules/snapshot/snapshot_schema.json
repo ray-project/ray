@@ -15,12 +15,30 @@
         "snapshot": {
           "type": "object",
           "properties": {
+            "ray_version": {
+              "type": "string"
+            },
+            "ray_commit": {
+              "type": "string"
+            },
             "jobs": {
               "type": "object",
               "patternProperties": {
                 "[0-9a-f]*": {
                   "type": "object",
                   "properties": {
+                    "status": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status_message": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "isDead": {
                       "type": "boolean"
                     },
@@ -33,9 +51,6 @@
                     "config": {
                       "type": "object",
                       "properties": {
-                        "envVars": {
-                          "type": "object"
-                        },
                         "namespace": {
                           "type": "string"
                         },
@@ -47,7 +62,6 @@
                         }
                       },
                       "required": [
-                        "envVars",
                         "namespace",
                         "metadata",
                         "runtimeEnv"
@@ -59,6 +73,66 @@
                     "startTime",
                     "endTime",
                     "config"
+                  ]
+                }
+              }
+            },
+            "jobSubmission": {
+              "type": "object",
+              "patternProperties": {
+                "[0-9a-f]*": {
+                  "type": "object",
+                  "properties": {
+                    "jobSubmissionId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "entrypoint": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "message": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "errorType": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "startTime": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "endTime": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "runtimeEnv": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "jobSubmissionId",
+                    "status",
+                    "entrypoint"
                   ]
                 }
               }
@@ -114,6 +188,33 @@
                   "port": {
                     "type": "integer"
                   },
+                  "metadata": {
+                    "type": "object",
+                    "properties": {
+                      "serve": {
+                        "type": "object",
+                        "properties": {
+                          "deploymentName": {
+                            "type": "string"
+                          },
+                          "replicaTag": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "deploymentName",
+                          "replicaTag",
+                          "version"
+                        ]
+                      }
+                    }
+                  },
                   "required": [
                     "jobId",
                     "state",
@@ -132,11 +233,72 @@
                   ]
                 }
               }
+            },
+            "deployments": {
+              "type": "object",
+              "patternProperties": {
+                "[0-9a-f]*": {
+                  "type": "object",
+                  "properties": {
+                    "className": {
+                      "type": "string"
+                    },
+                    "endTime": {
+                      "type": "integer"
+                    },
+                    "startTime": {
+                      "type": "integer"
+                    },
+                    "httpRoute": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "namespace": {
+                      "type": "string"
+                    },
+                    "rayJobId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "className",
+                    "startTime",
+                    "endTime",
+                    "httpRoute",
+                    "name",
+                    "namespace",
+                    "rayJobId",
+                    "status",
+                    "version"
+                  ]
+                }
+              }
             }
           },
+          "sessionName": {
+            "type": "string"
+          },
           "required": [
+            "rayVersion",
+            "rayCommit",
             "jobs",
-            "actors"
+            "jobSubmission",
+            "actors",
+            "sessionName"
           ]
         }
       },

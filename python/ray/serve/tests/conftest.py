@@ -1,16 +1,59 @@
-from collections import defaultdict
-import random
 import os
 
 import pytest
+import tempfile
+import subprocess
+import random
 
+import requests
 import ray
 from ray import serve
-from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollNamespace
+
+from ray._private.test_utils import wait_for_condition
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
+
+# https://tools.ietf.org/html/rfc6335#section-6
+MIN_DYNAMIC_PORT = 49152
+MAX_DYNAMIC_PORT = 65535
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
+
+
+@pytest.fixture
+def ray_shutdown():
+    yield
+    serve.shutdown()
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start(scope="module"):
+    port = random.randint(MIN_DYNAMIC_PORT, MAX_DYNAMIC_PORT)
+    subprocess.check_output(
+        [
+            "ray",
+            "start",
+            "--head",
+            "--num-cpus",
+            "16",
+            "--ray-client-server-port",
+            f"{port}",
+        ]
+    )
+    try:
+        yield f"localhost:{port}"
+    finally:
+        subprocess.check_output(["ray", "stop", "--force"])
+
+
+@pytest.fixture
+def tmp_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+        yield tmp_dir
+        os.chdir(old_dir)
 
 
 @pytest.fixture(scope="session")
@@ -19,77 +62,52 @@ def _shared_serve_instance():
     # This line should be not turned on on master because it leads to very
     # spammy and not useful log in case of a failure in CI.
     # To run locally, please use this instead.
-    # SERVE_LOG_DEBUG=1 pytest -v -s test_api.py
-    # os.environ["SERVE_LOG_DEBUG"] = "1" <- Do not uncomment this.
+    # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
+    # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
         num_cpus=36,
-        namespace="",
+        namespace="default_test_namespace",
         _metrics_export_port=9999,
-        _system_config={
-            "metrics_report_interval_ms": 1000,
-            "task_retry_delay_ms": 50
-        })
+        _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
+    )
     yield serve.start(detached=True)
 
 
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
-    controller = serve.api._global_client._controller
     # Clear all state between tests to avoid naming collisions.
-    for endpoint in ray.get(controller.get_all_endpoints.remote()):
-        serve.delete_endpoint(endpoint)
-    for backend in ray.get(controller.get_all_backends.remote()).keys():
-        serve.delete_backend(backend, force=True)
+    _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
+    # Clear the ServeHandle cache between tests to avoid them piling up.
+    _shared_serve_instance.handle_cache.clear()
 
 
-@pytest.fixture
-def mock_controller_with_name():
-    @ray.remote(num_cpus=0)
-    class MockControllerActor:
-        def __init__(self):
-            from ray.serve.long_poll import LongPollHost
-            self.host = LongPollHost()
-            self.backend_replicas = defaultdict(list)
-            self.backend_configs = dict()
-
-        async def listen_for_change(self, snapshot_ids):
-            return await self.host.listen_for_change(snapshot_ids)
-
-        def set_traffic(self, endpoint, traffic_policy):
-            self.host.notify_changed(
-                (LongPollNamespace.TRAFFIC_POLICIES, endpoint), traffic_policy)
-
-        def add_new_replica(self,
-                            backend_tag,
-                            runner_actor,
-                            backend_config=BackendConfig()):
-            self.backend_replicas[backend_tag].append(runner_actor)
-            self.backend_configs[backend_tag] = backend_config
-
-            self.host.notify_changed(
-                (LongPollNamespace.REPLICA_HANDLES, backend_tag),
-                self.backend_replicas[backend_tag],
-            )
-            self.host.notify_changed(
-                (LongPollNamespace.BACKEND_CONFIGS, backend_tag),
-                self.backend_configs[backend_tag],
-            )
-
-        def update_backend(self, backend_tag: str,
-                           backend_config: BackendConfig):
-            self.backend_configs[backend_tag] = backend_config
-            self.host.notify_changed(
-                (LongPollNamespace.BACKEND_CONFIGS, backend_tag),
-                self.backend_configs[backend_tag],
-            )
-
-    name = f"MockController{random.randint(0,10e4)}"
-    yield name, MockControllerActor.options(name=name).remote()
+def check_ray_stop():
+    try:
+        requests.get("http://localhost:52365/api/ray/version")
+        return False
+    except Exception:
+        return True
 
 
-@pytest.fixture
-def mock_controller(mock_controller_with_name):
-    yield mock_controller_with_name[1]
+@pytest.fixture(scope="function")
+def ray_start_stop():
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+    yield
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )

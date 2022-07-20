@@ -10,17 +10,17 @@ spec:
   # E.g., if the task requires adding more nodes then autoscaler will gradually
   # scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
   # This number should be > 0.
-  upscalingSpeed: 1.0
+  upscalingSpeed: {{ .Values.upscalingSpeed | default 1.0 }}
   # If a node is idle for this many minutes, it will be removed.
-  idleTimeoutMinutes: 5
+  idleTimeoutMinutes: {{ .Values.idleTimeoutMinutes | default 5 }}
   # Specify the pod type for the ray head node (as configured below).
   headPodType: {{ .Values.headPodType }}
   # Specify the allowed pod types for this ray cluster and the resources they provide.
   podTypes:
     {{- range $key, $val := .Values.podTypes }}
     - name: {{ $key }}
-      minWorkers: {{ $val.minWorkers }}
-      maxWorkers: {{ $val.maxWorkers }}
+      minWorkers: {{ $val.minWorkers | default 0}}
+      maxWorkers: {{ $val.maxWorkers | default 0}}
       {{- if $val.rayResources }}
       rayResources:
         {{- toYaml $val.rayResources | nindent 8 }}
@@ -47,8 +47,11 @@ spec:
             # explicitly killed.
             command: ["/bin/bash", "-c", "--"]
             args: ['trap : TERM INT; sleep infinity & wait;']
+            env:
+            - name: RAY_gcs_server_rpc_server_thread_num
+              value: "1"
             ports:
-            - containerPort: 6379  # Redis port
+            - containerPort: 6379  # Redis port for Ray <= 1.10.0. GCS server port for Ray >= 1.11.0.
             - containerPort: 10001  # Used by Ray Client
             - containerPort: 8265  # Used by Ray Dashboard
             - containerPort: 8000 # Used by Ray Serve
@@ -61,10 +64,10 @@ spec:
               name: dshm
             resources:
               requests:
-                cpu: {{ .numCPU }}
+                cpu: {{ .CPU }}
                 memory: {{ .memory }}
               limits:
-                cpu: {{ .numCPU }}
+                cpu: {{ .CPU }}
                 # The maximum memory that this pod is allowed to use. The
                 # limit will be detected by ray and split to use 10% for
                 # redis, 30% for the shared memory object store, and the
@@ -73,19 +76,23 @@ spec:
                 # allocate a very large object store in each pod that may
                 # cause problems for other pods.
                 memory: {{ .memory }}
-                {{- if .numGPU }}
-                nvidia.com/gpu: {{ .numGPU }}
+                {{- if .GPU }}
+                nvidia.com/gpu: {{ .GPU }}
                 {{- end }}
           {{- if .nodeSelector }}
           nodeSelector:
-              {{- toYaml .nodeSelector | nindent 12 }}
+          {{- toYaml $val.nodeSelector | nindent 12 }}
+          {{- end }}
+          {{- if $val.tolerations }}
+          tolerations:
+          {{- toYaml $val.tolerations | nindent 10 }}
           {{- end }}
     {{- end }}
   # Commands to start Ray on the head node. You don't need to change this.
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
   headStartRayCommands:
     - ray stop
-    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0
+    - ulimit -n 65536; ray start --head --port=6379 --no-monitor --dashboard-host 0.0.0.0
   # Commands to start Ray on worker nodes. You don't need to change this.
   workerStartRayCommands:
     - ray stop

@@ -24,24 +24,34 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace core {
 
 class ActorHandle {
  public:
-  ActorHandle(ray::rpc::ActorHandle inner)
+  ActorHandle(rpc::ActorHandle inner)
       : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
-  ActorHandle(const ActorID &actor_id, const TaskID &owner_id,
-              const rpc::Address &owner_address, const JobID &job_id,
-              const ObjectID &initial_cursor, const Language actor_language,
-              const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
-              const std::string &extension_data, int64_t max_task_retries);
+  ActorHandle(const ActorID &actor_id,
+              const TaskID &owner_id,
+              const rpc::Address &owner_address,
+              const JobID &job_id,
+              const ObjectID &initial_cursor,
+              const Language actor_language,
+              const FunctionDescriptor &actor_creation_task_function_descriptor,
+              const std::string &extension_data,
+              int64_t max_task_retries,
+              const std::string &name,
+              const std::string &ray_namespace,
+              int32_t max_pending_calls,
+              bool execute_out_of_order = false);
 
   /// Constructs an ActorHandle from a serialized string.
-  ActorHandle(const std::string &serialized);
+  explicit ActorHandle(const std::string &serialized);
 
-  /// Constructs an ActorHandle from a gcs::ActorTableData message.
-  ActorHandle(const rpc::ActorTableData &actor_table_data);
+  /// Constructs an ActorHandle from a rpc::ActorTableData and a rpc::TaskSpec message.
+  ActorHandle(const rpc::ActorTableData &actor_table_data,
+              const rpc::TaskSpec &task_spec);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 
@@ -55,8 +65,8 @@ class ActorHandle {
 
   Language ActorLanguage() const { return inner_.actor_language(); };
 
-  ray::FunctionDescriptor ActorCreationTaskFunctionDescriptor() const {
-    return ray::FunctionDescriptorBuilder::FromProto(
+  FunctionDescriptor ActorCreationTaskFunctionDescriptor() const {
+    return FunctionDescriptorBuilder::FromProto(
         inner_.actor_creation_task_function_descriptor());
   };
 
@@ -82,9 +92,17 @@ class ActorHandle {
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
 
+  std::string GetName() const;
+
+  std::string GetNamespace() const;
+
+  int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
+
+  bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
+
  private:
   // Protobuf-defined persistent state of the actor handle.
-  const ray::rpc::ActorHandle inner_;
+  const rpc::ActorHandle inner_;
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter
@@ -100,4 +118,5 @@ class ActorHandle {
   FRIEND_TEST(ZeroNodeTest, TestActorHandle);
 };
 
+}  // namespace core
 }  // namespace ray

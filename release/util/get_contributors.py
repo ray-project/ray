@@ -19,31 +19,38 @@ Create them at https://github.com/settings/tokens/new
 @click.option(
     "--prev-release-commit",
     required=True,
-    help="Last commit SHA of the previous release.")
+    help="Last commit SHA of the previous release.",
+)
 @click.option(
     "--curr-release-commit",
     required=True,
-    help="Last commit SHA of the current release.")
+    help="Last commit SHA of the current release.",
+)
 def run(access_token, prev_release_commit, curr_release_commit):
     print("Writing commit descriptions to 'commits.txt'...")
     check_output(
-        (f"git log {prev_release_commit}..{curr_release_commit} "
-         f"--pretty=format:'%s' > commits.txt"),
-        shell=True)
+        (
+            f"git log {prev_release_commit}..{curr_release_commit} "
+            f"--pretty=format:'%s' > commits.txt"
+        ),
+        shell=True,
+    )
     # Generate command
     cmd = []
-    cmd.append((f"git log {prev_release_commit}..{curr_release_commit} "
-                f"--pretty=format:\"%s\" "
-                f" | grep -Eo \"#(\d+)\""))
+    cmd.append(
+        (
+            f"git log {prev_release_commit}..{curr_release_commit} "
+            f'--pretty=format:"%s" '
+            f' | grep -Eo "#(\d+)"'
+        )
+    )
     joined = " && ".join(cmd)
     cmd = f"bash -c '{joined}'"
     cmd = shlex.split(cmd)
     print("Executing", cmd)
 
     # Sort the PR numbers
-    pr_numbers = [
-        int(line.lstrip("#")) for line in check_output(cmd).decode().split()
-    ]
+    pr_numbers = [int(line.lstrip("#")) for line in check_output(cmd).decode().split()]
     print("PR numbers", pr_numbers)
 
     # Use Github API to fetch the

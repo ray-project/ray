@@ -1,3 +1,18 @@
+// Copyright 2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+#pragma once
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -39,14 +54,14 @@ class GcsResourceReportPoller {
       std::function<int64_t(void)> get_current_time_milli =
           []() { return absl::GetCurrentTimeNanos() / (1000 * 1000); },
       std::function<void(
-          const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          const rpc::Address &,
+          std::shared_ptr<rpc::NodeManagerClientPool> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
           request_report =
               [](const rpc::Address &address,
                  std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
                  std::function<void(const Status &,
-                                    const rpc::RequestResourceReportReply &)>
-                     callback) {
+                                    const rpc::RequestResourceReportReply &)> callback) {
                 auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
                 raylet_client->RequestResourceReport(callback);
               });
@@ -90,7 +105,8 @@ class GcsResourceReportPoller {
   std::function<int64_t(void)> get_current_time_milli_;
   // Send the `RequestResourceReport` RPC.
   std::function<void(
-      const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+      const rpc::Address &,
+      std::shared_ptr<rpc::NodeManagerClientPool> &,
       std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
       request_report_;
   // The minimum delay between two pull requests to the same thread.
@@ -102,7 +118,9 @@ class GcsResourceReportPoller {
     int64_t last_pull_time;
     int64_t next_pull_time;
 
-    PullState(NodeID _node_id, rpc::Address _address, int64_t _last_pull_time,
+    PullState(NodeID _node_id,
+              rpc::Address _address,
+              int64_t _last_pull_time,
               int64_t _next_pull_time)
         : node_id(_node_id),
           address(_address),
@@ -116,7 +134,7 @@ class GcsResourceReportPoller {
   // and polling thread, so we should be mindful about how long we hold it.
   absl::Mutex mutex_;
   // All the state regarding how to and when to send a new pull request to a raylet.
-  std::unordered_map<NodeID, std::shared_ptr<PullState>> nodes_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<NodeID, std::shared_ptr<PullState>> nodes_ GUARDED_BY(mutex_);
   // The set of all nodes which we are allowed to pull from. We can't necessarily pull
   // from this list immediately because we limit the number of concurrent pulls. This
   // queue should be sorted by time. The front should contain the first item to pull.

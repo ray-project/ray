@@ -7,12 +7,15 @@ from ray._raylet import (
     Histogram as CythonHistogram,
     Gauge as CythonGauge,
 )  # noqa: E402
+
 # Sum is used for CythonCount because it allows incrementing by positive
 # values that are different from one.
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class Metric:
     """The parent class of custom metrics.
 
@@ -20,13 +23,11 @@ class Metric:
     the same public methods.
     """
 
-    def __init__(self,
-                 name: str,
-                 description: str = "",
-                 tag_keys: Optional[Tuple[str]] = None):
+    def __init__(
+        self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
+    ):
         if len(name) == 0:
-            raise ValueError("Empty name is not allowed. "
-                             "Please provide a metric name.")
+            raise ValueError("Empty name is not allowed. Please provide a metric name.")
         self._name = name
         self._description = description
         # The default tags key-value pair.
@@ -37,8 +38,9 @@ class Metric:
         self._metric = None
 
         if not isinstance(self._tag_keys, tuple):
-            raise TypeError("tag_keys should be a tuple type, got: "
-                            f"{type(self._tag_keys)}")
+            raise TypeError(
+                "tag_keys should be a tuple type, got: " f"{type(self._tag_keys)}"
+            )
 
         for key in self._tag_keys:
             if not isinstance(key, str):
@@ -71,10 +73,9 @@ class Metric:
         self._default_tags = default_tags
         return self
 
-    def record(self,
-               value: Union[int, float],
-               tags: Dict[str, str] = None,
-               _internal=False) -> None:
+    def record(
+        self, value: Union[int, float], tags: Dict[str, str] = None, _internal=False
+    ) -> None:
         """Record the metric point of the metric.
 
         Tags passed in will take precedence over the metric's default tags.
@@ -84,26 +85,31 @@ class Metric:
         """
         assert self._metric is not None
         if isinstance(self._metric, CythonCount) and not _internal:
-            logger.warning("Counter.record() is deprecated in favor of "
-                           "Counter.inc() and will be removed in a future "
-                           "release. Please use Counter.inc() instead.")
+            logger.warning(
+                "Counter.record() is deprecated in favor of "
+                "Counter.inc() and will be removed in a future "
+                "release. Please use Counter.inc() instead."
+            )
 
         if isinstance(self._metric, CythonGauge) and not _internal:
-            logger.warning("Gauge.record() is deprecated in favor of "
-                           "Gauge.set() and will be removed in a future "
-                           "release. Please use Gauge.set() instead.")
+            logger.warning(
+                "Gauge.record() is deprecated in favor of "
+                "Gauge.set() and will be removed in a future "
+                "release. Please use Gauge.set() instead."
+            )
 
         if isinstance(self._metric, CythonHistogram) and not _internal:
-            logger.warning("Histogram.record() is deprecated in favor of "
-                           "Histogram.observe() and will be removed in a "
-                           "future release. Please use Histogram.observe() "
-                           "instead.")
+            logger.warning(
+                "Histogram.record() is deprecated in favor of "
+                "Histogram.observe() and will be removed in a "
+                "future release. Please use Histogram.observe() "
+                "instead."
+            )
 
         if tags is not None:
             for val in tags.values():
                 if not isinstance(val, str):
-                    raise TypeError(
-                        f"Tag values must be str, got {type(val)}.")
+                    raise TypeError(f"Tag values must be str, got {type(val)}.")
 
         final_tags = {}
         tags_copy = tags.copy() if tags else {}
@@ -117,8 +123,7 @@ class Metric:
                 raise ValueError(f"Missing value for tag key {tag_key}.")
 
         if len(tags_copy) > 0:
-            raise ValueError(
-                f"Unrecognized tag keys: {list(tags_copy.keys())}.")
+            raise ValueError(f"Unrecognized tag keys: {list(tags_copy.keys())}.")
 
         self._metric.record(value, tags=final_tags)
 
@@ -142,10 +147,11 @@ class Metric:
             "name": self._name,
             "description": self._description,
             "tag_keys": self._tag_keys,
-            "default_tags": self._default_tags
+            "default_tags": self._default_tags,
         }
 
 
+@DeveloperAPI
 class Counter(Metric):
     """A cumulative metric that is monotonically increasing.
 
@@ -158,13 +164,11 @@ class Counter(Metric):
         tag_keys(tuple): Tag keys of the metric.
     """
 
-    def __init__(self,
-                 name: str,
-                 description: str = "",
-                 tag_keys: Optional[Tuple[str]] = None):
+    def __init__(
+        self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
+    ):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonCount(self._name, self._description,
-                                   self._tag_keys)
+        self._metric = CythonCount(self._name, self._description, self._tag_keys)
 
     def __reduce__(self):
         deserializer = self.__class__
@@ -188,6 +192,7 @@ class Counter(Metric):
         self.record(value, tags=tags, _internal=True)
 
 
+@DeveloperAPI
 class Count(Counter):
     """The count of the number of metric points.
 
@@ -201,16 +206,17 @@ class Count(Counter):
         tag_keys(tuple): Tag keys of the metric.
     """
 
-    def __init__(self,
-                 name: str,
-                 description: str = "",
-                 tag_keys: Optional[Tuple[str]] = None):
+    def __init__(
+        self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
+    ):
         logger.warning(
             "`metrics.Count` has been renamed to `metrics.Counter`. "
-            "`metrics.Count` will be removed in a future release.")
+            "`metrics.Count` will be removed in a future release."
+        )
         super().__init__(name, description, tag_keys)
 
 
+@DeveloperAPI
 class Histogram(Metric):
     """Tracks the size and number of events in buckets.
 
@@ -227,20 +233,24 @@ class Histogram(Metric):
         tag_keys(tuple): Tag keys of the metric.
     """
 
-    def __init__(self,
-                 name: str,
-                 description: str = "",
-                 boundaries: List[float] = None,
-                 tag_keys: Optional[Tuple[str]] = None):
+    def __init__(
+        self,
+        name: str,
+        description: str = "",
+        boundaries: List[float] = None,
+        tag_keys: Optional[Tuple[str]] = None,
+    ):
         super().__init__(name, description, tag_keys)
         if boundaries is None or len(boundaries) == 0:
             raise ValueError(
                 "boundaries argument should be provided when using "
                 "the Histogram class. e.g., "
-                "Histogram(\"name\", boundaries=[1.0, 2.0])")
+                'Histogram("name", boundaries=[1.0, 2.0])'
+            )
         self.boundaries = boundaries
-        self._metric = CythonHistogram(self._name, self._description,
-                                       self.boundaries, self._tag_keys)
+        self._metric = CythonHistogram(
+            self._name, self._description, self.boundaries, self._tag_keys
+        )
 
     def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Observe a given `value` and add it to the appropriate bucket.
@@ -258,8 +268,12 @@ class Histogram(Metric):
 
     def __reduce__(self):
         deserializer = Histogram
-        serialized_data = (self._name, self._description, self.boundaries,
-                           self._tag_keys)
+        serialized_data = (
+            self._name,
+            self._description,
+            self.boundaries,
+            self._tag_keys,
+        )
         return deserializer, serialized_data
 
     @property
@@ -270,6 +284,7 @@ class Histogram(Metric):
         return info
 
 
+@DeveloperAPI
 class Gauge(Metric):
     """Gauges keep the last recorded value and drop everything before.
 
@@ -284,13 +299,11 @@ class Gauge(Metric):
         tag_keys(tuple): Tag keys of the metric.
     """
 
-    def __init__(self,
-                 name: str,
-                 description: str = "",
-                 tag_keys: Optional[Tuple[str]] = None):
+    def __init__(
+        self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
+    ):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonGauge(self._name, self._description,
-                                   self._tag_keys)
+        self._metric = CythonGauge(self._name, self._description, self._tag_keys)
 
     def set(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Set the gauge to the given `value`.

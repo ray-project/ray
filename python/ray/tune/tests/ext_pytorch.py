@@ -1,5 +1,5 @@
 # flake8: noqa
-# yapf: disable
+# fmt: off
 
 # External PyTorch tutorial (https://github.com/pytorch/tutorials/pull/1066)
 # If this script fails, fix it and submit a PR to pytorch/tutorials.
@@ -424,7 +424,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
             best_trained_model = nn.DataParallel(best_trained_model)
     best_trained_model.to(device)
 
-    best_checkpoint_dir = best_trial.checkpoint.value
+    best_checkpoint_dir = best_trial.checkpoint.dir_or_data
     model_state, optimizer_state = torch.load(os.path.join(
         best_checkpoint_dir, "checkpoint"))
     best_trained_model.load_state_dict(model_state)

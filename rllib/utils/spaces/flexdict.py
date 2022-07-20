@@ -20,15 +20,10 @@ class FlexDict(gym.spaces.Dict):
         if spaces is None:
             spaces = spaces_kwargs
 
-        self.spaces = spaces
         for space in spaces.values():
             self.assertSpace(space)
 
-        # None for shape and dtype, since it'll require special handling
-        self.np_random = None
-        self.shape = None
-        self.dtype = None
-        self.seed()
+        super().__init__(spaces=spaces)
 
     def assertSpace(self, space):
         err = "Values of the dict should be instances of gym.Space"
@@ -45,5 +40,8 @@ class FlexDict(gym.spaces.Dict):
         self.spaces[key] = space
 
     def __repr__(self):
-        return "FlexDict(" + ", ".join(
-            [str(k) + ":" + str(s) for k, s in self.spaces.items()]) + ")"
+        return (
+            "FlexDict("
+            + ", ".join([str(k) + ":" + str(s) for k, s in self.spaces.items()])
+            + ")"
+        )

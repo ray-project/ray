@@ -1,9 +1,14 @@
 """A utility for debugging serialization issues."""
-from typing import Any, Tuple, Set, Optional
 import inspect
-import ray.cloudpickle as cp
-import colorama
 from contextlib import contextmanager
+from typing import Any, Optional, Set, Tuple
+
+import colorama
+
+# Import ray first to use the bundled colorama
+import ray  # noqa: F401
+import ray.cloudpickle as cp
+from ray.util.annotations import DeveloperAPI
 
 
 @contextmanager
@@ -28,6 +33,7 @@ class _Printer:
 _printer = _Printer()
 
 
+@DeveloperAPI
 class FailureTuple:
     """Represents the serialization 'frame'.
 
@@ -52,8 +58,10 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set):
     closure = inspect.getclosurevars(base_obj)
     found = False
     if closure.globals:
-        _printer.print(f"Detected {len(closure.globals)} global variables. "
-                       "Checking serializability...")
+        _printer.print(
+            f"Detected {len(closure.globals)} global variables. "
+            "Checking serializability..."
+        )
 
         with _printer.indent():
             for name, obj in closure.globals.items():
@@ -62,7 +70,8 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set):
                     name=name,
                     depth=depth - 1,
                     _parent=parent,
-                    _failure_set=failure_set)
+                    _failure_set=failure_set,
+                )
                 found = found or not serializable
                 if found:
                     break
@@ -70,7 +79,8 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set):
     if closure.nonlocals:
         _printer.print(
             f"Detected {len(closure.nonlocals)} nonlocal variables. "
-            "Checking serializability...")
+            "Checking serializability..."
+        )
         with _printer.indent():
             for name, obj in closure.nonlocals.items():
                 serializable, _ = inspect_serializability(
@@ -78,14 +88,16 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set):
                     name=name,
                     depth=depth - 1,
                     _parent=parent,
-                    _failure_set=failure_set)
+                    _failure_set=failure_set,
+                )
                 found = found or not serializable
                 if found:
                     break
     if not found:
         _printer.print(
             f"WARNING: Did not find non-serializable object in {base_obj}. "
-            "This may be an oversight.")
+            "This may be an oversight."
+        )
     return found
 
 
@@ -101,7 +113,8 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set):
                 name=name,
                 depth=depth - 1,
                 _parent=parent,
-                _failure_set=failure_set)
+                _failure_set=failure_set,
+            )
             found = found or not serializable
             if found:
                 break
@@ -109,31 +122,34 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set):
     with _printer.indent():
         members = inspect.getmembers(base_obj)
         for name, obj in members:
-            if name.startswith("__") and name.endswith(
-                    "__") or inspect.isbuiltin(obj):
+            if name.startswith("__") and name.endswith("__") or inspect.isbuiltin(obj):
                 continue
             serializable, _ = inspect_serializability(
                 obj,
                 name=name,
                 depth=depth - 1,
                 _parent=parent,
-                _failure_set=failure_set)
+                _failure_set=failure_set,
+            )
             found = found or not serializable
             if found:
                 break
     if not found:
         _printer.print(
             f"WARNING: Did not find non-serializable object in {base_obj}. "
-            "This may be an oversight.")
+            "This may be an oversight."
+        )
     return found
 
 
+@DeveloperAPI
 def inspect_serializability(
-        base_obj: Any,
-        name: Optional[str] = None,
-        depth: int = 3,
-        _parent: Optional[Any] = None,
-        _failure_set: Optional[set] = None) -> Tuple[bool, Set[FailureTuple]]:
+    base_obj: Any,
+    name: Optional[str] = None,
+    depth: int = 3,
+    _parent: Optional[Any] = None,
+    _failure_set: Optional[set] = None,
+) -> Tuple[bool, Set[FailureTuple]]:
     """Identifies what objects are preventing serialization.
 
     Args:
@@ -168,8 +184,9 @@ def inspect_serializability(
         cp.dumps(base_obj)
         return True, _failure_set
     except Exception as e:
-        _printer.print(f"{colorama.Fore.RED}!!! FAIL{colorama.Fore.RESET} "
-                       f"serialization: {e}")
+        _printer.print(
+            f"{colorama.Fore.RED}!!! FAIL{colorama.Fore.RESET} " f"serialization: {e}"
+        )
         found = True
         try:
             if depth == 0:
@@ -186,10 +203,12 @@ def inspect_serializability(
     # more specific like a Type, Object, etc.
     if inspect.isfunction(base_obj):
         _inspect_func_serialization(
-            base_obj, depth=depth, parent=base_obj, failure_set=_failure_set)
+            base_obj, depth=depth, parent=base_obj, failure_set=_failure_set
+        )
     else:
         _inspect_generic_serialization(
-            base_obj, depth=depth, parent=base_obj, failure_set=_failure_set)
+            base_obj, depth=depth, parent=base_obj, failure_set=_failure_set
+        )
 
     if not _failure_set:
         _failure_set.add(FailureTuple(base_obj, name, _parent))
@@ -197,20 +216,30 @@ def inspect_serializability(
     if top_level:
         print("=" * min(len(declaration), 80))
         if not _failure_set:
-            print("Nothing failed the inspect_serialization test, though "
-                  "serialization did not succeed.")
+            print(
+                "Nothing failed the inspect_serialization test, though "
+                "serialization did not succeed."
+            )
         else:
-            fail_vars = f"\n\n\t{colorama.Style.BRIGHT}" + "\n".join(
-                str(k)
-                for k in _failure_set) + f"{colorama.Style.RESET_ALL}\n\n"
-            print(f"Variable: {fail_vars}was found to be non-serializable. "
-                  "There may be multiple other undetected variables that were "
-                  "non-serializable. ")
-            print("Consider either removing the "
-                  "instantiation/imports of these variables or moving the "
-                  "instantiation into the scope of the function/class. ")
-        print("If you have any suggestions on how to improve "
-              "this error message, please reach out to the "
-              "Ray developers on github.com/ray-project/ray/issues/")
+            fail_vars = (
+                f"\n\n\t{colorama.Style.BRIGHT}"
+                + "\n".join(str(k) for k in _failure_set)
+                + f"{colorama.Style.RESET_ALL}\n\n"
+            )
+            print(
+                f"Variable: {fail_vars}was found to be non-serializable. "
+                "There may be multiple other undetected variables that were "
+                "non-serializable. "
+            )
+            print(
+                "Consider either removing the "
+                "instantiation/imports of these variables or moving the "
+                "instantiation into the scope of the function/class. "
+            )
+        print(
+            "If you have any suggestions on how to improve "
+            "this error message, please reach out to the "
+            "Ray developers on github.com/ray-project/ray/issues/"
+        )
         print("=" * min(len(declaration), 80))
     return not found, _failure_set

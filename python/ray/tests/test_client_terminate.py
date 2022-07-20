@@ -1,31 +1,36 @@
-import pytest
 import sys
 import time
 
-from ray.util.client.ray_client_helpers import ray_start_client_server
+import pytest
+
+from ray._private.test_utils import convert_actor_state, wait_for_condition
+from ray.exceptions import (
+    GetTimeoutError,
+    ObjectLostError,
+    RayTaskError,
+    TaskCancelledError,
+    WorkerCrashedError,
+)
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray.test_utils import wait_for_condition
-from ray.exceptions import TaskCancelledError
-from ray.exceptions import RayTaskError
-from ray.exceptions import WorkerCrashedError
-from ray.exceptions import ObjectLostError
-from ray.exceptions import GetTimeoutError
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def valid_exceptions(use_force):
     if use_force:
-        return (RayTaskError, TaskCancelledError, WorkerCrashedError,
-                ObjectLostError)
+        return (RayTaskError, TaskCancelledError, WorkerCrashedError, ObjectLostError)
     else:
         return (RayTaskError, TaskCancelledError)
 
 
 def _all_actors_dead(ray):
     import ray as real_ray
+    import ray._private.gcs_utils as gcs_utils
 
     def _all_actors_dead_internal():
-        return all(actor["State"] == real_ray.gcs_utils.ActorTableData.DEAD
-                   for actor in list(real_ray.state.actors().values()))
+        return all(
+            actor["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
+            for actor in list(real_ray._private.state.actors().values())
+        )
 
     return _all_actors_dead_internal
 
@@ -61,7 +66,7 @@ def test_cancel_chain(ray_start_regular, use_force):
         obj3 = wait_for.remote([obj2])
         obj4 = wait_for.remote([obj3])
 
-        assert len(ray.wait([obj1], timeout=.1)[0]) == 0
+        assert len(ray.wait([obj1], timeout=0.1)[0]) == 0
         ray.cancel(obj1, force=use_force)
         for ob in [obj1, obj2, obj3, obj4]:
             with pytest.raises(valid_exceptions(use_force)):
@@ -73,17 +78,17 @@ def test_cancel_chain(ray_start_regular, use_force):
         obj3 = wait_for.remote([obj2])
         obj4 = wait_for.remote([obj3])
 
-        assert len(ray.wait([obj3], timeout=.1)[0]) == 0
+        assert len(ray.wait([obj3], timeout=0.1)[0]) == 0
         ray.cancel(obj3, force=use_force)
         for ob in [obj3, obj4]:
             with pytest.raises(valid_exceptions(use_force)):
                 ray.get(ob)
 
         with pytest.raises(GetTimeoutError):
-            ray.get(obj1, timeout=.1)
+            ray.get(obj1, timeout=0.1)
 
         with pytest.raises(GetTimeoutError):
-            ray.get(obj2, timeout=.1)
+            ray.get(obj2, timeout=0.1)
 
         signaler2.send.remote()
         ray.get(obj1)
@@ -112,11 +117,12 @@ def test_kill_cancel_metadata(ray_start_regular):
         class MetadataIsCorrectlyPassedException(Exception):
             pass
 
-        def mock_terminate(term, metadata):
-            raise MetadataIsCorrectlyPassedException(metadata[1][0])
+        def mock_terminate(self, term):
+            raise MetadataIsCorrectlyPassedException(self._metadata[1][0])
 
         # Mock stub's Terminate method to raise an exception.
-        ray.api.worker.server.Terminate = mock_terminate
+        stub = ray.get_context().api.worker.data_client
+        stub.Terminate = mock_terminate.__get__(stub)
 
         # Verify the expected exception is raised with ray.kill.
         # Check that argument of the exception matches "key" from the
@@ -132,6 +138,11 @@ def test_kill_cancel_metadata(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import sys
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+    import sys
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

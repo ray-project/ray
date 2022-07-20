@@ -21,6 +21,18 @@
 
 namespace ray {
 
+struct pair_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<T1, T2> &pair) const {
+    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+  }
+};
+
+using BundleLocations =
+    absl::flat_hash_map<BundleID,
+                        std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,
+                        pair_hash>;
+
 class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpec> {
  public:
   /// Construct from a protobuf message object.
@@ -48,6 +60,8 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   BundleSpecification GetBundle(int position) const;
   /// Return the name of this placement group.
   std::string GetName() const;
+  /// Return the max CPU fraction per node for this placement group.
+  double GetMaxCpuFractionPerNode() const;
 
  private:
   /// Construct bundle vector from protobuf.
@@ -65,10 +79,14 @@ class PlacementGroupSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   PlacementGroupSpecBuilder &SetPlacementGroupSpec(
-      const PlacementGroupID &placement_group_id, std::string name,
+      const PlacementGroupID &placement_group_id,
+      std::string name,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
-      const rpc::PlacementStrategy strategy, const bool is_detached,
-      const JobID &creator_job_id, const ActorID &creator_actor_id,
+      const rpc::PlacementStrategy strategy,
+      const bool is_detached,
+      double max_cpu_fraction_per_node,
+      const JobID &creator_job_id,
+      const ActorID &creator_actor_id,
       bool is_creator_detached_actor) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
@@ -84,6 +102,7 @@ class PlacementGroupSpecBuilder {
     message_->set_creator_actor_id(creator_actor_id.Binary());
     message_->set_creator_actor_dead(creator_actor_id.IsNil());
     message_->set_is_detached(is_detached);
+    message_->set_max_cpu_fraction_per_node(max_cpu_fraction_per_node);
 
     for (size_t i = 0; i < bundles.size(); i++) {
       auto resources = bundles[i];

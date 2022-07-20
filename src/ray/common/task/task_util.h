@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include "ray/common/buffer.h"
@@ -20,19 +34,23 @@ class TaskArgByReference : public TaskArg {
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address)
-      : id_(object_id), owner_address_(owner_address) {}
+  TaskArgByReference(const ObjectID &object_id,
+                     const rpc::Address &owner_address,
+                     const std::string &call_site)
+      : id_(object_id), owner_address_(owner_address), call_site_(call_site) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
     auto ref = arg_proto->mutable_object_ref();
     ref->set_object_id(id_.Binary());
     ref->mutable_owner_address()->CopyFrom(owner_address_);
+    ref->set_call_site(call_site_);
   }
 
  private:
   /// Id of the argument if passed by reference, otherwise nullptr.
   const ObjectID id_;
   const rpc::Address owner_address_;
+  const std::string call_site_;
 };
 
 class TaskArgByValue : public TaskArg {
@@ -54,8 +72,8 @@ class TaskArgByValue : public TaskArg {
       const auto &metadata = value_->GetMetadata();
       arg_proto->set_metadata(metadata->Data(), metadata->Size());
     }
-    for (const auto &nested_id : value_->GetNestedIds()) {
-      arg_proto->add_nested_inlined_ids(nested_id.Binary());
+    for (const auto &nested_ref : value_->GetNestedRefs()) {
+      arg_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
     }
   }
 
@@ -80,17 +98,22 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetCommonTaskSpec(
-      const TaskID &task_id, const std::string name, const Language &language,
-      const ray::FunctionDescriptor &function_descriptor, const JobID &job_id,
-      const TaskID &parent_task_id, uint64_t parent_counter, const TaskID &caller_id,
-      const rpc::Address &caller_address, uint64_t num_returns,
+      const TaskID &task_id,
+      const std::string name,
+      const Language &language,
+      const ray::FunctionDescriptor &function_descriptor,
+      const JobID &job_id,
+      const TaskID &parent_task_id,
+      uint64_t parent_counter,
+      const TaskID &caller_id,
+      const rpc::Address &caller_address,
+      uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint,
-      const std::string &serialized_runtime_env = "{}",
-      const std::unordered_map<std::string, std::string> &override_environment_variables =
-          {}) {
+      int64_t depth,
+      const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
+      const std::string &concurrency_group_name = "") {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -106,15 +129,21 @@ class TaskSpecBuilder {
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(
         required_placement_resources.begin(), required_placement_resources.end());
-    message_->set_placement_group_id(bundle_id.first.Binary());
-    message_->set_placement_group_bundle_index(bundle_id.second);
-    message_->set_placement_group_capture_child_tasks(
-        placement_group_capture_child_tasks);
     message_->set_debugger_breakpoint(debugger_breakpoint);
-    message_->set_serialized_runtime_env(serialized_runtime_env);
-    for (const auto &env : override_environment_variables) {
-      (*message_->mutable_override_environment_variables())[env.first] = env.second;
+    message_->set_depth(depth);
+    if (runtime_env_info) {
+      message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
     }
+    message_->set_concurrency_group_name(concurrency_group_name);
+    return *this;
+  }
+
+  TaskSpecBuilder &SetNormalTaskSpec(int max_retries,
+                                     bool retry_exceptions,
+                                     const rpc::SchedulingStrategy &scheduling_strategy) {
+    message_->set_max_retries(max_retries);
+    message_->set_retry_exceptions(retry_exceptions);
+    message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     return *this;
   }
 
@@ -122,8 +151,10 @@ class TaskSpecBuilder {
   /// See `common.proto` for meaning of the arguments.
   ///
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &SetDriverTaskSpec(const TaskID &task_id, const Language &language,
-                                     const JobID &job_id, const TaskID &parent_task_id,
+  TaskSpecBuilder &SetDriverTaskSpec(const TaskID &task_id,
+                                     const Language &language,
+                                     const JobID &job_id,
+                                     const TaskID &parent_task_id,
                                      const TaskID &caller_id,
                                      const rpc::Address &caller_address) {
     message_->set_type(TaskType::DRIVER_TASK);
@@ -150,10 +181,20 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
-      const ActorID &actor_id, int64_t max_restarts = 0, int64_t max_task_retries = 0,
+      const ActorID &actor_id,
+      const std::string &serialized_actor_handle,
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      int64_t max_restarts = 0,
+      int64_t max_task_retries = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
-      int max_concurrency = 1, bool is_detached = false, std::string name = "",
-      bool is_asyncio = false, const std::string &extension_data = "") {
+      int max_concurrency = 1,
+      bool is_detached = false,
+      std::string name = "",
+      std::string ray_namespace = "",
+      bool is_asyncio = false,
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+      const std::string &extension_data = "",
+      bool execute_out_of_order = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -165,8 +206,22 @@ class TaskSpecBuilder {
     actor_creation_spec->set_max_concurrency(max_concurrency);
     actor_creation_spec->set_is_detached(is_detached);
     actor_creation_spec->set_name(name);
+    actor_creation_spec->set_ray_namespace(ray_namespace);
     actor_creation_spec->set_is_asyncio(is_asyncio);
     actor_creation_spec->set_extension_data(extension_data);
+    actor_creation_spec->set_serialized_actor_handle(serialized_actor_handle);
+    for (const auto &concurrency_group : concurrency_groups) {
+      rpc::ConcurrencyGroup *group = actor_creation_spec->add_concurrency_groups();
+      group->set_name(concurrency_group.name);
+      group->set_max_concurrency(concurrency_group.max_concurrency);
+      // Fill into function descriptor.
+      for (auto &item : concurrency_group.function_descriptors) {
+        rpc::FunctionDescriptor *fd = group->add_function_descriptors();
+        *fd = item->GetMessage();
+      }
+    }
+    actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
+    message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     return *this;
   }
 

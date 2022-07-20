@@ -13,6 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -54,6 +55,18 @@ message ActorHandle {
 
   // How many times tasks may be retried on this actor if the actor fails.
   int64 max_task_retries = 9;
+
+  // The name of the actor.
+  string name = 10;
+
+  // The namespace that this actor belongs to.
+  string ray_namespace = 11;
+
+  // Whether the actor supports out of order execution.
+  bool execute_out_of_order = 12;
+
+  // The max number of pending actor calls.
+  int32 max_pending_calls = 13;
 }
 
 message ReturnObject {
@@ -67,7 +80,7 @@ message ReturnObject {
   // Metadata of the object.
   bytes metadata = 4;
   // ObjectIDs that were nested in data. This is only set for inlined objects.
-  repeated bytes nested_inlined_ids = 5;
+  repeated ObjectReference nested_inlined_refs = 5;
   // Size of this object.
   int64 size = 6;
 }
@@ -96,7 +109,7 @@ message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
   // Set to true if the worker will be exiting.
-  bool worker_exiting = 2;
+  bool worker_exiting = 3;
   // The references that the worker borrowed during the task execution. A
   // borrower is a process that is currently using the object ID, in one of 3
   // ways:
@@ -111,7 +124,9 @@ message PushTaskReply {
   // counts for any IDs that were nested inside these objects that the worker
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
-  repeated ObjectReferenceCount borrowed_refs = 3;
+  repeated ObjectReferenceCount borrowed_refs = 4;
+  // Whether the result contains an application-level error (exception).
+  bool is_application_level_error = 5;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -122,8 +137,7 @@ message DirectActorCallArgWaitCompleteRequest {
   int64 tag = 2;
 }
 
-message DirectActorCallArgWaitCompleteReply {
-}
+message DirectActorCallArgWaitCompleteReply {}
 
 message GetObjectStatusRequest {
   // The ID of the worker that owns this object. This is also
@@ -138,8 +152,8 @@ message RayObject {
   bytes data = 1;
   // Metadata of the object.
   bytes metadata = 2;
-  // ObjectIDs that were nested in data. This is only set for inlined objects.
-  repeated bytes nested_inlined_ids = 3;
+  // ObjectRefs that were nested in this object.
+  repeated ObjectReference nested_inlined_refs = 3;
 }
 
 message GetObjectStatusReply {
@@ -165,71 +179,45 @@ message WaitForActorOutOfScopeRequest {
   bytes actor_id = 2;
 }
 
-message WaitForActorOutOfScopeReply {
-}
+message WaitForActorOutOfScopeReply {}
 
-message SubscribeForObjectEvictionRequest {
-  // The ID of the worker this message is intended for.
+message UpdateObjectLocationBatchRequest {
   bytes intended_worker_id = 1;
-  // ObjectID of the pinned object.
-  bytes object_id = 2;
-  // Address of the subscriber.
-  Address subscriber_address = 3;
+  bytes node_id = 2;
+  repeated ObjectLocationUpdate object_location_updates = 3;
 }
 
-message SubscribeForObjectEvictionReply {
+message UpdateObjectLocationBatchReply {}
+
+enum ObjectPlasmaLocationUpdate {
+  // Object is added to plasma store.
+  ADDED = 0;
+  // Object is removed from plasma store.
+  REMOVED = 1;
 }
 
-message PubsubLongPollingRequest {
-  /// The address of the subscriber that sends a long polling request.
-  Address subscriber_address = 1;
+message ObjectSpilledLocationUpdate {
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 3;
+  // Whether the object is spilled to local storage or cloud storage.
+  bool spilled_to_local_storage = 4;
 }
 
-message PubsubLongPollingReply {
-  /// The object ids that are published.
-  repeated PubMessage pub_messages = 1;
-}
-
-message AddObjectLocationOwnerRequest {
-  bytes intended_worker_id = 1;
-  bytes object_id = 2;
-  bytes node_id = 3;
-}
-
-message AddObjectLocationOwnerReply {
-}
-
-message RemoveObjectLocationOwnerRequest {
-  bytes intended_worker_id = 1;
-  bytes object_id = 2;
-  bytes node_id = 3;
-}
-
-message RemoveObjectLocationOwnerReply {
+message ObjectLocationUpdate {
+  bytes object_id = 1;
+  // When it's set, it indicates whether the object is added or removed from plasma store.
+  optional ObjectPlasmaLocationUpdate plasma_location_update = 2;
+  // When it's set, it contains where the object is spilled to.
+  optional ObjectSpilledLocationUpdate spilled_location_update = 3;
 }
 
 message GetObjectLocationsOwnerRequest {
-  bytes intended_worker_id = 1;
-  bytes object_id = 2;
-  // The version of the last location update. Only updates more recent than this version
-  // will be returned. -1 indicates that the current location data should
-  // always be returned.
-  int64 last_version = 3;
+  WorkerObjectLocationsSubMessage object_location_request = 1;
 }
 
 message GetObjectLocationsOwnerReply {
-  // The IDs of the nodes that this object appeared on or was evicted by.
-  repeated bytes node_ids = 1;
-  // The size of the object in bytes.
-  uint64 object_size = 2;
-  // The object has been spilled to this URL. This should be set xor the above
-  // fields are set.
-  string spilled_url = 3;
-  // The ID of the node that spilled the object.
-  // This will be Nil if the object was spilled to distributed external storage.
-  bytes spilled_node_id = 4;
-  // The version of the returned location updates.
-  int64 current_version = 5;
+  WorkerObjectLocationsPubMessage object_location_info = 1;
 }
 
 message KillActorRequest {
@@ -239,10 +227,11 @@ message KillActorRequest {
   bool force_kill = 2;
   // If set to true, the killed actor will not be restarted anymore.
   bool no_restart = 3;
+  // The precise reason why this actor receives a kill request.
+  ActorDeathCause death_cause = 4;
 }
 
-message KillActorReply {
-}
+message KillActorReply {}
 
 message CancelTaskRequest {
   // ID of task that should be killed.
@@ -255,7 +244,9 @@ message CancelTaskRequest {
 
 message CancelTaskReply {
   // Whether the requested task is the currently running task.
-  bool attempt_succeeded = 1;
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
 }
 
 message RemoteCancelTaskRequest {
@@ -267,8 +258,7 @@ message RemoteCancelTaskRequest {
   bool recursive = 3;
 }
 
-message RemoteCancelTaskReply {
-}
+message RemoteCancelTaskReply {}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
@@ -276,48 +266,49 @@ message GetCoreWorkerStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
   bool include_memory_info = 2;
+  // Whether to include task information. This could be large since it
+  // includes metadata for all live tasks.
+  bool include_task_info = 3;
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 4;
 }
 
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
-}
-
-message WaitForRefRemovedRequest {
-  // The ID of the worker this message is intended for.
-  bytes intended_worker_id = 1;
-  // Object whose removal we are waiting for.
-  ObjectReference reference = 2;
-  // ObjectID that contains object_id. This is used when an ObjectID is stored
-  // inside another object ID that we do not own. Then, we must notify the
-  // outer ID's owner that the ID contains object_id.
-  bytes contained_in_id = 3;
-  // The ID of the worker that waits for the ref removed message.
-  bytes subscriber_worker_id = 4;
-}
-
-message WaitForRefRemovedReply {
+  /// Task information
+  /// Task information is scattered to 3 places.
+  /// Owner of tasks: knows the general state of task
+  ///   (e.g., waiting for deps or scheduling).
+  /// Worker that executes tasks: knows whether or not the task is actually running.
+  ///   This is necessary because the task can be queued on the execution side.
+  /// Raylet: Knows the exact scheduling state.
+  // A list of task information of the current worker.
+  repeated TaskInfoEntry owned_task_info_entries = 2;
+  // A list of task that's currently running.
+  // All tasks must be treated as TaskStatus::RUNNING
+  // from the caller side.
+  repeated bytes running_task_ids = 3;
+  // Length of the number of tasks without truncation.
+  int64 tasks_total = 4;
 }
 
 message LocalGCRequest {
+  // Whether this is triggered by a global gc.
+  bool triggered_by_global_gc = 1;
 }
 
-message LocalGCReply {
-}
+message LocalGCReply {}
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
 }
 
-message PlasmaObjectReadyReply {
-}
+message PlasmaObjectReadyReply {}
 
 message SpillObjectsRequest {
-  // The IDs of objects to be spilled.
-  repeated bytes object_ids_to_spill = 1;
-  // The owner addresses of the objects to be spilled. Must be in the same order as
-  // object_ids_to_spill.
-  repeated Address owner_addresses = 2;
+  repeated ObjectReference object_refs_to_spill = 1;
 }
 
 message SpillObjectsReply {
@@ -342,42 +333,38 @@ message DeleteSpilledObjectsRequest {
   repeated string spilled_objects_url = 1;
 }
 
-message DeleteSpilledObjectsReply {
-}
+message DeleteSpilledObjectsReply {}
 
-message AddSpilledUrlRequest {
-  // Object that was spilled.
-  bytes object_id = 1;
-  // For objects that have been spilled to external storage, the URL from which
-  // they can be retrieved.
-  string spilled_url = 2;
-  // The ID of the node that spilled the object.
-  // This will be Nil if the object was spilled to distributed external storage.
-  bytes spilled_node_id = 3;
-  // The size of the object in bytes.
-  int64 size = 4;
-}
-
-message AddSpilledUrlReply {
-}
-
-message ExitRequest {
-}
+message ExitRequest {}
 
 message ExitReply {
   /// Whether or not exit succeeds. If the core worker owns any object, the request fails.
   bool success = 1;
 }
 
-message RunOnUtilWorkerRequest {
-  string request = 1;
-  repeated string args = 2;
+message AssignObjectOwnerRequest {
+  // The ID of added object.
+  bytes object_id = 1;
+  // The size of the object in bytes.
+  uint64 object_size = 2;
+  // The IDs of contained objects.
+  repeated bytes contained_object_ids = 3;
+  // The borrower address.
+  Address borrower_address = 4;
+  // Description of the call site where the reference was created.
+  string call_site = 5;
 }
 
-message RunOnUtilWorkerReply {
-}
+message AssignObjectOwnerReply {}
+
+message RayletNotifyGCSRestartRequest {}
+
+message RayletNotifyGCSRestartReply {}
 
 service CoreWorkerService {
+  // Notify core worker GCS has restarted.
+  rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
+      returns (RayletNotifyGCSRestartReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
   // Reply from raylet that wait for direct actor call args has completed.
@@ -390,20 +377,16 @@ service CoreWorkerService {
   // actor process, if still alive.
   rpc WaitForActorOutOfScope(WaitForActorOutOfScopeRequest)
       returns (WaitForActorOutOfScopeReply);
-  // Notify the object's owner that it has been pinned by a raylet. Replying
-  // to this message indicates that the raylet should unpin the object.
-  rpc SubscribeForObjectEviction(SubscribeForObjectEvictionRequest)
-      returns (SubscribeForObjectEvictionReply);
   /// The long polling request sent to the core worker for pubsub operations.
   /// It is replied once there are batch of objects that need to be published to
   /// the caller (subscriber).
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
-  // Add object location to the ownership-based object directory.
-  rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
-      returns (AddObjectLocationOwnerReply);
-  // Remove object location from the ownership-based object directory.
-  rpc RemoveObjectLocationOwner(RemoveObjectLocationOwnerRequest)
-      returns (RemoveObjectLocationOwnerReply);
+  /// The pubsub command batch request used by the subscriber.
+  rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
+  // Update the batched object location information to the ownership-based object
+  // directory.
+  rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
+      returns (UpdateObjectLocationBatchReply);
   // Get object locations from the ownership-based object directory.
   rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
       returns (GetObjectLocationsOwnerReply);
@@ -415,8 +398,6 @@ service CoreWorkerService {
   rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
-  // Wait for a borrower to finish using an object. Sent by the object's owner.
-  rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
   // Trigger local GC on the worker.
   rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
   // Spill objects to external storage. Caller: raylet; callee: I/O worker.
@@ -427,13 +408,10 @@ service CoreWorkerService {
   // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
       returns (DeleteSpilledObjectsReply);
-  // Add spilled URL, spilled node ID, and update object size for owned object.
-  // Caller: raylet; callee: owner worker.
-  rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
-  // Run a request on io worker
-  rpc RunOnUtilWorker(RunOnUtilWorkerRequest) returns (RunOnUtilWorkerReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
+  // Assign the owner of an object to the intended worker.
+  rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
 }

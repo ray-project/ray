@@ -1,17 +1,20 @@
 """This example demonstrates the usage of SigOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
+
+Requires the SigOpt library to be installed (`pip install sigopt`).
 """
 import sys
 import time
 
 from ray import tune
+from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.sigopt import SigOptSearch
+from ray.tune.search.sigopt import SigOptSearch
 
 
 def evaluate(step, width, height):
-    return (0.1 + width * step / 100)**(-1) + height * 0.01
+    return (0.1 + width * step / 100) ** (-1) + height * 0.01
 
 
 def easy_objective(config):
@@ -22,7 +25,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluate(step, width, height)
         # Feed the score back back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        session.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
@@ -32,7 +35,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     args, _ = parser.parse_known_args()
 
     if "SIGOPT_KEY" not in os.environ:
@@ -42,32 +46,27 @@ if __name__ == "__main__":
         else:
             raise ValueError(
                 "SigOpt API Key not found. Please set the SIGOPT_KEY "
-                "environment variable.")
+                "environment variable."
+            )
 
     space = [
         {
             "name": "width",
             "type": "int",
-            "bounds": {
-                "min": 0,
-                "max": 20
-            },
+            "bounds": {"min": 0, "max": 20},
         },
         {
             "name": "height",
             "type": "int",
-            "bounds": {
-                "min": -100,
-                "max": 100
-            },
+            "bounds": {"min": -100, "max": 100},
         },
     ]
     algo = SigOptSearch(
         space,
         name="SigOpt Example Experiment",
-        max_concurrent=1,
         metric="mean_loss",
-        mode="min")
+        mode="min",
+    )
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
     analysis = tune.run(
         easy_objective,
@@ -75,7 +74,10 @@ if __name__ == "__main__":
         search_alg=algo,
         scheduler=scheduler,
         num_samples=4 if args.smoke_test else 100,
-        config={"steps": 10})
+        config={"steps": 10},
+    )
 
-    print("Best hyperparameters found were: ",
-          analysis.get_best_config("mean_loss", "min"))
+    print(
+        "Best hyperparameters found were: ",
+        analysis.get_best_config("mean_loss", "min"),
+    )

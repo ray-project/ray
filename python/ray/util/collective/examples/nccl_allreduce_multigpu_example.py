@@ -9,11 +9,11 @@ from cupy.cuda import Device
 class Worker:
     def __init__(self):
         with Device(0):
-            self.send1 = cp.ones((4, ), dtype=cp.float32)
+            self.send1 = cp.ones((4,), dtype=cp.float32)
         with Device(1):
-            self.send2 = cp.ones((4, ), dtype=cp.float32) * 2
+            self.send2 = cp.ones((4,), dtype=cp.float32) * 2
 
-        self.recv = cp.zeros((4, ), dtype=cp.float32)
+        self.recv = cp.zeros((4,), dtype=cp.float32)
 
     def setup(self, world_size, rank):
         collective.init_collective_group(world_size, rank, "nccl", "177")

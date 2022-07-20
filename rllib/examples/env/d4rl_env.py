@@ -5,8 +5,10 @@ e.g. "env": "ray.rllib.examples.env.d4rl_env.halfcheetah_random".
 """
 
 import gym
+
 try:
     import d4rl
+
     d4rl.__name__  # Fool LINTer.
 except ImportError:
     d4rl = None

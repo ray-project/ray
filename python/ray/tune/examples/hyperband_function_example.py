@@ -7,6 +7,8 @@ import os
 import numpy as np
 
 import ray
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray import tune
 from ray.tune.schedulers import HyperBandScheduler
 
@@ -23,31 +25,30 @@ def train(config, checkpoint_dir=None):
 
         # Checkpoint the state of the training every 3 steps
         # Note that this is only required for certain schedulers
+        checkpoint = None
         if timestep % 3 == 0:
-            with tune.checkpoint_dir(step=timestep) as checkpoint_dir:
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(json.dumps({"timestep": timestep}))
+            checkpoint = Checkpoint.from_dict({"timestep": timestep})
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
-        tune.report(episode_reward_mean=v)
+        session.report({"episode_reward_mean": v}, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using Ray Client.",
+    )
     args, _ = parser.parse_known_args()
     if args.server_address is not None:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(num_cpus=4 if args.smoke_test else None)
 
@@ -65,5 +66,6 @@ if __name__ == "__main__":
         stop={"training_iteration": 10 if args.smoke_test else 99999},
         config={"height": tune.uniform(0, 100)},
         scheduler=hyperband,
-        fail_fast=True)
+        fail_fast=True,
+    )
     print("Best hyperparameters found were: ", analysis.best_config)

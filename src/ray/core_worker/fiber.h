@@ -15,9 +15,11 @@
 #pragma once
 
 #include <boost/fiber/all.hpp>
+#include <chrono>
 
 #include "ray/util/logging.h"
 namespace ray {
+namespace core {
 
 /// Used by async actor mode. The fiber event will be used
 /// from python to switch control among different coroutines.
@@ -82,6 +84,12 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
 class FiberState {
  public:
+  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group) {
+    RAY_UNUSED(max_concurrency_in_default_group);
+    /// asycio mode always need a default executor.
+    return true;
+  }
+
   FiberState(int max_concurrency) : rate_limiter_(max_concurrency) {
     fiber_runner_thread_ =
         std::thread(
@@ -103,10 +111,23 @@ class FiberState {
                   return;
                 }
               }
-              // The event here is used to make sure fiber_runner_thread_ never
-              // terminates. Because fiber_shutdown_event_ is never notified,
-              // fiber_runner_thread_ will immediately start working on any ready fibers.
-              shutdown_worker_event_.Wait();
+
+              // Boost fiber thread cannot be terminated and joined
+              // if there are still running detached fibers.
+              // When we exit async actor, we stop running coroutines
+              // which means the corresponding waiting boost fibers
+              // will never be resumed by done callbacks of those coroutines.
+              // As a result, those fibers will never exit and the fiber
+              // runner thread cannot be joined.
+              // The hack here is that we rely on the process exit to clean up
+              // the fiber runner thread. What we guarantee here is that
+              // no fibers can run after this point as we don't yield here.
+              // This makes sure this thread won't accidentally
+              // access being destructed core worker.
+              fiber_stopped_event_.Notify();
+              while (true) {
+                std::this_thread::sleep_for(std::chrono::hours(1));
+              }
             });
   }
 
@@ -119,26 +140,25 @@ class FiberState {
     RAY_CHECK(op_status == boost::fibers::channel_op_status::success);
   }
 
-  ~FiberState() {
-    channel_.close();
-    shutdown_worker_event_.Notify();
-    if (fiber_runner_thread_.joinable()) {
-      fiber_runner_thread_.join();
-    }
+  void Stop() { channel_.close(); }
+
+  void Join() {
+    fiber_stopped_event_.Wait();
+    fiber_runner_thread_.detach();
   }
 
  private:
   /// The fiber channel used to send task between the submitter thread
-  /// (main direct_actor_trasnport thread) and the fiber_worker_thread_ (defined below)
+  /// (main direct_actor_trasnport thread) and the fiber_runner_thread_ (defined below)
   FiberChannel channel_;
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.
   FiberRateLimiter rate_limiter_;
-  /// The fiber event used to block fiber_runner_thread_ from shutdown.
-  /// is_asyncio_ must be true.
-  FiberEvent shutdown_worker_event_;
+  /// The fiber event used to notify that all worker fibers are stopped running.
+  FiberEvent fiber_stopped_event_;
   /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
   std::thread fiber_runner_thread_;
 };
 
+}  // namespace core
 }  // namespace ray

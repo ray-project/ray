@@ -1,19 +1,28 @@
 import numpy as np
 import os
 import pickle
-import psutil
 import random
 import unittest
 import sys
 import time
+from unittest.mock import MagicMock
+
 
 import ray
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
+from ray._private.test_utils import object_memory_usage
 
-MB = 1024**2
+
+# Import psutil after ray so the packaged version is used.
+import psutil
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+
+MB = 1024 ** 2
 
 
 class MockParam(object):
@@ -29,14 +38,7 @@ class MockParam(object):
 
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=1,
-            object_store_memory=100 * MB,
-            _system_config={
-                # This test uses ray.state.objects(), which only works with the
-                # GCS-based object directory
-                "ownership_based_object_directory_enabled": False,
-            })
+        ray.init(num_cpus=1, object_store_memory=100 * MB)
 
     def tearDown(self):
         ray.shutdown()
@@ -68,7 +70,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
         class CustomExecutor(RayTrialExecutor):
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
-                assert len(ray.state.objects()) <= 12
+                assert object_memory_usage() <= (12 * 80e6)
                 return checkpoint
 
         param_a = MockParam([1, -1])
@@ -90,20 +92,13 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             checkpoint_freq=1,
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
-            trial_executor=CustomExecutor(
-                queue_trials=False, reuse_actors=False),
+            trial_executor=CustomExecutor(reuse_actors=False),
         )
 
 
 class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=2,
-            _system_config={
-                # This test uses ray.state.objects(), which only works with the
-                # GCS-based object directory
-                "ownership_based_object_directory_enabled": False,
-            })
+        ray.init(num_cpus=2)
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
     def tearDown(self):
@@ -144,7 +139,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                 if self.verbose:
                     print("Iteration", self.iter_)
                     print("=" * 10)
-                    print("Number of objects: ", len(ray.state.objects()))
+                    print("Object memory use: ", object_memory_usage())
                     print("Virtual Mem:", self.get_virt_mem() >> 30, "gb")
                     print("File Descriptors:", len(all_files))
                 assert len(all_files) < 20
@@ -181,7 +176,6 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):
@@ -197,12 +191,16 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             while True:
                 iter += 1
                 with tune.checkpoint_dir(step=iter) as checkpoint_dir:
-                    checkpoint_path = os.path.join(checkpoint_dir,
-                                                   "checkpoint")
+                    checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, iter), fp)
+                # Different sleep times so that asynch test runs do not
+                # randomly succeed. If well performing trials finish later,
+                # then bad performing trials will already have continued
+                # to train, which is exactly what we want to test when
+                # comparing sync vs. async.
+                time.sleep(a / 20)
                 # Score gets better every iteration.
-                time.sleep(1)
                 tune.report(mean_accuracy=iter + a, a=a)
 
         self.MockTrainingFuncSync = MockTrainingFuncSync
@@ -210,7 +208,10 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def synchSetup(self, synch, param=[10, 20, 30]):
+    def synchSetup(self, synch, param=None):
+        if param is None:
+            param = [10, 20, 40]
+
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
             metric="mean_accuracy",
@@ -218,7 +219,8 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             perturbation_interval=1,
             log_config=True,
             hyperparam_mutations={"c": lambda: 1},
-            synch=synch)
+            synch=synch,
+        )
 
         param_a = MockParam(param)
 
@@ -226,10 +228,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         np.random.seed(100)
         analysis = tune.run(
             self.MockTrainingFuncSync,
-            config={
-                "a": tune.sample_from(lambda _: param_a()),
-                "c": 1
-            },
+            config={"a": tune.sample_from(lambda _: param_a()), "c": 1},
             fail_fast=True,
             num_samples=3,
             scheduler=scheduler,
@@ -242,22 +241,28 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         analysis = self.synchSetup(False)
         self.assertTrue(
             any(
-                analysis.dataframe(metric="mean_accuracy", mode="max")
-                ["mean_accuracy"] != 33))
+                analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+                != 43
+            )
+        )
 
     def testSynchPass(self):
         analysis = self.synchSetup(True)
         self.assertTrue(
             all(
-                analysis.dataframe(metric="mean_accuracy", mode="max")[
-                    "mean_accuracy"] == 33))
+                analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+                == 43
+            )
+        )
 
     def testSynchPassLast(self):
         analysis = self.synchSetup(True, param=[30, 20, 10])
         self.assertTrue(
             all(
-                analysis.dataframe(metric="mean_accuracy", mode="max")[
-                    "mean_accuracy"] == 33))
+                analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+                == 33
+            )
+        )
 
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
@@ -287,8 +292,8 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
                 "b": [1, 2, 3],
                 "c": {
                     "c1": lambda: np.random.uniform(0.5),
-                    "c2": tune.choice([2, 3, 4])
-                }
+                    "c2": tune.choice([2, 3, 4]),
+                },
             },
         )
 
@@ -298,7 +303,8 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
             num_samples=4,
             scheduler=scheduler,
             name="testNoConfig",
-            stop={"training_iteration": 3})
+            stop={"training_iteration": 3},
+        )
 
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
@@ -329,15 +335,13 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 return {"mean_accuracy": (self.a - self.iter) * self.b}
 
             def save_checkpoint(self, tmp_checkpoint_dir):
-                checkpoint_path = os.path.join(tmp_checkpoint_dir,
-                                               "model.mock")
+                checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
                 with open(checkpoint_path, "wb") as fp:
                     pickle.dump((self.a, self.b, self.iter), fp)
                 return tmp_checkpoint_dir
 
             def load_checkpoint(self, tmp_checkpoint_dir):
-                checkpoint_path = os.path.join(tmp_checkpoint_dir,
-                                               "model.mock")
+                checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
                 with open(checkpoint_path, "rb") as fp:
                     self.a, self.b, self.iter = pickle.load(fp)
 
@@ -347,7 +351,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             mode="max",
             perturbation_interval=1,
             log_config=True,
-            hyperparam_mutations={"c": lambda: 1})
+            hyperparam_mutations={"c": lambda: 1},
+        )
 
         param_a = MockParam([10, 20, 30, 40])
         param_b = MockParam([1.2, 0.9, 1.1, 0.8])
@@ -359,7 +364,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             config={
                 "a": tune.sample_from(lambda _: param_a()),
                 "b": tune.sample_from(lambda _: param_b()),
-                "c": 1
+                "c": 1,
             },
             fail_fast=True,
             num_samples=4,
@@ -369,7 +374,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,
             name="testPermutationContinuation",
-            stop={"training_iteration": 3})
+            stop={"training_iteration": 3},
+        )
 
     def testPermutationContinuationFunc(self):
         def MockTrainingFunc(config, checkpoint_dir=None):
@@ -385,8 +391,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             while True:
                 iter += 1
                 with tune.checkpoint_dir(step=iter) as checkpoint_dir:
-                    checkpoint_path = os.path.join(checkpoint_dir,
-                                                   "model.mock")
+                    checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, b, iter), fp)
                 tune.report(mean_accuracy=(a - iter) * b)
@@ -397,7 +402,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             mode="max",
             perturbation_interval=1,
             log_config=True,
-            hyperparam_mutations={"c": lambda: 1})
+            hyperparam_mutations={"c": lambda: 1},
+        )
         param_a = MockParam([10, 20, 30, 40])
         param_b = MockParam([1.2, 0.9, 1.1, 0.8])
         random.seed(100)
@@ -407,7 +413,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             config={
                 "a": tune.sample_from(lambda _: param_a()),
                 "b": tune.sample_from(lambda _: param_b()),
-                "c": 1
+                "c": 1,
             },
             fail_fast=True,
             num_samples=4,
@@ -415,7 +421,110 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,
             name="testPermutationContinuationFunc",
-            stop={"training_iteration": 3})
+            stop={"training_iteration": 3},
+        )
+
+    def testBurnInPeriod(self):
+        runner = TrialRunner(trial_executor=MagicMock())
+
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="error",
+            mode="min",
+            perturbation_interval=5,
+            burn_in_period=50,
+            log_config=True,
+            synch=True,
+        )
+
+        class MockTrial(Trial):
+            @property
+            def checkpoint(self):
+                return _TrackedCheckpoint(
+                    dir_or_data={"data": "None"},
+                    storage_mode=CheckpointStorage.MEMORY,
+                    metrics={},
+                )
+
+            @property
+            def status(self):
+                return Trial.PAUSED
+
+            @status.setter
+            def status(self, status):
+                pass
+
+        trial1 = MockTrial("PPO", config=dict(num=1))
+        trial2 = MockTrial("PPO", config=dict(num=2))
+        trial3 = MockTrial("PPO", config=dict(num=3))
+        trial4 = MockTrial("PPO", config=dict(num=4))
+
+        runner.add_trial(trial1)
+        runner.add_trial(trial2)
+        runner.add_trial(trial3)
+        runner.add_trial(trial4)
+
+        scheduler.on_trial_add(runner, trial1)
+        scheduler.on_trial_add(runner, trial2)
+        scheduler.on_trial_add(runner, trial3)
+        scheduler.on_trial_add(runner, trial4)
+
+        # Add initial results.
+        scheduler.on_trial_result(
+            runner, trial1, result=dict(training_iteration=1, error=50)
+        )
+        scheduler.on_trial_result(
+            runner, trial2, result=dict(training_iteration=1, error=50)
+        )
+        scheduler.on_trial_result(
+            runner, trial3, result=dict(training_iteration=1, error=10)
+        )
+        scheduler.on_trial_result(
+            runner, trial4, result=dict(training_iteration=1, error=100)
+        )
+
+        # Add more results. Without burn-in, this would now exploit
+        scheduler.on_trial_result(
+            runner, trial1, result=dict(training_iteration=30, error=50)
+        )
+        scheduler.on_trial_result(
+            runner, trial2, result=dict(training_iteration=30, error=50)
+        )
+        scheduler.on_trial_result(
+            runner, trial3, result=dict(training_iteration=30, error=10)
+        )
+        scheduler.on_trial_result(
+            runner, trial4, result=dict(training_iteration=30, error=100)
+        )
+
+        self.assertEqual(trial4.config["num"], 4)
+
+        # Add more results. Since this is after burn-in, it should now exploit
+        scheduler.on_trial_result(
+            runner, trial1, result=dict(training_iteration=50, error=50)
+        )
+        scheduler.on_trial_result(
+            runner, trial2, result=dict(training_iteration=50, error=50)
+        )
+        scheduler.on_trial_result(
+            runner, trial3, result=dict(training_iteration=50, error=10)
+        )
+        scheduler.on_trial_result(
+            runner, trial4, result=dict(training_iteration=50, error=100)
+        )
+
+        self.assertEqual(trial4.config["num"], 3)
+
+        # Assert that trials do not hang after `burn_in_period`
+        self.assertTrue(all(t.status == "PAUSED" for t in runner.get_trials()))
+        self.assertTrue(scheduler.choose_trial_to_run(runner))
+
+        # Assert that trials do not hang when a terminated trial is added
+        trial5 = Trial("PPO", config=dict(num=5))
+        runner.add_trial(trial5)
+        scheduler.on_trial_add(runner, trial5)
+        trial5.set_status(Trial.TERMINATED)
+        self.assertTrue(scheduler.choose_trial_to_run(runner))
 
 
 if __name__ == "__main__":

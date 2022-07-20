@@ -1,23 +1,27 @@
 package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
+import io.ray.api.exception.RayActorException;
+import io.ray.api.exception.RayException;
+import io.ray.api.exception.RayIntentionalSystemExitException;
+import io.ray.api.exception.RayTaskException;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.RayRuntimeInternal;
-import io.ray.runtime.exception.RayActorException;
-import io.ray.runtime.exception.RayIntentionalSystemExitException;
-import io.ray.runtime.exception.RayTaskException;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
+import io.ray.runtime.util.NetworkUtil;
+import io.ray.runtime.util.SystemUtil;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,44 +31,39 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskExecutor.class);
 
-  protected final RayRuntimeInternal runtime;
+  protected final AbstractRayRuntime runtime;
 
-  private final ConcurrentHashMap<UniqueId, T> actorContextMap = new ConcurrentHashMap<>();
+  private T actorContext = null;
 
   private final ThreadLocal<RayFunction> localRayFunction = new ThreadLocal<>();
 
   static class ActorContext {
-
     /** The current actor object, if this worker is an actor, otherwise null. */
     Object currentActor = null;
   }
 
-  TaskExecutor(RayRuntimeInternal runtime) {
+  TaskExecutor(AbstractRayRuntime runtime) {
     this.runtime = runtime;
   }
 
   protected abstract T createActorContext();
 
   T getActorContext() {
-    return actorContextMap.get(runtime.getWorkerContext().getCurrentWorkerId());
+    return actorContext;
   }
 
-  void setActorContext(T actorContext) {
+  void setActorContext(UniqueId workerId, T actorContext) {
     if (actorContext == null) {
       // ConcurrentHashMap doesn't allow null values. So just return here.
       return;
     }
-    this.actorContextMap.put(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
-  }
-
-  protected void removeActorContext(UniqueId workerId) {
-    this.actorContextMap.remove(workerId);
+    this.actorContext = actorContext;
   }
 
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {
     JobId jobId = runtime.getWorkerContext().getCurrentJobId();
     JavaFunctionDescriptor functionDescriptor = parseFunctionDescriptor(rayFunctionInfo);
-    return runtime.getFunctionManager().getFunction(jobId, functionDescriptor);
+    return runtime.getFunctionManager().getFunction(functionDescriptor);
   }
 
   /** The return value indicates which parameters are ByteBuffer. */
@@ -84,8 +83,13 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     return results;
   }
 
+  private void throwIfDependencyFailed(Object arg) {
+    if (arg instanceof RayException) {
+      throw (RayException) arg;
+    }
+  }
+
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo, List<Object> argsBytes) {
-    runtime.setIsContextSet(true);
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
     LOGGER.debug("Executing task {} {}", taskId, rayFunctionInfo);
@@ -93,17 +97,17 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     T actorContext = null;
     if (taskType == TaskType.ACTOR_CREATION_TASK) {
       actorContext = createActorContext();
-      setActorContext(actorContext);
+      setActorContext(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
     } else if (taskType == TaskType.ACTOR_TASK) {
       actorContext = getActorContext();
       Preconditions.checkNotNull(actorContext);
     }
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
-    ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     // Find the executable object.
 
     RayFunction rayFunction = localRayFunction.get();
+    Object[] args = null;
     try {
       // Find the executable object.
       if (rayFunction == null) {
@@ -112,15 +116,17 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         rayFunction = getRayFunction(rayFunctionInfo);
       }
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
-      runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
 
       // Get local actor object and arguments.
       Object actor = null;
       if (taskType == TaskType.ACTOR_TASK) {
         actor = actorContext.currentActor;
       }
-      Object[] args =
-          ArgumentsBuilder.unwrap(argsBytes, rayFunction.executable.getParameterTypes());
+      args = ArgumentsBuilder.unwrap(argsBytes, rayFunction.executable.getParameterTypes());
+      for (Object arg : args) {
+        throwIfDependencyFailed(arg);
+      }
+
       // Execute the task.
       Object result;
       try {
@@ -130,13 +136,13 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
           result = rayFunction.getConstructor().newInstance(args);
         }
       } catch (InvocationTargetException e) {
-        LOGGER.error("Execute rayFunction {} failed. actor {}, args {}", rayFunction, actor, args);
         if (e.getCause() != null) {
           throw e.getCause();
         } else {
           throw e;
         }
       }
+
       // Set result
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         if (rayFunction.hasReturn()) {
@@ -153,7 +159,19 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         // the return object with the ACTOR_DIED metadata.
         throw (RayIntentionalSystemExitException) e;
       }
-      LOGGER.error("Error executing task " + taskId, e);
+
+      final List<Class<?>> argTypes =
+          args == null
+              ? null
+              : Arrays.stream(args)
+                  .map(arg -> arg == null ? null : arg.getClass())
+                  .collect(Collectors.toList());
+      LOGGER.error(
+          "Failed to execute task {} . rayFunction is {} , argument types are {}",
+          taskId,
+          rayFunction,
+          argTypes,
+          e);
 
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
@@ -163,7 +181,11 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
           try {
             serializedException =
                 ObjectSerializer.serialize(
-                    new RayTaskException("Error executing task " + taskId, e));
+                    new RayTaskException(
+                        SystemUtil.pid(),
+                        NetworkUtil.getIpAddress(null),
+                        "Error executing task " + taskId,
+                        e));
           } catch (Exception unserializable) {
             // We should try-catch `ObjectSerializer.serialize` here. Because otherwise if the
             // application-level exception is not serializable. `ObjectSerializer.serialize`
@@ -183,18 +205,16 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
           returnObjects.add(
               ObjectSerializer.serialize(
                   new RayTaskException(
+                      SystemUtil.pid(),
+                      NetworkUtil.getIpAddress(null),
                       String.format(
                           "Function %s of task %s doesn't exist",
                           String.join(".", rayFunctionInfo), taskId),
                       e)));
         }
       } else {
-        throw new RayActorException(e);
+        throw new RayActorException(SystemUtil.pid(), NetworkUtil.getIpAddress(null), e);
       }
-    } finally {
-      Thread.currentThread().setContextClassLoader(oldLoader);
-      runtime.getWorkerContext().setCurrentClassLoader(null);
-      runtime.setIsContextSet(false);
     }
     return returnObjects;
   }

@@ -18,7 +18,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -41,22 +41,30 @@ std::string GcsPlacementGroup::GetName() const {
   return placement_group_table_data_.name();
 }
 
-std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
-  const auto &bundles = placement_group_table_data_.bundles();
-  std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
-  for (const auto &bundle : bundles) {
-    ret_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
-  }
-  return ret_bundles;
+std::string GcsPlacementGroup::GetRayNamespace() const {
+  return placement_group_table_data_.ray_namespace();
 }
 
-std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplacedBundles()
+std::vector<std::shared_ptr<const BundleSpecification>> &GcsPlacementGroup::GetBundles()
     const {
-  const auto &bundles = placement_group_table_data_.bundles();
-  std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
-  for (const auto &bundle : bundles) {
-    if (NodeID::FromBinary(bundle.node_id()).IsNil()) {
-      unplaced_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
+  // Fill the cache if it wasn't.
+  if (cached_bundle_specs_.empty()) {
+    const auto &bundles = placement_group_table_data_.bundles();
+    for (const auto &bundle : bundles) {
+      cached_bundle_specs_.push_back(std::make_shared<const BundleSpecification>(bundle));
+    }
+  }
+  return cached_bundle_specs_;
+}
+
+std::vector<std::shared_ptr<const BundleSpecification>>
+GcsPlacementGroup::GetUnplacedBundles() const {
+  const auto &bundle_specs = GetBundles();
+
+  std::vector<std::shared_ptr<const BundleSpecification>> unplaced_bundles;
+  for (const auto &bundle : bundle_specs) {
+    if (bundle->NodeId().IsNil()) {
+      unplaced_bundles.push_back(bundle);
     }
   }
   return unplaced_bundles;
@@ -79,6 +87,8 @@ std::string GcsPlacementGroup::DebugString() const {
 }
 
 rpc::Bundle *GcsPlacementGroup::GetMutableBundle(int bundle_index) {
+  // Invalidate the cache.
+  cached_bundle_specs_.clear();
   return placement_group_table_data_.mutable_bundles(bundle_index);
 }
 
@@ -107,17 +117,31 @@ bool GcsPlacementGroup::IsDetached() const {
   return placement_group_table_data_.is_detached();
 }
 
+double GcsPlacementGroup::GetMaxCpuFractionPerNode() const {
+  return placement_group_table_data_.max_cpu_fraction_per_node();
+}
+
+const rpc::PlacementGroupStats &GcsPlacementGroup::GetStats() const {
+  return placement_group_table_data_.stats();
+}
+
+rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
+  return placement_group_table_data_.mutable_stats();
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    GcsResourceManager &gcs_resource_manager)
+    GcsResourceManager &gcs_resource_manager,
+    std::function<std::string(const JobID &)> get_ray_namespace)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
-      gcs_resource_manager_(gcs_resource_manager) {
+      gcs_resource_manager_(gcs_resource_manager),
+      get_ray_namespace_(get_ray_namespace) {
   Tick();
 }
 
@@ -150,10 +174,11 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
     return;
   }
   if (!placement_group->GetName().empty()) {
-    auto it = named_placement_groups_.find(placement_group->GetName());
-    if (it == named_placement_groups_.end()) {
-      named_placement_groups_.emplace(placement_group->GetName(),
-                                      placement_group->GetPlacementGroupID());
+    auto &pgs_in_namespace = named_placement_groups_[placement_group->GetRayNamespace()];
+    auto it = pgs_in_namespace.find(placement_group->GetName());
+    if (it == pgs_in_namespace.end()) {
+      pgs_in_namespace.emplace(placement_group->GetName(),
+                               placement_group->GetPlacementGroupID());
     } else {
       std::stringstream stream;
       stream << "Failed to create placement group '"
@@ -169,10 +194,11 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
       .emplace_back(std::move(callback));
   registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
                                        placement_group);
-  pending_placement_groups_.emplace_back(placement_group);
+  AddToPendingQueue(placement_group);
 
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
-      placement_group_id, placement_group->GetPlacementGroupTableData(),
+      placement_group_id,
+      placement_group->GetPlacementGroupTableData(),
       [this, placement_group_id, placement_group](Status status) {
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
@@ -201,53 +227,88 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
 }
 
 PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
-    const std::string &name) {
+    const std::string &name, const std::string &ray_namespace) {
   PlacementGroupID placement_group_id = PlacementGroupID::Nil();
-  auto it = named_placement_groups_.find(name);
-  if (it != named_placement_groups_.end()) {
-    placement_group_id = it->second;
+  auto namespace_it = named_placement_groups_.find(ray_namespace);
+  if (namespace_it != named_placement_groups_.end()) {
+    auto it = namespace_it->second.find(name);
+    if (it != namespace_it->second.end()) {
+      placement_group_id = it->second;
+    }
   }
   return placement_group_id;
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
-    std::shared_ptr<GcsPlacementGroup> placement_group) {
+    std::shared_ptr<GcsPlacementGroup> placement_group,
+    ExponentialBackOff backoff,
+    bool is_feasible) {
   RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
-  // We will attempt to schedule this placement_group once an eligible node is
-  // registered.
-  auto state = placement_group->GetState();
-  RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
-            state == rpc::PlacementGroupTableData::PENDING ||
-            state == rpc::PlacementGroupTableData::REMOVED)
-      << "State: " << state;
-  if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
-    // NOTE: If a node is dead, the placement group scheduler should try to recover the
-    // group by rescheduling the bundles of the dead node. This should have higher
-    // priority than trying to place other placement groups.
-    pending_placement_groups_.emplace_front(std::move(placement_group));
+
+  auto stats = placement_group->GetMutableStats();
+  if (!is_feasible) {
+    // We will attempt to schedule this placement_group once an eligible node is
+    // registered.
+    stats->set_scheduling_state(rpc::PlacementGroupStats::INFEASIBLE);
+    infeasible_placement_groups_.emplace_back(std::move(placement_group));
   } else {
-    pending_placement_groups_.emplace_back(std::move(placement_group));
+    auto state = placement_group->GetState();
+    RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
+              state == rpc::PlacementGroupTableData::PENDING ||
+              state == rpc::PlacementGroupTableData::REMOVED)
+        << "State: " << state;
+
+    if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
+      // NOTE: If a node is dead, the placement group scheduler should try to recover the
+      // group by rescheduling the bundles of the dead node. This should have higher
+      // priority than trying to place other placement groups.
+      stats->set_scheduling_state(rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
+      AddToPendingQueue(std::move(placement_group), /* rank */ 0);
+    } else if (state == rpc::PlacementGroupTableData::PENDING) {
+      stats->set_scheduling_state(rpc::PlacementGroupStats::NO_RESOURCES);
+      AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
+    } else {
+      stats->set_scheduling_state(rpc::PlacementGroupStats::REMOVED);
+      AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
+    }
   }
 
+  io_context_.post([this] { SchedulePendingPlacementGroups(); },
+                   "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
   MarkSchedulingDone();
-  RetryCreatingPlacementGroup();
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     const std::shared_ptr<GcsPlacementGroup> &placement_group) {
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID();
+
+  // Setup stats.
+  auto stats = placement_group->GetMutableStats();
+  auto now = absl::GetCurrentTimeNanos();
+  auto scheduling_latency_us =
+      absl::Nanoseconds(now - stats->scheduling_started_time_ns()) /
+      absl::Microseconds(1);
+  auto creation_latency_us =
+      absl::Nanoseconds(now - stats->creation_request_received_ns()) /
+      absl::Microseconds(1);
+  stats->set_scheduling_latency_us(scheduling_latency_us);
+  stats->set_end_to_end_creation_latency_us(creation_latency_us);
+  ray::stats::STATS_gcs_placement_group_scheduling_latency_ms.Record(
+      scheduling_latency_us / 1e3);
+  ray::stats::STATS_gcs_placement_group_creation_latency_ms.Record(creation_latency_us /
+                                                                   1e3);
+  stats->set_scheduling_state(rpc::PlacementGroupStats::FINISHED);
+
+  // Update states and persists the information.
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
   auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
-      placement_group_id, placement_group->GetPlacementGroupTableData(),
+      placement_group_id,
+      placement_group->GetPlacementGroupTableData(),
       [this, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
-
-        MarkSchedulingDone();
-        SchedulePendingPlacementGroups();
-
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
         // placement group and remove all of them from
         // placement_group_to_create_callbacks_.
@@ -260,64 +321,101 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
           placement_group_to_create_callbacks_.erase(pg_to_create_iter);
         }
       }));
+  io_context_.post([this] { SchedulePendingPlacementGroups(); },
+                   "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
+  MarkSchedulingDone();
 }
 
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
-  // Update the placement group load to report load information to the autoscaler.
-  if (pending_placement_groups_.empty() || IsSchedulingInProgress()) {
+  if (pending_placement_groups_.empty()) {
+    RAY_LOG(DEBUG) << "No additional placement groups to schedule. Stop scheduling.";
     return;
   }
-  const auto placement_group = pending_placement_groups_.front();
-  const auto &placement_group_id = placement_group->GetPlacementGroupID();
-  // Do not reschedule if the placement group has removed already.
-  if (registered_placement_groups_.contains(placement_group_id)) {
-    MarkSchedulingStarted(placement_group_id);
-    gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
-        placement_group,
-        [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-          OnPlacementGroupCreationFailed(std::move(placement_group));
-        },
-        [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-          OnPlacementGroupCreationSuccess(std::move(placement_group));
-        });
+
+  if (IsSchedulingInProgress()) {
+    RAY_LOG(DEBUG) << "Placement group scheduling is still in progress. New placement "
+                      "groups will be scheduled after the current scheduling is done.";
+    return;
   }
-  pending_placement_groups_.pop_front();
+
+  bool is_new_placement_group_scheduled = false;
+  while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
+    auto iter = pending_placement_groups_.begin();
+    if (iter->first > absl::GetCurrentTimeNanos()) {
+      // Here the rank equals the time to schedule, and it's an ordered tree,
+      // it means all the other tasks should be scheduled after this one.
+      // If the first one won't be scheduled, we just skip.
+      // Tick will cover the next time retry.
+      break;
+    }
+    auto backoff = iter->second.first;
+    auto placement_group = std::move(iter->second.second);
+    pending_placement_groups_.erase(iter);
+
+    const auto &placement_group_id = placement_group->GetPlacementGroupID();
+    // Do not reschedule if the placement group has removed already.
+    if (registered_placement_groups_.contains(placement_group_id)) {
+      auto stats = placement_group->GetMutableStats();
+      stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
+      stats->set_scheduling_started_time_ns(absl::GetCurrentTimeNanos());
+      MarkSchedulingStarted(placement_group_id);
+      gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
+          placement_group,
+          [this, backoff](std::shared_ptr<GcsPlacementGroup> placement_group,
+                          bool is_feasible) {
+            OnPlacementGroupCreationFailed(
+                std::move(placement_group), backoff, is_feasible);
+          },
+          [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+            OnPlacementGroupCreationSuccess(std::move(placement_group));
+          });
+      is_new_placement_group_scheduled = true;
+    }
+    // If the placement group is not registered == removed.
+  }
+  ++counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP];
 }
 
 void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     const ray::rpc::CreatePlacementGroupRequest &request,
     ray::rpc::CreatePlacementGroupReply *reply,
     ray::rpc::SendReplyCallback send_reply_callback) {
-  auto placement_group = std::make_shared<GcsPlacementGroup>(request);
+  const JobID &job_id =
+      JobID::FromBinary(request.placement_group_spec().creator_job_id());
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(request, get_ray_namespace_(job_id));
   RAY_LOG(DEBUG) << "Registering placement group, " << placement_group->DebugString();
-  RegisterPlacementGroup(placement_group, [reply, send_reply_callback,
-                                           placement_group](Status status) {
-    if (status.ok()) {
-      RAY_LOG(DEBUG) << "Finished registering placement group, "
-                     << placement_group->DebugString();
-    } else {
-      RAY_LOG(INFO) << "Failed to register placement group, "
-                    << placement_group->DebugString() << ", cause: " << status.message();
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  });
+  RegisterPlacementGroup(placement_group,
+                         [reply, send_reply_callback, placement_group](Status status) {
+                           if (status.ok()) {
+                             RAY_LOG(DEBUG) << "Finished registering placement group, "
+                                            << placement_group->DebugString();
+                           } else {
+                             RAY_LOG(INFO) << "Failed to register placement group, "
+                                           << placement_group->DebugString()
+                                           << ", cause: " << status.message();
+                           }
+                           GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+                         });
   ++counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST];
 }
 
 void GcsPlacementGroupManager::HandleRemovePlacementGroup(
     const rpc::RemovePlacementGroupRequest &request,
-    rpc::RemovePlacementGroupReply *reply, rpc::SendReplyCallback send_reply_callback) {
+    rpc::RemovePlacementGroupReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   const auto placement_group_id =
       PlacementGroupID::FromBinary(request.placement_group_id());
 
-  RemovePlacementGroup(placement_group_id, [send_reply_callback, reply,
-                                            placement_group_id](Status status) {
-    if (status.ok()) {
-      RAY_LOG(INFO) << "Placement group of an id, " << placement_group_id
-                    << " is removed successfully.";
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  });
+  RemovePlacementGroup(placement_group_id,
+                       [send_reply_callback, reply, placement_group_id](Status status) {
+                         if (status.ok()) {
+                           RAY_LOG(INFO)
+                               << "Placement group of an id, " << placement_group_id
+                               << " is removed successfully.";
+                         }
+                         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+                       });
   ++counts_[CountType::REMOVE_PLACEMENT_GROUP_REQUEST];
 }
 
@@ -337,10 +435,16 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
 
   // Remove placement group from `named_placement_groups_` if its name is not empty.
   if (!placement_group->GetName().empty()) {
-    auto it = named_placement_groups_.find(placement_group->GetName());
-    if (it != named_placement_groups_.end() &&
-        it->second == placement_group->GetPlacementGroupID()) {
-      named_placement_groups_.erase(it);
+    auto namespace_it = named_placement_groups_.find(placement_group->GetRayNamespace());
+    if (namespace_it != named_placement_groups_.end()) {
+      auto it = namespace_it->second.find(placement_group->GetName());
+      if (it != namespace_it->second.end() &&
+          it->second == placement_group->GetPlacementGroupID()) {
+        namespace_it->second.erase(it);
+      }
+      if (namespace_it->second.empty()) {
+        named_placement_groups_.erase(namespace_it);
+      }
     }
   }
 
@@ -354,18 +458,24 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   }
 
   // Remove a placement group from a pending list if exists.
+  RemoveFromPendingQueue(placement_group_id);
+
+  // Remove a placement group from infeasible queue if exists.
   auto pending_it = std::find_if(
-      pending_placement_groups_.begin(), pending_placement_groups_.end(),
+      infeasible_placement_groups_.begin(),
+      infeasible_placement_groups_.end(),
       [placement_group_id](const std::shared_ptr<GcsPlacementGroup> &placement_group) {
         return placement_group->GetPlacementGroupID() == placement_group_id;
       });
-  if (pending_it != pending_placement_groups_.end()) {
-    // The placement group was pending scheduling, remove it from the queue.
-    pending_placement_groups_.erase(pending_it);
+  if (pending_it != infeasible_placement_groups_.end()) {
+    // The placement group is infeasible now, remove it from the queue.
+    infeasible_placement_groups_.erase(pending_it);
   }
 
   // Flush the status and respond to workers.
   placement_group->UpdateState(rpc::PlacementGroupTableData::REMOVED);
+  placement_group->GetMutableStats()->set_scheduling_state(
+      rpc::PlacementGroupStats::REMOVED);
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group->GetPlacementGroupID(),
       placement_group->GetPlacementGroupTableData(),
@@ -386,7 +496,8 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
 }
 
 void GcsPlacementGroupManager::HandleGetPlacementGroup(
-    const rpc::GetPlacementGroupRequest &request, rpc::GetPlacementGroupReply *reply,
+    const rpc::GetPlacementGroupRequest &request,
+    rpc::GetPlacementGroupReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   PlacementGroupID placement_group_id =
       PlacementGroupID::FromBinary(request.placement_group_id());
@@ -404,22 +515,28 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
-  Status status =
-      gcs_table_storage_->PlacementGroupTable().Get(placement_group_id, on_done);
-  if (!status.ok()) {
-    on_done(status, boost::none);
+  auto it = registered_placement_groups_.find(placement_group_id);
+  if (it != registered_placement_groups_.end()) {
+    on_done(Status::OK(), it->second->GetPlacementGroupTableData());
+  } else {
+    Status status =
+        gcs_table_storage_->PlacementGroupTable().Get(placement_group_id, on_done);
+    if (!status.ok()) {
+      on_done(status, boost::none);
+    }
   }
   ++counts_[CountType::GET_PLACEMENT_GROUP_REQUEST];
 }
 
 void GcsPlacementGroupManager::HandleGetNamedPlacementGroup(
     const rpc::GetNamedPlacementGroupRequest &request,
-    rpc::GetNamedPlacementGroupReply *reply, rpc::SendReplyCallback send_reply_callback) {
+    rpc::GetNamedPlacementGroupReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   const std::string &name = request.name();
   RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
 
   // Try to look up the placement Group ID for the named placement group.
-  auto placement_group_id = GetPlacementGroupIDByName(name);
+  auto placement_group_id = GetPlacementGroupIDByName(name, request.ray_namespace());
 
   if (placement_group_id.IsNil()) {
     // The placement group was not found.
@@ -438,20 +555,44 @@ void GcsPlacementGroupManager::HandleGetNamedPlacementGroup(
 
 void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
     const rpc::GetAllPlacementGroupRequest &request,
-    rpc::GetAllPlacementGroupReply *reply, rpc::SendReplyCallback send_reply_callback) {
+    rpc::GetAllPlacementGroupReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto limit = request.has_limit() ? request.limit() : -1;
+
   RAY_LOG(DEBUG) << "Getting all placement group info.";
   auto on_done =
-      [reply, send_reply_callback](
-          const std::unordered_map<PlacementGroupID, PlacementGroupTableData> &result) {
-        for (auto &data : result) {
-          reply->add_placement_group_table_data()->CopyFrom(data.second);
+      [this, reply, send_reply_callback, limit](
+          const absl::flat_hash_map<PlacementGroupID, PlacementGroupTableData> &result) {
+        // Set the total number of pgs.
+        auto total_pgs = result.size();
+        reply->set_total(total_pgs);
+
+        auto count = 0;
+        for (const auto &[placement_group_id, data] : result) {
+          if (limit != -1 && count >= limit) {
+            break;
+          }
+          count += 1;
+
+          auto it = registered_placement_groups_.find(placement_group_id);
+          // If the pg entry exists in memory just copy from it since
+          // it has less stale data. It is useful because we don't
+          // persist placement group entry every time we update
+          // stats.
+          if (it != registered_placement_groups_.end()) {
+            reply->add_placement_group_table_data()->CopyFrom(
+                it->second->GetPlacementGroupTableData());
+          } else {
+            reply->add_placement_group_table_data()->CopyFrom(data);
+          }
         }
+
         RAY_LOG(DEBUG) << "Finished getting all placement group info.";
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       };
   Status status = gcs_table_storage_->PlacementGroupTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(std::unordered_map<PlacementGroupID, PlacementGroupTableData>());
+    on_done(absl::flat_hash_map<PlacementGroupID, PlacementGroupTableData>());
   }
   ++counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST];
 }
@@ -465,19 +606,20 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
   RAY_LOG(DEBUG) << "Waiting for placement group until ready, placement group id = "
                  << placement_group_id;
 
-  WaitPlacementGroup(placement_group_id, [reply, send_reply_callback,
-                                          placement_group_id](Status status) {
-    if (status.ok()) {
-      RAY_LOG(DEBUG)
-          << "Finished waiting for placement group until ready, placement group id = "
-          << placement_group_id;
-    } else {
-      RAY_LOG(WARNING)
-          << "Failed to waiting for placement group until ready, placement group id = "
-          << placement_group_id << ", cause: " << status.message();
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  });
+  WaitPlacementGroup(
+      placement_group_id,
+      [reply, send_reply_callback, placement_group_id](Status status) {
+        if (status.ok()) {
+          RAY_LOG(DEBUG)
+              << "Finished waiting for placement group until ready, placement group id = "
+              << placement_group_id;
+        } else {
+          RAY_LOG(WARNING) << "Failed to waiting for placement group until ready, "
+                              "placement group id = "
+                           << placement_group_id << ", cause: " << status.message();
+        }
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      });
 
   ++counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST];
 }
@@ -523,9 +665,47 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
   }
 }
 
-void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
-  execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
-                RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
+void GcsPlacementGroupManager::AddToPendingQueue(
+    std::shared_ptr<GcsPlacementGroup> pg,
+    std::optional<int64_t> rank,
+    std::optional<ExponentialBackOff> exp_backer) {
+  if (!rank) {
+    rank = absl::GetCurrentTimeNanos();
+  }
+
+  // Add the biggest delay that has seen so far.
+  auto last_delay = 0;
+  if (exp_backer) {
+    last_delay = exp_backer->Current();
+  }
+  pg->GetMutableStats()->set_highest_retry_delay_ms(absl::Nanoseconds(last_delay) /
+                                                    absl::Milliseconds(1));
+  if (!exp_backer) {
+    auto initial_delay_ns =
+        1000000 *
+        RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms();
+    exp_backer = ExponentialBackOff(
+        initial_delay_ns,
+        RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
+        1000000 *
+            RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms());
+  } else {
+    *rank += static_cast<int64_t>(exp_backer->Next());
+  }
+  auto val = std::make_pair(*exp_backer, std::move(pg));
+  pending_placement_groups_.emplace(*rank, std::move(val));
+}
+
+void GcsPlacementGroupManager::RemoveFromPendingQueue(const PlacementGroupID &pg_id) {
+  auto it = std::find_if(pending_placement_groups_.begin(),
+                         pending_placement_groups_.end(),
+                         [&pg_id](const auto &val) {
+                           return val.second.second->GetPlacementGroupID() == pg_id;
+                         });
+  // The placement group was pending scheduling, remove it from the queue.
+  if (it != pending_placement_groups_.end()) {
+    pending_placement_groups_.erase(it);
+  }
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
@@ -543,7 +723,9 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       // creating until a node with the resources is added. we will solve it in next pr.
       if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-        pending_placement_groups_.emplace_front(iter->second);
+        iter->second->GetMutableStats()->set_scheduling_state(
+            rpc::PlacementGroupStats::QUEUED);
+        AddToPendingQueue(iter->second, 0);
       }
     }
   }
@@ -551,8 +733,26 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   SchedulePendingPlacementGroups();
 }
 
+void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
+  RAY_LOG(INFO)
+      << "A new node: " << node_id
+      << " registered, will try to reschedule all the infeasible placement groups.";
+
+  // Move all the infeasible placement groups to the pending queue so that we can
+  // reschedule them.
+  if (infeasible_placement_groups_.size() > 0) {
+    for (auto &pg : infeasible_placement_groups_) {
+      AddToPendingQueue(std::move(pg));
+    }
+    infeasible_placement_groups_.clear();
+  }
+  SchedulePendingPlacementGroups();
+}
+
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     const JobID &job_id) {
+  std::vector<PlacementGroupID> groups_to_remove;
+
   for (const auto &it : registered_placement_groups_) {
     auto &placement_group = it.second;
     if (placement_group->GetCreatorJobId() != job_id) {
@@ -560,13 +760,19 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     }
     placement_group->MarkCreatorJobDead();
     if (placement_group->IsPlacementGroupLifetimeDone()) {
-      RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+      groups_to_remove.push_back(placement_group->GetPlacementGroupID());
     }
+  }
+
+  for (const auto &group : groups_to_remove) {
+    RemovePlacementGroup(group, [](Status status) {});
   }
 }
 
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
     const ActorID &actor_id) {
+  std::vector<PlacementGroupID> groups_to_remove;
+
   for (const auto &it : registered_placement_groups_) {
     auto &placement_group = it.second;
     if (placement_group->GetCreatorActorId() != actor_id) {
@@ -574,25 +780,42 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
     }
     placement_group->MarkCreatorActorDead();
     if (placement_group->IsPlacementGroupLifetimeDone()) {
-      RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+      groups_to_remove.push_back(placement_group->GetPlacementGroupID());
     }
   }
-}
 
-void GcsPlacementGroupManager::CollectStats() const {
-  stats::PendingPlacementGroups.Record(pending_placement_groups_.size());
+  for (const auto &group : groups_to_remove) {
+    RemovePlacementGroup(group, [](Status status) {});
+  }
 }
 
 void GcsPlacementGroupManager::Tick() {
   UpdatePlacementGroupLoad();
-  execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+  // To avoid scheduling exhaution in some race conditions.
+  // Note that we don't currently have a known race condition that requires this, but we
+  // added as a safety check. https://github.com/ray-project/ray/pull/18419
+  SchedulePendingPlacementGroups();
+  execute_after(
+      io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
   int total_cnt = 0;
-  for (const auto &pending_pg_spec : pending_placement_groups_) {
+  for (const auto &elem : pending_placement_groups_) {
+    const auto pending_pg_spec = elem.second.second;
+    auto placement_group_data = placement_group_load->add_placement_group_data();
+    auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
+    placement_group_data->Swap(&placement_group_table_data);
+    total_cnt += 1;
+    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+      break;
+    }
+  }
+  // NOTE: Infeasible placement groups also belong to the pending queue when report
+  // metrics.
+  for (const auto &pending_pg_spec : infeasible_placement_groups_) {
     auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
     placement_group_data->Swap(&placement_group_table_data);
@@ -605,19 +828,21 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
-  std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
+  absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
+  absl::flat_hash_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+      group_to_bundles;
   for (auto &item : gcs_init_data.PlacementGroups()) {
     auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
     if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
       registered_placement_groups_.emplace(item.first, placement_group);
       if (!placement_group->GetName().empty()) {
-        named_placement_groups_.emplace(placement_group->GetName(),
-                                        placement_group->GetPlacementGroupID());
+        named_placement_groups_[placement_group->GetRayNamespace()].emplace(
+            placement_group->GetName(), placement_group->GetPlacementGroupID());
       }
 
       if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
           item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
-        pending_placement_groups_.emplace_back(std::move(placement_group));
+        AddToPendingQueue(std::move(placement_group));
       }
 
       if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
@@ -626,6 +851,9 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
         for (const auto &bundle : bundles) {
           if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
             node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
+            group_to_bundles[PlacementGroupID::FromBinary(
+                                 bundle.bundle_id().placement_group_id())]
+                .emplace_back(std::make_shared<BundleSpecification>(bundle));
           }
         }
       }
@@ -634,27 +862,48 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
 
   // Notify raylets to release unused bundles.
   gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
+  gcs_placement_group_scheduler_->Initialize(group_to_bundles);
 
   SchedulePendingPlacementGroups();
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {
+  uint64_t named_num_pgs = 0;
+  for (auto it : named_placement_groups_) {
+    named_num_pgs += it.second.size();
+  }
   std::ostringstream stream;
-  stream << "GcsPlacementGroupManager: {CreatePlacementGroup request count: "
+  stream << "GcsPlacementGroupManager: "
+         << "\n- CreatePlacementGroup request count: "
          << counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST]
-         << ", RemovePlacementGroup request count: "
+         << "\n- RemovePlacementGroup request count: "
          << counts_[CountType::REMOVE_PLACEMENT_GROUP_REQUEST]
-         << ", GetPlacementGroup request count: "
+         << "\n- GetPlacementGroup request count: "
          << counts_[CountType::GET_PLACEMENT_GROUP_REQUEST]
-         << ", GetAllPlacementGroup request count: "
+         << "\n- GetAllPlacementGroup request count: "
          << counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST]
-         << ", WaitPlacementGroupUntilReady request count: "
+         << "\n- WaitPlacementGroupUntilReady request count: "
          << counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST]
-         << ", Registered placement groups count: " << registered_placement_groups_.size()
-         << ", Named placement group count: " << named_placement_groups_.size()
-         << ", Pending placement groups count: " << pending_placement_groups_.size()
-         << "}";
+         << "\n- GetNamedPlacementGroup request count: "
+         << counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST]
+         << "\n- Scheduling pending placement group count: "
+         << counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP]
+         << "\n- Registered placement groups count: "
+         << registered_placement_groups_.size()
+         << "\n- Named placement group count: " << named_num_pgs
+         << "\n- Pending placement groups count: " << pending_placement_groups_.size()
+         << "\n- Infeasible placement groups count: "
+         << infeasible_placement_groups_.size();
   return stream.str();
+}
+
+void GcsPlacementGroupManager::RecordMetrics() const {
+  ray::stats::STATS_gcs_placement_group_count.Record(pending_placement_groups_.size(),
+                                                     "Pending");
+  ray::stats::STATS_gcs_placement_group_count.Record(registered_placement_groups_.size(),
+                                                     "Registered");
+  ray::stats::STATS_gcs_placement_group_count.Record(infeasible_placement_groups_.size(),
+                                                     "Infeasible");
 }
 
 }  // namespace gcs

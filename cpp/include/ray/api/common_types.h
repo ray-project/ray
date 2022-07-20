@@ -15,23 +15,19 @@
 #pragma once
 #include <memory>
 #include <msgpack.hpp>
-#include <string>
+#include <string_view>
+
 #include "boost/optional.hpp"
-#include "ray/core.h"
 
 namespace ray {
-namespace api {
-
-enum WorkerType : int {
-  WORKER = 0,
-  DRIVER = 1,
-};
+namespace internal {
 
 struct TaskArg {
   TaskArg() = default;
   TaskArg(TaskArg &&rhs) {
     buf = std::move(rhs.buf);
     id = rhs.id;
+    meta_str = std::move(rhs.meta_str);
   }
 
   TaskArg(const TaskArg &) = delete;
@@ -41,8 +37,10 @@ struct TaskArg {
   /// If the buf is initialized shows it is a value argument.
   boost::optional<msgpack::sbuffer> buf;
   /// If the id is initialized shows it is a reference argument.
-  boost::optional<ObjectID> id;
+  boost::optional<std::string> id;
+
+  std::string_view meta_str;
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

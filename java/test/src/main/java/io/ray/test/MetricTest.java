@@ -89,6 +89,17 @@ public class MetricTest extends BaseTest {
     gauge.unregister();
   }
 
+  public void testAddGaugeWithTagMap() {
+    Map<String, String> tags = new HashMap<>();
+    tags.put("tag1", "value1");
+
+    Gauge gauge = new Gauge("metric1", "", tags);
+    gauge.update(2);
+    gauge.record();
+    Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
+    gauge.unregister();
+  }
+
   public void testAddCount() {
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
@@ -119,8 +130,8 @@ public class MetricTest extends BaseTest {
     tags.put(new TagKey("histogram_tag"), "default");
     List<Double> boundaries = new ArrayList<>();
     boundaries.add(10.0);
-    boundaries.add(15.0);
     boundaries.add(12.0);
+    boundaries.add(15.0);
     Histogram histogram = new Histogram("metric_histogram", "histogram", "1pc", boundaries, tags);
     for (int i = 1; i <= 200; ++i) {
       histogram.update(i * 1.0d);

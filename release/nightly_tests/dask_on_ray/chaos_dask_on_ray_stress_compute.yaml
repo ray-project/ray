@@ -1,0 +1,19 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+aws:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 500
+
+head_node_type:
+    name: head_node
+    instance_type: i3.8xlarge
+
+worker_node_types:
+    - name: worker_node
+      instance_type: i3.8xlarge
+      min_workers: 20
+      max_workers: 20
+      use_spot: true

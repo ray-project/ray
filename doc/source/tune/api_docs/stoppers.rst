@@ -4,13 +4,14 @@ Stopping mechanisms (tune.stopper)
 ==================================
 
 In addition to Trial Schedulers like :ref:`ASHA <tune-scheduler-hyperband>`, where a number of
-trials are stopped if they perform subpar, Ray Tune also supports custom stopping mechanisms to stop trials early. For instance, stopping mechanisms can specify to stop trials when they reached a plateau and the metric
+trials are stopped if they perform subpar, Ray Tune also supports custom stopping mechanisms to stop trials early. They can also stop the entire experiment after a condition is met.
+For instance, stopping mechanisms can specify to stop trials when they reached a plateau and the metric
 doesn't change anymore.
 
 Ray Tune comes with several stopping mechanisms out of the box. For custom stopping behavior, you can
 inherit from the :class:`Stopper <ray.tune.Stopper>` class.
 
-Other stopping behaviors are described :ref:`in the user guide <tune-stopping>`.
+Other stopping behaviors are described :ref:`in the user guide <tune-stopping-ref>`.
 
 .. contents::
     :local:

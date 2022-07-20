@@ -1,0 +1,26 @@
+name: Documentation
+title: "[<Ray component: Core|RLlib|etc...>] "
+description: Report an issue with the Ray documentation
+labels: [docs]
+body:
+  - type: markdown
+    attributes:
+      value: Thank you for helping us improve the Ray documentation!
+
+  - type: textarea
+    attributes:
+      label: Description
+      description: |
+        Tell us about the change you'd like to see. For example, "I'd like to
+        see more examples of how to use `ray.remote`."
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Link
+      description: |
+        If the problem is related to an existing section, please add a link to
+        the section. For example, https://docs.ray.io/en/master/ray-core/package-ref.html#ray.remote.
+    validations:
+      required: false

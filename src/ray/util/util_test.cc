@@ -1,11 +1,31 @@
+// Copyright 2020 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/util/util.h"
 
 #include <stdio.h>
 
 #include <boost/asio/generic/basic_endpoint.hpp>
+#include <boost/process/child.hpp>
+#include <chrono>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
+
+using namespace std::chrono_literals;
 
 static const char *argv0 = NULL;
 
@@ -88,6 +108,23 @@ TEST(UtilTest, ParseCommandLineTest) {
   ASSERT_EQ(ParseCommandLine(R"(x' a \b')", win32), ArgList({R"(x')", R"(a)", R"(\b')"}));
 }
 
+TEST(UtilTest, ExponentialBackOffTest) {
+  auto exp = ExponentialBackOff(1, 2, 9);
+  ASSERT_EQ(1, exp.Next());
+  ASSERT_EQ(2, exp.Next());
+  ASSERT_EQ(4, exp.Next());
+  ASSERT_EQ(8, exp.Next());
+  ASSERT_EQ(9, exp.Next());
+  ASSERT_EQ(9, exp.Next());
+  exp.Reset();
+  ASSERT_EQ(1, exp.Next());
+  ASSERT_EQ(2, exp.Next());
+  ASSERT_EQ(4, exp.Next());
+  ASSERT_EQ(8, exp.Next());
+  ASSERT_EQ(9, exp.Next());
+  ASSERT_EQ(9, exp.Next());
+}
+
 TEST(UtilTest, ParseURLTest) {
   const std::string url = "http://abc?num_objects=9&offset=8388878&size=8388878";
   auto parsed_url = *ParseURL(url);
@@ -151,6 +188,21 @@ TEST(UtilTest, CreateCommandLineTest) {
       }
     }
   }
+}
+
+TEST(UtilTest, IsProcessAlive) {
+  namespace bp = boost::process;
+  bp::child c("bash");
+  auto pid = c.id();
+  c.join();
+  for (int i = 0; i < 5; ++i) {
+    if (IsProcessAlive(pid)) {
+      std::this_thread::sleep_for(1s);
+    } else {
+      break;
+    }
+  }
+  RAY_CHECK(!IsProcessAlive(pid));
 }
 
 }  // namespace ray

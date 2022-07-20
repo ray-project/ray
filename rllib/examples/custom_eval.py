@@ -9,12 +9,12 @@ parameters (SimpleCorridor corridor lengths).
 Sample output for `python custom_eval.py`
 ------------------------------------------------------------------------
 
-INFO trainer.py:623 -- Evaluating current policy for 10 episodes.
-INFO trainer.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
-INFO trainer.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
-INFO trainer.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
-INFO trainer.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
-INFO trainer.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
+INFO algorithm.py:623 -- Evaluating current policy for 10 episodes.
+INFO algorithm.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
+INFO algorithm.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
+INFO algorithm.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
+INFO algorithm.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
+INFO algorithm.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
 
 Result for PG_SimpleCorridor_2c6b27dc:
   ...
@@ -38,7 +38,7 @@ Result for PG_SimpleCorridor_2c6b27dc:
 Sample output for `python custom_eval.py --custom-eval`
 ------------------------------------------------------------------------
 
-INFO trainer.py:631 -- Running custom eval function <function ...>
+INFO algorithm.py:631 -- Running custom eval function <function ...>
 Update corridor length to 4
 Update corridor length to 7
 Custom evaluation round 1
@@ -76,44 +76,46 @@ from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--evaluation-parallel-to-training", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--no-custom-eval", action="store_true")
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=50,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=50, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=20000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=20000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=0.7,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=0.7, help="Reward at which we stop training."
+)
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 
-def custom_eval_function(trainer, eval_workers):
+def custom_eval_function(algorithm, eval_workers):
     """Example of a custom evaluation function.
 
     Args:
-        trainer (Trainer): trainer class to evaluate.
-        eval_workers (WorkerSet): evaluation workers.
+        algorithm: Algorithm class to evaluate.
+        eval_workers: Evaluation WorkerSet.
 
     Returns:
-        metrics (dict): evaluation metrics dict.
+        metrics: Evaluation metrics dict.
     """
 
     # We configured 2 eval workers in the training config.
@@ -134,7 +136,8 @@ def custom_eval_function(trainer, eval_workers):
     # Collect the accumulated episodes on the workers, and then summarize the
     # episode stats into a metrics dict.
     episodes, _ = collect_episodes(
-        remote_workers=eval_workers.remote_workers(), timeout_seconds=99999)
+        remote_workers=eval_workers.remote_workers(), timeout_seconds=99999
+    )
     # You can compute metrics from the episodes manually, or use the
     # convenient `summarize_episodes()` utility:
     metrics = summarize_episodes(episodes)
@@ -155,7 +158,7 @@ if __name__ == "__main__":
     else:
         eval_fn = custom_eval_function
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     config = {
         "env": SimpleCorridor,
@@ -163,26 +166,22 @@ if __name__ == "__main__":
             "corridor_length": 10,
         },
         "horizon": 20,
-
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-
         # Training rollouts will be collected using just the learner
         # process, but evaluation will be done in parallel with two
         # workers. Hence, this run will use 3 CPUs total (1 for the
         # learner + 2 more for evaluation workers).
         "num_workers": 0,
         "evaluation_num_workers": 2,
-
         # Optional custom eval function.
         "custom_eval_function": eval_fn,
-
         # Enable evaluation, once per training iteration.
         "evaluation_interval": 1,
-
-        # Run 10 episodes each time evaluation runs.
-        "evaluation_num_episodes": 10,
-
+        # Run 10 episodes each time evaluation runs (OR "auto" if parallel to training).
+        "evaluation_duration": "auto" if args.evaluation_parallel_to_training else 10,
+        # Evaluate parallelly to training.
+        "evaluation_parallel_to_training": args.evaluation_parallel_to_training,
         # Override the env config for evaluation.
         "evaluation_config": {
             "env_config": {

@@ -5,12 +5,13 @@ import com.google.common.primitives.Bytes;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectSerializer;
+import io.ray.runtime.util.SystemConfig;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,8 +24,8 @@ public class ArgumentsBuilder {
    * If the the size of an argument's serialized data is smaller than this number, the argument will
    * be passed by value. Otherwise it'll be passed by reference.
    */
-  // TODO(kfstorm): Read from internal config `max_direct_call_object_size`.
-  public static final int LARGEST_SIZE_PASS_BY_VALUE = 100 * 1024;
+  public static final long LARGEST_SIZE_PASS_BY_VALUE =
+      ((Double) SystemConfig.get("max_direct_call_object_size")).longValue();
 
   /** This dummy type is also defined in signature.py. Please keep it synced. */
   private static final NativeRayObject PYTHON_DUMMY_TYPE =
@@ -40,7 +41,7 @@ public class ArgumentsBuilder {
       if (arg instanceof ObjectRef) {
         Preconditions.checkState(arg instanceof ObjectRefImpl);
         id = ((ObjectRefImpl<?>) arg).getId();
-        address = ((RayRuntimeInternal) Ray.internal()).getObjectStore().getOwnerAddress(id);
+        address = ((AbstractRayRuntime) Ray.internal()).getObjectStore().getOwnerAddress(id);
       } else {
         value = ObjectSerializer.serialize(arg);
         if (language != Language.JAVA) {
@@ -59,8 +60,8 @@ public class ArgumentsBuilder {
           }
         }
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = ((RayRuntimeInternal) Ray.internal()).getObjectStore().putRaw(value);
-          address = ((RayRuntimeInternal) Ray.internal()).getWorkerContext().getRpcAddress();
+          id = ((AbstractRayRuntime) Ray.internal()).getObjectStore().putRaw(value);
+          address = ((AbstractRayRuntime) Ray.internal()).getWorkerContext().getRpcAddress();
           value = null;
         }
       }

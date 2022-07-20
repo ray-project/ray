@@ -1,7 +1,25 @@
+.. include:: we_are_hiring.rst
+
 .. _ray-k8s-deploy:
 
-Deploying on Kubernetes
-=======================
+The legacy Ray Kubernetes Operator
+==================================
+
+.. note::
+
+   This documentation describes deploying Ray on Kubernetes using the legacy Ray Operator hosted in
+   the Ray repo.
+   Going forward, the :ref:`preferred tool for deploying Ray on Kubernetes<kuberay-index>` will be the `KubeRay operator`_.
+   The legacy operator described on this page can still be used to deploy on Kubernetes. However, the legacy operator
+   will enter maintenance mode in a future Ray release.
+
+   To learn more about KubeRay, see the links below:
+
+   - :ref:`Ray's guides for deploying using KubeRay<kuberay-index>`.
+   - `The KubeRay documentation`_.
+   - `The KubeRay GitHub`_.
+   - :ref:`A comparison of KubeRay and the legacy Ray Operator<kuberay-vs-legacy>`.
+
 
 Overview
 --------
@@ -47,8 +65,8 @@ Installing the Ray Operator with Helm
 -------------------------------------
 Ray provides a `Helm`_ chart to simplify deployment of the Ray Operator and Ray clusters.
 
-Currently, the `Ray Helm chart`_ is available on the the master branch of the Ray GitHub repo.
-The chart will be published to a public Helm repo as part of each Ray release, starting with the upcoming Ray 1.4.0.
+The `Ray Helm chart`_ is available as part of the Ray GitHub repository.
+The chart will be published to a public Helm repository as part of a future Ray release.
 
 Preparation
 ~~~~~~~~~~~
@@ -133,6 +151,8 @@ To view autoscaling logs, run a ``kubectl logs`` command on the operator pod:
     $(kubectl get pod -l cluster.ray.io/component=operator -o custom-columns=:metadata.name) \
     | tail -n 100
 
+.. _ray-k8s-dashboard:
+
 The :ref:`Ray dashboard<ray-dashboard>` can be accessed on the Ray head node at port ``8265``.
 
 .. code-block:: shell
@@ -144,18 +164,45 @@ The :ref:`Ray dashboard<ray-dashboard>` can be accessed on the Ray head node at 
 
 .. _ray-k8s-client:
 
+Running Ray programs with Ray Jobs Submission
+---------------------------------------------
+
+:ref:`Ray Job Submission <jobs-overview>` can be used to submit Ray programs to your Ray cluster.
+To do this, you must be able to access the Ray Dashboard, which runs on the Ray head node on port ``8265``.
+One way to do this is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node using the :ref:`Kubernetes port-forwarding command<ray-k8s-dashboard>`.
+
+.. code-block:: bash
+
+  $ kubectl -n ray port-forward service/example-cluster-ray-head 8265:8265
+
+Then in a new shell, you can run a job using the CLI:
+
+.. code-block:: bash
+
+  $ export RAY_ADDRESS="http://127.0.0.1:8265"
+
+  $ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- python script.py
+  2021-12-01 23:04:52,672 INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+  2021-12-01 23:04:52,809 INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
+  2021-12-01 23:04:52,810 INFO packaging.py:352 -- Creating a file package for local directory './'.
+  2021-12-01 23:04:52,878 INFO cli.py:105 -- Job submitted successfully: raysubmit_RXhvSyEPbxhcXtm6.
+  2021-12-01 23:04:52,878 INFO cli.py:106 -- Query the status of the job using: `ray job status raysubmit_RXhvSyEPbxhcXtm6`.
+
+For more ways to run jobs, including a Python SDK and a REST API, see :ref:`Ray Job Submission <jobs-overview>`.
+
+
+
 Running Ray programs with Ray Client
 ------------------------------------
 
-:ref:`Ray Client <ray-client>` can be used to execute Ray programs
-on your Ray cluster. The Ray Client server runs on the Ray head node, on port ``10001``.
+:ref:`Ray Client <ray-client>` can be used to interactively execute Ray programs on your Ray cluster. The Ray Client server runs on the Ray head node, on port ``10001``.
 
 .. note::
 
   Connecting with Ray client requires using matching minor versions of Python (for example 3.7)
   on the server and client end, that is, on the Ray head node and in the environment where
-  ``ray.util.connect`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
-  The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray/tags?page=1&ordering=last_updated&name=1.3.0>`_.
+  ``ray.init("ray://<host>:<port>")`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
+  The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray>`_.
 
   Connecting with Ray client also requires matching Ray versions. To connect from a local machine to a cluster running the examples in this document, the :ref:`latest release version<installation>` of Ray must be installed locally.
 
@@ -174,7 +221,7 @@ Then open a new shell and try out a `sample Ray program`_:
 
   $ python ray/doc/kubernetes/example_scripts/run_local_example.py
 
-The program in this example uses ``ray.util.connect(127.0.0.1:10001)`` to connect to the Ray cluster.
+The program in this example uses ``ray.init("ray://127.0.0.1:10001")`` to connect to the Ray cluster.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 
@@ -195,7 +242,7 @@ The following command submits a Job which executes an `example Ray program`_.
   job.batch/ray-test-job created
 
 The program executed by the job uses the name of the Ray cluster's head Service to connect:
-``ray.util.connect("example-cluster-ray-head:10001")``.
+``ray.init("ray://example-cluster-ray-head:10001")``.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 
@@ -219,12 +266,26 @@ then fetch its logs:
   $ kubectl -n ray delete job ray-test-job
   job.batch "ray-test-job" deleted
 
+.. tip::
+
+  Code dependencies for a given Ray task or actor must be installed on each Ray node that might run the task or actor.
+  Typically, this means that all Ray nodes need to have the same dependencies installed.
+  To achieve this, you can build a custom container image, using one of the `official Ray images <https://hub.docker.com/r/rayproject/ray>`_ as the base.
+  Alternatively, try out the experimental :ref:`Runtime Environments<runtime-environments>` API (latest Ray release version recommended.)
+
+.. _k8s-cleanup-basic:
+
 Cleanup
 -------
 
-To remove a Ray Helm release and the associated API resources, use `helm uninstall`_.
+To remove a Ray Helm release and the associated API resources, use `kubectl delete`_ and `helm uninstall`_.
+Note the order of the commands below.
 
 .. code-block:: shell
+
+  # First, delete the RayCluster custom resource.
+  $ kubectl -n ray delete raycluster example-cluster
+  raycluster.cluster.ray.io "example-cluster" deleted
 
   # Delete the Ray release.
   $ helm -n ray uninstall example-cluster
@@ -237,6 +298,8 @@ To remove a Ray Helm release and the associated API resources, use `helm uninsta
 Note that ``helm uninstall`` `does not delete`_ the RayCluster CRD. If you wish to delete the CRD,
 make sure all Ray Helm releases have been uninstalled, then run ``kubectl delete crd rayclusters.cluster.ray.io``.
 
+- :ref:`More details on resource cleanup<k8s-cleanup>`
+
 Next steps
 ----------
 :ref:`Ray Operator Advanced Configuration<k8s-advanced>`
@@ -244,7 +307,7 @@ Next steps
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst
 
 .. _`Kubernetes`: https://kubernetes.io/
 .. _`Kubernetes Job`: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
@@ -262,8 +325,14 @@ Questions or Issues?
 .. _`kubectl`: https://kubernetes.io/docs/tasks/tools/
 .. _`Helm 3`: https://helm.sh/
 .. _`Helm`: https://helm.sh/
+.. _`kubectl delete`: https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#delete
 .. _`helm uninstall`: https://helm.sh/docs/helm/helm_uninstall/
 .. _`does not delete`: https://helm.sh/docs/chart_best_practices/custom_resource_definitions/
 .. _`Pods`: https://kubernetes.io/docs/concepts/workloads/pods/
 .. _`example Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/job_example.py
 .. _`sample Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/run_local_example.py
+.. _`official Ray images`: https://hub.docker.com/r/rayproject/ray
+.. _`Ray Docker Hub`: https://hub.docker.com/r/rayproject/ray
+.. _`KubeRay operator`: https://github.com/ray-project/kuberay
+.. _`The KubeRay GitHub`: https://github.com/ray-project/kuberay
+.. _`The KubeRay documentation`: https://ray-project.github.io/kuberay/

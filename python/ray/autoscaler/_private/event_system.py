@@ -50,35 +50,36 @@ class _EventSystem:
         self.callback_map = {}
 
     def add_callback_handler(
-            self,
-            event: str,
-            callback: Union[Callable[[Dict], None], List[Callable[[Dict],
-                                                                  None]]],
+        self,
+        event: str,
+        callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
     ):
         """Stores callback handler for event.
 
         Args:
-            event (str): Event that callback should be called on. See
+            event: Event that callback should be called on. See
                 CreateClusterEvent for details on the events available to be
                 registered against.
             callback (Callable[[Dict], None]): Callable object that is invoked
                 when specified event occurs.
         """
         if event not in CreateClusterEvent.__members__.values():
-            cli_logger.warning(f"{event} is not currently tracked, and this"
-                               " callback will not be invoked.")
+            cli_logger.warning(
+                f"{event} is not currently tracked, and this"
+                " callback will not be invoked."
+            )
 
-        self.callback_map.setdefault(
-            event,
-            []).extend([callback] if type(callback) is not list else callback)
+        self.callback_map.setdefault(event, []).extend(
+            [callback] if type(callback) is not list else callback
+        )
 
-    def execute_callback(self,
-                         event: CreateClusterEvent,
-                         event_data: Optional[Dict[str, Any]] = None):
+    def execute_callback(
+        self, event: CreateClusterEvent, event_data: Optional[Dict[str, Any]] = None
+    ):
         """Executes all callbacks for event.
 
         Args:
-            event (str): Event that is invoked. See CreateClusterEvent
+            event: Event that is invoked. See CreateClusterEvent
                 for details on the available events.
             event_data (Dict[str, Any]): Argument that is passed to each
                 callable object stored for this particular event.
@@ -95,7 +96,7 @@ class _EventSystem:
         """Clears stored callable objects for event.
 
         Args:
-            event (str): Event that has callable objects stored in map.
+            event: Event that has callable objects stored in map.
                 See CreateClusterEvent for details on the available events.
         """
         if event in self.callback_map:

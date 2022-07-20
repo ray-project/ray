@@ -22,6 +22,23 @@
 #include "absl/memory/memory.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/stats/metric_defs.h"
+
+DEFINE_stats(test_hist,
+             "TestStats",
+             ("method", "method2"),
+             (1.0, 2.0, 3.0, 4.0),
+             ray::stats::HISTOGRAM);
+DEFINE_stats(test_2,
+             "TestStats",
+             ("method", "method2"),
+             (1.0),
+             ray::stats::COUNT,
+             ray::stats::SUM);
+DEFINE_stats(test, "TestStats", ("method"), (1.0), ray::stats::COUNT, ray::stats::SUM);
+DEFINE_stats(
+    test_declare, "TestStats2", ("tag1"), (1.0), ray::stats::COUNT, ray::stats::SUM);
+DECLARE_stats(test_declare);
 
 namespace ray {
 
@@ -95,7 +112,8 @@ TEST_F(StatsTest, InitializationTest) {
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
     ray::stats::Init({{stats::LanguageKey, test_tag_value_that_shouldnt_be_applied}},
-                     MetricsAgentPort, exporter);
+                     MetricsAgentPort,
+                     exporter);
   }
 
   auto &first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
@@ -128,15 +146,21 @@ TEST(Metric, MultiThreadMetricRegisterViewTest) {
     threads.emplace_back([tag1, tag2, index]() {
       for (int i = 0; i < 100; i++) {
         stats::Count random_counter(
-            "ray.random.counter" + std::to_string(index) + std::to_string(i), "", "",
+            "ray.random.counter" + std::to_string(index) + std::to_string(i),
+            "",
+            "",
             {tag1, tag2});
         random_counter.Record(i);
         stats::Gauge random_gauge(
-            "ray.random.gauge" + std::to_string(index) + std::to_string(i), "", "",
+            "ray.random.gauge" + std::to_string(index) + std::to_string(i),
+            "",
+            "",
             {tag1, tag2});
         random_gauge.Record(i);
         stats::Sum random_sum(
-            "ray.random.sum" + std::to_string(index) + std::to_string(i), "", "",
+            "ray.random.sum" + std::to_string(index) + std::to_string(i),
+            "",
+            "",
             {tag1, tag2});
         random_sum.Record(i);
       }
@@ -202,6 +226,15 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
   ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
   ray::stats::Init(global_tags, MetricsAgentPort, exporter);
   ray::stats::Shutdown();
+}
+
+TEST_F(StatsTest, STAT_DEF) {
+  ray::stats::Shutdown();
+  std::shared_ptr<stats::MetricExporterClient> exporter(
+      new stats::StdoutExporterClient());
+  ray::stats::Init({}, MetricsAgentPort, exporter);
+  STATS_test.Record(1.0);
+  STATS_test_declare.Record(1.0, "Test");
 }
 
 }  // namespace ray

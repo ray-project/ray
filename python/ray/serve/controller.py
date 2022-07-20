@@ -1,39 +1,58 @@
 import asyncio
+import json
+import logging
+import os
+import pickle
+import time
+import traceback
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
+from ray._private.utils import import_attr
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
-from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state import BackendState
-from ray.serve.backend_worker import create_backend_replica
+from ray.exceptions import RayTaskError
+from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.common import (
-    BackendInfo,
-    BackendTag,
+    ApplicationStatus,
+    ApplicationStatusInfo,
+    DeploymentInfo,
     EndpointInfo,
     EndpointTag,
-    GoalId,
     NodeId,
-    ReplicaTag,
-    TrafficPolicy,
+    RunningReplicaInfo,
+    StatusOverview,
 )
-from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
-    ALL_HTTP_METHODS,
-    RESERVED_VERSION_TAG,
+    CONTROL_LOOP_PERIOD_S,
+    SERVE_LOGGER_NAME,
+    CONTROLLER_MAX_CONCURRENCY,
+    SERVE_ROOT_URL_ENV_KEY,
+    SERVE_NAMESPACE,
 )
+from ray.serve.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
-from ray.serve.utils import logger
+from ray.serve.schema import ServeApplicationSchema
+from ray.serve.storage.checkpoint_path import make_kv_store
+from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.utils import (
+    override_runtime_envs_except_env_vars,
+)
+from ray.types import ObjectRef
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
-# How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 0.1
+SNAPSHOT_KEY = "serve-deployments-snapshot"
+CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 
 
 @ray.remote(num_cpus=0)
@@ -62,15 +81,29 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self,
-                       controller_name: str,
-                       http_config: HTTPOptions,
-                       detached: bool = False):
-        # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore(namespace=controller_name)
+    async def __init__(
+        self,
+        controller_name: str,
+        *,
+        http_config: HTTPOptions,
+        checkpoint_path: str,
+        head_node_id: str,
+        detached: bool = False,
+    ):
+        configure_component_logger(
+            component_name="controller", component_id=str(os.getpid())
+        )
 
-        # Dictionary of backend_tag -> proxy_name -> most recent queue length.
-        self.backend_stats = defaultdict(lambda: defaultdict(dict))
+        # Used to read/write checkpoints.
+        self.ray_worker_namespace = ray.get_runtime_context().namespace
+        self.controller_name = controller_name
+        self.checkpoint_path = checkpoint_path
+        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
+        self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
+        self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
+
+        # Dictionary of deployment_name -> proxy_name -> queue length.
+        self.deployment_stats = defaultdict(lambda: defaultdict(dict))
 
         # Used to ensure that only a single state-changing operation happens
         # at any given time.
@@ -78,20 +111,66 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
 
-        self.goal_manager = AsyncGoalManager()
-        self.http_state = HTTPState(controller_name, detached, http_config)
+        self.http_state = HTTPState(
+            controller_name,
+            detached,
+            http_config,
+            head_node_id,
+        )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
-        self.backend_state = BackendState(controller_name, detached,
-                                          self.kv_store, self.long_poll_host,
-                                          self.goal_manager)
+
+        # Fetch all running actors in current cluster as source of current
+        # replica state for controller failure recovery
+        all_current_actors = ray.util.list_named_actors(all_namespaces=True)
+        all_serve_actor_names = [
+            actor["name"]
+            for actor in all_current_actors
+            if actor["namespace"] == SERVE_NAMESPACE
+        ]
+
+        self.deployment_state_manager = DeploymentStateManager(
+            controller_name,
+            detached,
+            self.kv_store,
+            self.long_poll_host,
+            all_serve_actor_names,
+        )
+
+        # Reference to Ray task executing most recent deployment request
+        self.config_deployment_request_ref: ObjectRef = None
+
+        # Unix timestamp of latest config deployment request. Defaults to 0.
+        self.deployment_timestamp = 0
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
-    async def wait_for_goal(self, goal_id: GoalId) -> None:
-        await self.goal_manager.wait_for_goal(goal_id)
+        self._recover_config_from_checkpoint()
 
-    async def _num_pending_goals(self) -> int:
-        return self.goal_manager.num_pending_goals()
+    def check_alive(self) -> None:
+        """No-op to check if this controller is alive."""
+        return
+
+    def get_pid(self) -> int:
+        return os.getpid()
+
+    def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
+        self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
+
+    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
+        self.deployment_state_manager.record_handle_metrics(data, send_timestamp)
+
+    def _dump_autoscaling_metrics_for_testing(self):
+        return self.deployment_state_manager.get_autoscaling_metrics()
+
+    def _dump_replica_states_for_testing(self, deployment_name):
+        return self.deployment_state_manager._deployment_states[
+            deployment_name
+        ]._replicas
+
+    def _stop_one_running_replica_for_testing(self, deployment_name):
+        self.deployment_state_manager._deployment_states[
+            deployment_name
+        ]._stop_one_running_replica_for_testing()
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
@@ -101,247 +180,488 @@ class ServeController:
               determine whether or not the host should immediately return the
               data or wait for the value to be changed.
         """
+        return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
+
+    async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
+        """Proxy long pull client's listen request.
+
+        Args:
+            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
+              keys_to_snapshot_ids (Dict[str, int]).
+        """
         return await (
-            self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
+            self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
+        )
+
+    def get_checkpoint_path(self) -> str:
+        return self.checkpoint_path
+
+    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
+        """Returns a dictionary of deployment name to config."""
+        return self.endpoint_state.get_endpoints()
+
+    def get_all_endpoints_java(self) -> bytes:
+        """Returns a dictionary of deployment name to config."""
+        from ray.serve.generated.serve_pb2 import (
+            EndpointSet,
+            EndpointInfo as EndpointInfoProto,
+        )
+
+        endpoints = self.get_all_endpoints()
+        data = {
+            endpoint_tag: EndpointInfoProto(route=endppint_dict["route"])
+            for endpoint_tag, endppint_dict in endpoints.items()
+        }
+        return EndpointSet(endpoints=data).SerializeToString()
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
         return self.http_state.get_http_proxy_handles()
 
+    def get_http_proxy_names(self) -> bytes:
+        """Returns the http_proxy actor name list serialized by protobuf."""
+        from ray.serve.generated.serve_pb2 import ActorNameList
+
+        actor_name_list = ActorNameList(
+            names=self.http_state.get_http_proxy_names().values()
+        )
+        return actor_name_list.SerializeToString()
+
     async def run_control_loop(self) -> None:
+        # NOTE(edoakes): we catch all exceptions here and simply log them,
+        # because an unhandled exception would cause the main control loop to
+        # halt, which should *never* happen.
         while True:
+
             async with self.write_lock:
                 try:
                     self.http_state.update()
-                except Exception as e:
-                    logger.error(f"Exception updating HTTP state: {e}")
-                try:
-                    self.backend_state.update()
-                except Exception as e:
-                    logger.error(f"Exception updating backend state: {e}")
+                except Exception:
+                    logger.exception("Exception updating HTTP state.")
 
+                try:
+                    self.deployment_state_manager.update()
+                except Exception:
+                    logger.exception("Exception updating deployment state.")
+
+            try:
+                self._put_serve_snapshot()
+            except Exception:
+                logger.exception("Exception putting serve snapshot.")
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
-    def _all_replica_handles(
-            self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
+    def _put_serve_snapshot(self) -> None:
+        val = dict()
+        for deployment_name, (
+            deployment_info,
+            route_prefix,
+        ) in self.list_deployments_internal(include_deleted=True).items():
+            entry = dict()
+            entry["name"] = deployment_name
+            entry["namespace"] = ray.get_runtime_context().namespace
+            entry["ray_job_id"] = deployment_info.deployer_job_id.hex()
+            entry["class_name"] = deployment_info.replica_config.deployment_def_name
+            entry["version"] = deployment_info.version
+            entry["http_route"] = route_prefix
+            entry["start_time"] = deployment_info.start_time_ms
+            entry["end_time"] = deployment_info.end_time_ms or 0
+            entry["status"] = "DELETED" if deployment_info.end_time_ms else "RUNNING"
+            entry["actors"] = dict()
+            if entry["status"] == "RUNNING":
+                replicas = self.deployment_state_manager._deployment_states[
+                    deployment_name
+                ]._replicas
+                running_replicas = replicas.get([ReplicaState.RUNNING])
+                for replica in running_replicas:
+                    try:
+                        actor_handle = replica.actor_handle
+                    except ValueError:
+                        # Actor died or hasn't yet been created.
+                        continue
+                    actor_id = actor_handle._ray_actor_id.hex()
+                    replica_tag = replica.replica_tag
+                    replica_version = (
+                        None
+                        if (replica.version is None or replica.version.unversioned)
+                        else replica.version.code_version
+                    )
+                    entry["actors"][actor_id] = {
+                        "replica_tag": replica_tag,
+                        "version": replica_version,
+                    }
+
+            val[deployment_name] = entry
+        self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
+
+    def _recover_config_from_checkpoint(self):
+        checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        if checkpoint is not None:
+            self.deployment_timestamp, config = pickle.loads(checkpoint)
+            self.deploy_app(ServeApplicationSchema.parse_obj(config), update_time=False)
+
+    def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing."""
-        return self.backend_state.get_running_replica_handles()
-
-    def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
-        """Returns a dictionary of backend tag to backend config."""
-        return self.backend_state.get_backend_configs()
-
-    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
-        """Returns a dictionary of backend tag to backend config."""
-        return self.endpoint_state.get_endpoints()
-
-    def _validate_traffic_dict(self, traffic_dict: Dict[str, float]):
-        for backend in traffic_dict:
-            if self.backend_state.get_backend(backend) is None:
-                raise ValueError(
-                    "Attempted to assign traffic to a backend '{}' that "
-                    "is not registered.".format(backend))
-
-    async def set_traffic(self, endpoint: str,
-                          traffic_dict: Dict[str, float]) -> None:
-        """Sets the traffic policy for the specified endpoint."""
-        async with self.write_lock:
-            self._validate_traffic_dict(traffic_dict)
-
-            logger.info("Setting traffic for endpoint "
-                        f"'{endpoint}' to '{traffic_dict}'.")
-
-            self.endpoint_state.set_traffic_policy(endpoint,
-                                                   TrafficPolicy(traffic_dict))
-
-    async def shadow_traffic(self, endpoint_name: str, backend_tag: BackendTag,
-                             proportion: float) -> None:
-        """Shadow traffic from the endpoint to the backend."""
-        async with self.write_lock:
-            if self.backend_state.get_backend(backend_tag) is None:
-                raise ValueError(
-                    "Attempted to shadow traffic to a backend '{}' that "
-                    "is not registered.".format(backend_tag))
-
-            logger.info(
-                "Shadowing '{}' of traffic to endpoint '{}' to backend '{}'.".
-                format(proportion, endpoint_name, backend_tag))
-
-            self.endpoint_state.shadow_traffic(endpoint_name, backend_tag,
-                                               proportion)
-
-    async def create_endpoint(
-            self,
-            endpoint: str,
-            traffic_dict: Dict[str, float],
-            route: Optional[str],
-            methods: Set[str],
-    ) -> None:
-        """Create a new endpoint with the specified route and methods.
-
-        If the route is None, this is a "headless" endpoint that will not
-        be exposed over HTTP and can only be accessed via a handle.
-        """
-        async with self.write_lock:
-            self._validate_traffic_dict(traffic_dict)
-
-            logger.info(
-                "Registering route '{}' to endpoint '{}' with methods '{}'.".
-                format(route, endpoint, methods))
-
-            self.endpoint_state.create_endpoint(
-                endpoint, EndpointInfo(methods, route=route),
-                TrafficPolicy(traffic_dict))
-
-        # TODO(simon): Use GoalID mechanism for this so client can check for
-        # goal id and http_state complete the goal id.
-        await self.http_state.ensure_http_route_exists(endpoint, timeout_s=30)
-
-    async def delete_endpoint(self, endpoint: str) -> None:
-        """Delete the specified endpoint.
-
-        Does not modify any corresponding backends.
-        """
-        logger.info("Deleting endpoint '{}'".format(endpoint))
-        async with self.write_lock:
-            self.endpoint_state.delete_endpoint(endpoint)
-
-    async def create_backend(
-            self, backend_tag: BackendTag, backend_config: BackendConfig,
-            replica_config: ReplicaConfig) -> Optional[GoalId]:
-        """Register a new backend under the specified tag."""
-        async with self.write_lock:
-            backend_info = BackendInfo(
-                actor_def=ray.remote(
-                    create_backend_replica(
-                        backend_tag, replica_config.serialized_backend_def)),
-                version=RESERVED_VERSION_TAG,
-                backend_config=backend_config,
-                replica_config=replica_config)
-            goal_id, _ = self.backend_state.deploy_backend(
-                backend_tag, backend_info)
-            return goal_id
-
-    async def delete_backend(self,
-                             backend_tag: BackendTag,
-                             force_kill: bool = False) -> Optional[GoalId]:
-        async with self.write_lock:
-            # Check that the specified backend isn't used by any endpoints.
-            for endpoint, info in self.endpoint_state.get_endpoints().items():
-                if (backend_tag in info["traffic"]
-                        or backend_tag in info["shadows"]):
-                    raise ValueError(f"Backend '{backend_tag}' is used by "
-                                     f"endpoint '{endpoint}' and cannot be "
-                                     "deleted. Please remove the backend "
-                                     "from all endpoints and try again.")
-            return self.backend_state.delete_backend(backend_tag, force_kill)
-
-    async def update_backend_config(self, backend_tag: BackendTag,
-                                    config_options: BackendConfig) -> GoalId:
-        """Set the config for the specified backend."""
-        async with self.write_lock:
-            existing_info = self.backend_state.get_backend(backend_tag)
-            if existing_info is None:
-                raise ValueError(f"Backend {backend_tag} is not registered.")
-
-            backend_info = BackendInfo(
-                actor_def=existing_info.actor_def,
-                version=existing_info.version,
-                backend_config=existing_info.backend_config.copy(
-                    update=config_options.dict(exclude_unset=True)),
-                replica_config=existing_info.replica_config)
-            goal_id, _ = self.backend_state.deploy_backend(
-                backend_tag, backend_info)
-            return goal_id
-
-    def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
-        """Get the current config for the specified backend."""
-        if self.backend_state.get_backend(backend_tag) is None:
-            raise ValueError(f"Backend {backend_tag} is not registered.")
-        return self.backend_state.get_backend(backend_tag).backend_config
+        return self.deployment_state_manager.get_running_replica_infos()
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
         return self.http_state.get_config()
 
-    async def shutdown(self) -> None:
+    def get_root_url(self):
+        """Return the root url for the serve instance."""
+        http_config = self.get_http_config()
+        if http_config.root_url == "":
+            if SERVE_ROOT_URL_ENV_KEY in os.environ:
+                return os.environ[SERVE_ROOT_URL_ENV_KEY]
+            else:
+                return (
+                    f"http://{http_config.host}:{http_config.port}"
+                    f"{http_config.root_path}"
+                )
+        return http_config.root_url
+
+    async def shutdown(self):
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            self.backend_state.shutdown()
+            self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
+            self.deployment_state_manager.shutdown()
             self.endpoint_state.shutdown()
             self.http_state.shutdown()
 
-    async def deploy(
-            self, name: str, backend_config: BackendConfig,
-            replica_config: ReplicaConfig, python_methods: List[str],
-            version: Optional[str], prev_version: Optional[str],
-            route_prefix: Optional[str]) -> Tuple[Optional[GoalId], bool]:
+    def deploy(
+        self,
+        name: str,
+        deployment_config_proto_bytes: bytes,
+        replica_config_proto_bytes: bytes,
+        route_prefix: Optional[str],
+        deployer_job_id: Union["ray._raylet.JobID", bytes],
+    ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
-        async with self.write_lock:
-            if prev_version is not None:
-                existing_backend_info = self.backend_state.get_backend(name)
-                if (existing_backend_info is None
-                        or not existing_backend_info.version):
-                    raise ValueError(
-                        f"prev_version '{prev_version}' is specified but "
-                        "there is no existing deployment.")
-                if existing_backend_info.version != prev_version:
-                    raise ValueError(
-                        f"prev_version '{prev_version}' "
-                        "does not match with the existing "
-                        f"version '{existing_backend_info.version}'.")
+        deployment_config = DeploymentConfig.from_proto_bytes(
+            deployment_config_proto_bytes
+        )
+        version = deployment_config.version
+        replica_config = ReplicaConfig.from_proto_bytes(
+            replica_config_proto_bytes, deployment_config.needs_pickle()
+        )
 
-            backend_info = BackendInfo(
-                actor_def=ray.remote(
-                    create_backend_replica(
-                        name, replica_config.serialized_backend_def)),
-                version=version,
-                backend_config=backend_config,
-                replica_config=replica_config)
+        autoscaling_config = deployment_config.autoscaling_config
+        if autoscaling_config is not None:
+            # TODO: is this the desired behaviour? Should this be a setting?
+            deployment_config.num_replicas = autoscaling_config.min_replicas
 
-            goal_id, updating = self.backend_state.deploy_backend(
-                name, backend_info)
-            endpoint_info = EndpointInfo(
-                ALL_HTTP_METHODS,
-                route=route_prefix,
-                python_methods=python_methods,
-                legacy=False)
-            self.endpoint_state.update_endpoint(name, endpoint_info,
-                                                TrafficPolicy({
-                                                    name: 1.0
-                                                }))
-            return goal_id, updating
+            autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
+        else:
+            autoscaling_policy = None
+        if isinstance(deployer_job_id, bytes):
+            deployer_job_id = ray.JobID.from_int(
+                int.from_bytes(deployer_job_id, "little")
+            )
+        deployment_info = DeploymentInfo(
+            actor_name=name,
+            version=version,
+            deployment_config=deployment_config,
+            replica_config=replica_config,
+            deployer_job_id=deployer_job_id,
+            start_time_ms=int(time.time() * 1000),
+            autoscaling_policy=autoscaling_policy,
+        )
+        # TODO(architkulkarni): When a deployment is redeployed, even if
+        # the only change was num_replicas, the start_time_ms is refreshed.
+        # Is this the desired behaviour?
+        updating = self.deployment_state_manager.deploy(name, deployment_info)
 
-    def delete_deployment(self, name: str) -> Optional[GoalId]:
+        if route_prefix is not None:
+            endpoint_info = EndpointInfo(route=route_prefix)
+            self.endpoint_state.update_endpoint(name, endpoint_info)
+        else:
+            self.endpoint_state.delete_endpoint(name)
+
+        return updating
+
+    def deploy_group(self, deployment_args_list: List[Dict]) -> List[bool]:
+        """
+        Takes in a list of dictionaries that contain keyword arguments for the
+        controller's deploy() function. Calls deploy on all the argument
+        dictionaries in the list. Effectively executes an atomic deploy on a
+        group of deployments.
+        """
+
+        return [self.deploy(**args) for args in deployment_args_list]
+
+    def deploy_app(
+        self, config: ServeApplicationSchema, update_time: bool = True
+    ) -> None:
+        """Kicks off a task that deploys a Serve application.
+
+        Cancels any previous in-progress task that is deploying a Serve
+        application.
+
+        Args:
+            config: Contains the following:
+                import_path: Serve deployment graph's import path
+                runtime_env: runtime_env to run the deployment graph in
+                deployment_override_options: Dictionaries that
+                    contain argument-value options that can be passed directly
+                    into a set_options() call. Overrides deployment options set
+                    in the graph's code itself.
+            update_time: Whether to update the deployment_timestamp.
+        """
+
+        if update_time:
+            self.deployment_timestamp = time.time()
+
+        config_dict = config.dict(exclude_unset=True)
+        self.kv_store.put(
+            CONFIG_CHECKPOINT_KEY,
+            pickle.dumps((self.deployment_timestamp, config_dict)),
+        )
+
+        if self.config_deployment_request_ref is not None:
+            ray.cancel(self.config_deployment_request_ref)
+            logger.info(
+                "Received new config deployment request. Cancelling "
+                "previous request."
+            )
+
+        deployment_override_options = config.dict(
+            by_alias=True, exclude_unset=True
+        ).get("deployments", [])
+
+        self.config_deployment_request_ref = run_graph.options(
+            runtime_env=config.runtime_env
+        ).remote(config.import_path, config.runtime_env, deployment_override_options)
+
+    def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
-        return self.backend_state.delete_backend(name, force_kill=False)
+        return self.deployment_state_manager.delete_deployment(name)
 
-    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
+    def delete_deployments(self, names: Iterable[str]) -> None:
+        for name in names:
+            self.delete_deployment(name)
+
+    def get_deployment_info(self, name: str) -> bytes:
         """Get the current information about a deployment.
 
         Args:
             name(str): the name of the deployment.
 
         Returns:
-            (BackendInfo, route)
+            DeploymentRoute's protobuf serialized bytes
 
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        backend_info: BackendInfo = self.backend_state.get_backend(name)
-        if backend_info is None:
+        deployment_info = self.deployment_state_manager.get_deployment(name)
+        if deployment_info is None:
             raise KeyError(f"Deployment {name} does not exist.")
 
         route = self.endpoint_state.get_endpoint_route(name)
 
-        return backend_info, route
+        from ray.serve.generated.serve_pb2 import DeploymentRoute
 
-    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
-        """Gets the current information about all active deployments."""
+        deployment_route = DeploymentRoute(
+            deployment_info=deployment_info.to_proto(), route=route
+        )
+        return deployment_route.SerializeToString()
+
+    def list_deployments_internal(
+        self, include_deleted: Optional[bool] = False
+    ) -> Dict[str, Tuple[DeploymentInfo, str]]:
+        """Gets the current information about all deployments.
+
+        Args:
+            include_deleted(bool): Whether to include information about
+                deployments that have been deleted.
+
+        Returns:
+            Dict(deployment_name, (DeploymentInfo, route))
+
+        Raises:
+            KeyError if the deployment doesn't exist.
+        """
         return {
-            name: (self.backend_state.get_backend(name),
-                   self.endpoint_state.get_endpoint_route(name))
-            for name in self.backend_state.get_backend_configs()
+            name: (
+                self.deployment_state_manager.get_deployment(
+                    name, include_deleted=include_deleted
+                ),
+                self.endpoint_state.get_endpoint_route(name),
+            )
+            for name in self.deployment_state_manager.get_deployment_configs(
+                include_deleted=include_deleted
+            )
         }
+
+    def list_deployments(self, include_deleted: Optional[bool] = False) -> bytes:
+        """Gets the current information about all deployments.
+
+        Args:
+            include_deleted(bool): Whether to include information about
+                deployments that have been deleted.
+
+        Returns:
+            DeploymentRouteList's protobuf serialized bytes
+        """
+        from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
+
+        deployment_route_list = DeploymentRouteList()
+        for deployment_name, (
+            deployment_info,
+            route_prefix,
+        ) in self.list_deployments_internal(include_deleted=include_deleted).items():
+            deployment_info_proto = deployment_info.to_proto()
+            deployment_info_proto.name = deployment_name
+            deployment_route_list.deployment_routes.append(
+                DeploymentRoute(
+                    deployment_info=deployment_info_proto, route=route_prefix
+                )
+            )
+        return deployment_route_list.SerializeToString()
+
+    async def get_serve_status(self) -> bytes:
+
+        serve_app_status = ApplicationStatus.RUNNING
+        serve_app_message = ""
+        deployment_timestamp = self.deployment_timestamp
+
+        if self.config_deployment_request_ref:
+            finished, pending = ray.wait(
+                [self.config_deployment_request_ref], timeout=0
+            )
+
+            if pending:
+                serve_app_status = ApplicationStatus.DEPLOYING
+            else:
+                try:
+                    await finished[0]
+                except RayTaskError:
+                    serve_app_status = ApplicationStatus.DEPLOY_FAILED
+                    serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
+
+        app_status = ApplicationStatusInfo(
+            serve_app_status, serve_app_message, deployment_timestamp
+        )
+        deployment_statuses = self.deployment_state_manager.get_deployment_statuses()
+
+        status_info = StatusOverview(
+            app_status=app_status,
+            deployment_statuses=deployment_statuses,
+        )
+
+        return status_info.to_proto().SerializeToString()
+
+    def get_app_config(self) -> Dict:
+        checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        if checkpoint is None:
+            return {
+                "import_path": "",
+                "runtime_env": "",
+                "deployments": [],
+            }
+        else:
+            _, config = pickle.loads(checkpoint)
+            return config
+
+
+@ray.remote(num_cpus=0, max_calls=1)
+def run_graph(
+    import_path: str, graph_env: dict, deployment_override_options: List[Dict]
+):
+    """Deploys a Serve application to the controller's Ray cluster."""
+    try:
+        from ray import serve
+        from ray.serve.api import build
+
+        # Import and build the graph
+        graph = import_attr(import_path)
+        app = build(graph)
+
+        # Override options for each deployment
+        for options in deployment_override_options:
+            name = options["name"]
+
+            # Merge graph-level and deployment-level runtime_envs
+            if "ray_actor_options" in options:
+                # If specified, get ray_actor_options from config
+                ray_actor_options = options["ray_actor_options"] or {}
+            else:
+                # Otherwise, get options from graph code (and default to {} if code
+                # sets options to None)
+                ray_actor_options = app.deployments[name].ray_actor_options or {}
+
+            deployment_env = ray_actor_options.get("runtime_env", {})
+            merged_env = override_runtime_envs_except_env_vars(
+                graph_env, deployment_env
+            )
+
+            ray_actor_options.update({"runtime_env": merged_env})
+            options["ray_actor_options"] = ray_actor_options
+
+            # Update the deployment's options
+            app.deployments[name].set_options(**options)
+
+        # Run the graph locally on the cluster
+        serve.run(app)
+    except KeyboardInterrupt:
+        # Error is raised when this task is canceled with ray.cancel(), which
+        # happens when deploy_app() is called.
+        logger.debug("Existing config deployment request terminated.")
+
+
+@ray.remote(num_cpus=0)
+class ServeControllerAvatar:
+    """A hack that proxy the creation of async actors from Java.
+
+    To be removed after https://github.com/ray-project/ray/pull/26037
+
+    Java api can not support python async actor. If we use java api create
+    python async actor. The async init method won't be executed. The async
+    method will fail with pickle error. And the run_control_loop of controller
+    actor can't be executed too. We use this proxy actor create python async
+    actor to avoid the above problem.
+    """
+
+    def __init__(
+        self,
+        controller_name: str,
+        checkpoint_path: str,
+        detached: bool = False,
+        dedicated_cpu: bool = False,
+        http_proxy_port: int = 8000,
+    ):
+        try:
+            self._controller = ray.get_actor(controller_name, namespace="serve")
+        except ValueError:
+            self._controller = None
+        if self._controller is None:
+            # Used for scheduling things to the head node explicitly.
+            head_node_id = ray.get_runtime_context().node_id.hex()
+            http_config = HTTPOptions()
+            http_config.port = http_proxy_port
+            self._controller = ServeController.options(
+                num_cpus=1 if dedicated_cpu else 0,
+                name=controller_name,
+                lifetime="detached" if detached else None,
+                max_restarts=-1,
+                max_task_retries=-1,
+                # Schedule the controller on the head node with a soft constraint. This
+                # prefers it to run on the head node in most cases, but allows it to be
+                # restarted on other nodes in an HA cluster.
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    head_node_id, soft=True
+                ),
+                namespace="serve",
+                max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+            ).remote(
+                controller_name,
+                http_config=http_config,
+                checkpoint_path=checkpoint_path,
+                head_node_id=head_node_id,
+                detached=detached,
+            )
+
+    def check_alive(self) -> None:
+        """No-op to check if this actor is alive."""
+        return

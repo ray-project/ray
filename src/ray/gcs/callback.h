@@ -15,7 +15,6 @@
 #pragma once
 
 #include <boost/optional/optional.hpp>
-#include <unordered_map>
 #include <vector>
 
 #include "ray/common/status.h"
@@ -43,8 +42,7 @@ using OptionalItemCallback =
 /// \param status Status indicates whether the read was successful.
 /// \param result The items returned by GCS.
 template <typename Data>
-using MultiItemCallback =
-    std::function<void(Status status, const std::vector<Data> &result)>;
+using MultiItemCallback = std::function<void(Status status, std::vector<Data> &&result)>;
 
 /// This callback is used to receive notifications of the subscribed items in the GCS.
 /// \param id The id of the item.
@@ -60,7 +58,7 @@ using ItemCallback = std::function<void(const Data &result)>;
 /// This callback is used to receive multiple key-value items from GCS.
 /// \param result The key-value items returned by GCS.
 template <typename Key, typename Value>
-using MapCallback = std::function<void(const std::unordered_map<Key, Value> &result)>;
+using MapCallback = std::function<void(absl::flat_hash_map<Key, Value> &&result)>;
 
 }  // namespace gcs
 

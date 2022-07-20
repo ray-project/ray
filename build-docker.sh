@@ -7,7 +7,7 @@ set -x
 
 GPU=""
 BASE_IMAGE="ubuntu:focal"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 PYTHON_VERSION="3.7.7"
 
 
@@ -17,7 +17,12 @@ key="$1"
 case $key in
     --gpu)
     GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
+    BASE_IMAGE="nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
+    ;;
+    --base-image)
+    # Override for the base image.
+    shift
+    BASE_IMAGE=$1
     ;;
     --no-cache-build)
     NO_CACHE="--no-cache"
@@ -47,7 +52,7 @@ case $key in
     PYTHON_VERSION=$1
     ;;
     *)
-    echo "Usage: build-docker.sh [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --wheel-to-use ] [ --python-version ]"
+    echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --wheel-to-use ] [ --python-version ]"
     exit 1
 esac
 shift
@@ -75,10 +80,10 @@ if [ $BUILD_DEV ]; then
     git rev-parse HEAD > ./docker/development/git-rev
     git archive -o ./docker/development/ray.tar "$(git rev-parse HEAD)"
     if [ $OUTPUT_SHA ]; then
-        IMAGE_SHA=$(docker build --no-cache -q -t rayproject/development docker/development)
+        IMAGE_SHA=$(docker build $NO_CACHE -q -t rayproject/development docker/development)
         echo "rayproject/development:latest SHA:$IMAGE_SHA"
     else
-        docker build --no-cache -t rayproject/development docker/development
+        docker build $NO_CACHE -t rayproject/development docker/development
     fi
     rm ./docker/development/ray.tar ./docker/development/git-rev
 fi

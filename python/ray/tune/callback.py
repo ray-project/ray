@@ -1,12 +1,72 @@
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from abc import ABCMeta
+import warnings
 
-from ray.tune.checkpoint_manager import Checkpoint
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial
+    from ray.tune.experiment import Trial
+    from ray.tune.stopper import Stopper
+    from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 
-class Callback:
+class _CallbackMeta(ABCMeta):
+    """A helper metaclass to ensure container classes (e.g. CallbackList) have
+    implemented all the callback methods (e.g. `on_*`).
+    """
+
+    def __new__(mcs, name: str, bases: Tuple[type], attrs: Dict[str, Any]) -> type:
+        cls = super().__new__(mcs, name, bases, attrs)
+
+        if mcs.need_check(cls, name, bases, attrs):
+            mcs.check(cls, name, bases, attrs)
+
+        return cls
+
+    @classmethod
+    def need_check(
+        mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
+    ) -> bool:
+
+        return attrs.get("IS_CALLBACK_CONTAINER", False)
+
+    @classmethod
+    def check(
+        mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
+    ) -> None:
+
+        methods = set()
+        for base in bases:
+            methods.update(
+                attr_name
+                for attr_name, attr in vars(base).items()
+                if mcs.need_override_by_subclass(attr_name, attr)
+            )
+        overridden = {
+            attr_name
+            for attr_name, attr in attrs.items()
+            if mcs.need_override_by_subclass(attr_name, attr)
+        }
+        missing = methods.difference(overridden)
+        if missing:
+            raise TypeError(
+                f"Found missing callback method: {missing} "
+                f"in class {cls.__module__}.{cls.__qualname__}."
+            )
+
+    @classmethod
+    def need_override_by_subclass(mcs, attr_name: str, attr: Any) -> bool:
+        return (
+            (
+                attr_name.startswith("on_")
+                and not attr_name.startswith("on_trainer_init")
+            )
+            or attr_name == "setup"
+        ) and callable(attr)
+
+
+@PublicAPI(stability="beta")
+class Callback(metaclass=_CallbackMeta):
     """Tune base callback that can be extended and passed to a ``TrialRunner``
 
     Tune callbacks are called from within the ``TrialRunner`` class. There are
@@ -41,11 +101,32 @@ class Callback:
 
     """
 
-    def setup(self):
+    # arguments here match Experiment.public_spec
+    def setup(
+        self,
+        stop: Optional["Stopper"] = None,
+        num_samples: Optional[int] = None,
+        total_num_samples: Optional[int] = None,
+        **info,
+    ):
         """Called once at the very beginning of training.
 
         Any Callback setup should be added here (setting environment
         variables, etc.)
+
+        Arguments:
+            stop: Stopping criteria.
+                If ``time_budget_s`` was passed to ``tune.run``, a
+                ``TimeoutStopper`` will be passed here, either by itself
+                or as a part of a ``CombinedStopper``.
+            num_samples: Number of times to sample from the
+                hyperparameter space. Defaults to 1. If `grid_search` is
+                provided as an argument, the grid will be repeated
+                `num_samples` of times. If this is -1, (virtually) infinite
+                samples are generated until a stopping condition is met.
+            total_num_samples: Total number of samples factoring
+                in grid search samplers.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
@@ -53,8 +134,8 @@ class Callback:
         """Called at the start of each tuning loop step.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
             **info: Kwargs dict for forward compatibility.
         """
         pass
@@ -65,119 +146,160 @@ class Callback:
         The iteration counter is increased before this hook is called.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
             **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_start(self, iteration: int, trials: List["Trial"],
-                       trial: "Trial", **info):
+    def on_trial_start(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after starting a trial instance.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has been started.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has been started.
             **info: Kwargs dict for forward compatibility.
 
         """
         pass
 
-    def on_trial_restore(self, iteration: int, trials: List["Trial"],
-                         trial: "Trial", **info):
+    def on_trial_restore(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after restoring a trial instance.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has been restored.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has been restored.
             **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_save(self, iteration: int, trials: List["Trial"],
-                      trial: "Trial", **info):
+    def on_trial_save(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after receiving a checkpoint from a trial.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just saved a checkpoint.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just saved a checkpoint.
             **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_result(self, iteration: int, trials: List["Trial"],
-                        trial: "Trial", result: Dict, **info):
+    def on_trial_result(
+        self,
+        iteration: int,
+        trials: List["Trial"],
+        trial: "Trial",
+        result: Dict,
+        **info,
+    ):
         """Called after receiving a result from a trial.
 
         The search algorithm and scheduler are notified before this
         hook is called.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just sent a result.
-            result (Dict): Result that the trial sent.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just sent a result.
+            result: Result that the trial sent.
             **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_complete(self, iteration: int, trials: List["Trial"],
-                          trial: "Trial", **info):
+    def on_trial_complete(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after a trial instance completed.
 
         The search algorithm and scheduler are notified before this
         hook is called.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has been completed.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has been completed.
             **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_error(self, iteration: int, trials: List["Trial"],
-                       trial: "Trial", **info):
+    def on_trial_error(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after a trial instance failed (errored).
 
         The search algorithm and scheduler are notified before this
         hook is called.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has errored.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has errored.
             **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_checkpoint(self, iteration: int, trials: List["Trial"],
-                      trial: "Trial", checkpoint: Checkpoint, **info):
+    def on_checkpoint(
+        self,
+        iteration: int,
+        trials: List["Trial"],
+        trial: "Trial",
+        checkpoint: "_TrackedCheckpoint",
+        **info,
+    ):
         """Called after a trial saved a checkpoint with Tune.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has errored.
-            checkpoint (Checkpoint): Checkpoint object that has been saved
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has errored.
+            checkpoint: Checkpoint object that has been saved
                 by the trial.
             **info: Kwargs dict for forward compatibility.
         """
         pass
 
+    def on_experiment_end(self, trials: List["Trial"], **info):
+        """Called after experiment is over and all trials have concluded.
 
-class CallbackList:
+        Arguments:
+            trials: List of trials.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
+
+@DeveloperAPI
+class CallbackList(Callback):
     """Call multiple callbacks at once."""
+
+    IS_CALLBACK_CONTAINER = True
 
     def __init__(self, callbacks: List[Callback]):
         self._callbacks = callbacks
 
-    def setup(self):
+    def setup(self, **info):
         for callback in self._callbacks:
-            callback.setup()
+            try:
+                callback.setup(**info)
+            except TypeError as e:
+                if "argument" in str(e):
+                    warnings.warn(
+                        "Please update `setup` method in callback "
+                        f"`{callback.__class__}` to match the method signature"
+                        " in `ray.tune.callback.Callback`.",
+                        FutureWarning,
+                    )
+                    callback.setup()
+                else:
+                    raise e
 
     def on_step_begin(self, **info):
         for callback in self._callbacks:
@@ -214,3 +336,7 @@ class CallbackList:
     def on_checkpoint(self, **info):
         for callback in self._callbacks:
             callback.on_checkpoint(**info)
+
+    def on_experiment_end(self, **info):
+        for callback in self._callbacks:
+            callback.on_experiment_end(**info)

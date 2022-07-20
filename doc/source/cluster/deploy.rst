@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _ref-cluster-setup:
 
 Ray with Cluster Managers
@@ -13,4 +15,5 @@ Ray with Cluster Managers
    kubernetes.rst
    yarn.rst
    slurm.rst
+   lsf.rst
 

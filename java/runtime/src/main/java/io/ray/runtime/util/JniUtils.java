@@ -61,7 +61,7 @@ public class JniUtils {
   public static synchronized void loadLibrary(
       String destDir, String libraryName, boolean exportSymbols) {
     if (!loadedLibs.contains(libraryName)) {
-      LOGGER.debug("Loading native library {}.", libraryName);
+      LOGGER.debug("Loading native library {} in {}.", libraryName, destDir);
       // Load native library.
       String fileName = System.mapLibraryName(libraryName);
       final File file = BinaryFileUtil.getNativeFile(destDir, fileName);

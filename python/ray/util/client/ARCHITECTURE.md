@@ -19,6 +19,7 @@ For many of the objects in the root `ray` namespace, there is an equivalent clie
 These objects are client stand-ins for their server-side objects. For example:
 ```
 ObjectRef <-> ClientObjectRef
+ActorID <-> ClientActorRef
 RemoteFunc <-> ClientRemoteFunc
 ```
 

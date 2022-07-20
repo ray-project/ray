@@ -10,17 +10,20 @@ execution, set the TF_TIMELINE_DIR environment variable.
 """
 
 import argparse
-import gym
 import os
 import random
 
 import ray
 from ray import tune
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.examples.models.shared_weights_model import \
-    SharedWeightsModel1, SharedWeightsModel2, TF2SharedWeightsModel, \
-    TorchSharedWeightsModel
+from ray.rllib.examples.models.shared_weights_model import (
+    SharedWeightsModel1,
+    SharedWeightsModel2,
+    TF2SharedWeightsModel,
+    TorchSharedWeightsModel,
+)
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -35,27 +38,23 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=200,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=200, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=100000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=150.0,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -73,11 +72,6 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("model1", mod1)
     ModelCatalog.register_custom_model("model2", mod2)
 
-    # Get obs- and action Spaces.
-    single_env = gym.make("CartPole-v0")
-    obs_space = single_env.observation_space
-    act_space = single_env.action_space
-
     # Each policy can have a different configuration (including custom model).
     def gen_policy(i):
         config = {
@@ -86,16 +80,13 @@ if __name__ == "__main__":
             },
             "gamma": random.choice([0.95, 0.99]),
         }
-        return (None, obs_space, act_space, config)
+        return PolicySpec(config=config)
 
     # Setup PPO with an ensemble of `num_policies` different policies.
-    policies = {
-        "policy_{}".format(i): gen_policy(i)
-        for i in range(args.num_policies)
-    }
+    policies = {"policy_{}".format(i): gen_policy(i) for i in range(args.num_policies)}
     policy_ids = list(policies.keys())
 
-    def policy_mapping_fn(agent_id):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         pol_id = random.choice(policy_ids)
         return pol_id
 

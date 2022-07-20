@@ -18,10 +18,8 @@ class TaskSettableEnv(gym.Env):
     - Getting the current task this env has been set to.
 
     Examples:
-        >>> env = TaskSettableEnv(...)
-        >>> ...
-        >>> Trainer.workers.foreach_env(lambda base_env: base_env.my_prop)
-
+        >>> from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
+        >>> env = TaskSettableEnv(...) # doctest: +SKIP
     """
 
     def sample_tasks(self, n_tasks: int) -> List[TaskType]:

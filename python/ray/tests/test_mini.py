@@ -43,7 +43,7 @@ def test_put_api(ray_start_regular):
 
     # Test putting object refs.
     x_id = ray.put(0)
-    for obj in [[x_id], (x_id, ), {x_id: x_id}]:
+    for obj in [[x_id], (x_id,), {x_id: x_id}]:
         assert ray.get(ray.put(obj)) == obj
 
 
@@ -58,10 +58,15 @@ def test_actor_api(ray_start_regular):
 
     x = 1
     f = Foo.remote(x)
-    assert (ray.get(f.get.remote()) == x)
+    assert ray.get(f.get.remote()) == x
 
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

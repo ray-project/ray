@@ -3,10 +3,10 @@ package io.ray.runtime.object;
 import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
+import io.ray.api.exception.RayException;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
-import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
-import io.ray.runtime.exception.RayException;
 import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,6 +32,16 @@ public abstract class ObjectStore {
   public abstract ObjectId putRaw(NativeRayObject obj);
 
   /**
+   * Put a raw object into object store, and assign its ownership to the actor identified by
+   * ownerActorId.
+   *
+   * @param obj The ray object.
+   * @param ownerActorId The id of the actor to assign ownership.
+   * @return Generated ID of the object.
+   */
+  public abstract ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId);
+
+  /**
    * Put a raw object with specified ID into object store.
    *
    * @param obj The ray object.
@@ -51,6 +61,22 @@ public abstract class ObjectStore {
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
     return putRaw(ObjectSerializer.serialize(object));
+  }
+
+  /**
+   * Serialize and put an object to the object store, and assign its ownership to the actor
+   * identified by ownerActorId.
+   *
+   * @param object The object to put.
+   * @param ownerActorId The id of the actor to assign ownership.
+   * @return Id of the object.
+   */
+  public ObjectId put(Object object, ActorId ownerActorId) {
+    if (object instanceof NativeRayObject) {
+      throw new IllegalArgumentException(
+          "Trying to put a NativeRayObject. Please use putRaw instead.");
+    }
+    return putRaw(ObjectSerializer.serialize(object), ownerActorId);
   }
 
   /**
@@ -75,6 +101,7 @@ public abstract class ObjectStore {
    * @param objectIds IDs of the objects to get.
    * @param timeoutMs Timeout in milliseconds, wait infinitely if it's negative.
    * @return Result list of objects data.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   public abstract List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs);
 
@@ -87,8 +114,21 @@ public abstract class ObjectStore {
    */
   @SuppressWarnings("unchecked")
   public <T> List<T> get(List<ObjectId> ids, Class<?> elementType) {
-    // Pass -1 as timeout to wait until all objects are available in object store.
-    List<NativeRayObject> dataAndMetaList = getRaw(ids, -1);
+    return get(ids, elementType, -1);
+  }
+
+  /**
+   * Get a list of objects from the object store.
+   *
+   * @param ids List of the object ids.
+   * @param <T> Type of these objects.
+   * @param timeoutMs The maximum amount of time in seconds to wait before returning.
+   * @return A list of GetResult objects.
+   * @throws RayTimeoutException If it's timeout to get the object.
+   */
+  @SuppressWarnings("unchecked")
+  public <T> List<T> get(List<ObjectId> ids, Class<?> elementType, long timeoutMs) {
+    List<NativeRayObject> dataAndMetaList = getRaw(ids, timeoutMs);
 
     List<T> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {
@@ -181,28 +221,26 @@ public abstract class ObjectStore {
   /**
    * Increase the local reference count for this object ID.
    *
-   * @param workerId The ID of the worker to increase on.
    * @param objectId The object ID to increase the reference count for.
    */
-  public abstract void addLocalReference(UniqueId workerId, ObjectId objectId);
+  public abstract void addLocalReference(ObjectId objectId);
 
   /**
    * Decrease the reference count for this object ID.
    *
-   * @param workerId The ID of the worker to decrease on.
    * @param objectId The object ID to decrease the reference count for.
    */
-  public abstract void removeLocalReference(UniqueId workerId, ObjectId objectId);
+  public abstract void removeLocalReference(ObjectId objectId);
 
   public abstract Address getOwnerAddress(ObjectId id);
 
   /**
-   * Promote the given object to the underlying object store, and get the ownership info.
+   * Get the ownership info.
    *
    * @param objectId The ID of the object to promote
    * @return the serialized ownership address
    */
-  public abstract byte[] promoteAndGetOwnershipInfo(ObjectId objectId);
+  public abstract byte[] getOwnershipInfo(ObjectId objectId);
 
   /**
    * Add a reference to an ObjectID that will deserialized. This will also start the process to
