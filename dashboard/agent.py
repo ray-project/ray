@@ -265,7 +265,6 @@ class DashboardAgent:
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
             self.aiogrpc_raylet_channel
         )
-        logger.info(f"hejialing test: {self.agent_id}, {os.getpid()}")
         await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
                 agent_info=gcs_pb2.AgentInfo(
