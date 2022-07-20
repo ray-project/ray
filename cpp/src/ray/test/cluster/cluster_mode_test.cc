@@ -512,6 +512,23 @@ TEST(RayClusterModeTest, NamespaceTest) {
   // It is invisible to any other namespaces.
   actor_optional = ray::GetActor<Counter>(actor_name_in_default_ns, isolated_ns_name);
   EXPECT_TRUE(!actor_optional);
+  ray::Shutdown();
+}
+
+TEST(RayClusterModeTest, GetNamespaceApiTest) {
+  std::string ns = "test_get_current_namespace";
+  ray::RayConfig config;
+  config.ray_namespace = ns;
+  ray::Init(config, cmd_argc, cmd_argv);
+  // Get namespace in driver.
+  EXPECT_EQ(ray::GetNamespace(), ns);
+  // Get namespace in task.
+  auto task_ns = ray::Task(GetNamespaceInTask).Remote();
+  EXPECT_EQ(*task_ns.Get(), ns);
+  // Get namespace in actor.
+  auto actor_handle = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto actor_ns = actor_handle.Task(&Counter::GetNamespaceInActor).Remote();
+  EXPECT_EQ(*actor_ns.Get(), ns);
 }
 
 int main(int argc, char **argv) {

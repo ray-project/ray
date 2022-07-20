@@ -39,6 +39,8 @@ class Counter {
   bool CheckRestartInActorTask();
   ray::ActorHandle<Counter> CreateChildActor(std::string actor_name);
 
+  std::string GetNamespaceInActor();
+
   std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
 
   int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
