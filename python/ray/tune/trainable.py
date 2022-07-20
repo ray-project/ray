@@ -171,7 +171,7 @@ class Trainable:
         self.sync_function_tpl = sync_function_tpl or self._sync_function_tpl
         self.storage_client = None
 
-        if self.uses_cloud_checkpointing or self.sync_function_tpl:
+        if self.uses_cloud_checkpointing and self.sync_function_tpl:
             # Keep this only for custom sync functions and
             # backwards compatibility.
             # Todo (krfricke): We should find a way to register custom
@@ -544,6 +544,11 @@ class Trainable:
                 # Only keep for backwards compatibility
                 self.storage_client.sync_down(external_uri, local_dir)
                 self.storage_client.wait_or_retry()
+            elif os.path.exists(checkpoint_path):
+                try:
+                    TrainableUtil.find_checkpoint_dir(checkpoint_path)
+                except Exception:
+                    pass
             else:
                 checkpoint = Checkpoint.from_uri(external_uri)
                 retry_fn(
