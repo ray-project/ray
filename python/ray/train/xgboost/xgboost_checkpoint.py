@@ -42,7 +42,7 @@ class XGBoostCheckpoint(Checkpoint):
             >>> import xgboost
             >>>
             >>> booster = xgboost.Booster()
-            >>> checkpoint = XGBoostCheckpoint.from_booster(booster, path=".")
+            >>> checkpoint = XGBoostCheckpoint.from_model(booster, path=".")
 
             You can use a :py:class:`XGBoostCheckpoint` to create an
             :py:class:`~ray.train.xgboost.XGBoostPredictor` and preform inference.
