@@ -12,6 +12,7 @@ from torchvision import datasets, transforms
 import ray
 from ray.air import session
 from ray.train.horovod import HorovodTrainer
+from ray.air.config import ScalingConfig
 
 
 def metric_average(val, name):
@@ -155,7 +156,7 @@ def main(num_workers, use_gpu, kwargs):
     trainer = HorovodTrainer(
         train_func,
         train_loop_config=kwargs,
-        scaling_config={"use_gpu": use_gpu, "num_workers": num_workers},
+        scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=num_workers),
     )
     results = trainer.fit()
     print(results.metrics)
