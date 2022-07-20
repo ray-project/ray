@@ -41,15 +41,15 @@ class LightGBMCheckpoint(Checkpoint):
             >>> from ray.train.lightgbm import LightGBMCheckpoint
             >>> import lightgbm
             >>>
-            >>> booster = lightgbm.Booster()
-            >>> checkpoint = LightGBMCheckpoint.from_model(booster, path=".")
+            >>> booster = lightgbm.Booster()  # doctest: +SKIP
+            >>> checkpoint = LightGBMCheckpoint.from_model(booster, path=".")  # doctest: +SKIP
 
             You can use a :py:class:`LightGBMCheckpoint` to create an
             :py:class:`~ray.train.lightgbm.LightGBMPredictor` and preform inference.
 
             >>> from ray.train.lightgbm import LightGBMPredictor
             >>>
-            >>> predictor = LightGBMPredictor.from_checkpoint(checkpoint)
+            >>> predictor = LightGBMPredictor.from_checkpoint(checkpoint)  # doctest: +SKIP
         """
         booster.save_model(os.path.join(path, MODEL_KEY))
 
