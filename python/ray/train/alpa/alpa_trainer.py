@@ -73,6 +73,9 @@ from ray.train.alpa.utils import is_ray_node_resource
 
 from icecream import ic 
 
+import alpa
+from alpa.util import update_jax_platform
+from alpa.device_mesh import VirtualPhysicalMesh
 
 logger = logging.getLogger(__name__)
 
