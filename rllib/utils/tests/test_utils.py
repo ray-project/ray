@@ -49,9 +49,7 @@ class TestUtils(unittest.TestCase):
     spaces = dict(
         {
             "a": gym.spaces.Discrete(4),
-            "b": (
-                gym.spaces.Box(-1.0, 10.0, (3,)),
-                gym.spaces.Box(-1.0, 1.0, (3, 1))),
+            "b": (gym.spaces.Box(-1.0, 10.0, (3,)), gym.spaces.Box(-1.0, 1.0, (3, 1))),
             "c": dict(
                 {
                     "ca": gym.spaces.MultiDiscrete([4, 6]),
