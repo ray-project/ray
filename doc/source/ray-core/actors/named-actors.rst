@@ -184,8 +184,8 @@ Separately, actor lifetimes can be decoupled from the job, allowing an actor to 
         Ray.init();
         ActorHandle<Counter> counter = Ray.actor(Counter::new).setName("some_name").setLifetime(ActorLifetime.DETACHED).remote();
     
-    The CounterActor will be kept alive even after the driver running above script
-    exits. Therefore it is possible to run the following script in a different
+    The CounterActor will be kept alive even after the driver running above process
+    exits. Therefore it is possible to run the following code in a different
     driver:
 
     .. code-block:: java
