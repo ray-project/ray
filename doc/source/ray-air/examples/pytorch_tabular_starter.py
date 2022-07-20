@@ -150,7 +150,7 @@ print("Best Result:", best_result)
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor
 
-# You can also create a checkpoint from a trained model using 
+# You can also create a checkpoint from a trained model using
 # `TorchCheckpoint.from_model`.
 checkpoint = best_result.checkpoint
 

@@ -73,7 +73,7 @@ print("Best result:", best_result)
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostPredictor
 
-# You can also create a checkpoint from a trained model using 
+# You can also create a checkpoint from a trained model using
 # `XGBoostCheckpoint.from_model`.
 checkpoint = best_result.checkpoint
 
