@@ -97,7 +97,6 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
 
 .. code-block:: python
 
-    from ray import tune
     from ray.rllib.algorithms.dqn import DQNConfig
     from ray.rllib.offline.estimators import (
         ImportanceSampling,
@@ -105,6 +104,7 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
         DirectMethod,
         DoublyRobust,
     )
+    from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 
     config = (
         DQNConfig()
