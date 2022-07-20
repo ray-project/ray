@@ -53,7 +53,6 @@ class NodeFailureTests(unittest.TestCase):
                 num_rollout_workers=6,
                 ignore_worker_failures=False,
                 recreate_failed_workers=False,
-                num_failing_workers_tolerance=2,
             )
             .training()
         )
@@ -88,7 +87,6 @@ class NodeFailureTests(unittest.TestCase):
                 num_rollout_workers=6,
                 ignore_worker_failures=True,
                 recreate_failed_workers=False,
-                num_failing_workers_tolerance=2,
             )
             .training()
         )
@@ -168,7 +166,6 @@ class NodeFailureTests(unittest.TestCase):
                 num_rollout_workers=6,
                 ignore_worker_failures=False,
                 recreate_failed_workers=True,
-                num_failing_workers_tolerance=0,
             )
             .training()
         )
