@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import gym
 from typing import Dict, List, Optional, Union
 import numpy as np
@@ -11,8 +12,9 @@ from ray.rllib.utils.serialization import (
 
 torch, _ = try_import_torch()
 
-
+import dataclasses
 @PublicAPI
+@dataclasses.dataclass
 class ViewRequirement:
     """Single view requirement (for one column in an SampleBatch/input_dict).
 
@@ -30,17 +32,26 @@ class ViewRequirement:
         >>> print(req) # doctest: +SKIP
         {"obs": ViewRequirement(shift=0)}
     """
+    data_col: Optional[str] = None
+    space: gym.Space = None
+    shift: Union[int, str, List[int]] = 0
+    index: Optional[int] = None
+    batch_repeat_value: int = 1
+    used_for_compute_actions: bool = True
+    used_for_training: bool = True
+    shift_arr: Optional[np.ndarray] = dataclasses.field(init=False)
 
-    def __init__(
-        self,
-        data_col: Optional[str] = None,
-        space: gym.Space = None,
-        shift: Union[int, str, List[int]] = 0,
-        index: Optional[int] = None,
-        batch_repeat_value: int = 1,
-        used_for_compute_actions: bool = True,
-        used_for_training: bool = True,
-    ):
+    # def __init__(
+    #     self,
+    #     # data_col: Optional[str] = None,
+    #     space: gym.Space = None,
+    #     shift: Union[int, str, List[int]] = 0,
+    #     index: Optional[int] = None,
+    #     batch_repeat_value: int = 1,
+    #     used_for_compute_actions: bool = True,
+    #     used_for_training: bool = True,
+    # ):
+    def __post_init__(self):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -72,14 +83,17 @@ class ViewRequirement:
                 training. If False, the column will not be copied into the
                 final train batch.
         """
-        self.data_col = data_col
-        self.space = (
-            space
-            if space is not None
-            else gym.spaces.Box(float("-inf"), float("inf"), shape=())
-        )
+        # self.data_col = data_col
+        # self.space = (
+        #     space
+        #     if space is not None
+        #     else gym.spaces.Box(float("-inf"), float("inf"), shape=())
+        # )
 
-        self.shift = shift
+        if self.space is None:
+            self.space = gym.spaces.Box(float("-inf"), float("inf"), shape=())
+
+        # self.shift = shift
 
         # Special case: Providing a (probably larger) range of indices, e.g.
         # "-100:0" (past 100 timesteps plus current one).
@@ -97,6 +111,8 @@ class ViewRequirement:
             self.shift_from = int(f)
             self.shift_to = int(t)
 
+        shift = self.shift
+        self.shfit_arr = None
         if self.shift_from:
             self.shift_arr = np.arange(self.shift_from, self.shift_to, self.shift_step)
         else:
@@ -107,30 +123,30 @@ class ViewRequirement:
             else:
                 ValueError(f'unrecognized shift type: "{shift}"')
 
-        self.index = index
-        self.batch_repeat_value = batch_repeat_value
+        # self.index = index
+        # self.batch_repeat_value = batch_repeat_value
 
-        self.used_for_compute_actions = used_for_compute_actions
-        self.used_for_training = used_for_training
+        # self.used_for_compute_actions = used_for_compute_actions
+        # self.used_for_training = used_for_training
 
-    def __str__(self):
-        """For easier inspection of view requirements."""
-        return "|".join(
-            [
-                str(v)
-                for v in [
-                    self.data_col,
-                    self.space,
-                    self.shift,
-                    self.shift_from,
-                    self.shift_to,
-                    self.index,
-                    self.batch_repeat_value,
-                    self.used_for_training,
-                    self.used_for_compute_actions,
-                ]
-            ]
-        )
+    # def __str__(self):
+    #     """For easier inspection of view requirements."""
+    #     return "|".join(
+    #         [
+    #             str(v)
+    #             for v in [
+    #                 self.data_col,
+    #                 self.space,
+    #                 self.shift,
+    #                 self.shift_from,
+    #                 self.shift_to,
+    #                 self.index,
+    #                 self.batch_repeat_value,
+    #                 self.used_for_training,
+    #                 self.used_for_compute_actions,
+    #             ]
+    #         ]
+    #     )
 
     def to_dict(self) -> Dict:
         """Return a dict for this ViewRequirement that can be JSON serialized."""

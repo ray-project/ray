@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+from ray.rllib.utils.test_utils import check
 
 def _to_float_np_array(v: List[Any]) -> np.ndarray:
     if torch and torch.is_tensor(v[0]):
@@ -239,6 +240,58 @@ class _AgentCollector:
             #  buffer=[-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
             #  resulting data=[[-3, -2, -1], [7, 8, 9]]
             #  Range of 3 consecutive items repeats every 10 timesteps.
+
+            if view_req.shift_arr is not None:
+                # testing that it should always come here. what would happen?
+                data_2 = []
+                for d in np_data[data_col]:
+                    shifted_data = []
+                    # TODO: @kourosh I don't think this obs_shift is actually needed. 
+                    # Keep it here for now for consistency with the old behavior.
+
+                    # if view_req.batch_repeat_value > 1:
+                    count = int(
+                        math.ceil(
+                            (len(d) - self.shift_before)
+                            / view_req.batch_repeat_value
+                        )
+                    )
+                    for i in range(count):
+                        index = (
+                            self.shift_before
+                            + obs_shift 
+                            + view_req.shift_arr 
+                            + (i * view_req.batch_repeat_value)
+                        )
+                    
+                        element_at_t = d[index]
+                        if element_at_t.shape[0] == 1:
+                            # squeeze to remove the T dimension if it is 1.
+                            element_at_t = element_at_t.squeeze(0)
+                        shifted_data.append(element_at_t)
+                    
+                    shifted_data_np = np.stack(shifted_data, 0)
+                    data_2.append(shifted_data_np)
+                    # else:
+                    #     for i in range(d.shape[0] - self.shift_before):
+                    #         print(f'view_col = {view_col}, len(d) = {len(d)}')
+
+                    #         index = (
+                    #             self.shift_before
+                    #             + obs_shift 
+                    #             + view_req.shift_arr 
+                    #             + i
+                    #         )
+                    #         print(f'index = {index}, at i = {i}')
+                    #         element_at_t = d[index]
+                    #         if element_at_t.shape[0] == 1:
+                    #             # squeeze to remove the T dimension if it is 1.
+                    #             element_at_t = element_at_t.squeeze(0)
+                    #         shifted_data.append(element_at_t)
+
+                    #     shifted_data_np = np.stack(shifted_data, 0)
+                    #     data_2.append(shifted_data_np)
+
             if view_req.shift_from is not None:
                 # Batch repeat value > 1: Only repeat the shift_from/to range
                 # every n timesteps.
@@ -330,8 +383,9 @@ class _AgentCollector:
                         for d in np_data[data_col]
                     ]
                 # Shift is exactly 0: Use trajectory as is.
-                elif shift == 0:
-                    data = [d[self.shift_before :] for d in np_data[data_col]]
+                # TODO @kourosh removing this since the last else statement is already # capturing this
+                # elif shift == 0:
+                #     data = [d[self.shift_before :] for d in np_data[data_col]]
                 # Shift is positive: We still need to 0-pad at the end.
                 elif shift > 0:
                     data = [
@@ -355,8 +409,10 @@ class _AgentCollector:
                 # 0-padded "before" area of our buffers.
                 else:
                     data = [
-                        d[self.shift_before + shift : shift] for d in np_data[data_col]
+                        d[self.shift_before + shift : len(d) + shift] for d in np_data[data_col]
                     ]
+
+            check(data, data_2)
 
             if len(data) > 0:
                 if data_col not in self.buffer_structs:
