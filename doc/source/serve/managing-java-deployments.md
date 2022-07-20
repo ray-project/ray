@@ -1,4 +1,4 @@
-# Managing Deployments(Java)
+# Managing Java Deployments
 
 This section should help you:
 

@@ -1,6 +1,6 @@
-(getting-started-java)=
+(serve-java-tutorial)=
 
-# Getting Started
+# Java Tutorial
 
 First of all, using Java Ray Serve needs the following dependency in you `pom.xml`:
 

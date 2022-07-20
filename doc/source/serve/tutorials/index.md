@@ -16,6 +16,7 @@ batch
 web-server-integration
 rllib
 gradio
+java
 ```
 
 Other Topics:
