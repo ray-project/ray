@@ -1,19 +1,18 @@
 import gym
+from gym.spaces import Discrete, Box
 import numpy as np
 from typing import Union, List, Dict
 
+from ray.rllib import SampleBatch
 from ray.rllib.models.torch.mingpt import (
     GPTConfig,
     GPT,
-    configure_gpt_optimizer,
 )
-from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import (
     ModelConfigDict,
-    TensorType,
+    TensorType, ModelInputDict,
 )
 
 torch, nn = try_import_torch()
@@ -33,153 +32,90 @@ class DTTorchModel(TorchModelV2, nn.Module):
         )
         nn.Module.__init__(self)
 
-        self._is_action_discrete = isinstance(action_space, gym.spaces.Discrete)
+        self.obs_dim = num_outputs
 
-        # TODO: I don't know why this is true yet? (in = num_outputs)
-        self.obs_ins = num_outputs
-        self.action_dim = np.product(self.action_space.shape)
-        self.model = self._build_model()
+        if isinstance(action_space, Discrete):
+            self.action_dim = action_space.n
+        elif isinstance(action_space, Box):
+            self.action_dim = np.product(action_space.shape)
+        else:
+            raise NotImplementedError
 
-    def _build_model(self):
-        block_size = self.model_config["max_seq_len"] * 3 - 1
+        # Common model parameters
+        self.embed_dim = self.model_config["embed_dim"]
+        self.max_seq_len = self.model_config["max_seq_len"]
+        self.max_ep_len = self.model_config["max_ep_len"]
+        self.block_size = self.model_config["max_seq_len"] * 3 - 1
+
+        # Build all the nn modules
+        self.transformer = self.build_transformer()
+        self.position_encoder = self.build_position_encoder()
+        self.action_encoder = self.build_action_encoder()
+        self.obs_encoder = self.build_obs_encoder()
+        self.return_encoder = self.build_return_encoder()
+        self.action_head = self.build_action_head()
+        self.obs_head = self.build_obs_head()
+        self.return_head = self.build_return_head()
+
+    def build_transformer(self):
+        # build the model
         gpt_config = GPTConfig(
-            block_size=block_size,
-            n_layer=self.model_config["n_layer"],
-            n_head=self.model_config["n_head"],
-            n_embed=self.model_config["n_embed"],
+            block_size=self.block_size,
+            n_layer=self.model_config["num_layers"],
+            n_head=self.model_config["num_heads"],
+            n_embed=self.embed_dim,
             embed_pdrop=self.model_config["embed_pdrop"],
             resid_pdrop=self.model_config["resid_pdrop"],
             attn_pdrop=self.model_config["attn_pdrop"],
         )
         gpt = GPT(gpt_config)
+        return gpt
 
-        # Build the policy network.
-        actor_net = nn.Sequential()
+    def build_position_encoder(self):
+        return nn.Embedding(self.max_ep_len, self.embed_dim)
 
-        activation = get_activation_fn(actor_hidden_activation, framework="torch")
-        ins = self.obs_ins
-        for i, n in enumerate(actor_hiddens):
-            actor_net.add_module(
-                f"{name_}_hidden_{i}",
-                SlimFC(
-                    ins,
-                    n,
-                    initializer=torch.nn.init.xavier_uniform_,
-                    activation_fn=activation,
-                ),
-            )
-            ins = n
-
-        # also includes log_std in continuous case
-        n_act_out = (
-            self.action_space.n if self._is_action_discrete else 2 * self.action_dim
-        )
-        actor_net.add_module(
-            f"{name_}_out",
-            SlimFC(
-                ins,
-                n_act_out,
-                initializer=torch.nn.init.xavier_uniform_,
-                activation_fn=None,
-            ),
-        )
-
-        return actor_net
-
-    def _build_q_net(self, name_):
-        # actions are concatenated with flattened obs
-        critic_hidden_activation = self.model_config["critic_hidden_activation"]
-        critic_hiddens = self.model_config["critic_hiddens"]
-
-        activation = get_activation_fn(critic_hidden_activation, framework="torch")
-        q_net = nn.Sequential()
-        ins = (
-            self.obs_ins if self._is_action_discrete else self.obs_ins + self.action_dim
-        )
-        for i, n in enumerate(critic_hiddens):
-            q_net.add_module(
-                f"{name_}_hidden_{i}",
-                SlimFC(
-                    ins,
-                    n,
-                    initializer=torch.nn.init.xavier_uniform_,
-                    activation_fn=activation,
-                ),
-            )
-            ins = n
-
-        q_net.add_module(
-            f"{name_}_out",
-            SlimFC(
-                ins,
-                self.action_space.n if self._is_action_discrete else 1,
-                initializer=torch.nn.init.xavier_uniform_,
-                activation_fn=None,
-            ),
-        )
-        return q_net
-
-    def _get_q_value(
-        self, model_out: TensorType, actions: TensorType, q_model: TorchModelV2
-    ) -> TensorType:
-
-        if self._is_action_discrete:
-            rows = torch.arange(len(actions)).to(actions)
-            q_vals = q_model(model_out)[rows, actions].unsqueeze(-1)
+    def build_action_encoder(self):
+        if isinstance(self.action_space, Discrete):
+            return nn.Embedding(self.action_dim, self.embed_dim)
+        elif isinstance(self.action_space, Box):
+            return nn.Linear(self.action_dim, self.embed_dim)
         else:
-            q_vals = q_model(torch.cat([model_out, actions], -1))
+            raise NotImplementedError
 
-        return q_vals
+    def build_obs_encoder(self):
+        return nn.Linear(self.obs_dim, self.embed_dim)
 
-    def get_q_values(self, model_out: TensorType, actions: TensorType) -> TensorType:
-        """Return the Q estimates for the most recent forward pass.
+    def build_return_encoder(self):
+        return nn.Linear(self.embed_dim, 1)
 
-        This implements Q(s, a).
+    def build_action_head(self):
+        return nn.Linear(self.embed_dim, self.action_dim)
 
-        Args:
-            model_out: obs embeddings from the model layers.
-                Shape: [BATCH_SIZE, num_outputs].
-            actions: Actions to return the Q-values for.
-                Shape: [BATCH_SIZE, action_dim].
+    def build_obs_head(self):
+        if not self.model_config["use_obs_output"]:
+            return None
+        return nn.Linear(self.embed_dim, self.obs_dim)
 
-        Returns:
-            The q_values based on Q(S,A).
-            Shape: [BATCH_SIZE].
+    def build_return_head(self):
+        if not self.model_config["use_return_output"]:
+            return None
+        return nn.Linear(self.embed_dim, 1)
+
+    def get_prediction(
+        self,
+        model_out: TensorType,
+        input_dict: SampleBatch,
+    ) -> Dict[str, TensorType]:
         """
-        return self._get_q_value(model_out, actions, self.q_model)
 
-    def get_twin_q_values(
-        self, model_out: TensorType, actions: TensorType
-    ) -> TensorType:
-        """Same as get_q_values but using the twin Q net.
-
-        This implements the twin Q(s, a).
-
-        Args:
-            model_out: obs embeddings from the model layers.
-                Shape: [BATCH_SIZE, num_outputs].
-            actions: Actions to return the Q-values for.
-                Shape: [BATCH_SIZE, action_dim].
-
-        Returns:
-            The q_values based on Q_{twin}(S,A).
-            Shape: [BATCH_SIZE].
         """
-        return self._get_q_value(model_out, actions, self.twin_q_model)
+        pass
 
-    def get_policy_output(self, model_out: TensorType) -> TensorType:
-        """Return the action output for the most recent forward pass.
-
-        This outputs the support for pi(s). For continuous action spaces, this
-        is the action directly. For discrete, it is the mean / std dev.
-
-        Args:
-            model_out: obs embeddings from the model layers.
-                Shape: [BATCH_SIZE, num_outputs].
-
-        Returns:
-            The output of pi(s).
-            Shape: [BATCH_SIZE, action_out_size].
+    def get_target(self, input_dict: SampleBatch) -> Dict[str, TensorType]:
         """
-        return self.actor_model(model_out)
+
+        """
+        pass
+
+
 
