@@ -66,8 +66,25 @@ RLlib supports four off-policy estimators:
 - `Direct Method (DM) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/direct_method.py>`__
 - `Doubly Robust (DR) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/doubly_robust.py>`__
 
-As an example, we generate a separate evaluation dataset for off-policy estimation:
+IS and WIS compute the ratio between the action probabilities under the behavior (data) policy and the target (evaluation) policy, and use this ratio to estimate the policy's return.
+
+DM and DR train a Q-model to compute the estimated return. By default, RLlib uses `Fitted-Q Evaluation (FQE) <https://arxiv.org/abs/1911.06854>`__ to learn the Q-model. See `fqe_torch_model.py <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/fqe_torch_model.py>`__ for more details.
+
+**Estimator Python API:**
+For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.estimate(batch)`` to perform counterfactual estimation as needed. The estimators take in an RLLib Policy object and gamma value for the environment.
+
+DM and DR also take in an optional ``q_model_config`` to configure the Q-model used for estimation, and implement ``estimator.train(batch)`` to train the Q-model.
+
+You can also create your own Off-Policy Estimator by subclassing from the `OffPolicyEstimator <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/off_policy_estimator.py>`__ base class.
+
+.. note:: For a contextual bandit dataset, the ``dones`` key should always be set to ``True``. In this case, FQE reduces to fitting a reward model to the data.
+
+.. warning:: DM and DR currently only support ``framework="torch"``!
+
+We generate a separate evaluation dataset for off-policy estimation:
+
 .. code-block:: bash
+
     $ rllib train
         --run=PG \
         --env=CartPole-v0 \
@@ -77,11 +94,13 @@ As an example, we generate a separate evaluation dataset for off-policy estimati
 We then run off-policy estimation with DQN on the offline data:
 
 .. code-block:: bash
-    $ rllib train \
+
+    $ rllib train
         --run=DQN \
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
+            "framework": "torch",
             "evaluation_config": {"input": "/tmp/cartpole-eval"},
             "off_policy_estimation_methods": {
                 "is": {
@@ -89,27 +108,16 @@ We then run off-policy estimation with DQN on the offline data:
                 },
                 "wis": {
                     "type": "ray.rllib.offline.estimators.WeightedImportanceSampling",
-                }
+                },
+                "dm": {
+                    "type": "ray.rllib.offline.estimators.DirectMethod",
+                    "q_model_config": {"n_iters": 1, "tau: 0.05},
+                },
+                "dr": {
+                    "type": "ray.rllib.offline.estimators.DoublyRobust",
+                    "q_model_config": {"n_iters": 1, "tau: 0.05},
+                },
             }'
-
-.. note:: Ideally, the training and OPE datasets should be separate, as shown above.
-
-
-This example plot shows the Q-value metric in addition to IS and WIS gain estimates (>1.0 means there is an estimated improvement over the original policy):
-
-.. image:: images/offline-q.png
-
-IS and WIS compute the ratio between the action probabilities under the behavior (data) policy and the target (evaluation) policy, and use this ratio to estimate the policy's return.
-
-DM and DR train a Q-model to compute the estimated return. By default, RLlib uses `Fitted-Q Evaluation (FQE) <https://arxiv.org/abs/1911.06854>`__ to learn the Q-model. See `fqe_torch_model.py <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/fqe_torch_model.py>`__ for more details.
-
-.. note:: For a contextual bandit dataset, the ``dones`` key should always be set to ``True``. In this case, FQE reduces to fitting a reward model to the data.
-
-.. warning:: DM and DR currently only support ``framework="torch"``!
-
-**Estimator Python API:**
-For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.estimate(batch)`` to perform counterfactual estimation as needed. The estimators take in an RLLib Policy object and gamma value for the environment.
-DM and DR take in an optional `q_model_config` to configure the Q-model used for estimation, and implement ``estimator.train(batch)`` to train the Q-model.
 
 .. code-block:: python
 
@@ -120,49 +128,33 @@ DM and DR take in an optional `q_model_config` to configure the Q-model used for
     from ray.rllib.offline.estimators import DoublyRobust
     from ray.rllib.oflline.estimators.fqe_torch_model import FQETorchModel
 
-    q_model_config = {
-        # type: Q-model class to be used.
-        # Must implement the `train`, `estimate_q`, and `estimate_v` functions.
-        "type": FQETorchModel,
-        # model: RLlib ModelConfigDict to specify the neural network for the Q-model
-        "model": {
-            "fcnet_hiddens": [8, 8],
-            "fcnet_activation": "relu",
-            "vf_share_layers": True,
-        },
-        # n_iters: Number of gradient steps to run on batch, defaults to 1
-        "n_iters": 160,
-        # lr: Learning rate for Adam optimizer
-        "lr": 1e-3,
-        # delta: Early stopping threshold if the mean loss < delta
-        "delta": 1e-4,
-        # clip_grad_norm: Clip loss gradients to this maximum value
-        "clip_grad_norm": 100.0,
-        # minibatch_size: Minibatch size for training Q-function;
-        #   if None, train on the whole batch
-        "minibatch_size": 32,
-        # tau: Polyak averaging factor for target Q-function
-        "tau": 1.0,
-        ""
-    }
-
     estimator = DoublyRobust(
         policy=algo.get_policy(),
         gamma=0.99,
-        q_model_config=q_model_config,
+        q_model_config={"type": FQETorchModel, "n_iters": 160},
     )
 
     # Train estimator's Q-model; only required for DM and DR estimators
     reader = JsonReader("/tmp/cartpole-out")
-    for _ in range(1000):
+    for _ in range(100):
         batch = reader.next()
         print(estimator.train(batch))
     
     reader = JsonReader("/tmp/cartpole-eval")
     # Compute off-policy estimates
-    for _ in range(1000):
+    for _ in range(100):
         batch = reader.next()
         print(estimator.estimate(batch))
+
+.. note:: Ideally, you should use separate datasets for training and OPE, as shown above.
+
+The estimators output six metrics:
+- ``v_behavior``: The discounted sum over the rewards in offline episode, averaged over episodes
+- ``v_behavior_std``: The standard deviation corresponding to v_behavior
+- ``v_target``: The OPE's estimated discounted return for `self.policy`, averaged over episodes
+- ``v_target_std``: The standard deviation corresponding to v_target
+- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``, averaged over episodes
+- ``v_gain_std``: The standard deviation corresponding to v_gain
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
