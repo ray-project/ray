@@ -106,6 +106,9 @@ class DataParallelTrainer(BaseTrainer):
             # Returns the rank of the worker on the current node.
             session.get_local_rank()
 
+    Any returns from the ``train_loop_per_worker`` will be discarded and not
+    used or persisted anywhere.
+
     **How do I use ``DataParallelTrainer`` or any of its subclasses?**
 
     Example:
@@ -122,8 +125,10 @@ class DataParallelTrainer(BaseTrainer):
 
         train_dataset = ray.data.from_items([1, 2, 3])
         assert len(train_dataset) == 3
-        trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
-            datasets={"train": train_dataset})
+        trainer = DataParallelTrainer(
+            ray.air.config.ScalingConfig(num_workers=3),
+            datasets={"train": train_dataset},
+        )
         result = trainer.fit()
 
     **How do I develop on top of ``DataParallelTrainer``?**
@@ -267,10 +272,7 @@ class DataParallelTrainer(BaseTrainer):
     def _validate_attributes(self):
         super()._validate_attributes()
 
-        if (
-            not self.scaling_config.get("use_gpu", False)
-            and "GPU" in ray.available_resources()
-        ):
+        if not self.scaling_config.use_gpu and "GPU" in ray.available_resources():
             logger.info(
                 "GPUs are detected in your Ray cluster, but GPU "
                 "training is not enabled for this trainer. To enable "
@@ -278,13 +280,13 @@ class DataParallelTrainer(BaseTrainer):
                 "in your scaling config."
             )
 
-        if "num_workers" not in self.scaling_config:
+        if self.scaling_config.num_workers is None:
             raise ValueError("You must specify the 'num_workers' in scaling_config.")
 
-        if self.scaling_config["num_workers"] <= 0:
+        if self.scaling_config.num_workers <= 0:
             raise ValueError(
                 "'num_workers' in `scaling_config` must be a positive "
-                f"integer. Received {self.scaling_config['num_workers']}"
+                f"integer. Received {self.scaling_config.num_workers}"
             )
 
         self._validate_train_loop_per_worker(
@@ -309,19 +311,16 @@ class DataParallelTrainer(BaseTrainer):
             )
 
     def training_loop(self) -> None:
-        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config = self._validate_scaling_config(self.scaling_config)
 
         train_loop_per_worker = construct_train_func(
             self._train_loop_per_worker,
             self._train_loop_config,
             fn_arg_name="train_loop_per_worker",
+            discard_returns=True,
         )
 
-        additional_resources_per_worker = (
-            scaling_config_dataclass.additional_resources_per_worker
-        )
+        additional_resources_per_worker = scaling_config.additional_resources_per_worker
 
         trial_info = TrialInfo(
             name=session.get_trial_name(),
@@ -333,9 +332,9 @@ class DataParallelTrainer(BaseTrainer):
         backend_executor = BackendExecutor(
             backend_config=self._backend_config,
             trial_info=trial_info,
-            num_workers=scaling_config_dataclass.num_workers,
-            num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
-            num_gpus_per_worker=scaling_config_dataclass.num_gpus_per_worker,
+            num_workers=scaling_config.num_workers,
+            num_cpus_per_worker=scaling_config.num_cpus_per_worker,
+            num_gpus_per_worker=scaling_config.num_gpus_per_worker,
             additional_resources_per_worker=additional_resources_per_worker,
             max_retries=0,
         )

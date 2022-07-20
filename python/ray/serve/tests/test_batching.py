@@ -21,10 +21,9 @@ def test_batching(serve_instance):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    BatchingExample.deploy()
+    handle = serve.run(BatchingExample.bind())
 
     future_list = []
-    handle = BatchingExample.get_handle()
     for _ in range(20):
         f = handle.remote(1)
         future_list.append(f)
@@ -50,9 +49,8 @@ def test_batching_exception(serve_instance):
             return await self.handle_batch(request)
 
     # Set the max batch size.
-    NoListReturned.deploy()
+    handle = serve.run(NoListReturned.bind())
 
-    handle = NoListReturned.get_handle()
     with pytest.raises(ray.exceptions.RayTaskError):
         assert ray.get(handle.remote(1))
 

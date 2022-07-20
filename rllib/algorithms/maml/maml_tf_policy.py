@@ -358,7 +358,7 @@ class KLCoeffMixin:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_maml_tf_policy(base: type) -> type:
+def get_maml_tf_policy(name: str, base: type) -> type:
     """Construct a MAMLTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -513,8 +513,11 @@ def get_maml_tf_policy(base: type) -> type:
         ) -> ModelGradients:
             return compute_gradients(self, optimizer, loss)
 
+    MAMLTFPolicy.__name__ = name
+    MAMLTFPolicy.__qualname__ = name
+
     return MAMLTFPolicy
 
 
-MAMLStaticGraphTFPolicy = get_maml_tf_policy(DynamicTFPolicyV2)
-MAMLEagerTFPolicy = get_maml_tf_policy(EagerTFPolicyV2)
+MAMLTF1Policy = get_maml_tf_policy("MAMLTF1Policy", DynamicTFPolicyV2)
+MAMLTF2Policy = get_maml_tf_policy("MAMLTF2Policy", EagerTFPolicyV2)

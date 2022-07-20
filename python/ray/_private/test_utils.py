@@ -1369,6 +1369,22 @@ def job_hook(**kwargs):
     sys.exit(0)
 
 
+def find_free_port():
+    sock = socket.socket()
+    sock.bind(("", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def wandb_setup_api_key_hook():
+    """
+    Example external hook to set up W&B API key in
+    WandbIntegrationTest.testWandbLoggerConfig
+    """
+    return "abcd"
+
+
 @dataclasses.dataclass
 class TestRayActivityResponse:
     """

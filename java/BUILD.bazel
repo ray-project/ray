@@ -197,7 +197,10 @@ java_test(
         "//:ray_pkg",
     ],
     main_class = "org.testng.TestNG",
-    resources = ["//cpp:counter.so"],
+    resources = [
+        "//cpp:counter.so",
+        "//cpp:plus.so",
+    ],
     tags = ["local"],
     runtime_deps = [
         ":all_tests_lib",
