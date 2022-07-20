@@ -204,6 +204,7 @@ class Checkpoint:
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
+        print("Here!")
         self._local_path: Optional[str] = local_path
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
@@ -350,6 +351,15 @@ class Checkpoint:
             Checkpoint: checkpoint object.
         """
         return cls(local_path=path)
+
+    @classmethod
+    def _from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
+        return cls(
+            local_path=other._local_path,
+            data_dict=other._data_dict,
+            uri=other._uri,
+            obj_ref=other._obj_ref,
+        )
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
