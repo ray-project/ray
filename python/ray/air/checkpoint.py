@@ -353,6 +353,7 @@ class Checkpoint:
 
     @classmethod
     def copy_from(cls, other: "Checkpoint") -> "Checkpoint":
+        """Create a checkpoint from a generic :py:class:`Checkpoint`."""
         return cls(
             local_path=other._local_path,
             data_dict=other._data_dict,
