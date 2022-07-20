@@ -72,11 +72,11 @@ DM and DR train a Q-model to compute the estimated return. By default, RLlib use
 
 .. note:: For a contextual bandit dataset, the ``dones`` key should always be set to ``True``. In this case, FQE reduces to fitting a reward model to the data.
 
-The estimators output six metrics:
+RLlib's OPE estimators output six metrics (``v_gain > 1.0`` indicates that the policy is better than the behavior data):
 
-- ``v_behavior``: The discounted sum over the rewards in offline episode, averaged over episodes
+- ``v_behavior``: The discounted sum over rewards in the offline episode, averaged over episodes in the batch
 - ``v_behavior_std``: The standard deviation corresponding to v_behavior
-- ``v_target``: The OPE's estimated discounted return for `self.policy`, averaged over episodes
+- ``v_target``: The OPE's estimated discounted return for the target policy, averaged over episodes in the batch
 - ``v_target_std``: The standard deviation corresponding to v_target
 - ``v_gain``: ``v_target / max(v_behavior, 1e-8)``, averaged over episodes
 - ``v_gain_std``: The standard deviation corresponding to v_gain
