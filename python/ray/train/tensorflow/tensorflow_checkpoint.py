@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, Optional, Type, Union
+from typing import TYPE_CHECKING, Optional
 
 import tensorflow as tf
 from tensorflow import keras
