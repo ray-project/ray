@@ -271,7 +271,7 @@ class StandardAutoscaler:
 
         # By default, the autoscaler kills and/or tries to recover
         # a worker node if it hasn't produced a resource heartbeat in the last 30
-        # seconds. The worker_liveness_check allows us to disable this behavior in
+        # seconds. The worker_liveness_check falg allows us to disable this behavior in
         # settings where another component, such as a Kubernetes operator, is
         # responsible for healthchecks.
         self.worker_liveness_check = self.config["provider"].get(
