@@ -15,6 +15,9 @@ RL_CONFIG_FILE = "config.pkl"
 class RLCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with RLlib-specific
     functionality.
+    
+    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
+    ``RLCheckpoint.from_checkpoint(ckpt)``.
     """
 
     def get_policy(self, env: Optional[EnvType] = None) -> Policy:

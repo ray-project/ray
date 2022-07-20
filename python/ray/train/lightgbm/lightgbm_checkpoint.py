@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 class LightGBMCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with LightGBM-specific
     functionality.
+
+    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
+    ``LightGBMCheckpoint.from_checkpoint(ckpt)``.
     """
 
     @classmethod

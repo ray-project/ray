@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 class XGBoostCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with XGBoost-specific
     functionality.
+
+    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
+    ``XGBoostCheckpoint.from_checkpoint(ckpt)``.
     """
 
     @classmethod

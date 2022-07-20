@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 class SklearnCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with sklearn-specific
     functionality.
+
+    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
+    ``SklearnCheckpoint.from_checkpoint(ckpt)``
     """
 
     @classmethod

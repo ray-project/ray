@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 class TorchCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with Torch-specific
     functionality.
+
+    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
+    ``TorchCheckpoint.from_checkpoint(ckpt)``.
     """
 
     @classmethod

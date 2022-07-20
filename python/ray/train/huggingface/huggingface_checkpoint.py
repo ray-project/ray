@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 class HuggingFaceCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with HuggingFace-specific
     functionality.
+
+    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
+    ``HuggingFaceCheckpoint.from_checkpoint(ckpt)``
     """
 
     @classmethod
