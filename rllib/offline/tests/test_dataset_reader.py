@@ -269,7 +269,9 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 },
             }
             ds, ds_shards = get_dataset_and_shards(config=config)
-            assert ds == ds_shards[0] and len(ds_shards) == 1, "The files in tmp_dir weren't able to be read into a dataset"
+            assert (
+                ds == ds_shards[0] and len(ds_shards) == 1
+            ), "The files in tmp_dir weren't able to be read into a dataset"
 
 
 if __name__ == "__main__":
