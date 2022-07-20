@@ -258,7 +258,8 @@ class AlpaTrainer(BaseTrainer):
                 # Conversion logic must be duplicated in `TrainTrainable.__init__`
                 # because this is a class method.
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                updated_scaling_config['ips'] = self.host_ips
+                updated_scaling_config_dict = updated_scaling_config.__dict__
+                updated_scaling_config_dict['ips'] = self.host_ips
                 if isinstance(updated_scaling_config, dict):
                     updated_scaling_config = ScalingConfigWithIPs(**updated_scaling_config)
                 validated_scaling_config = trainer_cls._validate_scaling_config(
