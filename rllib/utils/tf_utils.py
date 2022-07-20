@@ -466,11 +466,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     if isinstance(space, Discrete):
         return tf.one_hot(x, space.n, dtype=tf.float32)
     elif isinstance(space, MultiDiscrete):
+        if isinstance(space.nvec[0], np.ndarray):
+            nvec = np.ravel(space.nvec)
+            x = tf.reshape(x, (x.shape[0], -1))
+        else:
+            nvec = space.nvec
         return tf.concat(
-            [
-                tf.one_hot(x[:, i], n, dtype=tf.float32)
-                for i, n in enumerate(space.nvec)
-            ],
+            [tf.one_hot(x[:, i], n, dtype=tf.float32) for i, n in enumerate(nvec)],
             axis=-1,
         )
     else:
