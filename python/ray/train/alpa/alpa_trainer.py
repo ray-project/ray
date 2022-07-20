@@ -69,7 +69,7 @@ if TYPE_CHECKING:
 
 from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 
-from ray.train.alpa.utils import is_ray_node_resource
+from ray.train.alpa.utils import is_ray_node_resource, ScalingConfigWithIPs
 
 from icecream import ic 
 
@@ -184,24 +184,9 @@ class AlpaTrainer(BaseTrainer):
 
         alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
-
-        # self._train_loop = train_loop
-        # self._train_loop_config = train_loop_config
+        self._train_loop = train_loop_per_worker
+        self._train_loop_config = train_loop_config
         
-        # self._datasets = datasets
-
-        # super(AlpaTrainer, self).__init__(
-        #     train_loop_per_worker=train_loop_per_worker,
-        #     train_loop_config=train_loop_config,
-        #     backend_config=alpa_config,
-        #     scaling_config=scaling_config,
-        #     dataset_config=dataset_config,
-        #     run_config=run_config,
-        #     datasets=datasets,
-        #     preprocessor=preprocessor,
-        #     resume_from_checkpoint=resume_from_checkpoint,
-        # )
-
         super(AlpaTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -211,8 +196,7 @@ class AlpaTrainer(BaseTrainer):
         )
 
     def training_loop(self) -> None:
-        self._train_loop(self._datasets, self._train_loop_config)
-        
+        self._train_loop(self._train_loop_config)
         
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
@@ -267,87 +251,20 @@ class AlpaTrainer(BaseTrainer):
 
             @classmethod
             def default_resource_request(cls, config):
+                # `config["scaling_config"] is a dataclass when passed via the
+                # `scaling_config` argument in `Trainer` and is a dict when passed
+                # via the `scaling_config` key of `param_spec`.
+
+                # Conversion logic must be duplicated in `TrainTrainable.__init__`
+                # because this is a class method.
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = (
-                    trainer_cls._validate_and_get_scaling_config_data_class(
-                        updated_scaling_config
-                    )
+                updated_scaling_config['ips'] = self.host_ips
+                if isinstance(updated_scaling_config, dict):
+                    updated_scaling_config = ScalingConfigWithIPs(**updated_scaling_config)
+                validated_scaling_config = trainer_cls._validate_scaling_config(
+                    updated_scaling_config
                 )
-                return scaling_config_dataclass.as_placement_group_factory()
-
+                ic(validated_scaling_config)
+                return validated_scaling_config.as_placement_group_factory()
+            
         return TrainTrainable
-    
-    
-    
-
-
-# @dataclass
-# @PublicAPI(stability="alpha")
-# class ScalingConfigDataClass:
-
-#     trainer_resources: Optional[Dict] = None
-#     num_workers: Optional[int] = None
-#     use_gpu: bool = False
-#     resources_per_worker: Optional[Dict] = None
-#     placement_strategy: str = "PACK"
-
-#     def __post_init__(self):
-#         self.resources_per_worker = (
-#             self.resources_per_worker if self.resources_per_worker else {}
-#         )
-#         if self.resources_per_worker:
-#             if not self.use_gpu and self.num_gpus_per_worker > 0:
-#                 raise ValueError(
-#                     "`use_gpu` is False but `GPU` was found in "
-#                     "`resources_per_worker`. Either set `use_gpu` to True or "
-#                     "remove `GPU` from `resources_per_worker."
-#                 )
-
-#             if self.use_gpu and self.num_gpus_per_worker == 0:
-#                 raise ValueError(
-#                     "`use_gpu` is True but `GPU` is set to 0 in "
-#                     "`resources_per_worker`. Either set `use_gpu` to False or "
-#                     "request a positive number of `GPU` in "
-#                     "`resources_per_worker."
-#                 )
-
-#     @property
-#     def num_cpus_per_worker(self):
-#         """The number of CPUs to set per worker."""
-#         return self.resources_per_worker.get("CPU", 1)
-
-#     @property
-#     def num_gpus_per_worker(self):
-#         """The number of GPUs to set per worker."""
-#         return self.resources_per_worker.get("GPU", int(self.use_gpu))
-
-#     @property
-#     def additional_resources_per_worker(self):
-#         """Resources per worker, not including CPU or GPU resources."""
-#         return {
-#             k: v
-#             for k, v in self.resources_per_worker.items()
-#             if k not in ["CPU", "GPU"]
-#         }
-
-#     def as_placement_group_factory(self) -> "PlacementGroupFactory":
-#         """Returns a PlacementGroupFactory to specify resources for Tune."""
-#         from ray.tune.execution.placement_groups import PlacementGroupFactory
-
-#         trainer_resources = (
-#             self.trainer_resources if self.trainer_resources else {"CPU": 1}
-#         )
-#         trainer_bundle = [trainer_resources]
-#         worker_resources = {
-#             "CPU": self.num_cpus_per_worker,
-#             "GPU": self.num_gpus_per_worker,
-#         }
-#         worker_resources_extra = (
-#             {} if self.resources_per_worker is None else self.resources_per_worker
-#         )
-#         worker_bundles = [
-#             {**worker_resources, **worker_resources_extra}
-#             for _ in range(self.num_workers if self.num_workers else 0)
-#         ]
-#         bundles = trainer_bundle + worker_bundles
-#         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
