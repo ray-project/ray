@@ -134,7 +134,7 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
 /// It is used to disconnect an actor and exit the worker.
 /// \Throws RayException if the current process is a driver or the current worker is not
 /// an actor.
-inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
+void ExitActor();
 
 template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
@@ -161,6 +161,9 @@ PlacementGroup GetPlacementGroup(const std::string &name);
 
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
+
+/// Get the namespace of this job.
+std::string GetNamespace();
 
 // --------- inline implementation ------------
 
@@ -299,6 +302,8 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
   return ActorHandle<T>(actor_id);
 }
 
+inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
+
 inline PlacementGroup CreatePlacementGroup(
     const ray::PlacementGroupCreationOptions &create_options) {
   return ray::internal::GetRayRuntime()->CreatePlacementGroup(create_options);
@@ -322,6 +327,10 @@ inline PlacementGroup GetPlacementGroup(const std::string &name) {
 
 inline bool WasCurrentActorRestarted() {
   return ray::internal::GetRayRuntime()->WasCurrentActorRestarted();
+}
+
+inline std::string GetNamespace() {
+  return ray::internal::GetRayRuntime()->GetNamespace();
 }
 
 }  // namespace ray
