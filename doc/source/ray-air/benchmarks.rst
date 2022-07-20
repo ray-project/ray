@@ -215,7 +215,7 @@ Ray Train's distributed TensorflowTrainer.
 We demonstrate that the performance is similar (within 10\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
 
-.. note:: The batch size is different for the GPU benchmark, resulting in a longer runtime.
+.. note:: The batch size and number of epochs is different for the GPU benchmark, resulting in a longer runtime.
 
 - `Tensorflow comparison training script`_
 - `Tensorflow comparison CPU cluster configuration`_
