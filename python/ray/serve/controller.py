@@ -27,6 +27,7 @@ from ray.serve.common import (
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
     CONTROL_LOOP_PERIOD_S,
+    DEFAULT_CHECKPOINT_PATH,
     SERVE_LOGGER_NAME,
     CONTROLLER_MAX_CONCURRENCY,
     SERVE_ROOT_URL_ENV_KEY,
@@ -86,7 +87,6 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        checkpoint_path: str,
         head_node_id: str,
         detached: bool = False,
     ):
@@ -97,9 +97,11 @@ class ServeController:
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
-        self.checkpoint_path = checkpoint_path
+        self.checkpoint_path = DEFAULT_CHECKPOINT_PATH
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
+        self.kv_store = make_kv_store(
+            self.checkpoint_path, namespace=kv_store_namespace
+        )
         self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
