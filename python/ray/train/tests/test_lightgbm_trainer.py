@@ -61,7 +61,7 @@ def test_fit_with_categoricals(ray_start_4_cpus):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.copy_from(result.checkpoint)
+    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
     model = checkpoint.get_model()
     assert model.pandas_categorical == [["A", "B"]]
 
@@ -78,7 +78,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
     checkpoint = result.checkpoint
-    checkpoint = LightGBMCheckpoint.copy_from(result.checkpoint)
+    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
     model = checkpoint.get_model()
     assert get_num_trees(model) == 5
 
@@ -97,7 +97,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         resume_from_checkpoint=resume_from,
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.copy_from(result.checkpoint)
+    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
     xgb_model = checkpoint.get_model()
     assert get_num_trees(xgb_model) == 10
 
@@ -174,7 +174,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    resume_from = LightGBMCheckpoint.copy_from(resume_from)
+    resume_from = LightGBMCheckpoint.from_checkpoint(resume_from)
 
     model = checkpoint.get_model()
     preprocessor = checkpoint.get_preprocessor()

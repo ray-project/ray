@@ -92,7 +92,7 @@ class TensorflowPredictor(DLPredictor):
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
         """
-        checkpoint = TensorflowCheckpoint.copy_from(checkpoint)
+        checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
         model_weights = checkpoint.get_model_weights()
         preprocessor = checkpoint.get_preprocessor()
         return cls(

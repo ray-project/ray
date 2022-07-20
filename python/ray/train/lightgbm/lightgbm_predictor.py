@@ -42,7 +42,7 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        checkpoint = LightGBMCheckpoint.copy_from(checkpoint)
+        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor)

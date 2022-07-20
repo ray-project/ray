@@ -67,7 +67,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = XGBoostCheckpoint.copy_from(result.checkpoint)
+    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
     xgb_model = checkpoint.get_model()
     assert get_num_trees(xgb_model) == 5
 
@@ -86,7 +86,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         resume_from_checkpoint=resume_from,
     )
     result = trainer.fit()
-    checkpoint = XGBoostCheckpoint.copy_from(result.checkpoint)
+    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
     model = checkpoint.get_model()
     assert get_num_trees(model) == 10
 
@@ -163,7 +163,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    resume_from = XGBoostCheckpoint.copy_from(resume_from)
+    resume_from = XGBoostCheckpoint.from_checkpoint(resume_from)
 
     model, preprocessor = resume_from.get_model(), resume_from.get_preprocessor()
     assert get_num_trees(model) == 10

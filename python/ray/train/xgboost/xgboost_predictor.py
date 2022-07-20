@@ -41,7 +41,7 @@ class XGBoostPredictor(Predictor):
                 ``XGBoostTrainer`` run.
 
         """
-        checkpoint = XGBoostCheckpoint.copy_from(checkpoint)
+        checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor)

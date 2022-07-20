@@ -46,7 +46,7 @@ class SklearnPredictor(Predictor):
                 preprocessor from. It is expected to be from the result of a
                 ``SklearnTrainer`` run.
         """
-        checkpoint = SklearnCheckpoint.copy_from(checkpoint)
+        checkpoint = SklearnCheckpoint.from_checkpoint(checkpoint)
         estimator = checkpoint.get_estimator()
         preprocessor = checkpoint.get_preprocessor()
         return cls(estimator=estimator, preprocessor=preprocessor)

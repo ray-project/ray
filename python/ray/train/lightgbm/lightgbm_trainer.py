@@ -84,7 +84,7 @@ class LightGBMTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        checkpoint = LightGBMCheckpoint.copy_from(checkpoint)
+        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: lightgbm.LGBMModel, path: str):
