@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class RepartitionStage(AllToAllStage):
     """Implementation of `Dataset.repartition()`."""
 
-    def __init__(self, num_blocks: int, shuffle: bool, run_by_pipeline: bool = False):
+    def __init__(self, num_blocks: int, shuffle: bool, run_by_consumer: bool = False):
         if shuffle:
 
             def do_shuffle(
@@ -57,7 +57,7 @@ class RepartitionStage(AllToAllStage):
                 num_blocks,
                 do_shuffle,
                 supports_block_udf=True,
-                run_by_pipeline=run_by_pipeline,
+                run_by_consumer=run_by_consumer,
             )
 
         else:
@@ -74,21 +74,21 @@ class RepartitionStage(AllToAllStage):
                 "repartition",
                 num_blocks,
                 do_fast_repartition,
-                run_by_pipeline=run_by_pipeline,
+                run_by_consumer=run_by_consumer,
             )
 
 
 class RandomizeBlocksStage(AllToAllStage):
     """Implementation of `Dataset.randomize_blocks()`."""
 
-    def __init__(self, seed: Optional[int], run_by_pipeline: bool = False):
+    def __init__(self, seed: Optional[int], run_by_consumer: bool = False):
         self._seed = seed
 
         super().__init__(
             "randomize_block_order",
             None,
             self.do_randomize,
-            run_by_pipeline=run_by_pipeline,
+            run_by_consumer=run_by_consumer,
         )
 
     def do_randomize(self, block_list, *_):
@@ -106,7 +106,7 @@ class RandomShuffleStage(AllToAllStage):
         self,
         seed: Optional[int],
         output_num_blocks: Optional[int],
-        run_by_pipeline: bool = False,
+        run_by_consumer: bool = False,
     ):
         def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
@@ -142,7 +142,7 @@ class RandomShuffleStage(AllToAllStage):
             output_num_blocks,
             do_shuffle,
             supports_block_udf=True,
-            run_by_pipeline=run_by_pipeline,
+            run_by_consumer=run_by_consumer,
         )
 
 
@@ -200,7 +200,7 @@ class SortStage(AllToAllStage):
         ds: "Dataset",
         key: Optional[KeyFn],
         descending: bool,
-        run_by_pipeline: bool = False,
+        run_by_consumer: bool = False,
     ):
         def do_sort(block_list, clear_input_blocks: bool, *_):
             # Handle empty dataset.
@@ -220,4 +220,4 @@ class SortStage(AllToAllStage):
                 _validate_key_fn(ds, key)
             return sort_impl(blocks, clear_input_blocks, key, descending)
 
-        super().__init__("sort", None, do_sort, run_by_pipeline=run_by_pipeline)
+        super().__init__("sort", None, do_sort, run_by_consumer=run_by_consumer)

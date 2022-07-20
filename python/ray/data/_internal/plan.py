@@ -42,11 +42,11 @@ class Stage:
     """Represents a Dataset transform stage (e.g., map or shuffle)."""
 
     def __init__(
-        self, name: str, num_blocks: Optional[int], run_by_pipeline: bool = False
+        self, name: str, num_blocks: Optional[int], run_by_consumer: bool = False
     ):
         self.name = name
         self.num_blocks = num_blocks
-        self.run_by_pipeline = run_by_pipeline
+        self.run_by_consumer = run_by_consumer
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
@@ -517,7 +517,7 @@ class OneToOneStage(Stage):
         block_fn: BlockTransform,
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
-        run_by_pipeline: bool = False,
+        run_by_consumer: bool = False,
         fn: Optional[UDF] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -528,7 +528,7 @@ class OneToOneStage(Stage):
         self.block_fn = block_fn
         self.compute = compute or "tasks"
         self.ray_remote_args = ray_remote_args or {}
-        self.run_by_pipeline = run_by_pipeline
+        self.run_by_consumer = run_by_consumer
         self.fn = fn
         self.fn_args = fn_args
         self.fn_kwargs = fn_kwargs
@@ -625,7 +625,7 @@ class OneToOneStage(Stage):
             block_fn,
             self.compute,
             prev.ray_remote_args,
-            run_by_pipeline=self.run_by_pipeline,
+            run_by_consumer=self.run_by_consumer,
             fn=self.fn,
             fn_args=fn_args,
             fn_kwargs={},
@@ -643,7 +643,7 @@ class OneToOneStage(Stage):
 
         if blocks._owned_by_consumer:
             assert (
-                self.run_by_pipeline
+                self.run_by_consumer
             ), "Pipeline outputs can only be consumed by pipeline"
 
         blocks = compute._apply(
@@ -659,7 +659,7 @@ class OneToOneStage(Stage):
             fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
         assert isinstance(blocks, BlockList), blocks
-        blocks._owned_by_consumer = self.run_by_pipeline
+        blocks._owned_by_consumer = self.run_by_consumer
         return blocks, {}
 
 
@@ -674,14 +674,14 @@ class AllToAllStage(Stage):
         supports_block_udf: bool = False,
         block_udf: Optional[BlockTransform] = None,
         remote_args: Optional[Dict[str, Any]] = None,
-        run_by_pipeline: bool = False,
+        run_by_consumer: bool = False,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
         self.ray_remote_args = remote_args or {}
-        self.run_by_pipeline = run_by_pipeline
+        self.run_by_consumer = run_by_consumer
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
@@ -739,16 +739,19 @@ class AllToAllStage(Stage):
         in_blocks_owned_by_consumer = blocks._owned_by_consumer
         if in_blocks_owned_by_consumer:
             assert (
-                self.run_by_pipeline
+                self.run_by_consumer
             ), "Pipeline outputs can only be consumed by pipeline"
         blocks, stage_info = self.fn(
             blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
         )
         assert isinstance(blocks, BlockList), blocks
+
+        # RandomizeBlocksStage is an in-place transformation, so the ownership
+        # of blocks doesn't change.
         if isinstance(self, RandomizeBlocksStage):
             blocks._owned_by_consumer = in_blocks_owned_by_consumer
         else:
-            blocks._owned_by_consumer = self.run_by_pipeline
+            blocks._owned_by_consumer = self.run_by_consumer
 
         return blocks, stage_info
 

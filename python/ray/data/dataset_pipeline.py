@@ -1102,7 +1102,7 @@ class DatasetPipeline(Generic[T]):
         # These optimized stages will be executed by the PipelineExecutor.
         optimized_stages = []
         for stage in stages:
-            stage.run_by_pipeline = True
+            stage.run_by_consumer = True
             optimized_stages.append(
                 lambda ds, stage=stage: Dataset(
                     ds._plan.with_stage(stage), ds._epoch, True
