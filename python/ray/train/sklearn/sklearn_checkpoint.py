@@ -42,7 +42,7 @@ class SklearnCheckpoint(Checkpoint):
             >>> from sklearn.ensemble import RandomForestClassifier
             >>>
             >>> estimator = RandomForestClassifier()
-            >>> checkpoint = SklearnCheckpoint.from_estimator(estimator)
+            >>> checkpoint = SklearnCheckpoint.from_estimator(estimator, path=".")
 
             You can use a :py:class:`SklearnCheckpoint` to create an
             :py:class:`~ray.train.sklearn.SklearnPredictor` and preform inference.
