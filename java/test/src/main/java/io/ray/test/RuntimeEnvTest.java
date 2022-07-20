@@ -4,7 +4,9 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.runtimeenv.RuntimeEnv;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -62,12 +64,16 @@ public class RuntimeEnvTest {
   public void testEnvVarsForNormalTask() {
     try {
       Ray.init();
-      RuntimeEnv runtimeEnv =
-          new RuntimeEnv.Builder()
-              .addEnvVar("KEY1", "A")
-              .addEnvVar("KEY2", "B")
-              .addEnvVar("KEY1", "C")
-              .build();
+      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
+      Map<String, String> envMap =
+          new HashMap<String, String>() {
+            {
+              put("KEY1", "A");
+              put("KEY2", "B");
+              put("KEY1", "C");
+            }
+          };
+      runtimeEnv.set("env_vars", envMap);
 
       String val =
           Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
@@ -85,7 +91,14 @@ public class RuntimeEnvTest {
     System.setProperty("ray.job.runtime-env.env-vars.KEY2", "B");
     try {
       Ray.init();
-      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addEnvVar("KEY1", "C").build();
+      Map<String, String> envMap =
+          new HashMap<String, String>() {
+            {
+              put("KEY1", "C");
+            }
+          };
+      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
+      runtimeEnv.set("env_vars", "envMap");
 
       /// value of KEY1 is overwritten to `C` and KEY2s is extended from job config.
       String val =
@@ -101,7 +114,8 @@ public class RuntimeEnvTest {
   private static void testDownloadAndLoadPackage(String url) {
     try {
       Ray.init();
-      final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addJars(ImmutableList.of(url)).build();
+      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
+      runtimeEnv.set("java_jars", ImmutableList.of(url));
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
       boolean ret = actor1.task(A::findClass, FOO_CLASS_NAME).remote().get();
       Assert.assertTrue(ret);
@@ -133,7 +147,8 @@ public class RuntimeEnvTest {
       List<String> urls, List<String> classNames) {
     try {
       Ray.init();
-      final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addJars(urls).build();
+      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
+      runtimeEnv.set("java_jars", urls);
       boolean ret =
           Ray.task(RuntimeEnvTest::findClasses, classNames)
               .setRuntimeEnv(runtimeEnv)

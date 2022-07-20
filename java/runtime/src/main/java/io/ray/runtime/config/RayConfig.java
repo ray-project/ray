@@ -215,7 +215,9 @@ public class RayConfig {
       if (config.hasPath(jarsPath)) {
         jarUrls = config.getStringList(jarsPath);
       }
-      runtimeEnvImpl = new RuntimeEnvImpl(envVars, jarUrls);
+      runtimeEnvImpl = new RuntimeEnvImpl();
+      runtimeEnvImpl.set("env_vars", envVars);
+      runtimeEnvImpl.set("java_jars", jarUrls);
     }
 
     {
