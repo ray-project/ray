@@ -96,17 +96,19 @@ const JobList = () => {
                   page.pageNo * page.pageSize,
                 )
                 .map(
-                  ({
-                    id = "",
-                    job_id,
-                    submission_id,
-                    driver,
-                    type,
-                    status,
-                    start_time,
-                    end_time,
-                  }) => (
-                    <TableRow key={id}>
+                  (
+                    {
+                      job_id,
+                      submission_id,
+                      driver_info,
+                      type,
+                      status,
+                      start_time,
+                      end_time,
+                    },
+                    index,
+                  ) => (
+                    <TableRow key={job_id ?? submission_id ?? index}>
                       <TableCell align="center">{job_id ?? "-"}</TableCell>
                       <TableCell align="center">
                         {submission_id ?? "-"}
@@ -115,12 +117,15 @@ const JobList = () => {
                       <TableCell align="center">
                         {/* TODO(aguo): Also show logs for the job id instead
                         of just the submission's logs */}
-                        {driver && ipLogMap[driver.ip_address] ? (
+                        {driver_info &&
+                        ipLogMap[driver_info.node_ip_address] ? (
                           <Link
                             to={`/log/${encodeURIComponent(
-                              ipLogMap[driver.ip_address],
-                            )}?fileName=driver-${
-                              type === "driver" ? driver.id : id
+                              ipLogMap[driver_info.node_ip_address],
+                            )}?fileName=${
+                              type === "DRIVER"
+                                ? job_id
+                                : `driver-${submission_id}`
                             }`}
                             target="_blank"
                           >

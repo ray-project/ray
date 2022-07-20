@@ -19,7 +19,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.common import JobInfo
+from ray.dashboard.modules.job.common import JobDetails
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -74,7 +74,7 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
     if use_sdk:
-        info: JobInfo = client.list_jobs()[job_id]
+        info: JobDetails = client.list_jobs()[job_id]
     else:
         r = client._do_request(
             "GET",
@@ -84,7 +84,7 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
         assert r.status_code == 200
         jobs_info_json = json.loads(r.text)
         info_json = jobs_info_json[job_id]
-        info = JobInfo(**info_json)
+        info = JobDetails(**info_json)
 
     assert info.entrypoint == entrypoint
     assert info.status == JobStatus.SUCCEEDED
@@ -92,6 +92,10 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
     assert info.end_time >= info.start_time
     assert info.runtime_env == runtime_env
     assert info.metadata == metadata
+
+    # Test get job status by job / driver id
+    status = client.get_job_status(info.job_id)
+    assert status == JobStatus.SUCCEEDED
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:

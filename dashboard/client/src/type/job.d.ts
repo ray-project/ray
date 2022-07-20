@@ -66,7 +66,6 @@ export type JobDetailRsp = {
 export type JobListRsp = { [id: str]: UnifiedJob };
 
 export type UnifiedJob = {
-  id: string;
   job_id: string | null;
   submission_id: string | null;
   type: string;
@@ -78,11 +77,12 @@ export type UnifiedJob = {
   end_time: number | null;
   metadata: { [key: string]: string } | null;
   runtime_env: { [key: string]: string } | null;
-  driver: DriverInfo | null;
+  driver_info: DriverInfo | null;
 };
 
 export type DriverInfo = {
   id: string;
-  ip_address: string;
+  node_ip_address: string;
+  node_id: string;
   pid: string;
 };

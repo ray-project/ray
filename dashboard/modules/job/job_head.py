@@ -3,7 +3,7 @@ import json
 import logging
 import traceback
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -29,6 +29,7 @@ from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     DriverInfo,
     JobDetails,
+    JobType,
 )
 from ray.dashboard.modules.version import (
     CURRENT_VERSION,
@@ -50,9 +51,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._job_manager = None
         self._gcs_job_info_stub = None
 
-    async def _parse_and_validate_request(
-        self, req: Request, request_type: dataclass
-    ) -> Any:
+    async def _parse_and_validate_request(self, req: Request,
+                                          request_type: dataclass) -> Any:
         """Parse request and cast to request type. If parsing failed, return a
         Response object with status 400 and stacktrace instead.
         """
@@ -64,6 +64,40 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
+
+    async def find_job_by_ids(
+            self, job_or_submission_id: str) -> Optional[JobDetails]:
+        """
+        Attempts to find the job with a given submission_id or job id.
+        """
+        # First try to find by job_id
+        driver_jobs, submission_job_drivers = await self._get_driver_jobs()
+        job = driver_jobs.get(job_or_submission_id)
+        if job:
+            return job
+        # Try to find a driver with the given id
+        submission_id = next((id
+                              for id, driver in submission_job_drivers.items()
+                              if driver.id == job_or_submission_id), None)
+
+        if not submission_id:
+            # If we didn't find a driver with the given id,
+            # then lets try to search for a submission with given id
+            submission_id = job_or_submission_id
+
+        job_info = self._job_manager.get_job_info(submission_id)
+        if job_info:
+            driver = submission_job_drivers.get(submission_id)
+            job = JobDetails(
+                **dataclasses.asdict(job_info),
+                submission_id=submission_id,
+                job_id=driver.id if driver else None,
+                driver_info=driver,
+                type=JobType.SUBMISSION,
+            )
+            return job
+
+        return None
 
     def job_exists(self, job_id: str) -> bool:
         status = self._job_manager.get_job_status(job_id)
@@ -163,19 +197,24 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    @routes.post("/api/jobs/{submission_id}/stop")
+    @routes.post("/api/jobs/{job_or_submission_id}/stop")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def stop_job(self, req: Request) -> Response:
-        # TODO(aguo): Accept job_id along side of submission_ids
-        submission_id = req.match_info["submission_id"]
-        if not self.job_exists(submission_id):
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+        job = await self.find_job_by_ids(job_or_submission_id)
+        if not job:
             return Response(
-                text=f"Job {submission_id} does not exist",
+                text=f"Job {job_or_submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
+            )
+        if job.type is not JobType.SUBMISSION:
+            return Response(
+                text=f"Can only stop submission type jobs",
+                status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
         try:
-            stopped = self._job_manager.stop_job(submission_id)
+            stopped = self._job_manager.stop_job(job.submission_id)
             resp = JobStopResponse(stopped=stopped)
         except Exception:
             return Response(
@@ -184,31 +223,19 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json")
 
-    @routes.get("/api/jobs/{submission_id}")
+    @routes.get("/api/jobs/{job_or_submission_id}")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def get_job_info(self, req: Request) -> Response:
-        # TODO(aguo): Accept job_id along side of submission_ids
-        submission_id = req.match_info["submission_id"]
-        if not self.job_exists(submission_id):
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+        job = await self.find_job_by_ids(job_or_submission_id)
+        if not job:
             return Response(
-                text=f"Job {submission_id} does not exist",
+                text=f"Job {job_or_submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
-
-        data: JobInfo = self._job_manager.get_job_info(submission_id)
-        _, submission_job_drivers = await self._get_driver_jobs()
-        driver = submission_job_drivers.get(submission_id)
-        job = JobDetails(
-            **dataclasses.asdict(data),
-            id=submission_id,
-            submission_id=submission_id,
-            job_id=driver.id if driver else None,
-            driver=driver,
-            type="submission",
-        )
 
         return Response(
             text=json.dumps(job.dict()),
@@ -225,29 +252,24 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         submission_jobs = [
             JobDetails(
                 **dataclasses.asdict(job),
-                id=submission_id,
                 submission_id=submission_id,
                 job_id=submission_job_drivers.get(submission_id).id
-                if submission_id in submission_job_drivers
-                else None,
-                driver=submission_job_drivers.get(submission_id),
-                type="submission",
-            )
-            for submission_id, job in submission_jobs.items()
+                if submission_id in submission_job_drivers else None,
+                driver_info=submission_job_drivers.get(submission_id),
+                type=JobType.SUBMISSION,
+            ) for submission_id, job in submission_jobs.items()
         ]
         return Response(
-            text=json.dumps(
-                {
-                    **{
-                        submission_job.id: submission_job.dict()
-                        for submission_job in submission_jobs
-                    },
-                    **{
-                        job_info.id: job_info.dict()
-                        for job_info in driver_jobs.values()
-                    },
-                }
-            ),
+            text=json.dumps({
+                **{
+                    submission_job.submission_id: submission_job.dict()
+                    for submission_job in submission_jobs
+                },
+                **{
+                    job_info.job_id: job_info.dict()
+                    for job_info in driver_jobs.values()
+                },
+            }),
             content_type="application/json",
         )
 
@@ -271,67 +293,78 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             if not job_submission_id:
                 driver = DriverInfo(
                     id=job_id,
-                    ip_address=job_table_entry.driver_ip_address,
+                    node_ip_address=job_table_entry.driver_ip_address,
                     pid=job_table_entry.driver_pid,
                 )
                 job = JobDetails(
-                    id=job_id,
                     job_id=job_id,
-                    type="driver",
+                    type=JobType.DRIVER,
                     status=JobStatus.SUCCEEDED
-                    if job_table_entry.is_dead
-                    else JobStatus.RUNNING,
+                    if job_table_entry.is_dead else JobStatus.RUNNING,
                     entrypoint="",
                     start_time=job_table_entry.start_time,
                     end_time=job_table_entry.end_time,
                     metadata=metadata,
                     runtime_env=RuntimeEnv.deserialize(
-                        job_table_entry.config.runtime_env_info.serialized_runtime_env
-                    ).to_dict(),
-                    driver=driver,
+                        job_table_entry.config.runtime_env_info.
+                        serialized_runtime_env).to_dict(),
+                    driver_info=driver,
                 )
                 jobs[job_id] = job
             else:
                 driver = DriverInfo(
                     id=job_id,
-                    ip_address=job_table_entry.driver_ip_address,
+                    node_ip_address=job_table_entry.driver_ip_address,
                     pid=job_table_entry.driver_pid,
                 )
                 submission_job_drivers[job_submission_id] = driver
 
         return jobs, submission_job_drivers
 
-    @routes.get("/api/jobs/{submission_id}/logs")
+    @routes.get("/api/jobs/{job_or_submission_id}/logs")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def get_job_logs(self, req: Request) -> Response:
-        # TODO(aguo): Accept job_id along side of submission_ids
-        submission_id = req.match_info["submission_id"]
-        if not self.job_exists(submission_id):
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+        job = await self.find_job_by_ids(job_or_submission_id)
+        if not job:
             return Response(
-                text=f"Job {submission_id} does not exist",
+                text=f"Job {job_or_submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
 
-        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(submission_id))
-        return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
+        if job.type is not JobType.SUBMISSION:
+            return Response(
+                text=f"Can only get logs of submission type jobs",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
 
-    @routes.get("/api/jobs/{submission_id}/logs/tail")
+        resp = JobLogsResponse(
+            logs=self._job_manager.get_job_logs(job.submission_id))
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json")
+
+    @routes.get("/api/jobs/{job_or_submission_id}/logs/tail")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def tail_job_logs(self, req: Request) -> Response:
-        # TODO(aguo): Accept job_id along side of submission_ids
-        submission_id = req.match_info["submission_id"]
-        if not self.job_exists(submission_id):
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+        job = await self.find_job_by_ids(job_or_submission_id)
+        if not job:
             return Response(
-                text=f"Job {submission_id} does not exist",
+                text=f"Job {job_or_submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
+            )
+
+        if job.type is not JobType.SUBMISSION:
+            return Response(
+                text=f"Can only get logs of submission type jobs",
+                status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
         ws = aiohttp.web.WebSocketResponse()
         await ws.prepare(req)
 
-        async for lines in self._job_manager.tail_job_logs(submission_id):
+        async for lines in self._job_manager.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
 
     async def run(self, server):
@@ -339,8 +372,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             self._job_manager = JobManager()
 
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel
-        )
+            self._dashboard_head.aiogrpc_gcs_channel)
 
     @staticmethod
     def is_minimal_module():

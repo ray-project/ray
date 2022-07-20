@@ -242,8 +242,8 @@ class JobSubmissionClient(SubmissionClient):
         if r.status_code == 200:
             jobs_info_json = r.json()
             jobs_info = {
-                job_id: JobDetails(**job_info_json)
-                for job_id, job_info_json in jobs_info_json.items()
+                id: JobDetails(**job_info_json)
+                for id, job_info_json in jobs_info_json.items()
             }
             return jobs_info
         else:
