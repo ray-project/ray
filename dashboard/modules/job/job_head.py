@@ -50,9 +50,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._job_manager = None
         self._gcs_job_info_stub = None
 
-    async def _parse_and_validate_request(
-        self, req: Request, request_type: dataclass
-    ) -> Any:
+    async def _parse_and_validate_request(self, req: Request,
+                                          request_type: dataclass) -> Any:
         """Parse request and cast to request type. If parsing failed, return a
         Response object with status 400 and stacktrace instead.
         """
@@ -65,7 +64,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
-    async def find_job_by_ids(self, job_or_submission_id: str) -> Optional[JobDetails]:
+    async def find_job_by_ids(
+            self, job_or_submission_id: str) -> Optional[JobDetails]:
         """
         Attempts to find the job with a given submission_id or job id.
         """
@@ -76,11 +76,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             return job
         # Try to find a driver with the given id
         submission_id = next(
-            (
-                id
-                for id, driver in submission_job_drivers.items()
-                if driver.id == job_or_submission_id
-            ),
+            (id for id, driver in submission_job_drivers.items()
+             if driver.id == job_or_submission_id),
             None,
         )
 
@@ -227,8 +224,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json")
 
     @routes.get("/api/jobs/{job_or_submission_id}")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
@@ -258,26 +255,16 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 **dataclasses.asdict(job),
                 submission_id=submission_id,
                 job_id=submission_job_drivers.get(submission_id).id
-                if submission_id in submission_job_drivers
-                else None,
+                if submission_id in submission_job_drivers else None,
                 driver_info=submission_job_drivers.get(submission_id),
                 type=JobType.SUBMISSION,
-            )
-            for submission_id, job in submission_jobs.items()
+            ) for submission_id, job in submission_jobs.items()
         ]
         return Response(
-            text=json.dumps(
-                {
-                    **{
-                        submission_job.submission_id: submission_job.dict()
-                        for submission_job in submission_jobs
-                    },
-                    **{
-                        job_info.job_id: job_info.dict()
-                        for job_info in driver_jobs.values()
-                    },
-                }
-            ),
+            text=json.dumps([
+                *[submission_job.dict() for submission_job in submission_jobs],
+                *[job_info.dict() for job_info in driver_jobs.values()],
+            ]),
             content_type="application/json",
         )
 
@@ -308,15 +295,14 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     job_id=job_id,
                     type=JobType.DRIVER,
                     status=JobStatus.SUCCEEDED
-                    if job_table_entry.is_dead
-                    else JobStatus.RUNNING,
+                    if job_table_entry.is_dead else JobStatus.RUNNING,
                     entrypoint="",
                     start_time=job_table_entry.start_time,
                     end_time=job_table_entry.end_time,
                     metadata=metadata,
                     runtime_env=RuntimeEnv.deserialize(
-                        job_table_entry.config.runtime_env_info.serialized_runtime_env
-                    ).to_dict(),
+                        job_table_entry.config.runtime_env_info.
+                        serialized_runtime_env).to_dict(),
                     driver_info=driver,
                 )
                 jobs[job_id] = job
@@ -347,10 +333,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
-        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job.submission_id))
+        resp = JobLogsResponse(
+            logs=self._job_manager.get_job_logs(job.submission_id))
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json")
 
     @routes.get("/api/jobs/{job_or_submission_id}/logs/tail")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
@@ -380,8 +367,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             self._job_manager = JobManager()
 
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel
-        )
+            self._dashboard_head.aiogrpc_gcs_channel)
 
     @staticmethod
     def is_minimal_module():

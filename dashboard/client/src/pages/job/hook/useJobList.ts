@@ -38,9 +38,7 @@ export const useJobList = () => {
 
     if (rsp) {
       setList(
-        Object.values<UnifiedJob>(rsp.data).sort(
-          (a, b) => (b.start_time ?? 0) - (a.start_time ?? 0),
-        ),
+        rsp.data.sort((a, b) => (b.start_time ?? 0) - (a.start_time ?? 0)),
       );
       setMsg("Fetched jobs");
     }
