@@ -351,6 +351,15 @@ class Checkpoint:
         """
         return cls(local_path=path)
 
+    @classmethod
+    def _from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
+        return cls(
+            local_path=other._local_path,
+            data_dict=other._data_dict,
+            uri=other._uri,
+            obj_ref=other._obj_ref,
+        )
+
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
         if self._obj_ref:
