@@ -27,7 +27,10 @@ from ray._private.test_utils import RayTestTimeoutException
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutoscaler
 from ray.autoscaler._private.commands import get_or_create_head_node
-from ray.autoscaler._private.constants import FOREGROUND_NODE_LAUNCH_KEY
+from ray.autoscaler._private.constants import (
+    FOREGROUND_NODE_LAUNCH_KEY,
+    WORKER_RPC_DRAIN_KEY,
+)
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
@@ -75,6 +78,8 @@ class DrainNodeOutcome(str, Enum):
     GenericException = "GenericException"
     # Tell the autoscaler to fail finding ips during drain
     FailedToFindIp = "FailedToFindIp"
+    # Represents the situation in which draining nodes before termination is disabled.
+    DrainDisabled = "DrainDisabled"
 
 
 class MockRpcException(grpc.RpcError):
@@ -1528,6 +1533,9 @@ class AutoscalingTest(unittest.TestCase):
     def testDynamicScaling6(self):
         self.helperDynamicScaling(DrainNodeOutcome.FailedToFindIp)
 
+    def testDynamicScaling7(self):
+        self.helperDynamicScaling(DrainNodeOutcome.DrainDisabled)
+
     def helperDynamicScaling(
         self,
         drain_node_outcome: DrainNodeOutcome = DrainNodeOutcome.Succeeded,
@@ -1535,19 +1543,21 @@ class AutoscalingTest(unittest.TestCase):
     ):
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         mock_node_info_stub = MockNodeInfoStub(drain_node_outcome)
+        disable_drain = drain_node_outcome == DrainNodeOutcome.DrainDisabled
 
         # Run the core of the test logic.
         self._helperDynamicScaling(
             mock_metrics,
             mock_node_info_stub,
             foreground_node_launcher=foreground_node_launcher,
+            disable_drain=disable_drain,
         )
 
         # Make assertions about DrainNode error handling during scale-down.
 
         if drain_node_outcome == DrainNodeOutcome.Succeeded:
             # DrainNode call was made.
-            mock_node_info_stub.drain_node_call_count > 0
+            assert mock_node_info_stub.drain_node_call_count > 0
             # No drain node exceptions.
             assert mock_metrics.drain_node_exceptions.inc.call_count == 0
             # Each drain node call succeeded.
@@ -1557,7 +1567,7 @@ class AutoscalingTest(unittest.TestCase):
             )
         elif drain_node_outcome == DrainNodeOutcome.Unimplemented:
             # DrainNode call was made.
-            mock_node_info_stub.drain_node_call_count > 0
+            assert mock_node_info_stub.drain_node_call_count > 0
             # All errors were supressed.
             assert mock_metrics.drain_node_exceptions.inc.call_count == 0
             # Every call failed.
@@ -1567,7 +1577,7 @@ class AutoscalingTest(unittest.TestCase):
             DrainNodeOutcome.GenericException,
         ):
             # DrainNode call was made.
-            mock_node_info_stub.drain_node_call_count > 0
+            assert mock_node_info_stub.drain_node_call_count > 0
 
             # We encountered an exception.
             assert mock_metrics.drain_node_exceptions.inc.call_count > 0
@@ -1583,17 +1593,27 @@ class AutoscalingTest(unittest.TestCase):
             assert mock_node_info_stub.drain_node_call_count == 0
             # We encountered an exception fetching ip.
             assert mock_metrics.drain_node_exceptions.inc.call_count > 0
+        elif drain_node_outcome == DrainNodeOutcome.DrainDisabled:
+            # We never called this API.
+            assert mock_node_info_stub.drain_node_call_count == 0
+            # There were no failed calls.
+            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
+            # There were no successful calls either.
+            assert mock_node_info_stub.drain_node_reply_success == 0
 
     def testDynamicScalingForegroundLauncher(self):
         """Test autoscaling with node launcher in the foreground."""
         self.helperDynamicScaling(foreground_node_launcher=True)
 
     def _helperDynamicScaling(
-        self, mock_metrics, mock_node_info_stub, foreground_node_launcher=False
+        self, mock_metrics, mock_node_info_stub, foreground_node_launcher=False,
+        disable_drain=False
     ):
         config = copy.deepcopy(SMALL_CLUSTER)
         if foreground_node_launcher:
             config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
+        if disable_drain:
+            config["provider"][WORKER_RPC_DRAIN_KEY] = False
 
         config_path = self.write_config(config)
         self.provider = MockProvider()
