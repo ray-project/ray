@@ -11,12 +11,12 @@ Ray AI Runtime (AIR) is an open-source toolkit for building end-to-end ML applic
 .. image:: images/ai_runtime.jpg
 
 
-The main focuses of the Ray AI Runtime:
+Ray AIR focuses on two functional aspects:
 
-* Ray AIR focuses on providing scalability by leveraging Ray's distributed compute layer for ML workloads.
+* It provides scalability by leveraging Ray’s distributed compute layer for ML workloads.
 * It is designed to interoperate with other systems for storage and metadata needs.
 
-Ray AIR consists of 5 key components:
+Ray AIR consists of five key components:
 
 - Data processing (:ref:`Ray Data <datasets>`)
 - Model Training (:ref:`Ray Train <train-docs>`)
