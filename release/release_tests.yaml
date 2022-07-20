@@ -2717,33 +2717,6 @@
 
   alert: default
 
-- name: long_running_rllib_kill_node_tolerance
-  group: Long running tests
-  working_dir: long_running_distributed_tests
-
-  legacy:
-    test_name: long_running_rllib_kill_node_tolerance
-    test_suite: rllib_tests
-
-  frequency: weekly
-  team: ml
-  env: staging
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_3.yaml
-
-  run:
-    timeout: 18000
-    script: python workloads/long_running_rllib_kill_node_tolerance.py
-    wait_for_nodes:
-      num_nodes: 3
-
-    type: sdk_command
-    file_manager: sdk
-
-  alert: default
-
-
 ########################
 # Core Nightly Tests
 ########################
