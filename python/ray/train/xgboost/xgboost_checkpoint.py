@@ -56,7 +56,7 @@ class XGBoostCheckpoint(Checkpoint):
         if preprocessor:
             save_preprocessor_to_dir(preprocessor, path)
 
-        checkpoint = Checkpoint.from_directory(path)
+        checkpoint = cls.from_directory(path)
 
         return checkpoint
 
