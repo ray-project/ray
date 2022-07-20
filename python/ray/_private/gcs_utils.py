@@ -1,6 +1,7 @@
 import enum
 import logging
 import time
+import traceback
 import inspect
 import asyncio
 from functools import wraps
@@ -98,13 +99,15 @@ def create_gcs_channel(address: str, aio=False):
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
-def check_health(address: str, timeout=2) -> bool:
+def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     """Checks Ray cluster health, before / without actually connecting to the
     cluster via ray.init().
 
     Args:
         address: Ray cluster / GCS address string, e.g. ip:port.
         timeout: request timeout.
+        skip_version_check: If True, will skip comparision of GCS Ray version with local
+            Ray version. If False (default), will raise exception on mismatch.
     Returns:
         Returns True if the cluster is running and has matching Ray version.
         Returns False if no service is running.
@@ -116,9 +119,14 @@ def check_health(address: str, timeout=2) -> bool:
         stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
         resp = stub.CheckAlive(req, timeout=timeout)
     except grpc.RpcError:
+        traceback.print_exc()
         return False
     if resp.status.code != GcsCode.OK:
         raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
+
+    if skip_version_check:
+        return True
+    # Otherwise, continue to check for Ray version match.
     if resp.ray_version is None:
         resp.ray_version = "<= 1.12"
     if resp.ray_version != ray.__version__:
