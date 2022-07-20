@@ -18,8 +18,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-# Import psutil and colorama after ray so the packaged version is used.
-import colorama
+# Import psutil after ray so the packaged version is used.
 import psutil
 
 # Ray modules

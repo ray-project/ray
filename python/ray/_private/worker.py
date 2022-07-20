@@ -1456,7 +1456,7 @@ def init(
                 )
             raise
 
-        info_str = f"Connected to existing Ray cluster at address: %s."
+        info_str = "Connected to existing Ray cluster at address: %s."
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
