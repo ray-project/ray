@@ -17,7 +17,11 @@ from ray.rllib.algorithms.ddpg.noop_model import TorchNoopModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.mingpt import configure_gpt_optimizer
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper, TorchCategorical, TorchDeterministic
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchDistributionWrapper,
+    TorchCategorical,
+    TorchDeterministic,
+)
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
@@ -95,7 +99,7 @@ class DTTorchPolicy(TorchPolicyV2):
             model=self.model,
             learning_rate=self.config["lr"],
             weight_decay=self.config["weight_decay"],
-            betas=self.config["betas"]
+            betas=self.config["betas"],
         )
 
         return optimizer
@@ -127,9 +131,7 @@ class DTTorchPolicy(TorchPolicyV2):
         preds = self.model.get_prediction(model_out, train_batch)
         targets = self.model.get_targets(train_batch)
 
-        losses = {
-            k: nn.MSELoss(preds[k], targets[k]) for k in preds
-        }
+        losses = {k: nn.MSELoss(preds[k], targets[k]) for k in preds}
 
         for k, v in losses.items():
             self.log(f"{k}_loss", v)

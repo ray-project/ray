@@ -12,7 +12,8 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import (
     ModelConfigDict,
-    TensorType, ModelInputDict,
+    TensorType,
+    ModelInputDict,
 )
 
 torch, nn = try_import_torch()
@@ -106,16 +107,9 @@ class DTTorchModel(TorchModelV2, nn.Module):
         model_out: TensorType,
         input_dict: SampleBatch,
     ) -> Dict[str, TensorType]:
-        """
-
-        """
+        """ """
         pass
 
     def get_target(self, input_dict: SampleBatch) -> Dict[str, TensorType]:
-        """
-
-        """
+        """ """
         pass
-
-
-

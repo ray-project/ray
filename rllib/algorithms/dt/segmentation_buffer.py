@@ -12,4 +12,3 @@ class SegmentationBuffer:
 
     def next(self) -> SampleBatch:
         pass
-
