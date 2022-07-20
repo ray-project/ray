@@ -117,7 +117,7 @@ def test_remove_placement_group(ray_start_cluster, connect_to_client):
 @pytest.mark.parametrize(
     "set_runtime_env_plugins",
     [
-        MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH,
+        '[{"class":"' + MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH + '"}]',
     ],
     indirect=True,
 )

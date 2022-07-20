@@ -296,20 +296,26 @@ class RuntimeEnvAgent(
 
             def setup_plugins():
                 # Run setup function from all the plugins
-                for name, config in runtime_env.plugins():
-                    per_job_logger.debug(f"Setting up runtime env plugin {name}")
-                    plugin = self._runtime_env_plugin_manager.get_plugin(name)
-                    if plugin is None:
-                        raise RuntimeError(f"runtime env plugin {name} not found.")
-                    # TODO(architkulkarni): implement uri support
-                    plugin.validate(runtime_env)
-                    plugin.create("uri not implemented", config, context)
-                    plugin.modify_context(
-                        "uri not implemented",
-                        config,
-                        context,
-                        per_job_logger,
-                    )
+                if runtime_env.plugins():
+                    for (
+                        setup_context
+                    ) in self._runtime_env_plugin_manager.sorted_plugin_setup_contexts(
+                        runtime_env.plugins()
+                    ):
+                        per_job_logger.debug(
+                            f"Setting up runtime env plugin {setup_context.name}"
+                        )
+                        # TODO(architkulkarni): implement uri support
+                        setup_context.class_instance.validate(runtime_env)
+                        setup_context.class_instance.create(
+                            "uri not implemented", setup_context.config, context
+                        )
+                        setup_context.class_instance.modify_context(
+                            "uri not implemented",
+                            setup_context.config,
+                            context,
+                            per_job_logger,
+                        )
 
             loop = asyncio.get_event_loop()
             # Plugins setup method is sync process, running in other threads
