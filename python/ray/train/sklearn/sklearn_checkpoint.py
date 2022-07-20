@@ -61,7 +61,7 @@ class SklearnCheckpoint(Checkpoint):
 
         return checkpoint
 
-    def get_model(self) -> BaseEstimator:
+    def get_estimator(self) -> BaseEstimator:
         """Retrieve the ``Estimator`` stored in this checkpoint."""
         with self.as_directory() as checkpoint_path:
             estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
