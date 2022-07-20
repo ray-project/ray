@@ -40,14 +40,7 @@ class TensorflowCheckpoint(Checkpoint):
             >>> import tensorflow as tf
             >>>
             >>> model = tf.keras.applications.resnet.ResNet101()
-            >>> checkpoint = TensorflowCheckpoint.from_model(model, path=".")
-
-            You can use a :py:class:`TensorflowCheckpoint` to create an
-            :py:class:`~ray.train.tensorflow.TensorflowPredictor` and preform inference.
-
-            >>> from ray.train.tensorflow import TensorflowPredictor
-            >>>
-            >>> predictor = TensorflowPredictor.from_checkpoint(checkpoint)
+            >>> checkpoint = TensorflowCheckpoint.from_model(model)
         """
         checkpoint = cls.from_dict(
             {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model.get_weights()}
