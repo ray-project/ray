@@ -490,6 +490,43 @@
   alert: default
 
 
+- name: air_benchmark_tensorflow_mnist_gpu_4x4
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: weekly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_4x4.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 64 --use-gpu
+
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    cluster:
+      cluster_compute: compute_gpu_2x2.yaml
+
+    run:
+      script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+
+      wait_for_nodes:
+        num_nodes: 2
+
+  alert: default
+
+
 - name: air_benchmark_pytorch_training_e2e_gpu_1x1_20gb
   group: AIR tests
   working_dir: air_tests/air_benchmarks
