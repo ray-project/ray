@@ -41,15 +41,15 @@ class XGBoostCheckpoint(Checkpoint):
             >>> from ray.train.xgboost import XGBoostCheckpoint
             >>> import xgboost
             >>>
-            >>> booster = xgboost.Booster() 
-            >>> checkpoint = XGBoostCheckpoint.from_model(booster, path=".")  # doctest: +SKIP
+            >>> booster = xgboost.Booster()
+            >>> checkpoint = XGBoostCheckpoint.from_model(booster, path=".")  # doctest: +SKIP # noqa: E501
 
             You can use a :py:class:`XGBoostCheckpoint` to create an
             :py:class:`~ray.train.xgboost.XGBoostPredictor` and preform inference.
 
             >>> from ray.train.xgboost import XGBoostPredictor
             >>>
-            >>> predictor = XGBoostPredictor.from_checkpoint(checkpoint)  # doctest: +SKIP
+            >>> predictor = XGBoostPredictor.from_checkpoint(checkpoint)  # doctest: +SKIP # noqa: E501
         """
         booster.save_model(os.path.join(path, MODEL_KEY))
 
