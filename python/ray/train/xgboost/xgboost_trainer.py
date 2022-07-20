@@ -74,7 +74,7 @@ class XGBoostTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        checkpoint = XGBoostCheckpoint._from_checkpoint(checkpoint)
+        checkpoint = XGBoostCheckpoint.copy_from(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: xgboost.Booster, path: str):
