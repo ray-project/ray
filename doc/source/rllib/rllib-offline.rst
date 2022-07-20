@@ -51,13 +51,13 @@ Then, we can tell DQN to train using these previously generated experiences with
             "explore": false}'
 
 Off-Policy Estimation (OPE)
----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. Instead, you can:
 
 - Evaluate on a simulated environment, if available, using ``evaluation_config["input"] = "sampler"``
 - Use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value
-- Use RLlib's `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods, which estimate the policy's performance using a separate offline dataset, using the ``action_prob`` key in the data
+- Use RLlib's `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods, which estimate the policy's performance on a separate offline dataset, using the ``action_prob`` key in the data
 
 RLlib supports four off-policy estimators:
 
@@ -68,20 +68,22 @@ RLlib supports four off-policy estimators:
 
 IS and WIS compute the ratio between the action probabilities under the behavior (data) policy and the target (evaluation) policy, and use this ratio to estimate the policy's return.
 
-DM and DR train a Q-model to compute the estimated return. By default, RLlib uses `Fitted-Q Evaluation (FQE) <https://arxiv.org/abs/1911.06854>`__ to learn the Q-model. See `fqe_torch_model.py <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/fqe_torch_model.py>`__ for more details.
-
-**Estimator Python API:**
-For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.estimate(batch)`` to perform counterfactual estimation as needed. The estimators take in an RLLib Policy object and gamma value for the environment.
-
-DM and DR also take in an optional ``q_model_config`` to configure the Q-model used for estimation, and implement ``estimator.train(batch)`` to train the Q-model.
-
-You can also create your own Off-Policy Estimator by subclassing from the `OffPolicyEstimator <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/off_policy_estimator.py>`__ base class.
+DM and DR train a Q-model to compute the estimated return. By default, RLlib uses `Fitted-Q Evaluation (FQE) <https://arxiv.org/abs/1911.06854>`__ to training the Q-model. See `fqe_torch_model.py <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/fqe_torch_model.py>`__ for more details.
 
 .. note:: For a contextual bandit dataset, the ``dones`` key should always be set to ``True``. In this case, FQE reduces to fitting a reward model to the data.
 
-.. warning:: DM and DR currently only support ``framework="torch"``!
+**Estimator Python API:** For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.train(batch)`` to perform any neccessary training and ``estimator.estimate(batch)`` to perform counterfactual estimation. The estimators take in an RLLib Policy object and gamma value for the environment, along with additional estimator-specific arguments (e.g. ``q_model_config`` for DM and DR). You can also write your own off-policy estimator by subclassing from the `OffPolicyEstimator <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/off_policy_estimator.py>`__ base class.
 
-We generate a separate evaluation dataset for off-policy estimation:
+The estimators output six metrics:
+
+- ``v_behavior``: The discounted sum over the rewards in offline episode, averaged over episodes
+- ``v_behavior_std``: The standard deviation corresponding to v_behavior
+- ``v_target``: The OPE's estimated discounted return for `self.policy`, averaged over episodes
+- ``v_target_std``: The standard deviation corresponding to v_target
+- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``, averaged over episodes
+- ``v_gain_std``: The standard deviation corresponding to v_gain
+
+As an example, we generate a separate evaluation dataset for off-policy estimation:
 
 .. code-block:: bash
 
@@ -147,14 +149,6 @@ We then run off-policy estimation with DQN on the offline data:
         print(estimator.estimate(batch))
 
 .. note:: Ideally, you should use separate datasets for training and OPE, as shown above.
-
-The estimators output six metrics:
-- ``v_behavior``: The discounted sum over the rewards in offline episode, averaged over episodes
-- ``v_behavior_std``: The standard deviation corresponding to v_behavior
-- ``v_target``: The OPE's estimated discounted return for `self.policy`, averaged over episodes
-- ``v_target_std``: The standard deviation corresponding to v_target
-- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``, averaged over episodes
-- ``v_gain_std``: The standard deviation corresponding to v_gain
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
