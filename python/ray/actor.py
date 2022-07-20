@@ -535,9 +535,6 @@ class ActorClass:
         to :obj:`ray.remote`.
 
         Args:
-            num_returns: This is only for *remote functions*. It specifies
-                the number of object refs returned by
-                the remote function invocation.
             num_cpus: The quantity of CPU cores to reserve
                 for this task or for the lifetime of the actor.
             num_gpus: The quantity of GPUs to reserve
