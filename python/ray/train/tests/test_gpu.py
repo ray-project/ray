@@ -100,7 +100,8 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
         return train.torch.get_device().index
 
     trainer = Trainer(
-        TorchConfig(backend="gloo"),
+        TorchConfig(backend="gloo"),  # use gloo instead of nccl,
+        # since nccl is not supported on this virtual gpu ray environment
         num_workers=int(4 / num_gpus_per_worker),
         use_gpu=True,
         resources_per_worker={"GPU": num_gpus_per_worker},
@@ -110,13 +111,26 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     trainer.shutdown()
 
     count = Counter(devices)
+    # cluster setups: 2 nodes, 2 gpus per node
+    # `CUDA_VISIBLE_DEVICES` is set to "0,1" on node 1 and node 2
     if num_gpus_per_worker == 0.5:
+        # worker gpu topology:
+        # 4 workers on node 1, 4 workers on node 2
+        # `ray.get_gpu_ids()` returns [0], [0], [1], [1] on node 1
+        # and [0], [0], [1], [1] on node 2
         for i in range(2):
             assert count[i] == 4
     elif num_gpus_per_worker == 1:
+        # worker gpu topology:
+        # 2 workers on node 1, 2 workers on node 2
+        # `ray.get_gpu_ids()` returns [0], [1] on node 1 and [0], [1] on node 2
         for i in range(2):
             assert count[i] == 2
     elif num_gpus_per_worker == 2:
+        # worker gpu topology:
+        # 1 workers on node 1, 1 workers on node 2
+        # `ray.get_gpu_ids()` returns [0, 1] on node 1 and [0, 1] on node 2
+        # and `device_id` returns the first index
         assert count[0] == 2
     else:
         raise RuntimeError(
