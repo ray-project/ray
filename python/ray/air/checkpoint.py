@@ -352,7 +352,7 @@ class Checkpoint:
         return cls(local_path=path)
 
     @classmethod
-    def _from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
+    def copy_from(cls, other: "Checkpoint") -> "Checkpoint":
         return cls(
             local_path=other._local_path,
             data_dict=other._data_dict,

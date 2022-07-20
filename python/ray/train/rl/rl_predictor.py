@@ -52,7 +52,7 @@ class RLPredictor(Predictor):
                 it is parsed from the saved trainer configuration instead.
 
         """
-        checkpoint = RLCheckpoint._from_checkpoint(checkpoint)
+        checkpoint = RLCheckpoint.copy_from(checkpoint)
         policy = checkpoint.get_policy(env)
         preprocessor = checkpoint.get_preprocessor()
         return cls(policy=policy, preprocessor=preprocessor)
