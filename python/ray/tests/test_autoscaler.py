@@ -29,6 +29,7 @@ from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutos
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.constants import (
     FOREGROUND_NODE_LAUNCH_KEY,
+    WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.load_metrics import LoadMetrics
@@ -1606,8 +1607,11 @@ class AutoscalingTest(unittest.TestCase):
         self.helperDynamicScaling(foreground_node_launcher=True)
 
     def _helperDynamicScaling(
-        self, mock_metrics, mock_node_info_stub, foreground_node_launcher=False,
-        disable_drain=False
+        self,
+        mock_metrics,
+        mock_node_info_stub,
+        foreground_node_launcher=False,
+        disable_drain=False,
     ):
         config = copy.deepcopy(SMALL_CLUSTER)
         if foreground_node_launcher:
@@ -2701,7 +2705,28 @@ class AutoscalingTest(unittest.TestCase):
 
         Similar to testRecoverUnhealthyWorkers.
         """
-        config_path = self.write_config(SMALL_CLUSTER)
+        self.unhealthyWorkerHelper(disable_liveness_check=False)
+
+    def testDontTerminateUnhealthyWorkers(self):
+        """Test that the autoscaler leaves unhealthy workers alone when the worker
+        liveness check is disabled.
+        """
+        self.unhealthyWorkerHelper(disable_liveness_check=True)
+
+    def unhealthyWorkerHelper(self, disable_liveness_check: bool):
+        """Helper used to test the autoscaler's handling of unhealthy worker nodes.
+        If disable liveness check is False, the default code path is tested and we
+        expect to see workers terminated.
+
+        If disable liveness check is True, we expect the autoscaler to not take action
+        on unhealthy nodes, delegating node management to another component.
+        """
+        config = copy.deepcopy(SMALL_CLUSTER)
+        # Make it clear we're not timing out idle nodes here.
+        config["idle_timeout_minutes"] = 1000000000
+        if disable_liveness_check:
+            config["provider"][WORKER_LIVENESS_CHECK_KEY] = False
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
@@ -2722,13 +2747,16 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
-        # Mark a node as unhealthy
+        # Clear out updaters.
         for _ in range(5):
             if autoscaler.updaters:
                 time.sleep(0.05)
                 autoscaler.update()
         assert not autoscaler.updaters
+
         num_calls = len(runner.calls)
+
+        # Mark a node as unhealthy
         lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
         # Turn off updaters.
         autoscaler.disable_node_updaters = True
@@ -2737,24 +2765,40 @@ class AutoscalingTest(unittest.TestCase):
             "min_workers"
         ] = 1
         fill_in_raylet_ids(self.provider, lm)
-        autoscaler.update()
-        # Stopped node metric incremented.
-        mock_metrics.stopped_nodes.inc.assert_called_once_with()
-        # One node left.
-        self.waitForNodes(1)
 
-        # Check the node removal event is generated.
-        autoscaler.update()
-        events = autoscaler.event_summarizer.summary()
-        assert (
-            "Removing 1 nodes of type "
-            "ray-legacy-worker-node-type (lost contact with raylet)." in events
-        ), events
+        if disable_liveness_check:
+            # We've disabled the liveness check, so the unhealthy node should stick
+            # around until someone else takes care of it.
+            # Do several autoscaler updates:
+            for _ in range(10):
+                autoscaler.update()
+            # The nodes are still there.
+            assert self.num_nodes() == 2
+            # No events generated indicating that we are removing nodes.
+            for event in autoscaler.event_summarizer.summary():
+                assert "Removing" not in event
+        else:
+            # We expect the unhealthy node to be cleared out with a single
+            # autoscaler update.
+            autoscaler.update()
+            # Stopped node metric incremented.
+            mock_metrics.stopped_nodes.inc.assert_called_once_with()
+            # One node left.
+            self.waitForNodes(1)
 
-        # No additional runner calls, since updaters were disabled.
-        time.sleep(1)
-        assert len(runner.calls) == num_calls
-        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
+            # Check the node removal event is generated.
+            autoscaler.update()
+            events = autoscaler.event_summarizer.summary()
+            assert (
+                "Removing 1 nodes of type "
+                "ray-legacy-worker-node-type (lost contact with raylet)." in events
+            ), events
+
+            # No additional runner calls, since updaters were disabled.
+            time.sleep(1)
+            assert len(runner.calls) == num_calls
+            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
+            pass
 
     def testTerminateUnhealthyWorkers2(self):
         """Tests finer details of termination of unhealthy workers when
