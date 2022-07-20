@@ -161,6 +161,8 @@ class BaseTrainer(abc.ABC):
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
 
+        self._validate_attributes()
+
         # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
         #  longer experimental.
         if self.datasets and not self.scaling_config._max_cpu_fraction_per_node:
@@ -180,8 +182,6 @@ class BaseTrainer(abc.ABC):
                     "message if your cluster is expected scale up.",
                     stacklevel=2,
                 )
-
-        self._validate_attributes()
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
