@@ -45,6 +45,15 @@ AIR Feature Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
+    .. link-button:: air-scaling-config
+        :type: ref
+        :text: How to configure scaling for training and tuning?
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
     .. link-button:: predictors
         :type: ref
         :text: How to perform inference with trained models?

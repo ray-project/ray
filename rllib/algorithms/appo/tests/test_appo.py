@@ -142,6 +142,33 @@ class TestAPPO(unittest.TestCase):
 
             algo.stop()
 
+    def test_appo_model_variables(self):
+        config = (
+            appo.APPOConfig()
+            .rollouts(
+                num_rollout_workers=1,
+                batch_mode="truncate_episodes",
+                rollout_fragment_length=10,
+            )
+            .resources(num_gpus=0)
+            .training(
+                train_batch_size=20,
+            )
+            .training(
+                model={
+                    "fcnet_hiddens": [16],
+                }
+            )
+        )
+
+        for _ in framework_iterator(config, frameworks=["tf2", "torch"]):
+            algo = config.build(env="CartPole-v0")
+            state = algo.get_policy(DEFAULT_POLICY_ID).get_state()
+            # Weights and Biases for the single hidden layer, the output layer
+            # of the policy and value networks. So 6 tensors in total.
+            # We should not get the tensors from the target model here.
+            self.assertEqual(len(state["weights"]), 6)
+
 
 if __name__ == "__main__":
     import sys

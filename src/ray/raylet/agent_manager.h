@@ -97,7 +97,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// \return Status.
   const ray::Status TryToGetAgentInfo(rpc::AgentInfo *agent_info) const {
     if (IsAgentRegistered()) {
-      *agent_info = agent_info_;
+      *agent_info = reported_agent_info_;
       return ray::Status::OK();
     } else {
       std::string err_msg = "The agent has not finished register yet.";
@@ -108,14 +108,14 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
  private:
   void StartAgent();
 
-  const bool IsAgentRegistered() const {
-    return (pid_t)agent_info_.pid() == agent_process_->GetId();
-  }
+  const bool IsAgentRegistered() const { return reported_agent_info_.id() == agent_id_; }
 
  private:
   Options options_;
-  std::unique_ptr<Process> agent_process_;
-  rpc::AgentInfo agent_info_;
+  /// This is mainly to distinguish the initial value of `reported_agent_info_.id()`,
+  /// it is 0.
+  int agent_id_ = -1;
+  rpc::AgentInfo reported_agent_info_;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;

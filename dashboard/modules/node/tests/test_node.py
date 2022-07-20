@@ -528,6 +528,8 @@ def test_logs_max_count(
     )
 
 
+# See detail: https://github.com/ray-project/ray/issues/24361
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_node_register_with_agent(ray_start_cluster_head):
     def test_agent_port(pid, port):
         p = psutil.Process(pid)
