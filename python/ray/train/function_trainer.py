@@ -1,10 +1,13 @@
 import inspect
-from typing import Any, Optional, Callable, Type
+from typing import Any, Optional, Callable, Type, Dict
 
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
+from ray.data import Preprocessor
+from ray.train.base_trainer import GenDataset
 from ray.train.trainer import BaseTrainer
-from ray.tune.trainable import Trainable, wrap_function
+from ray.tune.trainable import Trainable, wrap_function, TrainableUtil
 from ray.tune.utils import detect_checkpoint_function, detect_config_single
 from ray.util.annotations import DeveloperAPI
 
@@ -29,13 +32,21 @@ class FunctionTrainer(BaseTrainer):
     ``checkpoint_dir`` argument of the training function, if supported.
     Alternatively, ``ray.air.session.get_checkpoint()`` can be used.
 
-    This trainer does not handle datasets and preprocessors. If this is needed,
-    consider implementing a DataParallelTrainer with only one worker instead.
+    If datasets are passed, they will be injected into the ``config`` argument
+    passed to the ``train_fn`` as ``config["datasets"]``. If a preprocessor
+    is passed, the datasets will be preprocessed first.
 
     Args:
         train_fn: Callable training function taking a ``config`` argument.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
+        datasets: Any Ray Datasets to use for training. Use
+            the key "train" to denote which dataset is the training
+            dataset. If a ``preprocessor`` is provided and has not already been fit,
+            it will be fit on the training dataset. All datasets will be transformed
+            by the ``preprocessor`` if one is provided.
+        preprocessor: A ray.data.Preprocessor to preprocess the
+            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
 
     Example:
@@ -74,14 +85,16 @@ class FunctionTrainer(BaseTrainer):
         *,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         self.train_fn = train_fn
         super().__init__(
             scaling_config=scaling_config,
             run_config=run_config,
-            datasets=None,
-            preprocessor=None,
+            datasets=datasets,
+            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
@@ -104,18 +117,52 @@ class FunctionTrainer(BaseTrainer):
     def _get_base_trainable(self) -> Type[Trainable]:
         use_checkpoint = detect_checkpoint_function(self.train_fn)
 
-        if use_checkpoint and self.resume_from_checkpoint:
+        if use_checkpoint and (self.resume_from_checkpoint or self.datasets):
 
             def wrap_fn(config, checkpoint_dir=None):
-                if not checkpoint_dir:
+                if self.resume_from_checkpoint and not checkpoint_dir:
                     checkpoint_dir = self.resume_from_checkpoint.to_directory()
+                if self.datasets:
+                    self.preprocess_datasets()
+                    config["datasets"] = self.datasets
+
                 return self.train_fn(config, checkpoint_dir=checkpoint_dir)
+
+            train_fn = wrap_fn
+        elif self.datasets:
+
+            def wrap_fn(config):
+                if self.datasets:
+                    self.preprocess_datasets()
+                    config["datasets"] = self.datasets
+
+                return self.train_fn(config)
 
             train_fn = wrap_fn
         else:
             train_fn = self.train_fn
 
         return wrap_function(train_fn, warn=False)
+
+    def as_trainable(self) -> Type[Trainable]:
+        trainable_cls = super().as_trainable()
+
+        class _FunctionTrainer(trainable_cls):
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
+
+            def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
+                checkpoint_path = super().save_checkpoint()
+                parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+
+                preprocessor = self._merged_config.get("preprocessor", None)
+                if parent_dir and preprocessor:
+                    save_preprocessor_to_dir(preprocessor, parent_dir)
+                return checkpoint_path
+
+        return _FunctionTrainer
 
     def training_loop(self) -> None:
         raise NotImplementedError

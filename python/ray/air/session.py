@@ -260,7 +260,7 @@ def get_dataset_shard(
     if not isinstance(session, _TrainSessionImpl):
         raise RuntimeError(
             "`get_dataset_shard` can only be called for TrainSession! "
-            "Make sure you only use that in `train_loop_per_worker` function"
+            "Make sure you only use that in `train_loop_per_worker` function "
             "that is passed into `DataParallelTrainer`."
         )
     return session.get_dataset_shard(dataset_name)

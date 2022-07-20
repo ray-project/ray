@@ -6,7 +6,9 @@ import pytest
 
 import ray
 from ray import tune
-from ray.air import ScalingConfig, Checkpoint, RunConfig
+from ray.air import ScalingConfig, Checkpoint, RunConfig, session
+from ray.air._internal.checkpointing import load_preprocessor_from_dir
+from ray.data import Preprocessor
 from ray.train.function_trainer import FunctionTrainer
 from ray.tune import Callback, TuneError
 from ray.tune.tuner import Tuner
@@ -98,6 +100,63 @@ def test_fn_trainer_continue_checkpoint(ray_start_4_cpus):
     assert result.metrics["_metric"] == 7
 
 
+def test_preprocessor_in_checkpoint(ray_start_4_cpus):
+    class DummyPreprocessor(Preprocessor):
+        def __init__(self):
+            super().__init__()
+            self.is_same = True
+
+    def train_fn(config):
+        for i in range(3):
+            session.report({"epoch": i}, checkpoint=Checkpoint.from_dict({"model": i}))
+
+    trainer = FunctionTrainer(
+        train_fn,
+        preprocessor=DummyPreprocessor(),
+    )
+    result = trainer.fit()
+    assert result.checkpoint.to_dict()["model"] == 2
+
+    with result.checkpoint.as_directory() as tmp:
+        preprocessor = load_preprocessor_from_dir(tmp)
+    assert preprocessor.is_same
+
+
+def test_fn_trainer_dataset(ray_start_4_cpus):
+    def train_fn(config):
+        dataset = config["datasets"]["train"]
+        for i in dataset.iter_rows():
+            session.report({"metric": i})
+
+    trainer = FunctionTrainer(
+        train_fn, datasets={"train": ray.data.from_items([4, 5, 6])}
+    )
+    result = trainer.fit()
+    assert result.metrics["metric"] == 6
+
+
+def test_fn_trainer_dataset_preprocessor(ray_start_4_cpus):
+    class DummyPreprocessor(Preprocessor):
+        def fit(self, ds):
+            pass
+
+        def transform(self, ds):
+            return ds.map(lambda x: x * 2)
+
+    def train_fn(config):
+        dataset = config["datasets"]["train"]
+        for i in dataset.iter_rows():
+            session.report({"metric": i})
+
+    trainer = FunctionTrainer(
+        train_fn,
+        datasets={"train": ray.data.from_items([4, 5, 6])},
+        preprocessor=DummyPreprocessor(),
+    )
+    result = trainer.fit()
+    assert result.metrics["metric"] == 12
+
+
 def test_fn_trainer_tune(ray_start_4_cpus):
     def train_fn(config):
         return config["foo"]
@@ -131,7 +190,6 @@ def test_fn_trainer_tune_resume(ray_start_4_cpus, tmpdir, pass_trainer):
     def train_fn(config, checkpoint_dir=None):
         if checkpoint_dir:
             state = Checkpoint.from_directory(checkpoint_dir).to_dict()
-            print("THIS IS A CHECKPOINT DIR", checkpoint_dir)
         else:
             state = {"it": 0}
 
