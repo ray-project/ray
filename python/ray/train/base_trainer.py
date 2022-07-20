@@ -168,7 +168,7 @@ class BaseTrainer(abc.ABC):
         if self.datasets and not self.scaling_config._max_cpu_fraction_per_node:
             trainer_will_use_all_cpus = (
                 self.scaling_config._total_reserved_cpus
-                >= ray.available_resources()["CPU"]
+                >= ray.available_resources().get("CPU", 0)
             )
             if trainer_will_use_all_cpus:
                 warnings.warn(
