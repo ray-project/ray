@@ -429,7 +429,7 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def save(self, checkpoint_dir: Optional[str] = None) -> str:
+    def save(self, checkpoint_dir: Optional[str] = None, prevent_upload: bool = False) -> str:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -440,6 +440,7 @@ class Trainable:
 
         Args:
             checkpoint_dir: Optional dir to place the checkpoint.
+            prevent_upload: bool flag to stop tmp folders from uploading
 
         Returns:
             str: path that points to xxx.pkl file.
@@ -459,7 +460,8 @@ class Trainable:
         )
 
         # Maybe sync to cloud
-        self._maybe_save_to_cloud(checkpoint_dir)
+        if not prevent_upload:
+            self._maybe_save_to_cloud(checkpoint_dir)
 
         return checkpoint_path
 
@@ -486,12 +488,12 @@ class Trainable:
         """Saves the current model state to a Python object.
 
         It also saves to disk but does not return the checkpoint path.
-
+        It doesn't save to cloud.
         Returns:
             Object holding checkpoint data.
         """
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
-        checkpoint_path = self.save(tmpdir)
+        checkpoint_path = self.save(tmpdir, prevent_upload=True)
         # Save all files in subtree and delete the tmpdir.
         obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
         shutil.rmtree(tmpdir)
