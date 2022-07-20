@@ -78,10 +78,10 @@ RLlib's OPE estimators output six metrics (``v_gain > 1.0`` indicates that the p
 - ``v_behavior_std``: The standard deviation corresponding to v_behavior
 - ``v_target``: The OPE's estimated discounted return for the target policy, averaged over episodes in the batch
 - ``v_target_std``: The standard deviation corresponding to v_target
-- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``, averaged over episodes
+- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``, averaged over episodes in the batch
 - ``v_gain_std``: The standard deviation corresponding to v_gain
 
-As an example, we generate a separate evaluation dataset for off-policy estimation:
+As an example, we generate an evaluation dataset for off-policy estimation:
 
 .. code-block:: bash
 
@@ -91,7 +91,7 @@ As an example, we generate a separate evaluation dataset for off-policy estimati
         --config='{"output": "/tmp/cartpole-eval", "output_max_file_size": 5000000}' \
         --stop='{"timesteps_total": 10000}'
 
-.. note:: Ideally, you should use separate datasets for training and OPE, as shown here.
+.. hint:: You should use separate datasets for algorithm training and OPE, as shown here.
 
 We can now train a DQN algorithm offline and evaluate it using OPE:
 
