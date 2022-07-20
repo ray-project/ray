@@ -179,7 +179,8 @@ Pytorch Training Parity
 This task checks the performance parity between native Pytorch Distributed and
 Ray Train's distributed TorchTrainer.
 
-We demonstrate that the performance is similar between the two frameworks.
+We demonstrate that the performance is similar (within 10\%) between the two frameworks.
+Performance may vary greatly across different model, hardware, and cluster configurations.
 
 .. list-table::
 
@@ -189,11 +190,44 @@ We demonstrate that the performance is similar between the two frameworks.
       - **Command**
     * - 4 m5.2xlarge nodes (4 workers)
       - FashionMNIST
-      - 144.75 s (vs 154.35 s Pytorch)
+      - 201.17 s (vs 195.90 s Pytorch)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8`
+    * - 4 m5.2xlarge nodes (16 workers)
+      - FashionMNIST
+      - 447.14 s (vs 461.75 s Pytorch)
+      - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2`
     * - 4 g4dn.12xlarge node (16 workers)
       - FashionMNIST
       - 236.61 s (vs 220.97 s Pytorch)
+      - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 4 --use-gpu`
+
+
+Tensorflow Training Parity
+--------------------------
+
+This task checks the performance parity between native Tensorflow Distributed and
+Ray Train's distributed TensorflowTrainer.
+
+We demonstrate that the performance is similar (within 10\%) between the two frameworks.
+Performance may vary greatly across different model, hardware, and cluster configurations.
+
+.. list-table::
+
+    * - **Cluster Setup**
+      - **Dataset**
+      - **Performance**
+      - **Command**
+    * - 4 m5.2xlarge nodes (4 workers)
+      - FashionMNIST
+      - 90.61 s (vs 81.26 s Tensorflow)
+      - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8`
+    * - 4 m5.2xlarge nodes (16 workers)
+      - FashionMNIST
+      - 75.34 s (vs 69.51 s Tensorflow)
+      - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2`
+    * - 4 g4dn.12xlarge node (16 workers)
+      - FashionMNIST
+      - 495.85 s (vs 479.28 s Tensorflow)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 4 --use-gpu`
 
 
