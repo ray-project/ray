@@ -8,6 +8,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.train.predictor import Predictor
 from ray.train.sklearn._sklearn_utils import _set_cpu_params
+from ray.train.sklearn.sklearn_checkpoint import SklearnCheckpoint
 from ray.train.sklearn.utils import load_checkpoint
 from ray.util.joblib import register_ray
 from ray.util.annotations import PublicAPI
@@ -46,7 +47,11 @@ class SklearnPredictor(Predictor):
                 preprocessor from. It is expected to be from the result of a
                 ``SklearnTrainer`` run.
         """
-        estimator, preprocessor = load_checkpoint(checkpoint)
+        checkpoint = SklearnCheckpoint._from_checkpoint(checkpoint)
+        estimator = checkpoint.get_model()
+        # TODO(@bveeramani): Replace the `load_checkpoint` with
+        # `Checkpoint.get_preprocessor` after Matt adds the method.
+        _, preprocessor = load_checkpoint(checkpoint)
         return cls(estimator=estimator, preprocessor=preprocessor)
 
     def _predict_pandas(
