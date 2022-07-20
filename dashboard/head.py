@@ -169,7 +169,7 @@ class DashboardHead:
         # Dashboard will handle connection failure automatically
         self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
         internal_kv._initialize_internal_kv(self.gcs_client)
-        self.gcs_aio_client = GcsAioClient(address=gcs_address)
+        self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
         self.aiogrpc_gcs_channel = self.gcs_aio_client.channel.channel()
 
         self.gcs_error_subscriber = GcsAioErrorSubscriber(address=gcs_address)

@@ -62,7 +62,7 @@ class ScalingConfig:
     num_workers: Optional[Union[int, SampleRange]] = None
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
-    placement_strategy: Union[str, SampleRange] = "SPREAD"
+    placement_strategy: Union[str, SampleRange] = "PACK"
     _max_cpu_fraction_per_node: Optional[Union[float, SampleRange]] = None
 
     def __post_init__(self):

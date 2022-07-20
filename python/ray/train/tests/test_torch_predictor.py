@@ -54,7 +54,7 @@ def test_init(model, preprocessor):
     )
 
     assert checkpoint_predictor.model == predictor.model
-    assert checkpoint_predictor.preprocessor == predictor.preprocessor
+    assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
