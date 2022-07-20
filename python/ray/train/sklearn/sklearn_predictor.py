@@ -34,7 +34,7 @@ class SklearnPredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
     ):
         self.estimator = estimator
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "SklearnPredictor":
@@ -48,10 +48,8 @@ class SklearnPredictor(Predictor):
                 ``SklearnTrainer`` run.
         """
         checkpoint = SklearnCheckpoint._from_checkpoint(checkpoint)
-        estimator = checkpoint.get_model()
-        # TODO(@bveeramani): Replace the `load_checkpoint` with
-        # `Checkpoint.get_preprocessor` after Matt adds the method.
-        _, preprocessor = load_checkpoint(checkpoint)
+        estimator = checkpoint.get_estimator()
+        preprocessor = checkpoint.get_preprocessor()
         return cls(estimator=estimator, preprocessor=preprocessor)
 
     def _predict_pandas(
