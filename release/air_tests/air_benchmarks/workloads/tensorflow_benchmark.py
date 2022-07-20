@@ -267,12 +267,23 @@ def run(
 
         print(f"[Run {run}/{num_runs}] Running Tensorflow vanilla benchmark")
 
-        time_vanilla, loss_vanilla = train_tf_vanilla(
-            num_workers=num_workers,
-            cpus_per_worker=cpus_per_worker,
-            use_gpu=use_gpu,
-            config=config,
-        )
+        # Todo: Vanilla runs are sometimes failing. We just retry here, but we should
+        # get to the bottom of it.
+        time_vanilla = loss_vanilla = 0.0
+        for i in range(3):
+            try:
+                time_vanilla, loss_vanilla = train_tf_vanilla(
+                    num_workers=num_workers,
+                    cpus_per_worker=cpus_per_worker,
+                    use_gpu=use_gpu,
+                    config=config,
+                )
+            except Exception as e:
+                if i > +2:
+                    raise RuntimeError("Vanilla TF run failed 3 times") from e
+                print("Vanilla TF run failed:", e)
+                continue
+            break
 
         print(
             f"[Run {run}/{num_runs}] Finished vanilla training ({num_epochs} epochs) "

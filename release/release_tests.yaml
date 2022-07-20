@@ -498,8 +498,6 @@
   team: ml
   env: staging
 
-  stable: false
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4.yaml
