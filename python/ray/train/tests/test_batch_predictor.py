@@ -77,6 +77,7 @@ def test_separate_gpu_stage(shutdown_only):
     stats = ds.stats()
     assert "Stage 1 read->map_batches:" in stats, stats
     assert "Stage 2 map_batches:" in stats, stats
+    assert ds.max("value") == 36.0, ds
 
     ds = batch_predictor.predict(
         ray.data.range(10),
@@ -87,6 +88,7 @@ def test_separate_gpu_stage(shutdown_only):
     stats = ds.stats()
     assert "Stage 1 read:" in stats, stats
     assert "Stage 2 map_batches:" in stats, stats
+    assert ds.max("value") == 36.0, ds
 
 
 def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
