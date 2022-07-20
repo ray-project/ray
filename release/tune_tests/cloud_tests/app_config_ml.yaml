@@ -8,7 +8,7 @@ python:
     - pytest
     - awscli
     - gsutil
-    - gym
+    - gym>=0.21.0,<0.24.0
     - gcsfs
     - pyarrow>=6.0.1,<7.0.0
   conda_packages: []

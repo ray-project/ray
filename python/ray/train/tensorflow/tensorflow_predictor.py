@@ -1,17 +1,24 @@
+import logging
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
 import tensorflow as tf
 
+from ray.util import log_once
+from ray.train.predictor import DataBatchType
+from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.air.checkpoint import Checkpoint
 from ray.train.data_parallel_trainer import _load_checkpoint
-from ray.train.predictor import DataBatchType
 from ray.train._internal.dl_predictor import DLPredictor
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
+logger = logging.getLogger(__name__)
 
+
+@PublicAPI(stability="alpha")
 class TensorflowPredictor(DLPredictor):
     """A predictor for TensorFlow models.
 
@@ -21,6 +28,8 @@ class TensorflowPredictor(DLPredictor):
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
         model_weights: List of weights to use for the model.
+        use_gpu: If set, the model will be moved to GPU on instantiation and
+            prediction happens on GPU.
     """
 
     def __init__(
@@ -28,26 +37,49 @@ class TensorflowPredictor(DLPredictor):
         model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
         preprocessor: Optional["Preprocessor"] = None,
         model_weights: Optional[list] = None,
+        use_gpu: bool = False,
     ):
         self.model_definition = model_definition
         self.model_weights = model_weights
-        self.preprocessor = preprocessor
 
+        self.use_gpu = use_gpu
         # TensorFlow model objects cannot be pickled, therefore we use
         # a callable that returns the model and initialize it here,
         # instead of having an initialized model object as an attribute.
-        # Predictors are not serializable (see the implementation of __reduce__) in the
-        # Predictor class, so we can safely store the initialized model as an attribute.
-        self._model = self.model_definition()
+        # Predictors are not serializable (see the implementation of __reduce__)
+        # in the Predictor class, so we can safely store the initialized model
+        # as an attribute.
+        if use_gpu:
+            # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
+            with tf.device("GPU:0"):
+                self._model = self.model_definition()
+        else:
+            self._model = self.model_definition()
+
+        if (
+            not use_gpu
+            and len(get_tf_gpu_devices()) > 0
+            and log_once("tf_predictor_not_using_gpu")
+        ):
+            logger.warning(
+                "You have `use_gpu` as False but there are "
+                f"{len(get_tf_gpu_devices())} GPUs detected on host where "
+                "prediction will only use CPU. Please consider explicitly "
+                "setting `TensorflowPredictor(use_gpu=True)` or "
+                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                "enable GPU prediction."
+            )
 
         if model_weights is not None:
             self._model.set_weights(model_weights)
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
         cls,
         checkpoint: Checkpoint,
         model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
+        use_gpu: bool = False,
     ) -> "TensorflowPredictor":
         """Instantiate the predictor from a Checkpoint.
 
@@ -62,11 +94,13 @@ class TensorflowPredictor(DLPredictor):
         """
         # Cannot use TensorFlow load_checkpoint here
         # due to instantiated models not being pickleable
-        model_weights, preprocessor = _load_checkpoint(checkpoint, "TensorflowTrainer")
-        return TensorflowPredictor(
+        model_weights, _ = _load_checkpoint(checkpoint, "TensorflowTrainer")
+        preprocessor = checkpoint.get_preprocessor()
+        return cls(
             model_definition=model_definition,
             model_weights=model_weights,
             preprocessor=preprocessor,
+            use_gpu=use_gpu,
         )
 
     def _array_to_tensor(
@@ -87,8 +121,11 @@ class TensorflowPredictor(DLPredictor):
     def _model_predict(
         self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]
     ) -> Union[tf.Tensor, Dict[str, tf.Tensor], List[tf.Tensor], Tuple[tf.Tensor]]:
-
-        return self._model(tensor)
+        if self.use_gpu:
+            with tf.device("GPU:0"):
+                return self._model(tensor)
+        else:
+            return self._model(tensor)
 
     def predict(
         self,

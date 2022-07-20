@@ -23,11 +23,13 @@ public class RayCallGenerator extends BaseGenerator {
     newLine("");
     newLine("import io.ray.api.call.ActorCreator;");
     newLine("import io.ray.api.call.CppActorCreator;");
+    newLine("import io.ray.api.call.CppTaskCaller;");
     newLine("import io.ray.api.call.PyActorCreator;");
     newLine("import io.ray.api.call.PyTaskCaller;");
     newLine("import io.ray.api.call.TaskCaller;");
     newLine("import io.ray.api.call.VoidTaskCaller;");
     newLine("import io.ray.api.function.CppActorClass;");
+    newLine("import io.ray.api.function.CppFunction;");
     newLine("import io.ray.api.function.PyActorClass;");
     newLine("import io.ray.api.function.PyFunction;");
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
@@ -65,6 +67,9 @@ public class RayCallGenerator extends BaseGenerator {
     }
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
       buildPyCalls(i, false, true);
+    }
+    for (int i = 0; i <= MAX_PARAMETERS; i++) {
+      buildCppCalls(i, false, false);
     }
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
       buildCppCalls(i, false, true);

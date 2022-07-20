@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import ray
 from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
+from ray.util import log_once
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.ml_utils.util import is_nan
 
@@ -129,7 +130,20 @@ class _TrackedCheckpoint:
             checkpoint_data = ray.get(checkpoint_data)
 
         if isinstance(checkpoint_data, str):
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            try:
+                checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            except FileNotFoundError:
+                if log_once("checkpoint_not_available"):
+                    logger.error(
+                        f"The requested checkpoint is not available on this node, "
+                        f"most likely because you are using Ray client or disabled "
+                        f"checkpoint synchronization. To avoid this, enable checkpoint "
+                        f"synchronization to cloud storage by specifying a "
+                        f"`SyncConfig`. The checkpoint may be available on a different "
+                        f"node - please check this location on worker nodes: "
+                        f"{checkpoint_data}"
+                    )
+                return None
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
             checkpoint = Checkpoint.from_bytes(checkpoint_data)
@@ -208,11 +222,24 @@ class CheckpointConfig:
             ``checkpoint_score_attribute`` will be kept.
             If "min", then checkpoints with lowest values of
             ``checkpoint_score_attribute`` will be kept.
+        checkpoint_frequency: Number of iterations between checkpoints. If 0
+            this will disable checkpointing.
+            Please note that most trainers will still save one checkpoint at
+            the end of training.
+            This attribute is only supported
+            by trainers that don't take in custom training loops.
+        checkpoint_at_end: If True, will save a checkpoint at the end of training.
+            This attribute is only supported by trainers that don't take in
+            custom training loops. Defaults to True for trainers that support it
+            and False for generic function trainables.
+
     """
 
     num_to_keep: Optional[int] = None
     checkpoint_score_attribute: Optional[str] = None
     checkpoint_score_order: str = MAX
+    checkpoint_frequency: int = 0
+    checkpoint_at_end: Optional[bool] = None
 
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep < 0:
@@ -224,6 +251,11 @@ class CheckpointConfig:
         if self.checkpoint_score_order not in (MAX, MIN):
             raise ValueError(
                 f"checkpoint_score_order must be either " f'"{MAX}" or "{MIN}".'
+            )
+
+        if self.checkpoint_frequency < 0:
+            raise ValueError(
+                f"checkpoint_frequency must be >=0, got {self.checkpoint_frequency}"
             )
 
     @property
