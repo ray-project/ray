@@ -9,7 +9,6 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.train.predictor import Predictor
 from ray.train.sklearn._sklearn_utils import _set_cpu_params
 from ray.train.sklearn.sklearn_checkpoint import SklearnCheckpoint
-from ray.train.sklearn.utils import load_checkpoint
 from ray.util.joblib import register_ray
 from ray.util.annotations import PublicAPI
 
