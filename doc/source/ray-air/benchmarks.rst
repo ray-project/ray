@@ -182,6 +182,10 @@ Ray Train's distributed TorchTrainer.
 We demonstrate that the performance is similar (within 10\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
 
+- `Pytorch comparison training script`_
+- `Pytorch comparison CPU cluster configuration`_
+- `Pytorch comparison GPU cluster configuration`_
+
 .. list-table::
 
     * - **Cluster Setup**
@@ -211,6 +215,12 @@ Ray Train's distributed TensorflowTrainer.
 We demonstrate that the performance is similar (within 10\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
 
+.. note:: The batch size is different for the GPU benchmark, resulting in a longer runtime.
+
+- `Tensorflow comparison training script`_
+- `Tensorflow comparison CPU cluster configuration`_
+- `Tensorflow comparison GPU cluster configuration`_
+
 .. list-table::
 
     * - **Cluster Setup**
@@ -228,7 +238,7 @@ Performance may vary greatly across different model, hardware, and cluster confi
     * - 4 g4dn.12xlarge node (16 workers)
       - FashionMNIST
       - 495.85 s (vs 479.28 s Tensorflow)
-      - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 4 --use-gpu`
+      - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 64 --use-gpu`
 
 
 .. _`Bulk Ingest Script`: https://github.com/ray-project/ray/blob/a30bdf9ef34a45f973b589993f7707a763df6ebf/release/air_tests/air_benchmarks/workloads/data_benchmark.py#L25-L40
@@ -240,3 +250,9 @@ Performance may vary greatly across different model, hardware, and cluster confi
 .. _`GPU image training script`: https://github.com/ray-project/ray/blob/cec82a1ced631525a4d115e4dc0c283fa4275a7f/release/air_tests/air_benchmarks/workloads/pytorch_training_e2e.py#L95-L106
 .. _`GPU training small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1.yaml#L6-L24
 .. _`GPU training large cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_16.yaml#L5-L25
+.. _`Pytorch comparison training script`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/torch_benchmark.py
+.. _`Pytorch comparison CPU cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_cpu_4.yaml
+.. _`Pytorch comparison GPU cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4.yaml
+.. _`Tensorflow comparison training script`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/tensorflow_benchmark.py
+.. _`Tensorflow comparison CPU cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_cpu_4.yaml
+.. _`Tensorflow comparison GPU cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4.yaml
