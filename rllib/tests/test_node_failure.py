@@ -2,6 +2,7 @@
 import time
 import unittest
 import threading
+from ray.exceptions import RayActorError
 
 import ray
 from ray.cluster_utils import Cluster
@@ -72,8 +73,12 @@ class NodeFailureTests(unittest.TestCase):
         self.assertEqual(len(ppo.workers._worker_health_check()), 2)
         self.assertEqual(len(ppo.workers._remote_workers), 6)
 
-        # One step with a node down, resource requirements not satisfied anymore
-        ppo.step()
+        # Fail with a node down, resource requirements not satisfied anymore
+        try:
+            ppo.step()
+        except RayActorError:
+            return
+        raise ValueError("Expected algorithm to not step here")
 
     def test_continue_training_on_failure(self):
         # We tolerate failing workers and don't stop training
@@ -182,27 +187,17 @@ class NodeFailureTests(unittest.TestCase):
         self.assertEqual(len(ppo.workers._remote_workers), 6)
 
         def _step_target():
-            previous_time = time.time()
-
             # Resource requirements satisfied after approx 30s
             ppo.step()
-            td = time.time() - previous_time
 
-            assert 30 < td < 60, (
-                "Node came back up after 30 seconds, but algorithm ended up finishing"
-                "an iteration in {} seconds.".format(td)
-            )  # TODO: Find out what values make sense here
-
-            # Workers should be back up
-            self.assertEqual(len(ppo.workers._worker_health_check()), 0)
-            self.assertEqual(len(ppo.workers._remote_workers), 6)
+        time_before_step = time.time()
 
         # kill one node after n seconds
         t = threading.Thread(target=_step_target)
         t.start()
 
         # Wait 30 seconds until the missing node reappears
-        time.sleep(10)
+        time.sleep(30)
         self.cluster.add_node(
             redis_port=None,
             num_redis_shards=None,
@@ -214,6 +209,17 @@ class NodeFailureTests(unittest.TestCase):
         )
 
         t.join()
+
+        td = time.time() - time_before_step
+
+        assert 30 < td < 60, (
+            "Node came back up after 30 seconds, but algorithm ended up finishing"
+            "an iteration in {} seconds.".format(td)
+        )  # TODO: Find out what values make sense here
+
+        # Workers should be back up
+        self.assertEqual(len(ppo.workers._worker_health_check()), 0)
+        self.assertEqual(len(ppo.workers._remote_workers), 6)
 
 
 if __name__ == "__main__":
