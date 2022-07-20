@@ -69,7 +69,7 @@ if TYPE_CHECKING:
 
 from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 
-from ray.train.alpa.utils import is_ray_node_resource, ScalingConfigWithIPs
+from ray.train.alpa.utils import is_ray_node_resource, ScalingConfigWithIPs, update_jax_platform
 
 from icecream import ic 
 
@@ -196,6 +196,7 @@ class AlpaTrainer(BaseTrainer):
         )
 
     def training_loop(self) -> None:
+        update_jax_platform("cpu")
         self._train_loop(self._train_loop_config)
         
     def as_trainable(self) -> Type[Trainable]:

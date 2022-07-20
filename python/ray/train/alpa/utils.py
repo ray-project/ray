@@ -5,6 +5,8 @@ import re
 from ray.air.config import ScalingConfig
 if TYPE_CHECKING:
     from ray.tune.execution.placement_groups import PlacementGroupFactory
+import jax
+from jax._src.lib import xla_bridge as xb, xla_client as xc, xla_extension as xe
 
 
 def is_ray_node_resource(resource_key):
@@ -65,3 +67,7 @@ class ScalingConfigWithIPs(ScalingConfig):
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
     
     
+def update_jax_platform(platform):
+    """Update the jax backend platform."""
+    jax.config.update("jax_platform_name", platform)
+    xb.get_backend.cache_clear()
