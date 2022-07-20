@@ -14,10 +14,12 @@ from ray.train.predictor import Predictor
 
 
 class DummyPreprocessor(Preprocessor):
+    _is_fittable = False
+
     def __init__(self, multiplier=2):
         self.multiplier = multiplier
 
-    def transform_batch(self, df):
+    def _transform_pandas(self, df):
         return df * self.multiplier
 
 
@@ -69,7 +71,7 @@ def test_separate_gpu_stage(shutdown_only):
         DummyPredictor,
     )
     ds = batch_predictor.predict(
-        ray.data.range(10),
+        ray.data.range_table(10),
         num_gpus_per_worker=1,
         separate_gpu_stage=True,
         allow_gpu=True,
@@ -80,7 +82,7 @@ def test_separate_gpu_stage(shutdown_only):
     assert ds.max("value") == 36.0, ds
 
     ds = batch_predictor.predict(
-        ray.data.range(10),
+        ray.data.range_table(10),
         num_gpus_per_worker=1,
         separate_gpu_stage=False,
         allow_gpu=True,
@@ -102,7 +104,7 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
         Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
         DummyPredictor,
     )
-    test_dataset = ray.data.range(4)
+    test_dataset = ray.data.range_table(4)
 
     with pytest.raises(
         ValueError, match="DummyPredictor does not support GPU prediction"
