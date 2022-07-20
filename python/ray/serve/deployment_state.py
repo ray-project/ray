@@ -78,6 +78,10 @@ class DeploymentTargetState:
     deleting: bool
 
     @classmethod
+    def default(cls) -> "DeploymentTargetState":
+        return cls(None, -1, None, False)
+
+    @classmethod
     def from_deployment_info(
         cls, info: DeploymentInfo, *, deleting: bool = False
     ) -> "DeploymentTargetState":
@@ -92,10 +96,6 @@ class DeploymentTargetState:
             )
 
         return cls(info, num_replicas, version, deleting)
-
-    @classmethod
-    def default(cls) -> "DeploymentTargetState":
-        return cls(None, -1, None, False)
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
@@ -996,7 +996,9 @@ class DeploymentState:
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
-        # XXX: describe.
+
+        # We must write ahead the target state in case of GCS failure (we don't
+        # want to set the target state, then fail because we can't checkpoint it).
         target_state = DeploymentTargetState.from_deployment_info(
             self._target_state.info, deleting=True
         )
@@ -1008,11 +1010,12 @@ class DeploymentState:
         )
         logger.debug(f"Deleting {self._name}.")
 
-    def _set_target_state(self, deployment_info: DeploymentInfo) -> None:
+    def _set_target_state(self, target_info: DeploymentInfo) -> None:
         """Set the target state for the deployment to the provided info."""
-        # XXX: describe.
-        target_state = DeploymentTargetState.from_deployment_info(deployment_info)
 
+        # We must write ahead the target state in case of GCS failure (we don't
+        # want to set the target state, then fail because we can't checkpoint it).
+        target_state = DeploymentTargetState.from_deployment_info(target_info)
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
 
         self._target_state = target_state
@@ -1684,7 +1687,12 @@ class DeploymentStateManager:
     def _save_checkpoint_func(
         self, *, writeahead_checkpoints: Optional[Dict[str, Tuple]]
     ) -> None:
-        """XXX: update description."""
+        """Write a checkpoint of all deployment states.
+        By default, this checkpoints the current in-memory state of each
+        deployment. However, these can be overwritten by passing
+        `writeahead_checkpoints` in order to checkpoint an update before
+        applying it to the in-memory state.
+        """
 
         deployment_state_info = {
             deployment_name: deployment_state.get_checkpoint_data()
