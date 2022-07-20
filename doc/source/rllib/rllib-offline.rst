@@ -23,7 +23,7 @@ In this example, we will save batches of experiences generated during online tra
 
 .. code-block:: bash
 
-    $ rllib train
+    $ rllib train \
         --run=PG \
         --env=CartPole-v0 \
         --config='{"output": "/tmp/cartpole-out", "output_max_file_size": 5000000}' \
@@ -87,7 +87,7 @@ As an example, we generate a separate evaluation dataset for off-policy estimati
 
 .. code-block:: bash
 
-    $ rllib train
+    $ rllib train \
         --run=PG \
         --env=CartPole-v0 \
         --config='{"output": "/tmp/cartpole-eval", "output_max_file_size": 5000000}' \
@@ -97,7 +97,7 @@ We then run off-policy estimation with DQN on the offline data:
 
 .. code-block:: bash
 
-    $ rllib train
+    $ rllib train \
         --run=DQN \
         --env=CartPole-v0 \
         --config='{
