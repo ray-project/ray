@@ -17,7 +17,6 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
 from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
@@ -77,11 +76,6 @@ def cli():
     required=False,
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP servers. Defaults to HeadOnly.",
-)
-@click.option(
-    required=False,
-    type=str,
-    hidden=True,
 )
 def start(address, http_host, http_port, http_location):
     ray.init(
