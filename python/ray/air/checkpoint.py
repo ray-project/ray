@@ -204,7 +204,6 @@ class Checkpoint:
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
-        print("Here!")
         self._local_path: Optional[str] = local_path
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
