@@ -58,7 +58,7 @@ class ScalingConfigWithIPs(ScalingConfig):
             {} if self.resources_per_worker is None else self.resources_per_worker
         )
         worker_bundles = [
-            {**worker_resources, **worker_resources_extra, **{self.ips[_]: 1e-3}}
+            {**worker_resources, **worker_resources_extra, **{f"node:{self.ips[_]}": 1e-3}}
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
