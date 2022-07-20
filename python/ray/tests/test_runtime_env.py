@@ -599,7 +599,7 @@ class MyPlugin(RuntimeEnvPlugin):
 @pytest.mark.parametrize(
     "set_runtime_env_plugins",
     [
-        MY_PLUGIN_CLASS_PATH,
+        '[{"class":"' + MY_PLUGIN_CLASS_PATH + '"}]',
     ],
     indirect=True,
 )
