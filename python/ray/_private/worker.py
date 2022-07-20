@@ -1302,6 +1302,7 @@ def init(
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
         gcs_address = bootstrap_address
+        logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -1327,7 +1328,6 @@ def init(
     if not isinstance(_system_config, dict):
         raise TypeError("The _system_config must be a dict.")
 
-    info_str = None
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
@@ -1385,7 +1385,6 @@ def init(
         _global_node = ray._private.node.Node(
             head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
         )
-        info_str = "Started a new local Ray instance at: %s."
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
@@ -1456,16 +1455,19 @@ def init(
                 )
             raise
 
-        info_str = "Connected to existing Ray cluster at address: %s."
-
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
-    assert info_str is not None
     dashboard_url = _global_node.address_info["webui_url"]
+    # We logged the address before attempting the connection, so we don't need
+    # to log it again.
+    info_str = "Connected to Ray cluster."
+    if gcs_address is None:
+        info_str = (
+            f"Started a local Ray cluster at: {_global_node.address_info['address']}."
+        )
     if dashboard_url is not None:
         logger.info(
             info_str + " View the dashboard at %s%shttp://%s%s%s.",
-            _global_node.address_info["address"],
             colorama.Style.BRIGHT,
             colorama.Fore.GREEN,
             dashboard_url,
@@ -1473,7 +1475,7 @@ def init(
             colorama.Style.NORMAL,
         )
     else:
-        logger.info(info_str, _global_node.address_info["address"])
+        logger.info(info_str)
 
     connect(
         _global_node,
