@@ -46,6 +46,7 @@ def train_func(config: Dict):
     from flax.training import train_state
     import optax
 
+    # TODO: is this able to adding somewhere else? 
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
     # NOTE: the flax nn module has to define inside
