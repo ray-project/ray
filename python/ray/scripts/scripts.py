@@ -207,7 +207,7 @@ def format_table(table):
 )
 def debug(address):
     """Show all active breakpoints and exceptions in the Ray debugger."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
     while True:
@@ -1762,7 +1762,7 @@ def microbenchmark():
 )
 def timeline(address):
     """Take a Chrome tracing timeline for a Ray cluster."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -1836,7 +1836,7 @@ def memory(
     num_entries,
 ):
     """Print object references held in a Ray cluster."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
@@ -1869,14 +1869,7 @@ def memory(
 @PublicAPI
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
-    address = services.canonicalize_bootstrap_address(address)
-    if address is None:
-        print(
-            "No local Ray cluster found. "
-            "Try starting Ray with `ray start --head` or specifying "
-            "the address of an existing Ray cluster with the `--address` flag."
-        )
-        sys.exit(1)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
@@ -2074,6 +2067,12 @@ def logs(
     # If both id & ip are not provided, choose a head node as a default.
     if node_id is None and node_ip is None:
         address = ray._private.services.canonicalize_bootstrap_address(None)
+        if address is None:
+            raise ConnectionError(
+                "No Ray cluster found. Please check that Ray has been started "
+                "on this node, or pass the address of a remote Ray node using "
+                "--node-id or --node-ip."
+            )
         node_ip = address.split(":")[0]
 
     filename = None
@@ -2268,8 +2267,6 @@ def cluster_dump(
 )
 def global_gc(address):
     """Trigger Python garbage collection on all cluster workers."""
-    address = services.canonicalize_bootstrap_address(address)
-    logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     ray._private.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
@@ -2335,7 +2332,7 @@ def healthcheck(address, redis_password, component, skip_version_check):
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """
 
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
 
     if not component:
         try:
