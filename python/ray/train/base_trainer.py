@@ -163,26 +163,6 @@ class BaseTrainer(abc.ABC):
 
         self._validate_attributes()
 
-        # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
-        #  longer experimental.
-        if self.datasets and not self.scaling_config._max_cpu_fraction_per_node:
-            trainer_will_use_all_cpus = (
-                self.scaling_config._total_reserved_cpus
-                >= ray.available_resources()["CPU"]
-            )
-            if trainer_will_use_all_cpus:
-                warnings.warn(
-                    "Instantiating this Trainer will reserve the remaining CPUs on "
-                    "this cluster which may cause resource contention or hangs during "
-                    "data processing. Consider reserving at least 20% of node CPUs for "
-                    "Dataset execution by setting `_max_cpu_fraction_per_node = 0.8` "
-                    "in the Trainer `scaling_config`. See "
-                    "https://docs.ray.io/en/master/data/key-concepts.html"
-                    "#example-datasets-in-tune for more info. You can ignore this "
-                    "message if your cluster is expected scale up.",
-                    stacklevel=2,
-                )
-
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
         trainer = super(BaseTrainer, cls).__new__(cls)
@@ -358,6 +338,23 @@ class BaseTrainer(abc.ABC):
         scaling_config = self.scaling_config
 
         def train_func(config, checkpoint_dir=None):
+            # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
+            #  longer experimental.
+            if self.datasets and not self.scaling_config._max_cpu_fraction_per_node:
+                if not ray.available_resources().get("CPU", 0):
+                    warnings.warn(
+                        "Instantiating this Trainer has reserved the remaining CPUs on "
+                        "this cluster which may cause resource contention or hangs "
+                        "during data processing. Consider reserving at least 20% of "
+                        "node CPUs for Dataset execution by setting "
+                        "`_max_cpu_fraction_per_node = 0.8` in the Trainer "
+                        "`scaling_config`. See "
+                        "https://docs.ray.io/en/master/data/key-concepts.html"
+                        "#example-datasets-in-tune for more info. You can ignore this "
+                        "message if your cluster is expected scale up.",
+                        stacklevel=2,
+                    )
+
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)

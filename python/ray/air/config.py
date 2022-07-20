@@ -104,14 +104,6 @@ class ScalingConfig:
         return {k: v for k, v in self.trainer_resources.items() if v != 0}
 
     @property
-    def _total_reserved_cpus(self) -> int:
-        """The total number of CPUs a Trainer with this ScalingConfig will reserve."""
-        return (
-            self.num_cpus_per_worker * self.num_workers
-            + self._trainer_resources_not_none
-        )
-
-    @property
     def num_cpus_per_worker(self):
         """The number of CPUs to set per worker."""
         return self._resources_per_worker_not_none.get("CPU", 0)
