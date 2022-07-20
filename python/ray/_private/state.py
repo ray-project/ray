@@ -166,10 +166,11 @@ class GlobalState:
                 "NodeName": item.node_name,
             }
             node_info["alive"] = node_info["Alive"]
-            node_info["Resources"] = {
-                key: value
-                for key, value in item.resources_total.items()
-            } if node_info["Alive"] else {}
+            node_info["Resources"] = (
+                {key: value for key, value in item.resources_total.items()}
+                if node_info["Alive"]
+                else {}
+            )
             results.append(node_info)
         return results
 
