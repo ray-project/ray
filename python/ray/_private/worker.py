@@ -1462,9 +1462,7 @@ def init(
     # to log it again.
     info_str = "Connected to Ray cluster."
     if gcs_address is None:
-        info_str = (
-            f"Started a local Ray instance."
-        )
+        info_str = "Started a local Ray instance."
     if dashboard_url is not None:
         logger.info(
             info_str + " View the dashboard at %s%shttp://%s%s%s.",

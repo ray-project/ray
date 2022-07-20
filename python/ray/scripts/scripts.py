@@ -1870,6 +1870,13 @@ def memory(
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address(address)
+    if address is None:
+        print(
+            "No local Ray cluster found. "
+            "Try starting Ray with `ray start --head` or specifying "
+            "the address of an existing Ray cluster with the `--address` flag."
+        )
+        sys.exit(1)
     if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
