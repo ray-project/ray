@@ -14,7 +14,8 @@ from transformers.trainer_callback import TrainerState
 import ray.data
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
-from ray.train.huggingface.huggingface_utils import TrainReportCallback
+from ray.air.config import ScalingConfig
+from ray.train.huggingface._huggingface_utils import TrainReportCallback
 from ray.train.tests._huggingface_data import train_data, validation_data
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
@@ -64,7 +65,7 @@ def train_function(train_dataset, eval_dataset=None, **config):
 def test_e2e(ray_start_4_cpus, save_strategy):
     ray_train = ray.data.from_pandas(train_df)
     ray_validation = ray.data.from_pandas(validation_df)
-    scaling_config = {"num_workers": 2, "use_gpu": False}
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={"epochs": 4, "save_strategy": save_strategy},
@@ -107,7 +108,7 @@ def test_reporting():
     def _fake_report(**kwargs):
         reports.append(kwargs)
 
-    with patch("ray.train.report", _fake_report):
+    with patch("ray.air.session.report", _fake_report):
         state = TrainerState()
         report_callback = TrainReportCallback()
         report_callback.on_epoch_begin(None, state, None)
@@ -125,12 +126,12 @@ def test_reporting():
         report_callback.on_train_end(None, state, None)
 
     assert len(reports) == 2
-    assert "log1" in reports[0]
-    assert "log2" in reports[0]
-    assert reports[0]["epoch"] == 1
-    assert "log1" in reports[1]
-    assert "log2" in reports[1]
-    assert reports[1]["epoch"] == 2
+    assert "log1" in reports[0]["metrics"]
+    assert "log2" in reports[0]["metrics"]
+    assert reports[0]["metrics"]["epoch"] == 1
+    assert "log1" in reports[1]["metrics"]
+    assert "log2" in reports[1]["metrics"]
+    assert reports[1]["metrics"]["epoch"] == 2
 
 
 if __name__ == "__main__":

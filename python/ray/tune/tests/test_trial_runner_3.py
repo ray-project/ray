@@ -11,20 +11,20 @@ import ray
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.search import BasicVariantGenerator
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
-from ray.tune.suggest.repeater import Repeater
-from ray.tune.suggest._mock import _MockSuggestionAlgorithm
-from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
-from ray.tune.suggest.search_generator import SearchGenerator
+from ray.tune.search.repeater import Repeater
+from ray.tune.search._mock import _MockSuggestionAlgorithm
+from ray.tune.search import Searcher, ConcurrencyLimiter
+from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
-from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
+from ray.tune.tests.tune_test_util import TrialResultObserver
 
 
 class TrialRunnerTest3(unittest.TestCase):

@@ -83,6 +83,12 @@ bool Counter::CheckRestartInActorCreationTask() { return is_restared; }
 
 bool Counter::CheckRestartInActorTask() { return ray::WasCurrentActorRestarted(); }
 
+ray::ActorHandle<Counter> Counter::CreateChildActor(std::string actor_name) {
+  auto child_actor =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName(actor_name).Remote();
+  return child_actor;
+}
+
 RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
            Counter::FactoryCreateException,
            RAY_FUNC(Counter::FactoryCreate, int),
@@ -95,6 +101,8 @@ RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
            &Counter::CheckRestartInActorCreationTask,
            &Counter::CheckRestartInActorTask,
            &Counter::GetVal,
-           &Counter::GetIntVal);
+           &Counter::GetIntVal,
+           &Counter::Initialized,
+           &Counter::CreateChildActor);
 
 RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);

@@ -15,11 +15,12 @@ dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
 
 # __air_tf_train_start__
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
 
-import ray.train as train
+from ray.air import session
+from ray.air.callbacks.keras import Callback
 from ray.train.tensorflow import prepare_dataset_shard
 from ray.train.tensorflow import TensorflowTrainer
+from ray.air.config import ScalingConfig
 
 
 def build_model() -> tf.keras.Model:
@@ -31,12 +32,6 @@ def build_model() -> tf.keras.Model:
         ]
     )
     return model
-
-
-class TrainCheckpointReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{"model": self.model.get_weights()})
-        train.report(**logs)
 
 
 def train_func(config: dict):
@@ -53,7 +48,7 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = train.get_dataset_shard("train")
+    dataset = session.get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):
@@ -67,9 +62,7 @@ def train_func(config: dict):
                 batch_size=batch_size,
             )
         )
-        history = multi_worker_model.fit(
-            tf_dataset, callbacks=[TrainCheckpointReportCallback()]
-        )
+        history = multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
         results.append(history.history)
     return results
 
@@ -82,7 +75,7 @@ config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
 trainer = TensorflowTrainer(
     train_loop_per_worker=train_func,
     train_loop_config=config,
-    scaling_config=dict(num_workers=num_workers, use_gpu=use_gpu),
+    scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     datasets={"train": dataset},
 )
 result = trainer.fit()
@@ -105,7 +98,7 @@ prediction_dataset = ray.data.from_items(items)
 
 predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
 
-pandas_predictions = predictions.to_pandas(float("inf"))
+print("PREDICTIONS")
+predictions.show()
 
-print(f"PREDICTIONS\n{pandas_predictions}")
 # __air_tf_batchpred_end__

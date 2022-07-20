@@ -1,6 +1,6 @@
 import ray
 from ray import serve
-from ray.experimental.dag.input_node import InputNode
+from ray.dag.input_node import InputNode
 
 
 ray.init()

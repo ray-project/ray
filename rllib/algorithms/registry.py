@@ -80,7 +80,7 @@ def _import_cql():
 def _import_crr():
     from ray.rllib.algorithms import crr
 
-    return crr.CRR, crr.CRRConfig
+    return crr.CRR, crr.CRRConfig().to_dict()
 
 
 def _import_ddpg():
@@ -277,7 +277,7 @@ def _get_algorithm_class(alg: str, return_config=False) -> type:
             _ParameterTuningTrainer.get_default_config(),
         )
     else:
-        raise Exception(("Unknown algorithm {}.").format(alg))
+        raise Exception("Unknown algorithm {}.".format(alg))
 
     if return_config:
         return class_, config

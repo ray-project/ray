@@ -26,7 +26,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=1)
 
     # Test we report unhandled exceptions.
-    ray.worker._unhandled_error_handler = interceptor
+    ray._private.worker._unhandled_error_handler = interceptor
     x1 = f.remote()
 
     start = time.time()

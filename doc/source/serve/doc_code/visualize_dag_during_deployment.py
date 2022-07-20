@@ -27,11 +27,11 @@ with InputNode() as user_input:
     dag = combine.bind(m1_output, m2_output, kwargs_output=user_input[2])
 
 # Partial DAG visualization
-graph = ray.experimental.dag.vis_utils.dag_to_dot(m1_output)
+graph = ray.dag.vis_utils._dag_to_dot(m1_output)
 to_string = graph.to_string()
 print(to_string)
 
 # Entire DAG visualization
-graph = ray.experimental.dag.vis_utils.dag_to_dot(dag)
+graph = ray.dag.vis_utils._dag_to_dot(dag)
 to_string = graph.to_string()
 print(to_string)

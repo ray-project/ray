@@ -3,18 +3,17 @@ import json
 from typing import Optional
 
 import boto3
-
 from ray_release.aws import (
-    RELEASE_AWS_DB_SECRET_ARN,
-    RELEASE_AWS_DB_RESOURCE_ARN,
     RELEASE_AWS_DB_NAME,
+    RELEASE_AWS_DB_RESOURCE_ARN,
+    RELEASE_AWS_DB_SECRET_ARN,
     RELEASE_AWS_DB_TABLE,
 )
 from ray_release.config import Test
-from ray_release.template import get_test_env_var
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
+from ray_release.template import get_test_env_var
 from ray_release.util import exponential_backoff_retry
 
 DEFAULT_LEGACY_DB_TABLE = "release_test_result"
@@ -24,8 +23,8 @@ class LegacyRDSReporter(Reporter):
     def __init__(
         self, database: Optional[str] = None, database_table: Optional[str] = None
     ):
-        self.database = database or RELEASE_AWS_DB_NAME
-        self.database_table = database_table or RELEASE_AWS_DB_TABLE
+        self.database = database or str(RELEASE_AWS_DB_NAME)
+        self.database_table = database_table or str(RELEASE_AWS_DB_TABLE)
 
     def report_result(self, test: Test, result: Result):
         logger.info("Persisting results to database...")
@@ -111,8 +110,8 @@ class LegacyRDSReporter(Reporter):
             lambda: rds_data_client.execute_statement(
                 database=self.database,
                 parameters=parameters,
-                secretArn=RELEASE_AWS_DB_SECRET_ARN,
-                resourceArn=RELEASE_AWS_DB_RESOURCE_ARN,
+                secretArn=str(RELEASE_AWS_DB_SECRET_ARN),
+                resourceArn=str(RELEASE_AWS_DB_RESOURCE_ARN),
                 schema=self.database_table,
                 sql=sql,
             ),

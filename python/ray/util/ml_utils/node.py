@@ -1,6 +1,8 @@
 import ray
+from ray.util.annotations import Deprecated
 
 
+@Deprecated
 def get_current_node_resource_key() -> str:
     """Get the Ray resource key for current node.
     It can be used for actor placement.
@@ -22,6 +24,7 @@ def get_current_node_resource_key() -> str:
         raise ValueError("Cannot found the node dictionary for current node.")
 
 
+@Deprecated
 def force_on_current_node(task_or_actor=None):
     """Given a task or actor, place it on the current node.
 

@@ -18,18 +18,17 @@ AIR Feature Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: air-ingest
-        :type: ref
-        :text: How to configure ingest?
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
     .. link-button:: /ray-air/preprocessors
         :type: ref
-        :text: How to use AIR preprocessors?
+        :text: How to use AIR Preprocessors?
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: /ray-air/checkpoints
+        :type: ref
+        :text: What are AIR Checkpoints?
         :classes: btn-link btn-block stretched-link
 
 
@@ -37,19 +36,27 @@ AIR Feature Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: /ray-air/examples/upload_to_comet_ml
+    .. link-button:: air-ingest
         :type: ref
-        :text: How To Integrate with Comet ML
+        :text: How to configure Data Ingest?
         :classes: btn-link btn-block stretched-link
-
 
     ---
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: /ray-air/examples/upload_to_wandb
+    .. link-button:: air-scaling-config
         :type: ref
-        :text: How To Integrate with Weights and Biases
+        :text: How to configure scaling for training and tuning?
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: predictors
+        :type: ref
+        :text: How to perform inference with trained models?
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -58,7 +65,7 @@ AIR Feature Guides
     +++
     .. link-button:: /ray-air/examples/analyze_tuning_results
         :type: ref
-        :text: How To Analyze your results?
+        :text: How to analyze your hyperparameter tuning results?
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -67,7 +74,7 @@ AIR Feature Guides
     +++
     .. link-button:: /ray-air/examples/serving_guide
         :type: ref
-        :text: How to configure AIR ModelWrapper for HTTP input or batching?
+        :text: How to configure AIR PredictorDeployment for HTTP input or batching?
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -77,4 +84,13 @@ AIR Feature Guides
     .. link-button:: air-deployment
         :type: ref
         :text: How to deploy Ray AIR?
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: benchmarks
+        :type: ref
+        :text: Ray AIR benchmarks
         :classes: btn-link btn-block stretched-link

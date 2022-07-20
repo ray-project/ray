@@ -1,15 +1,21 @@
-import numpy as np
-from scipy.stats import norm
 import unittest
+
+import gym
+import numpy as np
+import torch
+from scipy.stats import norm
 
 import ray
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.pg as pg
 import ray.rllib.algorithms.ppo as ppo
 import ray.rllib.algorithms.sac as sac
+from ray.rllib.algorithms.crr import CRRConfig
+from ray.rllib.algorithms.crr.torch import CRRTorchPolicy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.numpy import MAX_LOG_NN_OUTPUT, MIN_LOG_NN_OUTPUT, fc, one_hot
 from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.rllib.utils.numpy import one_hot, fc, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
 
 tf1, tf, tfv = try_import_tf()
 
@@ -216,9 +222,42 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
         do_test_log_likelihood(sac.SAC, config, prev_a)
 
+    def test_cql_cont(self):
+        env = gym.make("Pendulum-v1")
+        obs_space = env.observation_space
+        act_space = env.action_space
+        config = CRRConfig().framework(framework="torch").to_dict()
+        policy = CRRTorchPolicy(obs_space, act_space, config=config)
+        num_actions = 50
+        actions = []
+        obs_batch = np.array([[0.0, 0.1, -0.1]])
+        for _ in range(num_actions):
+            actions.append(
+                policy.compute_single_action(
+                    obs_batch[0], explore=True, unsquash_action=False
+                )
+            )
+        input_batch = SampleBatch({"obs": torch.Tensor(obs_batch)})
+        expected_mean_logstd = policy.action_distribution_fn(
+            policy.model, obs_batch=input_batch, state_batches=None
+        )
+        # note this only works since CRR implements `action_distribution_fn`
+        expected_mean_logstd = expected_mean_logstd[0].flatten().detach().numpy()
+        mean, log_std = expected_mean_logstd
+        for idx in range(num_actions):
+            action = actions[idx][0]
+            expected_logp = np.log(norm.pdf(action, mean, np.exp(log_std)))[0]
+            computed_logp = policy.compute_log_likelihoods(
+                torch.Tensor(action),
+                obs_batch,
+                actions_normalized=True,
+            ).item()
+            check(expected_logp, computed_logp, rtol=0.2)
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

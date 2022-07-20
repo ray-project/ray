@@ -1,64 +1,64 @@
-import pytest
-from datetime import datetime
-from dataclasses import asdict
-import json
-import time
-import yaml
-import tempfile
-import shutil
-import unittest
-from unittest import mock
 import copy
+import json
+import shutil
+import tempfile
+import time
+import unittest
+from dataclasses import asdict
+from datetime import datetime
+from time import sleep
+from unittest import mock
+
+import pytest
+import yaml
 
 import ray
-import ray.ray_constants
+import ray._private.ray_constants
+from ray._private.gcs_utils import PlacementGroupTableData
+from ray._private.test_utils import same_elements
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.commands import get_or_create_head_node
+from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
+from ray.autoscaler._private.resource_demand_scheduler import (
+    ResourceDemandScheduler,
+    _add_min_workers_nodes,
+    _utilization_score,
+    get_bin_pack_residual,
+)
+from ray.autoscaler._private.resource_demand_scheduler import get_nodes_for as _get
 from ray.autoscaler._private.util import (
-    prepare_config,
+    LoadMetricsSummary,
     format_info_string,
     is_placement_group_resource,
-    LoadMetricsSummary,
+    prepare_config,
 )
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    NODE_TYPE_LEGACY_HEAD,
+    NODE_TYPE_LEGACY_WORKER,
+    STATUS_UNINITIALIZED,
+    STATUS_UP_TO_DATE,
+    STATUS_WAITING_FOR_SSH,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
+)
+from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.tests.test_autoscaler import (
-    SMALL_CLUSTER,
     MOCK_DEFAULT_CONFIG,
     MULTI_WORKER_CLUSTER,
+    SMALL_CLUSTER,
     TYPES_A,
-    MockProvider,
-    MockProcessRunner,
-    MockNodeInfoStub,
-    mock_raylet_id,
-    fill_in_raylet_ids,
     MockAutoscaler,
+    MockNodeInfoStub,
+    MockProcessRunner,
+    MockProvider,
+    fill_in_raylet_ids,
+    mock_raylet_id,
 )
-from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
-from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.commands import get_or_create_head_node
-from ray.autoscaler._private.resource_demand_scheduler import (
-    _utilization_score,
-    _add_min_workers_nodes,
-    get_bin_pack_residual,
-    get_nodes_for as _get,
-    ResourceDemandScheduler,
-)
-from ray._private.gcs_utils import PlacementGroupTableData
-from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
-from ray.autoscaler.tags import (
-    TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_KIND,
-    NODE_KIND_WORKER,
-    TAG_RAY_NODE_STATUS,
-    STATUS_UP_TO_DATE,
-    STATUS_UNINITIALIZED,
-    STATUS_WAITING_FOR_SSH,
-    NODE_KIND_HEAD,
-    NODE_TYPE_LEGACY_WORKER,
-    NODE_TYPE_LEGACY_HEAD,
-)
-from ray._private.test_utils import same_elements
-from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-
-from time import sleep
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
 
@@ -3001,6 +3001,10 @@ def test_placement_group_match_string():
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

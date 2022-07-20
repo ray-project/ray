@@ -11,12 +11,11 @@ distributed prioritization of experience prior to storage in replay buffers.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x
 """  # noqa: E501
-import queue
-from collections import defaultdict
 import copy
 import platform
 import random
-from typing import Dict, List, Type, Optional, Callable
+from collections import defaultdict
+from typing import Callable, Dict, List, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -25,17 +24,11 @@ from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_COUNTER,
-    STEPS_TRAINED_THIS_ITER_COUNTER,
-)
-from ray.rllib.execution.parallel_requests import (
-    AsyncRequestsManager,
-)
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -49,11 +42,11 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    ResultDict,
     PartialAlgorithmConfigDict,
+    ResultDict,
 )
 from ray.tune.trainable import Trainable
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.ml_utils.dict import merge_dicts
 
 
@@ -419,7 +412,6 @@ class ApexDQN(DQN):
         weights = self.workers.local_worker().get_weights()
         self.curr_learner_weights = ray.put(weights)
         self.curr_num_samples_collected = 0
-        self.replay_sample_batches = []
         self._num_ts_trained_since_last_target_update = 0
 
     @classmethod
@@ -509,6 +501,7 @@ class ApexDQN(DQN):
         Args:
             _num_samples_ready: A mapping from ActorHandle (RolloutWorker) to
                 the number of samples returned by the remote worker.
+
         Returns:
             The number of remote workers whose weights were updated.
         """
@@ -519,6 +512,9 @@ class ApexDQN(DQN):
             self.learner_thread.weights_updated = False
             weights = self.workers.local_worker().get_weights()
             self.curr_learner_weights = ray.put(weights)
+
+        num_workers_updated = 0
+
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             for (
                 remote_sampler_worker,
@@ -531,10 +527,20 @@ class ApexDQN(DQN):
                 ):
                     remote_sampler_worker.set_weights.remote(
                         self.curr_learner_weights,
-                        {"timestep": self._counters[STEPS_TRAINED_COUNTER]},
+                        {
+                            "timestep": self._counters[
+                                NUM_AGENT_STEPS_TRAINED
+                                if self._by_agent_steps
+                                else NUM_ENV_STEPS_TRAINED
+                            ]
+                        },
                     )
                     self.steps_since_update[remote_sampler_worker] = 0
+                    num_workers_updated += 1
+
                 self._counters["num_weight_syncs"] += 1
+
+        return num_workers_updated
 
     def sample_from_replay_buffer_place_on_learner_queue_non_blocking(
         self, num_samples_collected: Dict[ActorHandle, int]
@@ -555,14 +561,15 @@ class ApexDQN(DQN):
             If the timeout is None, then block on the actors indefinitely.
             """
             _replay_samples_ready = self._replay_actor_manager.get_ready()
-
+            replay_sample_batches = []
             for _replay_actor, _sample_batches in _replay_samples_ready.items():
                 for _sample_batch in _sample_batches:
-                    self.replay_sample_batches.append((_replay_actor, _sample_batch))
+                    replay_sample_batches.append((_replay_actor, _sample_batch))
+            return replay_sample_batches
 
         num_samples_collected = sum(num_samples_collected.values())
         self.curr_num_samples_collected += num_samples_collected
-        wait_on_replay_actors()
+        replay_sample_batches = wait_on_replay_actors()
         if self.curr_num_samples_collected >= self.config["train_batch_size"]:
             training_intensity = int(self.config["training_intensity"] or 1)
             num_requests_to_launch = (
@@ -575,21 +582,17 @@ class ApexDQN(DQN):
                     lambda actor, num_items: actor.sample(num_items),
                     fn_args=[self.config["train_batch_size"]],
                 )
-            wait_on_replay_actors()
+            replay_sample_batches.extend(wait_on_replay_actors())
 
         # add the sample batches to the learner queue
-        while self.replay_sample_batches:
-            try:
-                item = self.replay_sample_batches[0]
-                # the replay buffer returns none if it has not been filled to
-                # the minimum threshold yet.
-                if item:
-                    self.learner_thread.inqueue.put(
-                        self.replay_sample_batches[0], timeout=0.001
-                    )
-                    self.replay_sample_batches.pop(0)
-            except queue.Full:
-                break
+        for item in replay_sample_batches:
+            # Setting block = True prevents the learner thread,
+            # the main thread, and the gpu loader threads from
+            # thrashing when there are more samples than the
+            # learner can reasonable process.
+            # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+            self.learner_thread.inqueue.put(item, block=True)
+        del replay_sample_batches
 
     def update_replay_sample_priority(self) -> None:
         """Update the priorities of the sample batches with new priorities that are
@@ -617,9 +620,8 @@ class ApexDQN(DQN):
                     {"timestep": self._counters[NUM_ENV_STEPS_TRAINED]}
                 )
             else:
-                raise RuntimeError("The learner thread died in while training")
+                raise RuntimeError("The learner thread died while training")
 
-        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_samples_trained_this_itr
         self._timers["learner_dequeue"] = self.learner_thread.queue_timer
         self._timers["learner_grad"] = self.learner_thread.grad_timer
         self._timers["learner_overall"] = self.learner_thread.overall_timer
@@ -639,7 +641,9 @@ class ApexDQN(DQN):
                 )
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
-                STEPS_TRAINED_COUNTER
+                NUM_AGENT_STEPS_TRAINED
+                if self._by_agent_steps
+                else NUM_ENV_STEPS_TRAINED
             ]
 
     @override(Algorithm)
@@ -652,14 +656,15 @@ class ApexDQN(DQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        self._sampling_actor_manager.remove_workers(removed_workers)
-        self._sampling_actor_manager.add_workers(new_workers)
+        if self.config["_disable_execution_plan_api"]:
+            self._sampling_actor_manager.remove_workers(
+                removed_workers, remove_in_flight_requests=True
+            )
+            self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Algorithm)
-    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
-        result = super()._compile_iteration_results(
-            step_ctx=step_ctx, iteration_results=iteration_results
-        )
+    def _compile_iteration_results(self, *args, **kwargs):
+        result = super()._compile_iteration_results(*args, **kwargs)
         replay_stats = ray.get(
             self._replay_actors[0].stats.remote(self.config["optimizer"].get("debug"))
         )

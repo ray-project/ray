@@ -10,8 +10,10 @@ from ray.autoscaler._private import commands
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.event_system import CreateClusterEvent  # noqa: F401
 from ray.autoscaler._private.event_system import global_event_system  # noqa: F401
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 def create_or_update_cluster(
     cluster_config: Union[dict, str],
     *,
@@ -47,6 +49,7 @@ def create_or_update_cluster(
         )
 
 
+@DeveloperAPI
 def teardown_cluster(
     cluster_config: Union[dict, str],
     workers_only: bool = False,
@@ -72,6 +75,7 @@ def teardown_cluster(
         )
 
 
+@DeveloperAPI
 def run_on_cluster(
     cluster_config: Union[dict, str],
     *,
@@ -117,6 +121,7 @@ def run_on_cluster(
         )
 
 
+@DeveloperAPI
 def rsync(
     cluster_config: Union[dict, str],
     *,
@@ -161,6 +166,7 @@ def rsync(
         )
 
 
+@DeveloperAPI
 def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
     """Returns head node IP for given configuration file if exists.
 
@@ -178,6 +184,7 @@ def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
         return commands.get_head_node_ip(config_file)
 
 
+@DeveloperAPI
 def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
     """Returns worker node IPs for given configuration file.
 
@@ -195,6 +202,7 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
         return commands.get_worker_node_ips(config_file)
 
 
+@DeveloperAPI
 def request_resources(
     num_cpus: Optional[int] = None, bundles: Optional[List[dict]] = None
 ) -> None:
@@ -232,9 +240,26 @@ def request_resources(
         >>> request_resources( # doctest: +SKIP
         ...     bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
+    if num_cpus is not None and not isinstance(num_cpus, int):
+        raise TypeError("num_cpus should be of type int.")
+    if bundles is not None:
+        if isinstance(bundles, List):
+            for bundle in bundles:
+                if isinstance(bundle, Dict):
+                    for key in bundle.keys():
+                        if not (isinstance(key, str) and isinstance(bundle[key], int)):
+                            raise TypeError(
+                                "each bundle key should be str and value as int."
+                            )
+                else:
+                    raise TypeError("each bundle should be a Dict.")
+        else:
+            raise TypeError("bundles should be of type List")
+
     return commands.request_resources(num_cpus, bundles)
 
 
+@DeveloperAPI
 def configure_logging(
     log_style: Optional[str] = None,
     color_mode: Optional[str] = None,
@@ -265,6 +290,7 @@ def configure_logging(
 
 
 @contextmanager
+@DeveloperAPI
 def _as_config_file(cluster_config: Union[dict, str]) -> Iterator[str]:
     if isinstance(cluster_config, dict):
         tmp = tempfile.NamedTemporaryFile("w", prefix="autoscaler-sdk-tmp-")
@@ -276,6 +302,7 @@ def _as_config_file(cluster_config: Union[dict, str]) -> Iterator[str]:
     yield cluster_config
 
 
+@DeveloperAPI
 def bootstrap_config(
     cluster_config: Dict[str, Any], no_config_cache: bool = False
 ) -> Dict[str, Any]:
@@ -284,6 +311,7 @@ def bootstrap_config(
     return commands._bootstrap_config(cluster_config, no_config_cache)
 
 
+@DeveloperAPI
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     """Fillout default values for a cluster_config based on the provider."""
     from ray.autoscaler._private.util import fillout_defaults
@@ -291,6 +319,7 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     return fillout_defaults(config)
 
 
+@DeveloperAPI
 def register_callback_handler(
     event_name: str,
     callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
@@ -307,6 +336,7 @@ def register_callback_handler(
     global_event_system.add_callback_handler(event_name, callback)
 
 
+@DeveloperAPI
 def get_docker_host_mount_location(cluster_name: str) -> str:
     """Return host path that Docker mounts attach to."""
     docker_mount_prefix = "/tmp/ray_tmp_mount/{cluster_name}"

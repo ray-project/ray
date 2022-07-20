@@ -289,6 +289,11 @@ class HTTPProxy:
                 scope, receive, send
             )
 
+        if route_path == "/-/healthz":
+            return await starlette.responses.PlainTextResponse("success")(
+                scope, receive, send
+            )
+
         route_prefix, handle = self.prefix_router.match_route(route_path)
         if route_prefix is None:
             self.request_error_counter.inc(

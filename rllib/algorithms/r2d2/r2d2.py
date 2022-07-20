@@ -30,9 +30,9 @@ class R2D2Config(DQNConfig):
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = R2D2(config=config)
+        >>> algo = R2D2(config=config)
         >>> while True:
-        >>>     trainer.train()
+        >>>     algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
@@ -170,8 +170,6 @@ class R2D2Config(DQNConfig):
         return self
 
 
-# Build an R2D2 trainer, which uses the framework specific Policy
-# determined in `get_policy_class()` above.
 class R2D2(DQN):
     """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
 

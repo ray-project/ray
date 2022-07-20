@@ -1,10 +1,10 @@
 import logging
 import os
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
 import numpy as np
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class RayParams:
             It will also kill these processes when Python exits.
         redis_port: The port that the primary Redis shard should listen
             to. If None, then it will fall back to
-            ray.ray_constants.DEFAULT_PORT, or a random port if the default is
+            ray._private.ray_constants.DEFAULT_PORT, or a random port if the default is
             not available.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
             shards. If None, then it will fall back to the ports right after
@@ -87,6 +87,7 @@ class RayParams:
             Defaults to 8265.
         dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
+            Defaults to 52365.
         plasma_store_socket_name: If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name: If provided, it will specify the socket path
@@ -156,7 +157,9 @@ class RayParams:
         include_dashboard: Optional[bool] = None,
         dashboard_host: Optional[str] = ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port: Optional[bool] = ray_constants.DEFAULT_DASHBOARD_PORT,
-        dashboard_agent_listen_port: Optional[int] = 0,
+        dashboard_agent_listen_port: Optional[
+            int
+        ] = ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         plasma_store_socket_name: Optional[str] = None,
         raylet_socket_name: Optional[str] = None,
         temp_dir: Optional[str] = None,

@@ -19,166 +19,11 @@ package ray.rpc;
 
 option java_package = "io.ray.runtime.generated";
 
-/// The pip type runtime env.
-message PipRuntimeEnv {
-  message Config {
-    /// A list of pip packages, such as ["redis >= 3.5.0", "numpy"].
-    repeated string packages = 1;
-    /// Whether enable pip check after runtime env finish pip install packages
-    bool pip_check = 2;
-    /// Pip version in virtualenv
-    string pip_version = 3;
-  }
-  oneof pip_runtime_env {
-    /// The pip packages config.
-    Config config = 1;
-    /// The name of a local virtual env.
-    string virtual_env_name = 2;
-  }
-}
-
-/// The conda type runtime env.
-message CondaRuntimeEnv {
-  oneof conda_runtime_env {
-    /// The conda YAML config.
-    string config = 1;
-    /// The name of a local conda env.
-    string conda_env_name = 2;
-  }
-}
-
-/// The container type runtime env.
-message ContainerRuntimeEnv {
-  /// The container image.
-  string image = 1;
-  /// The default worker path in the container.
-  string worker_path = 2;
-  /// A list of docker run options. Refer to
-  /// https://docs.docker.com/engine/reference/run/.
-  repeated string run_options = 3;
-}
-
-/// A set of plugin runtime envs.
-message PluginRuntimeEnv {
-  message Plugin {
-    /// The python class which implements the runtime env plugin.
-    string class_path = 1;
-    /// The serialized config.
-    string config = 2;
-  }
-  repeated Plugin plugins = 1;
-}
-
-message PythonRuntimeEnv {
-  /// List of URIs that contain the dependent python modules.
-  /// Valid URIs include:
-  /// - A local directory: it will be added to to the PYTHONPATH;
-  ///   - Example: `file:///path/to/my_module`.
-  /// - A zip file in an external storage: it will be unpacked and added to the
-  /// PYTHONPATH.
-  ///   - Example: `http://example.com/my_module.zip`.
-  repeated string py_modules = 1;
-  /// The concrete Runtime Env for Python workers. Use only one of them, or none at all.
-  oneof python_runtime_env {
-    /// Only set when PipRuntimeEnv is used.
-    PipRuntimeEnv pip_runtime_env = 2;
-    /// Only set when CondaRuntimeEnv is used.
-    CondaRuntimeEnv conda_runtime_env = 3;
-    /// Only set when ContainerRuntimeEnv is used.
-    ContainerRuntimeEnv container_runtime_env = 4;
-    /// Only set when PluginRuntimeEnv is used.
-    PluginRuntimeEnv plugin_runtime_env = 5;
-  }
-}
-
-/// The maven type runtime env.
-message MavenRuntimeEnv {
-  /// TODO(SongGuyang)
-}
-
-message JavaRuntimeEnv {
-  /// List of URIs that contain the dependent jars.
-  /// Valid URIs include:
-  /// - A local file or directory: it will be added to to the CLASSPATH;
-  ///   - Example: `file:///path/to/my_example.jar`.
-  ///   - Example: `file:///path/to/my_jars`.
-  /// - A jar file in an external storage: it will be added to the CLASSPATH;
-  ///   - Example: `http://example.com/my_example.jar`.
-  /// - A zip file in an external storage: it will be unpacked and added to the CLASSPATH.
-  ///   - Example: `http://example.com/my_jars.zip`.
-  repeated string dependent_jars = 1;
-  /// The JVM options, which will be appended to java command line.
-  repeated string jvm_options = 2;
-  /// If empty, the default "java" command will be used.
-  /// If set, `${java_home}/bin/java` will be used.
-  string java_home = 3;
-  /// The concrete Runtime Env for Java workers. Use only one of them, or none at all.
-  oneof java_runtime_env {
-    /// Only set when MavenRuntimeEnv is used.
-    MavenRuntimeEnv maven_runtime_env = 4;
-    /// Only set when ContainerRuntimeEnv is used.
-    ContainerRuntimeEnv container_runtime_env = 5;
-    /// Only set when PluginRuntimeEnv is used.
-    PluginRuntimeEnv plugin_runtime_env = 6;
-  }
-}
-
-message CppRuntimeEnv {
-  /// List of dynamic libraries, each of which can specify either
-  /// local path or remote URI.
-  /// A local path must be a directory path. And A remote URI
-  /// must be a link directly to a zip file. All the libraries will
-  /// be inserted into the LD_LIBRARY_PATH of python workers.
-  /// List of URIs that contain the dependent libraries.
-  /// Valid URIs include:
-  /// - A local file or directory: it will be added to to the LD_LIBRARY_PATH;
-  ///   - Example: `file:///path/to/my_example.so`.
-  ///   - Example: `file:///path/to/my_libraries`.
-  /// - A zip file in an external storage: it will be unpacked and added to the
-  /// LD_LIBRARY_PATH.
-  ///   - Example: `http://example.com/my_libraries.zip`.
-  repeated string dependent_libraries = 1;
-  /// The concrete Runtime Env for C++ workers. Use only one of them, or none at all.
-  oneof cpp_runtime_env {
-    /// Only set when ContainerRuntimeEnv is used.
-    ContainerRuntimeEnv container_runtime_env = 2;
-    /// Only set when PluginRuntimeEnv is used.
-    PluginRuntimeEnv plugin_runtime_env = 3;
-  }
-}
-
 message RuntimeEnvUris {
   /// working dir uri
   string working_dir_uri = 1;
   /// python modules uris
   repeated string py_modules_uris = 2;
-  /// conda uri
-  string conda_uri = 3;
-  /// pip uri
-  string pip_uri = 4;
-  /// plugin uris
-  repeated string plugin_uris = 5;
-}
-
-/// The runtime environment describes all the runtime packages needed to
-/// run some task or actor.
-message RuntimeEnv {
-  /// Specifies the working directory of the worker.
-  string working_dir = 1;
-  /// Environment variables to set.
-  map<string, string> env_vars = 2;
-  /// The extension fields.
-  map<string, string> extensions = 3;
-  /// python runtime env
-  optional PythonRuntimeEnv python_runtime_env = 4;
-  /// java runtime env
-  optional JavaRuntimeEnv java_runtime_env = 5;
-  /// cpp runtime env
-  optional CppRuntimeEnv cpp_runtime_env = 6;
-  /// TODO(SongGuyang): Remove this field. Issue
-  /// https://github.com/ray-project/ray/issues/21695.
-  /// Runtime env uris of different types.
-  RuntimeEnvUris uris = 7;
 }
 
 /// The runtime env config, include some fields that do not
@@ -186,6 +31,8 @@ message RuntimeEnv {
 message RuntimeEnvConfig {
   /// The timeout of runtime env creation.
   int32 setup_timeout_seconds = 1;
+  /// Indicates whether to install runtime env eagerly before the workers are leased.
+  bool eager_install = 2;
 }
 
 /// The runtime env information which is transfered between ray core processes.
@@ -193,11 +40,9 @@ message RuntimeEnvInfo {
   /// The serialized runtime env passed from the user.
   string serialized_runtime_env = 1;
   /// URIs used in this runtime env. These will be used for reference counting.
-  repeated string uris = 2;
-  /// Indicates whether to install runtime env eagerly before the workers are leased.
-  bool runtime_env_eager_install = 3;
+  RuntimeEnvUris uris = 2;
   /// The serialized runtime env config passed from the user.
-  RuntimeEnvConfig runtime_env_config = 4;
+  RuntimeEnvConfig runtime_env_config = 3;
 }
 
 message RuntimeEnvState {

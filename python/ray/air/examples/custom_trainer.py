@@ -6,7 +6,7 @@
 import torch
 
 from ray.train.trainer import BaseTrainer
-from ray import tune
+from ray.air import session
 
 
 class MyPytorchTrainer(BaseTrainer):
@@ -42,7 +42,7 @@ class MyPytorchTrainer(BaseTrainer):
 
             # Use Tune functions to report intermediate
             # results.
-            tune.report(loss=loss, epoch=epoch_idx)
+            session.report({"loss": loss, "epoch": epoch_idx})
 
 
 # __custom_trainer_end__

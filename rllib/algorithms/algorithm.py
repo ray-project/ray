@@ -1,18 +1,15 @@
-from collections import defaultdict
 import concurrent
 import copy
-from datetime import datetime
 import functools
-import gym
 import logging
 import math
-import numpy as np
 import os
-from packaging import version
 import pickle
-import pkg_resources
 import tempfile
 import time
+import importlib
+from collections import defaultdict
+from datetime import datetime
 from typing import (
     Callable,
     Container,
@@ -26,9 +23,14 @@ from typing import (
     Union,
 )
 
+import gym
+import numpy as np
+import pkg_resources
+from packaging import version
+
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError
+from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -41,34 +43,37 @@ from ray.rllib.evaluation.metrics import (
 )
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
-from ray.rllib.execution.common import WORKER_UPDATE_TIMER
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
+from ray.rllib.execution.common import (
+    STEPS_TRAINED_THIS_ITER_COUNTER,  # TODO: Backward compatibility.
 )
-from ray.rllib.execution.train_ops import (
-    train_one_step,
-    multi_gpu_train_one_step,
-)
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline import get_offline_io_resource_bundles
+from ray.rllib.offline.estimators import (
+    OffPolicyEstimator,
+    ImportanceSampling,
+    WeightedImportanceSampling,
+    DirectMethod,
+    DoublyRobust,
+)
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
-    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     PublicAPI,
+    override,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
     Deprecated,
     deprecation_warning,
-    DEPRECATED_VALUE,
 )
-from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
+from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
@@ -78,13 +83,16 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
+from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentID,
+    AlgorithmConfigDict,
     EnvCreator,
     EnvInfoDict,
     EnvType,
@@ -96,15 +104,14 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     TensorStructType,
     TensorType,
-    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
-from ray.tune.trial import ExportFormat
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.experiment.trial import ExportFormat
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util import log_once
 from ray.util.timer import _Timer
 
@@ -354,6 +361,21 @@ class Algorithm(Trainable):
         self.workers: Optional[WorkerSet] = None
         self.train_exec_impl = None
 
+        # Offline RL settings.
+        input_evaluation = self.config.get("input_evaluation")
+        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
+            ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
+            deprecation_warning(
+                old="config.input_evaluation={}".format(input_evaluation),
+                new='config["evaluation_config"]'
+                '["off_policy_estimation_methods"]={}'.format(
+                    ope_dict,
+                ),
+                error=False,
+                help="Running OPE during training is not recommended.",
+            )
+            self.config["off_policy_estimation_methods"] = ope_dict
+
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the `build_trainer` utility function).
         # Instead, sub-classes should override the Trainable's `setup()`
@@ -518,6 +540,42 @@ class Algorithm(Trainable):
                 logdir=self.logdir,
             )
 
+        self.reward_estimators: Dict[str, OffPolicyEstimator] = {}
+        ope_types = {
+            "is": ImportanceSampling,
+            "wis": WeightedImportanceSampling,
+            "dm": DirectMethod,
+            "dr": DoublyRobust,
+        }
+        for name, method_config in self.config["off_policy_estimation_methods"].items():
+            method_type = method_config.pop("type")
+            if method_type in ope_types:
+                deprecation_warning(
+                    old=method_type,
+                    new=str(ope_types[method_type]),
+                    error=False,
+                )
+                method_type = ope_types[method_type]
+            elif isinstance(method_type, str):
+                logger.log(0, "Trying to import from string: " + method_type)
+                mod, obj = method_type.rsplit(".", 1)
+                mod = importlib.import_module(mod)
+                method_type = getattr(mod, obj)
+            if isinstance(method_type, type) and issubclass(
+                method_type, OffPolicyEstimator
+            ):
+                policy = self.get_policy()
+                gamma = self.config["gamma"]
+                self.reward_estimators[name] = method_type(
+                    policy, gamma, **method_config
+                )
+            else:
+                raise ValueError(
+                    f"Unknown off_policy_estimation type: {method_type}! Must be "
+                    "either a class path or a sub-class of ray.rllib."
+                    "offline.estimators.off_policy_estimator::OffPolicyEstimator"
+                )
+
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
 
@@ -553,8 +611,9 @@ class Algorithm(Trainable):
         fails gracefully.
 
         Override this method in your Trainer sub-classes if you would like to
-        handle worker failures yourself. Otherwise, override
-        `self.step_attempt()` to keep the n attempts (catch worker failures).
+        handle worker failures yourself.
+        Otherwise, override only `training_step()` to implement the core
+        algorithm logic.
 
         Returns:
             The results dict with stats/infos on sampling, training,
@@ -565,105 +624,34 @@ class Algorithm(Trainable):
         # meaning that e. g. the first time this function is called,
         # self.iteration will be 0.
         evaluate_this_iter = (
-            self.config["evaluation_interval"]
+            self.config["evaluation_interval"] is not None
             and (self.iteration + 1) % self.config["evaluation_interval"] == 0
         )
 
         # Results dict for training (and if appolicable: evaluation).
-        result: ResultDict = {}
+        results: ResultDict = {}
 
-        first_step_attempt = True
-
-        self._rollout_worker_metrics = []
         local_worker = (
             self.workers.local_worker()
             if hasattr(self.workers, "local_worker")
             else None
         )
 
-        # Create a step context ...
-        with self._step_context() as step_ctx:
-            #  so we can query it whether we should stop the iteration loop (e.g. when
-            #  we have reached `min_time_s_per_iteration`).
-            while not step_ctx.should_stop(result):
-                # Try to train one step.
-                try:
-                    # No evaluation necessary, just run the next training iteration.
-                    if not evaluate_this_iter:
-                        result = self._exec_plan_or_training_step_fn()
-                    # We have to evaluate in this training iteration.
-                    else:
-                        # No parallelism.
-                        if not self.config["evaluation_parallel_to_training"]:
-                            result = self._exec_plan_or_training_step_fn()
-                        # Kick off evaluation-loop (and parallel train() call,
-                        # if requested).
-                        # Parallel eval + training.
-                        else:
-                            with concurrent.futures.ThreadPoolExecutor() as executor:
-                                train_future = executor.submit(
-                                    lambda: self._exec_plan_or_training_step_fn()
-                                )
-                                # Automatically determine duration of the evaluation
-                                # (as long as training takes).
-                                if self.config["evaluation_duration"] == "auto":
-                                    unit = self.config["evaluation_duration_unit"]
-                                    result.update(
-                                        self.evaluate(
-                                            duration_fn=functools.partial(
-                                                self._auto_duration_fn,
-                                                unit,
-                                                self.config["evaluation_num_workers"],
-                                                self.config["evaluation_config"],
-                                                train_future,
-                                            )
-                                        )
-                                    )
-                                # Run `self.evaluate()` only once per iteration.
-                                elif first_step_attempt:
-                                    first_step_attempt = False
-                                    result.update(self.evaluate())
-                                # Collect the training results from the future.
-                                result.update(train_future.result())
+        # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
+        if evaluate_this_iter and self.config["evaluation_parallel_to_training"]:
+            (
+                results,
+                train_iter_ctx,
+            ) = self._run_one_training_iteration_and_evaluation_in_parallel()
+        # - No evaluation necessary, just run the next training iteration.
+        # - We have to evaluate in this training iteration, but no parallelism ->
+        #   evaluate after the training iteration is entirely done.
+        else:
+            results, train_iter_ctx = self._run_one_training_iteration()
 
-                        # Sequential: train (already done above), then eval.
-                        if not self.config["evaluation_parallel_to_training"]:
-                            result.update(self.evaluate())
-
-                    # Collect rollout worker metrics.
-                    episodes, self._episodes_to_be_collected = collect_episodes(
-                        local_worker,
-                        self._remote_workers_for_metrics,
-                        self._episodes_to_be_collected,
-                        timeout_seconds=self.config[
-                            "metrics_episode_collection_timeout_s"
-                        ],
-                    )
-                    self._rollout_worker_metrics.extend(episodes)
-                # @ray.remote RolloutWorker failure.
-                except RayError as e:
-                    # Try to recover w/o the failed worker.
-                    if (
-                        self.config["ignore_worker_failures"]
-                        or self.config["recreate_failed_workers"]
-                    ):
-                        logger.exception("Error in train call, attempting to recover")
-                        self.try_recover_from_step_attempt()
-                    # Error out.
-                    else:
-                        logger.warning(
-                            "Worker crashed during call to `step_attempt()`. "
-                            "To try to continue training without failed "
-                            "worker(s), set `ignore_worker_failures=True`. "
-                            "To try to recover the failed worker(s), set "
-                            "`recreate_failed_workers=True`."
-                        )
-                        raise e
-                # Any other exception.
-                except Exception as e:
-                    # Allow logs messages to propagate.
-                    time.sleep(0.5)
-                    raise e
+        # Sequential: Train (already done above), then evaluate.
+        if evaluate_this_iter and not self.config["evaluation_parallel_to_training"]:
+            results.update(self._run_one_evaluation(train_future=None))
 
         # Attach latest available evaluation results to train results,
         # if necessary.
@@ -671,17 +659,28 @@ class Algorithm(Trainable):
             assert isinstance(
                 self.evaluation_metrics, dict
             ), "Trainer.evaluate() needs to return a dict."
-            result.update(self.evaluation_metrics)
+            results.update(self.evaluation_metrics)
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
-            self._sync_filters_if_needed(self.workers)
-
-            # Collect worker metrics.
+            self._sync_filters_if_needed(
+                self.workers,
+                timeout_seconds=self.config[
+                    "sync_filters_on_rollout_workers_timeout_s"
+                ],
+            )
+            # Collect worker metrics and add combine them with `results`.
             if self.config["_disable_execution_plan_api"]:
-                result = self._compile_iteration_results(
-                    step_ctx=step_ctx,
-                    iteration_results=result,
+                episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
+                    local_worker,
+                    self._remote_workers_for_metrics,
+                    self._episodes_to_be_collected,
+                    timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
+                )
+                results = self._compile_iteration_results(
+                    episodes_this_iter=episodes_this_iter,
+                    step_ctx=train_iter_ctx,
+                    iteration_results=results,
                 )
 
         # Check `env_task_fn` for possible update of the env's task.
@@ -693,7 +692,7 @@ class Algorithm(Trainable):
                 )
 
             def fn(env, env_context, task_fn):
-                new_task = task_fn(result, env, env_context)
+                new_task = task_fn(results, env, env_context)
                 cur_task = env.get_task()
                 if cur_task != new_task:
                     env.set_task(new_task)
@@ -701,12 +700,11 @@ class Algorithm(Trainable):
             fn = functools.partial(fn, task_fn=self.config["env_task_fn"])
             self.workers.foreach_env_with_context(fn)
 
-        return result
+        return results
 
     @PublicAPI
     def evaluate(
         self,
-        episodes_left_fn=None,  # deprecated
         duration_fn: Optional[Callable[[int], int]] = None,
     ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
@@ -720,14 +718,6 @@ class Algorithm(Trainable):
                 episodes left to run. It's used to find out whether
                 evaluation should continue.
         """
-        if episodes_left_fn is not None:
-            deprecation_warning(
-                old="Trainer.evaluate(episodes_left_fn)",
-                new="Trainer.evaluate(duration_fn)",
-                error=False,
-            )
-            duration_fn = episodes_left_fn
-
         # In case we are evaluating (in a thread) parallel to training,
         # we may have to re-enable eager mode here (gets disabled in the
         # thread).
@@ -745,7 +735,12 @@ class Algorithm(Trainable):
             self.evaluation_workers.sync_weights(
                 from_worker=self.workers.local_worker()
             )
-            self._sync_filters_if_needed(self.evaluation_workers)
+            self._sync_filters_if_needed(
+                self.evaluation_workers,
+                timeout_seconds=self.config[
+                    "sync_filters_on_rollout_workers_timeout_s"
+                ],
+            )
 
         if self.config["custom_eval_function"]:
             logger.info(
@@ -782,9 +777,10 @@ class Algorithm(Trainable):
             eval_cfg = self.config["evaluation_config"]
             rollout = eval_cfg["rollout_fragment_length"]
             num_envs = eval_cfg["num_envs_per_worker"]
+            auto = self.config["evaluation_duration"] == "auto"
             duration = (
                 self.config["evaluation_duration"]
-                if self.config["evaluation_duration"] != "auto"
+                if not auto
                 else (self.config["evaluation_num_workers"] or 1)
                 * (1 if unit == "episodes" else rollout)
             )
@@ -801,6 +797,7 @@ class Algorithm(Trainable):
             logger.info(f"Evaluating current policy for {duration} {unit}.")
 
             metrics = None
+            all_batches = []
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
@@ -814,9 +811,12 @@ class Algorithm(Trainable):
                     batch = self.workers.local_worker().sample()
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
+                    if self.reward_estimators:
+                        all_batches.append(batch)
                 metrics = collect_metrics(
                     self.workers.local_worker(),
-                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
+                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
                 )
 
             # Evaluation worker set only has local worker.
@@ -830,6 +830,8 @@ class Algorithm(Trainable):
                     batch = self.evaluation_workers.local_worker().sample()
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
+                    if self.reward_estimators:
+                        all_batches.append(batch)
 
             # Evaluation worker set has n remote workers.
             else:
@@ -842,32 +844,60 @@ class Algorithm(Trainable):
                         break
 
                     round_ += 1
-                    batches = ray.get(
-                        [
-                            w.sample.remote()
-                            for i, w in enumerate(
-                                self.evaluation_workers.remote_workers()
+                    try:
+                        batches = ray.get(
+                            [
+                                w.sample.remote()
+                                for i, w in enumerate(
+                                    self.evaluation_workers.remote_workers()
+                                )
+                                if i * (1 if unit == "episodes" else rollout * num_envs)
+                                < units_left_to_do
+                            ],
+                            timeout=self.config["evaluation_sample_timeout_s"],
+                        )
+                    except GetTimeoutError:
+                        logger.warning(
+                            "Calling `sample()` on your remote evaluation worker(s) "
+                            "resulted in a timeout (after the configured "
+                            f"{self.config['evaluation_sample_timeout_s']} seconds)! "
+                            "Try to set `evaluation_sample_timeout_s` in your config"
+                            " to a larger value."
+                            + (
+                                " If your episodes don't terminate easily, you may "
+                                "also want to set `evaluation_duration_unit` to "
+                                "'timesteps' (instead of 'episodes')."
+                                if unit == "episodes"
+                                else ""
                             )
-                            if i * (1 if unit == "episodes" else rollout * num_envs)
-                            < units_left_to_do
-                        ]
-                    )
-                    agent_steps_this_iter = sum(b.agent_steps() for b in batches)
-                    env_steps_this_iter = sum(b.env_steps() for b in batches)
+                        )
+                        break
+
+                    _agent_steps = sum(b.agent_steps() for b in batches)
+                    _env_steps = sum(b.env_steps() for b in batches)
                     # 1 episode per returned batch.
                     if unit == "episodes":
                         num_units_done += len(batches)
+                        # Make sure all batches are exactly one episode.
+                        for ma_batch in batches:
+                            ma_batch = ma_batch.as_multi_agent()
+                            for batch in ma_batch.policy_batches.values():
+                                assert np.sum(batch[SampleBatch.DONES])
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
-                            agent_steps_this_iter
-                            if self._by_agent_steps
-                            else env_steps_this_iter
+                            _agent_steps if self._by_agent_steps else _env_steps
                         )
+                    if self.reward_estimators:
+                        all_batches.extend(batches)
+
+                    agent_steps_this_iter += _agent_steps
+                    env_steps_this_iter += _env_steps
 
                     logger.info(
                         f"Ran round {round_} of parallel evaluation "
-                        f"({num_units_done}/{duration} {unit} done)"
+                        f"({num_units_done}/{duration if not auto else '?'} "
+                        f"{unit} done)"
                     )
 
             if metrics is None:
@@ -875,11 +905,20 @@ class Algorithm(Trainable):
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
                 )
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
-            # TODO: Revmoe this key atv some point. Here for backward compatibility.
+            # TODO: Remove this key at some point. Here for backward compatibility.
             metrics["timesteps_this_iter"] = env_steps_this_iter
+
+            if self.reward_estimators:
+                # Compute off-policy estimates
+                metrics["off_policy_estimator"] = {}
+                total_batch = concat_samples(all_batches)
+                for name, estimator in self.reward_estimators.items():
+                    estimates = estimator.estimate(total_batch)
+                    metrics["off_policy_estimator"][name] = estimates
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
@@ -933,7 +972,7 @@ class Algorithm(Trainable):
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
-        with self._timers[WORKER_UPDATE_TIMER]:
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             self.workers.sync_weights(global_vars=global_vars)
 
         return train_results
@@ -1505,7 +1544,7 @@ class Algorithm(Trainable):
     def log_result(self, result: ResultDict) -> None:
         # Log after the callback is invoked, so that the user has a chance
         # to mutate the result.
-        # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
+        # TODO: Remove `trainer` arg at some point to fully deprecate the old signature.
         self.callbacks.on_train_result(algorithm=self, result=result, trainer=self)
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
@@ -1665,12 +1704,15 @@ class Algorithm(Trainable):
                 '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
             )
 
-    def _sync_filters_if_needed(self, workers: WorkerSet):
+    def _sync_filters_if_needed(
+        self, workers: WorkerSet, timeout_seconds: Optional[float] = None
+    ):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
                 workers.local_worker().filters,
                 workers.remote_workers(),
                 update_remote=self.config["synchronize_filters"],
+                timeout_seconds=timeout_seconds,
             )
             logger.debug(
                 "synchronized filters: {}".format(workers.local_worker().filters)
@@ -1689,14 +1731,6 @@ class Algorithm(Trainable):
         logger.info("Synchronizing weights to workers.")
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
-
-    def _exec_plan_or_training_step_fn(self):
-        with self._timers[TRAINING_ITERATION_TIMER]:
-            if self.config["_disable_execution_plan_api"]:
-                results = self.training_step()
-            else:
-                results = next(self.train_exec_impl)
-        return results
 
     @classmethod
     @override(Trainable)
@@ -1896,9 +1930,10 @@ class Algorithm(Trainable):
 
                 default_policy_cls = self.get_default_policy_class(config)
                 if any(
-                    (p[0] or default_policy_cls) is None
+                    (p.policy_class or default_policy_cls) is None
                     or not issubclass(
-                        p[0] or default_policy_cls, (DynamicTFPolicy, TorchPolicy)
+                        p.policy_class or default_policy_cls,
+                        (DynamicTFPolicy, TorchPolicy),
                     )
                     for p in config["multiagent"]["policies"].values()
                 ):
@@ -1915,32 +1950,6 @@ class Algorithm(Trainable):
                     "`simple_optimizer=False` not supported for "
                     "framework={}!".format(framework)
                 )
-
-        # Offline RL settings.
-        input_evaluation = config.get("input_evaluation")
-        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.input_evaluation: {}".format(input_evaluation),
-                new="config.off_policy_estimation_methods={}".format(input_evaluation),
-                error=False,
-            )
-            config["off_policy_estimation_methods"] = input_evaluation
-        if isinstance(config["off_policy_estimation_methods"], list) or isinstance(
-            config["off_policy_estimation_methods"], tuple
-        ):
-            ope_dict = {
-                str(ope): {"type": ope} for ope in self.off_policy_estimation_methods
-            }
-            deprecation_warning(
-                old="config.off_policy_estimation_methods={}".format(
-                    self.off_policy_estimation_methods
-                ),
-                new="config.off_policy_estimation_methods={}".format(
-                    ope_dict,
-                ),
-                error=False,
-            )
-            config["off_policy_estimation_methods"] = ope_dict
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well
@@ -2129,7 +2138,9 @@ class Algorithm(Trainable):
         """
         pass
 
-    def try_recover_from_step_attempt(self) -> None:
+    def try_recover_from_step_attempt(
+        self, error, worker_set, ignore, recreate
+    ) -> None:
         """Try to identify and remove any unhealthy workers (incl. eval workers).
 
         This method is called after an unexpected remote error is encountered
@@ -2137,35 +2148,51 @@ class Algorithm(Trainable):
         all current workers and removes any that respond with error. If no healthy
         workers remain, an error is raised.
         """
-        # Try to get our "eval" WorkerSet (used for evaluating policies).
-        eval_workers = getattr(self, "evaluation_workers", None)
-        if isinstance(eval_workers, WorkerSet):
-            # Search for failed workers and try to recover (restart) them.
-            if self.config["evaluation_config"].get("recreate_failed_workers") is True:
-                eval_workers.recreate_failed_workers()
-            elif self.config["evaluation_config"].get("ignore_worker_failures") is True:
-                eval_workers.remove_failed_workers()
-
-        # Try to get our "main" WorkerSet (used for training sample collection).
-        workers = getattr(self, "workers", None)
-        if not isinstance(workers, WorkerSet):
-            return
+        # @ray.remote RolloutWorker failure.
+        if isinstance(error, RayError):
+            # Try to recover w/o the failed worker.
+            if ignore or recreate:
+                logger.exception(
+                    "Error in training or evaluation attempt! Trying to recover."
+                )
+            # Error out.
+            else:
+                logger.warning(
+                    "Worker crashed during training or evaluation! "
+                    "To try to continue without failed "
+                    "worker(s), set `ignore_worker_failures=True`. "
+                    "To try to recover the failed worker(s), set "
+                    "`recreate_failed_workers=True`."
+                )
+                raise error
+        # Any other exception.
+        else:
+            # Allow logs messages to propagate.
+            time.sleep(0.5)
+            raise error
 
         removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
-        if self.config["recreate_failed_workers"] is True:
-            removed_workers, new_workers = workers.recreate_failed_workers()
-        elif self.config["ignore_worker_failures"] is True:
-            removed_workers = workers.remove_failed_workers()
-        self.on_worker_failures(removed_workers, new_workers)
-
-        if not self.config.get("_disable_execution_plan_api") and callable(
-            self.execution_plan
-        ):
-            logger.warning("Recreating execution plan after failure")
-            self.train_exec_impl = self.execution_plan(
-                workers, self.config, **self._kwargs_for_execution_plan()
+        if recreate:
+            removed_workers, new_workers = worker_set.recreate_failed_workers(
+                local_worker_for_synching=self.workers.local_worker()
             )
+        elif ignore:
+            removed_workers = worker_set.remove_failed_workers()
+
+        # If `worker_set` is the main training WorkerSet: `self.workers`.
+        if worker_set is getattr(self, "workers", None):
+            # Call the `on_worker_failures` callback.
+            self.on_worker_failures(removed_workers, new_workers)
+
+            # Recreate execution_plan iterator.
+            if not self.config.get("_disable_execution_plan_api") and callable(
+                self.execution_plan
+            ):
+                logger.warning("Recreating execution plan after failure")
+                self.train_exec_impl = self.execution_plan(
+                    worker_set, self.config, **self._kwargs_for_execution_plan()
+                )
 
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
@@ -2303,8 +2330,121 @@ class Algorithm(Trainable):
             kwargs["local_replay_buffer"] = self.local_replay_buffer
         return kwargs
 
+    def _run_one_training_iteration(self) -> Tuple[ResultDict, "TrainIterCtx"]:
+        """Runs one training iteration (self.iteration will be +1 after this).
+
+        Calls `self.training_step()` repeatedly until the minimum time (sec),
+        sample- or training steps have been reached.
+
+        Returns:
+            The results dict from the training iteration.
+        """
+        results = None
+        # Create a step context ...
+        with TrainIterCtx(algo=self) as train_iter_ctx:
+            # .. so we can query it whether we should stop the iteration loop (e.g.
+            # when we have reached `min_time_s_per_iteration`).
+            while not train_iter_ctx.should_stop(results):
+                # Try to train one step.
+                try:
+                    with self._timers[TRAINING_ITERATION_TIMER]:
+                        if self.config["_disable_execution_plan_api"]:
+                            results = self.training_step()
+                        else:
+                            results = next(self.train_exec_impl)
+                # In case of any failures, try to ignore/recover the failed workers.
+                except Exception as e:
+                    self.try_recover_from_step_attempt(
+                        error=e,
+                        worker_set=self.workers,
+                        ignore=self.config["ignore_worker_failures"],
+                        recreate=self.config["recreate_failed_workers"],
+                    )
+
+        return results, train_iter_ctx
+
+    def _run_one_evaluation(
+        self,
+        train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
+    ) -> ResultDict:
+        """Runs evaluation step via `self.evaluate()` and handling worker failures.
+
+        Args:
+            train_future: In case, we are training and avaluating in parallel,
+                this arg carries the currently running ThreadPoolExecutor
+                object that runs the training iteration
+
+        Returns:
+            The results dict from the evaluation call.
+        """
+        eval_results = {"evaluation": {}}
+        try:
+            if self.config["evaluation_duration"] == "auto":
+                assert (
+                    train_future is not None
+                    and self.config["evaluation_parallel_to_training"]
+                )
+                unit = self.config["evaluation_duration_unit"]
+                eval_results = self.evaluate(
+                    duration_fn=functools.partial(
+                        self._automatic_evaluation_duration_fn,
+                        unit,
+                        self.config["evaluation_num_workers"],
+                        self.config["evaluation_config"],
+                        train_future,
+                    )
+                )
+            # Run `self.evaluate()` only once per training iteration.
+            else:
+                eval_results = self.evaluate()
+
+        # In case of any failures, try to ignore/recover the failed evaluation workers.
+        except Exception as e:
+            self.try_recover_from_step_attempt(
+                error=e,
+                worker_set=self.evaluation_workers,
+                ignore=self.config["evaluation_config"].get("ignore_worker_failures"),
+                recreate=self.config["evaluation_config"].get(
+                    "recreate_failed_workers"
+                ),
+            )
+
+        # Add number of healthy evaluation workers after this iteration.
+        eval_results["evaluation"]["num_healthy_workers"] = (
+            len(self.evaluation_workers.remote_workers())
+            if self.evaluation_workers is not None
+            else 0
+        )
+
+        return eval_results
+
+    def _run_one_training_iteration_and_evaluation_in_parallel(
+        self,
+    ) -> Tuple[ResultDict, "TrainIterCtx"]:
+        """Runs one training iteration and one evaluation step in parallel.
+
+        First starts the training iteration (via `self._run_one_training_iteration()`)
+        within a ThreadPoolExecutor, then runs the evaluation step in parallel.
+        In auto-duration mode (config.evaluation_duration=auto), makes sure the
+        evaluation step takes roughly the same time as the training iteration.
+
+        Returns:
+            The accumulated training and evaluation results.
+        """
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            train_future = executor.submit(lambda: self._run_one_training_iteration())
+            # Pass the train_future into `self._run_one_evaluation()` to allow it
+            # to run exactly as long as the training iteration takes in case
+            # evaluation_duration=auto.
+            results = self._run_one_evaluation(train_future)
+            # Collect the training results from the future.
+            train_results, train_iter_ctx = train_future.result()
+            results.update(train_results)
+
+        return results, train_iter_ctx
+
     @staticmethod
-    def _auto_duration_fn(
+    def _automatic_evaluation_duration_fn(
         unit, num_eval_workers, eval_cfg, train_future, num_units_done
     ):
         # Training is done and we already ran at least one
@@ -2325,98 +2465,9 @@ class Algorithm(Trainable):
                 * eval_cfg["num_envs_per_worker"]
             )
 
-    def _step_context(trainer):
-        class StepCtx:
-            def __enter__(self):
-                self.started = False
-                # Before first call to `step()`, `result` is expected to be None ->
-                # Start with self.failures=-1 -> set to 0 before the very first call
-                # to `self.step()`.
-                self.failures = -1
-
-                self.time_start = time.time()
-                self.sampled = 0
-                self.trained = 0
-                self.init_env_steps_sampled = trainer._counters[NUM_ENV_STEPS_SAMPLED]
-                self.init_env_steps_trained = trainer._counters[NUM_ENV_STEPS_TRAINED]
-                self.init_agent_steps_sampled = trainer._counters[
-                    NUM_AGENT_STEPS_SAMPLED
-                ]
-                self.init_agent_steps_trained = trainer._counters[
-                    NUM_AGENT_STEPS_TRAINED
-                ]
-                self.failure_tolerance = trainer.config[
-                    "num_consecutive_worker_failures_tolerance"
-                ]
-                return self
-
-            def __exit__(self, *args):
-                pass
-
-            def should_stop(self, result):
-
-                # Before first call to `step()`.
-                if self.started is False:
-                    self.started = True
-                    # Fail after n retries.
-                    self.failures += 1
-                    if self.failures > self.failure_tolerance:
-                        raise RuntimeError(
-                            "More than `num_consecutive_worker_failures_tolerance="
-                            f"{self.failure_tolerance}` consecutive worker failures! "
-                            "Exiting."
-                        )
-                    # Continue to very first `step()` call or retry `step()` after
-                    # a (tolerable) failure.
-                    return False
-
-                # Stopping criteria: Only when using the `training_iteration`
-                # API, b/c for the `exec_plan` API, the logic to stop is
-                # already built into the execution plans via the
-                # `StandardMetricsReporting` op.
-                elif trainer.config["_disable_execution_plan_api"]:
-                    if trainer._by_agent_steps:
-                        self.sampled = (
-                            trainer._counters[NUM_AGENT_STEPS_SAMPLED]
-                            - self.init_agent_steps_sampled
-                        )
-                        self.trained = (
-                            trainer._counters[NUM_AGENT_STEPS_TRAINED]
-                            - self.init_agent_steps_trained
-                        )
-                    else:
-                        self.sampled = (
-                            trainer._counters[NUM_ENV_STEPS_SAMPLED]
-                            - self.init_env_steps_sampled
-                        )
-                        self.trained = (
-                            trainer._counters[NUM_ENV_STEPS_TRAINED]
-                            - self.init_env_steps_trained
-                        )
-
-                    min_t = trainer.config["min_time_s_per_iteration"]
-                    min_sample_ts = trainer.config["min_sample_timesteps_per_iteration"]
-                    min_train_ts = trainer.config["min_train_timesteps_per_iteration"]
-                    # Repeat if not enough time has passed or if not enough
-                    # env|train timesteps have been processed (or these min
-                    # values are not provided by the user).
-                    if (
-                        result is not None
-                        and (not min_t or time.time() - self.time_start >= min_t)
-                        and (not min_sample_ts or self.sampled >= min_sample_ts)
-                        and (not min_train_ts or self.trained >= min_train_ts)
-                    ):
-                        return True
-                    else:
-                        return False
-                # No errors (we got results != None) -> Return True
-                # (meaning: yes, should stop -> no further step attempts).
-                else:
-                    return True
-
-        return StepCtx()
-
-    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
+    def _compile_iteration_results(
+        self, *, episodes_this_iter, step_ctx, iteration_results=None
+    ):
         # Return dict.
         results: ResultDict = {}
         iteration_results = iteration_results or {}
@@ -2432,18 +2483,33 @@ class Algorithm(Trainable):
         # Learner info.
         results["info"] = {LEARNER_INFO: iteration_results}
 
-        episodes = self._rollout_worker_metrics
-        orig_episodes = list(episodes)
-        missing = self.config["metrics_num_episodes_for_smoothing"] - len(episodes)
+        # Calculate how many (if any) of older, historical episodes we have to add to
+        # `episodes_this_iter` in order to reach the required smoothing window.
+        episodes_for_metrics = episodes_this_iter[:]
+        missing = self.config["metrics_num_episodes_for_smoothing"] - len(
+            episodes_this_iter
+        )
+        # We have to add some older episodes to reach the smoothing window size.
         if missing > 0:
-            episodes = self._episode_history[-missing:] + episodes
-            assert len(episodes) <= self.config["metrics_num_episodes_for_smoothing"]
-        self._episode_history.extend(orig_episodes)
+            episodes_for_metrics = self._episode_history[-missing:] + episodes_this_iter
+            assert (
+                len(episodes_for_metrics)
+                <= self.config["metrics_num_episodes_for_smoothing"]
+            )
+        # Note that when there are more than `metrics_num_episodes_for_smoothing`
+        # episodes in `episodes_for_metrics`, leave them as-is. In this case, we'll
+        # compute the stats over that larger number.
+
+        # Add new episodes to our history and make sure it doesn't grow larger than
+        # needed.
+        self._episode_history.extend(episodes_this_iter)
         self._episode_history = self._episode_history[
             -self.config["metrics_num_episodes_for_smoothing"] :
         ]
         results["sampler_results"] = summarize_episodes(
-            episodes, orig_episodes, self.config["keep_per_episode_custom_metrics"]
+            episodes_for_metrics,
+            episodes_this_iter,
+            self.config["keep_per_episode_custom_metrics"],
         )
         # TODO: Don't dump sampler results into top-level.
         results.update(results["sampler_results"])
@@ -2463,11 +2529,15 @@ class Algorithm(Trainable):
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
+            # TODO: Backward compatibility.
+            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         else:
             results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
+            # TODO: Backward compatibility.
+            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         # TODO: Backward compatibility.
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
@@ -2535,3 +2605,88 @@ class Algorithm(Trainable):
 # TODO: Create a dict that throw a deprecation warning once we have fully moved
 #  to AlgorithmConfig() objects (some algos still missing).
 COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
+
+
+class TrainIterCtx:
+    def __init__(self, algo: Algorithm):
+        self.algo = algo
+
+    def __enter__(self):
+        # Before first call to `step()`, `results` is expected to be None ->
+        # Start with self.failures=-1 -> set to 0 before the very first call
+        # to `self.step()`.
+        self.failures = -1
+
+        self.time_start = time.time()
+        self.sampled = 0
+        self.trained = 0
+        self.init_env_steps_sampled = self.algo._counters[NUM_ENV_STEPS_SAMPLED]
+        self.init_env_steps_trained = self.algo._counters[NUM_ENV_STEPS_TRAINED]
+        self.init_agent_steps_sampled = self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
+        self.init_agent_steps_trained = self.algo._counters[NUM_AGENT_STEPS_TRAINED]
+        self.failure_tolerance = self.algo.config[
+            "num_consecutive_worker_failures_tolerance"
+        ]
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def should_stop(self, results):
+
+        # Before first call to `step()`.
+        if results is None:
+            # Fail after n retries.
+            self.failures += 1
+            if self.failures > self.failure_tolerance:
+                raise RuntimeError(
+                    "More than `num_consecutive_worker_failures_tolerance="
+                    f"{self.failure_tolerance}` consecutive worker failures! "
+                    "Exiting."
+                )
+            # Continue to very first `step()` call or retry `step()` after
+            # a (tolerable) failure.
+            return False
+
+        # Stopping criteria: Only when using the `training_iteration`
+        # API, b/c for the `exec_plan` API, the logic to stop is
+        # already built into the execution plans via the
+        # `StandardMetricsReporting` op.
+        elif self.algo.config["_disable_execution_plan_api"]:
+            if self.algo._by_agent_steps:
+                self.sampled = (
+                    self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
+                    - self.init_agent_steps_sampled
+                )
+                self.trained = (
+                    self.algo._counters[NUM_AGENT_STEPS_TRAINED]
+                    - self.init_agent_steps_trained
+                )
+            else:
+                self.sampled = (
+                    self.algo._counters[NUM_ENV_STEPS_SAMPLED]
+                    - self.init_env_steps_sampled
+                )
+                self.trained = (
+                    self.algo._counters[NUM_ENV_STEPS_TRAINED]
+                    - self.init_env_steps_trained
+                )
+
+            min_t = self.algo.config["min_time_s_per_iteration"]
+            min_sample_ts = self.algo.config["min_sample_timesteps_per_iteration"]
+            min_train_ts = self.algo.config["min_train_timesteps_per_iteration"]
+            # Repeat if not enough time has passed or if not enough
+            # env|train timesteps have been processed (or these min
+            # values are not provided by the user).
+            if (
+                (not min_t or time.time() - self.time_start >= min_t)
+                and (not min_sample_ts or self.sampled >= min_sample_ts)
+                and (not min_train_ts or self.trained >= min_train_ts)
+            ):
+                return True
+            else:
+                return False
+        # No errors (we got results != None) -> Return True
+        # (meaning: yes, should stop -> no further step attempts).
+        else:
+            return True

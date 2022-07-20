@@ -42,7 +42,10 @@ class HTTPState:
     ):
         self._controller_name = controller_name
         self._detached = detached
-        self._config = config
+        if config is not None:
+            self._config = config
+        else:
+            self._config = HTTPOptions()
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
         self._proxy_actor_names: Dict[NodeId, str] = dict()
         self._head_node_id: str = head_node_id
@@ -83,7 +86,10 @@ class HTTPState:
                 for node_id, ip_address in target_nodes
                 if node_id == self._head_node_id
             ]
-            assert len(nodes) == 1, f"Head node not found! {target_nodes}"
+            assert len(nodes) == 1, (
+                f"Head node not found! Head node id: {self._head_node_id}, "
+                f"all nodes: {target_nodes}."
+            )
             return nodes
 
         if location == DeploymentMode.FixedNumber:

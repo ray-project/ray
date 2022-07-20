@@ -20,6 +20,7 @@ import yaml
 import ray
 import ray._private.services as services
 from ray._private.usage import usage_lib
+from ray._private.worker import global_worker  # type: ignore
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
@@ -70,7 +71,6 @@ from ray.autoscaler.tags import (
 )
 from ray.experimental.internal_kv import _internal_kv_put
 from ray.util.debug import log_once
-from ray.worker import global_worker  # type: ignore
 
 try:  # py3
     from shlex import quote
@@ -649,7 +649,7 @@ def get_or_create_head_node(
             yes, "No head node found. Launching a new cluster.", _abort=True
         )
         cli_logger.newline()
-        usage_lib.show_usage_stats_prompt()
+        usage_lib.show_usage_stats_prompt(cli=True)
 
     if head_node:
         if restart_only:
@@ -662,7 +662,7 @@ def get_or_create_head_node(
                 _abort=True,
             )
             cli_logger.newline()
-            usage_lib.show_usage_stats_prompt()
+            usage_lib.show_usage_stats_prompt(cli=True)
         elif no_restart:
             cli_logger.print(
                 "Cluster Ray runtime will not be restarted due to `{}`.",
@@ -679,7 +679,7 @@ def get_or_create_head_node(
                 yes, cf.bold("Cluster Ray runtime will be restarted."), _abort=True
             )
             cli_logger.newline()
-            usage_lib.show_usage_stats_prompt()
+            usage_lib.show_usage_stats_prompt(cli=True)
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)

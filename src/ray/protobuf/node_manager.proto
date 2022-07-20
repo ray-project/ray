@@ -293,7 +293,11 @@ message UpdateResourceUsageRequest {
 message UpdateResourceUsageReply {
 }
 
-message GetTasksInfoRequest {}
+message GetTasksInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
 
 message GetTasksInfoReply {
   repeated TaskInfoEntry owned_task_info_entries = 1;
@@ -301,12 +305,24 @@ message GetTasksInfoReply {
   // All tasks must be treated as TaskStatus::RUNNING
   // from the caller side.
   repeated bytes running_task_ids = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
+  // NOTE: we don't truncate running_task_ids because it is usually small.
+  // However, there are edge cases it can be very large (e.g., when the
+  // async actor tasks are used, it can have up to 1000 running tasks per
+  // actor). We should handle this better.
 }
 
-message GetObjectsInfoRequest {}
+message GetObjectsInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
 
 message GetObjectsInfoReply {
   repeated CoreWorkerStats core_workers_stats = 1;
+  // Length of the corresponding resource without truncation.
+  int64 total = 2;
 }
 
 message GetResourceLoadRequest {}

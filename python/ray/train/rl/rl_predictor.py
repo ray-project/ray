@@ -8,12 +8,14 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 from ray.train.predictor import Predictor
-from ray.train.rl.rl_trainer import load_checkpoint
+from ray.train.rl.utils import load_checkpoint
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="alpha")
 class RLPredictor(Predictor):
     """A predictor for RLlib policies.
 
@@ -29,7 +31,7 @@ class RLPredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
     ):
         self.policy = policy
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
@@ -50,8 +52,9 @@ class RLPredictor(Predictor):
                 it is parsed from the saved trainer configuration instead.
 
         """
-        policy, preprocessor = load_checkpoint(checkpoint, env)
-        return RLPredictor(policy=policy, preprocessor=preprocessor)
+        policy, _ = load_checkpoint(checkpoint, env)
+        preprocessor = checkpoint.get_preprocessor()
+        return cls(policy=policy, preprocessor=preprocessor)
 
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         if TENSOR_COLUMN_NAME in data:
