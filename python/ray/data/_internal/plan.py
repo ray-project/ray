@@ -796,7 +796,9 @@ def _rewrite_read_stage(
     for read_task in in_blocks._tasks:
         blocks.append(ray.put(read_task._read_fn))
         metadata.append(read_task.get_metadata())
-    block_list = BlockList(blocks, metadata)
+    block_list = BlockList(
+        blocks, metadata, owned_by_consumer=in_blocks._owned_by_consumer
+    )
 
     def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
         for block in read_fn():

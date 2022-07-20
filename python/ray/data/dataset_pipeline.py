@@ -1089,7 +1089,10 @@ class DatasetPipeline(Generic[T]):
 
         # This dummy dataset will be used to get a set of optimized stages.
         dummy_ds = Dataset(
-            ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
+            ExecutionPlan(
+                BlockList([], [], owned_by_consumer=True),
+                DatasetStats(stages={}, parent=None),
+            ),
             0,
             True,
         )

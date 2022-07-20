@@ -19,7 +19,8 @@ class BlockList:
         self,
         blocks: List[ObjectRef[Block]],
         metadata: List[BlockMetadata],
-        owned_by_consumer: bool = False,
+        *,
+        owned_by_consumer: bool,
     ):
         assert len(blocks) == len(metadata), (blocks, metadata)
         self._blocks: List[ObjectRef[Block]] = blocks
@@ -35,7 +36,9 @@ class BlockList:
 
     def copy(self) -> "BlockList":
         """Perform a shallow copy of this BlockList."""
-        return BlockList(self._blocks, self._metadata, self._owned_by_consumer)
+        return BlockList(
+            self._blocks, self._metadata, owned_by_consumer=self._owned_by_consumer
+        )
 
     def clear(self) -> None:
         """Erase references to the tasks tracked by the BlockList."""
@@ -65,7 +68,11 @@ class BlockList:
         meta = np.array_split(self._metadata, num_splits)
         output = []
         for b, m in zip(blocks, meta):
-            output.append(BlockList(b.tolist(), m.tolist(), self._owned_by_consumer))
+            output.append(
+                BlockList(
+                    b.tolist(), m.tolist(), owned_by_consumer=self._owned_by_consumer
+                )
+            )
         return output
 
     def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
@@ -86,7 +93,11 @@ class BlockList:
                 )
             size = m.size_bytes
             if cur_blocks and cur_size + size > bytes_per_split:
-                output.append(BlockList(cur_blocks, cur_meta, self._owned_by_consumer))
+                output.append(
+                    BlockList(
+                        cur_blocks, cur_meta, owned_by_consumer=self._owned_by_consumer
+                    )
+                )
                 cur_blocks = []
                 cur_meta = []
                 cur_size = 0
@@ -94,7 +105,11 @@ class BlockList:
             cur_meta.append(m)
             cur_size += size
         if cur_blocks:
-            output.append(BlockList(cur_blocks, cur_meta, self._owned_by_consumer))
+            output.append(
+                BlockList(
+                    cur_blocks, cur_meta, owned_by_consumer=self._owned_by_consumer
+                )
+            )
         return output
 
     def size_bytes(self) -> int:
@@ -121,12 +136,12 @@ class BlockList:
             BlockList(
                 self._blocks[:block_idx],
                 self._metadata[:block_idx],
-                self._owned_by_consumer,
+                owned_by_consumer=self._owned_by_consumer,
             ),
             BlockList(
                 self._blocks[block_idx:],
                 self._metadata[block_idx:],
-                self._owned_by_consumer,
+                owned_by_consumer=self._owned_by_consumer,
             ),
         )
 
@@ -196,4 +211,4 @@ class BlockList:
         random.shuffle(blocks_with_metadata)
         blocks, metadata = map(list, zip(*blocks_with_metadata))
 
-        return BlockList(blocks, metadata, self._owned_by_consumer)
+        return BlockList(blocks, metadata, owned_by_consumer=self._owned_by_consumer)

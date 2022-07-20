@@ -109,7 +109,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
 
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, metadata),
+            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_items": metadata}, parent=None),
         ),
         0,
@@ -304,7 +304,9 @@ def read_datasource(
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-    block_list = LazyBlockList(read_tasks, ray_remote_args=ray_remote_args)
+    block_list = LazyBlockList(
+        read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
+    )
     block_list.compute_first_block()
     block_list.ensure_metadata_for_first_block()
 
@@ -889,7 +891,7 @@ def from_pandas_refs(
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         return Dataset(
             ExecutionPlan(
-                BlockList(dfs, metadata),
+                BlockList(dfs, metadata, owned_by_consumer=False),
                 DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
             ),
             0,
@@ -903,7 +905,7 @@ def from_pandas_refs(
     metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, metadata),
+            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
         ),
         0,
@@ -961,7 +963,7 @@ def from_numpy_refs(
     metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, metadata),
+            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_numpy_refs": metadata}, parent=None),
         ),
         0,
@@ -1012,7 +1014,7 @@ def from_arrow_refs(
     metadata = ray.get([get_metadata.remote(t) for t in tables])
     return Dataset(
         ExecutionPlan(
-            BlockList(tables, metadata),
+            BlockList(tables, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
         ),
         0,

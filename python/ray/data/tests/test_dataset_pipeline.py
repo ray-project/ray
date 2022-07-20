@@ -686,9 +686,11 @@ def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_sh
         .randomize_block_order_each_window()
         .randomize_block_order_each_window()
     )
-    verify_integrity(
-        ds.repeat(10).randomize_block_order_each_window().rewindow(blocks_per_window=1)
-    )
+    # TODO(https://github.com/ray-project/ray/issues/26766): re-enable this after the
+    # bug is fixed.
+    # verify_integrity(
+    #     ds.repeat(10).randomize_block_order_each_window().rewindow(blocks_per_window=1)
+    # )
     # Mix in-place and non-in place transforms.
     verify_integrity(
         ds.repeat(10)

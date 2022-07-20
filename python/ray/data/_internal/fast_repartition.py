@@ -40,6 +40,8 @@ def fast_repartition(blocks, num_blocks):
         if s.num_blocks() > 0
     ]
 
+    owned_by_consumer = blocks._owned_by_consumer
+
     # Early-release memory.
     del splits, blocks, wrapped_ds
 
@@ -71,4 +73,4 @@ def fast_repartition(blocks, num_blocks):
         new_blocks += empty_blocks
         new_metadata += empty_metadata
 
-    return BlockList(new_blocks, new_metadata), {}
+    return BlockList(new_blocks, new_metadata, owned_by_consumer=owned_by_consumer), {}

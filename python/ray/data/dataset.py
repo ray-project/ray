@@ -1068,7 +1068,7 @@ class Dataset(Generic[T]):
                             BlockList(
                                 list(blocks),
                                 [metadata_mapping[b] for b in blocks],
-                                owned_by_consumer,
+                                owned_by_consumer=owned_by_consumer,
                             ),
                             stats,
                         ),
@@ -1181,6 +1181,7 @@ class Dataset(Generic[T]):
                         BlockList(
                             allocation_per_actor[actor],
                             [metadata_mapping[b] for b in allocation_per_actor[actor]],
+                            owned_by_consumer=owned_by_consumer,
                         ),
                         stats,
                     ),
@@ -1226,7 +1227,8 @@ class Dataset(Generic[T]):
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        blocks_with_metadata = self._plan.execute().get_blocks_with_metadata()
+        block_list = self._plan.execute()
+        blocks_with_metadata = block_list.get_blocks_with_metadata()
         blocks, metadata = _split_at_indices(blocks_with_metadata, indices)
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
@@ -1237,7 +1239,9 @@ class Dataset(Generic[T]):
             splits.append(
                 Dataset(
                     ExecutionPlan(
-                        BlockList(bs, ms),
+                        BlockList(
+                            bs, ms, owned_by_consumer=block_list._owned_by_consumer
+                        ),
                         stats,
                     ),
                     self._epoch,
@@ -1332,6 +1336,7 @@ class Dataset(Generic[T]):
 
         start_time = time.perf_counter()
 
+        owned_by_consumer = self._plan.execute()._owned_by_consumer
         datasets = [self] + list(other)
         bls = []
         has_nonlazy = False
@@ -1350,7 +1355,7 @@ class Dataset(Generic[T]):
                     bs, ms = bl._blocks, bl._metadata
                 blocks.extend(bs)
                 metadata.extend(ms)
-            blocklist = BlockList(blocks, metadata)
+            blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1360,7 +1365,10 @@ class Dataset(Generic[T]):
                 block_partition_refs.extend(bl._block_partition_refs)
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             blocklist = LazyBlockList(
-                tasks, block_partition_refs, block_partition_meta_refs
+                tasks,
+                block_partition_refs,
+                block_partition_meta_refs,
+                owned_by_consumer=owned_by_consumer,
             )
 
         epochs = [ds._get_epoch() for ds in datasets]
@@ -3403,7 +3411,8 @@ class Dataset(Generic[T]):
         self, index: int, return_right_half: bool
     ) -> ("Dataset[T]", "Dataset[T]"):
         start_time = time.perf_counter()
-        blocks_with_metadata = self._plan.execute().get_blocks_with_metadata()
+        block_list = self._plan.execute()
+        blocks_with_metadata = block_list.get_blocks_with_metadata()
         left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
             blocks_with_metadata,
             index,
@@ -3427,7 +3436,11 @@ class Dataset(Generic[T]):
         left_dataset_stats.time_total_s = split_duration
         left = Dataset(
             ExecutionPlan(
-                BlockList(left_blocks, left_metadata),
+                BlockList(
+                    left_blocks,
+                    left_metadata,
+                    owned_by_consumer=block_list._owned_by_consumer,
+                ),
                 left_dataset_stats,
             ),
             self._epoch,
@@ -3451,7 +3464,11 @@ class Dataset(Generic[T]):
             right_dataset_stats.time_total_s = split_duration
             right = Dataset(
                 ExecutionPlan(
-                    BlockList(right_blocks, right_metadata),
+                    BlockList(
+                        right_blocks,
+                        right_metadata,
+                        owned_by_consumer=block_list._owned_by_consumer,
+                    ),
                     right_dataset_stats,
                 ),
                 self._epoch,

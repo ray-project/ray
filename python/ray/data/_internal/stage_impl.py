@@ -181,12 +181,15 @@ class ZipStage(AllToAllStage):
                 blocks.append(res)
                 metadata.append(meta)
 
+            # TODO(ekl) it might be nice to have a progress bar here.
+            metadata = ray.get(metadata)
+            blocks = BlockList(
+                blocks, metadata, owned_by_consumer=block_list._owned_by_consumer
+            )
+
             # Early release memory.
             del blocks1, blocks2
 
-            # TODO(ekl) it might be nice to have a progress bar here.
-            metadata = ray.get(metadata)
-            blocks = BlockList(blocks, metadata)
             return blocks, {}
 
         super().__init__("zip", None, do_zip_all)

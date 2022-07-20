@@ -39,8 +39,9 @@ class LazyBlockList(BlockList):
         ] = None,
         cached_metadata: Optional[List[BlockPartitionMetadata]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        owned_by_consumer: bool = False,
         stats_uuid: str = None,
+        *,
+        owned_by_consumer: bool,
     ):
         """Create a LazyBlockList on the provided read tasks.
 
