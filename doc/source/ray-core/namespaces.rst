@@ -296,7 +296,7 @@ You can access to the current namespace using :ref:`runtime_context APIs <runtim
 
         import ray
         ray.init(address="auto", namespace="colors")
-        # Will print the information about "colors" namespace.
+        # Will print namespace name "colors".
         print(ray.get_runtime_context().namespace)
 
 .. tabbed:: Java
@@ -306,8 +306,19 @@ You can access to the current namespace using :ref:`runtime_context APIs <runtim
         System.setProperty("ray.job.namespace", "colors");
         try {
             Ray.init();
-            // Will print the information about "colors" namespace.
+            // Will print namespace name "colors".
             System.out.println(Ray.getRuntimeContext().getNamespace());
         } finally {
             Ray.shutdown();
         }
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        ray::RayConfig config;
+        config.ray_namespace = "colors";
+        ray::Init(config);
+        // Will print namespace name "colors".
+        std::cout << ray::GetNamespace() << std::endl;
+        ray::Shutdown();
