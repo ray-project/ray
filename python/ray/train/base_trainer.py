@@ -348,7 +348,7 @@ class BaseTrainer(abc.ABC):
                 ):
                     warnings.warn(
                         "Instantiating this Trainer has reserved more than 80% of CPUs "
-                        "on this cluster which may cause resource contention or slower "
+                        "on this cluster which may cause resource contention or lower "
                         "performance during data processing. Consider reserving at "
                         "least 20% of node CPUs for Dataset execution by setting "
                         "`_max_cpu_fraction_per_node = 0.8` in the Trainer "
