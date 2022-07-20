@@ -12,7 +12,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_RPC_TIMEOUT = 30
 DEFAULT_LIMIT = 100
 DEFAULT_LOG_LIMIT = 1000
-MAX_LIMIT = 10000
+# Max number of entries from API server to the client
+MAX_LIMIT_FROM_API_SERVER = 10 * 1000  # 10k
+# Max number of entries from data sources (rest will be truncated)
+# FIXME(rickyyx): should we make this configurable?
+MAX_LIMIT_FROM_DATA_SOURCE = 10 * 1000  # 10k
 
 STATE_OBS_ALPHA_FEEDBACK_MSG = [
     "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
@@ -85,10 +89,10 @@ class ListApiOptions:
         if self.filters is None:
             self.filters = []
 
-        if self.limit > MAX_LIMIT:
+        if self.limit > MAX_LIMIT_FROM_API_SERVER:
             raise ValueError(
                 f"Given limit {self.limit} exceeds the supported "
-                f"limit {MAX_LIMIT}. Use a lower limit."
+                f"limit {MAX_LIMIT_FROM_API_SERVER}. Use a lower limit."
             )
 
         for filter in self.filters:
@@ -356,10 +360,15 @@ class RuntimeEnvState(StateSchema):
 
 @dataclass(init=True)
 class ListApiResponse:
-    # Total number of the resource from the cluster.
-    # Note that this value can be larger than `result`
-    # because `result` can be truncated.
+    # Total number of the available resource from the cluster.
+    # NOTE(rickyyx): We currently perform hard truncation when querying
+    # resources which could have a large number (e.g. asking raylets for
+    # the number of all objects).
     total: int
+    # Number of resources returned by data sources after truncation
+    num_from_source: int
+    # Number of resources after filtering
+    num_filtered: int
     # Returned data. None if no data is returned.
     result: List[
         Union[
@@ -608,5 +617,11 @@ class StateSummary:
 
 @dataclass(init=True)
 class SummaryApiResponse:
+    # Carried over from ListApiResponse
+    # We currently use list API for listing the resources
+    total: int
+    # Carried over from ListApiResponse
+    # Number of resources returned by data sources after truncation
+    num_from_source: int
     result: StateSummary = None
     partial_failure_warning: str = ""

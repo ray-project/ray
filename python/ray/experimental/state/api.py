@@ -324,16 +324,32 @@ class StateApiClient(SubmissionClient):
         if warning_msgs:
             warnings.warn(warning_msgs)
 
-        # Print warnings if data is truncated.
         data = list_api_response["result"]
+
+        # Print warnings if data is truncated at the data source.
+        num_from_source = list_api_response["num_from_source"]
         total = list_api_response["total"]
-        if total > len(data):
+        if total > num_from_source:
+            # NOTE(rickyyx): For now, there's not much users could do (neither can we),
+            # with hard truncation. Unless we allow users to set a higher
+            # `MAX_LIMIT_FROM_DATA_SOURCE`, the data will always be truncated at the
+            # data source.
             warnings.warn(
                 (
-                    f"{len(data)} ({total} total) {resource.value} "
-                    f"are returned. {total - len(data)} entries have been truncated. "
-                    "Use `--filter` to reduce the amount of data to return "
-                    "or increase the limit by specifying`--limit`."
+                    f"{num_from_source} ({total} total) {resource.value} "
+                    "are returned by the data source. "
+                    f"{total - num_from_source} entries have been truncated."
+                ),
+            )
+
+        # Print warnings if return data is limited at the API server due to
+        # limit enforced at the server side
+        num_filtered = list_api_response["num_filtered"]
+        if num_filtered > len(data):
+            warnings.warn(
+                (
+                    f"{len(data)}/{num_filtered} {resource.value} returned. "
+                    f"Setting a higher limit with `--limit` to see all data."
                 ),
             )
 
