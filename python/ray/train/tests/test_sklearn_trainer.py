@@ -128,7 +128,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
     checkpoint = SklearnCheckpoint.copy_from(resume_from)
-    
+
     model = checkpoint.get_estimator()
     preprocessor = checkpoint.get_preprocessor()
     assert hasattr(model, "feature_importances_")
