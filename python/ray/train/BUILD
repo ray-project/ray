@@ -315,7 +315,7 @@ py_test(
 
 py_test(
     name = "test_tune",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tune.py"],
     tags = ["team:ml", "exclusive", "tune"],
     deps = [":train_lib"]

@@ -5,16 +5,10 @@
 import ray
 from ray.data.preprocessors import StandardScaler
 from ray.air import train_test_split
+from ray.air.config import ScalingConfig
 
 # Load data.
-import pandas as pd
-
-bc_df = pd.read_csv(
-    "https://air-example-data.s3.us-east-2.amazonaws.com/breast_cancer.csv"
-)
-dataset = ray.data.from_pandas(bc_df)
-# Optionally, read directly from s3
-# dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
+dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
 train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
@@ -32,14 +26,15 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 
 # __air_xgb_train_start__
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 
 trainer = XGBoostTrainer(
-    scaling_config={
+    scaling_config=ScalingConfig(
         # Number of workers to use for data parallelism.
-        "num_workers": 2,
+        num_workers=2,
         # Whether to use GPU acceleration.
-        "use_gpu": False,
-    },
+        use_gpu=False,
+    ),
     label_column="target",
     num_boost_round=20,
     params={

@@ -42,7 +42,7 @@ class XGBoostPredictor(Predictor):
 
         """
         bst, preprocessor = load_checkpoint(checkpoint)
-        return XGBoostPredictor(model=bst, preprocessor=preprocessor)
+        return cls(model=bst, preprocessor=preprocessor)
 
     def _predict_pandas(
         self,

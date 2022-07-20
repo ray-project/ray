@@ -15,6 +15,7 @@ from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesys
 from ray.data.datasource.file_meta_provider import (
     DefaultParquetMetadataProvider,
     ParquetMetadataProvider,
+    _handle_read_os_error,
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.types import ObjectRef
@@ -35,6 +36,12 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 # for rows about 1KiB in size.
 PARQUET_READER_ROW_BATCH_SIZE = 100000
 FILE_READING_RETRY = 8
+
+# The estimated bytes size multiplier for reading Parquet data source in Arrow,
+# as Arrow in-memory representation uses much more memory compared to Parquet
+# uncompressed representation. See https://github.com/ray-project/ray/pull/26516
+# for more context.
+PARQUET_TO_ARROW_SIZE_MULTIPLIER = 5
 
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
@@ -155,9 +162,12 @@ class _ParquetDatasourceReader(Reader):
             paths = paths[0]
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
-        pq_ds = pq.ParquetDataset(
-            paths, **dataset_kwargs, filesystem=filesystem, use_legacy_dataset=False
-        )
+        try:
+            pq_ds = pq.ParquetDataset(
+                paths, **dataset_kwargs, filesystem=filesystem, use_legacy_dataset=False
+            )
+        except OSError as e:
+            _handle_read_os_error(e, paths)
         if schema is None:
             schema = pq_ds.schema
         if columns:
@@ -180,7 +190,11 @@ class _ParquetDatasourceReader(Reader):
                 inferred_schema = schema
         else:
             inferred_schema = schema
-        self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+
+        try:
+            self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+        except OSError as e:
+            _handle_read_os_error(e, paths)
         self._pq_ds = pq_ds
         self._meta_provider = meta_provider
         self._inferred_schema = inferred_schema
@@ -190,12 +204,14 @@ class _ParquetDatasourceReader(Reader):
         self._schema = schema
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        # TODO(ekl) better estimate the in-memory size here.
-        PARQUET_DECOMPRESSION_MULTIPLIER = 5
+        # TODO(ekl/chengsu) better estimate the in-memory size here,
+        # when columns pruning is used.
         total_size = 0
-        for meta in self._metadata:
-            total_size += meta.serialized_size
-        return total_size * PARQUET_DECOMPRESSION_MULTIPLIER
+        for file_metadata in self._metadata:
+            for row_group_idx in range(file_metadata.num_row_groups):
+                row_group_metadata = file_metadata.row_group(row_group_idx)
+                total_size += row_group_metadata.total_byte_size
+        return total_size * PARQUET_TO_ARROW_SIZE_MULTIPLIER
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
