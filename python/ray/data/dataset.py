@@ -204,7 +204,7 @@ class Dataset(Generic[T]):
 
     def map(
         self,
-        fn: RowUDF,
+        fn: RowUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -270,7 +270,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
-        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -575,7 +575,7 @@ class Dataset(Generic[T]):
 
     def flat_map(
         self,
-        fn: RowUDF,
+        fn: RowUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -621,7 +621,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
-        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -641,7 +641,7 @@ class Dataset(Generic[T]):
 
     def filter(
         self,
-        fn: RowUDF,
+        fn: RowUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -687,7 +687,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
-        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = block.builder()
