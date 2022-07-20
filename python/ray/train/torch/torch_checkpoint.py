@@ -39,8 +39,8 @@ class TorchCheckpoint(Checkpoint):
             >>> from ray.train.torch import TorchCheckpoint
             >>> import torch
             >>>
-            >>> model = torch.nn.Idenitty()
-            >>> checkpoint = TorchCheckpoint.from_model(model, path=".")
+            >>> model = torch.nn.Identity()
+            >>> checkpoint = TorchCheckpoint.from_model(model)
 
             You can use a :py:class:`TorchCheckpoint` to create an
             :py:class:`~ray.train.torch.TorchPredictor` and preform inference.
@@ -60,6 +60,6 @@ class TorchCheckpoint(Checkpoint):
                 the model itself, then the state dict will be loaded to this
                 ``model``.
         """
-        saved_model, preprocessor = _load_checkpoint(self, "TorchTrainer")
+        saved_model, _ = _load_checkpoint(self, "TorchTrainer")
         model = load_torch_model(saved_model=saved_model, model_definition=model)
         return model
