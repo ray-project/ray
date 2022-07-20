@@ -257,14 +257,30 @@ class _AgentCollector:
                         )
                     )
                     for i in range(count):
-                        index = (
+                        inds = (
                             self.shift_before
                             + obs_shift 
                             + view_req.shift_arr 
                             + (i * view_req.batch_repeat_value)
                         )
+
+                        # mask = inds > len(d) - 1
+
+                        # handle the case where the inds are out of bounds
+                        element_at_t = []
+                        for index in inds:
+                            if index < len(d):
+                                element_at_t.append(d[index])
+                            else:
+                                element_at_t.append(
+                                    np.zeros(
+                                        shape=view_req.space.shape,
+                                        dtype=view_req.space.dtype,
+                                    )
+                                )
+                        element_at_t = np.stack(element_at_t)
                     
-                        element_at_t = d[index]
+                        # element_at_t = d[inds]
                         if element_at_t.shape[0] == 1:
                             # squeeze to remove the T dimension if it is 1.
                             element_at_t = element_at_t.squeeze(0)
@@ -323,6 +339,7 @@ class _AgentCollector:
                 # Batch repeat value = 1: Repeat the shift_from/to range at
                 # each timestep.
                 else:
+                    # TODO: @kourosh we don't have test coverage on this block of code.
                     d0 = np_data[data_col][0]
                     shift_win = view_req.shift_to - view_req.shift_from + 1
                     data_size = d0.itemsize * int(np.product(d0.shape[1:]))
@@ -411,7 +428,9 @@ class _AgentCollector:
                     data = [
                         d[self.shift_before + shift : len(d) + shift] for d in np_data[data_col]
                     ]
-
+            
+            # if view_col == 'state_in_0':
+            #     breakpoint()
             check(data, data_2)
 
             if len(data) > 0:
