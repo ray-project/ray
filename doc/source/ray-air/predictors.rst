@@ -114,8 +114,8 @@ Coming soon!
 
 .. _pipelined-prediction:
 
-Lazy/Pipelined Prediction
--------------------------
+Lazy/Pipelined Prediction (experimental)
+----------------------------------------
 
 If you have a large dataset but not a lot of available memory, you can use the 
 :meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
