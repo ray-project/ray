@@ -102,15 +102,15 @@ class DummyTrainer(DataParallelTrainer):
                         # NOTE: This isn't recursive and will just return the size of
                         # the object pointers if list of non-primitive types.
                         bytes_read += sys.getsizeof(batch)
-                    session.report(
-                        dict(
-                            bytes_read=bytes_read,
-                            batches_read=batches_read,
-                            epochs_read=epochs_read,
-                            batch_delay=batch_delay,
-                        )
-                    )
                     batch_start = time.perf_counter()
+                session.report(
+                    dict(
+                        bytes_read=bytes_read,
+                        batches_read=batches_read,
+                        epochs_read=epochs_read,
+                        total_batch_delay=np.sum(batch_delays),
+                    )
+                )
             delta = time.perf_counter() - start
 
             print("Time to read all data", delta, "seconds")
