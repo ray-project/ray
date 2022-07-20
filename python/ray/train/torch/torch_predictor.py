@@ -82,7 +82,7 @@ class TorchPredictor(DLPredictor):
                 prediction happens on GPU.
         """
         checkpoint = TorchCheckpoint.copy_from(checkpoint)
-        model = checkpoint.get_model()
+        model = checkpoint.get_model(model)
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
