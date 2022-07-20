@@ -93,6 +93,8 @@ As an example, we generate a separate evaluation dataset for off-policy estimati
         --config='{"output": "/tmp/cartpole-eval", "output_max_file_size": 5000000}' \
         --stop='{"timesteps_total": 10000}'
 
+.. note:: Ideally, you should use separate datasets for training and OPE, as shown here.
+
 We then run off-policy estimation with DQN on the offline data:
 
 .. code-block:: bash
@@ -147,8 +149,6 @@ We then run off-policy estimation with DQN on the offline data:
     for _ in range(100):
         batch = reader.next()
         print(estimator.estimate(batch))
-
-.. note:: Ideally, you should use separate datasets for training and OPE, as shown above.
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
