@@ -116,24 +116,19 @@ class AlpaTrainer(BaseTrainer):
         if not alpa.api.is_initialized:
             alpa.init("ray")
 
-        # cluster = alpa.get_global_cluster()
+        cluster = alpa.get_global_cluster()
         
-        # ic("Distributed Training with Alpa using "
-        #     f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
-        # )
+        ic("Distributed Training with Alpa using "
+            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
+        )
         
-        # vp = alpa.device_mesh.get_global_virtual_physical_mesh()
-        # ic(vp)
+        logger.info(
+             "Distributed Training with Alpa using "
+            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
+        )
         
-        # logger.info(
-        #      "Distributed Training with Alpa using "
-        #     f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
-        # )
-        
+        # scaling parameters 
         self.scaling_config = scaling_config
-         
-        # scaling_config = self._validate_scaling_config(self.scaling_config)
-        
         self.resources_per_worker = self.scaling_config.resources_per_worker
         
         num_workers = self.scaling_config.num_workers
@@ -144,25 +139,22 @@ class AlpaTrainer(BaseTrainer):
         ic(num_workers, num_gpus)
         ic(scaling_config, self.resources_per_worker)
 
-        
+        # head node info
         from ray._private.worker import _global_node as ray_global_node
-        # try:
         self.head_info = ray_global_node.address_info
-        # except AttributeError as ae:
-        #     raise RuntimeError(
-        #         "Cannot access ray global node. Did you call ray.init?") \
-        #         from ae
         self.head_ip = self.head_info["node_ip_address"]
-
         ic(self.head_ip)
         
         # Gather host ids
         self.host_info = []
+        self.host_ips = []
+        
         for node in ray.nodes():
             for key in node["Resources"]:
                 if is_ray_node_resource(key):
                     self.host_info.append(node)
-
+                    self.host_ips.append(key.split('node:')[-1])
+                    
         # Gather device info
         self.host_num_devices = []
         for host_info in self.host_info:
@@ -170,44 +162,19 @@ class AlpaTrainer(BaseTrainer):
             assert number.is_integer()
             self.host_num_devices.append(int(number))
         
-        ic(self.host_num_devices, self.host_info)
-
-        # from ray.worker import _global_node as ray_global_node
-        
-        
-        # Gather host ids
-        host_info = []
-        host_ips = []
-        for node in ray.nodes():
-            for key in node["Resources"]:
-                if is_ray_node_resource(key):
-                    host_ips.append(key.split('node:')[-1])
-                    host_info.append(node)
-
-        ic(host_info, host_ips)
-
-
+        ic(self.host_num_devices, self.host_info, self.host_ips)        
 
         # number of workers filter
         # the number of workers can not exceeed the number of devices
-        num_workers = min(num_workers, len(host_info))
+        num_workers = min(num_workers, len(self.host_info))
         node_ids = [i for i in range(num_workers)]
-        node_ips = [host_ips[i] for i in range(num_workers)]
-        node_info = [host_info[i] for i in range(num_workers)]
+        node_ips = [self.host_ips[i] for i in range(num_workers)]
+        node_info = [self.host_info[i] for i in range(num_workers)]
         
         # filter the number of gpus per worker
         self.host_num_devices = [ self.host_num_devices[i] for i in range(num_workers)]
         num_devices_per_host = min(self.host_num_devices)
         num_devices_per_host = min(num_gpus, num_devices_per_host)
-        
-        
-        # num_devices_per_host = worker_group.num_gpus_per_worker
-        # node_ids = [i for i in range(len(worker_group))]
-        
-        # # filter by workergourp
-        # node_ips = [ w.metadata.node_ip for w in worker_group.workers ]
-        # host_ip_2_host_info_dict = dict(zip(host_ips, host_info))
-        # node_info = [ host_ip_2_host_info_dict[node_ip] for node_ip in node_ips]
 
         self.vp_mesh = VirtualPhysicalMesh(host_ids=node_ids,
                             host_info=node_info,
@@ -217,14 +184,6 @@ class AlpaTrainer(BaseTrainer):
 
         alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
-
-        exit()
-        
-        cluster = alpa.get_global_cluster()
-        logger.info(
-             "Distributed Training with Alpa using "
-            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
-        )
 
         # self._train_loop = train_loop
         # self._train_loop_config = train_loop_config
