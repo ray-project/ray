@@ -2385,7 +2385,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
+    cluster_compute: compute_tpl_32_cpu_autoscaling.yaml
 
   run:
     timeout: 7200
