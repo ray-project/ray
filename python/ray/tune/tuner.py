@@ -5,6 +5,7 @@ import ray
 from ray.air.config import RunConfig
 from ray.train.trainer import BaseTrainer
 from ray.tune import TuneError
+from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
@@ -144,7 +145,13 @@ class Tuner:
                 ).remote(**kwargs)
 
     @classmethod
-    def restore(cls, path: str) -> "Tuner":
+    def restore(
+        cls,
+        path: str,
+        resume_unfinished: bool = True,
+        resume_errored: bool = False,
+        restart_errored: bool = False,
+    ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
         Args:
@@ -153,18 +160,32 @@ class Tuner:
                console output of previous run.
                Note: depending on whether ray client mode is used or not,
                this path may or may not exist on your local machine.
+            resume_unfinished: If True, will continue to run unfinished trials.
+            resume_errored: If True, will re-schedule errored trials and try to
+                restore from their latest checkpoints.
+            restart_errored: If True, will re-schedule errored trials but force
+                restarting them frmo scratch (no checkpoint will be loaded).
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
         #  For example, is callbacks supposed to be automatically applied
         #  when a Tuner is restored and fit again?
+
+        resume_config = _ResumeConfig(
+            resume_unfinished=resume_unfinished,
+            resume_errored=resume_errored,
+            restart_errored=restart_errored,
+        )
+
         if not ray.util.client.ray.is_connected():
-            tuner_internal = TunerInternal(restore_path=path)
+            tuner_internal = TunerInternal(
+                restore_path=path, resume_config=resume_config
+            )
             return Tuner(_tuner_internal=tuner_internal)
         else:
             tuner_internal = force_on_current_node(
                 ray.remote(num_cpus=0)(TunerInternal)
-            ).remote(restore_path=path)
+            ).remote(restore_path=path, resume_config=resume_config)
             return Tuner(_tuner_internal=tuner_internal)
 
     def fit(self) -> ResultGrid:
