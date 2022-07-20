@@ -176,8 +176,8 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
 
     resume_from = LightGBMCheckpoint.from_checkpoint(resume_from)
 
-    model = checkpoint.get_model()
-    preprocessor = checkpoint.get_preprocessor()
+    model = resume_from.get_model()
+    preprocessor = resume_from.get_preprocessor()
     assert get_num_trees(model) == 10
     assert preprocessor.is_same
     assert preprocessor.fitted_
