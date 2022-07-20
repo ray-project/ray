@@ -107,7 +107,7 @@ DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
 CallableClass = type
 
 
-class CallableClassProtocol(Protocol[T, U]):
+class _CallableClassProtocol(Protocol[T, U]):
     def __call__(self, __arg: T) -> U:
         ...
 
@@ -118,7 +118,7 @@ BatchUDF = Union[
     # UDF type.
     # Callable[[DataBatch, ...], DataBatch]
     Callable[[DataBatch], DataBatch],
-    CallableClassProtocol,
+    _CallableClassProtocol,
 ]
 
 # A UDF on data rows.
@@ -127,7 +127,7 @@ RowUDF = Union[
     # UDF type.
     # Callable[[T, ...], U]
     Callable[[T], U],
-    CallableClassProtocol[T, U],
+    _CallableClassProtocol[T, U],
 ]
 
 # A list of block references pending computation by a single task. For example,
