@@ -71,7 +71,7 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         training_dict = None
         # Return full training_dict for env runner to construct episodes.
-        if self.is_training:
+        if self._is_training:
             # Note(jungong) : we need to keep the entire input dict here.
             # A column may be used by postprocessing (GAE) even if its
             # iew_requirement.used_for_training is False.

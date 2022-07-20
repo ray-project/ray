@@ -1,5 +1,6 @@
 import gym
 from typing import Dict, List, Optional, Union
+import numpy as np
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -82,11 +83,29 @@ class ViewRequirement:
 
         # Special case: Providing a (probably larger) range of indices, e.g.
         # "-100:0" (past 100 timesteps plus current one).
-        self.shift_from = self.shift_to = None
+        self.shift_from = self.shift_to = self.shift_step = None
         if isinstance(self.shift, str):
-            f, t = self.shift.split(":")
+            split = self.shift.split(":")
+            assert len(split) in [2, 3], f"Invalid shift str format: {self.shift}"
+            if len(split) == 2:
+                f, t = split
+                self.shift_step = 1
+            else:
+                f, t, s = split
+                self.shift_step = int(s)
+
             self.shift_from = int(f)
             self.shift_to = int(t)
+
+        if self.shift_from:
+            self.shift_arr = np.arange(self.shift_from, self.shift_to, self.shift_step)
+        else:
+            if isinstance(shift, int):
+                self.shift_arr = np.array([shift])
+            elif isinstance(shift, list):
+                self.shift_arr = np.array(shift)
+            else:
+                ValueError(f'unrecognized shift type: "{shift}"')
 
         self.index = index
         self.batch_repeat_value = batch_repeat_value
