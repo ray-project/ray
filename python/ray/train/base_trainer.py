@@ -2,6 +2,7 @@ import abc
 import inspect
 import logging
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
+import warnings
 
 import ray
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
@@ -160,17 +161,27 @@ class BaseTrainer(abc.ABC):
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
 
-        self._validate_attributes()
-
-        if datasets and not self.scaling_config._max_cpu_fraction_per_node:
-            logger.warning(
-                "When passing `datasets` to a Trainer, it is recommended to "
-                "reserve at least 20% of node CPUs for Dataset execution by setting "
-                "`_max_cpu_fraction_per_node = 0.8` in the Trainer `scaling_config`. "
-                "Not doing so can lead to resource contention or hangs. "
-                "See https://docs.ray.io/en/master/data/key-concepts.html"
-                "#example-datasets-in-tune for more info."
+        # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
+        #  longer experimental.
+        if self.datasets and not self.scaling_config._max_cpu_fraction_per_node:
+            trainer_will_use_all_cpus = (
+                self.scaling_config._total_reserved_cpus()
+                >= ray.available_resources()["CPU"]
             )
+            if trainer_will_use_all_cpus:
+                warnings.warn(
+                    "Instantiating this Trainer will reserve the remaining CPUs on "
+                    "this cluster which may cause resource contention or hangs during "
+                    "data processing. Consider reserving at least 20% of node CPUs for "
+                    "Dataset execution by setting `_max_cpu_fraction_per_node = 0.8` "
+                    "in the Trainer `scaling_config`. See "
+                    "https://docs.ray.io/en/master/data/key-concepts.html"
+                    "#example-datasets-in-tune for more info. You can ignore this "
+                    "message if your cluster is expected scale up.",
+                    stacklevel=2,
+                )
+
+        self._validate_attributes()
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
