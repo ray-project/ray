@@ -59,7 +59,10 @@ class LessSampledReplayBuffer(ReplayBuffer):
         """Evicts experiences that have been sampled > evict_sampled_more_then times."""
         idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
         often_sampled_idxes = list(
-            filter(lambda x: self._hit_count[x] >= evict_sampled_more_then, set(idxes))
+            filter(
+                lambda x: self._storage._hit_count[x] >= evict_sampled_more_then,
+                set(idxes),
+            )
         )
 
         sample = self._encode_sample(idxes)
@@ -67,8 +70,8 @@ class LessSampledReplayBuffer(ReplayBuffer):
 
         for idx in often_sampled_idxes:
             del self._storage[idx]
-            self._hit_count = np.append(
-                self._hit_count[:idx], self._hit_count[idx + 1 :]
+            self._storage._hit_count = np.append(
+                self._storage._hit_count[:idx], self._storage._hit_count[idx + 1 :]
             )
 
         return sample
