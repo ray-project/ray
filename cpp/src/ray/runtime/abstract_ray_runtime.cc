@@ -361,5 +361,10 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name) {
   return group;
 }
 
+std::string AbstractRayRuntime::GetNamespace() {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  return core_worker.GetJobConfig().ray_namespace();
+}
+
 }  // namespace internal
 }  // namespace ray
