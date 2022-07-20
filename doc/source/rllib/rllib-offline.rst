@@ -50,29 +50,39 @@ Then, we can tell DQN to train using these previously generated experiences with
             "input": "/tmp/cartpole-out",
             "explore": false}'
 
-Off-Policy Estimation
----------------------
+Off-Policy Estimation (OPE)
+---------------------------
 
 Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. Instead, you can:
-1. Evaluate on a simulated environment, if available, using ``evaluation_config["input"] = "sampler"``
-2. Use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value
-3. Use RLlib's `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods, to estimate the policy's performance using a separate offline dataset
+
+- Evaluate on a simulated environment, if available, using ``evaluation_config["input"] = "sampler"``
+- Use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value
+- Use RLlib's `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods, which estimate the policy's performance using a separate offline dataset, using the ``action_prob`` key in the data
 
 RLlib supports four off-policy estimators:
-1. `Importance Sampling (IS) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/importance_sampling.py>`
-2. `Weighted Importance Sampling (WIS) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/weighted_importance_sampling.py>`
-3. `Direct Method (DM) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/direct_method.py>`
-4. `Doubly Robust (DR) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/doubly_robust.py>`
 
+- `Importance Sampling (IS) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/importance_sampling.py>`__
+- `Weighted Importance Sampling (WIS) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/weighted_importance_sampling.py>`__
+- `Direct Method (DM) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/direct_method.py>`__
+- `Doubly Robust (DR) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/doubly_robust.py>`__
 
+As an example, we generate a separate evaluation dataset for off-policy estimation:
+.. code-block:: bash
+    $ rllib train
+        --run=PG \
+        --env=CartPole-v0 \
+        --config='{"output": "/tmp/cartpole-eval", "output_max_file_size": 5000000}' \
+        --stop='{"timesteps_total": 10000}'
+
+We then run off-policy estimation with DQN on the offline data:
 
 .. code-block:: bash
-
     $ rllib train \
         --run=DQN \
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
+            "evaluation_config": {"input": "/tmp/cartpole-eval"},
             "off_policy_estimation_methods": {
                 "is": {
                     "type": "ray.rllib.offline.estimators.ImportanceSampling",
@@ -82,11 +92,24 @@ RLlib supports four off-policy estimators:
                 }
             }'
 
-This example plot shows the Q-value metric in addition to importance sampling (IS) and weighted importance sampling (WIS) gain estimates (>1.0 means there is an estimated improvement over the original policy):
+.. note:: Ideally, the training and OPE datasets should be separate, as shown above.
+
+
+This example plot shows the Q-value metric in addition to IS and WIS gain estimates (>1.0 means there is an estimated improvement over the original policy):
 
 .. image:: images/offline-q.png
 
-**Estimator Python API:** For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.estimate(episode_batch)`` to perform counterfactual estimation as needed. The estimators take in a policy object and gamma value for the environment:
+IS and WIS compute the ratio between the action probabilities under the behavior (data) policy and the target (evaluation) policy, and use this ratio to estimate the policy's return.
+
+DM and DR train a Q-model to compute the estimated return. By default, RLlib uses `Fitted-Q Evaluation (FQE) <https://arxiv.org/abs/1911.06854>`__ to learn the Q-model. See `fqe_torch_model.py <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/fqe_torch_model.py>`__ for more details.
+
+.. note:: For a contextual bandit dataset, the ``dones`` key should always be set to ``True``. In this case, FQE reduces to fitting a reward model to the data.
+
+.. warning:: DM and DR currently only support ``framework="torch"``!
+
+**Estimator Python API:**
+For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.estimate(batch)`` to perform counterfactual estimation as needed. The estimators take in an RLLib Policy object and gamma value for the environment.
+DM and DR take in an optional `q_model_config` to configure the Q-model used for estimation, and implement ``estimator.train(batch)`` to train the Q-model.
 
 .. code-block:: python
 
@@ -94,14 +117,52 @@ This example plot shows the Q-value metric in addition to importance sampling (I
     ...  # train policy offline
 
     from ray.rllib.offline.json_reader import JsonReader
-    from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
+    from ray.rllib.offline.estimators import DoublyRobust
+    from ray.rllib.oflline.estimators.fqe_torch_model import FQETorchModel
 
-    estimator = WeightedImportanceSamplingEstimator(algo.get_policy(), gamma=0.99)
-    reader = JsonReader("/path/to/data")
+    q_model_config = {
+        # type: Q-model class to be used.
+        # Must implement the `train`, `estimate_q`, and `estimate_v` functions.
+        "type": FQETorchModel,
+        # model: RLlib ModelConfigDict to specify the neural network for the Q-model
+        "model": {
+            "fcnet_hiddens": [8, 8],
+            "fcnet_activation": "relu",
+            "vf_share_layers": True,
+        },
+        # n_iters: Number of gradient steps to run on batch, defaults to 1
+        "n_iters": 160,
+        # lr: Learning rate for Adam optimizer
+        "lr": 1e-3,
+        # delta: Early stopping threshold if the mean loss < delta
+        "delta": 1e-4,
+        # clip_grad_norm: Clip loss gradients to this maximum value
+        "clip_grad_norm": 100.0,
+        # minibatch_size: Minibatch size for training Q-function;
+        #   if None, train on the whole batch
+        "minibatch_size": 32,
+        # tau: Polyak averaging factor for target Q-function
+        "tau": 1.0,
+        ""
+    }
+
+    estimator = DoublyRobust(
+        policy=algo.get_policy(),
+        gamma=0.99,
+        q_model_config=q_model_config,
+    )
+
+    # Train estimator's Q-model; only required for DM and DR estimators
+    reader = JsonReader("/tmp/cartpole-out")
     for _ in range(1000):
         batch = reader.next()
-        for episode in batch.split_by_episode():
-            print(estimator.estimate(episode))
+        print(estimator.train(batch))
+    
+    reader = JsonReader("/tmp/cartpole-eval")
+    # Compute off-policy estimates
+    for _ in range(1000):
+        batch = reader.next()
+        print(estimator.estimate(batch))
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -203,9 +264,9 @@ To include environment data in the training sample datasets you can use the opti
 ``store_infos`` parameter that is part of the ``output_config`` dictionary. This parameter
 ensures that the ``infos`` dictionary, as returned by the RL environment, is included in the output files.
 
-Note 1: It is the responsibility of the user to ensure that the content of ``infos`` can be serialized
-to file.
-Note 2: This setting is only relevant for the TensorFlow based agents, for PyTorch agents the ``infos`` data is always stored.
+.. note:: It is the responsibility of the user to ensure that the content of ``infos`` can be serialized to file.
+
+.. note:: This setting is only relevant for the TensorFlow based agents, for PyTorch agents the ``infos`` data is always stored.
 
 To write the ``infos`` data to JSON or Parquet files using Dataset, specify output and output_config keys like the following:
 
