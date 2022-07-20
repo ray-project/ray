@@ -25,7 +25,7 @@ class TensorflowCheckpoint(Checkpoint):
         *,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "TensorflowCheckpoint":
-        """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores a Keras 
+        """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores a Keras
         model.
 
         Args:
