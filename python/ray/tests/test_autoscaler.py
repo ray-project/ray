@@ -2718,8 +2718,8 @@ class AutoscalingTest(unittest.TestCase):
         If disable liveness check is False, the default code path is tested and we
         expect to see workers terminated.
 
-        If disable liveness check is True, we expect the autoscaler to not take action
-        on unhealthy nodes, delegating node management to another component.
+        If disable liveness check is True, we expect the autoscaler not to take action
+        on unhealthy nodes, instead delegating node management to another component.
         """
         config = copy.deepcopy(SMALL_CLUSTER)
         # Make it clear we're not timing out idle nodes here.
