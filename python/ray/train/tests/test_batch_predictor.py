@@ -8,15 +8,18 @@ from ray.air.constants import PREPROCESSOR_KEY
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.data import Preprocessor
+from ray.tests.conftest import *  # noqa
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor
 
 
 class DummyPreprocessor(Preprocessor):
+    _is_fittable = False
+
     def __init__(self, multiplier=2):
         self.multiplier = multiplier
 
-    def transform_batch(self, df):
+    def _transform_pandas(self, df):
         return df * self.multiplier
 
 
@@ -44,7 +47,7 @@ class DummyPredictor(Predictor):
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         # Need to throw exception here instead of constructor to surface the
         # exception to pytest rather than ray worker.
-        if self.use_gpu:
+        if self.use_gpu and "allow_gpu" not in kwargs:
             raise ValueError("DummyPredictor does not support GPU prediction.")
         else:
             return data * self.factor
@@ -59,6 +62,54 @@ class DummyPredictorFS(DummyPredictor):
         checkpoint_data = checkpoint.to_dict()
         preprocessor = checkpoint.get_preprocessor()
         return cls(checkpoint_data["factor"], preprocessor=preprocessor)
+
+
+def test_separate_gpu_stage(shutdown_only):
+    ray.init(num_gpus=1)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictor,
+    )
+    ds = batch_predictor.predict(
+        ray.data.range_table(10),
+        num_gpus_per_worker=1,
+        separate_gpu_stage=True,
+        allow_gpu=True,
+    )
+    stats = ds.stats()
+    assert "Stage 1 read->map_batches:" in stats, stats
+    assert "Stage 2 map_batches:" in stats, stats
+    assert ds.max("value") == 36.0, ds
+
+    ds = batch_predictor.predict(
+        ray.data.range_table(10),
+        num_gpus_per_worker=1,
+        separate_gpu_stage=False,
+        allow_gpu=True,
+    )
+    stats = ds.stats()
+    assert "Stage 1 read:" in stats, stats
+    assert "Stage 2 map_batches:" in stats, stats
+    assert ds.max("value") == 36.0, ds
+
+
+def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
+    """
+    Test we automatically set underlying Predictor creation use_gpu to True if
+    we found num_gpus_per_worker > 0 in BatchPredictor's predict() call.
+    """
+    ray.init(num_gpus=1)
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictor,
+    )
+    test_dataset = ray.data.range_table(4)
+
+    with pytest.raises(
+        ValueError, match="DummyPredictor does not support GPU prediction"
+    ):
+        _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
 
 
 def test_batch_prediction():
@@ -162,24 +213,6 @@ def test_batch_prediction_from_pandas_udf():
     output_ds = batch_predictor.predict(test_dataset, all_true=True)
     output = [row["bool"] for row in output_ds.take()]
     assert output == [True, True, True]
-
-
-def test_automatic_enable_gpu_from_num_gpus_per_worker():
-    """
-    Test we automatically set underlying Predictor creation use_gpu to True if
-    we found num_gpus_per_worker > 0 in BatchPredictor's predict() call.
-    """
-
-    batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
-        DummyPredictor,
-    )
-    test_dataset = ray.data.range(4)
-
-    with pytest.raises(
-        ValueError, match="DummyPredictor does not support GPU prediction"
-    ):
-        _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
 
 
 def test_get_and_set_preprocessor():
