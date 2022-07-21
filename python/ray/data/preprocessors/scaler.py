@@ -124,7 +124,7 @@ class MaxAbsScaler(Preprocessor):
         >>> import ray
         >>> from ray.data.preprocessors import MaxAbsScaler
         >>>
-        >>> df = pd.DataFrame({"X1": [-6, 3], "X2": [2, -4], "X3": [0, 0]}  # doctest: +SKIP # noqa: E501
+        >>> df = pd.DataFrame({"X1": [-6, 3], "X2": [2, -4], "X3": [0, 0]})  # doctest: +SKIP # noqa: E501
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> ds.to_pandas()  # doctest: +SKIP
            X1  X2  X3
