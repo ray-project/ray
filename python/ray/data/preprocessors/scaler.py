@@ -149,8 +149,8 @@ class RobustScaler(Preprocessor):
         x' = \frac{x - \mu_{1/2}}{\mu_h - \mu_l}
 
     where :math:`x` is the column, :math:`x'` is the transformed column,
-    :math:`\mu_{1/2}` is the column median. :math:`\mu_{h}` and :math:`\mu_{l}` are the 
-    high and low quantiles, respectively. By default, :math:`\mu_{h}` is the third 
+    :math:`\mu_{1/2}` is the column median. :math:`\mu_{h}` and :math:`\mu_{l}` are the
+    high and low quantiles, respectively. By default, :math:`\mu_{h}` is the third
     quartile and :math:`\mu_{l}` is the first quartile.
 
     .. note::
@@ -158,8 +158,8 @@ class RobustScaler(Preprocessor):
 
     Args:
         columns: The columns to separately scale.
-        quantile_range: A tuple that defines the lower and upper quantiles. Values 
-            must be between 0 and 1. Defaults to the 1st and 3rd quartiles: 
+        quantile_range: A tuple that defines the lower and upper quantiles. Values
+            must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
             ``(0.25, 0.75)``.
 
     Examples:
@@ -168,8 +168,8 @@ class RobustScaler(Preprocessor):
         >>> from ray.data.preprocessors import RobustScaler
         >>>
         >>> df = pd.DataFrame({
-        ...     "X1": [1, 2, 3, 4, 5], 
-        ...     "X2": [13, 5, 14, 2, 8], 
+        ...     "X1": [1, 2, 3, 4, 5],
+        ...     "X2": [13, 5, 14, 2, 8],
         ...     "X3": [1, 2, 2, 2, 3],
         ... })
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
@@ -192,7 +192,7 @@ class RobustScaler(Preprocessor):
         3  0.5 -0.750   2
         4  1.0  0.000   3
     """
-    
+
     def __init__(
         self, columns: List[str], quantile_range: Tuple[float, float] = (0.25, 0.75)
     ):
