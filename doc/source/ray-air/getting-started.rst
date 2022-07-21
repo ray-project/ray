@@ -3,7 +3,7 @@
 Ray AI Runtime (AIR)
 ====================
 
-Ray AI Runtime (AIR) is an open-source toolkit for building end-to-end ML applications. By leveraging Ray and its library ecosystem, it brings scalability and programmability to ML platforms.
+Ray AI Runtime (AIR) is an open-source toolkit for building end-to-end ML applications. By leveraging Ray, its distributed compute capabilities, and its library ecosystem, Ray AIR brings scalability and programmability to ML platforms.
 
 .. tip::
     **Getting involved with Ray AIR.** Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved. We'll be holding office hours, development sprints, and other activities as we get closer to the Ray AIR Beta/GA release. Join us!
@@ -11,12 +11,12 @@ Ray AI Runtime (AIR) is an open-source toolkit for building end-to-end ML applic
 .. image:: images/ai_runtime.jpg
 
 
-The main focuses of the Ray AI Runtime:
+Ray AIR focuses on two functional aspects:
 
-* Ray AIR focuses on providing the compute layer for ML workloads.
+* It provides scalability by leveraging Ray’s distributed compute layer for ML workloads.
 * It is designed to interoperate with other systems for storage and metadata needs.
 
-Ray AIR consists of 5 key components:
+Ray AIR consists of five key components:
 
 - Data processing (:ref:`Ray Data <datasets>`)
 - Model Training (:ref:`Ray Train <train-docs>`)
@@ -160,19 +160,16 @@ See the :ref:`Key Concepts <air-key-concepts>` for more that Ray AIR has to offe
 Why Ray AIR?
 ------------
 
-There are so many machine learning frameworks, platforms, and tools nowadays. What makes Ray AIR different?
+Today, there are a myriad of machine learning frameworks, platforms, and tools. Why would you choose Ray AIR and what makes it different? Ray AIR provides three 
+unique functional values derived from Ray. Let's examine each.
 
-We believe Ray AIR provides unique value deriving from Ray.
-
-
-**Seamless development to production**: Ray AIR reduces development friction going from development to production. Unlike in other frameworks, scaling Ray applications from a laptop to large clusters doesn't require a separate way of running -- the same code scales up seamlessly.
+**1. Seamless development to production**: Ray AIR reduces development friction going from development to production. Unlike in other frameworks, scaling Ray applications from a laptop to large clusters doesn't require a separate way of running -- the same code scales up seamlessly.
 This means data scientists and ML practitioners spend less time fighting YAMLs and refactoring code. Smaller teams and companies that don’t have the resources to invest heavily on MLOps can now deploy ML models at a much faster rate with Ray AIR.
 
 
-**Multi-cloud and Framework-interoperable**: Ray AIR is multi-cloud and framework-interoperable. The Ray compute layer and libraries freely operate with Cloud platforms and frameworks in the ecosystem, reducing lock-in to any particular choices of ML tech.
-Ex: why framework interoperability is unique to Ray--- it's easy to run Torch distributed or elastic Horovod within Ray, but not vice versa.
+**2. Multi-cloud and Framework-interoperable**: Ray AIR is multi-cloud and framework-interoperable. The Ray compute layer and libraries freely operate with common public cloud platforms and frameworks in the ecosystem, reducing lock-in to any particular choices of ML tech. Framework interoperability is unique to Ray--- it's easy to run Torch distributed or elastic Horovod within Ray, but not vice versa.
 
-**Future-proof via flexibility and scalability**: Ray's scalability and flexibility makes Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common patterns are being incorporated into libraries like Ray Serve.
+**3. Future-proof via flexibility and scalability**: Ray's scalability and flexibility make Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common model deployment patterns are being incorporated into libraries like Ray Serve.
 
 Next Steps
 ----------
