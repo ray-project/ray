@@ -218,7 +218,7 @@ This method should take no arguments and return no result, raising an exception 
 You can also customize how frequently the health check is run and the timeout when a replica will be deemed unhealthy if it hasn't responded in the deployment options.
 
 > ```python
-> @serve.deployment(_health_check_period_s=10, _health_check_timeout_s=30)
+> @serve.deployment(health_check_period_s=10, health_check_timeout_s=30)
 > class MyDeployment:
 >     def __init__(self, db_addr: str):
 >         self._my_db_connection = connect_to_db(db_addr)

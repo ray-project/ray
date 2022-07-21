@@ -9,7 +9,7 @@ from ray._private.test_utils import SignalActor
 
 
 def test_serve_forceful_shutdown(serve_instance):
-    @serve.deployment(_graceful_shutdown_timeout_s=0.1)
+    @serve.deployment(graceful_shutdown_timeout_s=0.1)
     def sleeper():
         while True:
             time.sleep(1000)
@@ -28,8 +28,8 @@ def test_serve_graceful_shutdown(serve_instance):
     @serve.deployment(
         name="wait",
         max_concurrent_queries=10,
-        _graceful_shutdown_timeout_s=1000,
-        _graceful_shutdown_wait_loop_s=0.5,
+        graceful_shutdown_timeout_s=1000,
+        graceful_shutdown_wait_loop_s=0.5,
     )
     class Wait:
         async def __call__(self, signal_actor):

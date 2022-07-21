@@ -69,7 +69,7 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
 
     @serve.deployment(
         autoscaling_config=autoscaling_config,
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
     )
     class Model1:
         def __init__(self, weight):
@@ -81,7 +81,7 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
 
     @serve.deployment(
         autoscaling_config=autoscaling_config,
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
     )
     class Model2:
         def __init__(self, weight):
@@ -98,7 +98,7 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
         serve_dag = DAGDriver.options(
             route_prefix="/my-dag",
             autoscaling_config=autoscaling_config,
-            _graceful_shutdown_timeout_s=1,
+            graceful_shutdown_timeout_s=1,
         ).bind(output2)
 
     dag_handle = serve.run(serve_dag)
@@ -153,7 +153,7 @@ def test_autoscaling_with_ensemble_nodes(serve_instance):
 
     @serve.deployment(
         autoscaling_config=autoscaling_config,
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
     )
     class Model:
         def __init__(self, weight):
@@ -164,7 +164,7 @@ def test_autoscaling_with_ensemble_nodes(serve_instance):
 
     @serve.deployment(
         autoscaling_config=autoscaling_config,
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
     )
     def combine(value_refs):
         ray.get(signal.wait.remote())
@@ -179,7 +179,7 @@ def test_autoscaling_with_ensemble_nodes(serve_instance):
         serve_dag = DAGDriver.options(
             route_prefix="/my-dag",
             autoscaling_config=autoscaling_config,
-            _graceful_shutdown_timeout_s=1,
+            graceful_shutdown_timeout_s=1,
         ).bind(output)
 
     dag_handle = serve.run(serve_dag)

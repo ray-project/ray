@@ -244,9 +244,9 @@ def test_healthcheck_timeout(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _health_check_timeout_s=2,
-        _health_check_period_s=1,
-        _graceful_shutdown_timeout_s=0,
+        health_check_timeout_s=2,
+        health_check_period_s=1,
+        graceful_shutdown_timeout_s=0,
     )
     class A:
         def check_health(self):

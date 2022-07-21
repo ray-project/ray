@@ -22,7 +22,7 @@ class Counter:
         self._count = 0
 
 
-@serve.deployment(_health_check_period_s=1, _health_check_timeout_s=1)
+@serve.deployment(health_check_period_s=1, health_check_timeout_s=1)
 class Patient:
     def __init__(self):
         self.healthy = True
@@ -126,7 +126,7 @@ def test_inherit_healthcheck(serve_instance):
         def set_should_fail(self):
             self.should_fail = True
 
-    @serve.deployment(_health_check_period_s=1)
+    @serve.deployment(health_check_period_s=1)
     class Child(Parent):
         def __call__(self, *args):
             return ray.get_runtime_context().current_actor
@@ -143,7 +143,7 @@ def test_nonconsecutive_failures(serve_instance):
     counter = ray.remote(Counter).remote()
 
     # Test that a health check failing every other call isn't marked unhealthy.
-    @serve.deployment(_health_check_period_s=0.1)
+    @serve.deployment(health_check_period_s=0.1)
     class FlakyHealthCheck:
         def check_health(self):
             curr_count = ray.get(counter.inc.remote())
@@ -166,7 +166,7 @@ def test_consecutive_failures(serve_instance):
 
     counter = ray.remote(Counter).remote()
 
-    @serve.deployment(_health_check_period_s=1)
+    @serve.deployment(health_check_period_s=1)
     class ChronicallyUnhealthy:
         def __init__(self):
             self._actor_id = ray.get_runtime_context().current_actor._actor_id
