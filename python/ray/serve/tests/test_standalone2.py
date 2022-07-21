@@ -715,6 +715,7 @@ def test_handle_early_detect_failure(shutdown_ray):
     handle = serve.run(f.bind())
     pids = ray.get([handle.remote() for _ in range(2)])
     assert len(set(pids)) == 2
+    assert len(handle.router._replica_set.in_flight_queries.keys()) == 2
 
     client = get_global_client()
     ray.kill(client._controller, no_restart=True)
@@ -724,6 +725,7 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     pids = ray.get([handle.remote() for _ in range(10)])
     assert len(set(pids)) == 1
+    assert len(handle.router._replica_set.in_flight_queries.keys()) == 1
 
 
 if __name__ == "__main__":
