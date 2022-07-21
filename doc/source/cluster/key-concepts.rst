@@ -104,4 +104,4 @@ Kubernetes (K8s) operator
 Deployments of Ray on Kubernetes are managed by the Ray Kubernetes Operator. The
 Ray Operator makes it easy to deploy clusters of Ray pods within a Kubernetes
 cluster. To learn more about the K8s operator, refer to
-the :ref:`documentation<ray-operator>`.
+the :ref:`documentation<kuberay-index>`.
