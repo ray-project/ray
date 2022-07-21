@@ -13,7 +13,7 @@ RLlib's offline dataset APIs enable working with experiences read from offline s
 RLlib represents trajectory sequences (i.e., ``(s, a, r, s', ...)`` tuples) with `SampleBatch <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__ objects. Using a batch format enables efficient encoding and compression of experiences. During online training, RLlib uses `policy evaluation <rllib-concepts.html#policy-evaluation>`__ actors to generate batches of experiences in parallel using the current policy. RLlib also uses this same batch format for reading and writing experiences to offline storage.
 
 Example: Training on previously saved experiences
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------------------------------
 
 .. note::
 
@@ -51,35 +51,37 @@ Then, we can tell DQN to train using these previously generated experiences with
             "explore": false}'
 
 Off-Policy Estimation (OPE)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------
 
-Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. Instead, you can:
+In practice, when we use offline data for training, it is usually not straightforward to evaluate the trained policies using a simulator similar to how it is done in online RL. For example, in recommeder systems it is often the case that rolling out the policy in real-world can jeopardize your business use-case if the trained policy is not performant enough (e.g. by causing churn on your customers). For these situations we can use `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods which help avoid the risk of evaluating your policy in real-world. RLlib provides some basic APIs for off-policy evaluation with an option to use a simulator instead (if it is available).
 
-- Evaluate on a simulated environment, if available, using ``evaluation_config["input"] = "sampler"``
-- Use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value
-- Use RLlib's `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods, which estimate the policy's performance on a separate offline dataset, using the ``action_prob`` key in the data
+With RLlib evaluation framework you can: 
 
-RLlib supports four off-policy estimators:
+- Evaluate policies on a simulated environement, if available, using ``evaluation_config["input"] = "sampler"``. You can then monitor your policy's performance on tensorboard as it is getting trained (by using ``tensorboard --logdir=~/ray_results``). 
+
+- Use RLlib's off-policy estimation methods, which estimate the policy's performance on a separate offline dataset. To be able to use this feature, the evaluation dataset should contain ``action_prob`` key that represents the action probability distribution of the collected data so that we can do counterfactual evaluation. 
+
+RLlib supports the following off-policy estimators:
 
 - `Importance Sampling (IS) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/importance_sampling.py>`__
 - `Weighted Importance Sampling (WIS) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/weighted_importance_sampling.py>`__
 - `Direct Method (DM) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/direct_method.py>`__
 - `Doubly Robust (DR) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/doubly_robust.py>`__
 
-IS and WIS compute the ratio between the action probabilities under the behavior (data) policy and the target (evaluation) policy, and use this ratio to estimate the policy's return.
+IS and WIS compute the ratio between the action probabilities under the behavior policy (from the dataset) and the target policy (the policy under evaluation), and use this ratio to estimate the policy's return. More details on this can be found in their respective papers.
 
 DM and DR train a Q-model to compute the estimated return. By default, RLlib uses `Fitted-Q Evaluation (FQE) <https://arxiv.org/abs/1911.06854>`__ to train the Q-model. See `fqe_torch_model.py <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/fqe_torch_model.py>`__ for more details.
 
 .. note:: For a contextual bandit dataset, the ``dones`` key should always be set to ``True``. In this case, FQE reduces to fitting a reward model to the data.
 
-RLlib's OPE estimators output six metrics (``v_gain > 1.0`` indicates that the policy is better than the behavior data):
+RLlib's OPE estimators output six metrics:
 
-- ``v_behavior``: The discounted sum over rewards in the offline episode, averaged over episodes in the batch
-- ``v_behavior_std``: The standard deviation corresponding to v_behavior
-- ``v_target``: The OPE's estimated discounted return for the target policy, averaged over episodes in the batch
-- ``v_target_std``: The standard deviation corresponding to v_target
-- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``, averaged over episodes in the batch
-- ``v_gain_std``: The standard deviation corresponding to v_gain
+- ``v_behavior``: The discounted sum over rewards in the offline episode, averaged over episodes in the batch.
+- ``v_behavior_std``: The standard deviation corresponding to v_behavior.
+- ``v_target``: The OPE's estimated discounted return for the target policy, averaged over episodes in the batch.
+- ``v_target_std``: The standard deviation corresponding to v_target.
+- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``, averaged over episodes in the batch. ``v_gain > 1.0`` indicates that the policy is better than the policy that generated the behavior data.
+- ``v_gain_std``: The standard deviation corresponding to v_gain.
 
 As an example, we generate an evaluation dataset for off-policy estimation:
 
@@ -138,7 +140,7 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
 
 .. image:: images/rllib-offline.png
 
-**Estimator Python API:** For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.train(batch)`` to perform any neccessary training and ``estimator.estimate(batch)`` to perform counterfactual estimation. The estimators take in an RLLib Policy object and gamma value for the environment, along with additional estimator-specific arguments (e.g. ``q_model_config`` for DM and DR). You can also write your own off-policy estimator by subclassing from the `OffPolicyEstimator <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/off_policy_estimator.py>`__ base class.
+**Estimator Python API:** For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.train(batch)`` to perform any neccessary training and ``estimator.estimate(batch)`` to perform counterfactual estimation. The estimators take in an RLLib Policy object and gamma value for the environment, along with additional estimator-specific arguments (e.g. ``q_model_config`` for DM and DR). You can take a look at the example config parameters of the q_model_config `here <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/fqe_torch_model.py>`__. You can also write your own off-policy estimator by subclassing from the `OffPolicyEstimator <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/off_policy_estimator.py>`__ base class.
 
 .. code-block:: python
 
@@ -171,7 +173,7 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
         # 'v_behavior_std': ..., 'v_target_std': ..., 'v_gain_std': ...}
 
 Example: Converting external experiences to batch format
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------------------------------------
 
 When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/rllib/offline/json_writer.py>`__ class to write out batches.
 This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v0 to disk:
@@ -182,7 +184,7 @@ This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/exa
    :end-before: __sphinx_doc_end__
 
 On-policy algorithms and experience postprocessing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+----------------------------------------------------
 
 RLlib assumes that input batches are of
 `postprocessed experiences <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py#L434>`__.
@@ -196,7 +198,7 @@ However, for on-policy algorithms like PPO, you'll need to pass in the extra val
 Note that for on-policy algorithms, you'll also have to throw away experiences generated by prior versions of the policy. This greatly reduces sample efficiency, which is typically undesirable for offline training, but can make sense for certain applications.
 
 Mixing simulation and offline data
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------------
 
 RLlib supports multiplexing inputs from multiple input sources, including simulation. For example, in the following example we read 40% of our experiences from ``/tmp/cartpole-out``, 30% from ``hdfs:/archive/cartpole``, and the last 30% is produced via policy evaluation. Input sources are multiplexed using `np.random.choice <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.random.choice.html>`__:
 
@@ -214,12 +216,12 @@ RLlib supports multiplexing inputs from multiple input sources, including simula
             "explore": false}'
 
 Scaling I/O throughput
-~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
 Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_workers`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
 
 Ray Dataset Integration
-~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------
 
 RLlib has experimental support for reading/writing training samples from/to large offline datasets using
 `Ray Dataset <https://docs.ray.io/en/latest/data/dataset.html>`__.
@@ -264,7 +266,7 @@ To write sample data to JSON or Parquet files using Dataset, specify output and 
     }
 
 Writing Environment Data
-~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------
 
 To include environment data in the training sample datasets you can use the optional
 ``store_infos`` parameter that is part of the ``output_config`` dictionary. This parameter
@@ -374,7 +376,7 @@ The interface for a custom input reader is as follows:
     :noindex:
 
 Example Custom Input API
-~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
 You can create a custom input reader like the following:
 
