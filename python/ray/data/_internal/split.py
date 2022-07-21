@@ -91,7 +91,6 @@ def _split_single_block(
     block_id: int,
     block: Block,
     meta: BlockMetadata,
-    block_row: int,
     split_indices: List[int],
 ) -> Tuple[int, BlockPartition]:
     """Split the provided block at the given indices."""
@@ -100,7 +99,7 @@ def _split_single_block(
     prev_index = 0
     # append one more entry at the last so we don't
     # need handle empty edge case.
-    split_indices.append(block_row)
+    split_indices.append(meta.num_rows)
     for index in split_indices:
         logger.debug(f"slicing block {prev_index}:{index}")
         stats = BlockExecStats.builder()
@@ -137,7 +136,6 @@ def _drop_empty_block_split(block_split_indices: List[int], num_rows: int) -> Li
 
 def _split_all_blocks(
     blocks_with_metadata: BlockPartition,
-    block_rows: List[int],
     per_block_split_indices: List[List[int]],
 ) -> Iterable[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Split all the input blocks based on the split indices"""
@@ -149,7 +147,7 @@ def _split_all_blocks(
 
     for block_id, block_split_indices in enumerate(per_block_split_indices):
         (block_ref, meta) = blocks_with_metadata[block_id]
-        block_row = block_rows[block_id]
+        block_row = meta.num_rows
         block_split_indices = _drop_empty_block_split(block_split_indices, block_row)
         if len(block_split_indices) == 0:
             # optimization: if no split is needed, we just need to add it to the
@@ -162,7 +160,6 @@ def _split_all_blocks(
                     block_id,
                     block_ref,
                     meta,
-                    block_row,
                     block_split_indices,
                 )
             )
@@ -233,7 +230,7 @@ def _split_at_indices(
     # phase 2: split each block based on the indices from previous step.
     all_blocks_split_results: Iterable[
         Tuple[ObjectRef[Block], BlockMetadata]
-    ] = _split_all_blocks(blocks_with_metadata, block_rows, per_block_split_indices)
+    ] = _split_all_blocks(blocks_with_metadata, per_block_split_indices)
 
     # phase 3: generate the final split.
 
