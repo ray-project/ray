@@ -26,13 +26,14 @@ trainer = XGBoostTrainer(
 )
 result = trainer.fit()
 
-# You can also create a checkpoint from a trained model using `to_air_checkpoint`.
+# You can also create a checkpoint from a trained model using
+# `XGBoostCheckpoint.from_model`.
 
 # import xgboost as xgb
-# from ray.train.xgboost import to_air_checkpoint
+# from ray.train.xgboost import XGBoostCheckpoint
 # model = xgb.Booster()
 # model.load_model(...)
-# checkpoint = to_air_checkpoint(".", model)
+# checkpoint = XGBoostCheckpoint.from_model(model, path=".")
 checkpoint = result.checkpoint
 
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)

@@ -14,7 +14,7 @@ from ray.air.constants import MODEL_KEY
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.xgboost import XGBoostPredictor, to_air_checkpoint
+from ray.train.xgboost import XGBoostCheckpoint, XGBoostPredictor
 
 
 class DummyPreprocessor(Preprocessor):
@@ -100,7 +100,7 @@ def test_predict_feature_columns_pandas():
 
 def test_predict_no_preprocessor_no_training():
     with tempfile.TemporaryDirectory() as tmpdir:
-        checkpoint = to_air_checkpoint(booster=model, path=tmpdir)
+        checkpoint = XGBoostCheckpoint.from_model(booster=model, path=tmpdir)
         predictor = XGBoostPredictor.from_checkpoint(checkpoint)
 
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])

@@ -2,8 +2,8 @@ from typing import Optional, Tuple, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
+from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
-from ray.train.xgboost.utils import load_checkpoint
 
 import xgboost
 import xgboost_ray
@@ -74,7 +74,8 @@ class XGBoostTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        return load_checkpoint(checkpoint)
+        checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: xgboost.Booster, path: str):
         model.save_model(path)

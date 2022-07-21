@@ -9,7 +9,7 @@ from torchvision.models import resnet18
 
 import ray
 from ray.air.util.tensor_extensions.pandas import TensorArray
-from ray.train.torch import to_air_checkpoint, TorchPredictor
+from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
 from ray.data.datasource import ImageFolderDatasource
@@ -43,7 +43,7 @@ def main(data_size_gb: int):
     model = resnet18(pretrained=True)
 
     preprocessor = BatchMapper(preprocess)
-    ckpt = to_air_checkpoint(model=model, preprocessor=preprocessor)
+    ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
     predictor.predict(dataset, num_gpus_per_worker=1, feature_columns=["image"])
