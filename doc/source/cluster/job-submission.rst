@@ -185,7 +185,7 @@ Using the CLI on a remote cluster
 Above, we ran the "Quick Start" example on a local Ray cluster.  When connecting to a `remote` cluster via the CLI, you need to be able to access the Ray Dashboard port of the cluster over HTTP.
 
 One way to do this is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node. 
-If you started your remote cluster with the :ref:`Ray Cluster Launcher <ref-cluster-quick-start>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
+If you started your remote cluster with the :ref:`Ray Cluster Launcher <ref-cluster-getting-started>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
 
 To use this, run the following command on your local machine, where ``cluster.yaml`` is the configuration file you used to launch your cluster:
 

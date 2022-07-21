@@ -269,8 +269,10 @@ parts:
 
   - caption: Ray Clusters 2
     chapters:
-      - file: cluster2/quickstart
+      - file: cluster2/getting-started
+        title: Getting Started
       - file: cluster2/key-concepts/key-concepts
+        title: Key Concepts
         sections:
           - file: cluster2/key-concepts/overview
           - file: cluster2/key-concepts/high-level-architecture
@@ -280,6 +282,7 @@ parts:
           - file: cluster2/key-concepts/configuration
           - file: cluster2/key-concepts/things-to-know
       - file: cluster2/user-guides/user-guides
+        title: User Guides
         sections:
         - file: cluster2/user-guides/installing-ray
         - file: cluster2/user-guides/launching-ray-cluster-on-k8s/launching-ray-cluster-on-k8s
@@ -317,6 +320,7 @@ parts:
           - file: cluster2/user-guides/community-supported-cluster-manager/slurm
           - file: cluster2/user-guides/community-supported-cluster-manager/lsf
       - file: cluster2/tutorials/tutorials
+        title: Examples
         sections:
           - file: cluster2/tutorials/learn-ray-cluster-basics/learn-ray-cluster-basics
             sections:

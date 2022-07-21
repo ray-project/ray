@@ -4,10 +4,10 @@
 
 .. _ref-cluster-getting-started:
 
-Ray Clusters Quick Start
-========================
+Getting Started with Ray Clusters
+=================================
 
-This quick start demonstrates the capabilities of the Ray cluster. Using the Ray cluster, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
+This page demonstrates the capabilities of the Ray cluster. Using the Ray cluster, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
 
 For launching a Ray cluster manually, you can refer to the :ref:`on-premise cluster setup <cluster-private-setup>` guide.
 
@@ -214,7 +214,14 @@ Run the application in the cloud
 --------------------------------
 
 We are now ready to execute the application in across multiple machines on our Ray cloud cluster.
-``ray.init()`` will now automatically connect to the newly created cluster.
+First, we need to edit the initialization command ``ray.init()`` in ``script.py``.
+Change it to
+
+.. code-block:: python
+
+    ray.init(address='auto')
+
+This tells your script to connect to the Ray runtime on the remote cluster instead of initializing a new Ray runtime.
 
 Next, run the following command:
 
@@ -225,8 +232,6 @@ Next, run the following command:
 The output should now look similar to the following:
 
 .. parsed-literal::
-
-    Connecting to existing Ray cluster at address: <IP address>...
 
     This cluster consists of
         3 nodes in total

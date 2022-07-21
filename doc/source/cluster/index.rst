@@ -37,7 +37,7 @@ Where to go from here?
     run on a laptop and scale it up in the cloud.
 
     +++
-    .. link-button:: ref-cluster-quick-start
+    .. link-button:: ref-cluster-getting-started
         :type: ref
         :text: Ray Clusters Quick Start
         :classes: btn-outline-info btn-block

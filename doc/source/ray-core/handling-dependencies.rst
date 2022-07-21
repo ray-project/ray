@@ -11,7 +11,7 @@ Your Ray application may have dependencies that exist outside of your Ray script
 
 One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
 
-To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray :ref:`Cluster Launcher <ref-cluster-quick-start>`, or (2) use Ray's :ref:`runtime environments<runtime-environments>` to install them on the fly.
+To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray :ref:`Cluster Launcher <ref-cluster-getting-started>`, or (2) use Ray's :ref:`runtime environments<runtime-environments>` to install them on the fly.
 
 For production usage or non-changing environments, we recommend installing your dependencies into a container image and specifying the image using the Cluster Launcher.
 For dynamic environments (e.g. for development and experimentation), we recommend using runtime environments.

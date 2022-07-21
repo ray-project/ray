@@ -71,7 +71,7 @@ Multi-node Distributed Training
 
 Using the same examples above, you can run distributed training on a multi-node cluster with just a couple simple steps.
 
-First, use Ray's :ref:`Cluster Launcher <ref-cluster-quick-start>` to start a Ray cluster:
+First, use Ray's :ref:`Cluster Launcher <ref-cluster-getting-started>` to start a Ray cluster:
 
 .. code-block:: bash
 
