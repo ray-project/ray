@@ -401,20 +401,39 @@ ray.get(b.f.remote())
     assert re.search("Actor2 pid=.*bye", out_str), out_str
 
 
-def test_output():
-    # Use subprocess to execute the __main__ below.
-    outputs = subprocess.check_output(
-        [sys.executable, __file__, "_ray_instance"], stderr=subprocess.STDOUT
-    ).decode()
-    lines = outputs.split("\n")
+def test_output_local_ray():
+    script = """
+import ray
+ray.init()
+    """
+    output = run_string_as_driver(script)
+    lines = output.strip().split("\n")
+    assert len(lines) == 1
+    line = lines[0]
+    print(line)
+    assert "Started a local Ray instance." in line
+    if os.environ.get("RAY_MINIMAL") == "1":
+        assert "View the dashboard" not in line
+    else:
+        assert "View the dashboard" in line
+
+
+def test_output_ray_cluster(call_ray_start):
+    script = """
+import ray
+ray.init()
+    """
+    output = run_string_as_driver(script)
+    lines = output.strip().split("\n")
+    assert len(lines) == 2
     for line in lines:
         print(line)
+    assert "Connecting to existing Ray cluster at address:" in lines[0]
+    assert "Connected to Ray cluster." in lines[1]
     if os.environ.get("RAY_MINIMAL") == "1":
-        # Without "View the Ray dashboard"
-        assert len(lines) == 1, lines
+        assert "View the dashboard" not in lines[1]
     else:
-        # With "View the Ray dashboard"
-        assert len(lines) == 2, lines
+        assert "View the dashboard" in lines[1]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
