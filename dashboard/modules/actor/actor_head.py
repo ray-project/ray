@@ -154,6 +154,12 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             actor_id = actor_table_data["actorId"]
             job_id = actor_table_data["jobId"]
             node_id = actor_table_data["address"]["rayletId"]
+            # Cleanup dead actors
+            if actor_table_data["state"] == "DEAD":
+                del DataSource.actors[actor_id]
+                del DataSource.node_actors[node_id][actor_id]
+                del DataSource.job_actors[job_id][actor_id]
+                return
             # Update actors.
             DataSource.actors[actor_id] = actor_table_data
             # Update node actors (only when node_id is not Nil).
