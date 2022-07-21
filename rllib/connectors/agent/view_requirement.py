@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, List, Dict, Tuple
+from typing import Any, List
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
@@ -8,10 +8,8 @@ from ray.rllib.connectors.connector import (
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import (
-    AgentConnectorDataType, 
+    AgentConnectorDataType,
     AgentConnectorsOutput,
-    AgentID,
-    EnvID
 )
 from ray.util.annotations import PublicAPI
 from ray.rllib.evaluation.collectors.simple_list_collector import _AgentCollector
@@ -43,14 +41,13 @@ class ViewRequirementAgentConnector(AgentConnector):
         # a dict of env_id to a dict of agent_id to a list of agent_collector objects
         env_default = defaultdict(
             lambda: _AgentCollector(
-                self._view_requirements,    
-                max_seq_len=ctx.config["model"]["max_seq_len"], 
+                self._view_requirements,
+                max_seq_len=ctx.config["model"]["max_seq_len"],
                 is_policy_recurrent=len(ctx.model_initial_states) > 0,
                 disable_action_flattening=ctx.config["_disable_action_flattening"],
             )
         )
         self.agent_collectors = defaultdict(lambda: env_default)
-
 
     def reset(self, env_id: str):
         if env_id in self._agent_data:
@@ -79,7 +76,7 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         env_id = ac_data.env_id
         agent_id = ac_data.agent_id
-        # use env_id as episode_id ? 
+        # use env_id as episode_id ?
         episode_id = env_id if SampleBatch.EPS_ID not in d else d[SampleBatch.EPS_ID]
 
         assert env_id is not None and agent_id is not None, (
@@ -111,14 +108,13 @@ class ViewRequirementAgentConnector(AgentConnector):
                 episode_id=episode_id,
                 agent_index=agent_id,
                 env_id=env_id,
-                t=-1, # not sure about this?
-                init_obs=d[SampleBatch.OBS] # not sure about this?
+                t=-1,  # not sure about this?
+                init_obs=d[SampleBatch.OBS],  # not sure about this?
             )
         else:
             agent_collector.add_action_reward_next_obs(d)
-        
-        sample_batch = agent_collector.build_last_timestep(self._view_requirements)
 
+        sample_batch = agent_collector.build_last_timestep(self._view_requirements)
 
         # for col, req in vr.items():
         #     # Not used for action computation.

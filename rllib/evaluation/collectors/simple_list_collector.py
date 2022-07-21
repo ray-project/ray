@@ -56,12 +56,8 @@ class _AgentCollector:
 
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
-    def __init__(self, 
-        view_reqs, 
-        *,
-        max_seq_len, 
-        is_policy_recurrent,
-        disable_action_flattening
+    def __init__(
+        self, view_reqs, *, max_seq_len, is_policy_recurrent, disable_action_flattening
     ):
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
@@ -101,7 +97,7 @@ class _AgentCollector:
         self.agent_steps = 0
 
     def is_empty(self):
-        return not self.buffers or all(len(l) == 0 for l in self.buffers.values())
+        return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
     def add_init_obs(
         self,
@@ -189,10 +185,7 @@ class _AgentCollector:
             if (
                 k == SampleBatch.INFOS
                 or k.startswith("state_out_")
-                or (
-                    k == SampleBatch.ACTIONS
-                    and not self.disable_action_flattening
-                )
+                or (k == SampleBatch.ACTIONS and not self.disable_action_flattening)
             ):
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
@@ -203,8 +196,7 @@ class _AgentCollector:
         self.agent_steps += 1
 
     def build_last_timestep(
-        self, 
-        view_requirements: ViewRequirementsDict
+        self, view_requirements: ViewRequirementsDict
     ) -> SampleBatch:
 
         batch_data = {}
@@ -228,15 +220,10 @@ class _AgentCollector:
                 np_data[data_col] = [
                     _to_float_np_array(d) for d in self.buffers[data_col]
                 ]
-            
+
             data = []
             for d in np_data[data_col]:
-                inds = (
-                    self.shift_before
-                    + obs_shift
-                    + view_req.shift_arr
-                    + len(d) - 1
-                )
+                inds = self.shift_before + obs_shift + view_req.shift_arr + len(d) - 1
 
                 # handle the case where the inds are out of bounds
                 element_at_t = []
@@ -267,7 +254,6 @@ class _AgentCollector:
 
         batch = self._get_sample_batch(batch_data)
         return batch
-            
 
     def build(self, view_requirements: ViewRequirementsDict) -> SampleBatch:
         """Builds a SampleBatch from the thus-far collected agent data.
@@ -546,10 +532,7 @@ class _AgentCollector:
             if (
                 col == SampleBatch.INFOS
                 or col.startswith("state_out_")
-                or (
-                    col == SampleBatch.ACTIONS
-                    and not self.disable_action_flattening
-                )
+                or (col == SampleBatch.ACTIONS and not self.disable_action_flattening)
             ):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
@@ -576,8 +559,10 @@ class _AgentCollector:
                 count -= max_seq_len
             batch["seq_lens"] = np.array(seq_lens)
             batch.max_seq_len = max_seq_len
-        
+
         return batch
+
+
 class _PolicyCollector:
     """Collects already postprocessed (single agent) samples for one policy.
 
@@ -776,7 +761,7 @@ class SimpleListCollector(SampleCollector):
         # TODO: determine exact shift-before based on the view-req shifts.
         self.agent_collectors[agent_key] = _AgentCollector(
             policy.view_requirements,
-            max_seq_len=policy.config["model"]["max_seq_len"], 
+            max_seq_len=policy.config["model"]["max_seq_len"],
             is_policy_recurrent=policy.is_recurrent(),
             disable_action_flattening=policy.config["_disable_action_flattening"],
         )
