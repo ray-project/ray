@@ -44,10 +44,15 @@ def _hook(env):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_runtime_env_hook():
-    script = """
+@pytest.mark.parametrize("skip_hook", [True, False])
+def test_runtime_env_hook(skip_hook):
+    ray_init_snippet = "ray.init(_skip_env_hook=True)" if skip_hook else ""
+
+    script = f"""
 import ray
 import os
+
+{ray_init_snippet}
 
 @ray.remote
 def f():
@@ -61,7 +66,26 @@ print(ray.get(f.remote()))
     )
     out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
     print(out_str)
-    assert "HOOK_VALUE" in out_str
+    if skip_hook:
+        assert "HOOK_VALUE" not in out_str
+    else:
+        assert "HOOK_VALUE" in out_str
+
+
+def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
+    monkeypatch.setenv("RAY_RUNTIME_ENV_HOOK", "ray.tests.test_output._hook")
+    cluster, address = start_cluster
+    ray.init(address)
+
+    @ray.remote
+    def f():
+        return os.environ.get("HOOK_KEY")
+
+    using_ray_client = address.startswith("ray://")
+    if using_ray_client:
+        assert ray.get(f.remote()) is None
+    else:
+        assert ray.get(f.remote()) == "HOOK_VALUE"
 
 
 def test_autoscaler_infeasible():
