@@ -80,10 +80,10 @@ def test_owner_failed(ray_start_cluster):
         dict(zip(["owner", "creator", "borrower"], [{f"node{i}": 1} for i in _]))
         for _ in [
             [1, 2, 3],  # None of them is on the same node.
-            # [1, 1, 3],  # Owner and creator are on the same node.
-            # [3, 2, 3],  # Owner and borrower are on the same node.
-            # [1, 3, 3],  # Creator and borrower are on the same node.
-            # [3, 3, 3],  # All of them are on the same node.
+            [1, 1, 3],  # Owner and creator are on the same node.
+            [3, 2, 3],  # Owner and borrower are on the same node.
+            [1, 3, 3],  # Creator and borrower are on the same node.
+            [3, 3, 3],  # All of them are on the same node.
         ]
     ],
 )
@@ -96,6 +96,9 @@ def test_checkpoint(ray_start_cluster, actor_resources):
         }
         for i in range(3)
     ]
+    cluster_node_config[0]["_system_config"] = {
+        "object_spilling_config": json.dumps(mock_distributed_fs_object_spilling_config)
+    }
     cluster = ray_start_cluster
     for kwargs in cluster_node_config:
         cluster.add_node(**kwargs)
