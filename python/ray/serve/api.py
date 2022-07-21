@@ -21,7 +21,6 @@ from ray.serve.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve.constants import (
     CONTROLLER_MAX_CONCURRENCY,
-    DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     HTTP_PROXY_TIMEOUT,
