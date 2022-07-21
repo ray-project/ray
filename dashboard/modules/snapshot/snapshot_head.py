@@ -201,8 +201,10 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     async def _get_job_activity_info(self, timeout: int) -> RayActivityResponse:
         # Returns if there is Ray activity from drivers (job).
-        # Drivers in namespaces that start with _ray_internal_job_info_ are not
+        # Drivers in namespaces that start with _ray_internal_ are not
         # considered activity.
+        # This includes the _ray_internal_dashboard job that gets automatically
+        # created with every cluster
         try:
             request = gcs_service_pb2.GetAllJobInfoRequest()
             reply = await self._gcs_job_info_stub.GetAllJobInfo(
@@ -213,7 +215,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             for job_table_entry in reply.job_info_list:
                 is_dead = bool(job_table_entry.is_dead)
                 in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
-                    JobInfoStorageClient.JOB_DATA_KEY_PREFIX
+                    "_ray_internal_"
                 )
                 if not is_dead and not in_internal_namespace:
                     num_active_drivers += 1
