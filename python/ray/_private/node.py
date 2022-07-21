@@ -362,9 +362,7 @@ class Node:
         """
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        cluster_metadata = ray_usage_lib.get_cluster_metadata(
-            self.get_gcs_client(), num_retries=NUM_REDIS_GET_RETRIES
-        )
+        cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
         if cluster_metadata is None:
             return
         ray._private.utils.check_version_info(cluster_metadata)
@@ -1079,7 +1077,7 @@ class Node:
         # Make sure the cluster metadata wasn't reported before.
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(self.get_gcs_client(), NUM_REDIS_GET_RETRIES)
+        ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
 
     def start_head_processes(self):
         """Start head processes on the node."""
