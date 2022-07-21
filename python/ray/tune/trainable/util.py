@@ -380,6 +380,38 @@ def with_resources(
         Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
     ],
 ):
+    """Wrapper for trainables to specify resource requests.
+
+    This wrapper allows specification of resource requirements for a specific
+    trainable. It will override potential existing resource requests (use
+    with caution!).
+
+    The main use case is to request resources for function trainables when used
+    with the Tuner() API.
+
+    Class trainables should usually just implement the ``default_resource_request()``
+    method.
+
+    Args:
+        trainable: Trainable to wrap.
+        resources: Resource dict, placement group factory, or callable that takes
+            in a config dict and returns a placement group factory.
+
+    Example:
+
+    .. code-block:: python
+
+        from ray import tune
+
+        def train(config):
+            return len(ray.get_gpu_ids())  # Returns 2
+
+        tune.run(
+            tune.with_resources(train, resources={"gpu": 2}),
+            # ...
+        )
+
+    """
     from ray.tune.trainable import Trainable
 
     if not callable(trainable) or (
@@ -403,6 +435,7 @@ def with_resources(
         )
 
     if not inspect.isclass(trainable):
+        # Just set an attribute. This will be resolved later in `wrap_function()`.
         trainable._resources = pgf
     else:
 
