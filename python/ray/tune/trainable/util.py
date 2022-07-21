@@ -3,7 +3,7 @@ import inspect
 import logging
 import os
 import shutil
-from typing import Any, Dict, Optional, Union, Callable
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import pandas as pd
 
@@ -18,6 +18,9 @@ from ray.tune.resources import Resources
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +235,7 @@ class PlacementGroupUtil:
 
 
 @PublicAPI(stability="beta")
-def with_parameters(trainable, **kwargs):
+def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
     """Wrapper for trainables to pass arbitrary large data objects.
 
     This wrapper function will store all passed parameters in the Ray
@@ -377,7 +380,7 @@ def with_parameters(trainable, **kwargs):
 
 @PublicAPI(stability="beta")
 def with_resources(
-    trainable,
+    trainable: Union[Type["Trainable"], Callable],
     resources: Union[
         Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
     ],
@@ -404,14 +407,16 @@ def with_resources(
     .. code-block:: python
 
         from ray import tune
+        from ray.tune.tuner import Tuner
 
         def train(config):
             return len(ray.get_gpu_ids())  # Returns 2
 
-        tune.run(
+        tuner = Tuner(
             tune.with_resources(train, resources={"gpu": 2}),
             # ...
         )
+        results = tuner.fit()
 
     """
     from ray.tune.trainable import Trainable
@@ -446,11 +451,9 @@ def with_resources(
             def default_resource_request(
                 cls, config: Dict[str, Any]
             ) -> Optional[Union[Resources, PlacementGroupFactory]]:
-                if not isinstance(resources, PlacementGroupFactory) and callable(
-                    resources
-                ):
-                    return resources(config)
-                return resources
+                if not isinstance(pgf, PlacementGroupFactory) and callable(pgf):
+                    return pgf(config)
+                return pgf
 
         ResourceTrainable.__name__ = trainable.__name__
         trainable = ResourceTrainable
