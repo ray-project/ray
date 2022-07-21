@@ -1,4 +1,5 @@
 import asyncio
+from collections import deque
 import logging
 
 import aiohttp.web
@@ -28,6 +29,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
+
+MAX_ACTORS_TO_CACHE = 5000
 
 
 def actor_table_data_to_dict(message):
@@ -79,6 +82,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         # ActorInfoGcsService
         self._gcs_actor_info_stub = None
+        # A queue of dead actors in order of when they died
+        self.dead_actors_queue = deque()
         DataSource.nodes.signal.append(self._update_stubs)
 
     async def _update_stubs(self, change):
@@ -154,12 +159,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             actor_id = actor_table_data["actorId"]
             job_id = actor_table_data["jobId"]
             node_id = actor_table_data["address"]["rayletId"]
-            # Cleanup dead actors
             if actor_table_data["state"] == "DEAD":
-                del DataSource.actors[actor_id]
-                del DataSource.node_actors[node_id][actor_id]
-                del DataSource.job_actors[job_id][actor_id]
-                return
+                self.dead_actors_queue.append(actor_id)
             # Update actors.
             DataSource.actors[actor_id] = actor_table_data
             # Update node actors (only when node_id is not Nil).
@@ -186,6 +187,28 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                     process_actor_data_from_pubsub(actor_id, actor_table_data)
             except Exception:
                 logger.exception("Error processing actor info from GCS.")
+
+    async def _cleanup_actors(self):
+        while True:
+            try:
+                if len(DataSource.actors) > MAX_ACTORS_TO_CACHE:
+                    logger.debug("Cleaning up dead actors from GCS")
+                    while len(DataSource.actors) > MAX_ACTORS_TO_CACHE:
+                        if not self.dead_actors_queue:
+                            logger.warning(
+                                f"More than {MAX_ACTORS_TO_CACHE} "
+                                "live actors are cached"
+                            )
+                            break
+                        actor_id = self.dead_actors_queue.popleft()
+                        actor = DataSource.actors.pop(actor_id)
+                        job_id = actor["jobId"]
+                        node_id = actor["address"]["rayletId"]
+                        del DataSource.node_actors[node_id][actor_id]
+                        del DataSource.job_actors[job_id][actor_id]
+                await asyncio.sleep(10)
+            except Exception:
+                logger.exception("Error cleaning up actor info from GCS.")
 
     @routes.get("/logical/actor_groups")
     async def get_actor_groups(self, req) -> aiohttp.web.Response:
@@ -242,6 +265,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             gcs_channel
         )
 
+        asyncio.create_task(self._cleanup_actors())
         await asyncio.gather(self._update_actors())
 
     @staticmethod
