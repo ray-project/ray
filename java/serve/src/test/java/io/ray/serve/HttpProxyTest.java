@@ -22,15 +22,13 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class HttpProxyTest extends BaseTest {
-
   @Test
   public void test() throws IOException {
     init();
 
     try {
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName = CommonUtil.formatActorName(
+          Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String endpointName = "HTTPProxyTest";
       String route = "/route";
       Map<String, String> config = new HashMap<>();
@@ -38,12 +36,14 @@ public class HttpProxyTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
-      endpointInfos.put(
-          endpointName,
-          EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
+      endpointInfos.put(endpointName,
+          EndpointInfo.newBuilder()
+              .setEndpointName(endpointName)
+              .setRoute(route)
+              .build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
@@ -60,8 +60,7 @@ public class HttpProxyTest extends BaseTest {
       HttpClient httpClient = HttpClientBuilder.create().build();
       HttpPost httpPost = new HttpPost("http://localhost:" + httpProxy.getPort() + route);
       try (CloseableHttpResponse httpResponse =
-          (CloseableHttpResponse) httpClient.execute(httpPost)) {
-
+               (CloseableHttpResponse) httpClient.execute(httpPost)) {
         // No replica, so error is expected.
         int status = httpResponse.getCode();
         Assert.assertEquals(status, HttpURLConnection.HTTP_INTERNAL_ERROR);

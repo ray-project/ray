@@ -21,7 +21,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class ReplicaSetTest extends BaseTest {
-
   private String deploymentName = "ReplicaSetTest";
 
   @Test
@@ -48,14 +47,14 @@ public class ReplicaSetTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Replica
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
-      Object[] initArgs =
-          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
+      Object[] initArgs = new Object[] {
+          deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
@@ -66,10 +65,14 @@ public class ReplicaSetTest extends BaseTest {
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
+          Ray.actor(RayServeWrappedReplica::new,
+                 deploymentWrapper,
+                 replicaTag,
+                 controllerName)
               .setName(actorName)
               .remote();
-      Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
+      Assert.assertTrue(
+          replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ReplicaSet
       ReplicaSet replicaSet = new ReplicaSet(deploymentName);

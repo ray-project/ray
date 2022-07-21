@@ -16,15 +16,13 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class ProxyRouterTest extends BaseTest {
-
   @Test
   public void test() {
     init();
     try {
       String prefix = "ProxyRouterTest";
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName = CommonUtil.formatActorName(
+          Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String endpointName1 = prefix + "_1";
       String endpointName2 = prefix + "_2";
       String route1 = "/route1";
@@ -33,13 +31,15 @@ public class ProxyRouterTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
-      endpointInfos.put(
-          endpointName1,
-          EndpointInfo.newBuilder().setEndpointName(endpointName1).setRoute(route1).build());
-      endpointInfos.put(
-          endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
+      endpointInfos.put(endpointName1,
+          EndpointInfo.newBuilder()
+              .setEndpointName(endpointName1)
+              .setRoute(route1)
+              .build());
+      endpointInfos.put(endpointName2,
+          EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);

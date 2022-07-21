@@ -15,7 +15,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class ClientTest {
-
   @Test
   public void getHandleTest() {
     boolean inited = Ray.isInitialized();
@@ -25,23 +24,23 @@ public class ClientTest {
 
     try {
       String prefix = "ClientTest";
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName = CommonUtil.formatActorName(
+          Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String endpointName = prefix + "_endpoint";
       Map<String, String> config = new HashMap<>();
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller.
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Set ReplicaContext
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
       // Mock endpoints.
       Map<String, EndpointInfo> endpoints = new HashMap<>();
-      endpoints.put(endpointName, EndpointInfo.newBuilder().setEndpointName(endpointName).build());
+      endpoints.put(
+          endpointName, EndpointInfo.newBuilder().setEndpointName(endpointName).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpoints).remote();
 
       // Client.

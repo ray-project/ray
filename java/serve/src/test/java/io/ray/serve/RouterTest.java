@@ -23,16 +23,14 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class RouterTest extends BaseTest {
-
   @Test
   public void test() {
     init();
 
     try {
       String deploymentName = "RouterTest";
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName = CommonUtil.formatActorName(
+          Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
@@ -41,14 +39,14 @@ public class RouterTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Replica
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
-      Object[] initArgs =
-          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
+      Object[] initArgs = new Object[] {
+          deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
@@ -59,10 +57,14 @@ public class RouterTest extends BaseTest {
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
+          Ray.actor(RayServeWrappedReplica::new,
+                 deploymentWrapper,
+                 replicaTag,
+                 controllerName)
               .setName(actorName)
               .remote();
-      Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
+      Assert.assertTrue(
+          replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // Set ReplicaContext
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);

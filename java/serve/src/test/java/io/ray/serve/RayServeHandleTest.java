@@ -22,16 +22,14 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class RayServeHandleTest extends BaseTest {
-
   @Test
   public void test() {
     init();
 
     try {
       String deploymentName = "RayServeHandleTest";
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName = CommonUtil.formatActorName(
+          Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
@@ -40,7 +38,7 @@ public class RayServeHandleTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Set ReplicaContext
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
@@ -49,8 +47,8 @@ public class RayServeHandleTest extends BaseTest {
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
-      Object[] initArgs =
-          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
+      Object[] initArgs = new Object[] {
+          deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
@@ -62,10 +60,14 @@ public class RayServeHandleTest extends BaseTest {
               .setConfig(config);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
+          Ray.actor(RayServeWrappedReplica::new,
+                 deploymentWrapper,
+                 replicaTag,
+                 controllerName)
               .setName(actorName)
               .remote();
-      Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
+      Assert.assertTrue(
+          replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // RayServeHandle
       RayServeHandle rayServeHandle =
