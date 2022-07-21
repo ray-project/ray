@@ -141,6 +141,9 @@ class A2C(A3C):
         ):
             self._microbatches_grads = None
             self._microbatches_counts = self._num_microbatches = 0
+        # if this variable isn't set (microbatch_size == None) then by default
+        # we should make the number of microbatches that gradients are
+        # computed on 1.
         if not self.config.get("microbatch_size", None):
             self.config["microbatch_size"] = self.config["train_batch_size"]
 
