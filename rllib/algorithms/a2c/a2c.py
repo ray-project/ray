@@ -132,20 +132,17 @@ class A2C(A3C):
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
-        # Create a microbatch variable for collecting gradients on microbatches'.
-        # These gradients will be accumulated on-the-fly and applied at once (once train
-        # batch size has been collected) to the model.
-        if (
-            self.config["_disable_execution_plan_api"] is True
-            and self.config["microbatch_size"]
-        ):
-            self._microbatches_grads = None
-            self._microbatches_counts = self._num_microbatches = 0
         # if this variable isn't set (microbatch_size == None) then by default
         # we should make the number of microbatches that gradients are
         # computed on 1.
         if not self.config.get("microbatch_size", None):
             self.config["microbatch_size"] = self.config["train_batch_size"]
+
+        # Create a microbatch variable for collecting gradients on microbatches'.
+        # These gradients will be accumulated on-the-fly and applied at once (once train
+        # batch size has been collected) to the model.
+        self._microbatches_grads = None
+        self._microbatches_counts = self._num_microbatches = 0
 
     @override(A3C)
     def training_step(self) -> ResultDict:
