@@ -29,7 +29,7 @@ from ray.serve.deployment_state import (
     CHECKPOINT_KEY,
     rank_replicas_for_stopping,
 )
-from ray.serve.storage.kv_store import RayLocalKVStore
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.utils import get_random_letters
 
 
@@ -1937,6 +1937,7 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
 
 @pytest.fixture
 def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
+    ray.init()
     timer = MockTimer()
     with patch(
         "ray.serve.deployment_state.ActorReplicaWrapper", new=MockReplicaActorWrapper
@@ -1944,7 +1945,7 @@ def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
         "ray.serve.long_poll.LongPollHost"
     ) as mock_long_poll:
 
-        kv_store = RayLocalKVStore("TEST_DB", "test_kv_store.db")
+        kv_store = RayInternalKVStore("test")
         all_current_actor_names = []
         deployment_state_manager = DeploymentStateManager(
             "name",
@@ -1954,11 +1955,7 @@ def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
             all_current_actor_names,
         )
         yield deployment_state_manager, timer
-        # Clear checkpoint at the end of each test
-        kv_store.delete(CHECKPOINT_KEY)
-        if sys.platform != "win32":
-            # This line fails on windows with a PermissionError.
-            os.remove("test_kv_store.db")
+    ray.shutdown()
 
 
 def test_shutdown(mock_deployment_state_manager):
