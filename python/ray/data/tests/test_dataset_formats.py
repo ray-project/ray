@@ -2754,7 +2754,7 @@ def test_image_folder_datasource_raises_value_error(ray_start_regular_shared):
 
 def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from ray.air.util.tensor_extensions.pandas import TensorArray
-    from ray.train.torch import to_air_checkpoint, TorchPredictor
+    from ray.train.torch import TorchCheckpoint, TorchPredictor
     from ray.train.batch_predictor import BatchPredictor
 
     from torchvision import transforms
@@ -2780,7 +2780,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     preprocessor = BatchMapper(preprocess)
 
     model = resnet18(pretrained=True)
-    checkpoint = to_air_checkpoint(model=model, preprocessor=preprocessor)
+    checkpoint = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
     predictor.predict(dataset, feature_columns=["image"])
