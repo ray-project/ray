@@ -535,7 +535,18 @@ class Trainable:
         if isinstance(checkpoint_path, TrialCheckpoint):
             checkpoint_path = checkpoint_path.local_path
 
-        if self.uses_cloud_checkpointing:
+        checkpoint_exists = False
+        if os.path.exists(checkpoint_path):
+            try:
+                TrainableUtil.find_checkpoint_dir(checkpoint_path)
+            except Exception:
+                pass
+            else:
+                checkpoint_exists = True
+        
+        if checkpoint_exists:
+            pass
+        elif self.uses_cloud_checkpointing:
             rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
                 self.logdir, checkpoint_path
             )
@@ -546,11 +557,6 @@ class Trainable:
                 # Only keep for backwards compatibility
                 self.storage_client.sync_down(external_uri, local_dir)
                 self.storage_client.wait_or_retry()
-            elif os.path.exists(checkpoint_path):
-                try:
-                    TrainableUtil.find_checkpoint_dir(checkpoint_path)
-                except Exception:
-                    pass
             else:
                 checkpoint = Checkpoint.from_uri(external_uri)
                 retry_fn(
