@@ -155,11 +155,11 @@ class Tuner:
         """Restores Tuner after a previously failed run.
 
         Args:
-           path: The path where the previous failed run is checkpointed.
-               This information could be easily located near the end of the
-               console output of previous run.
-               Note: depending on whether ray client mode is used or not,
-               this path may or may not exist on your local machine.
+            path: The path where the previous failed run is checkpointed.
+                This information could be easily located near the end of the
+                console output of previous run.
+                Note: depending on whether ray client mode is used or not,
+                this path may or may not exist on your local machine.
             resume_unfinished: If True, will continue to run unfinished trials.
             resume_errored: If True, will re-schedule errored trials and try to
                 restore from their latest checkpoints.
