@@ -174,13 +174,18 @@ class ReplicaSet:
                 try:
                     ray.get(list(completed_queries))
                 except RayActorError:
-                    logger.debug(f"Removing {replica_info.replica_tag} from replica set because the actor exited." )
+                    logger.debug(
+                        f"Removing {replica_info.replica_tag} from replica set "
+                        "because the actor exited."
+                    )
                     replicas_to_remove.append(replica_info)
                 except RayTaskError:
                     # Ignore application error.
                     pass
                 except Exception:
-                    logger.exception("Handle received unexpected error when processing user requests.")
+                    logger.exception(
+                        "Handle received unexpected error when processing request."
+                    )
 
                 replica_in_flight_queries.difference_update(completed_queries)
 
