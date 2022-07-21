@@ -188,6 +188,10 @@ class AlpaTrainer(BaseTrainer):
 
         alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
+        cluster.host_info = node_info 
+        cluster.host_num_devices = [num_devices_per_host for i in range(num_workers)]
+        alpa.device_mesh.set_global_cluster(cluster)
+        
         # ic(node_info)
         # print('\noutside: starting\n')
         # self.p_mesh = DistributedPhysicalDeviceMesh(
@@ -200,7 +204,6 @@ class AlpaTrainer(BaseTrainer):
         
         
         # alpa.device_mesh.set_global_physical_mesh(self.p_mesh)
-        alpa.device_mesh.set_global_cluster(cluster)
         
         self._train_loop = train_loop_per_worker
         self._train_loop_config = train_loop_config
