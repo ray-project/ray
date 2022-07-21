@@ -310,7 +310,7 @@ class JobState(JobInfo, StateSchema):
 @dataclass(init=True)
 class WorkerState(StateSchema):
     worker_id: str = state_column(filterable=True)
-    is_alive: str = state_column(filterable=True)
+    is_alive: bool = state_column(filterable=True)
     worker_type: str = state_column(filterable=True)
     exit_type: str = state_column(filterable=True)
     node_id: str = state_column(filterable=True)
