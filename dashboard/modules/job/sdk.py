@@ -34,12 +34,12 @@ class JobSubmissionClient(SubmissionClient):
     """
 
     def __init__(
-            self,
-            address: Optional[str] = None,
-            create_cluster_if_needed: bool = False,
-            cookies: Optional[Dict[str, Any]] = None,
-            metadata: Optional[Dict[str, Any]] = None,
-            headers: Optional[Dict[str, Any]] = None,
+        self,
+        address: Optional[str] = None,
+        create_cluster_if_needed: bool = False,
+        cookies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
     ):
         """Initialize a JobSubmissionClient and check the connection to the cluster.
 
@@ -59,7 +59,8 @@ class JobSubmissionClient(SubmissionClient):
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
-                "installation: `pip install 'ray[default']``")
+                "installation: `pip install 'ray[default']``"
+            )
         super().__init__(
             address=address,
             create_cluster_if_needed=create_cluster_if_needed,
@@ -76,12 +77,12 @@ class JobSubmissionClient(SubmissionClient):
 
     @PublicAPI(stability="beta")
     def submit_job(
-            self,
-            *,
-            entrypoint: str,
-            job_id: Optional[str] = None,
-            runtime_env: Optional[Dict[str, Any]] = None,
-            metadata: Optional[Dict[str, str]] = None,
+        self,
+        *,
+        entrypoint: str,
+        job_id: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, str]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
 
@@ -134,8 +135,7 @@ class JobSubmissionClient(SubmissionClient):
         )
 
         logger.debug(f"Submitting job with job_id={job_id}.")
-        r = self._do_request(
-            "POST", "/api/jobs/", json_data=dataclasses.asdict(req))
+        r = self._do_request("POST", "/api/jobs/", json_data=dataclasses.asdict(req))
 
         if r.status_code == 200:
             return JobSubmitResponse(**r.json()).job_id
@@ -144,8 +144,8 @@ class JobSubmissionClient(SubmissionClient):
 
     @PublicAPI(stability="beta")
     def stop_job(
-            self,
-            job_id: str,
+        self,
+        job_id: str,
     ) -> bool:
         """Request a job to exit asynchronously.
 
@@ -176,8 +176,8 @@ class JobSubmissionClient(SubmissionClient):
 
     @PublicAPI(stability="beta")
     def get_job_info(
-            self,
-            job_id: str,
+        self,
+        job_id: str,
     ) -> JobDetails:
         """Get the latest status and other information associated with a job.
 
@@ -325,9 +325,11 @@ class JobSubmissionClient(SubmissionClient):
             job server fails.
         """
         async with aiohttp.ClientSession(
-                cookies=self._cookies, headers=self._headers) as session:
+            cookies=self._cookies, headers=self._headers
+        ) as session:
             ws = await session.ws_connect(
-                f"{self._address}/api/jobs/{job_id}/logs/tail")
+                f"{self._address}/api/jobs/{job_id}/logs/tail"
+            )
 
             while True:
                 msg = await ws.receive()
