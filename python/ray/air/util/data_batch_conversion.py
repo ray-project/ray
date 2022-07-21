@@ -4,6 +4,7 @@ import logging
 import numpy as np
 import pandas as pd
 
+import ray
 from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
@@ -14,9 +15,6 @@ except ImportError:
     pyarrow = None
 
 logger = logging.getLogger(__name__)
-
-# Whether we have warned that tensor casting has failed.
-_tensor_cast_failed_warned = False
 
 
 @DeveloperAPI
@@ -49,12 +47,11 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
             data = TensorArray(data)
         except TypeError as e:
             # Fall back to existing NumPy array.
-            if not _tensor_cast_failed_warned:
+            if ray.util.log_once("datasets_tensor_array_cast_warning"):
                 logger.warning(
                     "Tried to transparently convert ndarray batch to a TensorArray "
                     f"but the conversion failed, leaving ndarray batch as-is: {e}"
                 )
-                _tensor_cast_failed_warned = True
         return pd.DataFrame({TENSOR_COLUMN_NAME: data})
 
     elif isinstance(data, dict):
@@ -71,13 +68,12 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
                 v = TensorArray(v)
             except TypeError as e:
                 # Fall back to existing NumPy array.
-                if not _tensor_cast_failed_warned:
+                if ray.util.log_once("datasets_tensor_array_cast_warning"):
                     logger.warning(
                         f"Tried to transparently convert column ndarray {k} of batch "
                         "to a TensorArray but the conversion failed, leaving column "
                         f"as-is: {e}"
                     )
-                    _tensor_cast_failed_warned = True
             tensor_dict[k] = v
         return pd.DataFrame(tensor_dict)
 
