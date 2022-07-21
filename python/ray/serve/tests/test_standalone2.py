@@ -34,9 +34,13 @@ def shutdown_ray():
 
 @contextmanager
 def start_and_shutdown_ray_cli():
-    subprocess.check_output(["ray", "start", "--head"])
+    subprocess.check_output(
+        ["ray", "start", "--head"],
+    )
     yield
-    subprocess.check_output(["ray", "stop", "--force"])
+    subprocess.check_output(
+        ["ray", "stop", "--force"],
+    )
 
 
 @pytest.fixture(scope="function")
@@ -558,7 +562,7 @@ class TestDeployApp:
         assert client.get_serve_status().app_status.deployment_timestamp == 0
 
 
-def test_controller_recover_and_delete():
+def test_controller_recover_and_delete(shutdown_ray):
     """Ensure that in-progress deletion can finish even after controller dies."""
 
     ray.init()
@@ -574,17 +578,16 @@ def test_controller_recover_and_delete():
     f.deploy()
 
     actors = ray.util.list_named_actors(all_namespaces=True)
-    client.delete_deployments(["f"], blocking=False)
 
+    # Try to delete the deployments and kill the controller right after
+    client.delete_deployments(["f"], blocking=False)
+    ray.kill(client._controller, no_restart=False)
+
+    # All replicas should be removed already or after the controller revives
     wait_for_condition(
         lambda: len(ray.util.list_named_actors(all_namespaces=True)) < len(actors)
     )
-    ray.kill(client._controller, no_restart=False)
 
-    # There should still be replicas remaining
-    assert len(ray.util.list_named_actors(all_namespaces=True)) > 2
-
-    # All replicas should be removed once the controller revives
     wait_for_condition(
         lambda: len(ray.util.list_named_actors(all_namespaces=True)) == len(actors) - 50
     )
