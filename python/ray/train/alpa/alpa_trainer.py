@@ -186,12 +186,15 @@ class AlpaTrainer(BaseTrainer):
 
         alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
+        print('\noutside: starting\n')
         self.p_mesh = DistributedPhysicalDeviceMesh(
                     host_ids=node_ids,
                     host_info=host_info,
                     head_ip=self.head_ip,
                     num_devices_per_host=num_devices_per_host,
                     parent=None)
+        print('\noutside: neding\n')
+        
         
         alpa.device_mesh.set_global_physical_mesh(self.p_mesh)
         alpa.device_mesh.set_global_cluster(cluster)
