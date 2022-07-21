@@ -36,7 +36,7 @@ class TestDatasetReader(unittest.TestCase):
         )
 
         ioctx = IOContext(config={"train_batch_size": 1200}, worker_index=0)
-        reader = DatasetReader(ioctx, dataset)
+        reader = DatasetReader(dataset, ioctx)
         assert len(reader.next()) >= 1200
 
     def test_dataset_shard_with_only_local(self):
@@ -131,6 +131,15 @@ class TestDatasetReader(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             get_dataset_and_shards(config)
+
+    def test_default_ioctx(self):
+        # Test DatasetReader without passing in IOContext
+        input_config = {"format": "json", "paths": self.dset_path}
+        dataset, _ = get_dataset_and_shards(
+            {"input": "dataset", "input_config": input_config}
+        )
+        reader = DatasetReader(dataset)
+        reader.next()
 
 
 class TestUnzipIfNeeded(unittest.TestCase):
