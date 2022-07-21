@@ -60,6 +60,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
+from ray._private import gcs_utils
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,9 @@ class UsageStatsToReport:
     extra_usage_tags: Optional[Dict[str, str]]
     #: The number of alive nodes when the report is generated.
     total_num_nodes: Optional[int]
+    #: The total number of running jobs excluding internal ones
+    #  when the report is generated.
+    total_num_running_jobs: Optional[int]
 
 
 @dataclass(init=True)
@@ -444,37 +448,63 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
-def put_cluster_metadata(gcs_client, num_retries: int) -> None:
+def put_cluster_metadata(gcs_client) -> None:
     """Generate the cluster metadata and store it to GCS.
 
     It is a blocking API.
 
     Params:
         gcs_client: The GCS client to perform KV operation PUT.
-        num_retries: Max number of times to retry if PUT fails.
 
     Raises:
         gRPC exceptions if PUT fails.
     """
     metadata = _generate_cluster_metadata()
-    ray._private.utils.internal_kv_put_with_retry(
-        gcs_client,
+    gcs_client.internal_kv_put(
         usage_constant.CLUSTER_METADATA_KEY,
         json.dumps(metadata).encode(),
+        overwrite=True,
         namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-        num_retries=num_retries,
     )
     return metadata
 
 
-def get_library_usages_to_report(gcs_client, num_retries: int) -> List[str]:
+def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
+    """Return the total number of running jobs in the cluster excluding internal ones"""
+    try:
+        result = gcs_client.get_all_job_info()
+        total_num_running_jobs = 0
+        for job in result.job_info_list:
+            if not job.is_dead and not job.config.ray_namespace.startswith(
+                "_ray_internal"
+            ):
+                total_num_running_jobs += 1
+        return total_num_running_jobs
+    except Exception as e:
+        logger.info(f"Faile to query number of running jobs in the cluster: {e}")
+        return None
+
+
+def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
+    """Return the total number of alive nodes in the cluster"""
+    try:
+        result = gcs_client.get_all_node_info(timeout=timeout)
+        total_num_nodes = 0
+        for node in result.node_info_list:
+            if node.state == gcs_utils.GcsNodeInfo.GcsNodeState.ALIVE:
+                total_num_nodes += 1
+        return total_num_nodes
+    except Exception as e:
+        logger.info(f"Faile to query number of nodes in the cluster: {e}")
+        return None
+
+
+def get_library_usages_to_report(gcs_client) -> List[str]:
     try:
         result = []
-        library_usages = ray._private.utils.internal_kv_list_with_retry(
-            gcs_client,
-            usage_constant.LIBRARY_USAGE_PREFIX,
-            namespace=usage_constant.USAGE_STATS_NAMESPACE,
-            num_retries=num_retries,
+        library_usages = gcs_client.internal_kv_keys(
+            usage_constant.LIBRARY_USAGE_PREFIX.encode(),
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
         for library_usage in library_usages:
             library_usage = library_usage.decode("utf-8")
@@ -520,24 +550,21 @@ def _parse_extra_usage_tags() -> Dict[str, str]:
         return None
 
 
-def get_cluster_status_to_report(gcs_client, num_retries: int) -> ClusterStatusToReport:
+def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
     """Get the current status of this cluster.
 
     It is a blocking API.
 
     Params:
         gcs_client: The GCS client to perform KV operation GET.
-        num_retries: Max number of times to retry if GET fails.
 
     Returns:
         The current cluster status or empty if it fails to get that information.
     """
     try:
-        cluster_status = ray._private.utils.internal_kv_get_with_retry(
-            gcs_client,
-            ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS,
+        cluster_status = gcs_client.internal_kv_get(
+            ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS.encode(),
             namespace=None,
-            num_retries=num_retries,
         )
         if not cluster_status:
             return ClusterStatusToReport()
@@ -647,7 +674,7 @@ def get_cluster_config_to_report(
         return ClusterConfigToReport()
 
 
-def get_cluster_metadata(gcs_client, num_retries: int) -> dict:
+def get_cluster_metadata(gcs_client) -> dict:
     """Get the cluster metadata from GCS.
 
     It is a blocking API.
@@ -656,7 +683,6 @@ def get_cluster_metadata(gcs_client, num_retries: int) -> dict:
 
     Params:
         gcs_client: The GCS client to perform KV operation GET.
-        num_retries: Max number of times to retry if GET fails.
 
     Returns:
         The cluster metadata in a dictinoary.
@@ -665,28 +691,23 @@ def get_cluster_metadata(gcs_client, num_retries: int) -> dict:
         RuntimeError if it fails to obtain cluster metadata from GCS.
     """
     return json.loads(
-        ray._private.utils.internal_kv_get_with_retry(
-            gcs_client,
+        gcs_client.internal_kv_get(
             usage_constant.CLUSTER_METADATA_KEY,
             namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-            num_retries=num_retries,
-        )
+        ).decode("utf-8")
     )
 
 
 def generate_report_data(
-    cluster_metadata: dict,
     cluster_config_to_report: ClusterConfigToReport,
     total_success: int,
     total_failed: int,
     seq_number: int,
-    total_num_nodes: Optional[int],
+    gcs_address: str,
 ) -> UsageStatsToReport:
     """Generate the report data.
 
     Params:
-        cluster_metadata: The cluster metadata of the system generated by
-            `_generate_cluster_metadata`.
         cluster_config_to_report: The cluster (autoscaler)
             config generated by `get_cluster_config_to_report`.
         total_success: The total number of successful report
@@ -695,19 +716,15 @@ def generate_report_data(
             for the lifetime of the cluster.
         seq_number: The sequence number that's incremented whenever
             a new report is sent.
-        total_num_nodes: The number of current alive nodes in the cluster.
+        gcs_address: the address of gcs to get data to report.
 
     Returns:
         UsageStats
     """
-    cluster_status_to_report = get_cluster_status_to_report(
-        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
-        num_retries=20,
-    )
-    library_usages = get_library_usages_to_report(
-        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
-        num_retries=20,
-    )
+    gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+
+    cluster_metadata = get_cluster_metadata(gcs_client)
+    cluster_status_to_report = get_cluster_status_to_report(gcs_client)
 
     data = UsageStatsToReport(
         ray_version=cluster_metadata["ray_version"],
@@ -728,12 +745,13 @@ def generate_report_data(
         total_num_gpus=cluster_status_to_report.total_num_gpus,
         total_memory_gb=cluster_status_to_report.total_memory_gb,
         total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,  # noqa: E501
-        library_usages=library_usages,
+        library_usages=get_library_usages_to_report(gcs_client),
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,
         extra_usage_tags=_parse_extra_usage_tags(),
-        total_num_nodes=total_num_nodes,
+        total_num_nodes=get_total_num_nodes_to_report(gcs_client),
+        total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
     )
     return data
 
