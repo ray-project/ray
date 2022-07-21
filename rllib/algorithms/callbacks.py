@@ -239,33 +239,6 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
-    def on_evaluate_step(
-        self,
-        *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies: Optional[Dict[PolicyID, Policy]] = None,
-        episode: Union[Episode, EpisodeV2],
-        **kwargs,
-    ) -> None:
-        """Runs on each evaluation episode step.
-        Args:
-            worker: Reference to the current rollout worker.
-            base_env: BaseEnv running the evaluation episode. The underlying
-                sub environment objects can be retrieved by calling
-                `base_env.get_sub_environments()`.
-            policies: Mapping of policy id to policy objects.
-                In single agent mode there will only be a single
-                "default_policy".
-            episode: Episode object which contains episode
-                state. You can use the `episode.user_data` dict to store
-                temporary data, and `episode.custom_metrics` to store custom
-                metrics for the episode.
-            kwargs: Forward compatibility placeholder.
-        """
-        pass
-
-    @OverrideToImplementCustomLogic
     def on_evaluate_end(
         self,
         *,
@@ -613,26 +586,6 @@ class MultiCallbacks(DefaultCallbacks):
     ) -> None:
         for callback in self._callback_list:
             callback.on_evaluate_start(
-                worker=worker,
-                base_env=base_env,
-                policies=policies,
-                episode=episode,
-                env_index=env_index,
-                **kwargs,
-            )
-
-    def on_evaluate_step(
-        self,
-        *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies: Optional[Dict[PolicyID, Policy]] = None,
-        episode: Union[Episode, EpisodeV2],
-        env_index: Optional[int] = None,
-        **kwargs,
-    ) -> None:
-        for callback in self._callback_list:
-            callback.on_evaluate_step(
                 worker=worker,
                 base_env=base_env,
                 policies=policies,

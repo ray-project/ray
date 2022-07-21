@@ -1033,31 +1033,13 @@ def _process_observations(
         # (no step taken yet, just a single starting observation logged).
         # We need to skip this callback in this case.
         if not episode.is_faulty and episode.length > 0:
-            if worker.policy_config["in_evaluation"]:
-                if getattr(callbacks, "on_evaluate_step") is not None:
-                    callbacks.on_evaluate_step(
-                        worker=worker,
-                        base_env=base_env,
-                        policies=worker.policy_map,
-                        episode=episode,
-                        env_index=env_id,
-                    )
-                else:
-                    callbacks.on_episode_step(
-                        worker=worker,
-                        base_env=base_env,
-                        policies=worker.policy_map,
-                        episode=episode,
-                        env_index=env_id,
-                    )
-            else:
-                callbacks.on_episode_step(
-                    worker=worker,
-                    base_env=base_env,
-                    policies=worker.policy_map,
-                    episode=episode,
-                    env_index=env_id,
-                )
+            callbacks.on_episode_step(
+                worker=worker,
+                base_env=base_env,
+                policies=worker.policy_map,
+                episode=episode,
+                env_index=env_id,
+            )
 
         # Episode is done for all agents (dones[__all__] == True)
         # or we hit the horizon.
