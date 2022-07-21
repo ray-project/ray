@@ -1180,7 +1180,8 @@ def init(
         "_tracing_startup_hook", None
     )
     _node_name: str = kwargs.pop("_node_name", None)
-
+    # Fix for https://github.com/ray-project/ray/issues/26729
+    _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
     if not logging_format:
         logging_format = ray_constants.LOGGER_FORMAT
 
@@ -1264,7 +1265,7 @@ def init(
         job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
         job_config = ray.job_config.JobConfig.from_json(job_config_json)
 
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 job_config.runtime_env
             )
@@ -1273,7 +1274,7 @@ def init(
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
     else:
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
