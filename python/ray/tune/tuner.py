@@ -165,6 +165,7 @@ class Tuner:
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them frmo scratch (no checkpoint will be loaded).
+
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
