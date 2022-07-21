@@ -46,7 +46,12 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
 
 # See https://stackoverflow.com/a/33300001/11162437
 def str_presenter(dumper: yaml.Dumper, data):
-    """A custom representer to write multi-line strings as literal scalars."""
+    """
+    A custom representer to write multi-line strings in block notation using a literal
+    style.
+
+    Ensures strings with newline characters print correctly.
+    """
 
     if len(data.splitlines()) > 1:
         return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
@@ -74,11 +79,19 @@ def remove_ansi_escape_sequences(input: str):
     return ansi_escape.sub("", input)
 
 
-def process_dict_for_dump(data):
-    """Removes ANSI escape sequences recursively for all strings in dict"""
+def process_dict_for_yaml_dump(data):
+    """
+    Removes ANSI escape sequences recursively for all strings in dict.
+
+    We often need to use yaml.dump() to print dictionaries that contain exception
+    tracebacks, which can contain ANSI escape sequences that color printed text. However
+    yaml.dump() will format the tracebacks incorrectly if ANSI escape sequences are
+    present, so we need to remove them before dumping.
+    """
+
     for k, v in data.items():
         if isinstance(v, dict):
-            data[k] = process_dict_for_dump(v)
+            data[k] = process_dict_for_yaml_dump(v)
         elif isinstance(v, str):
             data[k] = remove_ansi_escape_sequences(v)
 
@@ -361,7 +374,8 @@ def status(address: str):
         yaml.SafeDumper.add_representer(str, str_presenter)
         print(
             yaml.safe_dump(
-                process_dict_for_dump(app_status),
+                # Ensure exception tracebacks in app_status are printed correctly
+                process_dict_for_yaml_dump(app_status),
                 default_flow_style=False,
                 sort_keys=False,
             )
