@@ -191,9 +191,15 @@ def test_dynamic_output(workflow_start_regular_shared):
         pass
     from ray.workflow.workflow_storage import get_workflow_storage
 
-    wf_storage = get_workflow_storage(workflow_id="dynamic_output")
-    result = wf_storage.inspect_step("step_0")
-    assert result.output_step_id == "step_3"
+    from ray._private.client_mode_hook import client_mode_wrap
+
+    @client_mode_wrap
+    def _check_storage():
+        wf_storage = get_workflow_storage(workflow_id="dynamic_output")
+        result = wf_storage.inspect_step("step_0")
+        return result.output_step_id
+
+    assert _check_storage() == "step_3"
 
 
 def test_workflow_error_message():
