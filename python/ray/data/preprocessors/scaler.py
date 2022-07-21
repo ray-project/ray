@@ -54,17 +54,56 @@ class StandardScaler(Preprocessor):
 
 
 class MinMaxScaler(Preprocessor):
-    """Scale values within columns based on min and max values.
+    r"""Scale each column by its range.
 
-    For each column, each value will be transformed to
-    ``(value - min) / (max - min)``,
-    where ``min`` and ``max`` are calculated from the fitted dataset.
+    The general formula is given by
 
-    When transforming the fitted dataset, transformed values will be in the
-    range [0, 1].
+    .. math::
+
+        x' = \frac{x - \min(x)}{\max{x} - \min{x}}
+
+    where :math:`x` is the column and :math:`x'` is the transformed column. If
+    :math:`\max{x} - \min{x} = 0` (i.e., the column is constant-valued), then the
+    transformed column will get filled with zeros.
+
+    Transformed values are always in the range :math:`[0, 1]`.
+
+    .. note::
+        This can be used as an alternative to :py:class:`StandardScaler`.
 
     Args:
-        columns: The columns that will individually be scaled.
+        columns: The columns to separately scale.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import MinMaxScaler
+        >>>
+        >>> df = pd.DataFrame({"X1": [-2, 0, 2], "X2": [-3, -3, 3], "X3": [1, 1, 1]})  # doctest: +SKIP # noqa: E501
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
+           X1  X2  X3
+        0  -2  -3   1
+        1   0  -3   1
+        2   2   3   1
+
+        Columns are scaled separately.
+
+        >>> preprocessor = MinMaxScaler(columns=["X1", "X2"])  # doctest: +SKIP
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+            X1   X2  X3
+        0  0.0  0.0   1
+        1  0.5  0.0   1
+        2  1.0  1.0   1
+
+        Constant-valued columns get filled with zeros.
+
+        >>> preprocessor = MinMaxScaler(columns=["X3"])  # doctest: +SKIP
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2   X3
+        0  -2  -3  0.0
+        1   0  -3  0.0
+        2   2   3  0.0
     """
 
     def __init__(self, columns: List[str]):
