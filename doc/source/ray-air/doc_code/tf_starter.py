@@ -26,7 +26,8 @@ from ray.air.config import ScalingConfig
 def build_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
-            tf.keras.layers.InputLayer(input_shape=(1,)),
+            tf.keras.layers.InputLayer(input_shape=()),
+            tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(10),
             tf.keras.layers.Dense(1),
         ]
