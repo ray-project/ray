@@ -407,7 +407,7 @@ import ray
 ray.init()
     """
     output = run_string_as_driver(script)
-    lines = output.strip().split("\n")
+    lines = output.strip("\n").split("\n")
     assert len(lines) == 1
     line = lines[0]
     print(line)
@@ -424,7 +424,7 @@ import ray
 ray.init()
     """
     output = run_string_as_driver(script)
-    lines = output.strip().split("\n")
+    lines = output.strip("\n").split("\n")
     assert len(lines) == 2
     for line in lines:
         print(line)

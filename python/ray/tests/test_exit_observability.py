@@ -111,7 +111,7 @@ ray.shutdown()
         address=cluster.address
     )
     a = run_string_as_driver(driver)
-    driver_pid = int(a.strip("\n"))
+    driver_pid = int(a.strip("\n")[-1])
 
     def verify_worker_exit_by_shutdown():
         worker = get_worker_by_pid(driver_pid)

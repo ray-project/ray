@@ -866,7 +866,9 @@ def start(
             )
 
         # Start Ray on a non-head node.
-        bootstrap_address = services.canonicalize_bootstrap_address(address)
+        bootstrap_address = services.canonicalize_bootstrap_address(
+            address, temp_dir=temp_dir
+        )
 
         if bootstrap_address is None:
             cli_logger.abort(
@@ -2066,13 +2068,9 @@ def logs(
 
     # If both id & ip are not provided, choose a head node as a default.
     if node_id is None and node_ip is None:
-        address = ray._private.services.canonicalize_bootstrap_address(None)
-        if address is None:
-            raise ConnectionError(
-                "No Ray cluster found. Please check that Ray has been started "
-                "on this node, or pass the address of a remote Ray node using "
-                "--node-id or --node-ip."
-            )
+        # TODO(swang): This command should also support
+        # passing --address or RAY_ADDRESS, like others.
+        address = ray._private.services.canonicalize_bootstrap_address_or_die(None)
         node_ip = address.split(":")[0]
 
     filename = None

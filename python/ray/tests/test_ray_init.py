@@ -245,6 +245,7 @@ def test_ray_init_existing_instance(call_ray_start, address):
         ray.shutdown()
         subprocess.check_output("ray stop --force", shell=True)
 
+
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform == "win32",
     reason="Flaky when run on windows CI",
@@ -252,10 +253,13 @@ def test_ray_init_existing_instance(call_ray_start, address):
 @pytest.mark.parametrize("address", [None, "auto"])
 def test_ray_init_existing_instance_crashed(address):
     ray._private.utils.write_ray_address("localhost:6379")
-    # If no address is specified, we will default to an existing cluster.
-    ray._private.node.NUM_REDIS_GET_RETRIES = 1
-    with pytest.raises(ConnectionError):
-        ray.init(address=address)
+    try:
+        # If no address is specified, we will default to an existing cluster.
+        ray._private.node.NUM_REDIS_GET_RETRIES = 1
+        with pytest.raises(ConnectionError):
+            ray.init(address=address)
+    finally:
+        ray._private.utils.reset_ray_address()
 
 
 class Credentials(grpc.ChannelCredentials):
