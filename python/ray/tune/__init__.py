@@ -39,7 +39,7 @@ from ray.tune.search.sample import (
 from ray.tune.search import create_searcher
 from ray.tune.schedulers import create_scheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trainable.util import with_parameters
+from ray.tune.trainable.util import with_parameters, with_resources
 
 from ray._private.usage import usage_lib
 
@@ -57,6 +57,7 @@ __all__ = [
     "run",
     "run_experiments",
     "with_parameters",
+    "with_resources",
     "Stopper",
     "Experiment",
     "function",

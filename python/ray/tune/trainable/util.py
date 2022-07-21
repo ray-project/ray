@@ -3,12 +3,14 @@ import inspect
 import logging
 import os
 import shutil
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, Callable
 
 import pandas as pd
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune import PlacementGroupFactory
+from ray.tune.execution.placement_groups import resource_dict_to_pg_factory
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
@@ -367,3 +369,47 @@ def with_parameters(trainable, **kwargs):
             inner.__mixins__ = trainable.__mixins__
 
         return inner
+
+
+def with_resources(
+    trainable,
+    resources: Union[
+        Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
+    ],
+):
+    from ray.tune.trainable import Trainable, wrap_function
+
+    if not callable(trainable) or (
+        inspect.isclass(trainable) and not issubclass(trainable, Trainable)
+    ):
+        raise ValueError(
+            f"`tune.with_parameters() only works with function trainables "
+            f"or classes that inherit from `tune.Trainable()`. Got type: "
+            f"{type(trainable)}."
+        )
+
+    if not inspect.isclass(trainable):
+        trainable = wrap_function(trainable)
+
+    if isinstance(resources, PlacementGroupFactory):
+        pgf = resources
+    elif isinstance(resources, dict):
+        pgf = resource_dict_to_pg_factory(resources)
+    elif callable(resources):
+        pgf = resources
+    else:
+        raise ValueError(
+            f"Invalid resource type for `with_resources()`: {type(resources)}"
+        )
+
+    class ResourceTrainable(trainable):
+        @classmethod
+        def default_resource_request(cls, config):
+            if callable(resources):
+                return pgf(config)
+
+            return pgf
+
+    ResourceTrainable.__name__ = trainable.__name__
+
+    return ResourceTrainable
