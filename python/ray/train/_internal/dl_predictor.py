@@ -47,8 +47,6 @@ class DLPredictor(Predictor):
     ) -> Union[TensorType, Dict[str, TensorType], List[TensorType], Tuple[TensorType]]:
         """Inputs the tensor to the model for this Predictor and returns the result.
 
-        Override this method to to add custom logic for processing the model outputs.
-
         Args:
             tensor: The tensor to input to the model.
 
