@@ -96,6 +96,16 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
+    def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
+        """Callback run whenever a new policy is added to an algorithm.
+
+        Args:
+            policy_id: ID of the newly created policy.
+            policy: the policy just created.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
     def on_episode_start(
         self,
         *,
@@ -290,7 +300,6 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             result: A results dict to add custom metrics to.
             kwargs: Forward compatibility placeholder.
         """
-
         pass
 
     @OverrideToImplementCustomLogic
@@ -426,6 +435,11 @@ class MultiCallbacks(DefaultCallbacks):
     def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
         for callback in self._callback_list:
             callback.on_algorithm_init(algorithm=algorithm, **kwargs)
+
+    @OverrideToImplementCustomLogic
+    def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
+        for callback in self._callback_list:
+            callback.on_create_policy(policy_id=policy_id, policy=policy)
 
     def on_sub_environment_created(
         self,

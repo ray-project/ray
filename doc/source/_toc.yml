@@ -251,6 +251,16 @@ parts:
       - file: cluster/key-concepts
       - file: cluster/user-guide
       - file: cluster/cloud
+      - file: cluster/kuberay
+        sections:
+          - file: cluster/kuberay/quickstart
+          - file: cluster/kuberay/config
+          - file: cluster/kuberay/k8s-cluster-setup
+          - file: cluster/kuberay/logging
+          - file: cluster/kuberay/networking
+          - file: cluster/kuberay/gpu
+          - file: cluster/kuberay/ml-example
+          - file: cluster/kuberay/kuberay-vs-legacy
       - file: cluster/deploy
       - file: cluster/api
       - file: cluster/usage-stats
