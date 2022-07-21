@@ -57,7 +57,9 @@ This config contains framework's runtime configurations that are more generic th
 This may include failure/retry configurations, verbosity levels, the name of the experiment, its logging directory,
 checkpoint configuration as well as its syncing configuration.
 
-Putting everything together, we can now construct a Tuner and call ``Tuner.fit`` on it!
+Putting everything together
+---------------------------
+we can now construct a Tuner and call ``Tuner.fit`` on it!
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
@@ -68,6 +70,14 @@ Putting everything together, we can now construct a Tuner and call ``Tuner.fit``
     ``num_samples = 2`` here will be applied to the whole suite of grid search. In other words,
     we will generate 4 trials.
 
+Inspect result
+--------------
+``Tuner.fit()`` generates a result grid, which you can inspect in the following way:
+
+.. literalinclude:: doc_code/tuner.py
+    :language: python
+    :start-after: __result_grid_inspection_start__
+    :end-before: __result_grid_inspection_end__
 
 Restoring and resuming
 ----------------------

@@ -58,7 +58,7 @@ tuner = Tuner(
     param_space=param_space,
     tune_config=TuneConfig(mode="min", metric="train-error", num_samples=2),
 )
-results = tuner.fit()
+result_grid = tuner.fit()
 # __tuner_stop__
 
 
@@ -82,3 +82,15 @@ param_space = {
     },
 }
 # __torch_stop__
+
+# __result_grid_inspection_start__
+for i in range(len(result_grid)):
+    result = result_grid[i]
+    if not result.error:
+        print(f"Trial finishes successfully with metric {result.metric}.")
+    else:
+        print(f"Trial errors out with {result.error}.")
+best_result = result_grid.get_best_result()
+best_checkpoint = best_result.checkpoint
+best_metric = best_result.metric
+# __result_grid_inspection_stop__
