@@ -109,12 +109,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Whether we have warned of Datasets containing multiple epochs of data.
-_epoch_warned = False
-
-# Whether we have warned about using slow Dataset transforms.
-_slow_warned = False
-
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
@@ -1363,15 +1357,13 @@ class Dataset(Generic[T]):
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
         if len(set(epochs)) > 1:
-            global _epoch_warned
-            if not _epoch_warned:
+            if ray.util.log_once("datasets_epoch_warned"):
                 logger.warning(
                     "Dataset contains data from multiple epochs: {}, "
                     "likely due to a `rewindow()` call. The higher epoch "
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch)
                 )
-                _epoch_warned = True
         dataset_stats = DatasetStats(
             stages={"union": []},
             parent=[d._plan.stats() for d in datasets],
@@ -3612,9 +3604,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
 
     def _warn_slow(self):
-        global _slow_warned
-        if not _slow_warned:
-            _slow_warned = True
+        if ray.util.log_once("datasets_slow_warned"):
             logger.warning(
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
                 "can be very slow. Consider using `.map_batches()` instead."

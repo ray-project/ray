@@ -16,6 +16,7 @@ import collections
 import heapq
 import numpy as np
 
+import ray
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -42,9 +43,6 @@ T = TypeVar("T")
 
 _pandas = None
 logger = logging.getLogger(__name__)
-
-# Whether we have warned that tensor casting has failed.
-_tensor_cast_failed_warned = False
 
 
 def lazy_import_pandas():
@@ -116,14 +114,12 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
                 try:
                     df[col_name] = TensorArray(col)
                 except Exception as e:
-                    global _tensor_cast_failed_warned
-                    if not _tensor_cast_failed_warned:
+                    if ray.util.log_once("datasets_tensor_array_cast_warning"):
                         logger.warning(
                             f"Tried to transparently convert column {col_name} to a "
                             "TensorArray but the conversion failed, leaving column "
                             f"as-is: {e}"
                         )
-                        _tensor_cast_failed_warned = True
         return df
 
     @staticmethod
