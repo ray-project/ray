@@ -118,13 +118,7 @@ def convert_ndarray_to_torch_tensor(
 
     Returns: A Torch Tensor.
     """
-    torch_tensor = torch.as_tensor(ndarray, dtype=dtype, device=device)
-    # Off-the-shelf torch Modules expect the input size to have at least 2
-    # dimensions (batch_size, feature_size). If the tensor for the column
-    # is flattened, then we unqueeze it to add an extra dimension.
-    if len(torch_tensor.size()) == 1:
-        torch_tensor = torch_tensor.unsqueeze(dim=1)
-    return torch_tensor
+    return torch.as_tensor(ndarray, dtype=dtype, device=device)
 
 
 def convert_ndarray_batch_to_torch_tensor_batch(

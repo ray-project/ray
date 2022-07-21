@@ -2422,7 +2422,7 @@ def test_iter_tf_batches(ray_start_regular_shared, pipelined):
         iterations = []
         for batch in ds.iter_tf_batches(batch_size=3):
             iterations.append(
-                np.concatenate((batch["one"], batch["two"], batch["label"]), axis=1)
+                np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
             )
         combined_iterations = np.concatenate(iterations)
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
@@ -2627,7 +2627,7 @@ def test_iter_torch_batches(ray_start_regular_shared, pipelined):
         iterations = []
         for batch in ds.iter_torch_batches(batch_size=3):
             iterations.append(
-                torch.cat(
+                torch.stack(
                     (batch["one"], batch["two"], batch["label"]),
                     dim=1,
                 ).numpy()

@@ -2362,19 +2362,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                When there are no more rows to be added to the buffer, the number of
-                rows in the buffer *will* decrease below this value while yielding
-                the remaining batches, and the final batch may have less than
-                ``batch_size`` rows. Increasing this will improve the randomness of
-                the shuffle but will increase CPU memory utilization and the latency
-                to the first batch. The CPU memory utilization ceiling is the max of
-                the prefetch buffer size (controlled by ``prefetch_blocks``) and
-                this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -2414,16 +2406,18 @@ class Dataset(Generic[T]):
         This iterator will yield single-tensor batches if the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
         column-tensors. If looking for more flexibility in the tensor conversion (e.g.
-        casting dtypes) or the batch format, try using `.to_torch`, which has a
-        declarative API for tensor casting and batch formatting, or use `.iter_batches`
-        directly, which is a lower-level API.
+        casting dtypes) or the batch format, try use `.iter_batches` directly, which is
+        a lower-level API.
 
         Examples:
             >>> import ray
             >>> for batch in ray.data.range( # doctest: +SKIP
-            ...     1000000,
-            ... ).iter_torch_batches():
-            ...     print(batch) # doctest: +SKIP
+            ...     12,
+            ... ).iter_torch_batches(batch_size=4):
+            ...     print(batch.shape) # doctest: +SKIP
+            torch.Size([4, 1])
+            torch.Size([4, 1])
+            torch.Size([4, 1])
 
         Time complexity: O(1)
 
@@ -2439,19 +2433,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                When there are no more rows to be added to the buffer, the number of
-                rows in the buffer *will* decrease below this value while yielding
-                the remaining batches, and the final batch may have less than
-                ``batch_size`` rows. Increasing this will improve the randomness of
-                the shuffle but will increase CPU memory utilization and the latency
-                to the first batch. The CPU memory utilization ceiling is the max of
-                the prefetch buffer size (controlled by ``prefetch_blocks``) and
-                this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -2496,8 +2482,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> for batch in ray.data.range(1000000).iter_tf_batches(): # doctest: +SKIP
-            ...     print(batch) # doctest: +SKIP
+            >>> for batch in ray.data.range( # doctest: +SKIP
+            ...     12,
+            ... ).iter_torch_batches(batch_size=4):
+            ...     print(batch.shape) # doctest: +SKIP
+            (4, 1)
+            (4, 1)
+            (4, 1)
 
         Time complexity: O(1)
 
@@ -2511,19 +2502,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                When there are no more rows to be added to the buffer, the number of
-                rows in the buffer *will* decrease below this value while yielding
-                the remaining batches, and the final batch may have less than
-                ``batch_size`` rows. Increasing this will improve the randomness of
-                the shuffle but will increase CPU memory utilization and the latency
-                to the first batch. The CPU memory utilization ceiling is the max of
-                the prefetch buffer size (controlled by ``prefetch_blocks``) and
-                this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -2630,15 +2613,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                Increasing this will improve the randomness of the shuffle but will
-                increase CPU memory utilization and the latency to the first batch. The
-                CPU memory utilization ceiling is the max of the prefetch buffer size
-                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
             unsqueeze_label_tensor: If set to True, the label tensor
                 will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
@@ -2811,15 +2790,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                Increasing this will improve the randomness of the shuffle but will
-                increase CPU memory utilization and the latency to the first batch. The
-                CPU memory utilization ceiling is the max of the prefetch buffer size
-                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
