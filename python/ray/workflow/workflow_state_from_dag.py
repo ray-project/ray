@@ -67,9 +67,9 @@ def workflow_state_from_dag(
 
     # TODO(suquark): remove this cyclic importing later by changing the way of
     # task ID assignment.
-    from ray.workflow.workflow_access import get_or_create_management_actor
+    from ray.workflow.workflow_access import get_management_actor
 
-    mgr = get_or_create_management_actor()
+    mgr = get_management_actor()
     context = workflow_context.get_workflow_step_context()
 
     def _node_visitor(node: Any) -> Any:
@@ -115,7 +115,7 @@ def workflow_state_from_dag(
                 else:
                     catch_exceptions = False
 
-            max_retries = workflow_options.get("max_retries", 3)
+            max_retries = bound_options.get("max_retries", 3)
             if not isinstance(max_retries, int) or max_retries < -1:
                 raise ValueError(
                     "'max_retries' only accepts 0, -1 or a positive integer."

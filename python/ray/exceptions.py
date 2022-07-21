@@ -549,7 +549,7 @@ class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
 
 
 @PublicAPI
-class GetTimeoutError(RayError):
+class GetTimeoutError(RayError, TimeoutError):
     """Indicates that a call to the worker timed out."""
 
     pass

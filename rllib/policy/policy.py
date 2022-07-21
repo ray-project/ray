@@ -29,7 +29,6 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-    PublicAPI,
     is_overridden,
 )
 from ray.rllib.utils.deprecation import Deprecated
@@ -37,7 +36,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
+from ray.rllib.utils.serialization import space_from_dict, space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
@@ -54,6 +53,7 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -108,8 +108,8 @@ class PolicySpec:
             # That will allow us to load a policy checkpoint even if the class
             # does not exist anymore (e.g., renamed).
             "policy_class": self.policy_class,
-            "observation_space": gym_space_to_dict(self.observation_space),
-            "action_space": gym_space_to_dict(self.action_space),
+            "observation_space": space_to_dict(self.observation_space),
+            "action_space": space_to_dict(self.action_space),
             "config": self.config,
         }
 
@@ -117,8 +117,8 @@ class PolicySpec:
     def deserialize(cls, spec: Dict) -> "PolicySpec":
         return cls(
             policy_class=spec["policy_class"],
-            observation_space=gym_space_from_dict(spec["observation_space"]),
-            action_space=gym_space_from_dict(spec["action_space"]),
+            observation_space=space_from_dict(spec["observation_space"]),
+            action_space=space_from_dict(spec["action_space"]),
             config=spec["config"],
         )
 
@@ -740,7 +740,44 @@ class Policy(metaclass=ABCMeta):
             # The current global timestep.
             "global_timestep": self.global_timestep,
         }
+        if self.config.get("enable_connectors", False):
+            # Checkpoint connectors state as well if enabled.
+            connector_configs = {}
+            if self.agent_connectors:
+                connector_configs["agent"] = self.agent_connectors.to_config()
+            if self.action_connectors:
+                connector_configs["action"] = self.action_connectors.to_config()
+            state["connector_configs"] = connector_configs
         return state
+
+    @PublicAPI(stability="alpha")
+    def restore_connectors(self, state: PolicyState):
+        """Restore agent and action connectors if configs available.
+
+        Args:
+            state: The new state to set this policy to. Can be
+                obtained by calling `self.get_state()`.
+        """
+        # To avoid a circular dependency problem cause by SampleBatch.
+        from ray.rllib.connectors.util import restore_connectors_for_policy
+
+        # No-op if connector is not enabled.
+        if not self.config.get("enable_connectors", False):
+            return
+
+        connector_configs = state.get("connector_configs", {})
+        if "agent" in connector_configs:
+            self.agent_connectors = restore_connectors_for_policy(
+                self, connector_configs["agent"]
+            )
+            logger.info("restoring agent connectors:")
+            logger.info(self.agent_connectors.__str__(indentation=4))
+        if "action" in connector_configs:
+            self.action_connectors = restore_connectors_for_policy(
+                self, connector_configs["action"]
+            )
+            logger.info("restoring action connectors:")
+            logger.info(self.action_connectors.__str__(indentation=4))
 
     @DeveloperAPI
     def set_state(self, state: PolicyState) -> None:
@@ -751,7 +788,7 @@ class Policy(metaclass=ABCMeta):
                 obtained by calling `self.get_state()`.
         """
         self.set_weights(state["weights"])
-        self.global_timestep = state["global_timestep"]
+        self.restore_connectors(state)
 
     @ExperimentalAPI
     def apply(

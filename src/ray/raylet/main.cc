@@ -87,6 +87,7 @@ int main(int argc, char *argv[]) {
                                          log_dir,
                                          /*print_log_filename_to_stdout=*/true);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
+  ray::RayLog::InstallTerminateHandler();
 
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
   const std::string store_socket_name = FLAGS_store_socket_name;

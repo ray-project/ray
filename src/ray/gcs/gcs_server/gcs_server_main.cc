@@ -44,6 +44,7 @@ int main(int argc, char *argv[]) {
                                          log_dir,
                                          /*print_log_filename_to_stdout=*/true);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
+  ray::RayLog::InstallTerminateHandler();
 
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
