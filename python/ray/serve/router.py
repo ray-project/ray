@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
 from ray.serve.common import RunningReplicaInfo
@@ -172,11 +172,15 @@ class ReplicaSet:
             completed_queries = replica_in_flight_queries.intersection(done)
             if len(completed_queries):
                 try:
-                    ray.get(completed_queries)
+                    ray.get(list(completed_queries))
                 except RayActorError:
+                    logger.debug(f"Removing {replica_info.replica_tag} from replica set because the actor exited." )
                     replicas_to_remove.append(replica_info)
+                except RayTaskError:
+                    # Ignore application error.
+                    pass
                 except Exception:
-                    pass  # ??? we never handled this before
+                    logger.exception("Handle received unexpected error when processing user requests.")
 
                 replica_in_flight_queries.difference_update(completed_queries)
 

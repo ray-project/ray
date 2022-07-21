@@ -10,11 +10,12 @@ import pytest
 import requests
 
 import ray
+import ray.actor
 import ray._private.state
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
-from ray.exceptions import RayActorError
+from ray.exceptions import AsyncioActorExit, RayActorError, RayTaskError
 from ray.serve.client import ServeControllerClient
 from ray.serve.common import ApplicationStatus
 from ray.serve.constants import SERVE_NAMESPACE
@@ -699,6 +700,29 @@ def test_autoscaler_shutdown_node_http_everynode(
     wait_for_condition(
         lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
     )
+
+def test_handle_early_detect_failure(shutdown_ray):
+    ray.init()
+    serve.start(detached=True)
+
+    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    def f(do_crash: bool=False):
+        if do_crash:
+            os._exit(1)
+        return os.getpid()
+
+    handle = serve.run(f.bind())
+    pids = ray.get([handle.remote() for _ in range(2)])
+    assert len(set(pids)) == 2
+
+    client = get_global_client()
+    ray.kill(client._controller, no_restart=True)
+
+    with pytest.raises(RayActorError):
+        ray.get(handle.remote(do_crash=True))
+
+    pids = ray.get([handle.remote() for _ in range(10)])
+    assert len(set(pids)) == 1
 
 
 if __name__ == "__main__":
