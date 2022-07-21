@@ -194,6 +194,7 @@ class AlpaTrainer(BaseTrainer):
                     parent=None)
         
         alpa.device_mesh.set_global_physical_mesh(self.p_mesh)
+        alpa.device_mesh.set_global_cluster(cluster)
         
         self._train_loop = train_loop_per_worker
         self._train_loop_config = train_loop_config
