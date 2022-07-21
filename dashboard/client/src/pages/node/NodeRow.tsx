@@ -1,5 +1,4 @@
 import { IconButton, TableCell, TableRow, Tooltip } from "@material-ui/core";
-import { createStyles, makeStyles } from "@material-ui/core/styles";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import { sortBy } from "lodash";

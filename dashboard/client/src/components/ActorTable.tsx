@@ -16,13 +16,13 @@ import Pagination from "@material-ui/lab/Pagination";
 import React, { useContext, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
+import rowStyles from "../common/RowStyles";
 import { Actor } from "../type/actor";
 import { Worker } from "../type/worker";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
-import rowStyles from "../common/RowStyles";
 
 const ActorTable = ({
   actors = {},
