@@ -36,16 +36,10 @@ def shutdown_ray():
 def start_and_shutdown_ray_cli():
     subprocess.check_output(
         ["ray", "start", "--head"],
-        stdout=subprocess.STDOUT,
-        stderr=subprocess.STDOUT,
-        shell=True,
     )
     yield
     subprocess.check_output(
         ["ray", "stop", "--force"],
-        stdout=subprocess.STDOUT,
-        stderr=subprocess.STDOUT,
-        shell=True,
     )
 
 
