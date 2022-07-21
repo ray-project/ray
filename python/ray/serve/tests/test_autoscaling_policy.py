@@ -187,7 +187,7 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -232,7 +232,7 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -597,7 +597,7 @@ def test_e2e_bursty(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -654,7 +654,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -709,7 +709,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -812,7 +812,7 @@ def test_e2e_raise_min_replicas(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -847,7 +847,7 @@ def test_e2e_raise_min_replicas(serve_instance):
             "downscale_delay_s": 0.2,
             "upscale_delay_s": 0.2,
         },
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     ).deploy()

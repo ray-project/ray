@@ -343,10 +343,10 @@ def deployment(
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
     autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    _graceful_shutdown_wait_loop_s: Optional[float] = None,
-    _graceful_shutdown_timeout_s: Optional[float] = None,
-    _health_check_period_s: Optional[float] = None,
-    _health_check_timeout_s: Optional[float] = None,
+    graceful_shutdown_wait_loop_s: Optional[float] = None,
+    graceful_shutdown_timeout_s: Optional[float] = None,
+    health_check_period_s: Optional[float] = None,
+    health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -364,10 +364,10 @@ def deployment(
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
     autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    _graceful_shutdown_wait_loop_s: Optional[float] = None,
-    _graceful_shutdown_timeout_s: Optional[float] = None,
-    _health_check_period_s: Optional[float] = None,
-    _health_check_timeout_s: Optional[float] = None,
+    graceful_shutdown_wait_loop_s: Optional[float] = None,
+    graceful_shutdown_timeout_s: Optional[float] = None,
+    health_check_period_s: Optional[float] = None,
+    health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -439,10 +439,10 @@ def deployment(
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
         autoscaling_config=autoscaling_config,
-        graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
-        health_check_period_s=_health_check_period_s,
-        health_check_timeout_s=_health_check_timeout_s,
+        graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
+        health_check_period_s=health_check_period_s,
+        health_check_timeout_s=health_check_timeout_s,
     )
 
     def decorator(_func_or_class):

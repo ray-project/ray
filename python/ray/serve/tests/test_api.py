@@ -430,7 +430,7 @@ class TestSetOptions:
             num_replicas=4,
             max_concurrent_queries=3,
             ray_actor_options={"num_cpus": 2},
-            _health_check_timeout_s=17,
+            health_check_timeout_s=17,
         )
         def f():
             pass
