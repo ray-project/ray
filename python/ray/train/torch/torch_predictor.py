@@ -9,7 +9,7 @@ from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train._internal.dl_predictor import DLPredictor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -104,11 +104,25 @@ class TorchPredictor(DLPredictor):
     def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
         return tensor.cpu().detach().numpy()
 
+    @DeveloperAPI
     def _model_predict(
         self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
     ) -> Union[
         torch.Tensor, Dict[str, torch.Tensor], List[torch.Tensor], Tuple[torch.Tensor]
     ]:
+        """Predict on a single batch of data.
+
+        Override this method to add custom logic for processing the model input or
+        output.
+
+        Args:
+            tensor: A batch of data to predict on, represented as either a single
+                PyTorch tensor or for multi-input models, a dictionary of tensors.
+
+        Returns:
+            The model outputs, either as a single tensor or a collection of tensors.
+
+        """
         with torch.no_grad():
             output = self.model(tensor)
         return output

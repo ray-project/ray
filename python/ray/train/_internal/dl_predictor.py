@@ -41,17 +41,20 @@ class DLPredictor(Predictor):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     @abc.abstractmethod
     def _model_predict(
         self, tensor: Union[TensorType, Dict[str, TensorType]]
     ) -> Union[TensorType, Dict[str, TensorType], List[TensorType], Tuple[TensorType]]:
         """Inputs the tensor to the model for this Predictor and returns the result.
 
+        Override this method to to add custom logic for processing the model outputs.
+
         Args:
             tensor: The tensor to input to the model.
 
         Returns:
-            A tensor containing the model output.
+            A tensor or collection of tensors containing the model output.
         """
         raise NotImplementedError
 
