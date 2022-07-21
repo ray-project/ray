@@ -46,7 +46,8 @@ def _load_predictor_cls(
 
 
 def _unpack_tensorarray_from_pandas(output_df: "pd.DataFrame") -> "pd.DataFrame":
-    """
+    """Unpack predictor's return value with TensorArray into numpy.
+
     In dl_predictor.py we return a pd.DataFrame that could have multiple
     columns but value of each column is a TensorArray. Flatten the
     TensorArray to list to ensure output is json serializable as http
