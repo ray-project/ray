@@ -346,7 +346,10 @@ def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
             (
                 f"Failing to read AWS S3 file(s): {paths}. "
                 "Please check that file exists and has properly configured access. "
-                "See https://docs.ray.io/en/latest/data/creating-datasets.html#reading-from-remote-storage "  # noqa
+                "You can also run AWS CLI command to get more detailed error message "
+                "(e.g., aws s3 ls <file-name>). "
+                "See https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html "  # noqa
+                "and https://docs.ray.io/en/latest/data/creating-datasets.html#reading-from-remote-storage "  # noqa
                 "for more information."
             )
         )

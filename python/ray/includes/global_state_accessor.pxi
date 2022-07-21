@@ -91,13 +91,6 @@ cdef class GlobalStateAccessor:
             return c_string(actor_info.get().data(), actor_info.get().size())
         return None
 
-    def get_node_resource_info(self, node_id):
-        cdef c_string result
-        cdef CNodeID cnode_id = CNodeID.FromBinary(node_id.binary())
-        with nogil:
-            result = self.inner.get().GetNodeResourceInfo(cnode_id)
-        return result
-
     def get_worker_table(self):
         cdef c_vector[c_string] result
         with nogil:
