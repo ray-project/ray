@@ -26,10 +26,6 @@ class StandardScaler(Preprocessor):
         Many models assume that data is distributed like a standard normal distribution.
         To make your data look like a standard normal distribution, use :py:class:`StandardScaler`.
 
-    .. seealso::
-        `The Wikapedia article on feature scaling <https://en.wikipedia.org/wiki/Feature_scaling#Motivation>`_
-            An article that provides more information about the motivation behind standard scaling.
-
     Args:
         columns: The columns to separately scale.
 
