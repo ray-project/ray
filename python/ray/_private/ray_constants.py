@@ -264,7 +264,9 @@ WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
     f"ray::DELETE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}"
 )
 
-LOG_MONITOR_MAX_OPEN_FILES = 200
+# Effectively reopen every file, every time. To fall back to the old behavior
+# one should set this constant to 200.
+LOG_MONITOR_MAX_OPEN_FILES = int(os.environ.get("RAY_LOG_MONITOR_MAX_OPEN_FILES", "1"))
 
 # Autoscaler events are denoted by the ":event_summary:" magic token.
 LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"

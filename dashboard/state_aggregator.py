@@ -147,7 +147,7 @@ class StateAPIManager:
 
         Returns:
             A list of filtered state data in dictionary. Each state data's
-            unncessary columns are filtered by the given state_dataclass schema.
+            unnecessary columns are filtered by the given state_dataclass schema.
         """
         filters = _convert_filters_type(filters, state_dataclass)
         result = []
