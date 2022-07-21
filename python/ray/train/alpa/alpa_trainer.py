@@ -178,6 +178,8 @@ class AlpaTrainer(BaseTrainer):
 
         ic(num_devices_per_host, self.host_num_devices, node_info, node_ids)
         
+        ic(node_info)
+        
         self.vp_mesh = VirtualPhysicalMesh(host_ids=node_ids,
                             host_info=node_info,
                             head_ip=self.head_ip,
@@ -186,6 +188,7 @@ class AlpaTrainer(BaseTrainer):
 
         alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
+        ic(node_info)
         print('\noutside: starting\n')
         self.p_mesh = DistributedPhysicalDeviceMesh(
                     host_ids=node_ids,
