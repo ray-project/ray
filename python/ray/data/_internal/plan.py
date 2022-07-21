@@ -99,7 +99,7 @@ class ExecutionPlan:
             in_blocks: Base list of blocks.
             stats: Stats for the base blocks.
             dataset_uuid: Dataset's UUID.
-            run_by_consumer: Whether this plan is invokedd to run by the consumption
+            run_by_consumer: Whether this plan is invoked to run by the consumption
             APIs (e.g. .iter_batches()).
         """
         self._in_blocks = in_blocks
