@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, List
+from typing import Any, List, Dict, Tuple
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
@@ -7,8 +7,14 @@ from ray.rllib.connectors.connector import (
     register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import AgentConnectorDataType, AgentConnectorsOutput
+from ray.rllib.utils.typing import (
+    AgentConnectorDataType, 
+    AgentConnectorsOutput,
+    AgentID,
+    EnvID
+)
 from ray.util.annotations import PublicAPI
+from ray.rllib.evaluation.collectors.simple_list_collector import _AgentCollector
 
 
 @PublicAPI(stability="alpha")
@@ -33,6 +39,18 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         self._view_requirements = ctx.view_requirements
         self._agent_data = defaultdict(lambda: defaultdict(SampleBatch))
+
+        # a dict of env_id to a dict of agent_id to a list of agent_collector objects
+        env_default = defaultdict(
+            lambda: _AgentCollector(
+                self._view_requirements,    
+                max_seq_len=ctx.config["model"]["max_seq_len"], 
+                is_policy_recurrent=len(ctx.model_initial_states) > 0,
+                disable_action_flattening=ctx.config["_disable_action_flattening"],
+            )
+        )
+        self.agent_collectors = defaultdict(lambda: env_default)
+
 
     def reset(self, env_id: str):
         if env_id in self._agent_data:
@@ -61,6 +79,9 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         env_id = ac_data.env_id
         agent_id = ac_data.agent_id
+        # use env_id as episode_id ? 
+        episode_id = env_id if SampleBatch.EPS_ID not in d else d[SampleBatch.EPS_ID]
+
         assert env_id is not None and agent_id is not None, (
             f"ViewRequirementAgentConnector requires env_id({env_id}) "
             "and agent_id({agent_id})"
@@ -80,37 +101,55 @@ class ViewRequirementAgentConnector(AgentConnector):
         # Agent batch is our buffer of necessary history for computing
         # a SampleBatch for policy forward pass.
         # This is used by both training and inference.
-        agent_batch = self._agent_data[env_id][agent_id]
-        for col, req in vr.items():
-            # Not used for action computation.
-            if not req.used_for_compute_actions:
-                continue
+        # agent_batch = self._agent_data[env_id][agent_id]
 
-            # Create the batch of data from the different buffers.
-            if col == SampleBatch.OBS:
-                # NEXT_OBS from the training sample is the current OBS
-                # to run Policy with.
-                data_col = SampleBatch.NEXT_OBS
-            else:
-                data_col = req.data_col or col
-            if data_col not in d:
-                continue
+        # TODO: Ask @jun: what is eps_id, agent_id, env_id? and how are they different?
+        agent_collector = self._agent_data[env_id][agent_id]
 
-            if col not in agent_batch:
-                agent_batch[col] = []
-            # Stack along batch dim.
-            agent_batch[col].append(d[data_col])
+        if agent_collector.is_empty():
+            agent_collector.add_init_batch(
+                episode_id=episode_id,
+                agent_index=agent_id,
+                env_id=env_id,
+                t=-1, # not sure about this?
+                init_obs=d[SampleBatch.OBS] # not sure about this?
+            )
+        else:
+            agent_collector.add_action_reward_next_obs(d)
+        
+        sample_batch = agent_collector.build_last_timestep(self._view_requirements)
 
-            # Only keep the useful part of the history.
-            h = -1
-            if req.shift_from is not None:
-                h = req.shift_from
-            elif type(req.shift) == int:
-                h = req.shift
-            assert h <= 0, "Cannot use future data to compute action"
-            agent_batch[col] = agent_batch[col][h:]
 
-        sample_batch = self._get_sample_batch_for_action(vr, agent_batch)
+        # for col, req in vr.items():
+        #     # Not used for action computation.
+        #     if not req.used_for_compute_actions:
+        #         continue
+
+        #     # Create the batch of data from the different buffers.
+        #     if col == SampleBatch.OBS:
+        #         # NEXT_OBS from the training sample is the current OBS
+        #         # to run Policy with.
+        #         data_col = SampleBatch.NEXT_OBS
+        #     else:
+        #         data_col = req.data_col or col
+        #     if data_col not in d:
+        #         continue
+
+        #     if col not in agent_batch:
+        #         agent_batch[col] = []
+        #     # Stack along batch dim.
+        #     agent_batch[col].append(d[data_col])
+
+        #     # Only keep the useful part of the history.
+        #     h = -1
+        #     if req.shift_from is not None:
+        #         h = req.shift_from
+        #     elif type(req.shift) == int:
+        #         h = req.shift
+        #     assert h <= 0, "Cannot use future data to compute action"
+        #     agent_batch[col] = agent_batch[col][h:]
+
+        # sample_batch = self._get_sample_batch_for_action(vr, agent_batch)
 
         return_data = AgentConnectorDataType(
             env_id, agent_id, AgentConnectorsOutput(training_dict, sample_batch)

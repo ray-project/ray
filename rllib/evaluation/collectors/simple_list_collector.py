@@ -100,6 +100,9 @@ class _AgentCollector:
         # each time a (non-initial!) observation is added.
         self.agent_steps = 0
 
+    def is_empty(self):
+        return not self.buffers or all(len(l) == 0 for l in self.buffers.values())
+
     def add_init_obs(
         self,
         episode_id: EpisodeID,
@@ -198,6 +201,73 @@ class _AgentCollector:
                 for i, sub_list in enumerate(self.buffers[k]):
                     sub_list.append(flattened[i])
         self.agent_steps += 1
+
+    def build_last_timestep(
+        self, 
+        view_requirements: ViewRequirementsDict
+    ) -> SampleBatch:
+
+        batch_data = {}
+        np_data = {}
+        for view_col, view_req in view_requirements.items():
+            # Create the batch of data from the different buffers.
+            data_col = view_req.data_col or view_col
+
+            # Some columns don't exist yet (get created during postprocessing).
+            # -> skip.
+            if data_col not in self.buffers:
+                continue
+
+            # OBS are already shifted by -1 (the initial obs starts one ts
+            # before all other data columns).
+            obs_shift = -1 if data_col == SampleBatch.OBS else 0
+
+            # Keep an np-array cache so we don't have to regenerate the
+            # np-array for different view_cols using to the same data_col.
+            if data_col not in np_data:
+                np_data[data_col] = [
+                    _to_float_np_array(d) for d in self.buffers[data_col]
+                ]
+            
+            data = []
+            for d in np_data[data_col]:
+                inds = (
+                    self.shift_before
+                    + obs_shift
+                    + view_req.shift_arr
+                    + len(d) - 1
+                )
+
+                # handle the case where the inds are out of bounds
+                element_at_t = []
+                for index in inds:
+                    if index < len(d):
+                        element_at_t.append(d[index])
+                    else:
+                        element_at_t.append(
+                            np.zeros(
+                                shape=view_req.space.shape,
+                                dtype=view_req.space.dtype,
+                            )
+                        )
+                element_at_t = np.stack(element_at_t)
+
+                if element_at_t.shape[0] == 1:
+                    # squeeze to remove the T dimension if it is 1.
+                    element_at_t = element_at_t.squeeze(0)
+                data.append(element_at_t)
+
+            if len(data) > 0:
+                if data_col not in self.buffer_structs:
+                    batch_data[view_col] = data[0]
+                else:
+                    batch_data[view_col] = tree.unflatten_as(
+                        self.buffer_structs[data_col], data
+                    )
+
+        batch = self._get_sample_batch(batch_data)
+        return batch
+            
 
     def build(self, view_requirements: ViewRequirementsDict) -> SampleBatch:
         """Builds a SampleBatch from the thus-far collected agent data.
@@ -425,20 +495,7 @@ class _AgentCollector:
                         self.buffer_structs[data_col], data
                     )
 
-        # Due to possible batch-repeats > 1, columns in the resulting batch
-        # may not all have the same batch size.
-        batch = SampleBatch(batch_data)
-
-        # Adjust the seq-lens array depending on the incoming agent sequences.
-        if self.is_policy_recurrent:
-            seq_lens = []
-            max_seq_len = self.max_seq_len
-            count = batch.count
-            while count > 0:
-                seq_lens.append(min(count, max_seq_len))
-                count -= max_seq_len
-            batch["seq_lens"] = np.array(seq_lens)
-            batch.max_seq_len = max_seq_len
+        batch = self._get_sample_batch(batch_data)
 
         # This trajectory is continuing -> Copy data at the end (in the size of
         # self.shift_before) to the beginning of buffers and erase everything
@@ -503,7 +560,24 @@ class _AgentCollector:
                 # each data col.
                 self.buffer_structs[col] = data
 
+    def _get_sample_batch(self, batch_data: Dict[str, TensorType]) -> SampleBatch:
 
+        # Due to possible batch-repeats > 1, columns in the resulting batch
+        # may not all have the same batch size.
+        batch = SampleBatch(batch_data)
+
+        # Adjust the seq-lens array depending on the incoming agent sequences.
+        if self.is_policy_recurrent:
+            seq_lens = []
+            max_seq_len = self.max_seq_len
+            count = batch.count
+            while count > 0:
+                seq_lens.append(min(count, max_seq_len))
+                count -= max_seq_len
+            batch["seq_lens"] = np.array(seq_lens)
+            batch.max_seq_len = max_seq_len
+        
+        return batch
 class _PolicyCollector:
     """Collects already postprocessed (single agent) samples for one policy.
 
