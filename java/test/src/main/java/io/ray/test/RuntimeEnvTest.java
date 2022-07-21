@@ -98,7 +98,7 @@ public class RuntimeEnvTest {
             }
           };
       RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
-      runtimeEnv.set("env_vars", "envMap");
+      runtimeEnv.set("env_vars", envMap);
 
       /// value of KEY1 is overwritten to `C` and KEY2s is extended from job config.
       String val =
