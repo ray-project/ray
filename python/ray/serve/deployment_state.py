@@ -1,4 +1,4 @@
-from dataclasses import astuple, dataclass
+from dataclasses import dataclass
 import itertools
 import json
 import logging
@@ -926,18 +926,18 @@ class DeploymentState:
         """
         return self._target_state.info.autoscaling_policy.config.look_back_period_s
 
-    def get_checkpoint_data(self) -> Tuple:
+    def get_checkpoint_data(self) -> DeploymentTargetState:
         """
         Return deployment's target state submitted by user's deployment call.
         Should be persisted and outlive current ray cluster.
         """
-        return astuple(self._target_state)
+        return self._target_state
 
-    def recover_target_state_from_checkpoint(self, target_state_checkpoint: Tuple):
+    def recover_target_state_from_checkpoint(self, target_state_checkpoint: DeploymentTargetState):
         logger.info(
             "Recovering target state for deployment " f"{self._name} from checkpoint.."
         )
-        self._target_state = DeploymentTargetState(*target_state_checkpoint)
+        self._target_state = target_state_checkpoint
 
     def recover_current_state_from_replica_actor_names(
         self, replica_actor_names: List[str]
