@@ -354,7 +354,7 @@ class _TorchAccelerator(Accelerator):
         data_loader: torch.utils.data.DataLoader,
         add_dist_sampler: bool = True,
         move_to_device: bool = True,
-        auto_transfer: bool = True,
+        auto_transfer: bool = False,
     ) -> torch.utils.data.DataLoader:
         """Prepares DataLoader for distributed execution.
 
@@ -368,7 +368,7 @@ class _TorchAccelerator(Accelerator):
                 the provided DataLoader.
             move_to_device: If set, automatically move the data
                 returned by the data loader to the correct device.
-            auto_transfer: If set and device is GPU, another CUDA stream
+            auto_transfer: (Experimental) If set and device is GPU, another CUDA stream
                 is created to automatically copy data from host (CPU) memory
                 to device (GPU) memory (the default CUDA stream still runs the
                 training procedure). If device is CPU, it will be disabled
@@ -567,7 +567,7 @@ class _WrappedDataLoader(DataLoader):
         self._auto_transfer = auto_transfer if device.type == "cuda" else False
         # create a new CUDA stream to move data from host to device concurrently
         self._memcpy_stream = (
-            torch.cuda.Stream()
+            torch.cuda.Stream(device)
             if device.type == "cuda" and self._auto_transfer
             else None
         )
