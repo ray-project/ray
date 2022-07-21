@@ -176,6 +176,8 @@ class AlpaTrainer(BaseTrainer):
         num_devices_per_host = min(self.host_num_devices)
         num_devices_per_host = min(num_gpus, num_devices_per_host)
 
+        ic(num_devices_per_host)
+        
         self.vp_mesh = VirtualPhysicalMesh(host_ids=node_ids,
                             host_info=node_info,
                             head_ip=self.head_ip,
