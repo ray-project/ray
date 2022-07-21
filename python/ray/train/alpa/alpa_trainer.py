@@ -192,7 +192,7 @@ class AlpaTrainer(BaseTrainer):
         print('\noutside: starting\n')
         self.p_mesh = DistributedPhysicalDeviceMesh(
                     host_ids=node_ids,
-                    host_info=host_info,
+                    host_info=node_info,
                     head_ip=self.head_ip,
                     num_devices_per_host=num_devices_per_host,
                     parent=None)
