@@ -295,7 +295,7 @@ def run(
         restore: Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         server_port: Port number for launching TuneServer.
-         resume: One of [True, False, "LOCAL", "REMOTE", "PROMPT", "AUTO"]. Can
+        resume: One of [True, False, "LOCAL", "REMOTE", "PROMPT", "AUTO"]. Can
             be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
             "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"] (e.g. ``AUTO+ERRORED``).
             "LOCAL"/True restores the checkpoint from the
