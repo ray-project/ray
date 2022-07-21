@@ -18,7 +18,7 @@ from ray.tune.resources import Resources
 from ray.tune.syncer import Syncer
 from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
-from ray.train.rl.utils import RL_TRAINER_CLASS_FILE, RL_CONFIG_FILE
+from ray.train.rl.rl_checkpoint import RL_TRAINER_CLASS_FILE, RL_CONFIG_FILE
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
