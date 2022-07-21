@@ -250,6 +250,7 @@ class RuntimeEnv(dict):
         "_ray_commit",
         "_inject_current_ray",
         "config",
+        "upload_path",
         # TODO(SongGuyang): We add this because the test
         # `test_experimental_package_github` set a `docker`
         # field which is not supported. We should remove it
