@@ -99,16 +99,53 @@ class MinMaxScaler(Preprocessor):
 
 
 class MaxAbsScaler(Preprocessor):
-    """Scale values within columns based on the absolute max value.
+    r"""Scale each column by its absolute max value.
 
-    For each column, each value will be transformed to ``value / abs_max``,
-    where ``abs_max`` is calculated from the fitted dataset.
+    The general formula is given by
 
-    When transforming the fitted dataset, transformed values will be in the
-    range [-1, 1].
+    .. math::
+
+        x' = \frac{x}{\max{\vert x \vert}}
+
+    where :math:`x` is the column and :math:`x'` is the transformed column. If
+    :math:`\max{\vert x \vert} = 0` (i.e., the column contains all zeros), then the column
+    is unmodified.
+
+    Transformed values are always in the range :math:`[-1, 1]`.
+
+    .. note::
+        This is recommend way to scale sparse data.
 
     Args:
-        columns: The columns that will individually be scaled.
+        columns: The columns to separately scale.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import MaxAbsScaler
+        >>>
+        >>> df = pd.DataFrame({"X1": [-6, 3], "X2": [2, -4], "X3": [0, 0]}  # doctest: +SKIP
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
+           X1  X2  X3
+        0  -6   2   0
+        1   3  -4   0
+
+        Columns are scaled separately.
+
+        >>> preprocessor = MaxAbsScaler(columns=["X1", "X2"])  # doctest: +SKIP
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+            X1   X2  X3
+        0 -1.0  0.5   0
+        1  0.5 -1.0   0
+
+        Zero-valued columns aren't scaled.
+
+        >>> preprocessor = MaxAbsScaler(columns=["X3"])  # doctest: +SKIP
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2   X3
+        0  -6   2  0.0
+        1   3  -4  0.0
     """
 
     def __init__(self, columns: List[str]):
