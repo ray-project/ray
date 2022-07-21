@@ -53,10 +53,7 @@ class RepartitionStage(AllToAllStage):
                 )
 
             super().__init__(
-                "repartition",
-                num_blocks,
-                do_shuffle,
-                supports_block_udf=True,
+                "repartition", num_blocks, do_shuffle, supports_block_udf=True
             )
 
         else:
@@ -69,11 +66,7 @@ class RepartitionStage(AllToAllStage):
                     blocks = block_list
                 return fast_repartition(blocks, num_blocks)
 
-            super().__init__(
-                "repartition",
-                num_blocks,
-                do_fast_repartition,
-            )
+            super().__init__("repartition", num_blocks, do_fast_repartition)
 
 
 class RandomizeBlocksStage(AllToAllStage):
@@ -82,11 +75,7 @@ class RandomizeBlocksStage(AllToAllStage):
     def __init__(self, seed: Optional[int]):
         self._seed = seed
 
-        super().__init__(
-            "randomize_block_order",
-            None,
-            self.do_randomize,
-        )
+        super().__init__("randomize_block_order", None, self.do_randomize)
 
     def do_randomize(self, block_list, *_):
         num_blocks = block_list.initial_num_blocks()
@@ -99,11 +88,7 @@ class RandomizeBlocksStage(AllToAllStage):
 class RandomShuffleStage(AllToAllStage):
     """Implementation of `Dataset.random_shuffle()`."""
 
-    def __init__(
-        self,
-        seed: Optional[int],
-        output_num_blocks: Optional[int],
-    ):
+    def __init__(self, seed: Optional[int], output_num_blocks: Optional[int]):
         def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
@@ -134,10 +119,7 @@ class RandomShuffleStage(AllToAllStage):
             )
 
         super().__init__(
-            "random_shuffle",
-            output_num_blocks,
-            do_shuffle,
-            supports_block_udf=True,
+            "random_shuffle", output_num_blocks, do_shuffle, supports_block_udf=True
         )
 
 
@@ -176,15 +158,14 @@ class ZipStage(AllToAllStage):
                 blocks.append(res)
                 metadata.append(meta)
 
+            # Early release memory.
+            del blocks1, blocks2
+
             # TODO(ekl) it might be nice to have a progress bar here.
             metadata = ray.get(metadata)
             blocks = BlockList(
                 blocks, metadata, owned_by_consumer=block_list._owned_by_consumer
             )
-
-            # Early release memory.
-            del blocks1, blocks2
-
             return blocks, {}
 
         super().__init__("zip", None, do_zip_all)
