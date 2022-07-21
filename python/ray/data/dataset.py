@@ -1071,6 +1071,7 @@ class Dataset(Generic[T]):
                                 owned_by_consumer=owned_by_consumer,
                             ),
                             stats,
+                            run_by_consumer=owned_by_consumer,
                         ),
                         self._epoch,
                         self._lazy,
@@ -1184,6 +1185,7 @@ class Dataset(Generic[T]):
                             owned_by_consumer=owned_by_consumer,
                         ),
                         stats,
+                        run_by_consumer=owned_by_consumer,
                     ),
                     self._epoch,
                     self._lazy,
@@ -1243,6 +1245,7 @@ class Dataset(Generic[T]):
                             bs, ms, owned_by_consumer=block_list._owned_by_consumer
                         ),
                         stats,
+                        run_by_consumer=block_list._owned_by_consumer,
                     ),
                     self._epoch,
                     self._lazy,
@@ -1389,7 +1392,7 @@ class Dataset(Generic[T]):
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(blocklist, dataset_stats),
+            ExecutionPlan(blocklist, dataset_stats, run_by_consumer=owned_by_consumer),
             max_epoch,
             self._lazy,
         )
@@ -3048,7 +3051,9 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
+                        ExecutionPlan(
+                            blocks, outer_stats, dataset_uuid=uuid, run_by_consumer=True
+                        ),
                         epoch,
                         lazy=False,
                     )
@@ -3162,7 +3167,9 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True
+                        ExecutionPlan(blocks, outer_stats, run_by_consumer=True),
+                        self._epoch,
+                        lazy=True,
                     )
                     return ds
 
@@ -3479,10 +3486,21 @@ class Dataset(Generic[T]):
         return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
-        left, right = self._plan.execute().divide(block_idx)
-        l_ds = Dataset(ExecutionPlan(left, self._plan.stats()), self._epoch, self._lazy)
+        block_list = self._plan.execute()
+        left, right = block_list.divide(block_idx)
+        l_ds = Dataset(
+            ExecutionPlan(
+                left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+            ),
+            self._epoch,
+            self._lazy,
+        )
         r_ds = Dataset(
-            ExecutionPlan(right, self._plan.stats()), self._epoch, self._lazy
+            ExecutionPlan(
+                right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+            ),
+            self._epoch,
+            self._lazy,
         )
         return l_ds, r_ds
 

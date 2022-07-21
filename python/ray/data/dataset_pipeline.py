@@ -1092,6 +1092,7 @@ class DatasetPipeline(Generic[T]):
             ExecutionPlan(
                 BlockList([], [], owned_by_consumer=True),
                 DatasetStats(stages={}, parent=None),
+                run_by_consumer=True,
             ),
             0,
             True,
@@ -1105,11 +1106,13 @@ class DatasetPipeline(Generic[T]):
         # These optimized stages will be executed by the PipelineExecutor.
         optimized_stages = []
         for stage in stages:
-            stage.run_by_consumer = True
+
+            def add_stage(ds, stage):
+                ds._plan._run_by_consumer = True
+                return ds._plan.with_stage(stage)
+
             optimized_stages.append(
-                lambda ds, stage=stage: Dataset(
-                    ds._plan.with_stage(stage), ds._epoch, True
-                )
+                lambda ds, stage=stage: Dataset(add_stage(ds, stage), ds._epoch, True)
             )
         self._optimized_stages = optimized_stages
 

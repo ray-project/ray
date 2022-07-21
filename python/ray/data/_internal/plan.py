@@ -41,12 +41,9 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 class Stage:
     """Represents a Dataset transform stage (e.g., map or shuffle)."""
 
-    def __init__(
-        self, name: str, num_blocks: Optional[int], run_by_consumer: bool = False
-    ):
+    def __init__(self, name: str, num_blocks: Optional[int]):
         self.name = name
         self.num_blocks = num_blocks
-        self.run_by_consumer = run_by_consumer
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
@@ -88,13 +85,22 @@ class ExecutionPlan:
     # execution, any future executions will only have to execute the "after the
     # snapshot" subchain, using the snapshot as the input to that subchain.
 
-    def __init__(self, in_blocks: BlockList, stats: DatasetStats, dataset_uuid=None):
+    def __init__(
+        self,
+        in_blocks: BlockList,
+        stats: DatasetStats,
+        dataset_uuid=None,
+        *,
+        run_by_consumer: bool,
+    ):
         """Create a plan with no transformation stages.
 
         Args:
             in_blocks: Base list of blocks.
             stats: Stats for the base blocks.
             dataset_uuid: Dataset's UUID.
+            run_by_consumer: Whether this plan is invokedd to run by the consumption
+            APIs (e.g. .iter_batches()).
         """
         self._in_blocks = in_blocks
         self._in_stats = stats
@@ -111,10 +117,13 @@ class ExecutionPlan:
         if not stats.dataset_uuid:
             stats.dataset_uuid = self._dataset_uuid
 
+        self._run_by_consumer = run_by_consumer
+
     def __repr__(self) -> str:
         return (
             f"ExecutionPlan("
             f"dataset_uuid={self._dataset_uuid}, "
+            f"run_by_consumer={self._run_by_consumer}, "
             f"in_blocks={self._in_blocks}, "
             f"stages_before_snapshot={self._stages_before_snapshot}, "
             f"stages_after_snapshot={self._stages_after_snapshot}, "
@@ -143,7 +152,9 @@ class ExecutionPlan:
         Returns:
             A shallow copy of this execution plan.
         """
-        plan_copy = ExecutionPlan(self._in_blocks, self._in_stats)
+        plan_copy = ExecutionPlan(
+            self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
+        )
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks
@@ -170,7 +181,10 @@ class ExecutionPlan:
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
         plan_copy = ExecutionPlan(
-            in_blocks, copy.copy(self._in_stats), dataset_uuid=dataset_uuid
+            in_blocks,
+            copy.copy(self._in_stats),
+            dataset_uuid=dataset_uuid,
+            run_by_consumer=self._run_by_consumer,
         )
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
@@ -291,7 +305,9 @@ class ExecutionPlan:
                 else:
                     clear_input_blocks = False
                 stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(blocks, clear_input_blocks)
+                blocks, stage_info = stage(
+                    blocks, clear_input_blocks, self._run_by_consumer
+                )
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
@@ -517,7 +533,6 @@ class OneToOneStage(Stage):
         block_fn: BlockTransform,
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
-        run_by_consumer: bool = False,
         fn: Optional[UDF] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -528,7 +543,6 @@ class OneToOneStage(Stage):
         self.block_fn = block_fn
         self.compute = compute or "tasks"
         self.ray_remote_args = ray_remote_args or {}
-        self.run_by_consumer = run_by_consumer
         self.fn = fn
         self.fn_args = fn_args
         self.fn_kwargs = fn_kwargs
@@ -625,7 +639,6 @@ class OneToOneStage(Stage):
             block_fn,
             self.compute,
             prev.ray_remote_args,
-            run_by_consumer=self.run_by_consumer,
             fn=self.fn,
             fn_args=fn_args,
             fn_kwargs={},
@@ -634,7 +647,7 @@ class OneToOneStage(Stage):
         )
 
     def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
+        self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
     ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
         assert (
@@ -643,8 +656,8 @@ class OneToOneStage(Stage):
 
         if blocks._owned_by_consumer:
             assert (
-                self.run_by_consumer
-            ), "Pipeline outputs can only be consumed by pipeline"
+                run_by_consumer
+            ), "Blocks owned by consumer can only be consumed by consumer"
 
         blocks = compute._apply(
             self.block_fn,
@@ -659,7 +672,7 @@ class OneToOneStage(Stage):
             fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
         assert isinstance(blocks, BlockList), blocks
-        blocks._owned_by_consumer = self.run_by_consumer
+        blocks._owned_by_consumer = run_by_consumer
         return blocks, {}
 
 
@@ -674,14 +687,12 @@ class AllToAllStage(Stage):
         supports_block_udf: bool = False,
         block_udf: Optional[BlockTransform] = None,
         remote_args: Optional[Dict[str, Any]] = None,
-        run_by_consumer: bool = False,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
         self.ray_remote_args = remote_args or {}
-        self.run_by_consumer = run_by_consumer
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
@@ -732,15 +743,15 @@ class AllToAllStage(Stage):
         )
 
     def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
+        self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
     ) -> Tuple[BlockList, dict]:
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
         in_blocks_owned_by_consumer = blocks._owned_by_consumer
         if in_blocks_owned_by_consumer:
             assert (
-                self.run_by_consumer
-            ), "Pipeline outputs can only be consumed by pipeline"
+                run_by_consumer
+            ), "Blocks owned by consumer can only be consumed by consumer"
         blocks, stage_info = self.fn(
             blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
         )
@@ -751,7 +762,7 @@ class AllToAllStage(Stage):
         if isinstance(self, RandomizeBlocksStage):
             blocks._owned_by_consumer = in_blocks_owned_by_consumer
         else:
-            blocks._owned_by_consumer = self.run_by_consumer
+            blocks._owned_by_consumer = run_by_consumer
 
         return blocks, stage_info
 
@@ -815,7 +826,12 @@ def _rewrite_read_stage(
             stages = stages[1:]
         name += "->randomize_block_order"
 
-    stage = OneToOneStage(name, block_fn, "tasks", remote_args)
+    stage = OneToOneStage(
+        name,
+        block_fn,
+        "tasks",
+        remote_args,
+    )
     stats = DatasetStats(stages={}, parent=None)
     stages.insert(0, stage)
     return block_list, stats, stages

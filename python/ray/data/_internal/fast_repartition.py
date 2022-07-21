@@ -13,7 +13,13 @@ def fast_repartition(blocks, num_blocks):
     from ray.data.dataset import Dataset
 
     wrapped_ds = Dataset(
-        ExecutionPlan(blocks, DatasetStats(stages={}, parent=None)), 0, lazy=False
+        ExecutionPlan(
+            blocks,
+            DatasetStats(stages={}, parent=None),
+            run_by_consumer=blocks._owned_by_consumer,
+        ),
+        0,
+        lazy=False,
     )
     # Compute the (n-1) indices needed for an equal split of the data.
     count = wrapped_ds.count()
