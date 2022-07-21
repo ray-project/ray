@@ -6,6 +6,7 @@ import ray
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
     Block,
+    BlockPartition,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def _calculate_blocks_rows(
-    blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
+    blocks_with_metadata: BlockPartition,
 ) -> List[int]:
     """Calculate the number of rows for a list of blocks with metadata."""
     get_num_rows = cached_remote_fn(_get_num_rows)
@@ -25,6 +26,7 @@ def _calculate_blocks_rows(
         if metadata.num_rows is None:
             # Need to fetch number of rows.
             num_rows = ray.get(get_num_rows.remote(block))
+            metadata.num_rows = num_rows
         else:
             num_rows = metadata.num_rows
         block_rows.append(num_rows)
@@ -91,7 +93,7 @@ def _split_single_block(
     meta: BlockMetadata,
     block_row: int,
     split_indices: List[int],
-) -> Tuple[int, List[Tuple[ObjectRef[Block], BlockMetadata, int]]]:
+) -> Tuple[int, BlockPartition]:
     """Split the provided block at the given indices."""
     split_result = []
     block_accessor = BlockAccessor.for_block(block)
@@ -111,7 +113,7 @@ def _split_single_block(
             input_files=meta.input_files,
             exec_stats=stats.build(),
         )
-        split_result.append((ray.put(split_block), split_meta, accessor.num_rows()))
+        split_result.append((ray.put(split_block), split_meta))
         prev_index = index
     return (block_id, split_result)
 
@@ -134,16 +136,14 @@ def _drop_empty_block_split(block_split_indices: List[int], num_rows: int) -> Li
 
 
 def _split_all_blocks(
-    blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
+    blocks_with_metadata: BlockPartition,
     block_rows: List[int],
     per_block_split_indices: List[List[int]],
-) -> Iterable[Tuple[ObjectRef[Block], BlockMetadata, int]]:
+) -> Iterable[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Split all the input blocks based on the split indices"""
     split_single_block = cached_remote_fn(_split_single_block)
 
-    all_blocks_split_results: List[List[Tuple[ObjectRef[Block], BlockMetadata]]] = [
-        None
-    ] * len(blocks_with_metadata)
+    all_blocks_split_results: List[BlockPartition] = [None] * len(blocks_with_metadata)
 
     split_single_block_futures = []
 
@@ -154,7 +154,7 @@ def _split_all_blocks(
         if len(block_split_indices) == 0:
             # optimization: if no split is needed, we just need to add it to the
             # result
-            all_blocks_split_results[block_id] = [(block_ref, meta, block_row)]
+            all_blocks_split_results[block_id] = [(block_ref, meta)]
         else:
             # otherwise call split remote function.
             split_single_block_futures.append(
@@ -174,7 +174,7 @@ def _split_all_blocks(
 
 
 def _generate_global_split_results(
-    all_blocks_split_results: Iterable[Tuple[ObjectRef[Block], BlockMetadata, int]],
+    all_blocks_split_results: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
     global_split_sizes: List[int],
 ) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
     """Reassemble per block's split result into final split result."""
@@ -197,10 +197,10 @@ def _generate_global_split_results(
             current_split_size = 0
             current_split_id += 1
         else:
-            (block_ref, meta, size) = next(all_blocks_split_results)
+            (block_ref, meta) = next(all_blocks_split_results)
             current_blocks.append(block_ref)
             current_meta.append(meta)
-            current_split_size += size
+            current_split_size += meta.num_rows
 
     return result_blocks, result_metas
 
@@ -231,8 +231,8 @@ def _split_at_indices(
     )
 
     # phase 2: split each block based on the indices from previous step.
-    all_blocks_split_results: List[
-        List[Tuple[ObjectRef[Block], BlockMetadata]]
+    all_blocks_split_results: Iterable[
+        Tuple[ObjectRef[Block], BlockMetadata]
     ] = _split_all_blocks(blocks_with_metadata, block_rows, per_block_split_indices)
 
     # phase 3: generate the final split.
