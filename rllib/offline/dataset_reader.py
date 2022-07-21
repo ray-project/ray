@@ -2,7 +2,7 @@ import logging
 import math
 from pathlib import Path
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import zipfile
 
 import ray.data
@@ -205,24 +205,23 @@ class DatasetReader(InputReader):
     """
 
     @PublicAPI
-    def __init__(self, ioctx: IOContext, ds: ray.data.Dataset):
+    def __init__(self, ds: ray.data.Dataset, ioctx: Optional[IOContext] = None):
         """Initializes a DatasetReader instance.
 
         Args:
             ds: Ray dataset to sample from.
         """
-        self._ioctx = ioctx
+        self._ioctx = ioctx or IOContext()
         self._default_policy = self.policy_map = None
         self._dataset = ds
         self.count = None if not self._dataset else self._dataset.count()
         # do this to disable the ray data stdout logging
         ray.data.set_progress_bars(enabled=False)
 
-        # the number of rows to return per call to next()
-        if self._ioctx:
-            self.batch_size = self._ioctx.config.get("train_batch_size", 1)
-            num_workers = self._ioctx.config.get("num_workers", 0)
-            seed = self._ioctx.config.get("seed", None)
+        # the number of steps to return per call to next()
+        self.batch_size = self._ioctx.config.get("train_batch_size", 1)
+        num_workers = self._ioctx.config.get("num_workers", 0)
+        seed = self._ioctx.config.get("seed", None)
         if num_workers:
             self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)
         # We allow the creation of a non-functioning None DatasetReader.
@@ -258,7 +257,7 @@ class DatasetReader(InputReader):
         return ret
 
     def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
-        if not self._ioctx or not self._ioctx.config.get("postprocess_inputs"):
+        if not self._ioctx.config.get("postprocess_inputs"):
             return batch
 
         if isinstance(batch, SampleBatch):
