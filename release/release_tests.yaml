@@ -3853,7 +3853,7 @@
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
   legacy:
-    test_name: pipelined_ingestion_1500_gb
+    test_name: push_based_pipelined_ingestion_1500_gb
     test_suite: dataset_test
 
   frequency: nightly
