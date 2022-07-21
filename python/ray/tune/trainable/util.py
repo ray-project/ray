@@ -17,7 +17,7 @@ from ray.tune.registry import _ParameterRegistry
 from ray.tune.resources import Resources
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +231,7 @@ class PlacementGroupUtil:
         return options, pg
 
 
+@PublicAPI(stability="beta")
 def with_parameters(trainable, **kwargs):
     """Wrapper for trainables to pass arbitrary large data objects.
 
@@ -374,6 +375,7 @@ def with_parameters(trainable, **kwargs):
         return inner
 
 
+@PublicAPI(stability="beta")
 def with_resources(
     trainable,
     resources: Union[
