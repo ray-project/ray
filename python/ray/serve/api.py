@@ -119,7 +119,7 @@ def start(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
         )
 
-        _check_http_and_checkpoint_options(client, http_options)
+        _check_http_options(client, http_options)
         return client
     except RayServeException:
         pass
@@ -639,7 +639,7 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     return Application(pipeline_build(target))
 
 
-def _check_http_and_checkpoint_options(
+def _check_http_options(
     client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
 ) -> None:
     if http_options:
