@@ -107,8 +107,8 @@ class DummyTrainer(DataParallelTrainer):
                     dict(
                         bytes_read=bytes_read,
                         batches_read=batches_read,
-                        epochs_read=epochs_read,
                         total_batch_delay=np.sum(batch_delays),
+                        epochs_read=epochs_read,
                     )
                 )
             delta = time.perf_counter() - start
