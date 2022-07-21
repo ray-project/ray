@@ -4,7 +4,13 @@ import ray
 from ray.util.annotations import Deprecated, PublicAPI
 
 
-@Deprecated(message="Use ray.util.multiprocessing instead.")
+@Deprecated(
+    message="For stateless/task processing, use ray.util.multiprocessing, "
+    "see details in https://docs.ray.io/en/latest/ray-more-libs/multiprocessing.html."
+    "For stateful/actor processing such as batch prediction, use "
+    "Datasets.map_batches(compute=ActorPoolStrategy, ...), see details in "
+    "https://docs.ray.io/en/latest/data/package-ref.html#ray.data.Dataset.map_batches."
+)
 @PublicAPI(stability="beta")
 class ActorPool:
     """Utility class to operate on a fixed pool of actors.
