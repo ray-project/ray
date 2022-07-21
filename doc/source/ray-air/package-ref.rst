@@ -100,6 +100,12 @@ Tuner
 .. autoclass:: ray.tune.tuner.Tuner
     :members:
 
+TuneConfig
+##########
+
+.. automodule:: ray.tune.tune_config
+    :members:
+
 Tuner Results
 #############
 
