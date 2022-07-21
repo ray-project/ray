@@ -55,6 +55,10 @@ long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
 std::atomic<bool> RayLog::initialized_ = false;
 
+#ifdef _WIN32
+std::string executable_extension_ = ".exe";
+#endif
+
 std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
   static constexpr int MAX_NUM_FRAMES = 64;
   char buf[16 * 1024];
@@ -249,6 +253,17 @@ void RayLog::StartRayLog(const std::string &app_name,
   } else {
     // Find the app name without the path.
     std::string app_file_name = ray::GetFileName(app_name);
+#ifdef _WIN32
+    if (app_file_name.size() >= executable_extension_.size()) {
+      auto ending =
+          app_file_name.substr(app_file_name.size() - executable_extension_.size());
+      std::transform(ending.begin(), ending.end(), ending.begin(), ::tolower);
+      if (ending == executable_extension_) {
+        app_file_name =
+            app_file_name.substr(0, app_file_name.size() - executable_extension_.size());
+      }
+    }
+#endif
     if (!app_file_name.empty()) {
       app_name_without_path = app_file_name;
     }
