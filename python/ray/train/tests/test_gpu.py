@@ -481,6 +481,15 @@ def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
     """Tests that auto_transfer uses the right device for the cuda stream."""
     import nvidia_smi
 
+    nvidia_smi.nvmlInit()
+
+    def get_gpu_used_mem(i):
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
+        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        return info.used
+
+    start_gpu_memory = get_gpu_used_mem(1)
+
     device = torch.device("cuda:1")
     small_dataloader = [(torch.randn((1024 * 4, 1024 * 4)),) for _ in range(10)]
     wrapped_dataloader = (  # noqa: F841
@@ -489,14 +498,10 @@ def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
         )
     )
 
-    nvidia_smi.nvmlInit()
+    end_gpu_memory = get_gpu_used_mem(1)
 
-    def get_gpu_used_mem(i):
-        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
-        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
-        return info.used
-
-    assert get_gpu_used_mem(1) > get_gpu_used_mem(0)
+    # Verify GPU memory usage increases on the right cuda device
+    assert end_gpu_memory > start_gpu_memory
 
 
 if __name__ == "__main__":
