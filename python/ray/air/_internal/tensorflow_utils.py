@@ -106,11 +106,11 @@ def convert_ndarray_batch_to_tf_tensor_batch(
                     f"should be given, instead got: {dtypes}"
                 )
             dtypes = next(iter(dtypes.values()))
-        batch = convert_ndarray_to_tf_tensor(ndarrays, dtype=dtypes)
+        batch = tf.convert_to_tensor(ndarrays, dtype=dtypes)
     else:
         # Multi-tensor case.
         batch = {
-            col_name: convert_ndarray_to_tf_tensor(
+            col_name: tf.convert_to_tensor(
                 col_ndarray,
                 dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
             )

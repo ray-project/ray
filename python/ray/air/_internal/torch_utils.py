@@ -102,25 +102,6 @@ def convert_pandas_to_torch_tensor(
         return get_tensor_for_columns(columns=columns, dtype=column_dtypes)
 
 
-def convert_ndarray_to_torch_tensor(
-    ndarray: np.ndarray,
-    dtype: Optional[torch.dtype] = None,
-    device: Optional[str] = None,
-) -> torch.Tensor:
-    """Convert a NumPy ndarray to a Torch Tensor.
-
-    Args:
-        ndarray: The NumPy ndarray that we wish to convert to a Torch Tensor.
-        dtype: The Torch dtype for the created tensor; if None, the dtype will be
-            inferred from the NumPy ndarray data.
-        device: The device on which the tensor should be placed; if None, the Torch
-            tensor will be constructed on the CPU.
-
-    Returns: A Torch Tensor.
-    """
-    return torch.as_tensor(ndarray, dtype=dtype, device=device)
-
-
 def convert_ndarray_batch_to_torch_tensor_batch(
     ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
@@ -146,11 +127,11 @@ def convert_ndarray_batch_to_torch_tensor_batch(
                     f"should be given, instead got: {dtypes}"
                 )
             dtypes = next(iter(dtypes.values()))
-        batch = convert_ndarray_to_torch_tensor(ndarrays, dtype=dtypes, device=device)
+        batch = torch.as_tensor(ndarrays, dtype=dtypes, device=device)
     else:
         # Multi-tensor case.
         batch = {
-            col_name: convert_ndarray_to_torch_tensor(
+            col_name: torch.as_tensor(
                 col_ndarray,
                 dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
                 device=device,
