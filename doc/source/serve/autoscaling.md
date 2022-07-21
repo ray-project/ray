@@ -4,25 +4,14 @@
 
 This section should help you:
 
-- Understand how Ray Serve autoscaling works.
-- Learn how to configure the parameters for your workload.
+- Learn how to use the Serve Autoscaling API.
+- Lean how to optimize the Serve Autoscaling parameters for your workload.
 
-
-## Autoscaling architecture
-Ray Serve's autoscaling feature automatically increases or decreases a deployment's number of replicas based on its load. 
-
-![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
-
-- Each ServeHandle and each worker replica periodically push the stats to the autoscaler.
-- The autoscaler requires ServeHandle queue metrics and replicas queries metrics to make decision whether to scale (up or down) the replicas.
-- ServeHandle continues to poll the updated group of replicas from the controller. Upon discovery of the new replicas, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached
-
-:::{note}
-When the controller dies, the client will still be able to send queries, but autoscaling will be paused. When the controller recovers, the autoscaling will resume, but all previous metrics collected will be lost.
-:::
+To learn about the architecture underlying Ray Serve Autoscaling, see {ref}`serve-autoscaling-architecture`.
 
 ## Autoscaling parameters
-There are several parameters the autoscaling algorithm takes into consideration when deciding the target replicas for your deployment
+
+There are several parameters the autoscaling algorithm takes into consideration when deciding the target replicas for your deployment:
 
 **min_replicas[default_value=1]**: The minimal number of replicas for the deployment. ``min_replicas`` will also be the initial number of replicas when the deployment is deployed.
 :::{note}

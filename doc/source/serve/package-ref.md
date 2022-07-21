@@ -1,6 +1,8 @@
 (serve-api)=
 # Ray Serve API
 
+(core-apis) =
+
 ## Core APIs
 
 ```{eval-rst}

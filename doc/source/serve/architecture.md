@@ -4,8 +4,8 @@
 
 This section should help you:
 
-- understand an overview of how each component in Serve works
-- understand the different types of actors that make up a Serve instance
+- Get an overview of how each component in Serve works
+- Understand the different types of actors that make up a Serve instance
 
 % Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
 
@@ -14,7 +14,7 @@ This section should help you:
 :width: 600px
 ```
 
-## High Level View
+## High-Level View
 
 Serve runs on Ray and utilizes [Ray actors](actor-guide).
 
@@ -24,58 +24,85 @@ There are three kinds of actors that are created to make up a Serve instance:
   the control plane. The Controller is responsible for creating, updating, and
   destroying other actors. Serve API calls like creating or getting a deployment
   make remote calls to the Controller.
-- Router: There is one router per node. Each router is a [Uvicorn](https://www.uvicorn.org/) HTTP
+- HTTP Proxy: There is one HTTP proxy actor on the head node (the location and number of proxies is configurable via the `location` field of `http_options`: {ref}`core-apis`). This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
   server that accepts incoming requests, forwards them to replicas, and
   responds once they are completed.
-- Worker Replica: Worker replicas actually execute the code in response to a
+- Worker Replica: Worker replicas are actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
-  replica processes individual requests from the routers (they may be batched
+  replica processes individual requests from the HTTP proxy (these may be batched
   by the replica using `@serve.batch`, see the [batching](serve-batching) docs).
 
 ## Lifetime of a Request
 
-When an HTTP request is sent to the router, the follow things happen:
+When an HTTP request is sent to the HTTP proxy, the following things happen:
 
-- The HTTP request is received and parsed.
-- The correct deployment associated with the HTTP url path is looked up. The
+1. The HTTP request is received and parsed.
+2. The correct deployment associated with the HTTP URL path is looked up. The
   request is placed on a queue.
-- For each request in a deployment queue, an available replica is looked up
-  and the request is sent to it. If there are no available replicas (there
-  are more than `max_concurrent_queries` requests outstanding), the request
-  is left in the queue until an outstanding request is finished.
+3. For each request in a deployment's queue, an available replica is looked up in round-robin fashion
+  and the request is sent to it. If there are no available replicas (i.e. there
+  are more than `max_concurrent_queries` requests outstanding at each replica), the request
+  is left in the queue until a replica becomes available.
 
-Each replica maintains a queue of requests and executes one at a time, possibly
-using asyncio to process them concurrently. If the handler (the function for the
-deployment or `__call__`) is `async`, the replica will not wait for the
-handler to run; otherwise, the replica will block until the handler returns.
+Each replica maintains a queue of requests and executes requests one at a time, possibly
+using `asyncio` to process them concurrently. If the handler (the deployment function or the `__call__` method of the deployment class) is declared with `async def`, the replica will not wait for the
+handler to run.  Otherwise, the replica will block until the handler returns.
 
-## FAQ
+When making a request via [ServeHandle](serve-handle-explainer) instead of HTTP, the request is placed on a queue in the ServeHandle, and we skip to step 3 above.
 
 (serve-ft-detail)=
 
-### How does Serve handle fault tolerance?
+## Fault tolerance
 
 Application errors like exceptions in your model evaluation code are caught and
 wrapped. A 500 status code will be returned with the traceback information. The
 replica will be able to continue to handle requests.
 
-Machine errors and faults will be handled by Ray. Serve utilizes the [actor
-reconstruction](actor-fault-tolerance) capability. For example, when a machine hosting any of the
-actors crashes, those actors will be automatically restarted on another
+Machine errors and faults will be handled by Ray Serve as follows:
+
+- When replica actors fail, the Controller actor will replace them with new ones.
+- When the HTTP proxy actor fails, the Controller actor will restart it.
+- When the Controller actor fails, Ray will restart it.
+- When the Ray cluster fails, Ray Serve cannot recover.
+
+When a machine hosting any of the actors crashes, those actors will be automatically restarted on another
 available machine. All data in the Controller (routing policies, deployment
-configurations, etc) is checkpointed to the Ray. Transient data in the
+configurations, etc) is checkpointed to the Ray Global Control Store (GCS) on the head node. Transient data in the
 router and the replica (like network connections and internal request
-queues) will be lost upon failure.
+queues) will be lost for this kind of failure.
+
+(serve-autoscaling-architecture)=
+
+## Ray Serve Autoscaling
+
+Ray Serve's autoscaling feature automatically increases or decreases a deployment's number of replicas based on its load.
+
+![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
+
+- Each ServeHandle and each replica periodically pushes its metrics to the autoscaler.
+- For each deployment, the autoscaler uses ServeHandle queue metrics and replicas queries metrics to make a decision whether to scale up or down the number of replicas.
+- Each ServeHandle continues to poll the updated group of replicas from the controller. Upon discovery of the new replicas, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached.
+
+:::{note}
+When the controller dies, the client will still be able to send queries, but autoscaling will be paused. When the controller recovers, the autoscaling will resume, but all previous metrics collected will be lost.
+:::
+
+## Ray Serve API Server
+
+Ray Serve provides a CLI TODO: link for managing your Ray Serve instance, as well as a REST API TODO:link (which the CLI calls under the hood.)
+
+The Ray Serve API server that responds to these REST requests is a module that is automatically loaded by the Ray API Server (also known as the Ray Dashboard). TODO: link, which runs on the head node.
+
+## FAQ
 
 ### How does Serve ensure horizontal scalability and availability?
 
-Serve starts one router per node. Each router will bind the same port. You
+Serve can be configured to start one HTTP proxy actor per node via the `location` field of `http_options` ({ref}`core-apis`). Each one will bind the same port. You
 should be able to reach Serve and send requests to any models via any of the
-servers.
+servers.  You can use your own load balancer on top of Ray Serve.
 
-This architecture ensures horizontal scalability for Serve. You can scale the
-router by adding more nodes and scale the model by increasing the number
-of replicas.
+This architecture ensures horizontal scalability for Serve. You can scale your HTTP ingress by adding more nodes and scale your model inference by increasing the number
+of replicas via the `num_replicas` option of your deployment.
 
 ### How do ServeHandles work?
 
@@ -89,5 +116,4 @@ often used to implement [model composition](serve-model-composition).
 
 Serve utilizes Ray’s [shared memory object store](plasma-store) and in process memory
 store. Small request objects are directly sent between actors via network
-call. Larger request objects (100KiB+) are written to a distributed shared
-memory store and the replica can read them via zero-copy read.
+call. Larger request objects (100KiB+) are written to the object store and the replica can read them via zero-copy read (TODO: doesn't this only apply to numpy arrays?).
