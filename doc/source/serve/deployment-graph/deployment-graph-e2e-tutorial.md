@@ -14,42 +14,24 @@ kernelspec:
 
 (deployment-graph-e2e-tutorial)=
 
-# Deployment Graph E2E Tutorial
+# Deployment Graphs: Composing Deployments
 
 ```{note}
 Note: This feature is in Alpha, so APIs are subject to change.
 ```
 
-## Motivation
+This section should help you:
 
-Machine learning serving systems are getting longer and wider. They often consist of many models to make a single prediction. This is common in use cases like image / video content classification and tagging, fraud detection pipeline with multiple policies, multi-stage ranking and recommendation, etc.
+* compose your Ray Serve deployments together with the **Deployment Graph** API
+* serve your applications that use multi-model inference, ensemble models, ML model composition, or mixed business logic/model inference workloads
+* independently scale each of your ML models and business logic steps
 
-Meanwhile, the size of a model is also growing beyond the memory limit of a single machine due to the exponentially growing number of parameters. GPT-3 and sparse feature embeddings in large recommendation models are two prime examples.
+Ray Serve's **Deployment Graph** API lets you compose your deployments together by describing how to route a request through your deployments. This is particularly useful if you're using ML model composition or mixing business logic and model inference in your application. You can encapsulate each of your models and each of your business logic steps in independent deployments. Then, you can chain these deployments together in a **Deployment Graph**.
 
-Ray has unique strengths suited to distributed inference pipelines: flexible scheduling, efficient communication, and shared memory. Ray Serve leverages these strengths to build inference graphs, enabling users to develop complex ML applications locally and then deploy them to production with dynamic scaling and lightweight updates (e.g., for model weights).
+```{contents}
+```
 
-## Features
-- Provide the ability to build, test, and deploy a complex inference graph of deployments both locally and on remote cluster. The authoring experience is fully Python-programmable and support dynamic control flow and custom business logic, all without writing YAML.
-- In production, the deployments making up the graph can be reconfigured and scaled dynamically. This should enable DevOps/MLOps teams to operate deployment graphs without modifying the underlying code.
-
-
-__[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md)__
-
-+++
-
-## Concepts
-
-- **Deployment**: Scalable, upgradeable group of actors managed by Ray Serve. __[See docs for detail](https://docs.ray.io/en/master/serve/package-ref.html#deployment-api)__
-
-- **DeploymentNode**: Smallest unit in a graph, created by calling `.bind()` on a serve decorated class or function, backed by a Deployment.
-
-- **InputNode**: A special node that represents the input passed to a graph at runtime.
-
-- **Deployment Graph**: Collection of deployment nodes bound together to define an inference graph. The graph can be deployed behind an HTTP endpoint and reconfigured/scaled dynamically.
-
-+++
-
-## Full End to End Example Walkthrough
+## Example Walkthrough
 
 Let's put the concepts together and incrementally build a runnable DAG example highlighting the following features:
 
@@ -93,20 +75,22 @@ from ray.serve.dag import InputNode
 @serve.deployment
 async def preprocessor(input_data: str):
     """Simple feature processing that converts str to int"""
-    await asyncio.sleep(0.1) # Manual delay for blocking computation
+
+    await asyncio.sleep(0.1) # Mock delay representing a blocking computation
     return int(input_data)
 
 @serve.deployment
 async def avg_preprocessor(input_data):
     """Simple feature processing that returns average of input list as float."""
-    await asyncio.sleep(0.15) # Manual delay for blocking computation
+
+    await asyncio.sleep(0.15) # Mock delay representing a blocking computation
     return sum(input_data) / len(input_data)
 
-# DAG building
-with InputNode() as dag_input:
+# Building the graph:
+with InputNode() as graph_input:
     # Partial access of user input by index
-    preprocessed_1 = preprocessor.bind(dag_input[0])
-    preprocessed_2 = avg_preprocessor.bind(dag_input[1])
+    preprocessed_1 = preprocessor.bind(graph_input[0])
+    preprocessed_2 = avg_preprocessor.bind(graph_input[1])
 ```
 
 +++
@@ -416,6 +400,8 @@ more info on these options.
 
 +++
 
+(deployment-graph-end-to-end-example-code)=
+
 ## Full End to End Example Code
 
 Now we're done! The full example below covers the full example for you to try out.
@@ -573,3 +559,13 @@ Potential Future improvements:
    - Leverage ray shared memory to reduce or eliminate intermediate data transfer
    - Static compute graph transformation, fusion and placement based on profiling
  - Better UX, such as visualization
+
+## Glossary
+
+- **Deployment**: Scalable, upgradeable group of actors managed by Ray Serve. __[See docs for detail](https://docs.ray.io/en/master/serve/package-ref.html#deployment-api)__
+
+- **DeploymentNode**: Smallest unit in a graph, created by calling `.bind()` on a serve decorated class or function, backed by a Deployment.
+
+- **InputNode**: A special node that represents the input passed to a graph at runtime.
+
+- **Deployment Graph**: Collection of deployment nodes bound together to define an inference graph. The graph can be deployed behind an HTTP endpoint and reconfigured/scaled dynamically.
