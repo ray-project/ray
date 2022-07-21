@@ -81,6 +81,8 @@ class BatchingManager:
     def split_dataframe(
         output_df: "pd.DataFrame", batch_size: int
     ) -> List["pd.DataFrame"]:
+        from ray.data.extensions import TensorArray, TensorArrayElement
+
         if not isinstance(output_df, pd.DataFrame):
             raise TypeError(
                 "The output should be a Pandas DataFrame but Serve got "
@@ -91,6 +93,15 @@ class BatchingManager:
                 f"The output dataframe should have length divisible by {batch_size}, "
                 f"but Serve got length {len(output_df)}."
             )
+
+        # In dl_predictor.py we return a pd.DataFrame that could have multiple
+        # columns but value of each column is a TensorArray. Flatten the
+        # TensorArray to list to ensure output is json serializable as http
+        # response.
+        for col in output_df:
+            if isinstance(output_df[col].values, (TensorArray, TensorArrayElement)):
+                output_df[col] = output_df[col].to_numpy()
+
         return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
 
     @staticmethod
