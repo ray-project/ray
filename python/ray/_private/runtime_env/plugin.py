@@ -82,7 +82,6 @@ class RuntimeEnvPlugin(ABC):
 
         Args:
             uri: a URI uniquely describing this resource.
-            ctx: auxiliary information supplied by Ray.
 
         Returns:
             the amount of space reclaimed by the deletion.
