@@ -243,6 +243,8 @@ def record_extra_usage_tag(key: str, value: str):
 
     If the key already exists, the value will be overwritten.
     Caller should make sure the uniqueness of the key to avoid conflicts.
+
+    It will make a synchronous call to the internal kv store.
     """
     if _recorded_extra_usage_tags.get(key) == value:
         return
