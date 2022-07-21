@@ -933,7 +933,9 @@ class DeploymentState:
         """
         return self._target_state
 
-    def recover_target_state_from_checkpoint(self, target_state_checkpoint: DeploymentTargetState):
+    def recover_target_state_from_checkpoint(
+        self, target_state_checkpoint: DeploymentTargetState
+    ):
         logger.info(
             "Recovering target state for deployment " f"{self._name} from checkpoint.."
         )
