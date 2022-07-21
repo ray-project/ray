@@ -483,7 +483,7 @@ def canonicalize_bootstrap_address_or_die(
             "Please specify the one to connect to by setting the `--address` "
             "flag or `RAY_ADDRESS` environment variable."
         )
-    if len(running_gcs_addresses) > 0:
+    if len(running_gcs_addresses) > 1:
         raise ConnectionError(
             f"Found multiple active Ray instances: {running_gcs_addresses}. "
             "Please specify the one to connect to by setting the `--address` "
