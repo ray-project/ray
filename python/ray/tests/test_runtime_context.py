@@ -219,8 +219,25 @@ def test_ids(ray_start_regular):
     assert isinstance(rtc.get_job_id(), str)
     assert rtc.get_job_id() == rtc.job_id.hex()
     # placement group id
-    assert isinstance(rtc.get_current_placement_group_id(), str)
-    assert rtc.get_current_placement_group_id() == rtc.current_placement_group_id.hex()
+    # Driver doesn't belong to any placement group.
+    assert rtc.get_placement_group_id() is None
+    pg = ray.util.placement_group(
+        name="bar",
+        strategy="PACK",
+        bundles=[
+            {"CPU": 1, "GPU": 0},
+        ],
+    )
+    ray.get(pg.ready())
+
+    @ray.remote
+    def foo_pg():
+        rtc = ray.get_runtime_context()
+        assert isinstance(rtc.get_placement_group_id(), str)
+        assert rtc.get_placement_group_id() == rtc.current_placement_group_id.hex()
+
+    ray.get(foo_pg.options(placement_group=pg).remote())
+    ray.util.remove_placement_group(pg)
 
     # task id
     assert rtc.get_task_id() is None

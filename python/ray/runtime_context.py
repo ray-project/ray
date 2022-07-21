@@ -230,7 +230,7 @@ class RuntimeContext(object):
         actor_info = ray._private.state.actors(self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
-    @Deprecated(message="Use get_current_placement_group_id() instead")
+    @Deprecated(message="Use get_placement_group_id() instead")
     @property
     def current_placement_group_id(self):
         """Get the current Placement group ID of this worker.
@@ -240,7 +240,7 @@ class RuntimeContext(object):
         """
         return self.worker.placement_group_id
 
-    def get_current_placement_group_id(self) -> Optional[str]:
+    def get_placement_group_id(self) -> Optional[str]:
         """Get the current Placement group ID of this worker.
 
         Returns:
