@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 import urllib
 import urllib.parse
 from datetime import datetime
@@ -47,11 +48,13 @@ from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
+    _alpha_doc,
     get as state_cli_get,
     list as state_cli_list,
     get_api_server_url,
     output_with_format,
     summary_state_cli_group,
+    AvailableFormat,
 )
 
 logger = logging.getLogger(__name__)
@@ -647,7 +650,7 @@ def start(
 
         if disable_usage_stats:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
-        usage_lib.show_usage_stats_prompt()
+        usage_lib.show_usage_stats_prompt(cli=True)
         cli_logger.newline()
 
         if port is None:
@@ -2048,6 +2051,7 @@ def local_dump(
         "this option will be ignored."
     ),
 )
+@_alpha_doc()
 def logs(
     glob_filter,
     node_ip: str,
@@ -2060,6 +2064,11 @@ def logs(
     interval: float,
     timeout: int,
 ):
+    # TODO: We will need to finalize on some example usage of the command.
+    """
+    Get logs from the ray cluster
+
+    """
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
 
@@ -2097,7 +2106,7 @@ def logs(
                 print(f"Node ID: {node_id}")
             elif node_ip:
                 print(f"Node IP: {node_ip}")
-            print(output_with_format(logs))
+            print(output_with_format(logs, format=AvailableFormat.YAML))
 
     # If there's an unique match, print the log file.
     if match_unique:
@@ -2316,7 +2325,13 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     help="Health check for a specific component. Currently supports: "
     "[ray_client_server]",
 )
-def healthcheck(address, redis_password, component):
+@click.option(
+    "--skip-version-check",
+    is_flag=True,
+    default=False,
+    help="Skip comparison of GCS version with local Ray version.",
+)
+def healthcheck(address, redis_password, component, skip_version_check):
     """
     This is NOT a public api.
 
@@ -2327,9 +2342,12 @@ def healthcheck(address, redis_password, component):
 
     if not component:
         try:
-            if ray._private.gcs_utils.check_health(address):
+            if ray._private.gcs_utils.check_health(
+                address, skip_version_check=skip_version_check
+            ):
                 sys.exit(0)
         except Exception:
+            traceback.print_exc()
             pass
         sys.exit(1)
 

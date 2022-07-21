@@ -87,6 +87,9 @@ class TorchTrainer(DataParallelTrainer):
             # Returns the current torch device.
             train.torch.get_device()
 
+    Any returns from the ``train_loop_per_worker`` will be discarded and not
+    used or persisted anywhere.
+
     To save a model to use for the ``TorchPredictor``, you must save it under the
     "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 
@@ -100,6 +103,7 @@ class TorchTrainer(DataParallelTrainer):
             from ray import train
             from ray.air import session, Checkpoint
             from ray.train.torch import TorchTrainer
+            from ray.air.config import ScalingConfig
 
             input_size = 1
             layer_size = 15
@@ -141,9 +145,9 @@ class TorchTrainer(DataParallelTrainer):
                     )
 
             train_dataset = ray.data.from_items([1, 2, 3])
-            scaling_config = {"num_workers": 3}
+            scaling_config = ScalingConfig(num_workers=3)
             # If using GPUs, use the below scaling config instead.
-            # scaling_config = {"num_workers": 3, "use_gpu": True}
+            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
             trainer = TorchTrainer(
                 train_loop_per_worker=train_loop_per_worker,
                 scaling_config=scaling_config,
