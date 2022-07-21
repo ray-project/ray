@@ -1906,7 +1906,8 @@ int main(int argc, char **argv) {
       []() { ray::RayLog::ShutDownRayLog(); },
       argv[0],
       ray::RayLogLevel::INFO,
-      /*log_dir=*/"");
+      /*log_dir=*/"",
+      /*print_log_filename_to_stdout=*/false);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

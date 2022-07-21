@@ -1007,7 +1007,8 @@ int main(int argc, char **argv) {
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+                                         /*log_dir=*/"",
+                                         /*print_log_filename_to_stdout=*/false);
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
