@@ -9,9 +9,12 @@ import pandas as pd
 
 import ray
 import ray.cloudpickle as pickle
-from ray.tune import PlacementGroupFactory
-from ray.tune.execution.placement_groups import resource_dict_to_pg_factory
+from ray.tune.execution.placement_groups import (
+    PlacementGroupFactory,
+    resource_dict_to_pg_factory,
+)
 from ray.tune.registry import _ParameterRegistry
+from ray.tune.resources import Resources
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI
@@ -377,7 +380,7 @@ def with_resources(
         Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
     ],
 ):
-    from ray.tune.trainable import Trainable, wrap_function
+    from ray.tune.trainable import Trainable
 
     if not callable(trainable) or (
         inspect.isclass(trainable) and not issubclass(trainable, Trainable)
@@ -387,9 +390,6 @@ def with_resources(
             f"or classes that inherit from `tune.Trainable()`. Got type: "
             f"{type(trainable)}."
         )
-
-    if not inspect.isclass(trainable):
-        trainable = wrap_function(trainable)
 
     if isinstance(resources, PlacementGroupFactory):
         pgf = resources
@@ -402,14 +402,22 @@ def with_resources(
             f"Invalid resource type for `with_resources()`: {type(resources)}"
         )
 
-    class ResourceTrainable(trainable):
-        @classmethod
-        def default_resource_request(cls, config):
-            if callable(resources):
-                return pgf(config)
+    if not inspect.isclass(trainable):
+        trainable._resources = pgf
+    else:
 
-            return pgf
+        class ResourceTrainable(trainable):
+            @classmethod
+            def default_resource_request(
+                cls, config: Dict[str, Any]
+            ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+                if not isinstance(resources, PlacementGroupFactory) and callable(
+                    resources
+                ):
+                    return resources(config)
+                return resources
 
-    ResourceTrainable.__name__ = trainable.__name__
+        ResourceTrainable.__name__ = trainable.__name__
+        trainable = ResourceTrainable
 
-    return ResourceTrainable
+    return trainable
