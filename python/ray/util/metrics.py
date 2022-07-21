@@ -247,6 +247,13 @@ class Histogram(Metric):
                 "the Histogram class. e.g., "
                 'Histogram("name", boundaries=[1.0, 2.0])'
             )
+        for i, boundary in enumerate(boundaries):
+            if boundary <= 0:
+                raise ValueError(
+                    "Invalid `boundaries` argument at index "
+                    f"{i}, {boundaries}. Use positive values for the arguments."
+                )
+
         self.boundaries = boundaries
         self._metric = CythonHistogram(
             self._name, self._description, self.boundaries, self._tag_keys
