@@ -45,6 +45,22 @@ def _load_predictor_cls(
     return predictor_cls
 
 
+def _unpack_tensorarray_from_pandas(output_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    In dl_predictor.py we return a pd.DataFrame that could have multiple
+    columns but value of each column is a TensorArray. Flatten the
+    TensorArray to list to ensure output is json serializable as http
+    response.
+    """
+    from ray.data.extensions import TensorArray, TensorArrayElement
+
+    for col in output_df:
+        if isinstance(output_df[col].values, (TensorArray, TensorArrayElement)):
+            output_df[col] = output_df[col].to_numpy()
+
+    return output_df
+
+
 class BatchingManager:
     """A collection of utilities for batching and splitting data."""
 
@@ -81,8 +97,6 @@ class BatchingManager:
     def split_dataframe(
         output_df: "pd.DataFrame", batch_size: int
     ) -> List["pd.DataFrame"]:
-        from ray.data.extensions import TensorArray, TensorArrayElement
-
         if not isinstance(output_df, pd.DataFrame):
             raise TypeError(
                 "The output should be a Pandas DataFrame but Serve got "
@@ -94,13 +108,7 @@ class BatchingManager:
                 f"but Serve got length {len(output_df)}."
             )
 
-        # In dl_predictor.py we return a pd.DataFrame that could have multiple
-        # columns but value of each column is a TensorArray. Flatten the
-        # TensorArray to list to ensure output is json serializable as http
-        # response.
-        for col in output_df:
-            if isinstance(output_df[col].values, (TensorArray, TensorArrayElement)):
-                output_df[col] = output_df[col].to_numpy()
+        output_df = _unpack_tensorarray_from_pandas(output_df)
 
         return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
 
@@ -211,6 +219,8 @@ class PredictorWrapper(SimpleSchemaIngress):
                 out = self.model.predict(inp, **predict_kwargs)
                 if isinstance(out, ray.ObjectRef):
                     out = await out
+                elif pd is not None and isinstance(out, pd.DataFrame):
+                    out = _unpack_tensorarray_from_pandas(out)
                 return out
 
         else:
