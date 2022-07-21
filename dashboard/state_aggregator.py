@@ -18,7 +18,7 @@ from ray.experimental.state.common import (
     PlacementGroupState,
     RuntimeEnvState,
     SummaryApiResponse,
-    MAX_LIMIT_FROM_API_SERVER,
+    RAY_MAX_LIMIT_FROM_API_SERVER,
     SummaryApiOptions,
     TaskSummaries,
     StateSchema,
@@ -573,7 +573,7 @@ class StateAPIManager:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
             option=ListApiOptions(
-                timeout=option.timeout, limit=MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
             )
         )
         summary = StateSummary(
@@ -592,7 +592,7 @@ class StateAPIManager:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_actors(
             option=ListApiOptions(
-                timeout=option.timeout, limit=MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
             )
         )
         summary = StateSummary(
@@ -611,7 +611,7 @@ class StateAPIManager:
         # For summary, try getting as many entries as possible to minimize data loss.
         result = await self.list_objects(
             option=ListApiOptions(
-                timeout=option.timeout, limit=MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
             )
         )
         summary = StateSummary(

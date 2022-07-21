@@ -71,8 +71,8 @@ from ray.experimental.state.api import (
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
-    MAX_LIMIT_FROM_API_SERVER,
-    MAX_LIMIT_FROM_DATA_SOURCE,
+    RAY_MAX_LIMIT_FROM_API_SERVER,
+    RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ActorState,
     ListApiOptions,
     NodeState,
@@ -2072,22 +2072,22 @@ def test_data_truncate(shutdown_only):
 
     pgs = [  # noqa
         ray.util.placement_group(bundles=[{"CPU": 0.001}])
-        for _ in range(MAX_LIMIT_FROM_API_SERVER + 1)
+        for _ in range(RAY_MAX_LIMIT_FROM_API_SERVER + 1)
     ]
     runner = CliRunner()
     with pytest.warns(UserWarning) as record:
         result = runner.invoke(cli_list, ["placement-groups"])
     assert (
-        f"{MAX_LIMIT_FROM_DATA_SOURCE} ({MAX_LIMIT_FROM_API_SERVER + 1} total) "
+        f"{RAY_MAX_LIMIT_FROM_DATA_SOURCE} ({RAY_MAX_LIMIT_FROM_API_SERVER + 1} total) "
         "placement_groups are returned by the data source. "
-        f"{MAX_LIMIT_FROM_API_SERVER + 1 - MAX_LIMIT_FROM_DATA_SOURCE} "
+        f"{RAY_MAX_LIMIT_FROM_API_SERVER + 1 - RAY_MAX_LIMIT_FROM_DATA_SOURCE} "
         "entries have been truncated." in record[0].message.args[0]
     )
     assert result.exit_code == 0
 
     # Make sure users cannot specify higher limit than MAX_LIMIT_FROM_API_SERVER
     with pytest.raises(ValueError):
-        list_placement_groups(limit=MAX_LIMIT_FROM_API_SERVER + 1)
+        list_placement_groups(limit=RAY_MAX_LIMIT_FROM_API_SERVER + 1)
 
     # Make sure warning is not printed when truncation doesn't happen.
     @ray.remote

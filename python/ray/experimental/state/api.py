@@ -14,6 +14,7 @@ from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
+    RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ActorState,
     GetApiOptions,
     GetLogOptions,
@@ -332,13 +333,15 @@ class StateApiClient(SubmissionClient):
         if total > num_from_source:
             # NOTE(rickyyx): For now, there's not much users could do (neither can we),
             # with hard truncation. Unless we allow users to set a higher
-            # `MAX_LIMIT_FROM_DATA_SOURCE`, the data will always be truncated at the
+            # `RAY_MAX_LIMIT_FROM_DATA_SOURCE`, the data will always be truncated at the
             # data source.
             warnings.warn(
                 (
                     f"{num_from_source} ({total} total) {resource.value} "
-                    "are returned by the data source. "
-                    f"{total - num_from_source} entries have been truncated."
+                    "are retrieved from the data source. "
+                    f"{total - num_from_source} entries have been truncated. Max of "
+                    f"{RAY_MAX_LIMIT_FROM_DATA_SOURCE} entries are retrieved from data "
+                    "source to prevent over-sized payloads."
                 ),
             )
 
@@ -349,7 +352,8 @@ class StateApiClient(SubmissionClient):
             warnings.warn(
                 (
                     f"{len(data)}/{num_filtered} {resource.value} returned. "
-                    f"Setting a higher limit with `--limit` to see all data."
+                    "Use `--filter` to reduce the amount of data to return or "
+                    "setting a higher limit with `--limit` to see all data. "
                 ),
             )
 
