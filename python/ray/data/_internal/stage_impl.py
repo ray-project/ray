@@ -174,12 +174,7 @@ class ZipStage(AllToAllStage):
 class SortStage(AllToAllStage):
     """Implementation of `Dataset.sort()`."""
 
-    def __init__(
-        self,
-        ds: "Dataset",
-        key: Optional[KeyFn],
-        descending: bool,
-    ):
+    def __init__(self, ds: "Dataset", key: Optional[KeyFn], descending: bool):
         def do_sort(block_list, clear_input_blocks: bool, *_):
             # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
