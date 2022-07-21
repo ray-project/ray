@@ -567,7 +567,7 @@ class _WrappedDataLoader(DataLoader):
         self._auto_transfer = auto_transfer if device.type == "cuda" else False
         # create a new CUDA stream to move data from host to device concurrently
         self._memcpy_stream = (
-            torch.cuda.Stream()
+            torch.cuda.Stream(device)
             if device.type == "cuda" and self._auto_transfer
             else None
         )
