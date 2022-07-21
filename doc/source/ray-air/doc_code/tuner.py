@@ -59,7 +59,7 @@ tuner = Tuner(
     tune_config=TuneConfig(mode="min", metric="train-error", num_samples=2),
 )
 result_grid = tuner.fit()
-# __tuner_stop__
+# __tuner_end__
 
 
 # __torch_start__
@@ -81,7 +81,7 @@ param_space = {
         "batch_size": tune.grid_search([4, 8]),
     },
 }
-# __torch_stop__
+# __torch_end__
 
 # __result_grid_inspection_start__
 for i in range(len(result_grid)):
@@ -93,4 +93,4 @@ for i in range(len(result_grid)):
 best_result = result_grid.get_best_result()
 best_checkpoint = best_result.checkpoint
 best_metric = best_result.metric
-# __result_grid_inspection_stop__
+# __result_grid_inspection_end__

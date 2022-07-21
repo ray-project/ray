@@ -31,8 +31,8 @@ The following shows some example code on how to specify `param_space`.
         :start-after: __torch_start__
         :end-before: __torch_end__
 
-As you can see in the above example, Tuner API allows you to choose different ScalingConfig for different trials.
 
+As you can see in the above example, Tuner API allows you to choose different ScalingConfig for different trials.
 Tuner API also offers the possibility to apply different data preprocessing steps, as shown in the following snippet.
 
 .. literalinclude:: doc_code/tuner.py
@@ -69,6 +69,8 @@ We can now construct a Tuner and call ``Tuner.fit`` on it!
 .. note::
     ``num_samples = 2`` here will be applied to the whole suite of grid search. In other words,
     we will generate 4 trials.
+
+For a more end-to-end example, checkout "analyze_tuning_results" example.
 
 Inspect result
 --------------

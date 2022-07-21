@@ -15,6 +15,7 @@ parts:
     - file: ray-air/user-guides
       sections:
         - file: ray-air/preprocessors
+        - file: ray-air/tuner
         - file: ray-air/check-ingest
         - file: ray-air/checkpoints
         - file: ray-air/config-scaling
