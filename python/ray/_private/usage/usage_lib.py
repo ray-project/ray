@@ -140,7 +140,8 @@ class UsageStatsToReport:
     extra_usage_tags: Optional[Dict[str, str]]
     #: The number of alive nodes when the report is generated.
     total_num_nodes: Optional[int]
-    #: The total number of running jobs when the report is generated.
+    #: The total number of running jobs excluding internal ones
+    #  when the report is generated.
     total_num_running_jobs: Optional[int]
 
 
@@ -469,7 +470,7 @@ def put_cluster_metadata(gcs_client) -> None:
 
 
 def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
-    """Return the total number of running jobs in the cluster"""
+    """Return the total number of running jobs in the cluster excluding internal ones"""
     try:
         result = gcs_client.get_all_job_info()
         total_num_running_jobs = 0
