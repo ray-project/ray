@@ -5,10 +5,8 @@ requires a shared Serve instance.
 import logging
 import os
 import socket
-import subprocess
 import sys
 import time
-from tempfile import mkstemp
 
 import pydantic
 import pytest

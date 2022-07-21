@@ -1,6 +1,4 @@
 import logging
-import os
-import sqlite3
 from typing import Optional
 
 import ray
@@ -8,12 +6,6 @@ from ray._private import ray_constants
 from ray._private.gcs_utils import GcsClient
 from ray.serve.constants import RAY_SERVE_KV_TIMEOUT_S, SERVE_LOGGER_NAME
 from ray.serve.storage.kv_store_base import KVStoreBase
-
-try:
-    import boto3
-    from botocore.exceptions import ClientError
-except ImportError:
-    boto3 = None
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

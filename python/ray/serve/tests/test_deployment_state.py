@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-import os
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -26,7 +25,6 @@ from ray.serve.deployment_state import (
     ReplicaState,
     ReplicaStateContainer,
     VersionedReplica,
-    CHECKPOINT_KEY,
     rank_replicas_for_stopping,
 )
 from ray.serve.storage.kv_store import RayInternalKVStore

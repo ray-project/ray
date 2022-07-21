@@ -650,7 +650,6 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                checkpoint_path=checkpoint_path,
                 head_node_id=head_node_id,
                 detached=detached,
             )

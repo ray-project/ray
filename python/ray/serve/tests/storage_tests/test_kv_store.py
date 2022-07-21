@@ -1,7 +1,3 @@
-import os
-import tempfile
-from typing import Optional
-
 import pytest
 
 from ray.serve.storage.kv_store import RayInternalKVStore
