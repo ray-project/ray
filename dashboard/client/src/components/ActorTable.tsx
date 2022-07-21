@@ -7,6 +7,7 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
+  Tooltip,
 } from "@material-ui/core";
 import { orange } from "@material-ui/core/colors";
 import { SearchOutlined } from "@material-ui/icons";
@@ -18,10 +19,10 @@ import { GlobalContext } from "../App";
 import { Actor } from "../type/actor";
 import { Worker } from "../type/worker";
 import { useFilter } from "../util/hook";
-import CopyableCollapse from "./CopyableCollapse";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
+import rowStyles from "../common/RowStyles";
 
 const ActorTable = ({
   actors = {},
@@ -36,6 +37,7 @@ const ActorTable = ({
   const { ipLogMap } = useContext(GlobalContext);
   const actorList = Object.values(actors || {}).filter(filterFunc);
   const list = actorList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+  const classes = rowStyles();
 
   return (
     <React.Fragment>
@@ -193,7 +195,10 @@ const ActorTable = ({
                 key={actorId}
               >
                 <TableCell align="center">
-                  <CopyableCollapse text={actorId} />
+                  {/* <div className={classes.idCol}>{actorId}</div> */}
+                  <Tooltip className={classes.idCol} title={actorId} arrow interactive>
+                    <div>{actorId}</div>
+                  </Tooltip>
                 </TableCell>
                 <TableCell
                   align="center"
