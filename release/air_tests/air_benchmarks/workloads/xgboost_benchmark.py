@@ -9,8 +9,7 @@ import ray
 from ray import data
 from ray.train.xgboost import (
     XGBoostTrainer,
-    load_checkpoint,
-    to_air_checkpoint,
+    XGBoostCheckpoint,
     XGBoostPredictor,
 )
 from ray.train.batch_predictor import BatchPredictor
@@ -66,7 +65,8 @@ def run_xgboost_training(data_path: str, num_workers: int):
         datasets={"train": ds},
     )
     result = trainer.fit()
-    xgboost_model = load_checkpoint(result.checkpoint)[0]
+    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
+    xgboost_model = checkpoint.get_model()
     xgboost_model.save_model(_XGB_MODEL_PATH)
     ray.shutdown()
 
@@ -76,7 +76,7 @@ def run_xgboost_prediction(model_path: str, data_path: str):
     model = xgb.Booster()
     model.load_model(model_path)
     ds = data.read_parquet(data_path)
-    ckpt = to_air_checkpoint(".", model)
+    ckpt = XGBoostCheckpoint.from_model(".", model)
     batch_predictor = BatchPredictor.from_checkpoint(ckpt, XGBoostPredictor)
     result = batch_predictor.predict(ds.drop_columns(["labels"]))
     return result

@@ -14,7 +14,7 @@ from ray.air.util.data_batch_conversion import (
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.tensorflow import TensorflowPredictor, to_air_checkpoint
+from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
 
 
 class DummyPreprocessor(Preprocessor):
@@ -142,7 +142,7 @@ def test_predict_multi_output(use_gpu):
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_tensorflow_predictor_no_training(use_gpu):
     model = build_model()
-    checkpoint = to_air_checkpoint(model)
+    checkpoint = TensorflowCheckpoint.from_model(model)
     batch_predictor = BatchPredictor.from_checkpoint(
         checkpoint, TensorflowPredictor, model_definition=build_model, use_gpu=use_gpu
     )

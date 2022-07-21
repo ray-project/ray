@@ -8,7 +8,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 from ray.train.predictor import Predictor
-from ray.train.rl.utils import load_checkpoint
+from ray.train.rl.rl_checkpoint import RLCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -52,7 +52,8 @@ class RLPredictor(Predictor):
                 it is parsed from the saved trainer configuration instead.
 
         """
-        policy, _ = load_checkpoint(checkpoint, env)
+        checkpoint = RLCheckpoint.from_checkpoint(checkpoint)
+        policy = checkpoint.get_policy(env)
         preprocessor = checkpoint.get_preprocessor()
         return cls(policy=policy, preprocessor=preprocessor)
 

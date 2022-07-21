@@ -26,7 +26,7 @@ Creating a checkpoint
 
 There are two ways of generating a checkpoint.
 
-The first way is to generate it from a pretrained model. Each framework that AIR supports has a ``to_air_checkpoint`` method that can be used to generate an AIR checkpoint:
+The first way is to generate it from a pretrained model. Each framework that AIR supports has a ``Checkpoint`` method that can be used to generate an AIR checkpoint:
 
 .. literalinclude:: doc_code/checkpoint_usage.py
     :language: python

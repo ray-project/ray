@@ -12,7 +12,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor
-from ray.train.lightgbm import LightGBMPredictor, to_air_checkpoint
+from ray.train.lightgbm import LightGBMCheckpoint, LightGBMPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 
 
@@ -98,7 +98,7 @@ def test_predict_feature_columns_pandas():
 
 def test_predict_no_preprocessor_no_training():
     with tempfile.TemporaryDirectory() as tmpdir:
-        checkpoint = to_air_checkpoint(booster=model, path=tmpdir)
+        checkpoint = LightGBMCheckpoint.from_model(booster=model, path=tmpdir)
         predictor = LightGBMPredictor.from_checkpoint(checkpoint)
 
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])

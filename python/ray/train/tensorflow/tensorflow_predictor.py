@@ -8,8 +8,8 @@ from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.air.checkpoint import Checkpoint
-from ray.train.data_parallel_trainer import _load_checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
+from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -92,9 +92,8 @@ class TensorflowPredictor(DLPredictor):
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
         """
-        # Cannot use TensorFlow load_checkpoint here
-        # due to instantiated models not being pickleable
-        model_weights, _ = _load_checkpoint(checkpoint, "TensorflowTrainer")
+        checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
+        model_weights = checkpoint.get_model_weights()
         preprocessor = checkpoint.get_preprocessor()
         return cls(
             model_definition=model_definition,

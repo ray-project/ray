@@ -8,7 +8,7 @@ import tensorflow as tf
 import ray
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import (
-    to_air_checkpoint,
+    TensorflowCheckpoint,
     TensorflowPredictor,
 )
 
@@ -24,7 +24,7 @@ def build_model() -> tf.keras.Model:
 
 
 model = build_model()
-checkpoint = to_air_checkpoint(model)
+checkpoint = TensorflowCheckpoint.from_model(model)
 predictor = TensorflowPredictor.from_checkpoint(
     checkpoint, model_definition=build_model
 )

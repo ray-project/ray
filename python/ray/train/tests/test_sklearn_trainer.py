@@ -6,7 +6,7 @@ from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.train.sklearn import SklearnTrainer, load_checkpoint
+from ray.train.sklearn import SklearnCheckpoint, SklearnTrainer
 from ray.air.config import ScalingConfig
 from ray.data.preprocessor import Preprocessor
 
@@ -92,7 +92,8 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
 
-    model, _ = load_checkpoint(result.checkpoint)
+    checkpoint = SklearnCheckpoint.from_checkpoint(result.checkpoint)
+    model = checkpoint.get_estimator()
     assert model.n_jobs == 1
 
 
@@ -126,7 +127,10 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    model, preprocessor = load_checkpoint(resume_from)
+    checkpoint = SklearnCheckpoint.from_checkpoint(resume_from)
+
+    model = checkpoint.get_estimator()
+    preprocessor = checkpoint.get_preprocessor()
     assert hasattr(model, "feature_importances_")
     assert preprocessor.is_same
     assert preprocessor.fitted_

@@ -9,7 +9,7 @@ from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.train.xgboost import XGBoostTrainer, load_checkpoint
+from ray.train.xgboost import XGBoostCheckpoint, XGBoostTrainer
 from ray.air.config import ScalingConfig
 from ray.data.preprocessor import Preprocessor
 
@@ -67,8 +67,8 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = result.checkpoint
-    xgb_model, _ = load_checkpoint(checkpoint)
+    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
+    xgb_model = checkpoint.get_model()
     assert get_num_trees(xgb_model) == 5
 
     # Move checkpoint to a different directory.
@@ -86,8 +86,8 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         resume_from_checkpoint=resume_from,
     )
     result = trainer.fit()
-    checkpoint = result.checkpoint
-    model, _ = load_checkpoint(checkpoint)
+    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
+    model = checkpoint.get_model()
     assert get_num_trees(model) == 10
 
 
@@ -163,7 +163,9 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    model, preprocessor = load_checkpoint(resume_from)
+    resume_from = XGBoostCheckpoint.from_checkpoint(resume_from)
+
+    model, preprocessor = resume_from.get_model(), resume_from.get_preprocessor()
     assert get_num_trees(model) == 10
     assert preprocessor.is_same
     assert preprocessor.fitted_

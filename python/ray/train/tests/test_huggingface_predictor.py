@@ -12,7 +12,7 @@ from transformers.pipelines import pipeline
 
 import ray
 from ray.data.preprocessor import Preprocessor
-from ray.train.huggingface import HuggingFacePredictor, to_air_checkpoint
+from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
 
 prompts = pd.DataFrame(
     ["Complete me", "And me", "Please complete"], columns=["sentences"]
@@ -80,7 +80,7 @@ def test_predict_no_preprocessor_no_training(ray_start_runtime_env):
             model_config = AutoConfig.from_pretrained(model_checkpoint)
             model = AutoModelForCausalLM.from_config(model_config)
             tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-            checkpoint = to_air_checkpoint(model, tokenizer, path=tmpdir)
+            checkpoint = HuggingFaceCheckpoint.from_model(model, tokenizer, path=tmpdir)
             predictor = HuggingFacePredictor.from_checkpoint(
                 checkpoint,
                 task="text-generation",
