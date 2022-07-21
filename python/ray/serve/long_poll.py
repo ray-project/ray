@@ -36,6 +36,10 @@ LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (
     int(os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND", "60")),
 )
 
+HOST_FAILURE_RETRY_INTERVAL_S = int(
+    os.environ.get("SERVE_LONG_POLL_HOST_FAILURE_RETRY_INTERVAL_S", "10")
+)
+
 
 class LongPollNamespace(Enum):
     def __repr__(self):
@@ -121,6 +125,11 @@ class LongPollClient:
         self._current_ref = self.host_actor.listen_for_change.remote(self.snapshot_ids)
         self._current_ref._on_completed(lambda update: self._process_update(update))
 
+    def _poll_later(self, delay: float):
+        """Perform a poll_next in `delay` seconds."""
+        assert asyncio.get_event_loop() == self.event_loop
+        self.event_loop.call_later(delay, self._poll_next)
+
     def _schedule_to_event_loop(self, callback):
         # Schedule the next iteration only if the loop is running.
         # The event loop might not be running if users used a cached
@@ -136,13 +145,20 @@ class LongPollClient:
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
             # exit.
-            logger.debug("LongPollClient failed to connect to host. Shutting down.")
-            self.is_running = False
+            logger.debug(
+                "LongPollClient failed to connect to host. "
+                f"Trying again in {HOST_FAILURE_RETRY_INTERVAL_S}s."
+            )
+            self._poll_later(HOST_FAILURE_RETRY_INTERVAL_S)
             return
 
         if isinstance(updates, ConnectionError):
-            logger.warning("LongPollClient connection failed, shutting down.")
-            self.is_running = False
+            # This can happens when Ray Client connection failed.
+            logger.warning(
+                "LongPollClient connection failed. "
+                f"Trying again in {HOST_FAILURE_RETRY_INTERVAL_S}s."
+            )
+            self._poll_later(HOST_FAILURE_RETRY_INTERVAL_S)
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):

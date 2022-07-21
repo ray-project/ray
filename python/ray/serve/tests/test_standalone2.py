@@ -10,11 +10,12 @@ import pytest
 import requests
 
 import ray
+import ray.actor
 import ray._private.state
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve.client import ServeControllerClient
 from ray.serve.common import ApplicationStatus
 from ray.serve.constants import SERVE_NAMESPACE
@@ -49,6 +50,12 @@ def start_and_shutdown_ray_cli_function():
 def start_and_shutdown_ray_cli_class():
     with start_and_shutdown_ray_cli():
         yield
+
+
+@pytest.fixture
+def shutdown_serve():
+    if ray.is_initialized():
+        serve.shutdown()
 
 
 def test_standalone_actor_outside_serve():
@@ -645,6 +652,40 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
     finally:
         os.unlink(deploy_file.name)
         os.unlink(shutdown_file.name)
+
+
+def test_handle_during_controller_failure(shutdown_serve, shutdown_ray):
+    ray.init()
+    serve.start(detached=True)
+
+    @serve.deployment
+    def f(do_crash: bool = False):
+        if do_crash:
+            ray.actor.exit_actor()
+        return os.getpid()
+
+    handle = serve.run(f.bind())
+    ray.get(handle.remote())
+
+    # Ideally we want to crash the controller, then kill the replica,
+    # then restart the controller to observe that the controller will
+    # create new replicas and allow handle to send requests to the new one.
+    # However, Ray's actor restarts doesn't allow kill-pause-restart configuration.
+    # So we will try to crash the controller and replica at the same time.
+    pids = set()
+    for _ in range(3):  # verify this works repeatedly
+
+        # Kill replica and contorller at the same time.
+        ref = handle.remote(do_crash=True)
+        ray.kill(get_global_client()._controller, no_restart=False)
+        with pytest.raises(RayTaskError):
+            ray.get(ref)
+
+        # The handle request might fail because replica died
+        # but it should eventually succeed.
+        wait_for_condition(lambda: ray.get(handle.remote()))
+        pids.add(ray.get(handle.remote()))
+    assert len(pids) == 3  # verify handle sent requests to fresh replicas.
 
 
 def test_autoscaler_shutdown_node_http_everynode(
