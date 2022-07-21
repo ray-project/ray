@@ -33,7 +33,7 @@ The following shows some example code on how to specify `param_space`.
 
 As you can see in the above example, Tuner API allows you to choose different ScalingConfig for different trials.
 
-Tuner API also offers the possibility to apply different data preprocessing steps.
+Tuner API also offers the possibility to apply different data preprocessing steps, as shown in the following snippet.
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
@@ -47,7 +47,7 @@ In general, all the arguments accepted by your :ref:`Trainer <air-trainer-ref>` 
 
 Specify TuneConfig
 ------------------
-This config controls tuning specific settings, including the tuning algorithm to use, the metric and mode to rank results etc.
+This config contains tuning specific settings, including the tuning algorithm to use, the metric and mode to rank results etc.
 See :ref:`Tuner <air-tuner-ref>` for details.
 
 
@@ -59,7 +59,7 @@ checkpoint configuration as well as its syncing configuration.
 
 Putting everything together
 ---------------------------
-we can now construct a Tuner and call ``Tuner.fit`` on it!
+We can now construct a Tuner and call ``Tuner.fit`` on it!
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
