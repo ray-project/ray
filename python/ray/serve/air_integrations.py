@@ -45,7 +45,7 @@ def _load_predictor_cls(
     return predictor_cls
 
 
-def _unpack_tensorarray_from_pandas(output_df: pd.DataFrame) -> pd.DataFrame:
+def _unpack_tensorarray_from_pandas(output_df: "pd.DataFrame") -> "pd.DataFrame":
     """
     In dl_predictor.py we return a pd.DataFrame that could have multiple
     columns but value of each column is a TensorArray. Flatten the
