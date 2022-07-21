@@ -75,7 +75,7 @@ from icecream import ic
 
 import alpa
 from alpa.util import update_jax_platform
-from alpa.device_mesh import VirtualPhysicalMesh
+from alpa.device_mesh import VirtualPhysicalMesh, DistributedPhysicalDeviceMesh
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +186,15 @@ class AlpaTrainer(BaseTrainer):
 
         alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
+        self.p_mesh = DistributedPhysicalDeviceMesh(
+                    host_ids=node_ids,
+                    host_info=host_info,
+                    head_ip=self.head_ip,
+                    num_devices_per_host=num_devices_per_host,
+                    parent=None)
+        
+        alpa.device_mesh.set_global_physical_mesh(self.p_mesh)
+        
         self._train_loop = train_loop_per_worker
         self._train_loop_config = train_loop_config
         
