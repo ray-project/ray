@@ -753,7 +753,7 @@ class TrialRunner:
                     trial_to_add = trial.reset()
                     trial_to_add.restore_path = None
             elif trial.status != Trial.TERMINATED and not resume_unfinished:
-                continue
+                trial_to_add.status = Trial.TERMINATED
             self.add_trial(trial_to_add)
 
     def update_pending_trial_resources(

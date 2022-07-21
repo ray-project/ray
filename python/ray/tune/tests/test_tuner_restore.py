@@ -278,9 +278,11 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
     # [('TERMINATED', 2), ('RUNNING', 1), ('ERROR', 1), ('PENDING', None)]
 
     # Restarting without continuing existing trials should lead to the results
-    # [2, 3], because the TERMINATED trial is just finished,
-    # the ERROR trial is continued (so picks up from state = 1 for 2 iters)
-    # and the other trials are not added.
+    # [2, 1, 3, 0], because
+    # the TERMINATED trial is finished (state = 2),
+    # the RUNNING trial is not continued (marked as terminated),
+    # the ERROR trial is not continued (remains at 1 and errored)
+    # and the PENDING trial is not continued (marked as terminated).
 
     del tuner
     fail_marker.remove(ignore_errors=True)
@@ -294,9 +296,9 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
     tuner._local_tuner._run_config.callbacks = None
 
     results = tuner.fit()
-    assert len(results) == 2
+    assert len(results) == 4
     assert len(results.errors) == 0
-    assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 3])
+    assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
 
 
 if __name__ == "__main__":
