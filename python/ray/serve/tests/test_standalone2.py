@@ -585,7 +585,7 @@ def test_controller_recover_and_delete(shutdown_ray):
 
     actors = ray.util.list_named_actors(all_namespaces=True)
 
-    # Try to delete the deployments and kill the controlle rright after
+    # Try to delete the deployments and kill the controller right after
     client.delete_deployments(["f"], blocking=False)
     ray.kill(client._controller, no_restart=False)
 
