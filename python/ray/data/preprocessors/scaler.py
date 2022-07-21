@@ -108,8 +108,8 @@ class MaxAbsScaler(Preprocessor):
         x' = \frac{x}{\max{\vert x \vert}}
 
     where :math:`x` is the column and :math:`x'` is the transformed column. If
-    :math:`\max{\vert x \vert} = 0` (i.e., the column contains all zeros), then the column
-    is unmodified.
+    :math:`\max{\vert x \vert} = 0` (i.e., the column contains all zeros), then the
+    column is unmodified.
 
     Transformed values are always in the range :math:`[-1, 1]`.
 
@@ -124,7 +124,7 @@ class MaxAbsScaler(Preprocessor):
         >>> import ray
         >>> from ray.data.preprocessors import MaxAbsScaler
         >>>
-        >>> df = pd.DataFrame({"X1": [-6, 3], "X2": [2, -4], "X3": [0, 0]}  # doctest: +SKIP
+        >>> df = pd.DataFrame({"X1": [-6, 3], "X2": [2, -4], "X3": [0, 0]}  # doctest: +SKIP # noqa: E501
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> ds.to_pandas()  # doctest: +SKIP
            X1  X2  X3
