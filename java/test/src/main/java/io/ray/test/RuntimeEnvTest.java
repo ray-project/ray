@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.runtimeenv.RuntimeEnv;
+import io.ray.api.runtimeenv.RuntimeEnvName;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +74,7 @@ public class RuntimeEnvTest {
               put("KEY1", "C");
             }
           };
-      runtimeEnv.set("env_vars", envMap);
+      runtimeEnv.set(RuntimeEnvName.ENV_VARS, envMap);
 
       String val =
           Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
@@ -98,7 +99,7 @@ public class RuntimeEnvTest {
             }
           };
       RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
-      runtimeEnv.set("env_vars", envMap);
+      runtimeEnv.set(RuntimeEnvName.ENV_VARS, envMap);
 
       /// value of KEY1 is overwritten to `C` and KEY2s is extended from job config.
       String val =
@@ -115,7 +116,7 @@ public class RuntimeEnvTest {
     try {
       Ray.init();
       RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
-      runtimeEnv.set("java_jars", ImmutableList.of(url));
+      runtimeEnv.set(RuntimeEnvName.JARS, ImmutableList.of(url));
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
       boolean ret = actor1.task(A::findClass, FOO_CLASS_NAME).remote().get();
       Assert.assertTrue(ret);
@@ -148,7 +149,7 @@ public class RuntimeEnvTest {
     try {
       Ray.init();
       RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
-      runtimeEnv.set("java_jars", urls);
+      runtimeEnv.set(RuntimeEnvName.JARS, urls);
       boolean ret =
           Ray.task(RuntimeEnvTest::findClasses, classNames)
               .setRuntimeEnv(runtimeEnv)
