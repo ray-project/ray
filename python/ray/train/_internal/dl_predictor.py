@@ -41,7 +41,6 @@ class DLPredictor(Predictor):
 
         raise NotImplementedError
 
-    @DeveloperAPI
     @abc.abstractmethod
     def _model_predict(
         self, tensor: Union[TensorType, Dict[str, TensorType]]
