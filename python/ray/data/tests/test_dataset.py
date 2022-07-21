@@ -1392,7 +1392,7 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     blocks = ray.get(ds4.get_internal_block_refs())
     assert all(isinstance(block, list) for block in blocks), blocks
     assert ds4.sum() == 190
-    assert ds4._block_num_rows() == [0, 1] * 20
+    assert ds4._block_num_rows() == [1] * 20 + [0] * 20
 
     ds5 = ray.data.range(22).repartition(4)
     assert ds5.num_blocks() == 4
