@@ -3,6 +3,7 @@ import time
 
 from ray.tests.conftest import *  # noqa
 
+from filelock import FileLock
 import pytest
 import ray
 from ray import workflow
@@ -135,7 +136,7 @@ def test_partial(workflow_start_regular_shared):
     assert workflow.run(chain_func.bind(1)) == 7
 
 
-def test_run_or_resume_during_running(workflow_start_regular_shared):
+def test_run_or_resume_during_running(workflow_start_regular_shared, tmp_path):
     @ray.remote
     def source1():
         return "[source1]"
@@ -150,17 +151,19 @@ def test_run_or_resume_during_running(workflow_start_regular_shared):
 
     @ray.remote
     def simple_sequential():
-        x = source1.bind()
-        y = append1.bind(x)
-        return workflow.continuation(append2.bind(y))
+        with FileLock(tmp_path / "lock"):
+            x = source1.bind()
+            y = append1.bind(x)
+            return workflow.continuation(append2.bind(y))
 
-    output = workflow.run_async(
-        simple_sequential.bind(), workflow_id="running_workflow"
-    )
-    with pytest.raises(RuntimeError):
-        workflow.run_async(simple_sequential.bind(), workflow_id="running_workflow")
-    with pytest.raises(RuntimeError):
-        workflow.resume_async(workflow_id="running_workflow")
+    with FileLock(tmp_path / "lock"):
+        output = workflow.run_async(
+            simple_sequential.bind(), workflow_id="running_workflow"
+        )
+        with pytest.raises(RuntimeError):
+            workflow.run_async(simple_sequential.bind(), workflow_id="running_workflow")
+        with pytest.raises(RuntimeError):
+            workflow.resume_async(workflow_id="running_workflow")
     assert ray.get(output) == "[source1][append1][append2]"
 
 
