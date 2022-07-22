@@ -6,6 +6,7 @@ import ray
 from ray import tune
 from ray.air import session
 from ray.train.horovod import HorovodTrainer
+from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -91,7 +92,7 @@ def train_loop_per_worker(config):
 def tune_horovod(num_workers, num_samples, use_gpu, mode="square", x_max=1.0):
     horovod_trainer = HorovodTrainer(
         train_loop_per_worker=train_loop_per_worker,
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         train_loop_config={"mode": mode, "x_max": x_max},
     )
 
