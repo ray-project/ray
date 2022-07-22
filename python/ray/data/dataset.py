@@ -2321,7 +2321,7 @@ class Dataset(Generic[T]):
                 else "native"
             )
         for batch in self.iter_batches(
-            prefetch_blocks=prefetch_blocks, batch_format=batch_format
+            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
             batch = BlockAccessor.for_block(batch)
             for row in batch.iter_rows():

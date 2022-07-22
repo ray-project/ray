@@ -1549,7 +1549,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Test NumPy format on Arrow blocks.
     ds2 = ds.map_batches(lambda b: b, batch_size=None, batch_format="pyarrow")
-    for batch, df in zip(ds2.iter_batches(batch_format="numpy"), dfs):
+    for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
         assert isinstance(batch, dict)
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
@@ -1616,7 +1616,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
     )
 
     # Prefetch.
-    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
+    batches = list(
+        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+    )
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
@@ -1635,7 +1637,11 @@ def test_iter_batches_basic(ray_start_regular_shared):
     )
 
     # Prefetch more than number of blocks.
-    batches = list(ds.iter_batches(prefetch_blocks=len(dfs), batch_format="pandas"))
+    batches = list(
+        ds.iter_batches(
+            prefetch_blocks=len(dfs), batch_size=None, batch_format="pandas"
+        )
+    )
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
@@ -1644,7 +1650,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
     # Prefetch with ray.wait.
     context = DatasetContext.get_current()
     context.actor_prefetcher_enabled = False
-    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
+    batches = list(
+        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+    )
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
