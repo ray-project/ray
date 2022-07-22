@@ -458,6 +458,29 @@ def test_range_table(ray_start_regular_shared):
     assert ds.take() == [{"value": i} for i in range(10)]
 
 
+def test_tensor_array_validation():
+    # Test unknown input type raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(object())
+
+    # Test ragged tensor raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object))
+
+    with pytest.raises(TypeError):
+        TensorArray([np.ones((2, 2)), np.ones((3, 3))])
+
+    with pytest.raises(TypeError):
+        TensorArray(pd.Series([np.ones((2, 2)), np.ones((3, 3))]))
+
+    # Test non-primitive element raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(np.array([object(), object()]))
+
+    with pytest.raises(TypeError):
+        TensorArray([object(), object()])
+
+
 def test_tensor_array_block_slice():
     # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
@@ -604,7 +627,7 @@ def test_tensors_basic(ray_start_regular_shared):
     ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
     assert str(ds) == (
         "Dataset(num_blocks=6, num_rows=6, "
-        "schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(3, 5), dtype=int64)})"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
 
@@ -795,7 +818,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10).map(lambda _: np.ones((4, 4)))
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
     )
 
     # Test map_batches.
@@ -804,7 +827,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
     )
 
     # Test flat_map.
@@ -813,8 +836,23 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=20, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
     )
+
+    # Test map_batches ndarray column.
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
+    )
+    assert str(ds) == (
+        "Dataset(num_blocks=4, num_rows=24, "
+        "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
+    )
+
+    # Test map_batches ragged ndarray column falls back to opaque object-typed column.
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}), batch_size=2
+    )
+    assert str(ds) == ("Dataset(num_blocks=4, num_rows=16, schema={a: object})")
 
 
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
@@ -825,7 +863,7 @@ def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
     arr = np.arange(num_items).reshape(shape)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": list(arr)})
     # Cast column to tensor extension dtype.
-    df["two"] = df["two"].astype(TensorDtype())
+    df["two"] = df["two"].astype(TensorDtype(shape, np.int64))
     ds = ray.data.from_pandas([df])
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -904,7 +942,7 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
     # extension type.
     def deser_mapper(batch: pd.DataFrame):
         batch["two"] = [pickle.loads(a) for a in batch["two"]]
-        batch["two"] = batch["two"].astype(TensorDtype())
+        batch["two"] = batch["two"].astype(TensorDtype(shape, np.int64))
         return batch
 
     casted_ds = ds.map_batches(deser_mapper, batch_format="pandas")
@@ -2413,7 +2451,48 @@ def test_to_tf(ray_start_regular_shared, pipelined):
     for batch in tfd.as_numpy_iterator():
         iterations.append(np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
     combined_iterations = np.concatenate(iterations)
-    assert np.array_equal(df.values, combined_iterations)
+    np.testing.assert_array_equal(df.values, combined_iterations)
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_iter_tf_batches(ray_start_regular_shared, pipelined):
+    df1 = pd.DataFrame(
+        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
+    )
+    df2 = pd.DataFrame(
+        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
+    )
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.data.from_pandas([df1, df2, df3])
+    ds = maybe_pipeline(ds, pipelined)
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_tf_batches(batch_size=3):
+            iterations.append(
+                np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
+            )
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_iter_tf_batches_tensor_ds(ray_start_regular_shared, pipelined):
+    arr1 = np.arange(12).reshape((3, 2, 2))
+    arr2 = np.arange(12, 24).reshape((3, 2, 2))
+    arr = np.concatenate((arr1, arr2))
+    ds = ray.data.from_numpy([arr1, arr2])
+    ds = maybe_pipeline(ds, pipelined)
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_tf_batches(batch_size=2):
+            iterations.append(batch)
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(arr, combined_iterations)
 
 
 def test_to_tf_feature_columns_list(ray_start_regular_shared):
@@ -2459,10 +2538,10 @@ def test_to_tf_feature_columns_list_with_label(ray_start_regular_shared):
     assert len(batches) == math.ceil(len(df) / batch_size)
     # Each batch should be a two-tuple corresponding to (features, labels).
     assert all(len(batch) == 2 for batch in batches)
-    assert np.array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
-    assert np.array_equal(batches[0][1], np.array([7, 8]))
-    assert np.array_equal(batches[1][0], np.array([[3, 6]]))
-    assert np.array_equal(batches[1][1], np.array([9]))
+    np.testing.assert_array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
+    np.testing.assert_array_equal(batches[0][1], np.array([7, 8]))
+    np.testing.assert_array_equal(batches[1][0], np.array([[3, 6]]))
+    np.testing.assert_array_equal(batches[1][1], np.array([9]))
 
 
 def test_to_tf_feature_columns_nested_list(ray_start_regular_shared):
@@ -2486,10 +2565,10 @@ def test_to_tf_feature_columns_nested_list(ray_start_regular_shared):
     batches = list(dataset.as_numpy_iterator())
     assert len(batches) == math.ceil(len(df) / batch_size)
     assert all(len(batch) == len(feature_columns) for batch in batches)
-    assert np.array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
-    assert np.array_equal(batches[0][1], np.array([[7], [8]]))
-    assert np.array_equal(batches[1][0], np.array([[3, 6]]))
-    assert np.array_equal(batches[1][1], np.array([[9]]))
+    np.testing.assert_array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
+    np.testing.assert_array_equal(batches[0][1], np.array([[7], [8]]))
+    np.testing.assert_array_equal(batches[1][0], np.array([[3, 6]]))
+    np.testing.assert_array_equal(batches[1][1], np.array([[9]]))
 
 
 def test_to_tf_feature_columns_dict(ray_start_regular_shared):
@@ -2511,10 +2590,10 @@ def test_to_tf_feature_columns_dict(ray_start_regular_shared):
     batches = list(dataset.as_numpy_iterator())
     assert len(batches) == math.ceil(len(df) / batch_size)
     assert all(batch.keys() == feature_columns.keys() for batch in batches)
-    assert np.array_equal(batches[0]["A"], np.array([[1, 4], [2, 5]]))
-    assert np.array_equal(batches[0]["B"], np.array([[7], [8]]))
-    assert np.array_equal(batches[1]["A"], np.array([[3, 6]]))
-    assert np.array_equal(batches[1]["B"], np.array([[9]]))
+    np.testing.assert_array_equal(batches[0]["A"], np.array([[1, 4], [2, 5]]))
+    np.testing.assert_array_equal(batches[0]["B"], np.array([[7], [8]]))
+    np.testing.assert_array_equal(batches[1]["A"], np.array([[3, 6]]))
+    np.testing.assert_array_equal(batches[1]["B"], np.array([[9]]))
 
 
 def test_to_tf_feature_columns_dict_with_label(ray_start_regular_shared):
@@ -2545,12 +2624,12 @@ def test_to_tf_feature_columns_dict_with_label(ray_start_regular_shared):
     assert all(features.keys() == feature_columns.keys() for features, _ in batches)
 
     features0, labels0 = batches[0]
-    assert np.array_equal(features0["A"], np.array([[1, 4], [2, 5]]))
-    assert np.array_equal(labels0, np.array([7, 8]))
+    np.testing.assert_array_equal(features0["A"], np.array([[1, 4], [2, 5]]))
+    np.testing.assert_array_equal(labels0, np.array([7, 8]))
 
     features1, labels1 = batches[1]
-    assert np.array_equal(features1["A"], np.array([[3, 6]]))
-    assert np.array_equal(labels1, np.array([9]))
+    np.testing.assert_array_equal(features1["A"], np.array([[3, 6]]))
+    np.testing.assert_array_equal(labels1, np.array([9]))
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -2575,7 +2654,53 @@ def test_to_torch(ray_start_regular_shared, pipelined):
         for batch in iter(torchd):
             iterations.append(torch.cat((batch[0], batch[1]), dim=1).numpy())
         combined_iterations = np.concatenate(iterations)
-        assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
+        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_iter_torch_batches(ray_start_regular_shared, pipelined):
+    import torch
+
+    df1 = pd.DataFrame(
+        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
+    )
+    df2 = pd.DataFrame(
+        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
+    )
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.data.from_pandas([df1, df2, df3])
+    ds = maybe_pipeline(ds, pipelined)
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_torch_batches(batch_size=3):
+            iterations.append(
+                torch.stack(
+                    (batch["one"], batch["two"], batch["label"]),
+                    dim=1,
+                ).numpy()
+            )
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_iter_torch_batches_tensor_ds(ray_start_regular_shared, pipelined):
+    arr1 = np.arange(12).reshape((3, 2, 2))
+    arr2 = np.arange(12, 24).reshape((3, 2, 2))
+    arr = np.concatenate((arr1, arr2))
+    ds = ray.data.from_numpy([arr1, arr2])
+    ds = maybe_pipeline(ds, pipelined)
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_torch_batches(batch_size=2):
+            iterations.append(batch.numpy())
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(arr, combined_iterations)
 
 
 @pytest.mark.parametrize("input", ["single", "list", "dict"])
@@ -2676,7 +2801,7 @@ def test_to_torch_feature_columns(
     combined_iterations = np.concatenate(iterations)
     if not label_type:
         df.drop("label", axis=1, inplace=True)
-    assert np.array_equal(df.values, combined_iterations)
+    np.testing.assert_array_equal(df.values, combined_iterations)
 
 
 def test_block_builder_for_block(ray_start_regular_shared):
@@ -4478,6 +4603,32 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
             paths=path1,
             ray_remote_args={"retry_exceptions": False},
         ).take()
+
+
+def test_split_is_not_disruptive(ray_start_regular):
+    ds = (
+        ray.data.range(100, parallelism=10).map_batches(lambda x: x).experimental_lazy()
+    )
+
+    def verify_integrity(splits):
+        for dss in splits:
+            for batch in dss.iter_batches():
+                pass
+        for batch in ds.iter_batches():
+            pass
+
+    # No block splitting invovled: split 10 even blocks into 2 groups.
+    verify_integrity(ds.split(2, equal=True))
+    # Block splitting invovled: split 10 even blocks into 3 groups.
+    verify_integrity(ds.split(3, equal=True))
+
+    # Same as above but having tranforms post converting to lazy.
+    verify_integrity(ds.map_batches(lambda x: x).split(2, equal=True))
+    verify_integrity(ds.map_batches(lambda x: x).split(3, equal=True))
+
+    # Same as above but having in-place tranforms post converting to lazy.
+    verify_integrity(ds.randomize_block_order().split(2, equal=True))
+    verify_integrity(ds.randomize_block_order().split(3, equal=True))
 
 
 def test_datasource(ray_start_regular):
