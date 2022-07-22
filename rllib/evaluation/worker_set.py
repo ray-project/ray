@@ -588,7 +588,7 @@ class WorkerSet:
             # Input dataset shards should have already been prepared.
             # We just need to take the proper shard here.
             input_creator = lambda ioctx: DatasetReader(
-                ioctx, self._ds_shards[worker_index]
+                self._ds_shards[worker_index], ioctx
             )
         # Dict: Mix of different input methods with different ratios.
         elif isinstance(config["input"], dict):

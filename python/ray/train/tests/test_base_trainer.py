@@ -59,7 +59,8 @@ class DummyTrainer(BaseTrainer):
 class DummyGBDTTrainer(GBDTTrainer):
     _dmatrix_cls: type = None
     _ray_params_cls: type = None
-    _tune_callback_cls: type = None
+    _tune_callback_report_cls: type = None
+    _tune_callback_checkpoint_cls: type = None
     _init_model_arg_name: str = None
 
 
