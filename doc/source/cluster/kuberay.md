@@ -8,6 +8,7 @@ The [KubeRay Operator](https://ray-project.github.io/kuberay/components/operator
 interface for managing Ray clusters. Each Ray cluster consist of a head pod and collection of worker pods.
 Optional autoscaling support allows the KubeRay Operator to size your Ray clusters according to the requirements
 of your Ray workload, adding and removing Ray pods as needed.
+
 ## Learn More
 
 The Ray docs present all the information you need to start running Ray workloads on Kubernetes.
